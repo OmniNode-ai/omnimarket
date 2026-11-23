@@ -6,6 +6,10 @@ This is the node's runtime-module form (the census node's form): the tick unit a
 both run it with the dispatch venv's interpreter. ``J`` is the overlay's ``floor_fill`` section wrapped as
 ``{"floor_fill": {...}}``; an empty or unreadable ``J`` prints ``UNKNOWN fill-state:overlay:unreadable`` and fails.
 
+After a live ``tick`` the entry runs one alarm check (``node_floor_fill_alarm_effect``) when the overlay holds a
+``floor_fill_alarm`` section: the check reads the rows the tick just stored, so it runs as often as the fill and sees every
+run. A check that cannot run prints its refusal and fails the entry; it never changes what the tick did.
+
 The entry holds no I/O of its own: the handler it builds takes every seam in its constructor. The
 default profile is ``inmemory`` (scripted seams over an in-memory conditional store). ``--profile live`` binds the
 store, the floor and plan reads, the ledger file, the process runner and the clock from the overlay's
@@ -21,6 +25,7 @@ import json
 import os
 import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +48,7 @@ from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_live_
 )
 
 OVERLAY_SECTION = "floor_fill"
+ALARM_OVERLAY_SECTION = "floor_fill_alarm"
 
 
 def run_entry(
@@ -74,6 +80,74 @@ def run_entry(
         ModelFloorFillCommandRequest(
             command=EnumFloorFillCommand(args.command), key=args.key, host_id=host_id
         )
+    )
+
+
+def run_alarm_after_tick(
+    result: ModelFloorFillEntryResult,
+    command: str,
+    overlay: Mapping[str, Any],
+    *,
+    load_payload: Callable[[str], str | None],
+    now: datetime | None = None,
+    pool_clock: Callable[[], datetime] | None = None,
+) -> ModelFloorFillEntryResult:
+    """Run the alarm check over what a tick just stored, when the overlay carries the ``floor_fill_alarm`` section.
+
+    Any command but ``tick``, or an overlay without the section, returns ``result`` unchanged. The check's own line is
+    added after the tick's lines; a section the check refuses, or a ledger it cannot read or write, adds the refusal and
+    fails the entry (the tick's own failure code stands when it failed).
+    """
+    section = overlay.get(ALARM_OVERLAY_SECTION)
+    if command != EnumFloorFillCommand.TICK.value or section is None:
+        return result
+    from omnimarket.nodes.node_floor_fill_alarm_effect.container.container_live import (
+        run_alarm_check,
+    )
+    from omnimarket.nodes.node_floor_fill_alarm_effect.models import (
+        FloorFillAlarmConfigError,
+        load_floor_fill_alarm_settings,
+    )
+
+    failed = EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED]
+    try:
+        settings = load_floor_fill_alarm_settings(section)
+    except FloorFillAlarmConfigError as error:
+        return _with_alarm_line(
+            result,
+            f"UNKNOWN alarm-check:overlay:{','.join(error.keys) or error}",
+            failed,
+        )
+    kwargs: dict[str, Any] = {"load_payload": load_payload, "now": now}
+    if pool_clock is not None:
+        kwargs["pool_clock"] = pool_clock
+    try:
+        outcome = run_alarm_check(settings, **kwargs)
+    except Exception as error:
+        return _with_alarm_line(
+            result, f"UNKNOWN alarm-check:{type(error).__name__}:{error}", failed
+        )
+    return _with_alarm_line(
+        result,
+        f"NOTE alarm-check | alarms={outcome.alarms_found} rows_written={len(outcome.rows_written)} "
+        f"sources_unread={','.join(outcome.sources_unread) or 'none'}",
+        result.exit_code,
+    )
+
+
+def _with_alarm_line(
+    result: ModelFloorFillEntryResult, line: str, exit_code: int
+) -> ModelFloorFillEntryResult:
+    stdout = (
+        result.stdout
+        if result.stdout.endswith("\n") or not result.stdout
+        else result.stdout + "\n"
+    )
+    return result.model_copy(
+        update={
+            "stdout": stdout + line + "\n",
+            "exit_code": result.exit_code or exit_code,
+        }
     )
 
 
@@ -125,6 +199,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         sys.stdout.write("UNKNOWN fill-state:overlay:unreadable\n")
         return EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED]
     build_handler: Callable[[ModelFloorFillConfig], HandlerFloorFillCommand]
+    load_payload: Callable[[str], str | None] | None = None
     if known.profile == "live":
         try:
             live_settings = load_floor_fill_live_settings(
@@ -145,11 +220,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"UNKNOWN fill-state:store-dsn-unset:{live_settings.store_dsn_env}\n"
             )
             return EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED]
+        from omnimarket.nodes.node_floor_fill_alarm_effect.container.container_live import (
+            store_payload_loader,
+        )
         from omnimarket.nodes.node_floor_fill_orchestrator.container.container_live import (
             build_live_handler_factory,
+            build_live_store,
         )
 
-        build_handler = build_live_handler_factory(live_settings, dsn=dsn)
+        store = build_live_store(live_settings, dsn=dsn)
+        build_handler = build_live_handler_factory(live_settings, dsn=dsn, store=store)
+        load_payload = store_payload_loader(store)
     else:
         from omnimarket.nodes.node_floor_fill_orchestrator.container.container_inmemory import (
             build_inmemory_handler,
@@ -164,6 +245,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         hosts=lab_host_rows(overlay),
         build_handler=build_handler,
     )
+    if load_payload is not None and not result.timed_out:
+        result = run_alarm_after_tick(
+            result, rest[0] if rest else "", overlay, load_payload=load_payload
+        )
     sys.stdout.write(result.stdout)
     sys.stdout.flush()
     if result.timed_out:

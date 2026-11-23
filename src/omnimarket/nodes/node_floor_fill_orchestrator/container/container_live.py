@@ -3,9 +3,10 @@
 """The live profile, the binding site: the seams that have a live source are bound to it, the rest fail closed.
 
 Bound live: the state store (the ``floor_fill_state`` table of omnibase_infra, migration 113), the floor record (URL)
-and plan texts (files), the ledger (the rolling ledger file), the lane process runner (the posix runner of
-``node_lane_process_effect``), the continuation briefs (directories) and the wall clock. The pool, tickets, brake and stop-signal seams have no live source
-of their own (no placement reader, the floor-task ticket nodes off the dev branch, no open-count brake, no stop
+and plan texts (files), the ledger (the rolling ledger file), the pool (the lane host pool snapshot file that
+``node_lane_host_pool_snapshot_effect`` writes, refused when stale), the lane process runner (the posix runner of
+``node_lane_process_effect``), the continuation briefs (directories) and the wall clock. The tickets, brake and stop-signal
+seams have no live source of their own (the floor-task ticket nodes off the dev branch, no open-count brake, no stop
 signal): they are bound by injection, and a missing one (left ``None``) refuses by name, making the pass answer
 ``UNKNOWN <source>-unread:unbound:<seam>`` and start nothing.
 """
@@ -13,6 +14,8 @@ signal): they are bound by injection, and a missing one (left ``None``) refuses 
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import UTC, datetime
+from pathlib import Path
 
 from pydantic import SecretStr
 
@@ -56,13 +59,50 @@ from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.system_clock im
     SystemFloorClock,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.unbound_ports import (
-    UnboundFloorPool,
     UnboundFloorTickets,
 )
 from omnimarket.nodes.node_floor_fill_reducer.handlers import HandlerFloorFillReducer
+from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.adapter_snapshot_file import (
+    SnapshotFloorPool,
+    StampedSnapshotFileLaneHostPool,
+)
 from omnimarket.nodes.node_lane_process_effect.handlers.handler_posix_process import (
     HandlerPosixProcess,
 )
+
+
+def snapshot_floor_pool(
+    settings: ModelFloorFillLiveSettings,
+    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+) -> ProtocolFloorPool:
+    """The pool seam on the lane host pool snapshot: the lane slots of every host it admits, refused when stale."""
+    return SnapshotFloorPool(
+        StampedSnapshotFileLaneHostPool(
+            path=Path(settings.pool_snapshot_path),
+            record_suffix=settings.pool_record_suffix,
+            max_age_seconds=settings.pool_snapshot_max_age_seconds,
+            clock=clock,
+        ),
+        settings.pool_engine,
+    )
+
+
+def build_live_store(
+    settings: ModelFloorFillLiveSettings, *, dsn: str
+) -> ProtocolFloorStateStore:
+    """The table-backed state store of the live profile; the fill and the alarm check read the same rows through it."""
+    from omnimarket.handlers.floor_fill_state_store_postgres import (
+        PostgresFloorStateStore,
+    )
+
+    return PostgresFloorStateStore(
+        ModelFloorFillStoreSettings(
+            dsn=SecretStr(dsn),
+            schema_name=settings.store_schema_name,
+            table_name=settings.store_table_name,
+            connect_timeout_seconds=settings.store_connect_timeout_seconds,
+        )
+    )
 
 
 def build_live_handler_factory(
@@ -73,6 +113,7 @@ def build_live_handler_factory(
     fetch_text: Callable[[str, float], str] = fetch_url_text,
     read_file: Callable[[str], str] = read_text_file,
     pool: ProtocolFloorPool | None = None,
+    pool_clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     tickets: ProtocolFloorTickets | None = None,
     brake: Callable[[], bool] | None = None,
     stop: Callable[[str], str | None] | None = None,
@@ -80,25 +121,15 @@ def build_live_handler_factory(
     """The factory ``run_entry`` takes: given the validated config it wires the live seams.
 
     ``store`` is for tests; without one the table-backed store is built from the settings and ``dsn``.
-    ``pool``, ``tickets``, ``brake`` and ``stop`` are bound by injection; a missing one (left ``None``)
+    ``pool`` is for tests; without one the pool snapshot named by the settings is read, its age taken from ``pool_clock``.
+    ``tickets``, ``brake`` and ``stop`` are bound by injection; a missing one (left ``None``)
     refuses by name, so the pass answers ``UNKNOWN <source>-unread:unbound:<seam>`` and starts nothing.
     """
 
     def build(config: ModelFloorFillConfig) -> HandlerFloorFillCommand:
         bound_store = store
         if bound_store is None:
-            from omnimarket.handlers.floor_fill_state_store_postgres import (
-                PostgresFloorStateStore,
-            )
-
-            bound_store = PostgresFloorStateStore(
-                ModelFloorFillStoreSettings(
-                    dsn=SecretStr(dsn),
-                    schema_name=settings.store_schema_name,
-                    table_name=settings.store_table_name,
-                    connect_timeout_seconds=settings.store_connect_timeout_seconds,
-                )
-            )
+            bound_store = build_live_store(settings, dsn=dsn)
         process = HandlerPosixProcess(settings.process_output_dir)
         orchestrator = FloorFillOrchestrator(
             config=config,
@@ -114,7 +145,9 @@ def build_live_handler_factory(
                 brake=brake,
                 stop=stop,
             ),
-            pool=pool if pool is not None else UnboundFloorPool(),
+            pool=pool
+            if pool is not None
+            else snapshot_floor_pool(settings, pool_clock),
             ledger=LedgerRowsFloorLedger(FileWorkLedgerStore(settings.ledger_path)),
             tickets=tickets if tickets is not None else UnboundFloorTickets(),
             runner=process,
@@ -130,4 +163,8 @@ def build_live_handler_factory(
     return build
 
 
-__all__: list[str] = ["build_live_handler_factory"]
+__all__: list[str] = [
+    "build_live_handler_factory",
+    "build_live_store",
+    "snapshot_floor_pool",
+]

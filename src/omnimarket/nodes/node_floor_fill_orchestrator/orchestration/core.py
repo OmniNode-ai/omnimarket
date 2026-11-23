@@ -127,6 +127,8 @@ class _Pass:
         self.unread: list[str] = []
         self.ledger_unread = False
         self.free_slots = 0
+        # False until this pass's pool read returned a count; a failed read leaves the slots unseen, never 0.
+        self.free_slots_read = False
         self.started = 0
         # Reservations of earlier commands whose CLAIM is not on the ledger yet: lanes the pool read cannot show yet.
         self.outstanding = 0
@@ -287,21 +289,40 @@ class FloorFillOrchestrator:
                 self._refuse(ctx, only_key, f"held:{hold}")
             return self._finish(command, ctx, hold=hold, floor=verdicts)
         except StaleStateError:
-            return self._stale(command, ctx)
+            return self._record_started(command, ctx, self._stale(command, ctx))
         except FloorFillUnreadableError as error:
             # A store failure after the pass began keeps what the earlier writes committed and the last sequence that landed.
-            return self._failed(
+            return self._record_started(
                 command,
-                f"UNKNOWN fill-state:{error.cause}",
-                ModelFloorFillAnswer(
-                    command=command,
-                    status=EnumFloorFillStatus.FAILED,
-                    key_results=tuple(ctx.results),
-                    exit_code=EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED],
-                    state_seq=ctx.state.seq,
-                    observed_at=ctx.now,
+                ctx,
+                self._failed(
+                    command,
+                    f"UNKNOWN fill-state:{error.cause}",
+                    ModelFloorFillAnswer(
+                        command=command,
+                        status=EnumFloorFillStatus.FAILED,
+                        key_results=tuple(ctx.results),
+                        exit_code=EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED],
+                        state_seq=ctx.state.seq,
+                        observed_at=ctx.now,
+                    ),
                 ),
             )
+
+    def _record_started(
+        self, command: EnumFloorFillCommand, ctx: _Pass, failed: ModelFloorFillAnswer
+    ) -> ModelFloorFillAnswer:
+        """A tick that did not complete after it started lanes still stores its answer, so the run is never unseen.
+
+        The stored answer carries ``lanes_started``; a reader that keeps the runs (the alarm check) would otherwise see a
+        gap in ``seq`` where lanes were sent. The write is the same conditional one as a completed pass, and its refusal
+        (a newer answer already stored) leaves the failed answer as it was.
+        """
+        if command is EnumFloorFillCommand.TICK and any(
+            r.kind == "started" for r in ctx.results
+        ):
+            return self._publish(ctx, failed)
+        return failed
 
     # S0
 
@@ -331,6 +352,7 @@ class FloorFillOrchestrator:
             ctx.unread.append(f"floor:{_cause(error)}")
         try:
             ctx.free_slots = self._pool.free_slots()
+            ctx.free_slots_read = True
         except Exception as error:
             ctx.unread.append(f"pool:{_cause(error)}")
         try:
@@ -921,6 +943,8 @@ class FloorFillOrchestrator:
                 observed_at=ctx.now,
                 seq=read.version + 1,
                 state_seq=ctx.state.seq,
+                free_slots=ctx.free_slots if ctx.free_slots_read else None,
+                lanes_started=sum(1 for r in ctx.results if r.kind == "started"),
             ).model_dump_json()
             if not self._store.compare_and_set(
                 key, read.version, read.version + 1, payload

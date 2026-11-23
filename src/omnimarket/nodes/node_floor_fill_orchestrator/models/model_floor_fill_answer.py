@@ -54,7 +54,12 @@ class ModelFloorFillAnswer(BaseModel):
 
 
 class ModelFloorFillStoredAnswer(BaseModel):
-    """The second row of the table, key ``<scope>:answer``."""
+    """The second row of the table, key ``<scope>:answer``.
+
+    ``seq`` rises by one per stored answer, so a reader that keeps its own history of the runs sees a gap in it.
+    ``free_slots`` is the count of free slots this run's pool read saw, None when the read failed (a failed read is never
+    a count of 0); ``lanes_started`` is the number of lanes this run started.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -63,6 +68,8 @@ class ModelFloorFillStoredAnswer(BaseModel):
     observed_at: AwareDatetime
     seq: int = Field(ge=0)
     state_seq: int = Field(ge=0)
+    free_slots: int | None = Field(default=None, ge=0)
+    lanes_started: int = Field(default=0, ge=0)
 
 
 __all__: list[str] = [

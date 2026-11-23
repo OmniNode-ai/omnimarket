@@ -27,6 +27,9 @@ from omnibase_spi.protocols.lane import ProtocolLaneHostPool
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
     FloorFillUnreadableError,
 )
+from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.pool_snapshot_refusals import (
+    ACCOUNTS_UNREAD_PREFIX,
+)
 from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.snapshot_errors import (
     PoolSnapshotSourceError,
     PoolSnapshotStaleError,
@@ -134,15 +137,38 @@ class SnapshotFloorPool:
         self._engine = engine
 
     def free_slots(self) -> int:
+        """The lane slots of every host that admits lanes for the engine; a failed host read is refused, never counted
+        as zero: the snapshot writes such a host as zero slots with an ``accounts-unread`` refusal."""
         try:
             snapshot = self._pool.read_pool(
                 ModelLaneHostPoolRequest(engine=self._engine)
             )
         except (PoolSnapshotSourceError, OSError, ValueError) as exc:
             raise FloorFillUnreadableError(f"pool-snapshot:{exc}") from exc
+        unread = [
+            f"{reading.name}: {reading.lane_admission_refusal}"
+            for reading in snapshot.readings
+            if (reading.lane_admission_refusal or "").startswith(ACCOUNTS_UNREAD_PREFIX)
+        ]
+        if unread:
+            raise FloorFillUnreadableError(f"pool-snapshot:{'; '.join(unread)}")
+        # The writer empties ``engines`` only for a host with no usable account, and that host carries a refusal; a host
+        # with empty engines and no refusal is a writer fault, read as an unread pool and never as zero free slots.
+        faulted = [
+            reading.name
+            for reading in snapshot.readings
+            if reading.lane_admission_refusal is None and not reading.engines
+        ]
+        if faulted:
+            raise FloorFillUnreadableError(
+                f"pool-snapshot:{', '.join(faulted)}: engines empty with no admission refusal"
+            )
         total = 0
         for reading in snapshot.readings:
-            if reading.lane_admission_refusal is None:
+            if (
+                reading.lane_admission_refusal is None
+                and self._engine in reading.engines
+            ):
                 total += reading.lane_slots
         return total
 

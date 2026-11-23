@@ -36,6 +36,12 @@ class ModelFloorFillLiveSettings(BaseModel):
     plan_file_pattern: str = Field(min_length=1)
     ledger_path: str = Field(min_length=1)
     process_output_dir: str = Field(min_length=1)
+    # The pool seam's live source: the lane host pool snapshot file (node_lane_host_pool_snapshot_effect), refused
+    # when its record is missing or older than the bound; the fill's free slots are the lane slots it admits.
+    pool_snapshot_path: str = Field(min_length=1)
+    pool_record_suffix: str = Field(min_length=1)
+    pool_snapshot_max_age_seconds: int = Field(gt=0)
+    pool_engine: str = Field(min_length=1)
     # The env file the secret store writes the DSN variable into; optional, because the unit's own
     # EnvironmentFile may already carry the variable.
     store_dsn_env_file: str | None = None
