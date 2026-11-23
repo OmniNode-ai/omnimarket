@@ -2,28 +2,39 @@
 # SPDX-License-Identifier: MIT
 """Validates the stage receipts a tree carries (operation ``validate_stage_receipt``).
 
-A stage is entered one at a time, by a receipt that names its nights; the receipt's figures are not
-trusted but recomputed from the nightly attribution records the source publishes, and every record
-must hold the entry for the stage being entered at the receipt's selector and policy versions. Pure
-over its request, its policy and its injected source. A source that cannot be read, or a night it
-holds no record for, is a violation, never a pass.
+A stage is entered one at a time, by a receipt that records one comparison over the recorded set: the selection
+the selector gives for each recorded change against the failures the full run of that change recorded. The
+receipt's figures are not trusted but recomputed here from the recorded set the source reads (the same replay
+and comparison handlers every run uses), and the comparison must pass. Pure over its request, its policy and its
+injected source. A set that cannot be read is a violation, never a pass.
 """
 
 from __future__ import annotations
 
-import datetime
-import itertools
 import math
 
-from omnimarket.nodes.node_test_selection_selector_compute.adapters.source_attribution_records_in_memory import (
-    SourceAttributionRecordsInMemory,
+from omnimarket.nodes.node_test_selection_selector_compute.adapters.source_recorded_set_in_memory import (
+    SourceRecordedSetInMemory,
 )
-from omnimarket.nodes.node_test_selection_selector_compute.models.model_published_attribution_record import (
-    EnumRecordStatus,
-    ModelPublishedAttributionRecord,
+from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_selection_replay import (
+    HandlerSelectionReplay,
+)
+from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_stage_comparison import (
+    HandlerStageComparison,
+)
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_recorded_set import (
+    ModelRecordedSet,
+)
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_selection_replay import (
+    ModelReplayFailed,
+)
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_stage_comparison import (
+    ModelStageComparisonRequest,
+    ModelStageComparisonResult,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_stage_receipt import (
     EnumStageReceiptViolation,
+    ModelReceiptComparison,
     ModelStageReceipt,
     ModelStageReceiptValidationRequest,
     ModelStageReceiptValidationResult,
@@ -32,21 +43,12 @@ from omnimarket.nodes.node_test_selection_selector_compute.models.model_stage_re
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector import (
     ModelSelectorPolicy,
 )
-from omnimarket.nodes.node_test_selection_selector_compute.protocols.protocol_attribution_record_source import (
-    ProtocolAttributionRecordSource,
+from omnimarket.nodes.node_test_selection_selector_compute.protocols.protocol_recorded_set_source import (
+    ProtocolRecordedSetSource,
 )
 
 _Code = EnumStageReceiptViolation
-
-
-def _is_clean(record: ModelPublishedAttributionRecord) -> bool:
-    return (
-        record.status is EnumRecordStatus.COMPLETE
-        and record.miss_count == 0
-        and record.unattributable_count == 0
-        and record.incomplete_count == 0
-        and record.pull_request_record_count >= 1
-    )
+_FLOAT_TOLERANCE = 1e-6
 
 
 class HandlerStageReceiptValidation:
@@ -54,15 +56,24 @@ class HandlerStageReceiptValidation:
 
     def __init__(
         self,
-        source: ProtocolAttributionRecordSource | None = None,
+        source: ProtocolRecordedSetSource | None = None,
         policy: ModelSelectorPolicy | None = None,
+        selector_version: str | None = None,
+        replay: HandlerSelectionReplay | None = None,
     ) -> None:
         # Imported here: the policy adapter reaches this node's models, whose package imports this module.
-        from omnimarket.handlers.adapter_test_selection_policy_file import load_policy
+        from omnimarket.handlers.adapter_test_selection_policy_file import (
+            load_policy,
+        )
+        from omnimarket.handlers.adapter_test_selection_policy_file import (
+            selector_version as read_selector_version,
+        )
 
         # Without an injected source the gate holds a source that cannot be read, so it refuses.
-        self._source = source or SourceAttributionRecordsInMemory()
+        self._source = source or SourceRecordedSetInMemory()
         self._policy = policy or load_policy()
+        self._selector_version = selector_version or read_selector_version()
+        self._replay = replay or HandlerSelectionReplay()
 
     def handle(
         self, request: ModelStageReceiptValidationRequest
@@ -119,52 +130,71 @@ class HandlerStageReceiptValidation:
                 )
             )
         found.extend(self._check_targets(receipt))
-        if (
-            receipt.repository is None
-            or receipt.selector_version is None
-            or receipt.policy_version is None
-        ):
+        if receipt.repository is None or receipt.selector_version is None:
             found.append(
                 _violation(
                     _Code.RECEIPT_UNIDENTIFIED,
                     stage,
-                    "the receipt names no repository, selector version or policy version",
+                    "the receipt names no repository or selector version",
                 )
             )
             return found
-        required = self._policy.stage_clean_nights
-        if len(receipt.nights) < required:
+        if receipt.selector_version != self._selector_version:
             found.append(
                 _violation(
-                    _Code.NIGHTS_SHORT,
+                    _Code.VERSION_MISMATCH,
                     stage,
-                    f"the receipt covers {len(receipt.nights)} nights; stage_clean_nights is {required}",
+                    f"the receipt was made with selector {receipt.selector_version}, this tree holds {self._selector_version}",
                 )
             )
-        slots = sorted(night.slot_date for night in receipt.nights)
-        if any(
-            later - earlier != datetime.timedelta(days=1)
-            for earlier, later in itertools.pairwise(slots)
-        ):
+        recorded = receipt.comparison
+        if recorded is None:
             found.append(
                 _violation(
-                    _Code.NIGHTS_NOT_CONSECUTIVE,
+                    _Code.COMPARISON_ABSENT,
                     stage,
-                    "the nights are not consecutive slot dates",
-                )
-            )
-        run_ids = [night.nightly_run_id for night in receipt.nights]
-        records = self._source.read_records(receipt.repository, run_ids)
-        if records is None:
-            found.append(
-                _violation(
-                    _Code.RECORDS_UNAVAILABLE,
-                    stage,
-                    "the published attribution records could not be read",
+                    "the receipt records no comparison over the recorded set",
                 )
             )
             return found
-        found.extend(self._check_records(receipt, records))
+        source = self._source.read_recorded_set(
+            recorded.replay_input_path, recorded.observed_input_path
+        )
+        if source is None:
+            found.append(
+                _violation(
+                    _Code.RECORDED_SET_UNAVAILABLE,
+                    stage,
+                    "the recorded set could not be read",
+                )
+            )
+            return found
+        digests = _digest_differences(recorded, source)
+        if digests:
+            found.append(_violation(_Code.INPUT_MISMATCH, stage, "; ".join(digests)))
+            return found
+        replayed = self._replay.handle(source.replay_input)
+        if isinstance(replayed, ModelReplayFailed):
+            found.append(
+                _violation(
+                    _Code.RECORDED_SET_UNAVAILABLE,
+                    stage,
+                    f"the replay failed: {replayed.reason}",
+                )
+            )
+            return found
+        result = HandlerStageComparison().handle(
+            ModelStageComparisonRequest(
+                replay=replayed,
+                runs=source.runs,
+                min_changes_compared=self._policy.stage_min_compared_changes,
+            )
+        )
+        found.extend(_check_figures(receipt, recorded, result))
+        if not result.passed:
+            found.append(
+                _violation(_Code.COMPARISON_FAILED, stage, "; ".join(result.reasons))
+            )
         return found
 
     def _check_targets(
@@ -192,106 +222,58 @@ class HandlerStageReceiptValidation:
             )
         ]
 
-    def _check_records(
-        self,
-        receipt: ModelStageReceipt,
-        records: tuple[ModelPublishedAttributionRecord, ...],
-    ) -> list[ModelStageReceiptViolation]:
-        stage = receipt.stage
-        found: list[ModelStageReceiptViolation] = []
-        by_run = {record.nightly_run_id: record for record in records}
-        counted: list[ModelPublishedAttributionRecord] = []
-        for night in receipt.nights:
-            record = by_run.get(night.nightly_run_id)
-            if record is None:
-                found.append(
-                    _violation(
-                        _Code.RECORD_MISSING,
-                        stage,
-                        f"no published record for nightly run {night.nightly_run_id}",
-                    )
-                )
-                continue
-            counted.append(record)
-            if record.nightly_slot_date != night.slot_date:
-                found.append(
-                    _violation(
-                        _Code.RECORD_MISMATCH,
-                        stage,
-                        f"nightly run {night.nightly_run_id} was published for slot {record.nightly_slot_date}, not {night.slot_date}",
-                    )
-                )
-            if record.stage_entry_counted != stage:
-                found.append(
-                    _violation(
-                        _Code.RECORD_WRONG_STAGE_ENTRY,
-                        stage,
-                        f"nightly run {night.nightly_run_id} counts the entry of stage {record.stage_entry_counted}",
-                    )
-                )
-            if (
-                record.selector_version != receipt.selector_version
-                or record.policy_version != receipt.policy_version
-            ):
-                found.append(
-                    _violation(
-                        _Code.VERSION_MISMATCH,
-                        stage,
-                        f"nightly run {night.nightly_run_id} ran selector {record.selector_version} and policy {record.policy_version}, not the receipt's",
-                    )
-                )
-            if not _is_clean(record):
-                found.append(
-                    _violation(
-                        _Code.NIGHT_NOT_CLEAN,
-                        stage,
-                        f"nightly run {night.nightly_run_id} is not a clean night",
-                    )
-                )
-        found.extend(self._check_figures(receipt, counted))
-        return found
 
-    def _check_figures(
-        self,
-        receipt: ModelStageReceipt,
-        counted: list[ModelPublishedAttributionRecord],
-    ) -> list[ModelStageReceiptViolation]:
-        stage = receipt.stage
-        recomputed = {
-            "clean_nights": sum(1 for record in counted if _is_clean(record)),
-            "pr_record_count": sum(
-                record.pull_request_record_count for record in counted
-            ),
-            "miss_total": sum(record.miss_count for record in counted),
-            "unattributable_total": sum(
-                record.unattributable_count for record in counted
-            ),
-            "incomplete_total": sum(record.incomplete_count for record in counted),
-        }
-        found: list[ModelStageReceiptViolation] = []
-        wrong = [
-            f"{name} {getattr(receipt, name)} (recomputed {value})"
-            for name, value in recomputed.items()
-            if getattr(receipt, name) != value
-        ]
-        share = (
-            recomputed["clean_nights"] / len(receipt.nights) if receipt.nights else 0.0
+def _digest_differences(
+    recorded: ModelReceiptComparison, source: ModelRecordedSet
+) -> list[str]:
+    differences: list[str] = []
+    if recorded.replay_input_sha256 != source.replay_input_sha256:
+        differences.append(
+            f"replay input {recorded.replay_input_path} has digest {source.replay_input_sha256}, the receipt records {recorded.replay_input_sha256}"
         )
-        if not math.isclose(receipt.clean_night_share, share, abs_tol=1e-6):
-            wrong.append(
-                f"clean_night_share {receipt.clean_night_share} (recomputed {round(share, 6)})"
-            )
-        if wrong:
-            found.append(_violation(_Code.FIGURE_MISMATCH, stage, "; ".join(wrong)))
-        if recomputed["pr_record_count"] < self._policy.stage_min_pr_records:
-            found.append(
-                _violation(
-                    _Code.TOO_FEW_PR_RECORDS,
-                    stage,
-                    f"{recomputed['pr_record_count']} pull request records; stage_min_pr_records is {self._policy.stage_min_pr_records}",
-                )
-            )
-        return found
+    if recorded.observed_input_sha256 != source.observed_input_sha256:
+        differences.append(
+            f"observed input {recorded.observed_input_path} has digest {source.observed_input_sha256}, the receipt records {recorded.observed_input_sha256}"
+        )
+    return differences
+
+
+def _check_figures(
+    receipt: ModelStageReceipt,
+    recorded: ModelReceiptComparison,
+    result: ModelStageComparisonResult,
+) -> list[ModelStageReceiptViolation]:
+    recomputed: dict[str, float | None] = {
+        "changes_compared": result.changes_compared,
+        "changes_narrowed": result.changes_narrowed,
+        "runs_with_result": result.runs_with_result,
+        "runs_unavailable": result.runs_unavailable,
+        "failing_tests": result.failing_tests,
+        "failing_tests_selected": result.failing_tests_selected,
+        "misses": len(result.misses),
+    }
+    wrong = [
+        f"{name} {getattr(recorded, name)} (recomputed {value})"
+        for name, value in recomputed.items()
+        if getattr(recorded, name) != value
+    ]
+    measured = receipt.measured
+    if measured is not None:
+        for name in (
+            "merge_narrowed_share",
+            "test_seconds_per_merge",
+            "ci_minutes_per_pr",
+        ):
+            given = getattr(measured, name)
+            value = getattr(result, name)
+            if given is not None and (
+                value is None
+                or not math.isclose(given, value, abs_tol=_FLOAT_TOLERANCE)
+            ):
+                wrong.append(f"{name} {given} (recomputed {value})")
+    if not wrong:
+        return []
+    return [_violation(_Code.FIGURE_MISMATCH, receipt.stage, "; ".join(wrong))]
 
 
 def _violation(

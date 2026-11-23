@@ -4,9 +4,7 @@
 
 from __future__ import annotations
 
-import datetime
 import importlib
-import json
 from pathlib import Path
 from typing import Any
 
@@ -15,14 +13,17 @@ import yaml
 from pydantic import ValidationError
 
 from omnimarket.handlers.adapter_test_selection_policy_file import load_policy
-from omnimarket.nodes.node_test_selection_selector_compute.adapters.source_attribution_records_in_memory import (
-    SourceAttributionRecordsInMemory,
+from omnimarket.nodes.node_test_selection_selector_compute.adapters.source_recorded_set_file import (
+    SourceRecordedSetFile,
+)
+from omnimarket.nodes.node_test_selection_selector_compute.adapters.source_recorded_set_in_memory import (
+    SourceRecordedSetInMemory,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_stage_receipt_validation import (
     HandlerStageReceiptValidation,
 )
-from omnimarket.nodes.node_test_selection_selector_compute.models.model_published_attribution_record import (
-    ModelPublishedAttributionRecord,
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_recorded_set import (
+    ModelRecordedSet,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_stage_receipt import (
     EnumStageReceiptViolation,
@@ -31,8 +32,8 @@ from omnimarket.nodes.node_test_selection_selector_compute.models.model_stage_re
     ModelStageReceiptValidationResult,
     ModelStageReceiptViolation,
 )
-from omnimarket.nodes.node_test_selection_selector_compute.protocols.protocol_attribution_record_source import (
-    ProtocolAttributionRecordSource,
+from omnimarket.nodes.node_test_selection_selector_compute.protocols.protocol_recorded_set_source import (
+    ProtocolRecordedSetSource,
 )
 
 pytestmark = pytest.mark.unit
@@ -41,32 +42,37 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 NODE_DIR = (
     REPO_ROOT / "src" / "omnimarket" / "nodes" / "node_test_selection_selector_compute"
 )
-FIXTURES = REPO_ROOT / "tests" / "ci" / "fixtures" / "selection_stage"
+RECEIPT = REPO_ROOT / "config" / "test_selection_stage_receipts" / "stage_1.yaml"
 
 
-def _load(name: str) -> Any:
-    return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
+def _stage_one() -> dict[str, Any]:
+    raw = yaml.safe_load(RECEIPT.read_text(encoding="utf-8"))
+    assert isinstance(raw, dict)
+    return raw
 
 
-def _records(name: str) -> list[ModelPublishedAttributionRecord]:
-    return [ModelPublishedAttributionRecord.model_validate(r) for r in _load(name)]
+def _recorded() -> ModelRecordedSet:
+    recorded = SourceRecordedSetFile(REPO_ROOT).read_recorded_set(
+        "config/test_selection_replay_input.json",
+        "config/test_selection_observed_input.json",
+    )
+    assert recorded is not None
+    return recorded
 
 
 def _request(**changes: Any) -> ModelStageReceiptValidationRequest:
     payload: dict[str, Any] = {
         "current_stage": 1,
         "base_stage": 0,
-        "receipts": [{"stage": 0}, _load("receipt_valid.json")],
+        "receipts": [{"stage": 0}, _stage_one()],
     }
     payload.update(changes)
     return ModelStageReceiptValidationRequest.model_validate(payload)
 
 
-def _handler(
-    records: list[ModelPublishedAttributionRecord] | None,
-) -> HandlerStageReceiptValidation:
+def _handler(recorded: ModelRecordedSet | None) -> HandlerStageReceiptValidation:
     return HandlerStageReceiptValidation(
-        SourceAttributionRecordsInMemory(records), load_policy()
+        SourceRecordedSetInMemory(recorded), load_policy()
     )
 
 
@@ -81,8 +87,8 @@ def test_contract_routes_validate_stage_receipt_to_its_handler() -> None:
     assert route["output_model"].endswith(".ModelStageReceiptValidationResult")
 
 
-def test_golden_chain_a_valid_stage_one_receipt_is_accepted() -> None:
-    result = _handler(_records("records_valid.json")).handle(_request())
+def test_golden_chain_the_stage_one_receipt_is_accepted() -> None:
+    result = _handler(_recorded()).handle(_request())
     assert result == ModelStageReceiptValidationResult(valid=True, violations=())
 
 
@@ -94,9 +100,7 @@ def test_golden_chain_the_baseline_alone_is_accepted_at_stage_zero() -> None:
 
 
 def test_error_chain_each_refusal_carries_its_code_and_stage() -> None:
-    result = _handler(_records("records_valid.json")).handle(
-        _request(receipts=[{"stage": 0}])
-    )
+    result = _handler(_recorded()).handle(_request(receipts=[{"stage": 0}]))
     assert result.violations == (
         ModelStageReceiptViolation(
             code=EnumStageReceiptViolation.RECEIPT_MISSING,
@@ -107,20 +111,18 @@ def test_error_chain_each_refusal_carries_its_code_and_stage() -> None:
 
 
 def test_error_chain_two_receipts_for_one_stage_are_refused() -> None:
-    receipts = [{"stage": 0}, {"stage": 0}, _load("receipt_valid.json")]
-    result = _handler(_records("records_valid.json")).handle(
-        _request(receipts=receipts)
-    )
+    receipts = [{"stage": 0}, {"stage": 0}, _stage_one()]
+    result = _handler(_recorded()).handle(_request(receipts=receipts))
     assert [v.code for v in result.violations] == [
         EnumStageReceiptViolation.DUPLICATE_RECEIPT
     ]
 
 
-def test_error_chain_a_receipt_with_no_identity_is_refused_before_any_record_is_read() -> (
+def test_error_chain_a_receipt_with_no_identity_is_refused_before_the_set_is_read() -> (
     None
 ):
-    raw = _load("receipt_valid.json")
-    for key in ("repository", "selector_version", "policy_version"):
+    raw = _stage_one()
+    for key in ("repository", "selector_version"):
         raw.pop(key)
     result = _handler(None).handle(_request(receipts=[{"stage": 0}, raw]))
     assert [v.code for v in result.violations] == [
@@ -128,181 +130,67 @@ def test_error_chain_a_receipt_with_no_identity_is_refused_before_any_record_is_
     ]
 
 
-def test_error_chain_nights_that_skip_a_day_are_not_consecutive() -> None:
-    records = _records("records_valid.json")
-    gapped = [
-        r.model_copy(
-            update={
-                "nightly_slot_date": r.nightly_slot_date
-                + datetime.timedelta(days=i % 2)
-            }
-        )
-        for i, r in enumerate(records)
+def test_error_chain_a_set_that_cannot_be_read_is_never_a_pass() -> None:
+    result = _handler(None).handle(_request())
+    assert [v.code for v in result.violations] == [
+        EnumStageReceiptViolation.RECORDED_SET_UNAVAILABLE
     ]
-    raw = _load("receipt_valid.json")
-    raw["nights"] = [
-        {
-            "slot_date": r.nightly_slot_date.isoformat(),
-            "nightly_run_id": r.nightly_run_id,
+
+
+def test_error_chain_a_receipt_entering_from_the_wrong_stage_is_a_jump() -> None:
+    raw = {**_stage_one(), "entered_from_stage": 0, "stage": 2}
+    result = _handler(_recorded()).handle(
+        _request(current_stage=2, base_stage=1, receipts=[{"stage": 0}, raw])
+    )
+    codes = {v.code for v in result.violations}
+    assert EnumStageReceiptViolation.STAGE_JUMP in codes
+    assert EnumStageReceiptViolation.RECEIPT_MISSING in codes
+
+
+def test_error_chain_a_replay_that_fails_is_refused() -> None:
+    recorded = _recorded()
+    broken = recorded.model_copy(
+        update={
+            "replay_input": recorded.replay_input.model_copy(
+                update={"tree_id": "0" * 40}
+            )
         }
-        for r in gapped
-    ]
-    result = _handler(gapped).handle(_request(receipts=[{"stage": 0}, raw]))
-    assert EnumStageReceiptViolation.NIGHTS_NOT_CONSECUTIVE in {
-        v.code for v in result.violations
-    }
-
-
-def test_error_chain_a_slot_published_for_another_date_is_refused() -> None:
-    records = _records("records_valid.json")
-    moved = [
-        records[0].model_copy(update={"nightly_slot_date": datetime.date(2027, 1, 1)})
-    ]
-    result = _handler([*moved, *records[1:]]).handle(_request())
+    )
+    result = _handler(broken).handle(_request())
     assert [v.code for v in result.violations] == [
-        EnumStageReceiptViolation.RECORD_MISMATCH
+        EnumStageReceiptViolation.RECORDED_SET_UNAVAILABLE
     ]
+    assert "the replay failed" in result.violations[0].detail
 
 
-def test_error_chain_a_night_with_no_pull_request_record_is_not_clean() -> None:
-    records = _records("records_valid.json")
-    empty = [
-        records[0].model_copy(update={"pull_request_record_count": 0}),
-        *records[1:],
-    ]
-    raw = _load("receipt_valid.json")
-    raw["pr_record_count"] = 12
-    raw["clean_nights"] = 6
-    raw["clean_night_share"] = 6 / 7
-    result = _handler(empty).handle(_request(receipts=[{"stage": 0}, raw]))
-    assert [v.code for v in result.violations] == [
-        EnumStageReceiptViolation.NIGHT_NOT_CLEAN
-    ]
-
-
-def test_error_chain_an_unattributable_or_incomplete_night_is_not_clean() -> None:
-    for field in ("unattributable_count", "incomplete_count", "miss_count"):
-        records = _records("records_valid.json")
-        dirty = [records[2].model_copy(update={field: 1})]
-        result = _handler([*records[:2], *dirty, *records[3:]]).handle(_request())
-        assert EnumStageReceiptViolation.NIGHT_NOT_CLEAN in {
-            v.code for v in result.violations
-        }, field
-
-
-def test_error_chain_too_few_pull_request_records_is_refused() -> None:
-    policy = load_policy().model_copy(update={"stage_min_pr_records": 15})
+def test_error_chain_a_policy_asking_for_more_changes_than_were_compared_fails() -> (
+    None
+):
+    policy = load_policy().model_copy(update={"stage_min_compared_changes": 61})
     handler = HandlerStageReceiptValidation(
-        SourceAttributionRecordsInMemory(_records("records_valid.json")), policy
+        SourceRecordedSetInMemory(_recorded()), policy
     )
     result = handler.handle(_request())
     assert [v.code for v in result.violations] == [
-        EnumStageReceiptViolation.TOO_FEW_PR_RECORDS
+        EnumStageReceiptViolation.COMPARISON_FAILED
     ]
+    assert "60 changes compared; the policy asks for at least 61" in (
+        result.violations[0].detail
+    )
 
 
 # -- models ---------------------------------------------------------------------
 
 
-def test_published_record_holds_exactly_the_public_safe_fields() -> None:
-    assert list(ModelPublishedAttributionRecord.model_fields) == [
-        "repository",
-        "nightly_slot_date",
-        "nightly_run_id",
-        "tested_head_sha",
-        "selector_version",
-        "policy_version",
-        "stage_entry_counted",
-        "pull_request_record_count",
-        "miss_count",
-        "interaction_count",
-        "preexisting_count",
-        "unattributable_count",
-        "incomplete_count",
-        "status",
-    ]
-
-
-def test_published_record_status_must_agree_with_the_counts() -> None:
-    payload = _records("records_valid.json")[0].model_dump(mode="json")
-    with pytest.raises(ValidationError):
-        ModelPublishedAttributionRecord.model_validate(
-            {**payload, "status": "incomplete"}
-        )
-    with pytest.raises(ValidationError):
-        ModelPublishedAttributionRecord.model_validate(
-            {**payload, "incomplete_count": 1}
-        )
-    with pytest.raises(ValidationError):
-        ModelPublishedAttributionRecord.model_validate(
-            {**payload, "status": "incomplete", "incomplete_count": 1}
-        )
-    incomplete = ModelPublishedAttributionRecord.model_validate(
-        {
-            **payload,
-            "status": "incomplete",
-            "incomplete_count": 1,
-            "interaction_count": 0,
-        }
-    )
-    assert incomplete.status.value == "incomplete"
-
-
-@pytest.mark.parametrize(
-    ("field", "value"),
-    [
-        ("repository", "no-owner-part"),
-        ("tested_head_sha", "abc"),
-        ("selector_version", "has space"),
-        ("policy_version", ""),
-    ],
-)
-def test_published_record_refuses_values_outside_the_producers_patterns(
-    field: str, value: str
-) -> None:
-    payload = _records("records_valid.json")[0].model_dump(mode="json")
-    with pytest.raises(ValidationError):
-        ModelPublishedAttributionRecord.model_validate({**payload, field: value})
-
-
-def test_error_chain_an_incomplete_night_is_never_a_clean_night() -> None:
-    records = _records("records_valid.json")
-    payload = {
-        **records[2].model_dump(mode="json"),
-        "status": "incomplete",
-        "incomplete_count": 1,
-        "interaction_count": 0,
-    }
-    incomplete = ModelPublishedAttributionRecord.model_validate(payload)
-    result = _handler([*records[:2], incomplete, *records[3:]]).handle(_request())
-    assert EnumStageReceiptViolation.NIGHT_NOT_CLEAN in {
-        v.code for v in result.violations
-    }
-
-
-_FROZEN_RECORD_FIELD = "miss_count"
-_FROZEN_RECEIPT_FIELD = "stage"
-
-
-def test_published_record_is_frozen_and_refuses_an_extra_or_negative_field() -> None:
-    record = _records("records_valid.json")[0]
-    with pytest.raises(ValidationError):
-        setattr(record, _FROZEN_RECORD_FIELD, 3)
-    payload = record.model_dump(mode="json")
-    with pytest.raises(ValidationError):
-        ModelPublishedAttributionRecord.model_validate({**payload, "owner": "someone"})
-    with pytest.raises(ValidationError):
-        ModelPublishedAttributionRecord.model_validate({**payload, "miss_count": -1})
-
-
 @pytest.mark.parametrize(
     "payload",
     [
-        {"stage": 0, "nights": [{"slot_date": "2026-12-01", "nightly_run_id": 1}]},
+        {"stage": 0, "comparison": _stage_one()["comparison"]},
         {"stage": 0, "entered_from_stage": 0},
         {"stage": 1},
         {"stage": 5, "entered_from_stage": 4},
         {"stage": 1, "entered_from_stage": 0, "unexpected": True},
+        {"stage": 1, "entered_from_stage": 0, "nights": []},
     ],
 )
 def test_error_chain_a_malformed_receipt_is_a_typed_validation_error(
@@ -315,7 +203,7 @@ def test_error_chain_a_malformed_receipt_is_a_typed_validation_error(
 def test_receipt_and_result_are_frozen() -> None:
     receipt = ModelStageReceipt(stage=0)
     with pytest.raises(ValidationError):
-        setattr(receipt, _FROZEN_RECEIPT_FIELD, 1)
+        receipt.stage = 1  # type: ignore[misc]
     with pytest.raises(ValidationError):
         ModelStageReceiptValidationResult(
             valid=True,
@@ -327,16 +215,29 @@ def test_receipt_and_result_are_frozen() -> None:
         )
 
 
-# -- the in-memory twin of the record source ------------------------------------------
+# -- the sources of the recorded set --------------------------------------------------
 
 
-def test_in_memory_source_answers_only_the_asked_runs_of_the_asked_repository() -> None:
-    records = _records("records_valid.json")
-    source: ProtocolAttributionRecordSource = SourceAttributionRecordsInMemory(records)
-    got = source.read_records(records[0].repository, [records[0].nightly_run_id])
-    assert got == (records[0],)
-    assert source.read_records("OmniNode-ai/other", [records[0].nightly_run_id]) == ()
+def test_in_memory_source_answers_its_set_for_any_paths() -> None:
+    recorded = _recorded()
+    source: ProtocolRecordedSetSource = SourceRecordedSetInMemory(recorded)
+    assert source.read_recorded_set("a", "b") == recorded
 
 
-def test_in_memory_source_built_without_records_is_unreadable() -> None:
-    assert SourceAttributionRecordsInMemory(None).read_records("r", [1]) is None
+def test_in_memory_source_built_without_a_set_is_unreadable() -> None:
+    assert SourceRecordedSetInMemory(None).read_recorded_set("a", "b") is None
+
+
+def test_file_source_reads_the_recorded_runs_and_their_digests() -> None:
+    recorded = _recorded()
+    assert len(recorded.runs) == 60
+    assert sum(run.readable for run in recorded.runs) == 17
+    assert all(run.conclusion == "success" for run in recorded.runs if run.readable)
+    assert len(recorded.replay_input.merges) == 60
+
+
+def test_file_source_cannot_read_a_missing_or_malformed_file(tmp_path: Path) -> None:
+    source = SourceRecordedSetFile(tmp_path)
+    assert source.read_recorded_set("nope.json", "nope.json") is None
+    (tmp_path / "bad.json").write_text("{not json", encoding="utf-8")
+    assert source.read_recorded_set("bad.json", "bad.json") is None

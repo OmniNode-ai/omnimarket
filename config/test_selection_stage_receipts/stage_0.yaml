@@ -1,4 +1,4 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# The baseline receipt: stage 0 is shadow and enters from nothing, so it holds no nights and no evidence.
+# The baseline receipt: stage 0 is shadow and enters from nothing, so it holds no comparison and no evidence.
 stage: 0

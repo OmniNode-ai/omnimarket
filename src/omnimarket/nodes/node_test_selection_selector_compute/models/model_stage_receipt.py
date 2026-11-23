@@ -1,10 +1,9 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The stage receipt, and the request and result of validating it against published attribution records."""
+"""The stage receipt, and the request and result of validating it against a recomputed comparison."""
 
 from __future__ import annotations
 
-import datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -14,30 +13,42 @@ from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_sel
 )
 
 
-class ModelReceiptNight(BaseModel):
-    """One nightly run a receipt covers, named the way the published record names it."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    slot_date: datetime.date
-    nightly_run_id: int = Field(ge=1)
-
-
 class ModelMeasuredTargets(BaseModel):
     """The targets a stage is measured against. A missing value is refused by the validator, not defaulted."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    #: Share of merges whose executed selection was narrowed, 0..1.
+    #: Share of the compared changes whose selection is narrowed, 0..1.
     merge_narrowed_share: float | None = Field(default=None, ge=0, le=1)
-    #: Recorded test seconds per merge.
+    #: Recorded test seconds of the selections, per compared change.
     test_seconds_per_merge: float | None = Field(default=None, ge=0)
-    #: CI minutes per pull request.
+    #: Mean wall minutes of the recorded full runs (run start to last update), per pull request.
     ci_minutes_per_pr: float | None = Field(default=None, ge=0)
 
 
+class ModelReceiptComparison(BaseModel):
+    """The comparison a stage was entered on: its recorded inputs by digest and its figures.
+
+    The validator recomputes every figure from the inputs; none is trusted.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    replay_input_path: str = Field(min_length=1)
+    replay_input_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    observed_input_path: str = Field(min_length=1)
+    observed_input_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    changes_compared: int = Field(ge=0)
+    changes_narrowed: int = Field(ge=0)
+    runs_with_result: int = Field(ge=0)
+    runs_unavailable: int = Field(ge=0)
+    failing_tests: int = Field(ge=0)
+    failing_tests_selected: int = Field(ge=0)
+    misses: int = Field(ge=0)
+
+
 class ModelStageReceipt(BaseModel):
-    """The evidence for entering one stage. Stage 0 is the baseline and carries no nights."""
+    """The evidence for entering one stage. Stage 0 is the baseline and carries no comparison."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -45,22 +56,15 @@ class ModelStageReceipt(BaseModel):
     #: The stage this one is entered from; None only for the baseline.
     entered_from_stage: int | None = Field(default=None, ge=0, le=HIGHEST_STAGE)
     repository: str | None = Field(default=None, min_length=1)
+    #: The selector node version the comparison was recomputed with.
     selector_version: str | None = Field(default=None, min_length=1)
-    policy_version: str | None = Field(default=None, min_length=1)
-    nights: tuple[ModelReceiptNight, ...] = ()
-    clean_nights: int = Field(default=0, ge=0)
-    pr_record_count: int = Field(default=0, ge=0)
-    miss_total: int = Field(default=0, ge=0)
-    unattributable_total: int = Field(default=0, ge=0)
-    incomplete_total: int = Field(default=0, ge=0)
-    #: clean_nights over the nights named, 0..1.
-    clean_night_share: float = Field(default=0.0, ge=0, le=1)
+    comparison: ModelReceiptComparison | None = None
     measured: ModelMeasuredTargets | None = None
 
     @model_validator(mode="after")
     def _baseline_carries_no_evidence(self) -> ModelStageReceipt:
         if self.stage == 0 and (
-            self.nights or self.entered_from_stage is not None or self.measured
+            self.comparison or self.entered_from_stage is not None or self.measured
         ):
             raise ValueError(
                 "the stage 0 receipt is the baseline and holds no evidence"
@@ -76,18 +80,14 @@ class EnumStageReceiptViolation(StrEnum):
     RECEIPT_MISSING = "receipt_missing"
     DUPLICATE_RECEIPT = "duplicate_receipt"
     STAGE_JUMP = "stage_jump"
-    NIGHTS_SHORT = "nights_short"
-    NIGHTS_NOT_CONSECUTIVE = "nights_not_consecutive"
-    RECORDS_UNAVAILABLE = "records_unavailable"
-    RECORD_MISSING = "record_missing"
-    RECORD_MISMATCH = "record_mismatch"
-    RECORD_WRONG_STAGE_ENTRY = "record_wrong_stage_entry"
-    NIGHT_NOT_CLEAN = "night_not_clean"
+    RECEIPT_UNIDENTIFIED = "receipt_unidentified"
+    COMPARISON_ABSENT = "comparison_absent"
+    RECORDED_SET_UNAVAILABLE = "recorded_set_unavailable"
+    INPUT_MISMATCH = "input_mismatch"
     VERSION_MISMATCH = "version_mismatch"
     FIGURE_MISMATCH = "figure_mismatch"
-    TOO_FEW_PR_RECORDS = "too_few_pr_records"
+    COMPARISON_FAILED = "comparison_failed"
     TARGETS_ABSENT = "targets_absent"
-    RECEIPT_UNIDENTIFIED = "receipt_unidentified"
 
 
 class ModelStageReceiptViolation(BaseModel):

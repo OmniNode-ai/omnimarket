@@ -1387,6 +1387,9 @@ jobs:
             --feature-flag on \
             --stage 0 \
             > selection-stage-0.json
+          # Stage 1 runs the same selector's decision; the record's stage gate reads the entry of
+          # the policy's selection_stage, and an entry it lacks is a full-suite escalation.
+          cp selection-stage-0.json selection-stage-1.json
 
       # The typed record of this run's selection: the executed selection and the selection of each
       # stage, built by the selector node's build_selection_record operation.
@@ -1413,6 +1416,7 @@ jobs:
             --changed-files-from changed.txt \
             --feature-flag "$FLAG" \
             --stage-selection 0=selection-stage-0.json \
+            --stage-selection 1=selection-stage-1.json \
             --out selection-record.json \
             --github-output "$GITHUB_OUTPUT"
           cat selection-record.json

@@ -7,7 +7,7 @@ summary: 'The stage gate of omnimarket test selection. policy.yaml gains stage_c
   figure, selector and policy versions that differ from the records, records that do not hold the entry of the stage entered, and an absent measured target. tests/ci/test_selection_stage_evidence.py runs it
   over the real tree and over fixtures in tests/ci/fixtures/selection_stage/. A CODEOWNERS file names the owner team on policy.yaml, the receipts directory and that test. The adjacency comments no longer say a
   data file or an entry point takes the full suite. Not in this change: the real source adapter for the published records (it is wired when the nightly record transport lands), advancing selection_stage beyond 0,
-  and any write of the ENABLE_SMART_TESTS variable.'
+  and any write of the ENABLE_SMART_TESTS variable. Amended by the operator ruling of 2026-11-23T00:01:29Z: a stage is entered on one passing deterministic comparison over the recorded set, recomputed by the node (operation compare_stage_selection), in place of stage_clean_nights and stage_min_pr_records; selection_stage is 1 with its stage 1 receipt.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -93,6 +93,33 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/ci/test_selection_stage_evidence.py -q --no-cov -n 0 -p no:randomly -k "has_the_receipts_it_needs or is_the_only_receipt_at_stage_zero or zero_replay_equals_todays_decisions"
+    cwd: .
+- id: dod-omn26274-ac1-comparison-recomputed
+  description: 'AC1, one comparison in place of the multi-night wait (operator ruling 2026-11-23T00:01:29Z): the stage 1 receipt records one comparison over the recorded set, pinned by digest, and the validator recomputes its figures by the replay and comparison handlers. A receipt whose recorded figure differs from the recomputed one fails although well formed, a comparison with a miss fails even when the receipt states it, an input whose digest differs fails, a set that cannot be read or holds no readable run fails, and the corrected figure passes. These tests are new at this head, so the check fails at the merge base.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_selection_stage_evidence.py -q --no-cov -n 0 -p no:randomly -k "stage_receipt_recomputed_wrong_figure or stage_receipt_recomputed_a_miss or stage_receipt_recomputed_inputs_must or stage_receipt_recomputed_unreadable_set or stage_receipt_recomputed_comparison_is_the_same_twice"
+    cwd: .
+- id: dod-omn26274-ac1-comparison-handler
+  description: 'AC1, the comparison operation compare_stage_selection: a failing test the change''s selection leaves out is a miss (positive control), a failing test the selection holds is not, a full-suite selection runs every test, no readable run and a failing run that names no test are refused, and the same recorded set answers byte for byte the same.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_stage_comparison.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26274-ac2-stage-one-on-the-recorded-set
+  description: 'AC2, stage 0 replay unchanged and stage 1 entered: a replay at selection_stage 0 still equals the T1 receipt, the policy holds selection_stage 1 with a stage 1 receipt over the same recorded set the T1 receipt pins, and at stage 1 the record executes the entry of stage 1, which holds what stage 0 decides.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_selection_stage_evidence.py -q --no-cov -n 0 -p no:randomly -k "this_tree_is_at_stage_one or reads_the_recorded_set_the_baseline_receipt_pins or stage_one_executes"
     cwd: .
 - id: dod-omn26274-integration-proof
   description: the stage gate tests and the node's directory run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check

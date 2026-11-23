@@ -56,8 +56,7 @@ POLICY = ModelSelectorPolicy(
     root_conftest_edge=EnumRootConftestEdge.CUT,
     full_split_count=20,
     record_retention_days=14,
-    stage_clean_nights=7,
-    stage_min_pr_records=10,
+    stage_min_compared_changes=1,
     graph_compared_stage=0,
     graph_min_valid_comparisons=20,
 )
@@ -152,8 +151,7 @@ def test_selection_selector_policy_refuses_a_ladder_over_the_narrowed_maximum() 
             selection_stage=0,
             full_split_count=20,
             record_retention_days=14,
-            stage_clean_nights=7,
-            stage_min_pr_records=10,
+            stage_min_compared_changes=1,
             graph_compared_stage=0,
             graph_min_valid_comparisons=20,
         )
