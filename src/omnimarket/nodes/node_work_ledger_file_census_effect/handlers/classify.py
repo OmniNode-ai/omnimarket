@@ -41,6 +41,13 @@ def is_code(path: str, text: str, overlay: ModelCensusOverlay) -> bool:
     )
 
 
+def is_runtime(path: str, overlay: ModelCensusOverlay) -> bool:
+    """Runtime code: a path an include pattern marks and no exclude pattern takes back out."""
+    return any(re.search(p, path) for p in overlay.runtime_include) and not any(
+        re.search(p, path) for p in overlay.runtime_exclude
+    )
+
+
 def _strip_marker_comment(line: str, marker: str) -> str:
     """Cut a line at the first comment marker outside single and double quotes."""
     quote = ""

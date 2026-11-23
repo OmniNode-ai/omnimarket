@@ -133,19 +133,36 @@ def test_prefix_does_not_own_a_ledger_cut_lane_that_names_nothing() -> None:
     assert verdict.owners == ()
 
 
-def test_prefix_does_not_own_a_rule_cannot_carry_lane_prefixes() -> None:
-    with pytest.raises(ValidationError, match="lane_prefixes"):
+def test_prefix_does_not_own_a_rule_with_only_lane_prefixes_is_refused() -> None:
+    with pytest.raises(ValidationError, match="names no ticket, plan path or pull"):
         ModelPlanOwnerRule.model_validate(
             {
                 "finding": FINDING,
                 "lane_prefixes": ("ledger-cut",),
-                "tickets": (PLAN_TICKET,),
                 "live_window_minutes": 60,
                 "why": "w",
                 "fix": "f",
                 "unknown_fix": "u",
             }
         )
+
+
+def test_prefix_does_not_own_even_when_the_rule_still_lists_lane_prefixes() -> None:
+    """An overlay written before the change still loads, and its prefix decides nothing."""
+    rule = ModelPlanOwnerRule.model_validate(
+        {
+            "finding": FINDING,
+            "lane_prefixes": ("ledger-cut",),
+            "tickets": (PLAN_TICKET,),
+            "live_window_minutes": 60,
+            "why": "w",
+            "fix": "f",
+            "unknown_fix": "u",
+        }
+    )
+    assert check(rule, claim_line("ledger-cut-x", LIVE)) is EnumPlanOwnerVerdict.MISSING
+    named = claim_line("ledgercut-2140", LIVE, ticket=PLAN_TICKET)
+    assert check(rule, named) is EnumPlanOwnerVerdict.OWNED
 
 
 def test_overlay_values_only_the_rule_decides_ticket_path_pr_and_window() -> None:
@@ -244,7 +261,18 @@ def test_a_rule_with_no_matcher_is_refused_at_load(tmp_path: Path) -> None:
         load_overlay({"ONEX_PLAN_OWNER_CHECK_OVERLAY": str(path)})
 
 
-def test_a_lane_prefix_in_an_overlay_is_refused_at_load(tmp_path: Path) -> None:
+def test_lane_prefix_in_an_overlay_alone_is_refused_at_load(tmp_path: Path) -> None:
+    path = tmp_path / "owner.yaml"
+    path.write_text(
+        "reader: cutover-owner\nclaims_window_hours: 6\njournal_env: J\nrules:\n"
+        "  - finding: cutover-plan-owner\n    lane_prefixes: [ledger-cut]\n"
+        "    live_window_minutes: 60\n    why: w\n    fix: f\n    unknown_fix: u\n"
+    )
+    with pytest.raises(NodeOverlayError, match=r"fields \['rules', 'rules\.0'\]"):
+        load_overlay({"ONEX_PLAN_OWNER_CHECK_OVERLAY": str(path)})
+
+
+def test_an_overlay_with_lane_prefixes_and_tickets_loads(tmp_path: Path) -> None:
     path = tmp_path / "owner.yaml"
     path.write_text(
         "reader: cutover-owner\nclaims_window_hours: 6\njournal_env: J\nrules:\n"
@@ -252,8 +280,8 @@ def test_a_lane_prefix_in_an_overlay_is_refused_at_load(tmp_path: Path) -> None:
         "    tickets: [OMN-70001]\n    live_window_minutes: 60\n"
         "    why: w\n    fix: f\n    unknown_fix: u\n"
     )
-    with pytest.raises(NodeOverlayError, match="lane_prefixes"):
-        load_overlay({"ONEX_PLAN_OWNER_CHECK_OVERLAY": str(path)})
+    overlay = load_overlay({"ONEX_PLAN_OWNER_CHECK_OVERLAY": str(path)})
+    assert overlay.rules[0].tickets == ("OMN-70001",)
 
 
 @pytest.mark.parametrize("pr", ["no-hash", "#12", "repo#", "a b#1"])

@@ -6,6 +6,11 @@ The unit passes ``--omni-home`` and ``--state-dir``. The overlay names the clone
 the registry root), the branch that clone must sit at the head of, and the overlays to load. A clone that is not
 at the head of that branch loads nothing and the tick exits non-zero: the store is never filled from a stale or
 side branch, which is what the hand-started transient timer this unit replaces did.
+
+The tick publishes when the overlay home's branch has moved past the revision of the last load, and otherwise only to
+assert the overlay once ``REASSERT_AFTER_S`` has passed (a reader's staleness is measured against that time). That is what
+lets the unit run every few minutes: a merged change reaches the store within one tick of the clone reaching it, and an
+unchanged home adds one record an hour per overlay, not one a tick (OMN-26432).
 """
 
 from __future__ import annotations
@@ -36,6 +41,9 @@ EXIT_REFUSED = 65
 EXIT_STALE_CLONE = 66
 EXIT_BUS = 69
 _GIT_TIMEOUT_S = 30
+# An unchanged overlay is asserted again after this long, so readers' ages keep resetting while the loader is alive.
+REASSERT_AFTER_S = 3600
+_LAST_LOAD_FILE = "last-load.json"
 
 
 def _git(clone: Path, *argv: str) -> subprocess.CompletedProcess[str]:
@@ -78,9 +86,43 @@ def _write_atomically(path: Path, text: str) -> None:
     held.replace(path)
 
 
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
 def _record(state_dir: Path, body: dict[str, object]) -> None:
-    body["ran_at"] = datetime.now(UTC).isoformat()
+    body["ran_at"] = _utc_now().isoformat()
     _write_atomically(state_dir / "last-run.json", json.dumps(body, sort_keys=True))
+
+
+def _published(state_dir: Path) -> dict[str, dict[str, str]]:
+    """What the last successful publish of each overlay named: its source_ref and when this tick asserted it."""
+    try:
+        held = json.loads((state_dir / _LAST_LOAD_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return (
+        {str(k): dict(v) for k, v in held.items() if isinstance(v, dict)}
+        if isinstance(held, dict)
+        else {}
+    )
+
+
+def _unchanged(
+    published: dict[str, dict[str, str]], head: str, ids: list[str], now: datetime
+) -> bool:
+    """True when every overlay was published from this revision and asserted less than ``REASSERT_AFTER_S`` ago."""
+    for overlay_id in ids:
+        last = published.get(overlay_id)
+        if last is None or last.get("source_ref") != f"{overlay_id}@{head}":
+            return False
+        try:
+            asserted = datetime.fromisoformat(str(last.get("asserted_at")))
+        except ValueError:
+            return False
+        if (now - asserted).total_seconds() >= REASSERT_AFTER_S:
+            return False
+    return True
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -110,8 +152,21 @@ def main(argv: list[str] | None = None) -> int:
             sys.stderr.write(f"{NODE}: nothing loaded: {reason}\n")
             _record(args.state_dir, {"loaded": [], "refused": reason, **state})
             return EXIT_STALE_CLONE
+        now = _utc_now()
+        ids = list(overlay.overlay_ids)
+        if _unchanged(_published(args.state_dir), state["head"], ids, now):
+            _record(
+                args.state_dir,
+                {
+                    "loaded": [],
+                    "unchanged": [f"{i}@{state['head']}" for i in ids],
+                    "refused": "",
+                    **state,
+                },
+            )
+            return 0
         try:
-            results = asyncio.run(_run(overlay, clone, list(overlay.overlay_ids), None))
+            results = asyncio.run(_run(overlay, clone, ids, None))
         except (NodeOverlayError, ValueError) as exc:
             sys.stderr.write(f"{NODE}: {type(exc).__name__}: {exc}\n")
             _record(args.state_dir, {"loaded": [], "refused": str(exc), **state})
@@ -125,6 +180,19 @@ def main(argv: list[str] | None = None) -> int:
         loaded = [result.model_dump(mode="json") for result in results]
         for row in loaded:
             sys.stdout.write(json.dumps(row, sort_keys=True) + "\n")
+        _write_atomically(
+            args.state_dir / _LAST_LOAD_FILE,
+            json.dumps(
+                {
+                    row["overlay_id"]: {
+                        "source_ref": row["source_ref"],
+                        "asserted_at": now.isoformat(),
+                    }
+                    for row in loaded
+                },
+                sort_keys=True,
+            ),
+        )
         _record(args.state_dir, {"loaded": loaded, "refused": "", **state})
         return 0
     finally:

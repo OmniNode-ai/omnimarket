@@ -53,7 +53,7 @@ dependencies:
     required: true
   - name: ledger_appender
     dependency_type: protocol
-    description: The ledger command the host units carry (ONEX_LEDGER_COMMAND); no default.
+    description: The bus append port of the host's declared ledger_bus_lane (OMN-26332); no default, and no ledger file is named.
     required: true
 
 handler:

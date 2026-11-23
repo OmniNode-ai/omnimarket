@@ -95,3 +95,38 @@ def test_no_contract_has_conflicting_top_level_runtime_profiles() -> None:
         f"descriptor.runtime_profiles (profile_ownership.py picks top-level only, "
         f"silently mis-wiring these nodes): {conflicting}"
     )
+
+
+_LAB_ALARM_DELIVER_NODE = "node_lab_alarm_deliver_effect"
+# The contract text of the node as dev commit 735d7604f6 left it: top-level
+# runtime_profiles [main] against descriptor.runtime_profiles [main, effects].
+_LAB_ALARM_DELIVER_FIXTURE = (
+    Path(__file__).resolve().parent
+    / "fixtures"
+    / "lab_alarm_deliver_effect_contract_at_735d7604f6.yaml"
+)
+
+
+def test_recorded_lab_alarm_deliver_declaration_is_flagged_as_conflicting() -> None:
+    """The recorded contract text that broke dev is still a conflict to this rule."""
+    recorded = _load_contract(_LAB_ALARM_DELIVER_FIXTURE)
+    assert recorded["runtime_profiles"] == ["main"]
+    assert recorded["descriptor"]["runtime_profiles"] == ["main", "effects"]
+    assert _has_conflicting_runtime_profiles(recorded)
+
+
+def test_lab_alarm_deliver_contract_declares_one_runtime_profile_set() -> None:
+    """The node's contract declares one set at both levels and keeps its route.
+
+    The node consumes a command topic, so test_runtime_profile_contracts requires
+    ``effects`` in descriptor.runtime_profiles; this rule requires the top-level
+    value to agree with it; the dev runtime (profile ``main``) must still own it.
+    """
+    contract = _load_contract(NODES_ROOT / _LAB_ALARM_DELIVER_NODE / "contract.yaml")
+    assert not _has_conflicting_runtime_profiles(contract)
+    assert contract["runtime_profiles"] == contract["descriptor"]["runtime_profiles"]
+    assert "main" in contract["runtime_profiles"]
+    assert "effects" in contract["runtime_profiles"]
+    command_topic = "onex.cmd.omnimarket.lab-alarm-delivery-requested.v1"
+    assert contract["event_bus"]["subscribe_topics"] == [command_topic]
+    assert contract["runtime_dispatch"]["command_topic"] == command_topic

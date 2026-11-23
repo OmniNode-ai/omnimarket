@@ -49,13 +49,20 @@ always_selected_paths:
 # node directory, contract.yaml and onex.nodes entry point. A node contract change
 # narrowed to the node's own tests and skipped it: the test selector chose 52
 # paths for omnimarket#6071 and omnimarket#6054 and none was this test. An entry
-# point change edits pyproject.toml, which is test infrastructure below and takes
-# the full suite, so contract.yaml files are the glob here.
+# point change edits pyproject.toml, whose selection is set by test_infrastructure_paths
+# below and by the selection stage, so contract.yaml files are the glob here.
+# A change to the selector policy selects the test that checks the stage receipts, because the
+# policy file is data the import graph cannot read. A change under config/ is no narrowable path,
+# so it takes the full escalation, which runs that test too.
 path_triggered_selected_paths:
   - changed_globs:
       - src/omnimarket/nodes/*/contract.yaml
     selected_paths:
       - tests/test_market_node_runtime_dogfood.py
+  - changed_globs:
+      - src/omnimarket/nodes/node_test_selection_selector_compute/policy.yaml
+    selected_paths:
+      - tests/ci/test_selection_stage_evidence.py
 
 # OMN-23719: modules made of node packages. A change reaching one of these
 # (directly, or through reverse_deps) selects the tests of the nodes it can
@@ -67,6 +74,41 @@ path_triggered_selected_paths:
 node_scoped_modules:
   - nodes
 
+# A diff whose files all lie outside src/ and tests/ and match data_only_globs (a ticket contract, a
+# markdown file) reaches no test directory. With data_only_selection_enabled it selects the always
+# set plus the tests that read the files: a test whose text spells the file or enumerates its
+# directory (through an imported helper too), and the
+# readers data_reader_overrides names (data glob -> test files) for a reader the text cannot show. Any
+# other unmatched file keeps the full escalation. The rule changes what a pull request runs, so it stays
+# off until its stage is entered: selection_stage in the selector's policy.yaml rises one stage at a time,
+# each on a receipt under config/test_selection_stage_receipts/ that
+# tests/ci/test_selection_stage_evidence.py recomputes from the published nightly records.
+data_only_selection_enabled: false
+data_only_globs:
+  - contracts/OMN-*.yaml
+  - "*.md"
+data_reader_overrides: {}
+
+# A changed non-Python file under one of data_reader_roots (a fixture or data file in tests/, a contract, a file
+# beside a node) selects the tests that read it instead of the full suite: the tests whose text spells its
+# path, its file name or a directory between a data_reader_fixture_roots entry and the file, the tests that
+# enumerate its directory with glob, rglob or iterdir, the tests that import a helper among those, the tests
+# that import a src/ file naming it, and data_reader_overrides. Adding, changing, renaming and deleting are the
+# same, and a rename or delete looks up the old path. A file with no reader selects the always set only: a path
+# built at run time with no literal part is the nightly's to catch. This is the stage 2 entry, so it stays off
+# until a stage advance turns it on. Off, a fixture keeps the full-suite escalation it had
+# (data_reader_gated_infrastructure_paths); on, a Python file under those paths and every path in
+# test_infrastructure_paths still takes the full suite, a changed uv.lock beside a fixture included.
+data_file_readers_enabled: false
+data_reader_roots:
+  - tests/
+  - contracts/
+  - src/omnimarket/nodes/
+data_reader_fixture_roots:
+  - tests/fixtures/
+data_reader_gated_infrastructure_paths:
+  - tests/fixtures/
+
 # Test infrastructure — any change forces the full suite.
 test_infrastructure_paths:
   # OMN-19998: CI changes invalidate narrowing even in a mixed code diff.
@@ -76,7 +118,6 @@ test_infrastructure_paths:
   - .pre-commit-hooks/
   - uv.lock
   - tests/conftest.py
-  - tests/fixtures/
   - pytest.ini
   - pyproject.toml
 

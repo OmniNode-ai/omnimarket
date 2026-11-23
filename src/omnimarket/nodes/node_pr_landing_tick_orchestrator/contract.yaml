@@ -114,6 +114,16 @@ runtime_dispatch:
     success: "onex.evt.omnimarket.pr-landing-tick-compared.v1"
     failure: "onex.evt.omnimarket.pr-landing-tick-compare-failed.v1"
   external_trigger: "A compare command from the floor reading or a replay run; decider, writer and publisher are injected."
+# OMN-26024: the tick is the trigger of node_pr_landing_liveness_read_effect, which subscribes to nothing. When the overlay carries a
+# liveness_reads section, each pass reads the liveness of the head of every compared pull request (at most max_reads_per_pass),
+# after the comparison is final: the read is observation only and changes no decision, row, divergence or write. The runtime prints
+# one liveness_read JSON line per read before the pass's status line. The read's own settings are that node's overlay.
+liveness_read:
+  node: "node_pr_landing_liveness_read_effect"
+  overlay_section: "liveness_reads"
+  completed_topic: "onex.evt.omnimarket.pr-landing-liveness-read-completed.v1"
+  failed_topic: "onex.evt.omnimarket.pr-landing-liveness-read-failed.v1"
+  print_key: "liveness_read"
 # The landing snapshot step's tick record, which this node's topic reader reads under its
 # overlay's consumer group. It is a consumed event, not an event_bus subscription, so the
 # runtime wires no handler subscription for it; the topic itself is provisioned from the

@@ -20,6 +20,19 @@ models_dev:
   timeout_seconds: 10
   # The whole catalogue is read at once (6.7 MB on 2026-11-17); larger is refused.
   max_bytes: 33554432
+  # Inside a delegation call (OMN-23413 AC35) the read has a total deadline:
+  # this share of the call's remaining time, never more than the cap. A read
+  # that fails or runs out of time is not tried again by a call for the retry
+  # interval, so a down models.dev costs each call nothing.
+  call_read_deadline_seconds: 3
+  call_read_budget_share: 0.1
+  call_retry_after_failure_seconds: 300
+
+# A price list shipped inside the install (omnimarket#6497). A delegation call
+# no longer prices from it: OMN-23413 AC35 prices a call from models.dev read
+# live, reusing the copy above only while it is younger than max_age_hours.
+shipped_price_list:
+  file: model_price_list.v1.json
 
 # OMN-23413 AC34: what a provider's own model list said when the explorer last
 # read it. A delegation call prices and limits from this copy and never lists
@@ -27,6 +40,15 @@ models_dev:
 provider_listing:
   cache_file: cache/provider_models_{provider}.json
   max_age_hours: 24
+  # Only a regular file up to this size is read; anything else is no listing.
+  max_bytes: 33554432
+
+# These routes size the request from the selected model's combined entry.
+# If both sources omit the limit, use this operational request budget. The
+# model table still reports that the provider's output limit is unknown.
+output_budget:
+  providers: [reflection]
+  fallback_tokens: 65536
 
 # ONEX provider id -> models.dev provider id, for the hosted providers /config
 # offers (setup_provider_traits.yaml). Ollama and vLLM run on the user's own
@@ -40,12 +62,16 @@ provider_ids:
 # Capability shown in the table -> how models.dev states it. `field`: a boolean
 # on the model; `input`: a value in modalities.input; `cost`: a priced field
 # (present means supported). Absent in models.dev means unknown, never "no".
+# A provider's own list wins where it states one: `provider_parameter` is a
+# value in the row's supported_parameters, `provider_input` a value in its
+# architecture.input_modalities. A value it lists means yes; one it does not
+# list stays unknown, so models.dev can still fill it.
 capabilities:
-  - {label: Tools, field: tool_call}
-  - {label: Reason, field: reasoning}
-  - {label: Vision, input: image}
-  - {label: JSON, field: structured_output}
-  - {label: Files, field: attachment}
+  - {label: Tools, field: tool_call, provider_parameter: tools}
+  - {label: Reason, field: reasoning, provider_parameter: reasoning}
+  - {label: Vision, input: image, provider_input: image}
+  - {label: JSON, field: structured_output, provider_parameter: structured_outputs}
+  - {label: Files, field: attachment, provider_input: file}
   - {label: Cache, cost: cache_read}
 
 # A server the user runs (Ollama, vLLM) is asked directly what it is and what it
@@ -91,3 +117,13 @@ local_servers:
   anthropic_messages:
     path: /v1/messages
     absent_statuses: [404, 405]
+
+# OMN-23413 AC35: a stored run's price read (the projection read behind the
+# local dashboard and onex metering) waits at most deadline_seconds in total for
+# models.dev, and after a failed read does not read it again for
+# retry_after_seconds; until then those runs stay unknown. The failure marker
+# lives under the ONEX home, so a later process honours it too.
+historical_price_read:
+  deadline_seconds: 2
+  retry_after_seconds: 300
+  failed_marker_file: cache/models_dev_historical_read_failed

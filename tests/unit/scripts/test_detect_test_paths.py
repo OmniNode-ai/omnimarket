@@ -33,14 +33,14 @@ def _scripts_on_path(tmp_path: Path) -> None:
         sys.path.insert(0, str(repo_root))
 
 
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_record import (  # noqa: E402
+    EnumFullSuiteReason,
+    ModelTestSelection,
+)
 from scripts.ci.detect_test_paths import (  # noqa: E402
     REPO_ROOT,
     compute_selection,
     resolve_test_paths,
-)
-from scripts.ci.test_selection_models import (  # noqa: E402
-    EnumFullSuiteReason,
-    ModelTestSelection,
 )
 
 _REMOTE_LANE_HANDLER = (
@@ -50,7 +50,9 @@ _REMOTE_LANE_HANDLER = (
 
 
 def test_adjacency_yaml_loads() -> None:
-    from scripts.ci.test_selection_loader import load_adjacency_map
+    from omnimarket.nodes.node_test_selection_selector_compute.adapters.adjacency_file import (
+        load_adjacency_map,
+    )
 
     config = load_adjacency_map(ADJACENCY_PATH)
     assert config.schema_version == 1
@@ -243,18 +245,16 @@ def test_matrix_length_matches_split_count() -> None:
 #     `TestPath` value is file-shaped rather than the directory-only shape
 #     the model documents.
 #
-# The fix (CHANGED_TEST_UNNARROWABLE) makes both outcomes into one
-# deterministic, attributable full-suite escalation instead of depending on
-# filesystem state at selection time.
+# The fix (CHANGED_TEST_UNNARROWABLE) made both outcomes into one
+# deterministic, attributable full-suite escalation. OMN-26272 replaced that
+# escalation: the resolution handler selects a root-level file itself, with the
+# tests that import it, and never builds the pseudo-directory.
 
 
-def test_root_level_test_file_alone_is_covered_pre_and_post_fix() -> None:
-    """Baseline: a lone root-level test change already falls to `tests/`.
-
-    This passes both before and after the fix (the accidental-safety case
-    from the ticket) -- included so the dangerous case below is contrasted
-    against a case that was never broken.
-    """
+def test_root_level_test_file_alone_never_yields_a_pseudo_directory() -> None:
+    """A root-level test file absent from the tree (as deleted in the diff) is a
+    deleted file: it selects the always set and the tests that still name it,
+    never a tests/<file>.py/ path and never the unnarrowable escalation."""
     sel = compute_selection(
         changed_files=["tests/test_agent_registry.py"],
         adjacency_path=ADJACENCY_PATH,
@@ -262,10 +262,9 @@ def test_root_level_test_file_alone_is_covered_pre_and_post_fix() -> None:
         event_name="pull_request",
         feature_flag_enabled=True,
     )
-    assert "tests/test_agent_registry.py" not in [
-        p for p in sel.selected_paths if p.endswith(".py")
-    ]  # never selected as a literal file path in this repo's shape
-    assert sel.selected_paths == ["tests/"] or sel.is_full_suite is True
+    assert sel.full_suite_reason != EnumFullSuiteReason.CHANGED_TEST_UNNARROWABLE
+    assert not any(p.endswith(".py/") for p in sel.selected_paths)
+    assert "tests/gates/" in sel.selected_paths
 
 
 def test_root_level_test_file_with_concurrent_src_change_is_never_dropped() -> None:
@@ -297,39 +296,33 @@ def test_root_level_test_file_with_concurrent_src_change_is_never_dropped() -> N
     )
 
 
-def test_root_level_test_file_escalates_with_named_reason() -> None:
-    """The escalation must be attributable, not a bare fallback re-use."""
+def test_root_level_test_file_no_longer_escalates_as_unnarrowable() -> None:
+    """OMN-26272: the changed root-level test file narrows to itself, with the
+    tests that depend on it; the escalation reason is never raised."""
     sel = compute_selection(
-        changed_files=[
-            "tests/test_agent_registry.py",
-            "src/omnimarket/nodes/node_dispatch_worker/handler.py",
-        ],
+        changed_files=["tests/test_actual_cost_recompute_omn13355.py"],
         adjacency_path=ADJACENCY_PATH,
         ref_name="jonah/feature",
         event_name="pull_request",
         feature_flag_enabled=True,
     )
-    assert sel.is_full_suite is True
-    assert sel.full_suite_reason == EnumFullSuiteReason.CHANGED_TEST_UNNARROWABLE
+    assert sel.full_suite_reason != EnumFullSuiteReason.CHANGED_TEST_UNNARROWABLE
+    assert sel.is_full_suite is False
+    assert "tests/test_actual_cost_recompute_omn13355.py" in sel.selected_paths
 
 
-def test_root_level_non_test_py_file_also_escalates() -> None:
-    """A root-level helper module (not test_*.py, e.g. constants.py) is just
-    as capable of silently breaking every consumer as a test_*.py file --
-    the fix must not special-case the `test_` filename prefix.
-    """
+def test_root_level_non_test_py_file_selects_its_importers() -> None:
+    """A root-level helper module (not test_*.py, e.g. constants.py) selects the
+    tests that import it, not the whole suite."""
     sel = compute_selection(
-        changed_files=[
-            "tests/constants.py",
-            "src/omnimarket/nodes/node_dispatch_worker/handler.py",
-        ],
+        changed_files=["tests/constants.py"],
         adjacency_path=ADJACENCY_PATH,
         ref_name="jonah/feature",
         event_name="pull_request",
         feature_flag_enabled=True,
     )
-    assert sel.is_full_suite is True
-    assert sel.full_suite_reason == EnumFullSuiteReason.CHANGED_TEST_UNNARROWABLE
+    assert sel.full_suite_reason != EnumFullSuiteReason.CHANGED_TEST_UNNARROWABLE
+    assert any(p.endswith(".py") for p in sel.selected_paths) or sel.is_full_suite
 
 
 def test_subdirectory_test_file_change_still_narrows_no_regression() -> None:
@@ -395,11 +388,9 @@ def test_resolve_test_paths_direct_api_handles_an_existing_root_file_too(
 ) -> None:
     """CodeRabbit-flagged gap: the synthetic-nonexistent-file test above only
     proves the "file absent" half of the defect for the direct
-    resolve_test_paths() API. compute_selection()'s CHANGED_TEST_UNNARROWABLE
-    check never reaches _resolve() for a root-level test path (it
-    short-circuits first), so a caller of resolve_test_paths() directly
-    still needs _resolve() itself to never emit the malformed
-    tests/<file>.py/ shape for a file that DOES exist on disk.
+    resolve_test_paths() API. _resolve() itself must never emit the malformed
+    tests/<file>.py/ shape for a file that DOES exist on disk either; OMN-26272
+    returns the file itself.
     """
     tests_dir = tmp_path / "tests"
     tests_dir.mkdir()
@@ -413,41 +404,25 @@ def test_resolve_test_paths_direct_api_handles_an_existing_root_file_too(
     )
     assert not any(p.endswith(".py/") for p in paths)
     assert "tests/test_something_real.py/" not in paths
-    # The real containing scope (tests/ itself) must be returned instead of
-    # nothing and instead of a malformed per-file path.
-    assert paths == ["tests/"]
+    assert paths == ["tests/test_something_real.py"]
 
 
-def test_real_existing_root_test_file_also_escalates_not_malformed_path() -> None:
-    """A REAL, on-disk root-level test file (not the synthetic nonexistent
-    fixture used above) must escalate the same way.
-
-    Pre-fix, this repo's own real fixture (tests/test_actual_cost_recompute_
-    omn13355.py) survived only because pathlib silently strips the trailing
-    slash from `tests/<file>.py/`, so `.exists()` happened to pass and pytest
-    happened to tolerate the malformed arg -- an accidental pathlib/pytest
-    normalization, not a designed contract (verified directly: pre-fix,
-    selected_paths contained the literal malformed string
-    'tests/test_actual_cost_recompute_omn13355.py/'). Post-fix this must be a
-    deterministic, attributable full-suite escalation instead, so correctness
-    no longer depends on that accident.
-    """
+def test_real_existing_root_test_file_selects_itself_not_malformed_path() -> None:
+    """A REAL, on-disk root-level test file selects itself and the file stays a
+    valid file-shaped TestPath, never tests/<file>.py/ (OMN-15277, OMN-26272)."""
     real_file = "tests/test_actual_cost_recompute_omn13355.py"
     assert (Path(__file__).parents[3] / real_file).is_file(), (
         "fixture file moved/renamed -- update this test's real-file target"
     )
     sel = compute_selection(
-        changed_files=[
-            real_file,
-            "src/omnimarket/nodes/node_dispatch_worker/handler.py",
-        ],
+        changed_files=[real_file],
         adjacency_path=ADJACENCY_PATH,
         ref_name="jonah/feature",
         event_name="pull_request",
         feature_flag_enabled=True,
     )
-    assert sel.is_full_suite is True
-    assert sel.full_suite_reason == EnumFullSuiteReason.CHANGED_TEST_UNNARROWABLE
+    assert sel.full_suite_reason != EnumFullSuiteReason.CHANGED_TEST_UNNARROWABLE
+    assert real_file in sel.selected_paths
     assert not any(p.endswith(".py/") for p in sel.selected_paths)
 
 
@@ -617,7 +592,12 @@ def test_exemption_list_change_takes_the_full_suite() -> None:
     "bad", ["tests/gates", "src/omnimarket/models/", "scripts/ci/helper.py"]
 )
 def test_path_triggered_selected_paths_reject_a_non_test_entry(bad: str) -> None:
-    from scripts.ci.test_selection_loader import ModelAdjacencyMap, load_adjacency_map
+    from omnimarket.nodes.node_test_selection_selector_compute.adapters.adjacency_file import (
+        load_adjacency_map,
+    )
+    from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
+        ModelAdjacencyMap,
+    )
 
     base = load_adjacency_map(ADJACENCY_PATH).model_dump()
     trigger = {"changed_globs": ["src/*/contract.yaml"], "selected_paths": [bad]}
@@ -628,7 +608,12 @@ def test_path_triggered_selected_paths_reject_a_non_test_entry(bad: str) -> None
 
 
 def test_always_selected_paths_reject_a_non_test_entry() -> None:
-    from scripts.ci.test_selection_loader import ModelAdjacencyMap, load_adjacency_map
+    from omnimarket.nodes.node_test_selection_selector_compute.adapters.adjacency_file import (
+        load_adjacency_map,
+    )
+    from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
+        ModelAdjacencyMap,
+    )
 
     base = load_adjacency_map(ADJACENCY_PATH).model_dump()
     for bad in ("tests/gates", "src/omnimarket/models/", "scripts/ci/helper.py"):
@@ -645,7 +630,9 @@ def test_always_selected_paths_are_not_dropped_when_missing_on_disk() -> None:
     instead of erroring -- the exact vacuous-green shape the gate exists to
     prevent.
     """
-    from scripts.ci.test_selection_loader import load_adjacency_map
+    from omnimarket.nodes.node_test_selection_selector_compute.adapters.adjacency_file import (
+        load_adjacency_map,
+    )
 
     config = load_adjacency_map(ADJACENCY_PATH)
     assert config.always_selected_paths, (
@@ -824,7 +811,9 @@ def _assert_globs_match_tracked_paths(globs: list[str], paths: list[str]) -> Non
 
 
 def test_every_protection_glob_matches_a_tracked_path(tracked_paths: list[str]) -> None:
-    from scripts.ci.test_selection_loader import load_adjacency_map
+    from omnimarket.nodes.node_test_selection_selector_compute.adapters.adjacency_file import (
+        load_adjacency_map,
+    )
 
     config = load_adjacency_map(ADJACENCY_PATH)
     assert config.full_suite_path_globs, (
@@ -841,7 +830,12 @@ def test_typo_in_protection_glob_is_caught(tracked_paths: list[str]) -> None:
 
 
 def test_protection_globs_default_to_empty_list() -> None:
-    from scripts.ci.test_selection_loader import ModelAdjacencyMap, load_adjacency_map
+    from omnimarket.nodes.node_test_selection_selector_compute.adapters.adjacency_file import (
+        load_adjacency_map,
+    )
+    from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
+        ModelAdjacencyMap,
+    )
 
     raw = load_adjacency_map(ADJACENCY_PATH).model_dump()
     raw.pop("full_suite_path_globs")
@@ -852,7 +846,12 @@ def test_protection_globs_default_to_empty_list() -> None:
 def test_protection_globs_reject_invalid_types(invalid: object) -> None:
     from pydantic import ValidationError
 
-    from scripts.ci.test_selection_loader import ModelAdjacencyMap, load_adjacency_map
+    from omnimarket.nodes.node_test_selection_selector_compute.adapters.adjacency_file import (
+        load_adjacency_map,
+    )
+    from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
+        ModelAdjacencyMap,
+    )
 
     raw = load_adjacency_map(ADJACENCY_PATH).model_dump()
     raw["full_suite_path_globs"] = invalid
@@ -957,7 +956,11 @@ def test_without_the_selector_the_heavy_selection_is_two_unplanned_shards(
     )
 
     loose = load_policy().model_copy(
-        update={"target_shard_seconds": 10**9, "max_narrowed_shards": 5}
+        update={
+            "target_shard_seconds": 10**9,
+            "max_narrowed_shards": 5,
+            "narrowed_bound_seconds": 10**9,
+        }
     )
     monkeypatch.setattr(
         sys.modules["scripts.ci.detect_test_paths"],
@@ -1023,6 +1026,9 @@ def test_shards_fit_target_heavy_selection_is_the_planned_matrix() -> None:
 def test_split_count_by_duration_mid_weight_gets_more_shards_than_paths() -> None:
     # One mid-weight path, at least three shards. The test is given its own
     # durations record so its claim does not move with the real one.
+    from omnimarket.nodes.node_test_selection_selector_compute.adapters.source_test_files import (
+        SourceTestFilesInMemory,
+    )
     from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_selection_selector import (
         HandlerTestSelectionSelector,
     )
@@ -1039,9 +1045,11 @@ def test_split_count_by_duration_mid_weight_gets_more_shards_than_paths() -> Non
         def read(self, repo_root: str, durations_path: str) -> dict[str, float] | None:
             return self._durations
 
-    estimate = 3.5 * policy.target_shard_seconds
+    estimate = 2.5 * policy.target_shard_seconds
     durations = {f"tests/unit/nodes/node_x/test_{i}.py": estimate / 7 for i in range(7)}
-    decision = HandlerTestSelectionSelector(_FixedDurations(durations), policy).handle(
+    decision = HandlerTestSelectionSelector(
+        _FixedDurations(durations), policy, SourceTestFilesInMemory(tuple(durations))
+    ).handle(
         ModelSelectorRequest(
             selected_paths=("tests/unit/nodes/",), repo_root=str(REPO_ROOT)
         )
@@ -1213,7 +1221,9 @@ def test_changed_node_test_narrows_to_its_directory_and_importers(
 
 
 def test_node_scoped_modules_must_be_mapped() -> None:
-    from scripts.ci.test_selection_loader import ModelAdjacencyMap
+    from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
+        ModelAdjacencyMap,
+    )
 
     raw = yaml.safe_load(ADJACENCY_PATH.read_text())
     raw["node_scoped_modules"] = ["not_a_module"]

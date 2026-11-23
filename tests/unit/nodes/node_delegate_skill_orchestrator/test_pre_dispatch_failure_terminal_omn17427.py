@@ -16,6 +16,9 @@ from omnibase_core.models.delegation.wire import ModelDelegationFailed
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
+from omnibase_infra.handlers import (
+    handler_delegation_dispatch_terminal as terminal_handler,
+)
 from omnibase_infra.runtime.contract_topic_router import (
     build_topic_router_from_contract,
 )
@@ -109,6 +112,27 @@ async def test_real_handler_terminal_reaches_the_waiter_on_its_declared_topic(
             # port's own cache then serves both dispatches.
             routes = await port._resolved_routes()
             assert routes
+            # The terminal handler scans the run-step topic out of every routed
+            # contract on each waited dispatch, and its 256-entry cache cannot
+            # hold omnimarket's routed contracts, so the scan never hits and
+            # takes seconds. Run it once here, outside the 10 s deadline, like
+            # route discovery above; the deadline then times only dispatch and
+            # the terminal.
+            real_run_step_topic = terminal_handler._run_step_topic
+            step_topics: dict[str, str | None] = {}
+            for package in {route.package_name for route in routes.values()}:
+                step_topics[package] = await asyncio.to_thread(
+                    real_run_step_topic, routes, package
+                )
+            monkeypatch.setattr(
+                terminal_handler,
+                "_run_step_topic",
+                lambda _routes, package_name: (
+                    step_topics[package_name]
+                    if package_name in step_topics
+                    else real_run_step_topic(_routes, package_name)
+                ),
+            )
         result = await asyncio.wait_for(
             port.dispatch(
                 prompt="Write a PR body from facts.",

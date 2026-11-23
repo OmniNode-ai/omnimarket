@@ -55,6 +55,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
+from functools import partial
 from pathlib import Path
 from typing import Any, ClassVar, Literal, TypedDict, cast
 from uuid import UUID
@@ -150,7 +151,9 @@ from omnimarket.handlers.handler_size_band_measurement import measure_size_band
 from omnimarket.handlers.local_snapshot_publisher import (
     LocalEvidenceNoRepublishPublisher as _LocalEvidenceNoRepublishPublisher,
 )
+from omnimarket.handlers.model_catalog import call_read_deadline
 from omnimarket.handlers.routing.byok_provider_backends import (
+    ModelByokProviderBackend,
     byok_backend_max_retries,
     byok_backend_retry_wait_seconds,
     resolve_byok_backend_by_id,
@@ -172,8 +175,11 @@ from omnimarket.handlers.routing.delegation_backend_resolution import (
 from omnimarket.handlers.routing.delegation_backend_resolution import (
     resolve_delegation_backend as _resolve_delegation_backend_uncustomized,
 )
+from omnimarket.handlers.routing.input_token_bound import clamp_max_tokens
 from omnimarket.handlers.routing.local_byok_route import (
     is_registered_named_connection_route,
+    model_budget_backend,
+    model_output_budget,
     next_chosen_model_byok_route,
     next_registered_byok_route,
     registered_byok_routes,
@@ -182,6 +188,7 @@ from omnimarket.handlers.routing.local_byok_route import (
     resolve_pinned_byok_route,
     substitute_any_registered_byok_route,
     substitute_local_byok_route,
+    with_byok_model,
 )
 from omnimarket.handlers.routing.measured_correct_ceiling import (
     refuse_above_measured_correct_ceiling,
@@ -410,6 +417,7 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
     current_call_observer,
+    current_local_model_entry,
 )
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
     HandlerProjectionDelegation,
@@ -1160,6 +1168,46 @@ type _EffectWorkerMessage = (
 )
 
 
+def _call_with_model_budget(
+    handler: _EffectHandler,
+    row: ModelByokProviderBackend,
+    requested: int | None,
+    request: ModelLlmDelegationCallRequest,
+) -> ModelLlmDelegationCallResult:
+    """Read the output ceiling and price entry inside the supervised effect.
+
+    models.dev is read here, inside the cancellable worker, and only when its
+    copy is older than the configured age, within a total deadline taken from
+    the call's remaining time (OMN-23413 AC35).
+    """
+    started = time.monotonic()
+    ceiling, entry = model_output_budget(
+        row,
+        request.model_id,
+        live=True,
+        deadline_seconds=call_read_deadline(request.timeout_seconds),
+    )
+    spent = time.monotonic() - started
+    limit = resolve_effective_max_tokens(
+        requested=requested, backend_max_tokens=ceiling
+    )
+    # The read's time comes out of the provider call's own timeout, so optional
+    # price metadata never pushes the call past its deadline.
+    request = request.model_copy(
+        update={
+            "max_tokens": limit,
+            "timeout_seconds": max(request.timeout_seconds - spent, 0.001),
+        }
+    )
+    entry_token = current_local_model_entry.set(entry)
+    try:
+        result = handler(request)
+    finally:
+        current_local_model_entry.reset(entry_token)
+    result.record_local_output_ceiling(ceiling)
+    return result
+
+
 def _resolve_child_boot_budget_seconds(*, observed_boot_seconds: float | None) -> float:
     """Bound the effect child's interpreter boot from a measured observation.
 
@@ -1270,10 +1318,11 @@ def _tier_lost_to_absent_credential(tier_name: str, task_type: str) -> bool:
     snapshot, so the two answers differ in the credential term alone: a rung
     withheld for any other reason stays counted.
     """
-    if backend_id_for_tier(tier_name, task_type) is not None:
+    if backend_id_for_tier(tier_name, task_type, prompt="") is not None:
         return False
     return (
-        backend_id_for_tier(tier_name, task_type, require_credential=False) is not None
+        backend_id_for_tier(tier_name, task_type, require_credential=False, prompt="")
+        is not None
     )
 
 
@@ -1595,6 +1644,26 @@ class _ProbeLadderWalk:
 _ACTIVE_PROBE_LADDER: ContextVar[_ProbeLadderWalk | None] = ContextVar(
     "active_probe_ladder", default=None
 )
+
+# The prompt of the dispatch running in this context. Every tier and backend
+# resolution of the run (first tier, sibling, escalation) reads it, so a local
+# member whose input bound is below the prompt's is not picked on any hop.
+# No default: a resolution that runs outside a dispatch raises ``LookupError``
+# instead of routing on an empty prompt every local member would admit.
+_ACTIVE_PROMPT: ContextVar[str] = ContextVar("active_routing_prompt")
+
+
+def _required_prompt(kwargs: Mapping[str, object]) -> str:
+    """The dispatch's ``prompt``: a ``str``, or a ``ValueError`` naming the fault."""
+    if "prompt" not in kwargs:
+        raise ValueError("a delegation dispatch needs a prompt; none was given")
+    prompt = kwargs["prompt"]
+    if not isinstance(prompt, str):
+        raise ValueError(
+            f"a delegation dispatch prompt must be a str, got {type(prompt).__name__}"
+        )
+    return prompt
+
 
 # OMN-23162: the transport faults of the faults-mode probe running in this
 # context, if any. Unlike a probe ladder they replace no rung: the production
@@ -2044,11 +2113,21 @@ class LocalDelegationDispatchPort:
     async def _dispatch_rungs_naming_skips(self, **kwargs: Any) -> dict[str, object]:
         """Run the ladder; name each rung it skipped on the result (OMN-21310)."""
         skipped_rungs: list[dict[str, object]] = []
-        token = _RUNG_SKIPS.set(skipped_rungs)
+        # Every tier and backend resolution of the run reads the prompt from here,
+        # on the production path (no probe ladder) as on the probe path. It is
+        # read before the rung-skip record is set, so a call with no prompt
+        # raises without leaving that record set, and a prompt that is not a
+        # string is refused instead of routed as its ``str()``.
+        prompt = _required_prompt(kwargs)
+        prompt_token = _ACTIVE_PROMPT.set(prompt)
         try:
-            result = await self._dispatch_rungs(**kwargs)
+            token = _RUNG_SKIPS.set(skipped_rungs)
+            try:
+                result = await self._dispatch_rungs(**kwargs)
+            finally:
+                _RUNG_SKIPS.reset(token)
         finally:
-            _RUNG_SKIPS.reset(token)
+            _ACTIVE_PROMPT.reset(prompt_token)
         if skipped_rungs and "skipped_rungs" not in result:
             result = {**result, "skipped_rungs": skipped_rungs}
         return result
@@ -2287,9 +2366,8 @@ class LocalDelegationDispatchPort:
         ) -> ModelResolvedDelegationBackend:
             if model is None or candidate.backend_id != chosen_route_id:
                 return candidate
-            return candidate.model_copy(
+            return with_byok_model(candidate, model).model_copy(
                 update={
-                    "model_id": model,
                     "model_id_source": "the caller's --model for this delegation",
                 }
             )
@@ -3105,6 +3183,7 @@ class LocalDelegationDispatchPort:
                 named_tests=named_tests,
             )
             _settle_in_flight_attempt(progress, attempt_outcome)
+            backend = attempt_outcome.recorded_backend(backend)
             last_attempt_seconds = self._clock() - attempt_started
 
             # A hard transport/timeout failure: classify retryable vs terminal and,
@@ -4715,11 +4794,16 @@ class LocalDelegationDispatchPort:
             roi_overlay=roi_overlay,
             correlation_id=spread_key,
             quota_state=quota_state,
+            prompt=_ACTIVE_PROMPT.get(),
             **byok_kwargs,
         )
         if first_tier is not None:
             backend_id = backend_id_for_tier(
-                first_tier, task_type, spread_key=spread_key, **byok_kwargs
+                first_tier,
+                task_type,
+                spread_key=spread_key,
+                prompt=_ACTIVE_PROMPT.get(),
+                **byok_kwargs,
             )
             blocked = quota_blocked_backend_refs(quota_state)
             if backend_id is not None and backend_id in blocked:
@@ -4837,6 +4921,7 @@ class LocalDelegationDispatchPort:
                 current_tier,
                 task_type,
                 frozenset(tried) | quota_blocked_backend_refs(quota_state),
+                prompt=_ACTIVE_PROMPT.get(),
             )
             if sibling_ref is None:
                 return None
@@ -4992,6 +5077,7 @@ class LocalDelegationDispatchPort:
             roi_overlay=roi_overlay,
             excluded_backend_refs=excluded_backend_refs,
             correlation_id=spread_key,
+            prompt=_ACTIVE_PROMPT.get(),
             **byok_kwargs,
         )
 
@@ -5015,7 +5101,11 @@ class LocalDelegationDispatchPort:
             f"current_tier='{current_tier}'; next tier '{next_tier}'"
         )
         backend_id = backend_id_for_tier(
-            next_tier, task_type, spread_key=spread_key, **byok_kwargs
+            next_tier,
+            task_type,
+            spread_key=spread_key,
+            prompt=_ACTIVE_PROMPT.get(),
+            **byok_kwargs,
         )
         if backend_id is None:
             stopped(f"{stop_prefix} selects no backend for the task class")
@@ -5114,8 +5204,15 @@ class LocalDelegationDispatchPort:
         """
         # 2. RESOLVE the effective output-token budget from the routing contract.
         #    Unset request -> backend ceiling; explicit request -> capped at it.
-        effective_max_tokens = resolve_effective_max_tokens(
-            requested=max_tokens, backend_max_tokens=backend.max_tokens
+        #    The local tier's output is then cut to what the resolved backend's
+        #    window leaves after the prompt's token upper bound (the clamp).
+        effective_max_tokens = clamp_max_tokens(
+            prompt,
+            backend.tier,
+            backend.backend_id,
+            resolve_effective_max_tokens(
+                requested=max_tokens, backend_max_tokens=backend.max_tokens
+            ),
         )
 
         # 2b. RESOLVE the per-call HTTP timeout from the routing contract (÷1000),
@@ -5424,6 +5521,12 @@ class LocalDelegationDispatchPort:
                 backend_id=backend.backend_id,
                 model_id=backend.model_id,
             )
+        effect_handler = self._effect_handler
+        budget_backend = model_budget_backend(backend.backend_id)
+        if budget_backend is not None:
+            effect_handler = partial(
+                _call_with_model_budget, effect_handler, budget_backend, max_tokens
+            )
         try:
             with dispatch_stage("inference"):
                 # OMN-23162: a faults-mode probe answers a faulted model id's call
@@ -5433,7 +5536,7 @@ class LocalDelegationDispatchPort:
                     result = injected_fault_result
                 elif self._effect_process_boundary:
                     effect_child = _run_effect_handler_with_killable_timeout(
-                        self._effect_handler,
+                        effect_handler,
                         call_request,
                         timeout_seconds=dispatch_deadline_seconds,
                     )
@@ -5451,7 +5554,7 @@ class LocalDelegationDispatchPort:
                         None if progress is None else progress.in_flight_calls.append
                     )
                     try:
-                        result = self._effect_handler(call_request)
+                        result = effect_handler(call_request)
                     finally:
                         current_call_observer.reset(observer_token)
         except TimeoutError:
@@ -6702,6 +6805,15 @@ class _AttemptOutcome:
         # class DoD, so the executed-test rule is not the check set in force.
         self.response_contract_governed = response_contract_governed
 
+    def recorded_backend(
+        self, backend: ModelResolvedDelegationBackend
+    ) -> ModelResolvedDelegationBackend:
+        if self.result is not None and self.result.local_output_ceiling is not None:
+            return backend.model_copy(
+                update={"max_tokens": self.result.local_output_ceiling}
+            )
+        return backend
+
 
 _SPLIT_BANDS: dict[str, EnumDelegationSizeBand] = {
     "S": EnumDelegationSizeBand.SMALL,
@@ -6776,6 +6888,7 @@ class _LocalShrinkPorts:
             temperature=self._temperature,
             response_format=self._response_format,
         )
+        backend = outcome.recorded_backend(backend)
         attempt: dict[str, object] = {
             "tier": _routing_tier_name(backend),
             "backend_id": backend.backend_id,

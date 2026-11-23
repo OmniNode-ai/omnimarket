@@ -130,6 +130,9 @@ class ModelWorkLedgerQueryRequest(BaseModel):
     to: str | None = Field(default=None, pattern=_LANE)
     claims_since: str | None = None
     limit: int | None = Field(default=None, ge=1)
+    # The explicit full read: no default time window and no default count cap. Without it a rows
+    # read is bounded (the overlay's or the contract's window and count).
+    full: bool = False
     principal: str | None = Field(default=None, min_length=1)
     run: str | None = Field(default=None, min_length=1)
     history: ModelWorkLedgerHistoryRange | None = None
@@ -336,6 +339,11 @@ class ModelWorkLedgerQueryResult(BaseModel):
     # contract's), so a caller can see the answer is not the whole table.
     bounded: bool = False
     bounded_window_days: int | None = None
+    # A rows read with no limit, page_size or full flag is also cut to the newest
+    # ``bounded_rows_limit`` rows (the overlay's default_rows_limit, else the contract's
+    # rows_default_limit); ``truncated`` is True when rows matched beyond that, ``matched`` the count.
+    bounded_rows_limit: int | None = None
+    truncated: bool = False
     # latest-state (OMN-23606): one keyset page of newest-row-per-subject entries; ``watermark`` and
     # ``page_size`` and ``next_cursor`` are the point queries' own fields.
     latest: tuple[ModelWorkLedgerLatestEntry, ...] = ()

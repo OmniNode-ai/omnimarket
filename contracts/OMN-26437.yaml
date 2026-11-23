@@ -1,0 +1,48 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-26437"
+title: "The dev roll window gate abandons a roll no completion reaches by its deadline, records it as a typed abandoned roll and releases the held commands to the next roll"
+summary: "A released dev roll with no completion ended the gate's wait as an unhealthy roll and then held every later command for the failed-roll bound as well, so five merged commands waited two hours behind a roll no agent ever ran. The tick handler now abandons such a roll at the overlay's roll_completion_deadline_seconds, keeps a typed abandoned roll in the gate state and releases the held commands in the same tick."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn26437-gate-abandon"
+    statement: |-
+      A released roll with no completion at the deadline is recorded as a typed abandoned roll (command id, reason enum, both times) and the held commands are released to the next roll in the same tick.
+    acceptance:
+      - id: "AC5"
+        statement: |-
+          AC5: a released roll with no completion by roll_completion_deadline_seconds is abandoned, recorded in the gate state as a typed abandoned roll and the held commands are released in the same tick, not failed_roll_release_after_seconds later -- falsifier: uv run pytest tests/unit/nodes/node_dev_roll_window_gate_effect/test_handler_dev_roll_window_gate.py -q -n 0 --no-cov fails
+evidence_requirements:
+  - kind: "tests"
+    description: "The handler table runs the gate through the deadline with a fixed clock; it fails against the earlier tick handler, which raised on the untyped outcome and held for the failed-roll bound."
+    command: "uv run pytest tests/unit/nodes/node_dev_roll_window_gate_effect -q -n 0 --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn26437-ac5-gate-abandon"
+    description: "The handler table asserts the abandoned roll is a ModelDevRollGateAbandonedRoll with the reason enum and both times, the held command is released at the deadline, a late completion changes nothing, and an unhealthy finished roll still waits the failed-roll bound."
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_dev_roll_window_gate_effect/test_handler_dev_roll_window_gate.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26437-integration-proof"
+    description: >-
+      Run the dev roll window gate node's unit tests on a lab host at the pushed revision. This local
+      completion proof carries no hosted AC bindings.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run
+          --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+          --lane dod-integration-proof-26437 --kind test --
+          uv run --frozen pytest
+          tests/unit/nodes/node_dev_roll_window_gate_effect
+          -q -n 0 --no-cov --refuse-skips
+        cwd: "."

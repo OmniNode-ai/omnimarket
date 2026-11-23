@@ -10,6 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from omnimarket.events.runtime_deployment import ModelDeployPublishCommand
 from omnimarket.models.dev_roll import ModelDevRollRecord
+from omnimarket.nodes.node_dev_roll_window_gate_effect.models.model_dev_roll_gate_abandoned_roll import (
+    ModelDevRollGateAbandonedRoll,
+)
 
 
 class ModelHeldDevRoll(BaseModel):
@@ -32,10 +35,13 @@ class ModelHeldDevRoll(BaseModel):
 
 
 class ModelDevRollGateState(BaseModel):
-    """Held commands (oldest first), the last released roll, and the released ids kept."""
+    """Held commands (oldest first), the last released roll, the rolls given up on, the released ids kept and the alarmed ids."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     held: tuple[ModelHeldDevRoll, ...] = ()
     last_roll: ModelDevRollRecord | None = None
     released_ids: tuple[str, ...] = ()
+    abandoned: tuple[ModelDevRollGateAbandonedRoll, ...] = ()
+    #: Held command ids a held-age alarm already named; once-only, pruned to the commands still held.
+    alarmed_ids: tuple[str, ...] = ()

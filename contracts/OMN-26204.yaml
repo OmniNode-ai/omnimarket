@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-26204
 title: The plan owner check counts a live CLAIM that names the plan's ticket, plan path or PR as its owner
-summary: A rule of node_plan_owner_check_effect lists tickets, plan paths and pull requests; a live open CLAIM owns the plan when its ticket, plan cell or pr cell is listed. The lane-name prefix is removed from the rule. The open-claims line of the query node carries the claim's pr and plan cells. Every value is an overlay value.
+summary: A rule of node_plan_owner_check_effect lists tickets, plan paths and pull requests; a live open CLAIM owns the plan when its ticket, plan cell or pr cell is listed. The lane-name prefix no longer decides ownership; the rule accepts the key only so an overlay written before the change loads. The open-claims line of the query node carries the claim's pr and plan cells. Every value is an overlay value.
 is_seam_ticket: false
 interface_change: true
 interfaces_touched:
@@ -17,7 +17,7 @@ requirements:
       - id: AC3
         statement: 'AC3: the rule''s ticket list, plan paths, PR list and live window are read from the overlay and no ticket id, path or repo name is a literal in the handler -- falsifier: uv run pytest tests/unit/nodes/node_plan_owner_check_effect -q -k overlay_values_only'
       - id: AC4
-        statement: 'AC4: an overlay that carries lane_prefixes instead of rules values (tickets, plan_paths, prs) is refused at load, so the overlays rule must carry the rules values -- falsifier: uv run pytest tests/unit/nodes/node_plan_owner_check_effect -q -k lane_prefix_in_an_overlay'
+        statement: 'AC4: an overlay whose rule carries lane_prefixes and none of the rules values (tickets, plan_paths, prs) is refused at load, and an overlay that still lists lane_prefixes beside a rules value loads and the prefix decides nothing, so the overlays rule must carry the rules values -- falsifier: uv run pytest tests/unit/nodes/node_plan_owner_check_effect -q -k lane_prefix_in_an_overlay'
 evidence_requirements:
   - kind: tests
     description: Claim-content ownership, prefix, overlay-values, stale, TERMINAL and no-matcher tests of the plan owner check.
@@ -52,7 +52,7 @@ dod_evidence:
         check_value: uv run --frozen pytest -q --no-cov -n 0 -p no:randomly tests/unit/nodes/node_plan_owner_check_effect -k overlay_values_only
         cwd: .
   - id: dod-omn26204-ac4-overlay-load
-    description: An overlay that lists lane_prefixes instead of rules values is refused at load.
+    description: An overlay whose rule lists lane_prefixes and no rules value is refused at load; one that lists lane_prefixes beside a rules value loads and the prefix decides nothing.
     source: manual
     binds_ac: [AC4]
     checks:

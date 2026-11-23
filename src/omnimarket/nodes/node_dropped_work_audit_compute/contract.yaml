@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Dropped Work Audit Compute (OMN-26205)
+name: node_dropped_work_audit_compute
+contract_name: node_dropped_work_audit_compute
+node_name: node_dropped_work_audit_compute
+node_type: compute
+runtime_profiles: [main]
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: "0.1.0"
+description: >-
+  The dropped-work audit of the rolling work ledger, as a pure fold. Ledger rows, the overlay's rules, the merged
+  pull requests, the admission refusals the goal scope admission node reported and a clock come in; the items with no
+  live owner come out, six kinds: an operator ruling with no mechanism, a promise sent on the operator's behalf with no
+  lane, a blocked, partial or failed TERMINAL naming a next step that nobody took, a HOLD whose pull request merged and
+  that has no RELEASE, a CLAIM with no TERMINAL for the claim window, and an admission refusal of work a standing ruling
+  covers. Each item has a stable id derived from its source row. For each item with no live owner the result carries one
+  owner-missing event and, once the item has been unowned for the alarm delay, one STATUS alarm row. The node assigns no
+  owner and returns no admission or refusal verdict.
+input_model:
+  name: ModelDroppedWorkAuditRequest
+  module: omnimarket.models.dropped_work_audit.model_dropped_work_audit
+output_model:
+  name: ModelDroppedWorkAuditResult
+  module: omnimarket.models.dropped_work_audit.model_dropped_work_audit
+handler:
+  module: omnimarket.nodes.node_dropped_work_audit_compute.handlers.handler_dropped_work_audit
+  class: HandlerDroppedWorkAudit
+  input_model: omnimarket.models.dropped_work_audit.model_dropped_work_audit.ModelDroppedWorkAuditRequest
+  output_model: omnimarket.models.dropped_work_audit.model_dropped_work_audit.ModelDroppedWorkAuditResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_dropped_work_audit_compute.handlers.handler_dropped_work_audit:HandlerDroppedWorkAudit
+  handlers:
+    - operation: audit_dropped_work
+      topic: onex.cmd.omnimarket.dropped-work-audit-requested.v1
+      handler:
+        name: HandlerDroppedWorkAudit
+        module: omnimarket.nodes.node_dropped_work_audit_compute.handlers.handler_dropped_work_audit
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+# The rules are the overlay of this node (overlays repository, overlays/node_dropped_work_audit_compute/overlay.yaml).
+# No kind, window, delay, row type, cell name or suggested step has a default or a literal in code.
+runtime:
+  overlay: {overlay_id: node_dropped_work_audit_compute, model: omnimarket.models.dropped_work_audit.model_dropped_work_audit.ModelDroppedWorkAuditRules}
+terminal_event: onex.evt.omnimarket.dropped-work-audit-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.dropped-work-audit-requested.v1
+# The typed owner-missing event (ModelOwnerMissingEvent) is carried in this node's result, one per item with no live owner;
+# the scheduled effect publishes it on onex.evt.omnimarket.owner-missing.v1 (its contract declares the topic).
+topics:
+  dropped_work_audit_requested: onex.cmd.omnimarket.dropped-work-audit-requested.v1
+  dropped_work_audit_completed: onex.evt.omnimarket.dropped-work-audit-completed.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.dropped-work-audit-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.dropped-work-audit-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.dropped-work-audit-completed.v1
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.dropped-work-audit-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.dropped-work-audit-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dropped-work-audit-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dropped-work-audit-completed.v1, operation: DESCRIBE}
+metadata:
+  transport_type: inmemory
+  description: Dropped-work audit of the rolling work ledger
+  author: OmniNode Team
+  created: "2026-11-20"
+  ticket: OMN-26205

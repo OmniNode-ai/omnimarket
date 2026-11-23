@@ -38,6 +38,11 @@ class ModelPlanOwnerRule(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     finding: str = Field(pattern=_FINDING)
+    # Never read. The overlays repository's main branch still carries this key on the live rule,
+    # and CI loads every overlays-main document through this model before that rule can change,
+    # so the key stays accepted until the overlays rule drops it; a follow-up then removes the
+    # field. It decides nothing: ownership is by ticket, plan path and pull request only.
+    lane_prefixes: tuple[str, ...] = ()
     tickets: tuple[str, ...] = ()
     # Plan paths as the claim's plan cell names them; compared by file stem (directories and a
     # ``.md`` suffix do not matter), so ``plans/<name>.md`` and ``<name>`` are one plan.

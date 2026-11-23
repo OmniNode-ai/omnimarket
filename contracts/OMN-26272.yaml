@@ -1,0 +1,71 @@
+schema_version: 1.0.0
+ticket_id: OMN-26272
+title: A changed root-level test file selects itself and the tests that depend on it, and a deleted or renamed one selects its surviving dependents
+summary: 'The change-aware test selector took the full 20-shard suite for any changed file directly under tests/, as changed_test_unnarrowable (4 of the last 60 dev merges). HandlerTestPathResolution now selects a
+  changed root-level tests/*.py file itself, when it is a test file, with the tests that import it transitively from the import graph. A deleted or renamed root-level file is absent from the graph, so the always
+  set and every surviving test that imports its old dotted name (absolute or relative) or spells its old path are selected; the head tree holds every such edge, because a test that named the old file and was not
+  changed is unchanged at head and a changed one is selected as a changed file. tests/__init__.py and tests/conftest.py keep the whole tree. scripts/ci/detect_test_paths.py loses _requires_unnarrowable_full_suite
+  and its call. The CI changed-file list uses --no-renames so a rename reaches the selector as its old name. The enum member changed_test_unnarrowable stays, because recorded receipts carry it. Not in this change:
+  the stage gate, the replay receipt and the data-only selection.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26272-root-level-test-selection
+  statement: A changed, deleted or renamed root-level test file selects itself and its dependents through the import graph in the selector node, instead of the full suite.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the four `changed_test_unnarrowable` merges narrow to a selection containing the changed file -- falsifier: `uv run pytest tests/nodes/node_test_selection_selector_compute/test_root_test_file_selection.py
+      -q --no-cov -k root_test_file` over the T1 receipt lists fails on a selection lacking the changed test file'
+  - id: AC2
+    statement: 'AC2: a deleted root test file no longer yields a pseudo-directory path -- falsifier: the existing [OMN-15277](https://linear.app/omninode/issue/OMN-15277) regression test passes unchanged'
+  - id: AC3
+    statement: 'AC3: a deleted or renamed root-level helper still imported by a surviving test, including by a relative import, selects that test -- falsifier: fixtures `tests/helper.py` deleted and renamed with
+      `tests/test_x.py` importing it; remove the old-name rule and the test must fail'
+evidence_requirements:
+- kind: tests
+  description: The root-level selection tests and the existing selector tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute tests/unit/scripts/test_detect_test_paths.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26272-ac1
+  description: 'AC1: the root-level changed files of the four merges the replay attributed to changed_test_unnarrowable (4430263d9b, 5addb723ab, 56fd1a7643, 2b0f4e88f3) each appear in the selection. Resolved at the
+    handler, because one of the four (5addb723ab) also changes the models module and so takes the full suite for shared_module, a reason this ticket does not touch.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_root_test_file_selection.py -q --no-cov -n 0 -p no:randomly -k root_test_file
+    cwd: .
+- id: dod-omn26272-ac2
+  description: 'AC2: the OMN-15277 pseudo-directory regression tests in test_detect_test_paths.py pass with their assertions unchanged (the nonexistent-file one) and a deleted root test file selects no tests/<file>.py/ path.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/scripts/test_detect_test_paths.py tests/nodes/node_test_selection_selector_compute/test_root_test_file_selection.py -q --no-cov -n 0 -p no:randomly -k "pseudo_dir or never_yields"
+    cwd: .
+- id: dod-omn26272-ac3
+  description: 'AC3: with tests/helper.py deleted, and again renamed, tests/test_x.py (relative import) and tests/test_abs.py (absolute import) are selected with the always set; with the old-name rule switched off
+    the four deleted and renamed cases fail.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_root_test_file_selection.py -q --no-cov -n 0 -p no:randomly -k "deleted_helper or renamed_helper"
+    cwd: .
+- id: dod-omn26272-integration-proof
+  description: the selector tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26272 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_root_test_file_selection.py -q --no-cov
+    cwd: .

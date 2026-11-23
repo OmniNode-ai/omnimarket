@@ -42,6 +42,26 @@ requirements:
           falsifier: uv run pytest tests/ci/test_omninode_onex_install_sh_omn25070.py fails on omnimarket
           dev, where neither the node nor its request exists; the real install cases run with ONEX_TEST_ONEX_WHEEL set,
           on each platform in .github/workflows/onex-installer.yml.
+  - id: req-omn25070-run-by-lane-kept
+    statement: No infra change is required. The stack-shape baseline forbids re-commanding projection-api, so T1
+      removes no console script marked run_by_lane.
+    acceptance:
+      - id: AC5
+        statement: >-
+          AC5 (amended 2026-11-18): no infra change is required. The stack-shape baseline forbids re-commanding
+          projection-api, so T1 removes no console script marked run_by_lane, proved by the existing stack-shape
+          gate and a market-side run_by_lane_scripts_kept test -- falsifier: uv run pytest
+          tests/ci/test_omninode_onex_package_omn25070.py -k run_by_lane fails when omnimarket-projection-api is removed from,
+          or retargeted in, pyproject.toml [project.scripts], or declared by packages/omninode-onex.
+  - id: req-omn25070-market-proof-scripts
+    statement: The two proof scripts run the core CLI as a module, not the onex launcher.
+    acceptance:
+      - id: AC3
+        statement: >-
+          AC3 (the launcher move), the part these scripts carry: omnibase-core stops declaring onex, so
+          scripts/run_four_node_proof.sh and scripts/run_l1_proof.sh run uv run python -m
+          omnibase_core.cli.cli_commands node with the same arguments and run no onex launcher -- falsifier: uv run
+          pytest tests/ci/test_proof_scripts_run_core_module_omn25070.py, which fails on dev, where both run uv run onex node.
 evidence_requirements:
   - kind: tests
     description: The package tests; the opt-in install check runs with ONEX_TEST_ONEX_WHEEL set.
@@ -59,7 +79,7 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/ci/test_omninode_onex_package_omn25070.py -q --no-cov
-        cwd: .
+        cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn25070-curl-installer
     description: The installer's platform, checksum and conflict cases, run through bash from stdin. The bound
       test fails on dev, where the script does not exist.
@@ -68,7 +88,27 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/ci/test_omninode_onex_install_sh_omn25070.py -q --no-cov
-        cwd: .
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn25070-ac5-run-by-lane-kept
+    description: Every omnimarket console script the infra stack shape marks run_by_lane is still declared with
+      the same target, and the customer package declares none of them. The bound test fails when a script is
+      removed or retargeted.
+    source: manual
+    binds_ac: [AC5]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest -q --no-cov tests/ci/test_omninode_onex_package_omn25070.py -k run_by_lane
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn25070-pin-carries-setup-fix
+    description: The customer package pins an omnimarket release that carries the onex setup fix (0.4.324 or
+      later), so a customer install runs onex setup without the crash. The bound test fails on the merge base,
+      where the pin is 0.4.322, a release without the fix.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest -q --no-cov tests/ci/test_omninode_onex_package_omn25070.py -k carries_the_onex_setup_fix
+        cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn25070-installer-integration-proof
     description: The render node and the rendered installer run on a lab host at the pushed head. Hosted CI runs
       the same tests per platform; only the local Done gate runs this unbound check on the lab.
@@ -77,4 +117,14 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25070 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_onex_installer_render_compute tests/ci/test_omninode_onex_install_sh_omn25070.py -q --no-cov
-        cwd: .
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn25070-market-proof-scripts
+    description: Both proof scripts run nodes through the core module and run no onex launcher. Fails on dev, where both run uv run onex node.
+    source: manual
+    binds_ac:
+      - AC3
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_proof_scripts_run_core_module_omn25070.py -q --no-cov
+        cwd: ${OMNI_HOME}/omnimarket

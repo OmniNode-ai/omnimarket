@@ -1,6 +1,6 @@
 name: node_topic_provision_dry_run_effect
 version: "0.1.0"
-description: "Topic provision dry run: lists the live broker topics and counts how many would exist under the provision rule, read-only"
+description: "Topic provision dry run: lists the live broker topics and counts how many would exist under the provision rule, read-only; with --apply it creates the missing service writer topics"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -12,7 +12,7 @@ capabilities:
   requires_repo: true
   requires_secrets: false
   requires_docker: false
-  side_effect_class: read_only
+  side_effect_class: write
 dependencies:
   - "aiokafka>=0.10.0"
   - "omnibase-infra>=0.38.68"

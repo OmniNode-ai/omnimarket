@@ -1,0 +1,70 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-23825"
+title: "A participant cannot add a provider key after setup"
+summary: "Phases 1 and 2 of the approved spec (records/plans/OMN-23825/spec.md, phase 2 sha256 42d9666a838e2bdc0bdf76478b8d88c45038204678a043f65e43d21468886058). A bare listed provider name under `onex models` exits non-zero with a one-line hint naming `onex models add <provider>`; an `onex setup` configure re-run offers the provider choice, asks a provider with no stored key for its key, and reuses the stored key of an unchanged provider; `onex models --help` and the setup completion output name `onex models add`."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn23825-bare-provider-hint"
+    statement: "A listed provider name invoked bare under `onex models` exits non-zero and its output names `onex models add <provider>`."
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          AC1: `onex models <provider>` for every provider in LISTED_PROVIDERS exits non-zero with a one-line hint naming `onex models add <provider>` -- falsifier: `onex models gemini` on dev prints No such command with no hint
+  - id: "req-omn23825-rerun-asks-new-key"
+    statement: "Re-running `onex setup` (or the TUI /config) and choosing a provider with no stored key asks for its key without first choosing change."
+    acceptance:
+      - id: "AC2"
+        statement: >-
+          AC2: re-running `onex setup` (or the TUI /config) and choosing a provider that has no stored key asks for its key without first choosing "change" -- falsifier: an `onex setup` re-run that picks a new provider finishes its model step with no key prompt for it
+  - id: "req-omn23825-outputs-name-add"
+    statement: "`onex models --help` and the `onex setup` completion output name `onex models add`."
+    acceptance:
+      - id: "AC3"
+        statement: >-
+          AC3: `onex models --help` and the `onex setup` completion output name the command for adding a provider after setup -- falsifier: neither output contains "onex models add"
+evidence_requirements:
+  - kind: tests
+    description: "The models and setup re-run test files prove AC1, AC2 and AC3 on the branch and fail at dev; the TUI /config test pins AC2 behaviour that already held at dev."
+    command: "uv run pytest tests/unit/cli/test_models_bare_provider_omn23825.py tests/unit/nodes/node_onex_setup_effect/test_setup_rerun_new_provider_omn23825.py tests/unit/nodes/node_onex_setup_effect/test_onex_tui_config_new_provider_omn23825.py -q -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn23825-ac1"
+    description: "AC1: each provider invoked bare yields a non-zero exit and a one-line hint naming `onex models add <provider>`."
+    source: manual
+    binds_ac:
+      - "AC1"
+    checks:
+      - check_type: command
+        check_value: "uv run pytest tests/unit/cli/test_models_bare_provider_omn23825.py -q -p no:randomly"
+        cwd: .
+  - id: "dod-omn23825-ac2"
+    description: "AC2: a configure re-run that picks a new provider asks for its key, a kept provider reuses its stored key, repair and upgrade keep the saved provider, and the TUI /config after setup asks a new provider for its key."
+    source: manual
+    binds_ac:
+      - "AC2"
+    checks:
+      - check_type: command
+        check_value: "uv run pytest -q -p no:randomly -k \"not completed_setup\" tests/unit/nodes/node_onex_setup_effect/test_setup_rerun_new_provider_omn23825.py tests/unit/nodes/node_onex_setup_effect/test_onex_tui_config_new_provider_omn23825.py"
+        cwd: .
+  - id: "dod-omn23825-ac3"
+    description: "AC3: `onex models --help` and the `onex setup` completion output contain onex models add."
+    source: manual
+    binds_ac:
+      - "AC3"
+    checks:
+      - check_type: command
+        check_value: "uv run pytest -q -p no:randomly -k \"help or completed_setup\" tests/unit/cli/test_models_bare_provider_omn23825.py tests/unit/nodes/node_onex_setup_effect/test_setup_rerun_new_provider_omn23825.py"
+        cwd: .
+  - id: "dod-omn23825-integration-proof"
+    description: "Integration proof and deploy probe: the installed onex CLI, invoked with a bare provider name, exits non-zero and prints the onex models add hint."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: "onex models gemini >/dev/null 2>&1 && exit 1; grep -qF \"onex models add gemini\" <(onex models gemini 2>&1)"
+        cwd: .

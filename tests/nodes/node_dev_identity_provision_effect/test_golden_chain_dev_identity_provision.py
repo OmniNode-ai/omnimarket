@@ -5,8 +5,9 @@
 One run against the fakes provisions the probe tenant: the call order is the admin token, the user
 lookup, the user create, the user token and the provision call. The generated password moves to
 Keycloak (the create body and the password grant) and to nothing else -- not the result's JSON dump,
-its repr, its str or the logs -- and neither does any token. A second run finds the user, resets its
-stored password and binds the same tenant; the probe verb answers ready and calls nothing.
+its repr, its str or the logs -- and neither does any token. A second run that carries reset_existing finds the
+user, resets its stored password and binds the same tenant (without it the run is refused, see
+test_dev_identity_provision_input.py); the probe verb answers ready and calls nothing.
 """
 
 from __future__ import annotations
@@ -72,6 +73,7 @@ def _overlay() -> ModelDevIdentityProvisionOverlay:
             "provision_path": "/v1/auth/provision",
             "timeout_seconds": 15.0,
         },
+        protected_usernames=[],
         secret_store=None,
     )
 
@@ -172,7 +174,11 @@ def test_second_run_reuses_the_user_and_resets_the_password(
         handler.handle(ModelDevIdentityProvisionCommand(lane="dev", write=True))
     )
     second = asyncio.run(
-        handler.handle(ModelDevIdentityProvisionCommand(lane="dev", write=True))
+        handler.handle(
+            ModelDevIdentityProvisionCommand(
+                lane="dev", write=True, reset_existing=True
+            )
+        )
     )
 
     assert first.ok is True

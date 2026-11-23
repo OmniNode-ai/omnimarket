@@ -43,6 +43,9 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_observation impo
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
     ModelSetupPlan,
 )
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider import (
+    ModelSetupProvider,
+)
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
     setup_provider_traits,
 )
@@ -54,6 +57,13 @@ from omnimarket.nodes.node_onex_setup_effect.protocols.protocol_setup_step impor
 )
 
 _Step = Literal["workspace", "user_config", "runtime_config", "identity", "models"]
+
+# The one line printed when no model server is named: the customer on the cloud route brings
+# their own key, so the models step is optional (OMN-26317).
+MODELS_SKIPPED_NOTICE = (
+    "no local model server configured; bring your own key or use the cloud route. "
+    "Add a local model later with: onex models add local --url <base url> --model <name>"
+)
 
 
 def _read(path: Path) -> str | None:
@@ -71,6 +81,47 @@ def _read(path: Path) -> str | None:
     if len(raw) > 1024 * 1024:
         raise ValueError("Expected a bounded regular setup file")
     return raw.decode()
+
+
+def _owned_runtime_config(plan: ModelSetupPlan) -> str | None:
+    """Read only a setup-owned runtime config beneath real workspace directories."""
+    workspace = plan.workspace
+    relative = original.RUNTIME_CONFIG_RELPATH
+    path = workspace / relative
+    for parent in reversed(relative.parents):
+        directory = workspace / parent
+        if directory.is_symlink() or (directory.exists() and not directory.is_dir()):
+            raise SetupStepRefusedError(
+                f"Setup needs a directory at {directory}. Review that path or choose another workspace."
+            )
+    try:
+        content = _read(path)
+    except (OSError, ValueError):
+        raise SetupStepRefusedError(
+            f"Setup cannot read {path} as a regular runtime config. Review the existing path."
+        ) from None
+    if content is not None:
+        lines = content.splitlines()
+        if not lines or lines[0] not in (
+            original.SETUP_MARKER,
+            original.INSTALL_SH_MARKER,
+        ):
+            raise SetupStepRefusedError(
+                f"The runtime config at {path} belongs to the user. Review it before selecting a setup-managed configuration."
+            )
+        if not original.runtime_config_is_complete(content):
+            raise SetupStepRefusedError(
+                f"The runtime config at {path} is incomplete. Setup kept it; review it "
+                "or move it aside, then run setup again."
+            )
+        mode = "docker" if "docker" in plan.components else "local"
+        if original.runtime_config_install_path(
+            content
+        ) != mode and not original.runtime_config_can_switch(content):
+            raise SetupStepRefusedError(
+                f"Setup preserved the existing runtime config at {path}. Review or move it aside before changing the install path."
+            )
+    return content
 
 
 class HandlerSetupEnvironment:
@@ -139,22 +190,17 @@ class HandlerSetupEnvironment:
             return self._result(True, evidence={"path": str(path)})
         if self.name == "runtime_config":
             path = plan.workspace / original.RUNTIME_CONFIG_RELPATH
-            content = _read(path)
+            try:
+                content = _owned_runtime_config(plan)
+            except SetupStepRefusedError as refused:
+                return ModelSetupObservation(
+                    step=self.name, status="action_required", fix=str(refused)
+                )
             if content is None:
                 return self._result(False)
-            lines = content.splitlines()
-            if not lines or lines[0] not in (
-                original.SETUP_MARKER,
-                original.INSTALL_SH_MARKER,
-            ):
-                return ModelSetupObservation(
-                    step=self.name,
-                    status="action_required",
-                    fix="The runtime config belongs to the user. Review it before selecting a setup-managed configuration.",
-                )
             mode = "docker" if "docker" in plan.components else "local"
             return self._result(
-                original.recorded_install_path(path) == mode,
+                original.runtime_config_install_path(content) == mode,
                 evidence={"path": str(path), "install_path": mode},
             )
         if self.name == "identity":
@@ -168,8 +214,8 @@ class HandlerSetupEnvironment:
         if not plan.providers:
             return ModelSetupObservation(
                 step="models",
-                status="action_required",
-                fix="Choose provider models with --provider/--model or a secret-free --plan.",
+                status="skipped",
+                evidence={"skipped": MODELS_SKIPPED_NOTICE},
             )
         evidence: dict[str, str] = {}
         receipts: list[ModelOnexSetupReceipt] = []
@@ -304,24 +350,13 @@ class HandlerSetupEnvironment:
                     "the workspace. The file was preserved."
                 )
             owned = _read(plan.workspace / ".onex-setup-workspace")
-            legacy = _read(plan.workspace / ".omninode-dev-setup")
             if owned is not None and owned != "onex setup\n":
                 raise SetupStepRefusedError(
                     f"{plan.workspace} is marked by another tool, so setup will not "
                     "use it as an ONEX workspace. Start onex in your workspace "
                     "folder or an empty one, then save again."
                 )
-            if (
-                plan.workspace.exists()
-                and any(plan.workspace.iterdir())
-                and owned != "onex setup\n"
-                and legacy != "This workspace was created by omninode-dev-setup.\n"
-            ):
-                raise SetupStepRefusedError(
-                    f"{plan.workspace} already holds other files, so setup will not "
-                    "make it an ONEX workspace. Start onex in your workspace folder "
-                    "or an empty one, then save again."
-                )
+            _owned_runtime_config(plan)
             original.ensure_workspace(plan.workspace)
             original.write_if_changed(
                 plan.workspace / ".onex-setup-workspace", "onex setup\n"
@@ -329,6 +364,7 @@ class HandlerSetupEnvironment:
         elif self.name == "user_config":
             original.ensure_user_config(self._home)
         elif self.name == "runtime_config":
+            _owned_runtime_config(plan)
             original.ensure_runtime_config(
                 plan.workspace,
                 "docker" if "docker" in plan.components else "local",
@@ -337,83 +373,115 @@ class HandlerSetupEnvironment:
             mint_local_tenant_identity(db_path=LocalByokCredentialStore().db_path)
         else:
             for desired in plan.providers:
-                if desired.connection_id:
-                    owner = HandlerModelConnections()
-                    result = owner.handle(
-                        ModelEndpointConnectionRequest(
-                            operation="connect",
-                            connection_id=desired.connection_id,
-                            url=desired.url,
-                            models=desired.models,
-                            key=self._credentials.get(desired.credential_identity),
-                            native_messages=desired.native_messages,
-                        )
-                    )
-                    if result.status != "ready":
-                        raise ValueError(
-                            result.message
-                            or "The named connection did not pass pinned delegation"
-                        )
-                    if desired.make_default or read_first_choice() is None:
-                        selected = owner.handle(
-                            ModelEndpointConnectionRequest(
-                                operation="select",
-                                connection_id=desired.connection_id,
-                                models=desired.models[:1],
-                            )
-                        )
-                        if selected.status != "ready":
-                            raise ValueError(
-                                selected.message
-                                or "The connection could not be selected"
-                            )
-                    continue
-                if (
-                    desired.provider in setup_provider_traits().endpoint_auth
-                    and desired.api_key_required
-                ):
-                    from omnimarket.handlers.openai_compatible_endpoint import (
-                        base_url_of,
-                        stored_base_url,
-                    )
-
-                    existing = stored_base_url("openai_compatible")
-                    if existing and existing != base_url_of(desired.url or ""):
-                        raise ValueError(
-                            "The authenticated endpoint slot already belongs to another server; "
-                            "its URL and credential were preserved. Use a separate ONEX profile."
-                        )
-                if desired.registration_provider == "local" and len(desired.models) > 1:
-                    tests = setup_model_connections.add_local_endpoint(
-                        desired.url, desired.models
-                    )
-                    if not tests or any(test.status != "passed" for test in tests):
-                        raise ValueError(
-                            "The selected endpoint models did not pass pinned delegation"
-                        )
-                    continue
-                # Preserve the model component's actual pinned delegation and
-                # receipt checks. Never substitute a setup marker for inference.
-                request = ModelOnexSetupRequest(
-                    workspace=plan.workspace,
-                    onex_home=self._home,
-                    provider=desired.registration_provider,
-                    model=desired.models[0],
-                    url=desired.url,
-                    key=self._credentials.get(desired.provider),
-                    unattended=True,
-                )
-                self._prove_model(request)
-                if len(desired.models) > 1:
-                    key = self._credentials.get(desired.provider)
-                    if key is None:
-                        raise ValueError(
-                            "Read the provider credential through the setup input first"
-                        )
-                    model_keys.add_key(
-                        desired.registration_provider,
-                        key.get_secret_value(),
-                        desired.models,
-                        url=desired.url,
-                    )
+                try:
+                    self._apply_provider(plan, desired)
+                except (original.StepFailedError, ValueError) as failure:
+                    return self._provider_failure(desired, failure)
         return None
+
+    def _provider_failure(
+        self,
+        desired: ModelSetupProvider,
+        failure: original.StepFailedError | ValueError,
+    ) -> ModelSetupObservation:
+        """Name the configured server and the cause; never echo a supplied credential."""
+        cause = str(failure)
+        for secret in self._credentials.values():
+            value = secret.get_secret_value()
+            if value:
+                cause = cause.replace(value, "[redacted]")
+        return ModelSetupObservation(
+            step="models",
+            status="failure",
+            changed=True,
+            evidence={
+                "provider": desired.provider,
+                "server": desired.url or desired.provider,
+                "cause": cause,
+            },
+            fix=failure.fix
+            if isinstance(failure, original.StepFailedError)
+            else "Check the model server, then run onex setup --action repair.",
+        )
+
+    def _apply_provider(
+        self, plan: ModelSetupPlan, desired: ModelSetupProvider
+    ) -> None:
+        if desired.connection_id:
+            owner = HandlerModelConnections()
+            result = owner.handle(
+                ModelEndpointConnectionRequest(
+                    operation="connect",
+                    connection_id=desired.connection_id,
+                    url=desired.url,
+                    models=desired.models,
+                    key=self._credentials.get(desired.credential_identity),
+                    native_messages=desired.native_messages,
+                )
+            )
+            if result.status != "ready":
+                raise ValueError(
+                    result.message
+                    or "The named connection did not pass pinned delegation"
+                )
+            if desired.make_default or read_first_choice() is None:
+                selected = owner.handle(
+                    ModelEndpointConnectionRequest(
+                        operation="select",
+                        connection_id=desired.connection_id,
+                        models=desired.models[:1],
+                    )
+                )
+                if selected.status != "ready":
+                    raise ValueError(
+                        selected.message or "The connection could not be selected"
+                    )
+            return
+        if (
+            desired.provider in setup_provider_traits().endpoint_auth
+            and desired.api_key_required
+        ):
+            from omnimarket.handlers.openai_compatible_endpoint import (
+                base_url_of,
+                stored_base_url,
+            )
+
+            existing = stored_base_url("openai_compatible")
+            if existing and existing != base_url_of(desired.url or ""):
+                raise ValueError(
+                    "The authenticated endpoint slot already belongs to another server; "
+                    "its URL and credential were preserved. Use a separate ONEX profile."
+                )
+        if desired.registration_provider == "local" and len(desired.models) > 1:
+            tests = setup_model_connections.add_local_endpoint(
+                desired.url, desired.models
+            )
+            if not tests or any(test.status != "passed" for test in tests):
+                raise ValueError(
+                    "The selected endpoint models did not pass pinned delegation"
+                )
+            return
+        # Preserve the model component's actual pinned delegation and
+        # receipt checks. Never substitute a setup marker for inference.
+        request = ModelOnexSetupRequest(
+            workspace=plan.workspace,
+            onex_home=self._home,
+            provider=desired.registration_provider,
+            model=desired.models[0],
+            url=desired.url,
+            key=self._credentials.get(desired.provider),
+            unattended=True,
+        )
+        self._prove_model(request)
+        if len(desired.models) > 1:
+            key = self._credentials.get(desired.provider)
+            if key is None:
+                raise ValueError(
+                    "Read the provider credential through the setup input first"
+                )
+            model_keys.add_key(
+                desired.registration_provider,
+                key.get_secret_value(),
+                desired.models,
+                url=desired.url,
+            )

@@ -1993,7 +1993,7 @@ class HandlerGenerationConsumer:
         target_tier: str = starting_tier
         excluded: frozenset[str] = frozenset()
         for _ in range(hops):
-            nxt = next_eligible_tier(target_tier, excluded)
+            nxt = next_eligible_tier(target_tier, excluded, prompt="")
             if nxt is None:
                 break
             target_tier = nxt
