@@ -49,7 +49,7 @@ import os
 import time
 from collections.abc import AsyncIterator, Callable, Iterable
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Protocol
@@ -58,6 +58,10 @@ from uuid import UUID
 import asyncpg
 
 from omnimarket.projection.models import ProjectionTableConfig
+from omnimarket.projection.table_page_view import (
+    ProtocolProjectionPageView as ProtocolProjectionPageView,
+)
+from omnimarket.projection.table_page_view import TablePageView as TablePageView
 from omnimarket.projection.tenant_isolation import TENANT_GUC
 from omnimarket.projection.tenant_registry_resolution import (
     TENANT_REGISTRY_MIRROR_TABLE,
@@ -497,73 +501,6 @@ def build_window_query(
         f" ORDER BY {outer_order}" if outer_order else ""
     )
     return WindowQuery(sql=sql, params=tuple(params))
-
-
-class ProtocolProjectionPageView(Protocol):
-    """The synchronous read surface the status page renders from."""
-
-    def unavailable_reason(self, topic: str) -> tuple[str, str] | None: ...
-
-    def get_rows(
-        self,
-        topic: str,
-        *,
-        limit: int | None = None,
-        tenant_column: str | None = None,
-        tenant_id: str | None = None,
-    ) -> list[dict[str, Any]]: ...
-
-    def latest_event_at(self, topic: str) -> datetime | None: ...
-
-    def row_count(self, topic: str) -> int: ...
-
-
-@dataclass
-class TablePageView:
-    """A prefetched, synchronous view for the status page (``GET /``).
-
-    The page renders from a fixed set of reads with the same interface the
-    cache offered (``is_bootstrapped``/``get_rows``/``latest_event_at``/
-    ``row_count``), so the route awaits every read first and the page code
-    stays synchronous.
-    """
-
-    rows: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
-    latest: dict[str, datetime | None] = field(default_factory=dict)
-    tenants: dict[str, str | None] = field(default_factory=dict)
-    failures: dict[str, tuple[str, str]] = field(default_factory=dict)
-
-    def unavailable_reason(self, topic: str) -> tuple[str, str] | None:
-        if topic in self.failures:
-            return self.failures[topic]
-        if topic not in self.rows:
-            return ("projection_not_read", "the page did not read this exposure")
-        return None
-
-    def is_bootstrapped(self, topic: str) -> bool:
-        return self.unavailable_reason(topic) is None
-
-    def get_rows(
-        self,
-        topic: str,
-        *,
-        limit: int | None = None,
-        tenant_column: str | None = None,
-        tenant_id: str | None = None,
-    ) -> list[dict[str, Any]]:
-        if tenant_column is not None and tenant_id != self.tenants.get(topic):
-            raise ValueError(
-                f"page view for {topic!r} was read as tenant "
-                f"{self.tenants.get(topic)!r}, not {tenant_id!r}"
-            )
-        rows = self.rows.get(topic, [])
-        return rows if limit is None else rows[:limit]
-
-    def latest_event_at(self, topic: str) -> datetime | None:
-        return self.latest.get(topic)
-
-    def row_count(self, topic: str) -> int:
-        return len(self.rows.get(topic, []))
 
 
 def _read_failure(
