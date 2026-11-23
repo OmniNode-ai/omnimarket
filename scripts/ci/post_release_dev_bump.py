@@ -93,7 +93,7 @@ class BumpConfigError(Exception):
 
 @dataclass(frozen=True)
 class BumpDecision:
-    """The whole decision, renderable as JSON for the workflow step summary."""
+    """The whole decision, renderable as JSON."""
 
     action: str
     released_version: str
@@ -103,12 +103,7 @@ class BumpDecision:
 
 
 def parse_final_version(raw: str, *, label: str) -> tuple[int, int, int]:
-    """Parse a strict ``X.Y.Z`` version, tolerating a leading ``v``.
-
-    Anything that is not a final three-part release — ``0.38``, ``0.38.11rc1``,
-    ``0.38.11.post1``, the empty string — is a configuration error, not a
-    silently-skipped input.
-    """
+    """Parse a strict ``X.Y.Z`` version, tolerating a leading ``v``."""
     candidate = raw.strip()
     if candidate.startswith("v"):
         candidate = candidate[1:]
@@ -128,39 +123,27 @@ def next_patch(version: str) -> str:
 
 
 def decide(dev_version: str, released_version: str) -> BumpDecision:
-    """Decide whether dev needs the post-release disarm bump.
-
-    ``bump`` whenever dev is NOT already strictly ahead of the released version
-    — that covers both the armed case (dev == released, the v0.38.10/v0.38.11
-    incidents) and the pathological behind case (dev < released, e.g. a release
-    cut from a branch other than dev). ``noop`` only when dev is already ahead,
-    which is what the release-identity gate itself demands.
-    """
+    """``bump`` unless dev is already strictly ahead of the released version."""
     dev_tuple = parse_final_version(dev_version, label="dev version")
     released_tuple = parse_final_version(released_version, label="released version")
-    target = next_patch(released_version)
-
-    if dev_tuple > released_tuple:
-        return BumpDecision(
-            action=ACTION_NOOP,
-            released_version=".".join(str(p) for p in released_tuple),
-            dev_version=".".join(str(p) for p in dev_tuple),
-            target_version=".".join(str(p) for p in dev_tuple),
-            reason=(
-                f"dev {dev_version} is already ahead of published "
-                f"{released_version}; release-identity is disarmed, nothing to do"
-            ),
+    ahead = dev_tuple > released_tuple
+    target = ".".join(map(str, dev_tuple)) if ahead else next_patch(released_version)
+    if ahead:
+        reason = (
+            f"dev {dev_version} is already ahead of published "
+            f"{released_version}; release-identity is disarmed, nothing to do"
         )
-
-    return BumpDecision(
-        action=ACTION_BUMP,
-        released_version=".".join(str(p) for p in released_tuple),
-        dev_version=".".join(str(p) for p in dev_tuple),
-        target_version=target,
-        reason=(
+    else:
+        reason = (
             f"dev {dev_version} is not ahead of published {released_version}; "
             f"release-identity is ARMED against dev — bump to {target}"
-        ),
+        )
+    return BumpDecision(
+        action=ACTION_NOOP if ahead else ACTION_BUMP,
+        released_version=".".join(map(str, released_tuple)),
+        dev_version=".".join(map(str, dev_tuple)),
+        target_version=target,
+        reason=reason,
     )
 
 
@@ -175,13 +158,7 @@ def read_project_version(pyproject: Path) -> str:
 
 
 def rewrite_project_version(text: str, new_version: str) -> str:
-    """Return ``text`` with ONLY ``[project].version`` set to ``new_version``.
-
-    Table-scoped by construction: a ``version`` key under any other table (a
-    ``[tool.*]`` block, a dependency-group table) is left byte-identical. A
-    whole-file regex would not have that property, and silently corrupting an
-    unrelated pin is a worse failure than not bumping at all.
-    """
+    """Return ``text`` with ONLY ``[project].version`` set to ``new_version``."""
     lines = text.splitlines(keepends=True)
     current_table: str | None = None
     replaced = False
@@ -213,7 +190,7 @@ def rewrite_project_version(text: str, new_version: str) -> str:
 
 
 def apply_decision(pyproject: Path, decision: BumpDecision) -> bool:
-    """Write the bump when the decision says ``bump``. Returns True if written."""
+    """Write the bump when the decision says ``bump``; True if written."""
     if decision.action != ACTION_BUMP:
         return False
     original = pyproject.read_text(encoding="utf-8")
@@ -224,54 +201,25 @@ def apply_decision(pyproject: Path, decision: BumpDecision) -> bool:
 
 
 CHANGELOG_PATH = "CHANGELOG.md"
-_GIT_TIMEOUT_SECONDS = 60
 
 
-def release_cut_added_changelog(root: Path, tag: str) -> bool:
-    """Whether ``tag``'s commit added a root ``CHANGELOG.md`` over its first parent.
+def remove_cut_changelog(root: Path, released: str, apply: bool) -> bool:
+    """Whether ``CHANGELOG.md`` is on the tree and the released tag's commit added it.
 
-    A tag, a parent or a git repository that cannot be read answers ``False``: an
-    unreadable cut never removes a file.
-    """
-    listing = subprocess.run(
-        [
-            "git",
-            "-C",
-            str(root),
-            "diff",
-            "--name-only",
-            "--diff-filter=A",
-            "--no-renames",
-            f"{tag}^1",
-            f"{tag}^{{commit}}",
-            "--",
-            CHANGELOG_PATH,
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=_GIT_TIMEOUT_SECONDS,
-    )
-    return listing.returncode == 0 and listing.stdout.strip() == CHANGELOG_PATH
-
-
-def remove_cut_changelog_file(root: Path, tag: str, *, apply: bool) -> bool:
-    """Whether ``CHANGELOG.md`` is on the tree and ``tag``'s cut added it.
-
-    ``apply`` deletes the file when the answer is ``True``; staging that deletion
-    is the caller's.
+    ``apply`` deletes it then. An unreadable tag, parent or repository answers
+    ``False``: an unreadable cut never removes a file.
     """
     changelog = root / CHANGELOG_PATH
-    if not changelog.is_file() or not release_cut_added_changelog(root, tag):
+    tag = f"v{released}"
+    args = ["diff", "--name-only", "--diff-filter=A", "--no-renames"]
+    args += [f"{tag}^1", f"{tag}^{{commit}}", "--", CHANGELOG_PATH]
+    git = ["git", "-C", str(root), *args]
+    listing = subprocess.run(git, capture_output=True, text=True, timeout=60)
+    if not changelog.is_file() or listing.stdout.strip() != CHANGELOG_PATH:
         return False
     if apply:
         changelog.unlink()
     return True
-
-
-def remove_cut_changelog(root: Path, decision: BumpDecision, apply: bool) -> bool:
-    """Whether the cut's ``CHANGELOG.md`` goes (deleted when ``apply``)."""
-    return remove_cut_changelog_file(root, f"v{decision.released_version}", apply=apply)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -306,7 +254,8 @@ def main(argv: list[str] | None = None) -> int:
         dev_version = read_project_version(args.pyproject)
         decision = decide(dev_version, args.released)
         applied = apply_decision(args.pyproject, decision) if args.apply else False
-        removal = remove_cut_changelog(args.pyproject.parent, decision, args.apply)
+        released = decision.released_version
+        removal = remove_cut_changelog(args.pyproject.parent, released, args.apply)
     except BumpConfigError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
