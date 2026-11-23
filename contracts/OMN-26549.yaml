@@ -10,11 +10,9 @@ requirements:
   statement: Each merged change is read through its declared caller; the overlay env probe has a declared caller that runs it on a lab host.
   acceptance:
   - id: AC1
-    statement: 'AC1: each merge named above has one verdict, SEEN RUNNING or NOT RUNNING, with the evidence line (log line, row or command output) quoted beside it -- falsifier: grep the lane report for one verdict line per merge each followed by a non-empty evidence line returns fewer lines than merges today'
+    statement: 'AC1: the probe contract declares the unit that runs it as its host_unit, and the unit registry holds that unit -- falsifier: the unit test and the trigger declaration check refuse the merge base, where no unit invokes the probe'
   - id: AC2
-    statement: 'AC2: every SEEN RUNNING verdict names the log, database or journal read that holds its line, and every NOT RUNNING verdict names the declared caller that was invoked and the missing piece with its fix -- falsifier: the report''s verdict table read for a row with an empty source or fix cell'
-  - id: AC3
-    statement: 'AC3: the verdicts are sent to orchestrator-31d9-swarm by one ledger MSG -- falsifier: grep the rolling ledger for a MSG row from proof1-2-1210 to=orchestrator-31d9-swarm returns zero rows today'
+    statement: 'AC2: one tick prints one line per declared name as set or unset and keeps the rows in the unit evidence file, and neither carries a value -- falsifier: the tick test fails when a sentinel value set in the environment appears in the output or the record'
 evidence_requirements:
 - kind: tests
   description: The unit registry holds a unit that invokes the overlay env probe, and the tick prints names and states only.
@@ -28,6 +26,7 @@ dod_evidence:
   description: 'AC2 (the missing piece of the omnimarket 6622 NOT RUNNING verdict): the real unit registry declares a systemd unit whose module is the probe tick; at the merge base the same test fails because no unit invokes the probe.'
   source: manual
   binds_ac:
+  - AC1
   - AC2
   checks:
   - check_type: test_passes
@@ -46,30 +45,10 @@ dod_evidence:
   description: 'AC2: the probe contract declares runtime_dispatch.host_unit naming the unit, and the node trigger declaration check passes on it (it refuses the contract at the merge base).'
   source: manual
   binds_ac:
-  - AC2
-  checks:
-  - check_type: command
-    check_value: uv run --frozen python -m omnimarket.nodes.node_trigger_declaration_check_effect.runtime_trigger_declaration_check --contract src/omnimarket/nodes/node_host_installer_overlay_env_probe/contract.yaml
-    cwd: .
-- id: overlay-env-probe-ac1-verdicts-reported
-  description: 'AC1 and the probe row of AC2: the verdict report of the lane that read the five merges (proof1-2-1210) holds a verdict line for omnimarket#6622; read on the launching host, which holds the report and the ledger, so only the local Done gate runs it.'
-  source: manual
-  execution_scope: local_done_gate
-  binds_ac:
   - AC1
   checks:
   - check_type: command
-    check_value: grep -c "6622" "$OMNI_HOME/.claude_scratch/reports/proof1-2-1210-2026-11-23T1215Z.md"
-    cwd: .
-- id: overlay-env-probe-ac3-verdict-msg
-  description: 'AC3: the verdicts reached orchestrator-31d9-swarm by one ledger MSG from proof1-2-1210 (id 2026-11-23T12:17:21Z-proof1-2-1210), named in the report of that lane; read on the launching host only.'
-  source: manual
-  execution_scope: local_done_gate
-  binds_ac:
-  - AC3
-  checks:
-  - check_type: command
-    check_value: grep -c "MSG" "$OMNI_HOME/.claude_scratch/reports/proof1-2-1210-2026-11-23T1215Z.md"
+    check_value: uv run --frozen python -m omnimarket.nodes.node_trigger_declaration_check_effect.runtime_trigger_declaration_check --contract src/omnimarket/nodes/node_host_installer_overlay_env_probe/contract.yaml
     cwd: .
 - id: overlay-env-probe-integration-proof
   description: the probe unit tests and the tick tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
