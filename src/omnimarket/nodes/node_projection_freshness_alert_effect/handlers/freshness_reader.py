@@ -10,8 +10,16 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any
 
+from omnimarket.handlers.done_items_fold import fold_done_items
+from omnimarket.handlers.ledger_row_parser import (
+    LedgerRowRefusalError,
+    parse_ledger_row,
+)
+from omnimarket.models.done_items import ModelDoneItemsRequest
 from omnimarket.nodes.node_projection_freshness_alert_effect.models import (
     FreshnessPolicyError,
+    ModelCoverageCheck,
+    ModelCoverageObservation,
     ModelFreshnessCheck,
     ModelFreshnessObservation,
     ModelReadsSource,
@@ -88,6 +96,69 @@ class PostgresFreshnessReader:
             return ModelFreshnessObservation(
                 supply_newest_at=supply_row[0],
                 demand_distinct_active=demand_row[0],
+            )
+        except Exception:
+            self.close()
+            raise
+
+    def read_coverage(self, check: ModelCoverageCheck) -> ModelCoverageObservation:
+        """Read demand and supply coverage for a freshness check."""
+        demand_relation = validate_identifier(check.demand_relation)
+        supply_relation = validate_identifier(check.supply_relation)
+        now = self._now()
+        older_than = now - timedelta(seconds=check.max_age_seconds)
+        since = now - timedelta(seconds=check.lookback_seconds)
+        try:
+            connection = self._connect()
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"SELECT raw_row FROM {demand_relation} "
+                    "WHERE row_type = 'TERMINAL' AND row_ts <= %s AND row_ts >= %s",
+                    (older_than, since),
+                )
+                rows = cursor.fetchall()
+            events = []
+            refused = 0
+            for row in rows:
+                try:
+                    events.append(parse_ledger_row(row[0]))
+                except (LedgerRowRefusalError, ValueError):
+                    refused += 1
+            projection = fold_done_items(ModelDoneItemsRequest(events=tuple(events)))
+            items = projection.items
+            if not items:
+                return ModelCoverageObservation(
+                    demand_done_tickets=0,
+                    unprojected_tickets=0,
+                    refused_rows=refused,
+                )
+            tickets = [item.ticket for item in items]
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"SELECT ticket, done_at, done_row_id FROM {supply_relation} "
+                    "WHERE ticket = ANY(%s)",
+                    (tickets,),
+                )
+                supply_rows = cursor.fetchall()
+            supply: dict[str, tuple[str, str]] = {}
+            for row in supply_rows:
+                ticket = row[0]
+                done_at = row[1]
+                done_row_id = row[2]
+                candidate = (done_at, done_row_id)
+                existing = supply.get(ticket)
+                if existing is None or candidate > existing:
+                    supply[ticket] = candidate
+            unprojected = sum(
+                1
+                for item in items
+                if (found := supply.get(item.ticket)) is None
+                or found < (item.done_at, item.done_row_id)
+            )
+            return ModelCoverageObservation(
+                demand_done_tickets=len(items),
+                unprojected_tickets=unprojected,
+                refused_rows=refused,
             )
         except Exception:
             self.close()

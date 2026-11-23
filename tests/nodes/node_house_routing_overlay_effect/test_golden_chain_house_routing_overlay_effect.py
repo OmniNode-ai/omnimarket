@@ -49,11 +49,15 @@ from omnimarket.nodes.node_house_routing_overlay_effect.models import (
     ModelHouseRoutingOverlayDeclaration,
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
-from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
+from omnimarket.projection.tenant_isolation import HOUSE_TENANT_UUID
 from omnimarket.routing.tenant_overlay_resolver import (
     TENANT_OVERLAY_TABLE,
     resolve_tenant_overlay,
 )
+
+#: The house tenant identity the node stores rows under and the runtime reads
+#: them by (OMN-26365): the canonical UUID, as the TEXT column holds it.
+HOUSE_TENANT_ID = str(HOUSE_TENANT_UUID)
 
 pytestmark = pytest.mark.usefixtures("stub_provider_quota_reader")
 
@@ -176,7 +180,7 @@ def test_golden_chain_declare_resolve_retire() -> None:
     handler = HandlerRoutingIntent(tenant_overlay_db=store.db)
 
     # Link 0 -- before anything is declared, the house routes the platform ladder.
-    before = handler.handle(ModelRoutingIntent(payload=_request(HOUSE_TENANT_SLUG)))
+    before = handler.handle(ModelRoutingIntent(payload=_request(HOUSE_TENANT_ID)))
     assert before.selected_backend_ref == "local-coder"
 
     # Link 1 -- the typed declaration, written by the EFFECT.
@@ -200,19 +204,19 @@ def test_golden_chain_declare_resolve_retire() -> None:
 
     # Link 2 -- the stored row, read back through the real resolver.
     resolved = resolve_tenant_overlay(
-        store.db, tenant_id=HOUSE_TENANT_SLUG, task_type="code_generation"
+        store.db, tenant_id=HOUSE_TENANT_ID, task_type="code_generation"
     )
     assert resolved is not None
     assert resolved.backend_id == "lab-omnipc2"
 
     # Link 3 -- the routing decision the deployed handler produces.
-    after = handler.handle(ModelRoutingIntent(payload=_request(HOUSE_TENANT_SLUG)))
+    after = handler.handle(ModelRoutingIntent(payload=_request(HOUSE_TENANT_ID)))
     assert after.selected_backend_ref == "lab-omnipc2"
     assert after.endpoint_url.endswith(".invalid:9/v1/chat/completions")
 
     # Link 3b -- the same store, a different tenant, no leak. Scoping, not a
     # fast path: the reader is holding the house row while it answers.
-    assert store.db.query(TENANT_OVERLAY_TABLE, {"tenant_id": HOUSE_TENANT_SLUG})
+    assert store.db.query(TENANT_OVERLAY_TABLE, {"tenant_id": HOUSE_TENANT_ID})
     assert (
         resolve_tenant_overlay(
             store.db, tenant_id="acme-corp", task_type="code_generation"
@@ -233,9 +237,9 @@ def test_golden_chain_declare_resolve_retire() -> None:
     assert retired.rows_removed == 1
     assert (
         resolve_tenant_overlay(
-            store.db, tenant_id=HOUSE_TENANT_SLUG, task_type="code_generation"
+            store.db, tenant_id=HOUSE_TENANT_ID, task_type="code_generation"
         )
         is None
     )
-    final = handler.handle(ModelRoutingIntent(payload=_request(HOUSE_TENANT_SLUG)))
+    final = handler.handle(ModelRoutingIntent(payload=_request(HOUSE_TENANT_ID)))
     assert final.selected_backend_ref == "local-coder"

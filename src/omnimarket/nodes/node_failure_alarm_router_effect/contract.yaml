@@ -1,0 +1,65 @@
+name: node_failure_alarm_router_effect
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >
+  Reads failure classes from ledger rows and the landing controller's tick lines and delivers exactly one alarm per
+  cause to two places: the live orchestrator lane's inbox (a ledger STATUS alarm row plus a MSG) and the operator's
+  push channel (the alert_command field the host reconcile alarm uses). The classes are a landing controller that
+  refused three ticks in a row (names the refusal kind and the first refused tick), a lane that ended
+  ledger-refused (exit 70), and a red default branch (the STATUS rows node_red_main_alarm_effect writes); a held
+  roll command older than 30 minutes is a typed gap because the roll gate's state is not in ledger rows.
+  The cause key is class plus subject; one alarm row and one delivery exist per key until a resolved row is written,
+  and the resolved row carries the minutes the cause lasted. The orchestrator lane is resolved from the live open
+  CLAIM rows at delivery time; an addressee that resolves to no live lane is an alarm to the push channel and never
+  a silent drop. A ledger source that parses to zero rows of a non-empty source refuses loudly, and every fire first
+  proves with a synthetic failure row that one alarm reaches both destinations.
+input_model:
+  name: ModelFailureAlarmRequest
+  module: omnimarket.nodes.node_failure_alarm_router_effect.models
+output_model:
+  name: ModelFailureAlarmResult
+  module: omnimarket.nodes.node_failure_alarm_router_effect.models
+handler:
+  module: omnimarket.nodes.node_failure_alarm_router_effect.handler
+  class: HandlerFailureAlarmRouter
+  input_model: omnimarket.nodes.node_failure_alarm_router_effect.models.ModelFailureAlarmRequest
+  output_model: omnimarket.nodes.node_failure_alarm_router_effect.models.ModelFailureAlarmResult
+entrypoint:
+  name: NodeFailureAlarmRouterEffect
+  module: omnimarket.nodes.node_failure_alarm_router_effect.node
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_failure_alarm_router_effect.handler:HandlerFailureAlarmRouter
+  handlers:
+    - operation: failure_alarm_router.evaluate
+      topic: onex.cmd.omnimarket.failure-alarm-router-requested.v1
+      handler:
+        name: HandlerFailureAlarmRouter
+        module: omnimarket.nodes.node_failure_alarm_router_effect.handler
+terminal_event: onex.evt.omnimarket.failure-alarm-router-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.failure-alarm-router-requested.v1
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 300000
+  runtime_profiles:
+    - effects
+  side_effects: [read ledger rows, read the landing controller tick lines, append STATUS alarm, STATUS resolved and MSG rows through the bus ledger writer, send one push through the alert command]
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.failure-alarm-router-requested.v1]
+  publish_topics: [onex.evt.omnimarket.failure-alarm-router-completed.v1]
+metadata:
+  transport_type: inmemory
+  ticket: OMN-26483
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.failure-alarm-router-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.failure-alarm-router-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.failure-alarm-router-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.failure-alarm-router-completed.v1, operation: DESCRIBE}
+externally_consumed_topics:
+  - onex.evt.omnimarket.failure-alarm-router-completed.v1
