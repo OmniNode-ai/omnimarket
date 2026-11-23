@@ -87,9 +87,17 @@ description: >
   container or the manifest cannot be read or the lane declares no bound: an unreadable source never reads as healthy, and it
   dominates an alarm found on the containers that could be read.
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: broker_lag
+      handler:
+        name: HandlerBrokerLagCommand
+        module: omnimarket.nodes.node_lab_alarm.handlers.handler_broker_lag_command
+
 handler:
-  module: omnimarket.nodes.node_lab_alarm.handlers.handler_broker_lag
-  class: HandlerBrokerLag
+  module: omnimarket.nodes.node_lab_alarm.handlers.handler_broker_lag_command
+  class: HandlerBrokerLagCommand
   input_model: omnimarket.nodes.node_lab_alarm.models.model_lab_alarm.ModelBrokerLagCommand
 
 cli_handlers:
@@ -148,9 +156,11 @@ cli_handlers:
 
 # HandlerEffectsHeld (omnimarket.nodes.node_lab_alarm.handlers.handler_effects_held, input
 # ModelEffectsHeldCommand) takes its overlay settings, group reader, state store, lane dispatcher and clock
-# the same way, and is selected by the CLI verb effects-held; both handlers are built by the CLI, so no
-# handler_routing is declared. HandlerBrokerLag takes the overlay, the manifest source, the lag reader and the sample store as
-# constructor parameters, so the node runs through its own CLI, not handler_routing.
+# the same way, and is selected by the CLI verb effects-held. HandlerBrokerLag takes the overlay, the manifest source, the lag reader
+# and the sample store as constructor parameters, so the CLI builds it and the runtime cannot; the handler_routing above names
+# HandlerBrokerLagCommand (OMN-26509), which has no required constructor parameter, reads the alarm overlay and runs HandlerBrokerLag on
+# the command topic the event_bus block subscribes to. The runtime tick is consumed by node_lab_alarm_scheduled_effect alone, so a tick
+# runs the alarm once.
 
 descriptor:
   node_archetype: effect
@@ -232,8 +242,15 @@ topics:
   container_restarts_run_failed: onex.evt.omnimarket.lab-alarm-container-restarts-failed.v1
 
 event_bus:
-  subscribe_topics: []
+  subscribe_topics:
+    - onex.cmd.omnimarket.lab-alarm-broker-lag-requested.v1
   publish_topics: []
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-alarm-broker-lag-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-alarm-broker-lag-requested.v1, operation: DESCRIBE}
 
 externally_consumed_topics:
   - onex.evt.omnimarket.lab-alarm-broker-lag-started.v1

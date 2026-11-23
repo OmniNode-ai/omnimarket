@@ -108,14 +108,36 @@ class HandlerLabAlarmScheduled:
                 build_handler=self._build_handler,
             )
         except NodeOverlayError:
-            return self._event(
+            return self._finished(
                 request,
                 "failed",
                 "the lab alarm overlay could not be read",
             )
         if outcome.failed:
-            return self._event(request, "failed", outcome.detail)
-        return self._event(request, "completed", outcome.detail)
+            return self._finished(request, "failed", outcome.detail)
+        return self._finished(request, "completed", outcome.detail)
+
+    def _finished(
+        self,
+        request: ModelRuntimeTick,
+        outcome: Literal["completed", "failed"],
+        detail: str,
+    ) -> ModelScheduleRunEvent:
+        """The run's event, and its one run line in the runtime log (OMN-26509).
+
+        node_lab_alarm subscribes to no topic: the CLI and this node's tick run it, and the runtime's wiring
+        lines are the only lines it logs. A run that reached the alarm writes one line here, with its outcome
+        and the time it finished, next to the record the alarm keeps in broker-lag-runs.jsonl.
+        """
+        event = self._event(request, outcome, detail)
+        logger.info(
+            "%s: node_lab_alarm broker-lag run outcome=%s finished_at=%s detail=%s",
+            NODE_NAME,
+            outcome,
+            event.fired_at.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            detail,
+        )
+        return event
 
     async def handle_async(
         self, request: ModelRuntimeTick
