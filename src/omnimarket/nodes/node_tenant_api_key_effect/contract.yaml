@@ -108,13 +108,13 @@ db_io:
       schema: public
       migration: "20251211_m4_api_keys.sql"
       access: read_write
-      role: tenant_identity
+      role: tenant_api_keys
     - name: tenants
       database_ref: omninode_cloud
       schema: public
       migration: "20251207_tenants_uuid_pk.sql"
       access: read
-      role: tenant_identity
+      role: tenants
 overlay:
   node: node_tenant_api_key_effect
   roots_env: ONEX_SKILL_OVERLAY_ROOTS

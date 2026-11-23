@@ -13,7 +13,7 @@ import logging
 from collections.abc import Mapping
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from typing import cast
+from typing import Any, cast
 
 import asyncpg
 import httpx
@@ -66,7 +66,7 @@ def _pool(dsn: str) -> WorkflowPostgresPool:
         dsn_secret="unused",
         max_size=2,
         query_timeout_seconds=10,
-        secret_store=_DsnStore(dsn),  # type: ignore[arg-type]
+        secret_store=cast(Any, _DsnStore(dsn)),
     )
 
 

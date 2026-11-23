@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Any, cast
 from uuid import UUID
 
 import asyncpg
@@ -380,7 +381,7 @@ async def test_register_the_loser_of_a_unique_violation_rereads_the_winner_by_ha
         winner = register_handler(dsn)
         real = store_for(dsn)
         loser = register_handler(dsn)
-        loser._store = _StaleFirstReadStore(real)  # type: ignore[assignment]
+        cast(Any, loser)._store = _StaleFirstReadStore(real)
         command = register_command(tenant)
         try:
             won = await winner.handle(command)
@@ -402,7 +403,7 @@ async def test_register_the_loser_of_an_active_name_race_with_another_hash_is_a_
         winner = register_handler(dsn)
         real = store_for(dsn)
         loser = register_handler(dsn)
-        loser._store = _StaleFirstReadStore(real)  # type: ignore[assignment]
+        cast(Any, loser)._store = _StaleFirstReadStore(real)
         try:
             await winner.handle(register_command(tenant))
             lost = await loser.handle(

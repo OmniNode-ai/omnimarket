@@ -101,11 +101,11 @@ def test_db_tables_use_the_six_key_shape_on_the_cloud_database() -> None:
             "access",
             "role",
         }
-        assert (table["database_ref"], table["schema"], table["role"]) == (
-            "omninode_cloud",
-            "public",
-            "tenant_identity",
-        )
+        assert (table["database_ref"], table["schema"]) == ("omninode_cloud", "public")
+    assert {name: t["role"] for name, t in tables.items()} == {
+        "tenant_api_keys": "tenant_api_keys",
+        "tenants": "tenants",
+    }
     assert tables["tenant_api_keys"]["access"] == "read_write"
     assert tables["tenants"]["access"] == "read"
     assert tables["tenant_api_keys"]["migration"] == "20251211_m4_api_keys.sql"
