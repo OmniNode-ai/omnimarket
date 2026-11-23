@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
+import importlib
 import json
 import os
 import stat
@@ -27,6 +28,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from functools import cache
 from pathlib import Path
+from types import ModuleType
 from typing import Any, NamedTuple
 
 import yaml
@@ -321,6 +323,14 @@ _models_dev_read_state: contextvars.ContextVar[_ReadState | None] = (
 )
 
 
+def _load_fcntl() -> ModuleType | None:
+    """Return fcntl, or None where it is absent (it is POSIX only)."""
+    try:
+        return importlib.import_module("fcntl")
+    except ImportError:
+        return None
+
+
 def pricing_models_dev_index() -> ModelsDevIndex:
     """The prices a delegation call reads to price a model (OMN-23413 AC35).
 
@@ -348,11 +358,7 @@ def pricing_models_dev_index() -> ModelsDevIndex:
     with contextlib.suppress(OSError):
         lock_path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
-    try:
-        # fcntl is POSIX only; a client without it still reads, unlocked.
-        import fcntl
-    except ImportError:
-        fcntl = None  # type: ignore[assignment]
+    fcntl = _load_fcntl()
     try:
         if fcntl is not None:
             fcntl.flock(fd, fcntl.LOCK_EX)
