@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_agent_message_client_effect
+version: 1.0.0
+description: 'Client of the agent message topic: provides onex agent-message send and read, and a stdio MCP server exposing the same two operations.'
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_agent_message_client_effect: omnimarket.nodes.node_agent_message_client_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: external_effect
+dependencies:
+- omnibase_core>=0.39.0
+- click>=8.1.0
+- mcp>=2.0
+- pydantic>=2.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- agent-message
+- cli
+- mcp
+pack: data

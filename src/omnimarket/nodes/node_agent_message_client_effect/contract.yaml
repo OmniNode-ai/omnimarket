@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: agent_message_client_effect
+contract_name: node_agent_message_client_effect
+node_name: node_agent_message_client_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  The client of the agent message topic. HandlerAgentMessageSend checks a send
+  request (recipient, thread, kind, platform, text), stamps the sender and the
+  UTC send time, and hands the message to the agent message node;
+  HandlerAgentMessageRead checks a read request and asks that node for the
+  messages addressed to one recipient. Provides `onex agent-message send|read`
+  and the stdio MCP server `onex agent-message serve-mcp`, which expose the same
+  two handlers. The topic is declared by the agent message node, not here.
+node_type: effect
+lifecycle: experimental
+input_model:
+  name: ModelAgentMessageSendRequest
+  module: omnimarket.nodes.node_agent_message_client_effect.models.model_agent_message_request
+output_model:
+  name: ModelAgentMessageSendResult
+  module: omnimarket.nodes.node_agent_message_client_effect.models.model_agent_message_request
+
+handler:
+  name: HandlerAgentMessageSend
+  module: omnimarket.nodes.node_agent_message_client_effect.handlers.handler_agent_message_send
+  class: HandlerAgentMessageSend
+  input_model: omnimarket.nodes.node_agent_message_client_effect.models.model_agent_message_request.ModelAgentMessageSendRequest
+  output_model: omnimarket.nodes.node_agent_message_client_effect.models.model_agent_message_request.ModelAgentMessageSendResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: agent_message_send
+      handler:
+        name: HandlerAgentMessageSend
+        module: omnimarket.nodes.node_agent_message_client_effect.handlers.handler_agent_message_send
+      event_model:
+        name: ModelAgentMessageSendRequest
+        module: omnimarket.nodes.node_agent_message_client_effect.models.model_agent_message_request
+    - operation: agent_message_read
+      handler:
+        name: HandlerAgentMessageRead
+        module: omnimarket.nodes.node_agent_message_client_effect.handlers.handler_agent_message_read
+      event_model:
+        name: ModelAgentMessageReadRequest
+        module: omnimarket.nodes.node_agent_message_client_effect.models.model_agent_message_request
+
+# Run from the `onex agent-message` command or its MCP server, not by a bus
+# command: the topic belongs to the agent message node this client calls.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: "onex agent-message send | read | serve-mcp, which build the handlers in process and print their typed results"
+metadata:
+  transport_type: local
