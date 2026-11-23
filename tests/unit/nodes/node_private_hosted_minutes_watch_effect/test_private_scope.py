@@ -80,9 +80,7 @@ def build(payload, overlay=OVERLAY, visibility=None, sender=None):
 
 
 def req(tmp_path):
-    return ModelHostedMinutesWatchRequest(
-        day=DAY, state_dir=tmp_path / "state", ledger=tmp_path / "ledger.md"
-    )
+    return ModelHostedMinutesWatchRequest(day=DAY, state_dir=tmp_path / "state")
 
 
 def test_public_minutes_are_uncounted_and_raise_no_alert(tmp_path):
@@ -198,8 +196,6 @@ def test_cli_overlay_missing_exits_nonzero_and_writes_heartbeat(
             "2026-10-18",
             "--state-dir",
             str(tmp_path / "state"),
-            "--ledger",
-            str(tmp_path / "ledger.md"),
         ]
     )
     assert code != 0
