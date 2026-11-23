@@ -303,6 +303,33 @@ dod_evidence:
     check_value: uv run pytest tests/e2e/test_setup_local_stack.py tests/e2e/test_setup_stack_requirements.py
       tests/e2e/test_setup_tenant_endpoint_registration.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn23413-t2-ac9-platform-preflight
+  description: >-
+    Evidence for delivery-plan T2 AC9 (Linux admission), which is not this
+    contract's AC9. It binds contract criterion AC9 (Complete CLI behavior) only
+    for what its tests show of the preflight command: typed, clean JSON output,
+    and actionable, secret-free failures (a sentinel planted in an unreadable
+    os-release error never reaches the observation). No criterion of this
+    contract states Linux admission, so admission itself is bound to none, and
+    these tests record none of the delivery-unit ownership, prerequisites or
+    AC/TI report that the ticket's AC32 requires. The tests check that the
+    preflight admits an os-release ID the setup contract lists (ubuntu) and
+    refuses unlisted distributions, ID_LIKE clones, other platforms and an
+    unreadable /etc/os-release; that Ubuntu on a WSL 1 kernel is refused with
+    the WSL 2 remedy while native Ubuntu and WSL 2 kernels are admitted; that
+    native Windows gets the Ubuntu under WSL 2 remedy without reading the
+    workspace or its disk, with Unix locking unavailable, and leaves the profile
+    and workspace untouched; and that the installed preflight succeeds on an
+    Ubuntu host.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_linux_preflight.py
+      tests/e2e/test_setup_preflight_cli.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn23413-ac8-migration-repair
   description: One versioned journal, nonblocking lock, atomic checkpoints, one-time import, resume and
     a no-write unchanged rerun.

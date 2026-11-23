@@ -12,6 +12,9 @@ runs the select step on the bus ledger reader's rows
 Every input that is stale, unreadable or not moved ends the pass with a typed REFUSED line and a non-zero
 exit before any lane is launched; no input is ever replaced by an older file.
 
+A refusal for an input that is absent, stale or unreadable writes ``MISSING <source> age=<seconds|absent|unknown> bound=<seconds|unknown>`` first,
+naming the source, then the REFUSED line (OMN-26376).
+
 Exit 0: the tick ran (what it placed is read from its own line). Exit 69: an input was unavailable, nothing
 was launched. Exit 78: an overlay could not be loaded. Exit 2 or 3: the tick or select entry's own code.
 """
@@ -86,6 +89,7 @@ from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.pool_snapshot
 )
 from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.snapshot_errors import (
     PoolSnapshotSourceError,
+    PoolSnapshotStaleError,
 )
 
 PROBE_FLAG = "--probe"
@@ -98,13 +102,27 @@ _STEP = "run_lab_fill_unit"
 
 
 class _RefusedError(Exception):
-    """An input of the pass was unavailable: the typed reason, the detail and the exit code."""
+    """An input of the pass was unavailable: the typed reason, the detail and the exit code.
 
-    def __init__(self, reason: str, detail: str, code: int) -> None:
+    ``missing`` is the pass's loud first line when the refusal is an input that is absent, stale or unreadable (OMN-26376):
+    ``MISSING <source> age=<seconds|absent|unknown> bound=<seconds|unknown>``; empty for a refusal that is no input's age.
+    """
+
+    def __init__(self, reason: str, detail: str, code: int, missing: str = "") -> None:
         super().__init__(reason)
         self.reason = reason
         self.detail = detail
         self.code = code
+        self.missing = missing
+
+
+def _missing_line(
+    source: str, *, age_s: int | None, bound_s: int | None, absent: bool
+) -> str:
+    """The loud line of an input that cannot be used: the source named, its age and the bound it was held to."""
+    age = "absent" if absent else "unknown" if age_s is None else str(age_s)
+    bound = "unknown" if bound_s is None else str(bound_s)
+    return f"MISSING {source} age={age} bound={bound}"
 
 
 def _hosts_from_snapshot(
@@ -126,7 +144,18 @@ def _hosts_from_snapshot(
         OSError,
         ValueError,
     ) as exc:
-        raise _RefusedError("pool-snapshot", str(exc), _EXIT_INPUT_UNAVAILABLE) from exc
+        stale = exc if isinstance(exc, PoolSnapshotStaleError) else None
+        raise _RefusedError(
+            "pool-snapshot",
+            str(exc),
+            _EXIT_INPUT_UNAVAILABLE,
+            _missing_line(
+                "pool-snapshot",
+                age_s=None if stale is None else stale.age_seconds,
+                bound_s=overlay.pool_snapshot_max_age_seconds,
+                absent=stale is not None and stale.absent,
+            ),
+        ) from exc
     return tuple(
         sorted(
             (
@@ -179,7 +208,12 @@ def _read_work(
         )
     except LiveWorkSourceError as exc:
         raise _RefusedError(
-            f"work-source:{exc.source}", exc.reason, _EXIT_INPUT_UNAVAILABLE
+            f"work-source:{exc.source}",
+            exc.reason,
+            _EXIT_INPUT_UNAVAILABLE,
+            _missing_line(
+                exc.source, age_s=exc.age_s, bound_s=exc.bound_s, absent=exc.absent
+            ),
         ) from exc
 
 
@@ -280,6 +314,8 @@ def run_once(
             overlay, _candidates(rows), environ, now, selector, stderr
         )
     except _RefusedError as refusal:
+        if refusal.missing:
+            stderr.write(refusal.missing + "\n")
         stderr.write(
             f"lab-fill unit: step={_STEP} REFUSED reason={refusal.reason} detail={refusal.detail}\n"
         )
