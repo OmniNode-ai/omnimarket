@@ -57,6 +57,9 @@ descriptor:
   timeout_ms: 600000
 runtime_dispatch:
   subscribe_topic: "onex.cmd.omniintelligence.content-captured.v1"
+  # The work-ledger serve command attaches this node to the content-captured topic; nothing else starts it.
+  callers:
+    - path: src/omnimarket/work_ledger_bus/cli.py
   terminal_events:
     success: "onex.evt.omnimarket.operator-capture-recorded.v1"
 consumed_events:
