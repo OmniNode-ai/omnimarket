@@ -70,3 +70,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_lab_fill_effect/test_runtime_lab_fill_tick_missing_line.py tests/nodes/node_lane_host_pool_snapshot_effect/test_pool_snapshot_write_before_mirror.py -q --no-cov --tb=line
     cwd: .
+- id: dod-omn26376-post-release-bump-0-4-326
+  description: 'Post-release bump after the 0.4.325 cut: pyproject.toml and uv.lock move to 0.4.326 through scripts/ci/post_release_dev_bump.py, the 70 work contracts that pin the uv.lock digest move with it, and the CHANGELOG.md the release commit re-added is deleted as the removed-prose test requires. At dev 5b1931de8a the version equals v0.4.325, the script declares bump and the release-identity hook refuses packaged-source commits.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_post_release_dev_bump_omn18010.py tests/ci/test_post_release_dev_bump_omn26376.py tests/ci/test_repository_prose_removed_omn17427.py tests/nodes/test_work_contract_pins_current.py -q -p no:randomly --no-cov
+    cwd: .
