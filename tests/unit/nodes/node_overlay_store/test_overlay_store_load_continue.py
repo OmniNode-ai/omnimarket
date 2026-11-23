@@ -9,6 +9,7 @@ the third was never published and nothing named the second. These tests run the 
 
 from __future__ import annotations
 
+import asyncio
 import faulthandler
 import json
 import os
@@ -28,6 +29,9 @@ from omnimarket.nodes.node_overlay_store_load_effect import (
 )
 from omnimarket.nodes.node_overlay_store_load_effect import (
     runtime_overlay_store_load_tick as tick,
+)
+from omnimarket.nodes.node_overlay_store_load_effect.handlers import (
+    HandlerOverlayStoreLoad,
 )
 from tests.unit.nodes.node_overlay_store.support import LOADED_TOPIC, FakeBus
 
@@ -210,3 +214,130 @@ def test_an_unchanged_clone_asserts_each_overdue_id_again_within_the_hour(
     held = json.loads((state / "last-load.json").read_text(encoding="utf-8"))
     assert held["first_one"]["asserted_at"] == NOW.isoformat()
     assert held["third_one"]["asserted_at"] == (NOW - timedelta(minutes=10)).isoformat()
+
+
+def test_a_run_the_overlay_refuses_ends_the_tick_and_records_why(
+    home: Path,
+    bus: FakeBus,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    async def refused(*_: Any) -> Any:
+        raise ValueError("the overlay home is unreadable")
+
+    monkeypatch.setattr(tick, "_run", refused)
+    state = tmp_path / "state"
+    assert run_tick(home, state) == tick.EXIT_REFUSED
+    assert "ValueError: the overlay home is unreadable" in capfd.readouterr().err
+    record = json.loads((state / "last-run.json").read_text(encoding="utf-8"))
+    assert record["refused"] == "the overlay home is unreadable"
+    assert bus.published == []
+
+
+def test_an_alarm_the_bus_cannot_carry_is_still_named_on_stderr(
+    home: Path,
+    bus: FakeBus,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    async def down(*_: Any) -> None:
+        raise ConnectionError("broker unreachable")
+
+    monkeypatch.setattr(tick, "_alarm", down)
+    state = tmp_path / "state"
+    seed(state, home, {i: NOW - timedelta(hours=3) for i in IDS})
+    assert run_tick(home, state) == tick.EXIT_REFUSED
+    err = capfd.readouterr().err
+    assert "ALARM" in err
+    assert '"overlay_id":"second_one"' in err
+    assert "alarm bus: ConnectionError: broker unreachable" in err
+    assert alarms(bus) == []
+
+
+def test_an_unreadable_assertion_time_counts_as_no_assertion(
+    home: Path, bus: FakeBus, tmp_path: Path
+) -> None:
+    state = tmp_path / "state"
+    seed(state, home, {i: NOW - timedelta(minutes=10) for i in IDS})
+    held = json.loads((state / "last-load.json").read_text(encoding="utf-8"))
+    held["second_one"]["asserted_at"] = "not a time"
+    (state / "last-load.json").write_text(json.dumps(held), encoding="utf-8")
+    run_tick(home, state)
+    raised = alarms(bus)
+    assert [a["overlay_id"] for a in raised] == ["second_one"]
+    assert raised[0]["newest_assertion_at"] is None
+    assert raised[0]["age_s"] is None
+
+
+def test_an_overlay_listing_no_ids_refuses_the_tick(
+    home: Path,
+    bus: FakeBus,
+    tmp_path: Path,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    own = home / "overlays" / "overlays" / "node_overlay_store_load_effect"
+    (own / "overlay.yaml").write_text(
+        OVERLAY.replace(f"overlay_ids: [{', '.join(IDS)}]\n", ""), encoding="utf-8"
+    )
+    assert run_tick(home, tmp_path / "state") == tick.EXIT_REFUSED
+    assert "names no clone_relpath, clone_branch and overlay_ids" in (
+        capfd.readouterr().err
+    )
+    assert bus.published == []
+
+
+def test_the_command_line_loader_names_each_refused_id_and_exits_nonzero(
+    home: Path, bus: FakeBus, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = load_module.main(
+        [
+            "--clone",
+            str(home / "overlays"),
+            "--id",
+            "first_one",
+            "--id",
+            "second_one",
+            "--id",
+            "third_one",
+        ]
+    )
+    out = capsys.readouterr()
+    assert code == 65
+    assert published_ids(bus) == ["first_one", "third_one"]
+    assert "refused second_one" in out.err
+    assert out.out.count("first_one") >= 1
+
+
+def test_a_source_that_cannot_be_read_is_a_refusal_of_that_id_alone(
+    tmp_path: Path,
+) -> None:
+    class Unreadable:
+        def read(self, overlay_id: str) -> Any:
+            raise OSError("disk gone")
+
+        def model_of(self, overlay_id: str) -> Any:
+            raise AssertionError("never reached")
+
+    loader = HandlerOverlayStoreLoad(
+        source=Unreadable(),
+        bus=FakeBus(),
+        topic=LOADED_TOPIC,
+        loaded_by="test",
+    )
+    batch = asyncio.run(loader.handle_many(["only_one"]))
+    assert batch.results == ()
+    assert [r.overlay_id for r in batch.refused] == ["only_one"]
+    assert "OSError" in batch.refused[0].reason
+
+
+def test_the_command_line_loader_without_its_overlay_exits_nonzero(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "no-overlays"))
+    code = load_module.main(["--clone", str(tmp_path), "--id", "first_one"])
+    assert code == 65
+    assert "NodeOverlayNotFoundError" in capfd.readouterr().err
