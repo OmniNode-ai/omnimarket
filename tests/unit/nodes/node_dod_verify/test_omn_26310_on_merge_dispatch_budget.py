@@ -26,6 +26,9 @@ from typing import Any
 
 import pytest
 
+from omnimarket.enums.enum_dod_verify_execution_audience import (
+    EnumDodVerifyExecutionAudience,
+)
 from omnimarket.events.github import ModelPrMergedEvent
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify import (
     HandlerDodVerify,
@@ -41,6 +44,7 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumEvidenceCheckStatus,
     EnumEvidenceUnverifiableCause,
     ModelDodVerifyState,
+    ModelEvidenceCheckResult,
 )
 from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
     EvidenceCollector,
@@ -73,7 +77,14 @@ def _items() -> list[dict[str, Any]]:
 class _SerialChecksCollector(EvidenceCollector):
     """The real collector's per-item runner, over a fixed list of slow items."""
 
-    def collect(self, ticket_id, contract_path=None, execution_audience=None):  # type: ignore[no-untyped-def]
+    def collect(
+        self,
+        ticket_id: str,
+        contract_path: str | None = None,
+        execution_audience: EnumDodVerifyExecutionAudience = (
+            EnumDodVerifyExecutionAudience.HOSTED
+        ),
+    ) -> list[ModelEvidenceCheckResult]:
         return [self._check_evidence_item(item, ticket_id) for item in _items()]
 
 
