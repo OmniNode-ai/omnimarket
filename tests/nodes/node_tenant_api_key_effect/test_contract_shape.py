@@ -89,24 +89,22 @@ def test_the_dev_only_block_holds_only_the_allowed_lane_name() -> None:
     assert _contract()["dev_only"] == {"lane": "dev"}
 
 
-def test_db_tables_use_the_six_key_shape_on_the_cloud_database() -> None:
-    tables = {t["name"]: t for t in _contract()["identity_io"]["db_tables"]}
-    assert set(tables) == {"tenant_api_keys", "tenants"}
-    for table in tables.values():
-        assert set(table) == {
-            "name",
-            "database_ref",
-            "schema",
-            "migration",
-            "access",
-            "role",
-        }
-        assert (table["database_ref"], table["schema"]) == ("omninode_cloud", "public")
-    assert {name: t["role"] for name, t in tables.items()} == {
-        "tenant_api_keys": "tenant_api_keys",
-        "tenants": "tenants",
+def test_the_identity_database_is_named_by_env_and_no_unresolvable_db_io_is_declared() -> (
+    None
+):
+    contract = _contract()
+    assert contract["tenant_identity"]["database"] == {
+        "dsn_env": "TENANT_IDENTITY_DATABASE_DSN"
     }
-    assert tables["tenant_api_keys"]["access"] == "read_write"
-    assert tables["tenants"]["access"] == "read"
-    assert tables["tenant_api_keys"]["migration"] == "20251211_m4_api_keys.sql"
-    assert tables["tenants"]["migration"] == "20251207_tenants_uuid_pk.sql"
+    # database_ref omninode_cloud resolves in no omnibase_infra topology, so the event chain gate refuses a db_io block.
+    assert "db_io" not in contract
+
+
+def test_the_revoke_command_topic_has_a_named_external_producer() -> None:
+    produced = {
+        e["topic"]: e["producer"] for e in _contract()["externally_produced_topics"]
+    }
+    assert "onex.cmd.omnimarket.tenant-api-key-revoke-requested.v1" in produced
+    assert (
+        "onex CLI" in produced["onex.cmd.omnimarket.tenant-api-key-revoke-requested.v1"]
+    )
