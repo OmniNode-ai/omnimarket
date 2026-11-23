@@ -1,0 +1,71 @@
+schema_version: 1.0.0
+ticket_id: OMN-26475
+title: "omnimarket: the onex tenant CLI group creates a tenant and mints and revokes its gateway key over the bus"
+summary: "A new onex tenant command group (create, show, key mint, key revoke), registered through the onex.cli entry point. Each command dispatches one operation through omnibase_core's public publish_and_poll on that operation's explicit -requested and -completed topics read from the owning node's contract. key mint generates the plaintext in the caller's process, sends only its sha256 digest, and with --store-dev-secret writes the plaintext create-only to the new gateway_key folder of the secret store only when the command lane, the api-key node's overlay lane and the store environment all equal the dev values. The group lives in src/omnimarket/handlers/cli_tenant.py because the canonical-file-shape ratchet refuses a new code file under src/omnimarket/cli/. This change stacks on the tenant provision node and the tenant api key node, so it merges after both."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26475-tenant-cli-group
+  statement: An operator creates a tenant and mints and revokes its gateway key with one onex command group over the bus.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the CLI tests pass: plaintext appears in stdout exactly once and in no log record, the bus payload has key_hash and no plaintext, --store-dev-secret is refused before any store or bus call in each wrong-lane and wrong-store case, a store exists answer gives no registration, a timed-out first dispatch is reported registered through already_registered on the resend, and each command publishes on its own operation topic pair -- falsifier: `uv run pytest tests/unit/cli/test_cli_tenant.py -q` fails, or any case passes before the command exists"
+  - id: AC2
+    statement: "AC2: the help output lists the commands in an installed wheel -- falsifier: `onex tenant --help` on the lab misses create, show or key, or `onex tenant key --help` misses mint or revoke"
+  - id: AC3
+    statement: "AC3: the group registers through the entry point and never by hand wiring -- falsifier: the entry-point registration test (tests/unit/cli/test_cloud_cli_entry_point_registration_omn16967.py pattern) does not cover `tenant`, or a hand add_command passes it"
+  - id: AC4
+    statement: "AC4: the gateway_key reference maps to its folder and key -- falsifier: the test in `tests/nodes/node_secret_store_effect/` asserting `_load_namespaces` maps `gateway_key/<name>` to `/tenant-gateway-keys` and the key fails"
+evidence_requirements:
+- kind: tests
+  description: The tenant CLI tests, the entry-point registration tests and the gateway_key namespace test pass at the pushed head.
+  command: uv run pytest tests/unit/cli/test_cli_tenant.py tests/unit/cli/test_tenant_cli_entry_point_registration_omn26475.py tests/nodes/node_secret_store_effect -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26475-ac1
+  description: 'AC1: the CLI tests pass at the pushed head; they fail at collection on the commit before the change, where the command does not exist.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/cli/test_cli_tenant.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26475-ac2
+  description: 'AC2: onex tenant --help lists create, show and key, and onex tenant key --help lists mint and revoke, from the installed entry point.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: "uv run onex tenant --help | grep -E '^  (create|show|key) ' | wc -l | grep -qx 3 && uv run onex tenant key --help | grep -E '^  (mint|revoke) ' | wc -l | grep -qx 2"
+    cwd: .
+- id: dod-omn26475-ac3
+  description: 'AC3: the entry-point registration test covers tenant: declared in pyproject, advertised by the installed distribution, and never hand-wired.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/cli/test_tenant_cli_entry_point_registration_omn26475.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26475-ac4
+  description: 'AC4: _load_namespaces maps gateway_key to /tenant-gateway-keys with key template {name}, and a create through the handler lands under that folder.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_secret_store_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26475-integration-proof
+  description: 'Run the tenant CLI, entry-point and namespace tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26475 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/cli/test_cli_tenant.py tests/unit/cli/test_tenant_cli_entry_point_registration_omn26475.py tests/nodes/node_secret_store_effect -q --no-cov -p no:cacheprovider

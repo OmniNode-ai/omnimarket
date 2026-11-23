@@ -1657,6 +1657,11 @@ cloud = "omnimarket.cli.cli_cloud:cloud_group"
 # this distribution (core is below omnimarket), and "market" is scoped to market
 # packages by its own group docstring.
 local = "omnimarket.cli.cli_local:local_group"
+# OMN-26475: `onex tenant` -- the operator surface that creates a tenant, shows it, and
+# registers and revokes its gateway key over the bus. Registered here for the same
+# reason as "cloud" and "local": the CLI discovers this group over installed
+# distributions, so it is never hand-wired with add_command.
+tenant = "omnimarket.handlers.cli_tenant:tenant_group"
 # OMN-19458: `onex test-loop` -- run the delegated test loop, and serve its
 # focused runs on a lab docker host (`serve-runs`). Registered here for the
 # same reason as "cloud" and "local": the CLI discovers this group over

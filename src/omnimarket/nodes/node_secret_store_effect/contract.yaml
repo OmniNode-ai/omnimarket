@@ -143,6 +143,14 @@ reference_namespaces:
     folder: /provider-credentials
     key_template: "{name}"
     overlay_mapped: true
+  # OMN-26475: a dev tenant's gateway key, written create-only by `onex tenant key
+  # mint --store-dev-secret` under the name <tenant_slug>.<key_name>.<first 8 hex of
+  # the key hash>: secret://onex/gateway_key/<name> is key <name> in /tenant-gateway-keys.
+  # A name whose earlier mint failed or was revoked mints again under a new hash, so it
+  # never meets `exists`.
+  gateway_key:
+    folder: /tenant-gateway-keys
+    key_template: "{name}"
 
 terminal_event: onex.evt.omnimarket.secret-store-completed.v1
 published_events:
