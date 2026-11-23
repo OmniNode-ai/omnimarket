@@ -23,6 +23,14 @@ description: >
   verified-by line, command and observation, that the draft must hold. Reads no file, runs no
   command and calls no model.
 
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: cross_owner_ask_check
+      handler:
+        name: HandlerCrossOwnerAskCheck
+        module: omnimarket.nodes.node_cross_owner_ask_check_compute.handlers.handler_cross_owner_ask_check
+
 handler:
   module: omnimarket.nodes.node_cross_owner_ask_check_compute.handlers.handler_cross_owner_ask_check
   class: HandlerCrossOwnerAskCheck
@@ -46,14 +54,31 @@ output_model:
   description: The verdict, whether the draft may go on, the verified-by line and the matches.
 
 runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.cross-owner-ask-check-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.cross-owner-ask-check-completed.v1
+    failure: onex.evt.omnimarket.cross-owner-ask-check-failed.v1
   external_trigger: true
   on_demand:
     command: uv run onex node node_cross_owner_ask_check_compute --input <request.json>
     owner: OmniNode Platform Team
 
 event_bus:
-  subscribe_topics: []
-  publish_topics: []
+  subscribe_topics:
+    - onex.cmd.omnimarket.cross-owner-ask-check-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.cross-owner-ask-check-completed.v1
+    - onex.evt.omnimarket.cross-owner-ask-check-failed.v1
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.cross-owner-ask-check-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.cross-owner-ask-check-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.cross-owner-ask-check-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.cross-owner-ask-check-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.cross-owner-ask-check-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.cross-owner-ask-check-failed.v1, operation: DESCRIBE}
 
 metadata:
   ticket: OMN-26471
