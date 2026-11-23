@@ -2221,10 +2221,7 @@ units:
         - dispatch_command
       document:
         registry_root: "{registry_root}"
-        ledger: "{ledger_path}"
-        # The appender that serialises ledger writes, run by the interpreter of the checkout the request names
-        # (appender_root), because launchd's PATH has none.
-        ledger_lock: "{appender_root}/.venv/bin/onex-ledger"
+        # The interpreter of the checkout the request names (appender_root), because launchd's PATH has none.
         python: "{appender_root}/.venv/bin/python"
         # The runner the alarm starts, detached, for each episode it opens: the alarm adds --brief, --lane, --model and
         # --ticket. remote_lane_runner is the path of the remote-lane runner script of the installed omni plugin; unset,
