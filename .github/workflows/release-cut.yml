@@ -133,7 +133,7 @@ jobs:
       contents: write
     outputs:
       version: ${{ steps.tag.outputs.tag }}
-      tag_sha: ${{ steps.head.outputs.sha }}
+      tag_sha: ${{ steps.release_commit.outputs.sha }}
       workflows_touched: ${{ steps.scope.outputs.workflows_touched }}
     steps:
       # The App token is minted BEFORE the checkout, on purpose, and handed to
@@ -246,6 +246,44 @@ jobs:
           PYPI_PIN_RESOLVE_TIMEOUT_SECONDS: '900'
         run: python3 scripts/ci/verify_pypi_pin_resolvability.py dist/
 
+      # OMN-26166, RULING 2026-11-20T11:37:47Z: stability is based on released
+      # packages, so the commit this run tags locks omnibase-infra,
+      # omnibase-core and omnibase-compat from the package index, not from the
+      # dev merge tags dev keeps (RULING 2026-10-16). This is the one step that
+      # builds the release commit: dev HEAD plus a relocked uv.lock and a marker
+      # file, never pushed to dev. pyproject.toml is restored to dev's bytes, so
+      # the Internal Sibling Pins check (which reads [tool.uv.sources] only)
+      # sees the same pins it sees on dev. reopen-dev below checks out `dev` and
+      # never relocks, so dev and the reopen-dev commit keep their dev-tag locks.
+      # The commit has two parents, dev HEAD and main, so the sync-main
+      # fast-forward (force=false) still holds on the second release, whose dev
+      # parent does not descend from the first release commit.
+      - name: Build the release commit with the siblings relocked to the index
+        id: release_commit
+        env:
+          DECIDED_VERSION: ${{ needs.decide.outputs.version }}
+        run: |
+          set -euo pipefail
+          # release_relock.py is stdlib-only; load it by path so the package's
+          # other handlers (and their dependencies) are not imported.
+          RR="import sys, importlib.util as u; s = u.spec_from_file_location('release_relock', 'src/omnimarket/handlers/release_relock.py'); m = u.module_from_spec(s); sys.modules['release_relock'] = m; s.loader.exec_module(m); from pathlib import Path"
+          python3 -c "$RR; m.strip_pyproject(Path('.'))"
+          uv lock
+          git checkout -- pyproject.toml
+          DECIDED_VERSION="$DECIDED_VERSION" python3 -c "$RR; import os; m.write_marker(Path('.'), os.environ['DECIDED_VERSION'])"
+          python3 -c "$RR; raise SystemExit(m.verify(Path('.')))"
+          git config user.name "onexbot-occ-writer[bot]"
+          git config user.email "onexbot-occ-writer[bot]@users.noreply.github.com"
+          git add uv.lock .release-commit.json
+          TREE="$(git write-tree)"
+          SHA="$(git commit-tree "$TREE" -p HEAD -p origin/main \
+            -m "chore(release): release omnimarket v${DECIDED_VERSION}" \
+            -m "Locks omnibase-infra, omnibase-core and omnibase-compat from the package index (RULING 2026-11-20T11:37:47Z).")"
+          git checkout --detach "$SHA"
+          git diff --exit-code HEAD
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "Release commit ${SHA}"
+
       - name: Create and push the release tag
         id: tag
         env:
@@ -270,7 +308,7 @@ jobs:
           # of this job was given the App token. No URL-embedded token.
           git push origin "refs/tags/${TAG}"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "Tagged ${GITHUB_SHA} as ${TAG}"
+          echo "Tagged $(git rev-parse HEAD) as ${TAG}"
 
       # OMN-15603: resumable, retried publish. --check-url makes the upload
       # idempotent — uv queries the PyPI simple index and skips every file
