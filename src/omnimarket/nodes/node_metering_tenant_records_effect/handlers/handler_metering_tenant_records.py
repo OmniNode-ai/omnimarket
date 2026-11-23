@@ -23,9 +23,7 @@ from datetime import datetime
 from pathlib import Path
 from uuid import UUID
 
-from omnimarket.nodes.node_metering_summary_compute.models.model_metering_summary import (
-    ModelMeteringRecord,
-)
+from omnimarket.nodes.node_metering_summary_compute import ModelMeteringRecord
 from omnimarket.nodes.node_metering_tenant_records_effect.models.model_metering_tenant_records_request import (
     ModelMeteringTenantRecordsRequest,
 )
