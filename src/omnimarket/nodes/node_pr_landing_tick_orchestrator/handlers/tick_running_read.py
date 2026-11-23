@@ -26,6 +26,9 @@ from uuid import UUID
 
 import yaml
 
+from omnimarket.events.running_read_due import (
+    ModelRunningReadDueRequest,
+)
 from omnimarket.models.topic_provision.model_writer_topics_template import (
     ModelWriterTopicsTemplate,
 )
@@ -43,9 +46,6 @@ from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_runnin
 )
 from omnimarket.nodes.node_running_read_due_compute.handlers.handler_running_read_due import (
     HandlerRunningReadDue,
-)
-from omnimarket.nodes.node_running_read_due_compute.models.model_running_read_due import (
-    ModelRunningReadDueRequest,
 )
 
 NODES_ROOT = Path(__file__).resolve().parents[2]

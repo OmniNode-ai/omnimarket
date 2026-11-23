@@ -19,15 +19,15 @@ description: >-
   read from those rows (merged runtime changes with a closing row inside 60 minutes over all due rows).
 input_model:
   name: ModelRunningReadDueRequest
-  module: omnimarket.nodes.node_running_read_due_compute.models.model_running_read_due
+  module: omnimarket.events.running_read_due
 output_model:
   name: ModelRunningReadDueResult
-  module: omnimarket.nodes.node_running_read_due_compute.models.model_running_read_due
+  module: omnimarket.events.running_read_due
 handler:
   module: omnimarket.nodes.node_running_read_due_compute.handlers.handler_running_read_due
   class: HandlerRunningReadDue
-  input_model: omnimarket.nodes.node_running_read_due_compute.models.model_running_read_due.ModelRunningReadDueRequest
-  output_model: omnimarket.nodes.node_running_read_due_compute.models.model_running_read_due.ModelRunningReadDueResult
+  input_model: omnimarket.events.running_read_due.ModelRunningReadDueRequest
+  output_model: omnimarket.events.running_read_due.ModelRunningReadDueResult
 handler_routing:
   routing_strategy: operation_match
   default_handler: omnimarket.nodes.node_running_read_due_compute.handlers.handler_running_read_due:HandlerRunningReadDue

@@ -4,11 +4,11 @@
 
 from datetime import UTC, datetime
 
-from omnimarket.nodes.node_running_read_due_compute import NodeRunningReadDueCompute
-from omnimarket.nodes.node_running_read_due_compute.models.model_running_read_due import (
+from omnimarket.events.running_read_due import (
     ModelMergedPrFact,
     ModelRunningReadDueRequest,
 )
+from omnimarket.nodes.node_running_read_due_compute import NodeRunningReadDueCompute
 
 
 def test_merge_to_due_row_to_alarm_to_run_line() -> None:
