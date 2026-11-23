@@ -321,3 +321,72 @@ def test_typed_freeze_command_runs_on_the_local_bus(
     assert result.item_count == 1
     assert result.short_by == 0
     assert Path(result.manifest_path).is_file()
+
+
+def _contract() -> dict[str, Any]:
+    loaded = yaml.safe_load(
+        (
+            Path(__file__).parents[4]
+            / "src/omnimarket/nodes/node_review_replay_set_effect/contract.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    assert isinstance(loaded, dict)
+    return loaded
+
+
+def test_every_operation_has_its_own_subscribed_command_topic() -> None:
+    contract = _contract()
+    handlers = contract["handler_routing"]["handlers"]
+    topics = {entry["operation"]: entry["topic"] for entry in handlers}
+    assert set(topics) == {
+        "review_replay_set.freeze",
+        "review_replay_set.freeze_recall_bar",
+        "review_replay_set.score_recall",
+    }
+    assert len(set(topics.values())) == len(topics)
+    subscribed = set(contract["event_bus"]["subscribe_topics"])
+    assert set(topics.values()) == subscribed
+    assert (
+        contract["runtime_dispatch"]["command_topic"]
+        == topics["review_replay_set.freeze"]
+    )
+
+
+def test_each_recall_operation_names_its_producer_and_its_result_topic() -> None:
+    contract = _contract()
+    produced = {
+        entry["topic"]: entry["producer"]
+        for entry in contract["externally_produced_topics"]
+    }
+    assert set(produced) == {
+        "onex.cmd.omnimarket.review-replay-recall-bar-freeze-requested.v1",
+        "onex.cmd.omnimarket.review-replay-recall-score-requested.v1",
+    }
+    assert all("onex run-node" in producer for producer in produced.values())
+    assert contract["event_bus"]["publish_topics"] == [contract["terminal_event"]]
+    published = {entry["topic"] for entry in contract["published_events"]}
+    assert published == {
+        "onex.evt.omnimarket.review-replay-set-frozen.v1",
+        "onex.evt.omnimarket.review-replay-recall-bar-frozen.v1",
+        "onex.evt.omnimarket.review-replay-recall-scored.v1",
+    }
+    assert published == set(contract["externally_consumed_topics"])
+
+
+def test_the_runtime_router_sends_each_result_model_to_its_own_topic() -> None:
+    from omnibase_infra.runtime.contract_topic_router import (
+        build_topic_router_from_contract,
+    )
+
+    from omnimarket.nodes.node_review_replay_set_effect.models import (
+        ModelFreezeRecallBarResult,
+        ModelReviewReplayRecallResult,
+        ModelReviewReplaySetResult,
+    )
+
+    router = build_topic_router_from_contract(_contract())
+    assert router == {
+        ModelReviewReplaySetResult.__name__: "onex.evt.omnimarket.review-replay-set-frozen.v1",
+        ModelFreezeRecallBarResult.__name__: "onex.evt.omnimarket.review-replay-recall-bar-frozen.v1",
+        ModelReviewReplayRecallResult.__name__: "onex.evt.omnimarket.review-replay-recall-scored.v1",
+    }
