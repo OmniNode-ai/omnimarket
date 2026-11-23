@@ -33,6 +33,10 @@ from omnimarket.adapters.codex.runtime_client import (
 )
 from omnimarket.events.delegation import ModelDelegationRequest
 from omnimarket.handlers.execution_budget_overlay import largest_execution_budget
+from omnimarket.handlers.routing import routing_tiers_path as rtp
+from omnimarket.models.delegation.model_delegation_routing_overlay import (
+    ModelDelegationRoutingOverlay,
+)
 from omnimarket.models.delegation.wire.model_named_test_run_request import (
     ModelNamedTestSpec,
 )
@@ -43,6 +47,9 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import 
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models import (
     ModelRuntimeDelegationDispatchConfig,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_harness_delegation_dispatch import (
+    HarnessDelegationDispatch,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.run_step_recorder import (
     RunStepRecorder,
@@ -96,8 +103,10 @@ class RuntimeDelegationDispatchPort:
         completed_topic: str | None = None,
         failed_topic: str | None = None,
         response_topic: str | None = None,
+        harness_overlay: ModelDelegationRoutingOverlay | None = None,
     ) -> None:
         self._event_bus = event_bus
+        self._harness_overlay = harness_overlay
         runtime_config = config or load_runtime_delegation_dispatch_config()
         completed_override = completed_topic or response_topic
         if command_topic or completed_override or failed_topic:
@@ -173,10 +182,10 @@ class RuntimeDelegationDispatchPort:
                 "a per-call model runs on your own key through the in-process "
                 "path (onex delegate --bus inmemory --model <id>)"
             )
-        # OMN-20606: accepted and unused. This port publishes the request to a
+        # OMN-20606: unused on the generic path. This port publishes the request to a
         # deployed lane, whose handler stamps the caller onto its own terminal;
-        # only the in-process port writes an evidence terminal of its own.
-        del attribution
+        # only the in-process port writes an evidence terminal of its own. The
+        # harness request below carries the caller lane itself (OMN-26220).
         # OMN-19448: accepted and unused, for the same reason. The deployed
         # lane's handler copies the command's trace_id and measures the queue
         # wait itself; only the in-process port's evidence terminal needs them.
@@ -195,6 +204,24 @@ class RuntimeDelegationDispatchPort:
             raise ValueError("execution_timeout_seconds must be positive")
         if terminal_delivery_margin_seconds < 1:
             raise ValueError("terminal_delivery_margin_seconds must be positive")
+        # OMN-26220: a pin the routing overlay declares as a kind: harness backend goes
+        # to the harness handler on its own topic, never down the generic inference path.
+        harness = self._harness_dispatch()
+        if (
+            backend_id is not None
+            and harness is not None
+            and harness.admits(backend_id)
+        ):
+            return await harness.dispatch(
+                prompt=prompt,
+                task_type=task_type,
+                correlation_id=correlation_id,
+                wait=wait,
+                execution_timeout_seconds=execution_timeout_seconds,
+                tenant_id=tenant_id,
+                backend_id=backend_id,
+                attribution=attribution,
+            )
         # OMN-13161: the bus runtime path carries its own routing-tier budgets in
         # the downstream delegation chain. When the request omits max_tokens, fall
         # back to the runtime model's contract default rather than forcing a value;
@@ -306,6 +333,19 @@ class RuntimeDelegationDispatchPort:
             if ref is not None:
                 result["secret_ref"] = ref
         return result
+
+    def _harness_dispatch(self) -> HarnessDelegationDispatch | None:
+        topics = self._config.topics
+        if topics.harness_command is None or topics.harness_completed is None:
+            return None
+        overlay = (
+            self._harness_overlay
+            if self._harness_overlay is not None
+            else rtp.load_delegation_routing_overlay()
+        )
+        return HarnessDelegationDispatch(
+            event_bus=self._event_bus, config=self._config, overlay=overlay
+        )
 
     async def _publish_run_steps(
         self,
