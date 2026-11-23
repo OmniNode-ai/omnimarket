@@ -21,7 +21,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.events.tenant_provision_command import ModelTenantProvisionCommand
+from omnimarket.models.tenant_provision_command import ModelTenantProvisionCommand
 
 SLUG_MIN_LENGTH = 3
 SLUG_MAX_LENGTH = 63

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from omnimarket.events.tenant_provision_command import ModelTenantProvisionCommand
+from omnimarket.models.tenant_provision_command import ModelTenantProvisionCommand
 from omnimarket.nodes.node_stability_gateway_key_provision_effect.models.model_stability_gateway_key_provision import (
     EnumApiKeyEnsure,
     EnumTenantEnsure,
