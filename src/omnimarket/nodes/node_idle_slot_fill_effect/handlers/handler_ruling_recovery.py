@@ -12,22 +12,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from omnimarket.protocols.protocol_ledger_rows_reader import ProtocolLedgerRowsReader
+
 from ..models.model_ruling_recovery import ModelRulingRecoveryResult
 from .ruling_artifacts import local_artifacts
+from .ruling_history import read_ruling_rows
 from .ruling_live_checks import Finding, evaluate_check, packaged_checks, read_check
 from .ruling_owed import owed_findings
-from .ruling_recovery import detect_relaunches, parse_rows
-
-
-def read_ledger(path: Path) -> list[dict[str, str]]:
-    """Read all split rolls: a ruling and its unfinished work never age out."""
-    files = [
-        *sorted((path.parent / "archive").glob("ROLLING_WORK_LEDGER_*-split.md")),
-        path,
-    ]
-    text = "\n".join(p.read_text(encoding="utf-8") for p in files)
-    # Split rolls overlap at their boundary; one ledger row remains one fact.
-    return parse_rows("\n".join(dict.fromkeys(text.splitlines())))
+from .ruling_recovery import detect_relaunches
 
 
 def _briefs(rows: list[dict[str, str]], roots: list[Path]) -> dict[str, str]:
@@ -100,9 +92,12 @@ class HandlerRulingRecovery:
     """Read checks on every call, then offer abandoned ruled work to the existing actor."""
 
     def __init__(
-        self, live_reader: Callable[[Mapping[str, Any]], Any] | None = None
+        self,
+        live_reader: Callable[[Mapping[str, Any]], Any] | None = None,
+        ledger_reader: ProtocolLedgerRowsReader | None = None,
     ) -> None:
         self._live_reader = live_reader or read_check
+        self._ledger_reader = ledger_reader
 
     def handle(
         self,
@@ -120,19 +115,9 @@ class HandlerRulingRecovery:
         checks = {c["ruling"]: c for c in packaged_checks()}
         rows: list[dict[str, str]] = []
         registry = environ.get("ONEX_REGISTRY_ROOT") or environ.get("OMNI_HOME")
-        path = environ.get("ONEX_LEDGER_PATH")
-        ledger = (
-            Path(path)
-            if path
-            else Path(registry) / "docs/tracking/ROLLING_WORK_LEDGER.md"
-            if registry
-            else None
-        )
         try:
-            if ledger is None:
-                raise ValueError("ONEX_LEDGER_PATH or ONEX_REGISTRY_ROOT is required")
-            rows = read_ledger(ledger)
-        except (OSError, UnicodeError, ValueError) as exc:
+            rows = read_ruling_rows(environ, self._ledger_reader)
+        except ValueError as exc:
             found.append(
                 (
                     "unknown",
