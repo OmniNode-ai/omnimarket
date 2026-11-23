@@ -25,6 +25,12 @@ from omnimarket.models.pr_landing_rerun_request.model_landing_rerun_answer impor
 from omnimarket.models.pr_landing_rerun_request.model_landing_rerun_request import (
     ModelLandingRerunRequest,
 )
+from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_running_read import (
+    ModelTickRunningRead,
+)
+from omnimarket.nodes.node_running_read_due_compute.models.model_running_read_due import (
+    ModelMergedPrFact,
+)
 
 
 class EnumTickMode(StrEnum):
@@ -95,6 +101,14 @@ class ModelTickSnapshot(BaseModel):
             "decision rows only, never its facts; None outside the cutover period (OMN-23665)."
         ),
     )
+    merged_prs: tuple[ModelMergedPrFact, ...] = Field(
+        default=(),
+        description="Pull requests merged since the last tick, carried to the tick request for the running-read due row (OMN-26549).",
+    )
+    running_read_ledger_text: str | None = Field(
+        default=None,
+        description="The ledger text the tick reads due rows from, carried to the tick request (OMN-26549).",
+    )
 
 
 class ModelTickRequest(BaseModel):
@@ -117,6 +131,20 @@ class ModelTickRequest(BaseModel):
     rerun_requests: tuple[ModelLandingRerunRequest, ...] = Field(
         default=(),
         description="The open rerun requests lanes made: facts of this tick, each answered once (OMN-23830).",
+    )
+    merged_prs: tuple[ModelMergedPrFact, ...] = Field(
+        default=(),
+        description=(
+            "Pull requests merged since the last tick, as the landing controller read them at merge: each "
+            "runtime-affecting one is mapped to its running-read due row (OMN-26549)."
+        ),
+    )
+    running_read_ledger_text: str | None = Field(
+        default=None,
+        description=(
+            "The ledger text the due rows are read from at the tick's clock, facts.observed_at; None reads no "
+            "due rows and a due row already in it is not requested again (OMN-26549)."
+        ),
     )
 
 
@@ -186,6 +214,10 @@ class ModelTickResult(BaseModel):
     liveness_reads: tuple[ModelTickLivenessRead, ...] = Field(
         default=(),
         description="The liveness read of each compared pull request head, when the overlay turns reads on (OMN-26024); never part of the comparison.",
+    )
+    running_read: ModelTickRunningRead | None = Field(
+        default=None,
+        description="The running-read due step: its append requests, the open due rows and the tickets held out of Done; None when the tick carried no merge and no ledger text (OMN-26549).",
     )
 
 

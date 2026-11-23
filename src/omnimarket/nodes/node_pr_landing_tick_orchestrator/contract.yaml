@@ -114,6 +114,17 @@ runtime_dispatch:
     success: "onex.evt.omnimarket.pr-landing-tick-compared.v1"
     failure: "onex.evt.omnimarket.pr-landing-tick-compare-failed.v1"
   external_trigger: "A compare command from the floor reading or a replay run; decider, writer and publisher are injected."
+# OMN-26549: the tick is the caller of node_running_read_due_compute, which is pure and returns ledger append requests.
+# At each tick, each merged_prs entry of the request maps to write_due_row (a runtime-affecting merge, one row keyed on
+# its due id), and a request carrying running_read_ledger_text is read with read_due_rows at facts.observed_at. The
+# append requests go to the tick's ledger appender in an enabled act mode only; observe and replay report would_send. The
+# appender publishes on the writer topic that node_work_ledger_append_effect's writer_topics template derives for the
+# tick's login: the effect's command_topic is the unattributed legacy topic its serve refuses.
+running_read:
+  node: "node_running_read_due_compute"
+  append_node: "node_work_ledger_append_effect"
+  operations: ["write_due_row", "read_due_rows"]
+  row_kind: "running-read-due"
 # OMN-26024: the tick is the trigger of node_pr_landing_liveness_read_effect, which subscribes to nothing. When the overlay carries a
 # liveness_reads section, each pass reads the liveness of the head of every compared pull request (at most max_reads_per_pass),
 # after the comparison is final: the read is observation only and changes no decision, row, divergence or write. The runtime prints
