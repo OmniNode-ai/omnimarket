@@ -83,6 +83,9 @@ event_bus:
   # with no publish call in the node. The read answer's topic is declared under topics and externally_consumed_topics.
   publish_topics:
     - onex.evt.omnimarket.tenant-provision-completed.v1
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.tenant-read-requested.v1
+    producer: "the operator's CLI, the only principal holding WRITE on this topic (see broker_acl_grants) -- not a node contract"
 externally_consumed_topics:
   - onex.evt.omnimarket.tenant-provision-completed.v1
   - onex.evt.omnimarket.tenant-read-completed.v1
