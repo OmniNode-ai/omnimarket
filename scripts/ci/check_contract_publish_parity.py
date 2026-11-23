@@ -89,6 +89,7 @@ def scan_publish_parity(root: Path) -> list[ModelPublishParityFinding]:
         exempt = {str(raw.get("terminal_event"))}
         if _returns_failure_cause(node_dir):
             exempt |= _failure_terminals(raw)
+        exempt |= _provisioning_only_topics(raw)
         candidates = sorted({str(topic) for topic in declared} - exempt)
         if not candidates:
             continue
@@ -101,6 +102,18 @@ def scan_publish_parity(root: Path) -> list[ModelPublishParityFinding]:
             )
         )
     return findings
+
+
+def _provisioning_only_topics(raw: dict[str, object]) -> set[str]:
+    """Topics a contract lists in ``provisioning_only_publish_topics`` (OMN-19998).
+
+    They sit in ``event_bus.publish_topics`` only so boot provisioning creates
+    and grants them; the node's Python does not publish them.
+    """
+    listed = raw.get("provisioning_only_publish_topics")
+    if not isinstance(listed, list):
+        return set()
+    return {str(topic) for topic in listed}
 
 
 def _failure_terminals(raw: dict[str, object]) -> set[str]:
