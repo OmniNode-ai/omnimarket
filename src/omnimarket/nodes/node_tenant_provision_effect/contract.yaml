@@ -83,6 +83,12 @@ event_bus:
   # with no publish call in the node. The read answer's topic is declared under topics and externally_consumed_topics.
   publish_topics:
     - onex.evt.omnimarket.tenant-provision-completed.v1
+# The read command has no producing node: the operator principal publishes it through the onex node dispatcher
+# (`onex run-node`), the same operator plane that holds WRITE on it in broker_acl_grants below. The provision command is
+# named by runtime_dispatch.command_topic above.
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.tenant-read-requested.v1
+    producer: "the onex node dispatcher (`onex run-node`) run by the tenant operator principal, which publishes this operation's command directly -- not a node contract"
 externally_consumed_topics:
   - onex.evt.omnimarket.tenant-provision-completed.v1
   - onex.evt.omnimarket.tenant-read-completed.v1
@@ -156,4 +162,4 @@ golden_path:
   - "The completed topic carries the created outcome with the tenant id, plan code and creation time"
   - "The same command id replayed carries a payload equal to the first except emitted_at"
 metadata:
-  transport_type: kafka
+  transport_type: database

@@ -42,6 +42,7 @@ from omnimarket.nodes.node_metering_summary_compute.models.model_metering_summar
     EnumBaselineState,
     ModelMeteringSummary,
 )
+from omnimarket.nodes.node_metering_tenant_records_effect import read_tenant_records
 from omnimarket.nodes.node_projection_metering_summary.newest_baseline import (
     served_baseline,
 )
@@ -59,7 +60,6 @@ from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.sqlite_metering_reader import (
     MeteringRecordsUnavailableError,
     default_metering_db_path,
-    read_metering_records,
 )
 from omnimarket.projection.sqlite_metering_summary import (
     current_pricing_manifest_version,
@@ -266,7 +266,7 @@ def check_row_current(
         "repair": METERING_ROW_REPAIR,
     }
     start, end = _window_bounds(window_kind, window_start)
-    runs = read_metering_records(db_path=db_path, window_start=start, window_end=end)
+    runs = read_tenant_records(tenant_id, db_path, start, end)
     if row is None:
         if window_kind == "day" and not runs:
             reason = f"no delegation was recorded on {window_start} (UTC)"
