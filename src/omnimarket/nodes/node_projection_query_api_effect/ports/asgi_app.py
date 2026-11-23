@@ -41,10 +41,15 @@ from omnimarket.nodes.node_projection_query_api_effect.models import (
 )
 from omnimarket.nodes.node_projection_query_api_effect.ports.contract_routes import (
     contract_mount,
+    contract_page_cache,
     contract_routes,
 )
 from omnimarket.nodes.node_projection_query_api_effect.ports.derived_row_source import (
     DerivedReadRowSource as DerivedReadRowSource,
+)
+from omnimarket.nodes.node_projection_query_api_effect.ports.page_cache import (
+    ProtocolPageCache,
+    build_page_cache,
 )
 from omnimarket.projection.discovery import build_projection_topic_map
 from omnimarket.projection.models import ProjectionTableConfig
@@ -97,6 +102,12 @@ def get_row_source(request: Request) -> ProtocolProjectionRowSource:
     return source
 
 
+def get_page_cache(request: Request) -> ProtocolPageCache | None:
+    """The Valkey page cache the contract declares; ``None`` when the environment names no Valkey."""
+    cache: ProtocolPageCache | None = getattr(request.app.state, "page_cache", None)
+    return cache
+
+
 def to_response(answer: ModelProjectionQueryResponse) -> Response:
     """Render the handler's answer as the HTTP response the service gave."""
     if answer.media_type == "text/html":
@@ -120,11 +131,16 @@ async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
     # its first second; a database that is down makes reads refuse by name.
     source = DerivedReadRowSource()
     application.state.row_source = source
+    page_cache = build_page_cache()
+    application.state.page_cache = page_cache
     try:
         yield
     finally:
         await source.close()
         application.state.row_source = None
+        application.state.page_cache = None
+        if page_cache is not None:
+            await page_cache.close()
 
 
 def _annotation(param: ModelQueryParam) -> Any:
@@ -196,12 +212,27 @@ class _RouteEndpoint:
                     annotation=ProtocolProjectionRowSource,
                 )
             )
+        if "page_cache" in route.dependencies:
+            parameters.append(
+                inspect.Parameter(
+                    "page_cache",
+                    inspect.Parameter.KEYWORD_ONLY,
+                    default=Depends(get_page_cache),
+                    annotation=ProtocolPageCache | None,
+                )
+            )
         return parameters
 
     async def __call__(self, **values: Any) -> Response:
         topic_map = values.pop("topic_map", None)
         source = values.pop("source", None)
-        handler = HandlerProjectionQuery(topic_map=topic_map, row_source=source)
+        page_cache = values.pop("page_cache", None)
+        handler = HandlerProjectionQuery(
+            topic_map=topic_map,
+            row_source=source,
+            page_cache=page_cache,
+            page_cache_key_prefix=contract_page_cache().key_prefix,
+        )
         answer = await handler.handle(
             ModelProjectionQueryRequest(route_id=self._route.id, **values)
         )
@@ -237,6 +268,7 @@ __all__ = [
     "configure_cors",
     "cors_origins_from_env",
     "create_app",
+    "get_page_cache",
     "get_row_source",
     "get_topic_map",
     "to_response",
