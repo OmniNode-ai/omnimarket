@@ -51,10 +51,26 @@ from omnimarket.nodes.node_house_routing_overlay_effect.models.model_house_routi
     ModelHouseRoutingOverlayDeclaration,
     ModelHouseRoutingOverlayReceipt,
 )
-from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
+from omnimarket.projection.tenant_isolation import HOUSE_TENANT_UUID
 from omnimarket.routing.tenant_overlay_resolver import TENANT_OVERLAY_TABLE
 
 logger = logging.getLogger(__name__)
+
+#: The tenant identity every row this node writes or retires is stored under:
+#: the house tenant's canonical UUID (ADR-0027), as a string, because the
+#: table's ``tenant_id`` column is TEXT and the resolver filters it by exact
+#: equality with the request's own ``tenant_id``.
+#:
+#: Why the UUID and not the slug (OMN-26365). A runtime configured with the
+#: house tenant (``ONEX_TENANT_ID``) carries the UUID on every delegation
+#: request, and no served request path carries the slug. A row written under the
+#: slug was stored, reported as written, and never read, so a declared lab rung
+#: moved no lane traffic. One form only: a second row per task type under the
+#: slug would be unreachable and a retire could leave one of the pair behind.
+#:
+#: This constant IS the isolation control on this path. It is not a parameter
+#: of the command, the declaration or the handler.
+_HOUSE_ROW_TENANT = str(HOUSE_TENANT_UUID)
 
 #: The table's UNIQUE (tenant_id, task_type) constraint, in the comma-joined
 #: form the projection adapters take.
@@ -197,7 +213,7 @@ class HandlerHouseRoutingOverlayWrite:
         return {
             # The constant IS the isolation control on this path. There is no
             # caller-supplied tenant anywhere in this node.
-            "tenant_id": HOUSE_TENANT_SLUG,
+            "tenant_id": _HOUSE_ROW_TENANT,
             "task_type": task_type,
             "backend_id": declaration.backend_id,
             "provider": declaration.provider,
@@ -241,7 +257,7 @@ class HandlerHouseRoutingOverlayWrite:
                 TENANT_OVERLAY_TABLE,
                 _CONFLICT_KEY,
                 self._row_for(declaration, task_type),
-                tenant=HOUSE_TENANT_SLUG,
+                tenant=_HOUSE_ROW_TENANT,
                 returning=("tenant_id", "task_type", "backend_id"),
             )
             rows_written += len(stored)
@@ -257,7 +273,7 @@ class HandlerHouseRoutingOverlayWrite:
         )
         return ModelHouseRoutingOverlayReceipt(
             operation=EnumHouseOverlayOperation.DECLARE,
-            tenant_id=HOUSE_TENANT_SLUG,
+            tenant_id=_HOUSE_ROW_TENANT,
             backend_id=declaration.backend_id,
             tier_name=declaration.tier_name,
             task_types=declaration.task_types,
@@ -281,11 +297,11 @@ class HandlerHouseRoutingOverlayWrite:
             rows_removed += self._store.delete(
                 TENANT_OVERLAY_TABLE,
                 {
-                    "tenant_id": HOUSE_TENANT_SLUG,
+                    "tenant_id": _HOUSE_ROW_TENANT,
                     "task_type": task_type,
                     "backend_id": backend_id,
                 },
-                tenant=HOUSE_TENANT_SLUG,
+                tenant=_HOUSE_ROW_TENANT,
             )
         logger.info(
             "house rung retired: backend_id=%s task_types=%s rows_removed=%d",
@@ -295,7 +311,7 @@ class HandlerHouseRoutingOverlayWrite:
         )
         return ModelHouseRoutingOverlayReceipt(
             operation=EnumHouseOverlayOperation.RETIRE,
-            tenant_id=HOUSE_TENANT_SLUG,
+            tenant_id=_HOUSE_ROW_TENANT,
             backend_id=backend_id,
             task_types=request.retire_task_types,
             rows_removed=rows_removed,

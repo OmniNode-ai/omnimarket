@@ -15,8 +15,10 @@ import datetime
 import itertools
 import math
 
-from omnimarket.nodes.node_test_selection_selector_compute.adapters.source_attribution_records_in_memory import (
-    SourceAttributionRecordsInMemory,
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_attribution_record_reading import (
+    EnumRecordDefectKind,
+    ModelAttributionRecordReading,
+    ModelRecordDefect,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_published_attribution_record import (
     EnumRecordStatus,
@@ -38,6 +40,14 @@ from omnimarket.nodes.node_test_selection_selector_compute.protocols.protocol_at
 
 _Code = EnumStageReceiptViolation
 
+#: How a refused night is reported: a record that does not parse or does not match is a mismatch.
+_DEFECT_CODE = {
+    EnumRecordDefectKind.UNPARSEABLE: _Code.RECORD_MISMATCH,
+    EnumRecordDefectKind.HEAD_MISMATCH: _Code.RECORD_MISMATCH,
+    EnumRecordDefectKind.IDENTITY_MISMATCH: _Code.RECORD_MISMATCH,
+    EnumRecordDefectKind.DUPLICATE: _Code.DUPLICATE_RECORD,
+}
+
 
 def _is_clean(record: ModelPublishedAttributionRecord) -> bool:
     return (
@@ -57,12 +67,17 @@ class HandlerStageReceiptValidation:
         source: ProtocolAttributionRecordSource | None = None,
         policy: ModelSelectorPolicy | None = None,
     ) -> None:
-        # Imported here: the policy adapter reaches this node's models, whose package imports this module.
+        # Imported here: the policy adapter and the gateway source reach this node's models, whose package
+        # imports this module.
         from omnimarket.handlers.adapter_test_selection_policy_file import load_policy
+        from omnimarket.nodes.node_test_selection_selector_compute.adapters.source_attribution_records_gateway import (
+            SourceAttributionRecordsGateway,
+        )
 
-        # Without an injected source the gate holds a source that cannot be read, so it refuses.
-        self._source = source or SourceAttributionRecordsInMemory()
         self._policy = policy or load_policy()
+        # Without an injected source the gate reads the published records through the repository gateway
+        # node; a gateway that gives no answer is an unreadable source, so the gate refuses.
+        self._source = source or SourceAttributionRecordsGateway(policy=self._policy)
 
     def handle(
         self, request: ModelStageReceiptValidationRequest
@@ -153,9 +168,8 @@ class HandlerStageReceiptValidation:
                     "the nights are not consecutive slot dates",
                 )
             )
-        run_ids = [night.nightly_run_id for night in receipt.nights]
-        records = self._source.read_records(receipt.repository, run_ids)
-        if records is None:
+        reading = self._source.read_records(receipt.repository, receipt.nights)
+        if reading is None:
             found.append(
                 _violation(
                     _Code.RECORDS_UNAVAILABLE,
@@ -164,7 +178,7 @@ class HandlerStageReceiptValidation:
                 )
             )
             return found
-        found.extend(self._check_records(receipt, records))
+        found.extend(self._check_records(receipt, reading))
         return found
 
     def _check_targets(
@@ -195,14 +209,38 @@ class HandlerStageReceiptValidation:
     def _check_records(
         self,
         receipt: ModelStageReceipt,
-        records: tuple[ModelPublishedAttributionRecord, ...],
+        reading: ModelAttributionRecordReading,
     ) -> list[ModelStageReceiptViolation]:
         stage = receipt.stage
         found: list[ModelStageReceiptViolation] = []
-        by_run = {record.nightly_run_id: record for record in records}
+        by_run: dict[int, list[ModelPublishedAttributionRecord]] = {}
+        for published in reading.records:
+            by_run.setdefault(published.nightly_run_id, []).append(published)
+        refused: dict[int, ModelRecordDefect] = {}
+        for defect in reading.defects:
+            refused.setdefault(defect.nightly_run_id, defect)
+            found.append(
+                _violation(
+                    _DEFECT_CODE[defect.kind],
+                    stage,
+                    f"nightly run {defect.nightly_run_id}, slot {defect.slot_date}: {defect.detail}",
+                )
+            )
         counted: list[ModelPublishedAttributionRecord] = []
         for night in receipt.nights:
-            record = by_run.get(night.nightly_run_id)
+            if night.nightly_run_id in refused:
+                continue  # already refused with its own code; never counted
+            published_here = by_run.get(night.nightly_run_id, [])
+            if len(published_here) > 1:
+                found.append(
+                    _violation(
+                        _Code.DUPLICATE_RECORD,
+                        stage,
+                        f"{len(published_here)} published records for nightly run {night.nightly_run_id}",
+                    )
+                )
+                continue
+            record = published_here[0] if published_here else None
             if record is None:
                 found.append(
                     _violation(
@@ -213,6 +251,14 @@ class HandlerStageReceiptValidation:
                 )
                 continue
             counted.append(record)
+            if record.tested_head_sha != night.tested_head_sha:
+                found.append(
+                    _violation(
+                        _Code.RECORD_MISMATCH,
+                        stage,
+                        f"nightly run {night.nightly_run_id} was published for commit {record.tested_head_sha}, not the receipt's {night.tested_head_sha}",
+                    )
+                )
             if record.nightly_slot_date != night.slot_date:
                 found.append(
                     _violation(

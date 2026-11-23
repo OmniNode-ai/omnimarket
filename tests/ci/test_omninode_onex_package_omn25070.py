@@ -11,7 +11,8 @@ launchers, so exactly ``onex`` and ``omni-agent`` land on PATH.
 Failure modes each test catches: a launcher missing or an extra one added; a
 launcher whose target differs from the one omnibase_core declares; a range pin
 that lets a customer resolve an unreviewed version; a wheel that copies another
-distribution's code; built wheel metadata that drifts from pyproject.toml.
+distribution's code; built wheel metadata that drifts from pyproject.toml; an omnimarket
+pin older than the first release carrying the onex setup fix.
 
 AC5 (amended 2026-11-18): T1 removes no console script marked ``run_by_lane``.
 omnibase_infra's ``config/validation/stack_shape.yaml`` lists every omnimarket
@@ -187,6 +188,23 @@ def test_built_wheel_carries_no_code_and_matches_pyproject(tmp_path: Path) -> No
     dependencies = project["dependencies"]
     assert isinstance(dependencies, list)
     assert requires == sorted(str(item) for item in dependencies)
+
+
+# omnimarket 0.4.324 is the first release carrying the onex setup fix
+# (omnimarket#6486); a customer install pinned below it runs an `onex setup`
+# that crashes.
+ONEX_SETUP_FIX_RELEASE = Version("0.4.324")
+
+
+@pytest.mark.unit
+def test_omnimarket_pin_carries_the_onex_setup_fix() -> None:
+    dependencies = _project()["dependencies"]
+    assert isinstance(dependencies, list)
+    pins = {
+        Requirement(str(item)).name: Requirement(str(item)) for item in dependencies
+    }
+    pinned = Version(next(iter(pins["omnimarket"].specifier)).version)
+    assert pinned >= ONEX_SETUP_FIX_RELEASE, pinned
 
 
 @pytest.mark.unit
