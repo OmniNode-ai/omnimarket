@@ -74,6 +74,11 @@ handler_routing:
 terminal_event: onex.evt.omnimarket.idle-slot-fill-completed.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.idle-slot-fill-requested.v1
+  # No topic starts this node and no file of this repository calls it: the throughput tick and the Stop hook call it in
+  # process from outside, and a lane or a person runs it by hand with the request document of the command topic.
+  on_demand:
+    command: uv run onex node node_idle_slot_fill_effect --input <request.json>
+    owner: OmniNode Platform Team
 descriptor:
   node_archetype: effect
   purity: effectful
