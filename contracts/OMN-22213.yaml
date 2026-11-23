@@ -67,3 +67,50 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22213 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_cites_specific_lines_forms.py -q --no-cov
     cwd: .
+- id: dod-omn22213-ac1-accepted-2026-11-23
+  description: AC1 binding (proposed by lane=dod-closeout-bind-2026-11-23T1345Z-c2, accepted by lane=dod-closeout-accept-2026-11-23T1345Z-c2). The Line new N, Line old N, bold and hash labelled forms satisfy cites_specific_lines. Re-run at origin/dev f42e0c134e on a lab host PASSED all 4 cases; with the product change of 3da8abd498 reverted all 4 fail with TASK_MISMATCH missing specific line citations.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest "tests/unit/delegation/test_cites_specific_lines_forms.py::test_line_new_form_satisfies_the_rule" -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22213-ac2-accepted-2026-11-23
+  description: AC2 binding (proposed by lane=dod-closeout-bind-2026-11-23T1345Z-c2, accepted by lane=dod-closeout-accept-2026-11-23T1345Z-c2). An answer with no line number, including a bare "Line new" label, is still refused. Re-run at origin/dev f42e0c134e on a lab host PASSED all 4 cases; the refusal half held before the fix too (the criterion predates the change), and the paired numbered-citation half fails with the product change of 3da8abd498 reverted.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest "tests/unit/delegation/test_cites_specific_lines_forms.py::test_no_citation_refused" -q --no-cov --tb=line
+    cwd: .
+- id: dod-omn22213-ac3-accepted-2026-11-23
+  description: AC3 binding (proposed by lane=dod-closeout-bind-2026-11-23T1345Z-c2, accepted by lane=dod-closeout-accept-2026-11-23T1345Z-c2). The scrubbed answers of runs 9ed1a43c and 5b5b01e6 pass the rule. Re-run at origin/dev f42e0c134e on a lab host PASSED both cases; with the product change of 3da8abd498 reverted both are refused TASK_MISMATCH.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest "tests/unit/delegation/test_cites_specific_lines_forms.py::test_receipt_9ed1a43c_and_5b5b01e6_pass" -q --no-cov --tb=line
+    cwd: .
+context:
+  ac_binding_provenance:
+    dod-omn22213-ac1-accepted-2026-11-23:
+    - label: AC1
+      criterion_hash: c9434d235ac04ce365cd6fd23c29d9e253289aa2bb2550d6ab43d090c532defb
+      proposed_by: lane=dod-closeout-bind-2026-11-23T1345Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-23T1345Z-c2
+      accepted_at: '2026-11-23T14:28:23Z'
+    dod-omn22213-ac2-accepted-2026-11-23:
+    - label: AC2
+      criterion_hash: 196697358a229046c0e9a9a24f20d4ee5e303e7973264c06a3ce11368f7314b5
+      proposed_by: lane=dod-closeout-bind-2026-11-23T1345Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-23T1345Z-c2
+      accepted_at: '2026-11-23T14:28:23Z'
+    dod-omn22213-ac3-accepted-2026-11-23:
+    - label: AC3
+      criterion_hash: f07b1d395b1511cabb730970f64de75b064a0ff5c68d8a58cb97048426745af9
+      proposed_by: lane=dod-closeout-bind-2026-11-23T1345Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-23T1345Z-c2
+      accepted_at: '2026-11-23T14:28:23Z'
