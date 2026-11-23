@@ -24,6 +24,9 @@ description: >-
   in-memory twin) and only a key matching pyproject_narrowable_keys narrows, to the tests that read the file plus the
   closure of the entry points that moved; any other key, an unparseable side or a uv.lock change beyond the package's
   own version line answers full_suite_reason test_infrastructure.
+  At or above the policy's file_level_closure_stage the same rule applies through the closure, set by the adjacency
+  map's closure_stage_pyproject_rule (OMN-26487): seeds adds the section rule's tests to the closure's selection and
+  takes its escalation as the full suite; full_suite, the value of an absent entry, escalates any such change.
   HandlerSelectionRecord builds the typed record of a pull request run's selection (the executed selection and the
   selection of every stage) behind the stage gate in policy.yaml; the workflow uploads it and builds the pytest matrix
   from the executed selection only. HandlerSelectionReplay (operation replay_selection) replays stage 0 of the selector
