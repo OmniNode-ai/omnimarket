@@ -53,9 +53,17 @@ _REGISTRY = (
 _READER = "ONEX_LEDGER" + "_PATH=1\n"
 
 
-def _ratchet() -> dict[str, dict[str, object]]:
+def _rows() -> dict[str, int]:
     data = yaml.safe_load((PACKAGE / "ratchet.yaml").read_text(encoding="utf-8"))
-    return {"ratchet": data["ratchet"], "files": data["files"]}
+    return {str(name): int(count) for name, count in data["ratchet"].items()}
+
+
+def _tables() -> dict[str, dict[str, int]]:
+    data = yaml.safe_load((PACKAGE / "ratchet.yaml").read_text(encoding="utf-8"))
+    return {
+        str(name): {str(path): int(lines) for path, lines in (table or {}).items()}
+        for name, table in data["files"].items()
+    }
 
 
 def _overlay() -> ModelCensusOverlay:
@@ -86,14 +94,14 @@ def _write_tracked(repo: Path, path: str, lines: int) -> None:
 def committed_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """A registry root whose repositories hold exactly the files the committed per-file tables name."""
     root = tmp_path_factory.mktemp("registry")
-    tables = _ratchet()["files"]
+    tables = _tables()
     for name in _REGISTRY:
         repo = root / name
         repo.mkdir()
         _git(repo, "init", "-q")
         (repo / "README.md").write_text("a repository\n", encoding="utf-8")
-        for path, lines in dict(tables.get(name) or {}).items():  # type: ignore[call-overload]
-            _write_tracked(repo, path, int(lines))
+        for path, lines in tables[name].items():
+            _write_tracked(repo, path, lines)
         _git(repo, "add", "-A")
     return root
 
@@ -126,25 +134,26 @@ def test_all_repositories_ratchet_the_packaged_overlay_registers_every_registry_
 def test_all_repositories_ratchet_one_row_and_one_table_per_registry_repository() -> (
     None
 ):
-    held = _ratchet()
-    assert sorted(held["ratchet"]) == sorted(_REGISTRY)  # type: ignore[arg-type]
-    assert sorted(held["files"]) == sorted(_REGISTRY)  # type: ignore[arg-type]
+    rows = _rows()
+    tables = _tables()
+    assert sorted(rows) == sorted(_REGISTRY)
+    assert sorted(tables) == sorted(_REGISTRY)
     for name in _REGISTRY:
-        assert held["ratchet"][name] == len(held["files"][name]), name  # type: ignore[index]
+        assert rows[name] == len(tables[name]), name
 
 
 def test_all_repositories_ratchet_runtime_code_is_counted_apart_in_every_repository() -> (
     None
 ):
     overlay = _overlay()
-    tables = _ratchet()["files"]
+    tables = _tables()
     runtime = {
-        name: sorted(p for p in tables[name] if is_runtime(p, overlay))  # type: ignore[attr-defined]
+        name: sorted(p for p in tables[name] if is_runtime(p, overlay))
         for name in _REGISTRY
     }
     # a repository's tests, plan contracts and data files are held but are not runtime code
     for name in _REGISTRY:
-        assert len(runtime[name]) <= len(tables[name]), name  # type: ignore[arg-type]
+        assert len(runtime[name]) <= len(tables[name]), name
     assert runtime["omnibase_core"] == []
     assert runtime["omnibase_infra"], "omnibase_infra holds runtime readers"
     assert runtime["omniclaude"], "omniclaude holds runtime readers"
@@ -162,15 +171,10 @@ def test_daily_record_prints_one_line_per_registry_repository_and_the_runtime_to
         if line.startswith("CENSUS ") and " state=" in line
     ]
     assert counted == list(_REGISTRY)
-    tables = _ratchet()["files"]
+    tables = _tables()
     overlay = _overlay()
-    total = sum(len(tables[n]) for n in _REGISTRY)  # type: ignore[arg-type]
-    runtime = sum(
-        1
-        for n in _REGISTRY
-        for p in tables[n]  # type: ignore[attr-defined]
-        if is_runtime(p, overlay)
-    )
+    total = sum(len(tables[n]) for n in _REGISTRY)
+    runtime = sum(1 for n in _REGISTRY for p in tables[n] if is_runtime(p, overlay))
     assert f"CENSUS total={total} runtime={runtime} passed=yes failure=none " in lines
     record = evidence["record"]
     assert isinstance(record, dict)
@@ -232,8 +236,8 @@ def test_new_reader_any_repository_fails_the_daily_census_and_no_row_is_raised(
 def test_new_reader_any_repository_a_replaced_reader_under_the_row_is_still_red(
     registry_root: Path, tmp_path: Path
 ) -> None:
-    held = _ratchet()["files"]["omnibase_core"]  # type: ignore[index]
-    cleared = sorted(held)[0]  # type: ignore[type-var]
+    held = _tables()["omnibase_core"]
+    cleared = sorted(held)[0]
     (registry_root / "omnibase_core" / cleared).unlink()
     _write_tracked(registry_root / "omnibase_core", "src/pkg/replacement.py", 1)
     code, lines, _evidence = _tick(registry_root, tmp_path)
