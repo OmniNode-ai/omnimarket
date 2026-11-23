@@ -133,3 +133,25 @@ dod_evidence:
           grep -q 'path_prefix: "/envelopes/example"' "$probe_dir/node_envelope_example_post_effect.yaml";
           grep -q 'path_prefix: "/v1/envelopes/example"' "$probe_dir/node_envelope_example_get_effect.yaml"
         cwd: .
+  - id: envelope-example-ac1-accepted-20261123t2145z
+    description: >
+      AC1 binding proposed by lane=dod-closeout-bind-2026-11-23T2145Z-c3 and
+      accepted by lane=dod-closeout-accept-2026-11-23T2145Z-c3. Re-run by the
+      accepting lane on h053 at omnimarket dev 06c2b019a13b: the in-memory leg
+      gave 51 passed, the redpanda leg gave 3 passed (both runtime mount tests
+      and test_both_routes_mount_together), no skips, exit 0. The node test
+      directories do not exist at the parent of the implementing merge
+      08e2a1696193.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: command
+        check_value: uv run --frozen pytest tests/nodes/node_envelope_example_post_effect tests/nodes/node_envelope_example_get_effect -q --no-cov -rA && ONEX_ENVELOPE_EXAMPLE_TEST_PROFILE=redpanda uv run --frozen pytest tests/nodes/node_envelope_example_post_effect/test_http_runtime_profiles.py tests/nodes/node_envelope_example_get_effect/test_http_runtime_profiles.py tests/nodes/node_envelope_example_post_effect/test_both_mounts_together.py -q --no-cov -rA
+        cwd: .
+context:
+  ac_binding_provenance:
+    envelope-example-ac1-accepted-20261123t2145z:
+      - label: AC1
+        criterion_hash: 8b5efc54f9346fb0f23c47d2038f8e3a32d713d242e1f845956ddbab4729d15d
+        proposed_by: lane=dod-closeout-bind-2026-11-23T2145Z-c3
+        accepted_by: lane=dod-closeout-accept-2026-11-23T2145Z-c3
