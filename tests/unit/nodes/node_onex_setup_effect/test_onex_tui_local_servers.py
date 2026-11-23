@@ -717,8 +717,9 @@ class _SlowFirst(_Runner):
         return await super().capture(argv, stdin)
 
 
-async def test_escape_while_an_action_runs_keeps_the_tab_until_it_finishes() -> None:
-    """G1."""
+async def test_escape_while_an_action_runs_cancels_it_and_keeps_the_tab() -> None:
+    """G1, changed by OMN-26611 AC2: Esc cancels the wait; it no longer holds the
+    tab open until the action finishes. A second Esc closes the tab."""
     runner = _SlowFirst([], by_command={("models", "list"): _rows()})
     app = _app(runner)
     async with app.run_test(size=(170, 46)) as pilot:
@@ -728,12 +729,7 @@ async def test_escape_while_an_action_runs_keeps_the_tab_until_it_finishes() -> 
         await pilot.press("escape")
         await pilot.pause()
         assert isinstance(app.screen, ModelPickScreen)
-        assert "still working" in str(app.screen.query_one("#pnote").render())
-        for _ in range(100):  # wait for the outcome, not a fixed time
-            await pilot.pause(0.05)
-            if "Auto" in str(app.screen.query_one("#pnote").render()):
-                break
-        assert "Auto" in str(app.screen.query_one("#pnote").render())
+        assert "cancelled" in str(app.screen.query_one("#pnote").render())
         await pilot.press("escape")
         await pilot.pause()
         assert len(app.screen_stack) == 1

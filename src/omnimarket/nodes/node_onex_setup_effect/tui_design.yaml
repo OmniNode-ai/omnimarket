@@ -92,6 +92,22 @@ replaced_commands:
   # /dashboard is a tab: it starts, opens and stops the dashboard.
   - [dashboard]
 
+# CLI commands the TUI runs inside itself instead of starting a new onex program
+# (OMN-26611; each start cost 2.3 to 3.2 s). Short reads and setup changes only:
+# a command that waits on a model or the network, serves, prompts or is fed text
+# on stdin stays a separate process, so Esc still ends it and everything it started.
+in_process:
+  - [models, list]
+  - [models, connections]
+  - [models, first]
+  - [models, remove]
+  - [delegation, status]
+  - [delegation, "on"]
+  - [delegation, "off"]
+  - [dashboard, status]
+  - [doctor]
+  - [metering]
+
 # Marks used in the output pane.
 glyphs:
   task: "›"
@@ -334,6 +350,17 @@ words:
   toast_added: Added
   still_working: "still working… the tab closes or changes once this finishes"
   tab_loading: "opening {tab}…"
+  # The step the live line names while a wait lasts (OMN-26611): a spinner, this
+  # name and the seconds, within 0.2 s of the action starting.
+  step_open_tab: "Opening {tab}"
+  step_run: "Running onex {command}"
+  step_guided_setup: "Running guided setup"
+  step_save_models: "Saving your models"
+  step_save_delegation: "Saving delegation"
+  step_model_first: "Setting the first model"
+  step_model_remove: "Removing the model"
+  step_dashboard: "Dashboard {action}"
+  step_find_models: "Loading {provider} models"
   # The one line under the tabs: how many models, on how many servers, and the first.
   summary: "{dot} {models} · {servers} · {first}"
   summary_no_servers: "{dot} {models} · {first}"

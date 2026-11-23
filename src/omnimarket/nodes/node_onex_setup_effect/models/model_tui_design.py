@@ -274,6 +274,9 @@ class ModelTuiDesign(BaseModel):
     #: The only commands `/` lists and the TUI runs, in this order; every other
     #: CLI command stays in the CLI; the TUI has no list-everything switch.
     customer_commands: tuple[tuple[str, ...], ...] = Field(min_length=1)
+    #: CLI command paths the TUI runs inside itself instead of starting a new
+    #: onex program (OMN-26611); a path covers every command under it.
+    in_process: tuple[tuple[str, ...], ...] = ()
     model_table: ModelTuiModelTable
     delegation: ModelTuiDelegation
     dashboard: ModelTuiDashboard
@@ -343,6 +346,11 @@ class ModelTuiDesign(BaseModel):
             if wanted not in table.status:
                 raise ValueError(f"model_table status has no word for {wanted!r}")
         return self
+
+    @property
+    def tab_ids(self) -> frozenset[str]:
+        """The shortcut actions that open a tab."""
+        return frozenset(spec.id for spec in self.tabs)
 
     def replaces(self, path: tuple[str, ...]) -> bool:
         """Whether ``path`` is, or sits under, a CLI command a shortcut replaces."""
