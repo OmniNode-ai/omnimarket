@@ -129,7 +129,7 @@ def test_pull_request_preserves_the_full_current_tuple(ref_name: str) -> None:
     # estimate contract. OMN-22478 (operator RULING 2026-11-05T20:27:56Z) removes
     # the two automated review contexts. OMN-25514 removes the delegation-health
     # check, a dev signal admitted by a dated sweep exclusion.
-    assert len(resolved) == 58
+    assert len(resolved) == 59
 
 
 @pytest.mark.parametrize("ref_name", [None, "dev", "main"])
