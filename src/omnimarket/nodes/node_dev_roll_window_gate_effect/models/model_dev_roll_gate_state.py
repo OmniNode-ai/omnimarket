@@ -10,8 +10,22 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from omnimarket.events.runtime_deployment import ModelDeployPublishCommand
 from omnimarket.models.dev_roll import ModelDevRollRecord
+from omnimarket.models.lab_alarm_delivery import ModelLabAlarmDeliveryRequest
 from omnimarket.nodes.node_dev_roll_window_gate_effect.models.model_dev_roll_gate_abandoned_roll import (
     ModelDevRollGateAbandonedRoll,
+)
+from omnimarket.nodes.node_dev_roll_window_gate_effect.models.model_dev_roll_gate_events import (
+    ModelDevRollGateDecision,
+    ModelDevRollGateRollRecorded,
+)
+
+#: One event of a tick the runtime has not been handed yet: the released command, the decision, the abandoned-roll
+#: record or the held-age alarm. Every member forbids extra fields, so a stored event reads back as its own type.
+ModelDevRollGateOutboxEvent = (
+    ModelDeployPublishCommand
+    | ModelDevRollGateDecision
+    | ModelDevRollGateRollRecorded
+    | ModelLabAlarmDeliveryRequest
 )
 
 
@@ -35,7 +49,7 @@ class ModelHeldDevRoll(BaseModel):
 
 
 class ModelDevRollGateState(BaseModel):
-    """Held commands (oldest first), the last released roll, the rolls given up on, the released ids kept and the alarmed ids."""
+    """Held commands (oldest first), the last released roll, the rolls given up on, the released ids kept, the alarmed ids and the outbox of events not yet handed to the runtime."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -45,3 +59,6 @@ class ModelDevRollGateState(BaseModel):
     abandoned: tuple[ModelDevRollGateAbandonedRoll, ...] = ()
     #: Held command ids a held-age alarm already named; once-only, pruned to the commands still held.
     alarmed_ids: tuple[str, ...] = ()
+    #: The events of a tick the runtime has not been handed yet, in the order the tick produced them (OMN-26501): the
+    #: tick publisher hands it one per tick, and a state written before this field existed reads as an empty outbox.
+    outbox: tuple[ModelDevRollGateOutboxEvent, ...] = ()
