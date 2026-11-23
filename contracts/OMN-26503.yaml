@@ -39,6 +39,9 @@ dod_evidence:
   binds_ac:
   - AC2
   checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn26503_catalogue_declares_free.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
   - check_type: command
     check_value: uv run mypy src/omnimarket/models/priced_spend.py --strict
     cwd: .
