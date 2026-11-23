@@ -13,6 +13,9 @@ from decimal import Decimal
 
 import pytest
 
+from omnimarket.handlers.handler_savings_priced_models_fill import (
+    refresh_shared_priced_models,
+)
 from omnimarket.models.model_metering_summary_refresh_requested import (
     EnumMeteringRefreshReason,
     ModelMeteringSummaryRefreshRequested,
@@ -25,7 +28,6 @@ from omnimarket.nodes.node_metering_summary_compute import (
 from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_summary_store_refresh import (
     refresh_from_store,
 )
-from omnimarket.projection.shared_priced_models import refresh_shared_priced_models
 from tests.test_omn17426_savings_aggregate_views_per_tenant import (
     _CONCURRENT_INDEX,
     _ENSURE_ROLES,

@@ -86,7 +86,7 @@ db_io:
       schema: public
       migration: "102_delegation_savings_unpriced_matches_refresh.sql"
       access: read_write
-      role: metering_summary
+      role: savings_priced_models
   dedupe_key: [tenant_id, window_kind, window_start, baseline_model]
   ordering_key: as_of
 event_bus:

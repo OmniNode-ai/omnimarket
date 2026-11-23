@@ -15,6 +15,9 @@ from typing import Any
 
 import yaml
 
+from omnimarket.handlers.handler_savings_priced_models_fill import (
+    refresh_shared_priced_models,
+)
 from omnimarket.models.model_metering_summary_refresh_requested import (
     ModelMeteringSummaryRefreshRequested,
 )
@@ -42,7 +45,6 @@ from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
 )
-from omnimarket.projection.shared_priced_models import refresh_shared_priced_models
 from omnimarket.projection.tenant_isolation import resolve_write_tenant
 
 logger = logging.getLogger(__name__)

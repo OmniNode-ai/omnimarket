@@ -22,6 +22,7 @@ import asyncpg
 import pytest
 
 from omnimarket.adapters.asyncpg_adapter import _refuse_unbound_tenant_scoped_write
+from omnimarket.models.model_local_install_schema import local_priced_models_rows
 from omnimarket.models.model_metering_summary_refresh_requested import (
     EnumMeteringRefreshReason,
     ModelMeteringSummaryRefreshRequested,
@@ -405,6 +406,54 @@ async def test_runtime_envelope_context_persists_summary(command: str) -> None:
             assert row["tokens_in"] == 100
             assert row["tokens_out"] == 50
             assert row["as_of"] == "2026-10-19T09:00:00.000001+00:00"
+    finally:
+        try:
+            await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        finally:
+            await conn.close()
+
+
+@pytest.mark.integration
+async def test_the_refresh_fills_the_priced_models_and_drops_a_stale_one() -> None:
+    """OMN-26444 (FILL-26444): on a real Postgres the writer's refresh replaces savings_priced_models with the pricing manifest's models before it folds, and a model the manifest no longer names is removed."""
+    conn = await _connect_or_skip()
+    try:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.execute(f"CREATE SCHEMA {_SCHEMA}")
+        for migration in _MIGRATIONS:
+            await conn.execute(_scoped(migration.read_text(encoding="utf-8")))
+        await conn.execute(_DELEGATION_EVENTS)
+        await conn.execute(
+            f"INSERT INTO {_SCHEMA}.savings_priced_models (model_key, free) VALUES ('model-the-manifest-no-longer-names', FALSE)"
+        )
+        await conn.execute(
+            f"INSERT INTO {_SCHEMA}.delegation_events (correlation_id, tenant_id, created_at, delegated_to, task_type, tokens_input, tokens_output, cost_usd, cost_savings_usd, data_source) "
+            "VALUES ('a', $1::uuid, $2, 'qwen', 'document', 100, 50, 0.0001, 0.01, 'real')",
+            _TENANT,
+            datetime(2026, 10, 19, 9, tzinfo=UTC),
+        )
+        writer = MeteringSummaryProjectionWriter.__new__(
+            MeteringSummaryProjectionWriter
+        )
+        writer._db = cast(Any, _ScopedConnectionAdapter(conn))
+        writer._standalone_bindings = None
+        result = await writer._refresh(
+            ModelMeteringSummaryRefreshRequested(
+                refresh_id="priced-models-fill-test",
+                reason=EnumMeteringRefreshReason.BACKFILL,
+                requested_at=datetime(2026, 10, 19, 10, tzinfo=UTC),
+            )
+        )
+        assert result["tenants_refreshed"] == [_TENANT]
+        rows = await conn.fetch(
+            f"SELECT model_key, free FROM {_SCHEMA}.savings_priced_models ORDER BY model_key"
+        )
+        expected = sorted((key, bool(free)) for key, free in local_priced_models_rows())
+        assert expected, "positive control: the manifest names at least one model"
+        assert [(r["model_key"], r["free"]) for r in rows] == expected
+        assert "model-the-manifest-no-longer-names" not in {
+            r["model_key"] for r in rows
+        }
     finally:
         try:
             await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
