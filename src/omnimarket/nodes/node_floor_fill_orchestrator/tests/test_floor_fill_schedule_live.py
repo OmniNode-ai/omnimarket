@@ -157,6 +157,28 @@ def test_live_profile_missing_key_refuses_naming_it(key: str, tmp_path: Path) ->
     assert not (tmp_path / ".config/systemd/user").exists()
 
 
+@pytest.mark.parametrize(
+    "key",
+    [
+        "pool_snapshot_path",
+        "pool_record_suffix",
+        "pool_snapshot_max_age_seconds",
+        "pool_engine",
+        "mint_timeout_seconds",
+        "andon_state_dir",
+    ],
+)
+def test_live_profile_seam_key_refuses_when_missing(key: str, tmp_path: Path) -> None:
+    section = {
+        name: value for name, value in live_section(tmp_path).items() if name != key
+    }
+    code, out, err = _install_live(tmp_path, section, "--profile", "live")
+    assert code == 1
+    assert out == ""
+    assert f"floor_fill_live.{key}" in err
+    assert not (tmp_path / ".config/systemd/user").exists()
+
+
 def test_live_profile_unknown_key_refuses(tmp_path: Path) -> None:
     section = live_section(tmp_path, extra_key="not-a-setting")
     code, out, err = _install_live(tmp_path, section, "--profile", "live")

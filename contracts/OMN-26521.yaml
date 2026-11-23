@@ -62,7 +62,7 @@ dod_evidence:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_schedule_live.py -q -n 0 --no-cov -p no:cacheprovider -k missing_key_refuses
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_schedule_live.py -q -n 0 --no-cov -p no:cacheprovider -k seam_key_refuses_when_missing
     cwd: .
 - id: dod-omn26521-ac5
   description: 'AC5: the node tests pass at the pushed head.'
