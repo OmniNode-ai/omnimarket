@@ -110,3 +110,11 @@ schedule:
   state_directory: .onex_state/commitment-check
   boot_delay: 120s
   randomized_delay: 30s
+
+# OMN-19998: listed in event_bus.publish_topics only so the topic is provisioned and granted at boot; this node's Python does not publish it.
+provisioning_only_publish_topics:
+  - onex.cmd.omnimarket.commitment-check-requested.v1
+  - onex.evt.omnimarket.commitment-check-failed.v1
+  - onex.evt.omnimarket.commitment-check-run-failed.v1
+  - onex.evt.omnimarket.commitment-regressed.v1
+  - onex.evt.omnimarket.commitment-verified.v1

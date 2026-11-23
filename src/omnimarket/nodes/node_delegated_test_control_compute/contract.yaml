@@ -100,3 +100,8 @@ metadata:
     - "OMN-19361"
   related_tickets:
     - "OMN-19361"
+
+# OMN-19998: listed in event_bus.publish_topics only so the topic is provisioned and granted at boot; this node's Python does not publish it.
+provisioning_only_publish_topics:
+  - onex.evt.omnimarket.delegated-test-control-completed.v1
+  - onex.evt.omnimarket.delegated-test-control-failed.v1

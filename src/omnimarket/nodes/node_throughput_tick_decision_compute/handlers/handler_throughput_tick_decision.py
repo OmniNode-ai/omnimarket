@@ -90,6 +90,7 @@ from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model
 )
 from omnimarket.nodes.node_throughput_tick_decision_compute.models.model_throughput_tick_decision import (
     ModelCodexHeadroom,
+    ModelDispatchedLane,
     ModelLabAdmission,
     ModelLabHeadroomFacts,
     ModelLabHost,
@@ -159,7 +160,8 @@ OPEN_TREND_FIX = (
     "lane=orchestrator-9f8a; the tick dispatches nothing"
 )
 UNPLACED_LANE_FIX = (
-    "the lane has no placement receipt and no CLAIM-backed run: never report it as running; read "
+    "the lane has no CLAIM carrying host= and run= inside the placement window (a TERMINAL, even "
+    "outcome=completed, and a placement receipt are not placement): never report it as running; read "
     "~/.local/state/omni/remote-lanes/<lane>/rlane-*.json for its status, then re-dispatch its brief "
     "through the remote-lane runner once a lab-headroom line shows a free slot, or tell the operator it "
     "never ran; the tick dispatches nothing"
@@ -204,6 +206,7 @@ class Report:
     unknown: list[str] = field(default_factory=list)
     checked: list[str] = field(default_factory=list)
     alarms: list[ModelTickAlarmVerdict] = field(default_factory=list)
+    status_rows: list[str] = field(default_factory=list)
     codex: list[ModelCodexHeadroom] = field(default_factory=list)
     # floor:<repo> -> (merges in the window, PRs waiting), for the park rule (OMN-20840)
     floor_stats: dict[str, tuple[int, int]] = field(default_factory=dict)
@@ -1350,36 +1353,120 @@ def _minutes(value: float) -> str:
     return f"{round(value, 1):g}"
 
 
+def _placement(lane: ModelDispatchedLane, window_minutes: int) -> str | None:
+    """Why the lane is not placed, else None.
+
+    Placed means one thing: a CLAIM carrying `host=` and `run=` at most `window_minutes` after the dispatch
+    (OMN-26216). A TERMINAL (`outcome=completed` included) and a runner's placement receipt prove nothing
+    about where the lane ran, so neither is read.
+    """
+    if not lane.claim_host or not lane.claim_run_id:
+        return "no CLAIM with host= and run="
+    if lane.claim_at is None:
+        return "a CLAIM with host= and run= whose time was not read"
+    lag = (parse_stamp(lane.claim_at) - parse_stamp(lane.dispatched_at)).total_seconds()
+    if lag > window_minutes * 60:
+        return f"its CLAIM came {_minutes(lag / 60)} min after the dispatch (window {window_minutes})"
+    return None
+
+
 def check_unplaced_lanes(
     rep: Report, request: ModelThroughputTickRequest, now: datetime
 ) -> None:
-    """A lane recorded as dispatched with no placement receipt for longer than the bound is an ALARM
-    and is never counted as running; a younger one is a NOTE (OMN-20851)."""
+    """A dispatched lane is placed only by a CLAIM with host= and run= inside the placement window; one past
+    that window gets a STATUS unplaced row, and past the alarm bound an ALARM, and is never counted as
+    running; a younger one is a NOTE (OMN-20851, OMN-26216)."""
     rep.checked.append("unplaced-lanes")
     bound = request.unplaced_lane_alarm_minutes
-    aged: list[tuple[datetime, str, float]] = []
+    window = request.placement_claim_window_minutes
+    aged: list[tuple[datetime, str, float, str, ModelDispatchedLane]] = []
     for lane in request.dispatched_lanes or []:
-        if lane.placement_receipt:
+        why_not = _placement(lane, window)
+        if why_not is None:
             continue
         at = parse_stamp(lane.dispatched_at)
-        aged.append((at, lane.lane, max(0.0, (now - at).total_seconds() / 60)))
-    for at, name, age in sorted(aged):
+        aged.append(
+            (at, lane.lane, max(0.0, (now - at).total_seconds() / 60), why_not, lane)
+        )
+    for at, name, age, why_not, lane in sorted(aged, key=lambda item: item[:2]):
         loop = f"unplaced-lane:{name}"
         since = at.strftime("%Y-%m-%dT%H:%M:%SZ")
+        ended = (
+            f"; its TERMINAL outcome={lane.terminal_outcome} is not a placement"
+            if lane.terminal_outcome
+            else ""
+        )
+        if age > window:
+            rep.status_rows.append(
+                f"{now.strftime('%Y-%m-%dT%H:%M:%SZ')} | STATUS | lane={name.replace('|', '/')}"
+                f" | actor=node:node_throughput_tick_decision_compute | model=none | src=tick"
+                f" | state=unplaced | dispatched={since} | age_min={_minutes(age)}"
+                f" | unplaced: dispatched {since}, {_minutes(age)} min ago, {why_not}{ended}"
+            )
         if age > bound:
             rep.alarm(
                 loop,
                 since,
                 age,
-                f"dispatched {since}, {_minutes(age)} min ago with no placement receipt (> {bound}); "
+                f"dispatched {since}, {_minutes(age)} min ago with {why_not}{ended} (> {bound}); "
                 "not counted as running",
                 UNPLACED_LANE_FIX,
             )
         else:
             rep.note(
-                f"{loop} | dispatched {since}, {_minutes(age)} min ago with no placement receipt yet "
+                f"{loop} | dispatched {since}, {_minutes(age)} min ago with {why_not}{ended} "
                 f"(alarm after {bound})"
             )
+
+
+def check_tick_addressees(
+    rep: Report, request: ModelThroughputTickRequest, now: datetime
+) -> None:
+    """A tick MSG whose addressee is not a live lane is an ALARM; one still unACKed after two ticks is an
+    ALARM that names the cause (OMN-26216).
+
+    On 2026-11-20 the tick wrote MSGs `to=orchestrator-31d9` while the live lane was
+    `orchestrator-31d9-swarm`: the name was a stem, not a lane, so the rows had no reader. Each ALARM loop
+    is a `<class>:<subject>` cause key, which the stall responder turns into a cause lane.
+    """
+    rep.checked.append("tick-addressees")
+    live = set(request.live_lanes or [])
+    horizon = request.tick_unacked_after_ticks * request.tick_interval_minutes
+    seen: set[str] = set()
+    for message in sorted(request.tick_messages or [], key=lambda m: (m.sent_at, m.id)):
+        sent = parse_stamp(message.sent_at)
+        age = max(0.0, (now - sent).total_seconds() / 60)
+        dead = [
+            name
+            for name in (n.strip() for n in message.to.split(","))
+            if name not in live
+        ]
+        if dead:
+            loop = f"tick-addressee:{','.join(dead)}"
+            if loop not in seen:
+                seen.add(loop)
+                rep.alarm(
+                    loop,
+                    message.sent_at,
+                    age,
+                    f"tick MSG {message.id} is addressed to {', '.join(dead)}, which is not a live lane "
+                    f"(live: {', '.join(sorted(live)) or 'none'})",
+                    "address the tick to the live lane's full name (the CLAIM's lane= cell), never a stem "
+                    "of it; read the live lane names from the open CLAIMs",
+                )
+        elif not message.acked and age > horizon:
+            loop = f"tick-unacked:{message.to}"
+            if loop not in seen:
+                seen.add(loop)
+                rep.alarm(
+                    loop,
+                    message.sent_at,
+                    age,
+                    f"tick MSG {message.id} to {message.to} has no ACK after {_minutes(age)} min "
+                    f"(> {request.tick_unacked_after_ticks} ticks of {_minutes(request.tick_interval_minutes)})",
+                    "open the cause lane for this key: the addressee is live and not reading the tick; "
+                    "read why before sending another MSG",
+                )
 
 
 def check_venv_divergence(
@@ -1825,6 +1912,8 @@ class HandlerThroughputTickDecision:
                 )
         if request.dispatched_lanes is not None:
             check_unplaced_lanes(rep, request, now)
+        if request.tick_messages is not None and request.live_lanes is not None:
+            check_tick_addressees(rep, request, now)
         if request.venv_divergences is not None:
             check_venv_divergence(rep, request, now)
         if request.deploy_drifts is not None:
@@ -1860,6 +1949,7 @@ class HandlerThroughputTickDecision:
             unknown=rep.unknown,
             checked=rep.checked,
             alarms=rep.alarms,
+            status_rows=rep.status_rows,
             codex_headroom=rep.codex,
             exit_code=0
             if not rep.missing and not rep.unknown and not rep.alarms

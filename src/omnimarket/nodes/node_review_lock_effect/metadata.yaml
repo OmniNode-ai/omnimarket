@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: review_lock_effect
+version: "1.0.0"
+description: "One review lock per pull request head, recorded on the ledger, and a scope check that holds a fixer push adding files nobody asked for."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_review_lock_effect: omnimarket.nodes.node_review_lock_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+  - "pydantic>=2.0"
+tags: [effect, review, ledger, lock]
+pack: "data"
+display_name: "Effect: Review Lock"
+node_role: "effect"
+license: "MIT"

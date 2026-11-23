@@ -170,3 +170,8 @@ metadata:
     - "operator-capture"
     - "work-ledger"
   related_tickets: [OMN-21713, OMN-17427, OMN-20906]
+
+# OMN-19998: listed in event_bus.publish_topics only so the topic is provisioned and granted at boot; this node's Python does not publish it.
+provisioning_only_publish_topics:
+  - onex.evt.omnimarket.ask-state-completed.v1
+  - onex.evt.omnimarket.ask-state-failed.v1

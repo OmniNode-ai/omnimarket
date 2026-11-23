@@ -100,3 +100,10 @@ overlay:
 metadata:
   ticket: OMN-19044
   transport_type: inmemory
+
+# OMN-19998: listed in event_bus.publish_topics only so the topic is provisioned and granted at boot; this node's Python does not publish it.
+provisioning_only_publish_topics:
+  - onex.cmd.omnimarket.broker-auth-refusal-requested.v1
+  - onex.evt.omnimarket.broker-auth-refusal-failed.v1
+  - onex.evt.omnimarket.broker-auth-refusal-run-failed.v1
+  - onex.evt.omnimarket.broker-auth-refusal-written.v1

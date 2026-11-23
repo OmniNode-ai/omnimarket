@@ -28,6 +28,12 @@ class ModelSelectorPolicy(BaseModel):
     durations_path: str = Field(min_length=1)
     path_count_shards: tuple[tuple[int, int], ...]
     path_count_max_shards: int = Field(ge=1)
+    #: The stage gate: a narrowing rule is active only at or above its stage; 0 is shadow.
+    selection_stage: int = Field(ge=0, le=4)
+    #: Shards of the full-suite matrix, which a flag-off run and every escalation take.
+    full_split_count: int = Field(ge=1, le=40)
+    #: Days a pull request's selection record artifact is kept.
+    record_retention_days: int = Field(ge=1, le=90)
 
     @model_validator(mode="after")
     def _ladder_is_ordered(self) -> ModelSelectorPolicy:

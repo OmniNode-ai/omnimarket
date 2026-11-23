@@ -87,3 +87,7 @@ externally_consumed_topics:
 metadata:
   ticket: OMN-22478
   transport_type: inmemory
+
+# OMN-19998: listed in event_bus.publish_topics only so the topic is provisioned and granted at boot; this node's Python does not publish it.
+provisioning_only_publish_topics:
+  - onex.cmd.omnimarket.stop-escalation-requested.v1

@@ -106,3 +106,9 @@ schedule:
 metadata:
   ticket: OMN-23331
   transport_type: inmemory
+
+# OMN-19998: listed in event_bus.publish_topics only so the topic is provisioned and granted at boot; this node's Python does not publish it.
+provisioning_only_publish_topics:
+  - onex.cmd.omnimarket.delegation-events-defect-scan-run-requested.v1
+  - onex.evt.omnimarket.delegation-events-defect-scan-run-failed.v1
+  - onex.evt.omnimarket.delegation-events-defect-scan-run-started.v1

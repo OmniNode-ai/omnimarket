@@ -1,0 +1,177 @@
+{
+ "source": "FRICTION rows reason=issue-create-not-bound-to-a-commitment lane_source=sidecar, ledger day 2026-11-20 (snapshot 2026-11-20T16:03:28Z)",
+ "rows": [
+  {
+   "at": "2026-11-20T00:09:44Z",
+   "sidecar_lane": "runnerverbs"
+  },
+  {
+   "at": "2026-11-20T00:11:40Z",
+   "sidecar_lane": "devagent"
+  },
+  {
+   "at": "2026-11-20T00:42:51Z",
+   "sidecar_lane": "retainreg"
+  },
+  {
+   "at": "2026-11-20T00:52:09Z",
+   "sidecar_lane": "integration:act184"
+  },
+  {
+   "at": "2026-11-20T00:52:12Z",
+   "sidecar_lane": "integration:act184"
+  },
+  {
+   "at": "2026-11-20T00:58:03Z",
+   "sidecar_lane": "proverun"
+  },
+  {
+   "at": "2026-11-20T01:18:39Z",
+   "sidecar_lane": "runnercache"
+  },
+  {
+   "at": "2026-11-20T01:27:01Z",
+   "sidecar_lane": "venvsync"
+  },
+  {
+   "at": "2026-11-20T01:40:50Z",
+   "sidecar_lane": "coreimport"
+  },
+  {
+   "at": "2026-11-20T02:03:10Z",
+   "sidecar_lane": "integration:act185"
+  },
+  {
+   "at": "2026-11-20T02:30:58Z",
+   "sidecar_lane": "place-batch0-0215-PLACEMENT:-remote-lane"
+  },
+  {
+   "at": "2026-11-20T02:33:44Z",
+   "sidecar_lane": "place-batch1-0215-PLACEMENT:-remote-lane"
+  },
+  {
+   "at": "2026-11-20T04:28:44Z",
+   "sidecar_lane": "place-batch0-0410-PLACEMENT:-remote-lane"
+  },
+  {
+   "at": "2026-11-20T04:50:43Z",
+   "sidecar_lane": "integration:act187"
+  },
+  {
+   "at": "2026-11-20T04:50:45Z",
+   "sidecar_lane": "integration:act187"
+  },
+  {
+   "at": "2026-11-20T05:24:42Z",
+   "sidecar_lane": "place-batch0-0510-PLACEMENT:-remote-lane"
+  },
+  {
+   "at": "2026-11-20T05:47:50Z",
+   "sidecar_lane": "integration:act188"
+  },
+  {
+   "at": "2026-11-20T06:21:46Z",
+   "sidecar_lane": "svctopic"
+  },
+  {
+   "at": "2026-11-20T06:47:39Z",
+   "sidecar_lane": "integration:act189"
+  },
+  {
+   "at": "2026-11-20T08:04:21Z",
+   "sidecar_lane": "gwdsn"
+  },
+  {
+   "at": "2026-11-20T08:41:02Z",
+   "sidecar_lane": "runtimehot"
+  },
+  {
+   "at": "2026-11-20T09:38:54Z",
+   "sidecar_lane": "reglock"
+  },
+  {
+   "at": "2026-11-20T09:53:34Z",
+   "sidecar_lane": "ghtoken"
+  },
+  {
+   "at": "2026-11-20T10:32:23Z",
+   "sidecar_lane": "place-batch0-1020-PLACEMENT:-remote-lane"
+  },
+  {
+   "at": "2026-11-20T11:39:57Z",
+   "sidecar_lane": "devtag"
+  },
+  {
+   "at": "2026-11-20T11:40:51Z",
+   "sidecar_lane": "relaxlock"
+  },
+  {
+   "at": "2026-11-20T11:59:20Z",
+   "sidecar_lane": "pubsize"
+  },
+  {
+   "at": "2026-11-20T12:00:24Z",
+   "sidecar_lane": "evalsovl"
+  },
+  {
+   "at": "2026-11-20T12:50:06Z",
+   "sidecar_lane": "replace"
+  },
+  {
+   "at": "2026-11-20T12:59:51Z",
+   "sidecar_lane": "integration:act195"
+  },
+  {
+   "at": "2026-11-20T12:59:54Z",
+   "sidecar_lane": "integration:act195"
+  },
+  {
+   "at": "2026-11-20T13:25:01Z",
+   "sidecar_lane": "place-batch0-1315-PLACEMENT:-remote-lane"
+  },
+  {
+   "at": "2026-11-20T13:26:36Z",
+   "sidecar_lane": "place-batch1-1315-PLACEMENT:-remote-lane"
+  },
+  {
+   "at": "2026-11-20T13:26:44Z",
+   "sidecar_lane": "place-batch1-1315-PLACEMENT:-remote-lane"
+  },
+  {
+   "at": "2026-11-20T13:49:30Z",
+   "sidecar_lane": "pick4"
+  },
+  {
+   "at": "2026-11-20T13:52:36Z",
+   "sidecar_lane": "nodrop"
+  },
+  {
+   "at": "2026-11-20T14:00:58Z",
+   "sidecar_lane": "evalkey"
+  },
+  {
+   "at": "2026-11-20T14:08:27Z",
+   "sidecar_lane": "cosmos"
+  },
+  {
+   "at": "2026-11-20T14:37:48Z",
+   "sidecar_lane": "qcap"
+  },
+  {
+   "at": "2026-11-20T14:48:49Z",
+   "sidecar_lane": "betterbuild"
+  },
+  {
+   "at": "2026-11-20T14:52:30Z",
+   "sidecar_lane": "whysmint"
+  },
+  {
+   "at": "2026-11-20T15:11:41Z",
+   "sidecar_lane": "minutes"
+  },
+  {
+   "at": "2026-11-20T15:51:34Z",
+   "sidecar_lane": "deploygit"
+  }
+ ]
+}
