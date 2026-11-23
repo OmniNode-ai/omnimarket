@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
+from typing import Any
 
 import pytest
 
@@ -18,6 +19,9 @@ from omnimarket.nodes.node_agent_message_effect.handlers.handler_agent_message i
 from omnimarket.nodes.node_agent_message_effect.models.model_agent_message_request import (
     ModelAgentMessageRequest,
 )
+from omnimarket.nodes.node_agent_message_effect.models.model_agent_message_result import (
+    ModelAgentMessageResult,
+)
 from tests.unit.nodes.node_agent_message_effect.conftest import FakeBus, message_fields
 
 pytestmark = pytest.mark.unit
@@ -26,7 +30,7 @@ SEND = EnumAgentMessageOperation.SEND
 READ = EnumAgentMessageOperation.READ
 
 
-def _send(handler: HandlerAgentMessage, **updates: object):  # type: ignore[no-untyped-def]
+def _send(handler: HandlerAgentMessage, **updates: object) -> ModelAgentMessageResult:
     return asyncio.run(
         handler.handle(
             ModelAgentMessageRequest(operation=SEND, message=message_fields(**updates))
@@ -34,9 +38,9 @@ def _send(handler: HandlerAgentMessage, **updates: object):  # type: ignore[no-u
     )
 
 
-def _read(handler: HandlerAgentMessage, **fields: object):  # type: ignore[no-untyped-def]
+def _read(handler: HandlerAgentMessage, **fields: Any) -> ModelAgentMessageResult:
     return asyncio.run(
-        handler.handle(ModelAgentMessageRequest(operation=READ, **fields))  # type: ignore[arg-type]
+        handler.handle(ModelAgentMessageRequest(operation=READ, **fields))
     )
 
 
@@ -182,11 +186,9 @@ def test_a_record_that_is_not_a_message_is_skipped_on_read(
     assert result.skipped == 2
 
 
-def test_a_node_with_no_declared_broker_answers_broker_not_declared(
-    tmp_path,  # type: ignore[no-untyped-def]
-) -> None:
+def test_a_node_with_no_declared_broker_answers_broker_not_declared() -> None:
     class NoBroker:
-        def handle(self, request):  # type: ignore[no-untyped-def]
+        def handle(self, request: Any) -> Any:
             raise NodeBrokerResolutionError("no event_bus declared for node")
 
     handler = HandlerAgentMessage(emitter=NoBroker(), bus=FakeBus())
@@ -205,9 +207,9 @@ def test_a_read_with_no_declared_broker_answers_broker_not_declared() -> None:
     assert result.refusal is EnumAgentMessageRefusal.BROKER_NOT_DECLARED
 
 
-def test_a_failed_publish_is_a_typed_refusal(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_a_failed_publish_is_a_typed_refusal() -> None:
     class Boom:
-        def handle(self, request):  # type: ignore[no-untyped-def]
+        def handle(self, request: Any) -> Any:
             raise RuntimeError("spool refused")
 
     result = _send(HandlerAgentMessage(emitter=Boom(), bus=FakeBus()))

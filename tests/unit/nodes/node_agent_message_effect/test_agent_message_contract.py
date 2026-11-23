@@ -64,7 +64,9 @@ def test_the_contract_names_an_effect_node_with_its_handler() -> None:
     handler = contract["handler"]
     assert isinstance(handler, dict)
     assert handler["class"] == "HandlerAgentMessage"
-    assert handler["module"].endswith("handlers.handler_agent_message")  # type: ignore[union-attr]
+    module = handler["module"]
+    assert isinstance(module, str)
+    assert module.endswith("handlers.handler_agent_message")
 
 
 def test_no_handler_spells_the_topic() -> None:

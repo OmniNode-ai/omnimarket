@@ -3,6 +3,9 @@
 name: node_agent_message_effect
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: EFFECT_GENERIC
+# Piece 1 of the agent message bus: the node only publishes the topic and reads it one-shot; the consumers are the
+# agent clients and other platforms (externally_consumed_topics), so the node declares no subscription.
+lifecycle: experimental
 node_version: {major: 0, minor: 1, patch: 0}
 description: >
   One declared topic carries messages between agents of different platforms (Claude, Codex, GLM, Hermes,
@@ -37,6 +40,10 @@ descriptor:
 
 runtime_dispatch:
   external_trigger: Direct Python invocation by the agent message clients, with the declared broker bound by the container.
+  # A person, a lane or a client runs one operation (send or read) from a request file; nothing on the bus starts this node.
+  on_demand:
+    command: uv run onex node node_agent_message_effect --input <request.json> --output receipt
+    owner: OmniNode Platform Team
 
 # The one agent message topic. send publishes it through the emit effect's durable spool
 # (registries/topics.yaml, event type agent.message, duty_critical); read subscribes to it below.

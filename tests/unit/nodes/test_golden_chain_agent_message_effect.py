@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Awaitable, Callable
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -53,7 +55,14 @@ class _Broker:
         assert topic == TOPIC
         self.records.append(json.dumps(payload).encode())
 
-    async def subscribe(self, topic, *, on_message, group_id, auto_offset_reset):  # type: ignore[no-untyped-def]
+    async def subscribe(
+        self,
+        topic: str,
+        *,
+        on_message: Callable[[ModelEventMessage], Awaitable[None]],
+        group_id: str,
+        auto_offset_reset: str,
+    ) -> Callable[[], Awaitable[None]]:
         for value in self.records:
             await on_message(
                 ModelEventMessage(
@@ -63,7 +72,7 @@ class _Broker:
                     headers=ModelEventHeaders(
                         source="test",
                         event_type="agent.message",
-                        timestamp="2026-11-23T13:30:01+00:00",  # type: ignore[arg-type]
+                        timestamp=datetime.fromisoformat("2026-11-23T13:30:01+00:00"),
                     ),
                 )
             )
