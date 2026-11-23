@@ -64,6 +64,9 @@ event_bus:
   publish_topics: []
 runtime_dispatch:
   external_trigger: Direct Python invocation by the replay driver before it sends one recorded prompt, and again with the check's exit code to score it.
+  on_demand:
+    command: uv run onex node node_delegation_replay_route_compute --input <request.json>
+    owner: OmniNode Platform Team
 descriptor:
   node_archetype: compute
   purity: pure
