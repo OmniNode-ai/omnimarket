@@ -25,17 +25,17 @@ import yaml
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
 from omnimarket.handlers.schedule_gate import ScheduleGate
+from omnimarket.models.model_topic_reaper import (
+    ModelReaperTopicState,
+    ModelTopicReaperRequest,
+    ModelTopicReaperResult,
+)
 from omnimarket.models.schedule_trigger.model_schedule_trigger import (
     ModelScheduleDeclaration,
     ModelScheduleRunEvent,
 )
 from omnimarket.nodes.node_topic_reaper_compute.handlers.handler_topic_reaper import (
     HandlerTopicReaper,
-)
-from omnimarket.nodes.node_topic_reaper_compute.models.model_topic_reaper import (
-    ModelReaperTopicState,
-    ModelTopicReaperRequest,
-    ModelTopicReaperResult,
 )
 from omnimarket.nodes.node_topic_reaper_compute.overlay import load_reaper_policy
 from omnimarket.nodes.node_topic_reaper_scheduled_effect.adapters.broker_evidence import (

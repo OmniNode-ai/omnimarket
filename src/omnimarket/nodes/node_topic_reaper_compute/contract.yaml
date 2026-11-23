@@ -25,8 +25,8 @@ description: >
 handler:
   module: omnimarket.nodes.node_topic_reaper_compute.handlers.handler_topic_reaper
   class: HandlerTopicReaper
-  input_model: omnimarket.nodes.node_topic_reaper_compute.models.model_topic_reaper.ModelTopicReaperRequest
-  output_model: omnimarket.nodes.node_topic_reaper_compute.models.model_topic_reaper.ModelTopicReaperResult
+  input_model: omnimarket.models.model_topic_reaper.ModelTopicReaperRequest
+  output_model: omnimarket.models.model_topic_reaper.ModelTopicReaperResult
 
 handler_routing:
   routing_strategy: operation_match
@@ -46,11 +46,11 @@ descriptor:
 
 input_model:
   name: ModelTopicReaperRequest
-  module: omnimarket.nodes.node_topic_reaper_compute.models.model_topic_reaper
+  module: omnimarket.models.model_topic_reaper
   description: The injected clock, the lane's reaper policy, the broker observation, the prior records and the guard sets.
 output_model:
   name: ModelTopicReaperResult
-  module: omnimarket.nodes.node_topic_reaper_compute.models.model_topic_reaper
+  module: omnimarket.models.model_topic_reaper
   description: The new records, one decision per topic, the delete targets and the counts.
 
 # The reaper takes its observation from the caller (the broker reading effects) and declares no bus topic of
@@ -67,7 +67,7 @@ event_bus:
 overlay:
   node: node_topic_reaper_compute
   roots_env: ONEX_SKILL_OVERLAY_ROOTS
-  model: omnimarket.nodes.node_topic_reaper_compute.models.model_topic_reaper.ModelTopicReaperPolicy
+  model: omnimarket.models.model_topic_reaper.ModelTopicReaperPolicy
 
 replay:
   deterministic: true

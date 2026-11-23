@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
-from omnimarket.nodes.node_topic_reaper_compute.models.model_topic_reaper import (
+from omnimarket.models.model_topic_reaper import (
     ModelReaperObservation,
 )
 

@@ -12,6 +12,9 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from omnimarket.models.model_topic_reaper import (
+    ModelReaperObservation,
+)
 from omnimarket.nodes.node_broker_topic_removal_effect.adapters.declared_topics import (
     ContractFileDeclaredTopics,
 )
@@ -24,9 +27,6 @@ from omnimarket.nodes.node_broker_topic_removal_effect.protocols import (
     ProtocolDeclaredTopics,
     ProtocolTopicInventory,
     TopicInventoryError,
-)
-from omnimarket.nodes.node_topic_reaper_compute.models.model_topic_reaper import (
-    ModelReaperObservation,
 )
 from omnimarket.nodes.node_topic_reaper_scheduled_effect.models import (
     ModelReaperEvidence,

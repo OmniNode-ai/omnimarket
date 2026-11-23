@@ -20,7 +20,7 @@ import pytest
 import yaml
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
-from omnimarket.nodes.node_topic_reaper_compute.models.model_topic_reaper import (
+from omnimarket.models.model_topic_reaper import (
     REAPER_POLICY_MISSING,
     ModelReaperObservation,
     ModelTopicReaperRequest,
@@ -125,7 +125,8 @@ class _SpyReaper:
 
     def handle(self, request: ModelTopicReaperRequest) -> ModelTopicReaperResult:
         self.requests.append(request)
-        return self.inner.handle(request)  # type: ignore[no-any-return]
+        result: ModelTopicReaperResult = self.inner.handle(request)
+        return result
 
 
 def _handler(environ: dict[str, str], evidence: _Evidence) -> tuple[Any, _SpyReaper]:
