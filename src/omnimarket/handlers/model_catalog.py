@@ -352,7 +352,6 @@ def pricing_models_dev_index() -> ModelsDevIndex:
     lock_path = _read_lock_path(home)
     with contextlib.suppress(OSError):
         lock_path.parent.mkdir(parents=True, exist_ok=True)
-    import fcntl  # POSIX only: the module must still import where it is absent
 
     fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
     try:
