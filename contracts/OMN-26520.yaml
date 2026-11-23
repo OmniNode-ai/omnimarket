@@ -65,11 +65,18 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_projection_done_items -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26520-ac5
-  description: 'AC5: read on the dev runtime on omni-201 only after the deploy agent applies the merged change; hosted CI cannot reach it, so only the local Done gate runs this unbound check.'
+  description: 'AC5: the real-Postgres test shows a not-done TERMINAL writes no row and reports events_not_applicable, the writer behaviour the dev runtime health read depends on; the live dev read is the unbound dod-omn26520-ac5-live-read item.'
   source: manual
-  execution_scope: local_done_gate
   binds_ac:
   - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_projection_done_items/test_done_items_real_postgres.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26520-ac5-live-read
+  description: 'AC5 live read on the dev runtime on omni-201 only after the deploy agent applies the merged change; hosted CI cannot reach it, so only the local Done gate runs this unbound check.'
+  source: manual
+  execution_scope: local_done_gate
   checks:
   - check_type: command
     check_value: ssh omni-201 docker inspect --format '{{.State.Health.Status}}' omninode-runtime
