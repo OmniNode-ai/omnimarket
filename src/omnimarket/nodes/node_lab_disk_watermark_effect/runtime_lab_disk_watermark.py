@@ -30,6 +30,7 @@ from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.handler_lab_disk_w
     load_schedule,
 )
 from omnimarket.nodes.node_lab_disk_watermark_effect.models.model_lab_disk_watermark import (
+    ModelLabDiskWatermarkOverlay,
     ModelLabDiskWatermarkRequest,
     ModelLabDiskWatermarkScheduleResult,
 )
@@ -120,6 +121,14 @@ def _run(args: argparse.Namespace) -> int:
             f"hours to the {floor:g} GB floor\n"
         )
         return EXIT_PAGE
+    if reading.inode_alarms:
+        for alarm in reading.inode_alarms:
+            sys.stderr.write(
+                f"PAGE-INODES {alarm.host_name}: {alarm.path} {alarm.free_percent}% inodes free, "
+                f"below {alarm.threshold_percent:g}%, owner={alarm.owner}, "
+                f"rows written={alarm.written}{': ' + alarm.note if alarm.note else ''}\n"
+            )
+        return EXIT_PAGE
     if isinstance(reading.host_disk, ModelHostDiskReadFailed):
         failed = reading.host_disk
         sys.stderr.write(
@@ -137,14 +146,22 @@ def _schedule(args: argparse.Namespace) -> int:
         sys.stdout.write(f"OK {len(overlay.hosts)} hosts, each with a watermark row\n")
         return 0
     schedule = load_schedule()
+    install_overlay: ModelLabDiskWatermarkOverlay | None = None
     if args.verb == "install":
-        overlay = load_overlay(str(args.overlay))
-        host_row(overlay, args.host)
-        if overlay.reading is not None:
+        install_overlay = load_overlay(str(args.overlay))
+        host_row(install_overlay, args.host)
+        if install_overlay.reading is not None:
             # the reading's interval is the overlay's: a value of the host's reading, never of the node
             schedule = schedule.model_copy(
-                update={"interval_seconds": overlay.reading.interval_seconds}
+                update={"interval_seconds": install_overlay.reading.interval_seconds}
             )
+    ledger_append_command = ""
+    if install_overlay is not None and install_overlay.reading is not None:
+        # the inode alarm's ledger route: the bus append command on the lane the host's reading already publishes to
+        ledger_append_command = (
+            f"{args.python} -m omnimarket.work_ledger_bus.cli append "
+            f"--bus-lane {install_overlay.reading.bus_lane} --omnibase-path {args.workspace_root}"
+        )
     scheduler = WatermarkScheduler(schedule=schedule, home=Path.home())
     result: ModelLabDiskWatermarkScheduleResult
     if args.verb == "install":
@@ -156,6 +173,7 @@ def _schedule(args: argparse.Namespace) -> int:
             workspace_root=args.workspace_root,
             workspace_config_root=args.workspace_config_root,
             dry_run=args.dry_run,
+            ledger_append_command=ledger_append_command,
         )
     elif args.verb == "status":
         result = scheduler.status()
