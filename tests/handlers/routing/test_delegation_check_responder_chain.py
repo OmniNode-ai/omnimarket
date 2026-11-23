@@ -154,3 +154,17 @@ def test_the_row_must_try_local_then_openrouter_then_claude_api() -> None:
 def test_a_malformed_responder_is_refused(responder: dict[str, str]) -> None:
     with pytest.raises(ValidationError):
         ModelDelegationCheckResponder.model_validate(responder)
+
+
+def test_a_tier_names_an_address_by_table_not_by_a_literal_comparison() -> None:
+    from omnimarket.models.overlay_documents.model_delegation_check_responders_overlay import (
+        TIER_NAMES_BASE,
+        ModelDelegationCheckResponder,
+    )
+
+    assert TIER_NAMES_BASE == {"local": True, "openrouter": False, "claude_api": False}
+    assert ModelDelegationCheckResponder(
+        tier="local", base_url="http://127.0.0.11:8111"
+    ).names_base
+    assert not ModelDelegationCheckResponder(tier="openrouter").names_base
+    assert not ModelDelegationCheckResponder(tier="claude_api").names_base

@@ -451,3 +451,20 @@ def test_the_host_installer_declares_an_hourly_systemd_unit_for_the_tick() -> No
         "omnimarket.nodes.node_delegation_check_probe_effect.runtime_delegation_check_probe_tick"
     )
     assert (ROOT / unit["entry_file"]).is_file()
+
+
+def test_the_contract_names_the_host_unit_that_runs_the_node() -> None:
+    contract = yaml.safe_load((NODE_DIR / "contract.yaml").read_text(encoding="utf-8"))
+    unit = contract["runtime_dispatch"]["host_unit"]["unit"]
+    assert unit == "delegation-check-probe"
+    installer = yaml.safe_load(
+        (
+            ROOT
+            / "src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    declared = installer["units"][unit]
+    assert declared["module"].startswith(
+        "omnimarket.nodes.node_delegation_check_probe_effect."
+    )
+    assert declared["schedule"]["start_interval"] == 3600
