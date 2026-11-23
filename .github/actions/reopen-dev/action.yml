@@ -1,0 +1,154 @@
+name: Reopen dev
+author: OmniNode
+description: >-
+  The post-release disarm of both release paths (release-cut.yml and
+  auto-tag-on-merge.yml): runs scripts/ci/post_release_dev_bump.py for the
+  released version, which moves dev to the next patch version and removes the
+  CHANGELOG.md the release cut added, then pushes the change to dev or, when
+  branch protection refuses, opens a PR with auto-merge. The caller mints the App
+  token, checks out dev with it (fetch-depth 0, so the released tag is present)
+  and installs uv; the bump logic lives in the script and nowhere else.
+inputs:
+  released-version:
+    description: "the version just published, e.g. 0.4.325 or v0.4.325"
+    required: true
+  token:
+    description: "the onexbot-occ-writer App token the caller checked dev out with"
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Decide and apply the dev version bump
+      id: bump
+      shell: bash
+      env:
+        RELEASED_VERSION: ${{ inputs.released-version }}
+      run: |
+        set -euo pipefail
+        # Decide first WITHOUT writing, so the decision is recorded even when
+        # it is a no-op (dev already ahead => the gate is already disarmed).
+        DECISION="$(python3 scripts/ci/post_release_dev_bump.py --released "$RELEASED_VERSION")"
+        echo "$DECISION"
+        ACTION="$(printf '%s' "$DECISION" | python3 -c 'import json,sys; print(json.load(sys.stdin)["action"])')"
+        TARGET="$(printf '%s' "$DECISION" | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_version"])')"
+        # True when the cut added a CHANGELOG.md that dev still carries.
+        REMOVE="$(printf '%s' "$DECISION" | python3 -c 'import json,sys; print(str(json.load(sys.stdin)["remove_changelog"]).lower())')"
+        CHANGE=noop
+        if [ "$ACTION" = "bump" ] || [ "$REMOVE" = "true" ]; then
+          CHANGE=change
+        fi
+        echo "action=$ACTION" >> "$GITHUB_OUTPUT"
+        echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+        echo "remove_changelog=$REMOVE" >> "$GITHUB_OUTPUT"
+        echo "change=$CHANGE" >> "$GITHUB_OUTPUT"
+        echo "branch=automation/omn-18010-post-release-dev-bump-${TARGET}" >> "$GITHUB_OUTPUT"
+        {
+          echo "### Post-release dev version bump"
+          echo ""
+          echo '```json'
+          echo "$DECISION"
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"
+        if [ "$CHANGE" = "change" ]; then
+          python3 scripts/ci/post_release_dev_bump.py --released "$RELEASED_VERSION" --apply
+        fi
+        if [ "$ACTION" = "bump" ]; then
+          uv lock
+        fi
+
+    - name: Push the reopen commit to dev, falling back to a PR
+      if: steps.bump.outputs.change == 'change'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        REPO: ${{ github.repository }}
+        RELEASED_VERSION: ${{ inputs.released-version }}
+        ACTION: ${{ steps.bump.outputs.action }}
+        REMOVE_CHANGELOG: ${{ steps.bump.outputs.remove_changelog }}
+        TARGET: ${{ steps.bump.outputs.target }}
+        BRANCH: ${{ steps.bump.outputs.branch }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        set -euo pipefail
+        git config user.name "onexbot-occ-writer[bot]"
+        git config user.email "onexbot-occ-writer[bot]@users.noreply.github.com"
+        if [ "$ACTION" = "bump" ]; then
+          git add pyproject.toml uv.lock
+        fi
+        if [ "$REMOVE_CHANGELOG" = "true" ]; then
+          # The release cut added this file; the removed-prose test forbids it on
+          # dev, so the change that reopens dev takes it out again.
+          git rm -q --ignore-unmatch -- CHANGELOG.md
+        fi
+        if [ "$ACTION" = "bump" ]; then
+          SUBJECT="chore(release): open dev for v${TARGET}"
+          TITLE="chore(OMN-18010): post-release dev version bump to ${TARGET}"
+          WHAT="Disarms the OMN-16344 release-identity gate that publishing
+        ${RELEASED_VERSION} armed against dev."
+        else
+          SUBJECT="chore(release): remove the CHANGELOG.md the v${RELEASED_VERSION} cut added"
+          TITLE="chore(OMN-18010): remove the release cut's CHANGELOG.md after ${RELEASED_VERSION}"
+          WHAT="Dev is already ahead of ${RELEASED_VERSION}; this removes the CHANGELOG.md
+        the release cut added, which the removed-prose test forbids on dev."
+        fi
+        git commit -m "${SUBJECT}
+
+        ${WHAT}
+
+        Triggered-by: ${RUN_URL}"
+
+        # Preferred: straight to dev. omnimarket's dev carries 32 required
+        # status checks with enforce_admins true, so this push is expected to
+        # be REFUSED here and the fallback is the live path; the attempt stays
+        # so this file is portable to a repo with a laxer dev.
+        if git push origin "HEAD:dev" 2>push.log; then
+          echo "dev reopened at ${TARGET} by direct push."
+          exit 0
+        fi
+        cat push.log >&2
+        echo "::warning::direct push to dev was refused (branch protection); falling back to a bump PR. dev stays ARMED until it merges."
+
+        # A cut re-dispatched after a prior run already opened this same bump
+        # PR must not open a duplicate of it.
+        if ! OPEN_HEADS="$(gh pr list --repo "$REPO" --base dev --state open \
+          --limit 100 --json headRefName --jq '.[].headRefName')"; then
+          # An unreadable PR list is not evidence that no bump is in flight.
+          echo "::error::could not list open PRs; refusing to open a bump PR that may duplicate one already in flight."
+          exit 1
+        fi
+        if printf '%s\n' "$OPEN_HEADS" | grep -qxF "$BRANCH"; then
+          echo "A bump PR to ${TARGET} is already open -- not opening another."
+          exit 0
+        fi
+        git branch -f "$BRANCH" HEAD
+        git push origin "refs/heads/${BRANCH}"
+        gh pr create --repo "$REPO" --base dev --head "$BRANCH" \
+          --title "$TITLE" \
+          --body "$(printf '%s\n' \
+            "## Summary" \
+            "" \
+            "Automated post-release disarm step (OMN-18010, porting OMN-13912). Publishing \`${RELEASED_VERSION}\` left dev's \`[project].version\` equal to the highest published tag, which ARMS the OMN-16344 release-identity gate (omnibase_core's \`check-release-identity\` hook) against every subsequent dev PR that touches \`src/**\`." \
+            "" \
+            "This PR bumps \`[project].version\` to \`${TARGET}\`, re-locks \`uv.lock\` and removes the \`CHANGELOG.md\` the release cut added (the removed-prose test forbids it on dev), so the gate is disarmed by the same flow that armed it rather than by whichever unrelated PR trips it first. A step that does not apply to this release (no bump, or no changelog) is absent from the diff." \
+            "" \
+            "## Ticket" \
+            "" \
+            "OMN-18010 — releases are cut on an explicit trigger; this is the one bump PR that follows a cut, not a per-merge one." \
+            "" \
+            "## Triggered by" \
+            "" \
+            "${RUN_URL}" \
+            "" \
+            "## Test plan" \
+            "" \
+            "- [ ] the release-identity gate is green on this PR (that IS the behaviour under test)" \
+            "- [ ] CI passes (lockfile resolves)")"
+        gh pr merge --repo "$REPO" --squash --auto "$BRANCH"
+
+    - name: Report no-op
+      if: steps.bump.outputs.change == 'noop'
+      shell: bash
+      env:
+        RELEASED_VERSION: ${{ inputs.released-version }}
+      run: |
+        echo "dev is already ahead of ${RELEASED_VERSION} and carries no changelog the cut added -- release-identity is disarmed, nothing to do."
