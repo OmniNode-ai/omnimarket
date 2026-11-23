@@ -49,9 +49,11 @@ description: >
   source snapshot hash. Missing sequence/time authority, gaps, duplicates,
   missing sources or a truncated page report incomplete. It never certifies
   archive extents the caller has not supplied from a sealed source manifest.
+# The node's answering handler. The bus route below goes through the expiry handler, which drops a
+# request whose caller has left (OMN-26433) and answers every other one with this handler.
 handler:
-  module: omnimarket.nodes.node_work_ledger_query_effect.handlers.handler_work_ledger_query_expiry
-  class: HandlerWorkLedgerQueryExpiry
+  module: omnimarket.nodes.node_work_ledger_query_effect.handlers.handler_work_ledger_query
+  class: HandlerWorkLedgerQuery
 handler_routing:
   routing_strategy: topic_match
   handlers:
