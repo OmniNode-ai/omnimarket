@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Node Trigger Declaration Check Effect
+#
+# Reads the node contracts a pull request touches (or every node contract with --all-nodes) and refuses a node that
+# the event bus never starts and whose contract names no tick with a schedule, schedule block, host unit, on-demand
+# command with its owner or caller file. Declarations that name something that does not hold are refused too.
+name: node_trigger_declaration_check_effect
+contract_name: node_trigger_declaration_check_effect
+node_name: node_trigger_declaration_check_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  A merge check that reads a node's trigger, not only its shape: a node with runtime_dispatch.external_trigger or no
+  subscribed topic must declare what runs it. The accepted declarations are a runtime-tick subscription with a
+  schedule, a top-level schedule block, runtime_dispatch.host_unit (checked against the host installer registry),
+  runtime_dispatch.on_demand (command and owner) and runtime_dispatch.callers (repository files that exist and name
+  the node; the node's own directory and the tests are no caller). Unreadable contracts are findings, never a pass.
+
+handler:
+  module: omnimarket.nodes.node_trigger_declaration_check_effect.handlers.handler_trigger_declaration_check
+  class: HandlerTriggerDeclarationCheck
+  input_model: omnimarket.nodes.node_trigger_declaration_check_effect.models.model_trigger_declaration_check.ModelTriggerCheckRequest
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [file-read]
+  timeout_ms: 120000
+
+input_model:
+  name: ModelTriggerCheckRequest
+  module: omnimarket.nodes.node_trigger_declaration_check_effect.models.model_trigger_declaration_check
+  description: The repository root and the node contracts to read (or all of them).
+output_model:
+  name: ModelTriggerCheckResult
+  module: omnimarket.nodes.node_trigger_declaration_check_effect.models.model_trigger_declaration_check
+  description: Contracts read, nodes needing a trigger and each refused node with its reason.
+
+runtime_dispatch:
+  external_trigger: true
+  # The Node Trigger Declaration Check job of the contract validation workflow runs it on every pull request and merge group.
+  callers:
+    - path: .github/workflows/contract-validation.yml
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+metadata:
+  transport_type: inmemory
