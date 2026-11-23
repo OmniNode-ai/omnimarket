@@ -114,6 +114,9 @@ runtime_dispatch:
     success: "onex.evt.omnimarket.pr-landing-tick-compared.v1"
     failure: "onex.evt.omnimarket.pr-landing-tick-compare-failed.v1"
   external_trigger: "A compare command from the floor reading or a replay run; decider, writer and publisher are injected."
+  # OMN-26549: the host unit that runs the tick every 60 s (node_host_installer_registry_units).
+  host_unit:
+    unit: landing-tick-orchestrator
 # OMN-26549: the tick is the caller of node_running_read_due_compute, which is pure and returns ledger append requests.
 # At each tick, each merged_prs entry of the request maps to write_due_row (a runtime-affecting merge, one row keyed on
 # its due id), and a request carrying running_read_ledger_text is read with read_due_rows at facts.observed_at. The
