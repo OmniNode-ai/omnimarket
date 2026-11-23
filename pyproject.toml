@@ -837,6 +837,7 @@ node_host_install_readback_compute = "omnimarket.nodes.node_host_install_readbac
 node_host_install_state_reducer = "omnimarket.nodes.node_host_install_state_reducer"
 node_host_installer_container_units = "omnimarket.nodes.node_host_installer_container_units"
 node_host_installer_net_units = "omnimarket.nodes.node_host_installer_net_units"
+node_host_installer_overlay_env_probe = "omnimarket.nodes.node_host_installer_overlay_env_probe"
 node_host_installer_registry_units = "omnimarket.nodes.node_host_installer_registry_units"
 node_host_installer_serve_units = "omnimarket.nodes.node_host_installer_serve_units"
 node_host_introspection_announce_effect = "omnimarket.nodes.node_host_introspection_announce_effect"
