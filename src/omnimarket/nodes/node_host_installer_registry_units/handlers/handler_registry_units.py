@@ -43,7 +43,7 @@ from omnimarket.handlers.rules_unit_roots import (
     under_worktrees,
 )
 from omnimarket.models.overlay_keys import ModelLabHostsTable
-from omnimarket.nodes.node_host_installer_registry_units.handlers.handler_node_schedule_unit import (
+from omnimarket.nodes.node_host_installer_registry_units.handlers.node_schedule_unit import (
     default_overlay,
     run_node_schedule,
 )
