@@ -7,7 +7,7 @@ from __future__ import annotations
 import copy
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -55,6 +55,11 @@ async def _load(
     return ModelOverlayStoreRecord.model_validate_json(loaded[0]), bus
 
 
+def _host(record_: ModelOverlayStoreRecord, index: int) -> dict[str, Any]:
+    hosts = cast("dict[str, Any]", record_.document)["hosts"]
+    return cast("dict[str, Any]", hosts[index])
+
+
 async def _live(table: dict[str, Any], *paths: str) -> InMemoryOverlayStore:
     store = InMemoryOverlayStore()
     assert await store.write_version(
@@ -67,7 +72,7 @@ async def _live(table: dict[str, Any], *paths: str) -> InMemoryOverlayStore:
 async def test_a_value_an_operator_set_survives_a_loader_run(tmp_path: Path) -> None:
     live = await _live(table_with(cap=OPERATOR_CAP), CAP)
     stored, _ = await _load(tmp_path, TABLE, live)
-    assert stored.document["hosts"][0]["cap"] == OPERATOR_CAP  # type: ignore[index]
+    assert _host(stored, 0)["cap"] == OPERATOR_CAP
     assert stored.operator_paths == (CAP,)
     assert TABLE["hosts"][0]["cap"] != OPERATOR_CAP
     assert stored.digest == document_digest(stored.document)
@@ -88,7 +93,7 @@ async def test_fills_empty_settings_and_replaces_those_no_operator_set(
     expected["hosts"][0]["cap"] = OPERATOR_CAP
     assert stored.document == expected
     assert stored.document["registry_root_candidates"] == ["$HOME/registry"]
-    assert stored.document["hosts"][1]["cap"] == 5  # type: ignore[index]
+    assert _host(stored, 1)["cap"] == 5
 
 
 @pytest.mark.asyncio
@@ -124,7 +129,7 @@ async def test_cleared_value_refills_from_the_repository_on_the_next_run(
 ) -> None:
     store = await _live(table_with(cap=OPERATOR_CAP), CAP)
     first, _ = await _load(tmp_path, TABLE, store)
-    assert first.document["hosts"][0]["cap"] == OPERATOR_CAP  # type: ignore[index]
+    assert _host(first, 0)["cap"] == OPERATOR_CAP
     # The store command clears the operator-set value: the record keeps the value and drops the path.
     assert await store.write_version(
         first.model_copy(
@@ -145,5 +150,5 @@ async def test_an_operator_value_for_a_setting_the_repository_dropped_stays_live
     repository = copy.deepcopy(TABLE)
     del repository["hosts"][0]["fallback_proxy_jump"]
     stored, _ = await _load(tmp_path, repository, live)
-    assert stored.document["hosts"][0]["fallback_proxy_jump"] == "operator-jump"  # type: ignore[index]
+    assert _host(stored, 0)["fallback_proxy_jump"] == "operator-jump"
     assert stored.operator_paths == (path,)
