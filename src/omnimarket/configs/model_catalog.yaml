@@ -20,10 +20,17 @@ models_dev:
   timeout_seconds: 10
   # The whole catalogue is read at once (6.7 MB on 2026-11-17); larger is refused.
   max_bytes: 33554432
+  # Inside a delegation call (OMN-23413 AC35) the read has a total deadline:
+  # this share of the call's remaining time, never more than the cap. A read
+  # that fails or runs out of time is not tried again by a call for the retry
+  # interval, so a down models.dev costs each call nothing.
+  call_read_deadline_seconds: 3
+  call_read_budget_share: 0.1
+  call_retry_after_failure_seconds: 300
 
-# The prices a delegation call reads for a model neither the provider catalogue
-# nor the model registry prices. A data file shipped inside the install and
-# refreshed with each release; a call never fetches models.dev to price a model.
+# A price list shipped inside the install (omnimarket#6497). A delegation call
+# no longer prices from it: OMN-23413 AC35 prices a call from models.dev read
+# live, reusing the copy above only while it is younger than max_age_hours.
 shipped_price_list:
   file: model_price_list.v1.json
 
@@ -35,6 +42,13 @@ provider_listing:
   max_age_hours: 24
   # Only a regular file up to this size is read; anything else is no listing.
   max_bytes: 33554432
+
+# These routes size the request from the selected model's combined entry.
+# If both sources omit the limit, use this operational request budget. The
+# model table still reports that the provider's output limit is unknown.
+output_budget:
+  providers: [reflection]
+  fallback_tokens: 65536
 
 # ONEX provider id -> models.dev provider id, for the hosted providers /config
 # offers (setup_provider_traits.yaml). Ollama and vLLM run on the user's own
@@ -103,3 +117,13 @@ local_servers:
   anthropic_messages:
     path: /v1/messages
     absent_statuses: [404, 405]
+
+# OMN-23413 AC35: a stored run's price read (the projection read behind the
+# local dashboard and onex metering) waits at most deadline_seconds in total for
+# models.dev, and after a failed read does not read it again for
+# retry_after_seconds; until then those runs stay unknown. The failure marker
+# lives under the ONEX home, so a later process honours it too.
+historical_price_read:
+  deadline_seconds: 2
+  retry_after_seconds: 300
+  failed_marker_file: cache/models_dev_historical_read_failed

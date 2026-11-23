@@ -33,8 +33,12 @@ from omnimarket.nodes.node_house_routing_overlay_effect.models.model_house_routi
     ModelHouseRoutingOverlayDeclaration,
 )
 from omnimarket.projection.postgres_sync_database import PostgresSyncProjectionAdapter
-from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
+from omnimarket.projection.tenant_isolation import HOUSE_TENANT_UUID
 from omnimarket.routing.tenant_overlay_resolver import TENANT_OVERLAY_TABLE
+
+#: The house tenant identity the node stores rows under and the runtime reads
+#: them by (OMN-26365): the canonical UUID, as the TEXT column holds it.
+HOUSE_TENANT_ID = str(HOUSE_TENANT_UUID)
 
 _TIERS = frozenset({"local", "cheap_cloud", "cheap_frontier", "claude"})
 
@@ -241,7 +245,7 @@ async def test_a_complete_declaration_writes_one_house_row_per_task_type() -> No
     receipt = await _handler(store).handle(command)
 
     assert receipt.rows_written == 2
-    assert receipt.tenant_id == HOUSE_TENANT_SLUG
+    assert receipt.tenant_id == HOUSE_TENANT_ID
     assert receipt.backend_id == "lab-omnipc2"
     assert receipt.tier_name == "local"
     assert receipt.task_types == ("code_generation", "refactor")
@@ -252,8 +256,8 @@ async def test_a_complete_declaration_writes_one_house_row_per_task_type() -> No
     assert written_task_types == ["code_generation", "refactor"]
     for call in store.upserts:
         row = call["row"]
-        assert row["tenant_id"] == HOUSE_TENANT_SLUG  # type: ignore[index]
-        assert call["tenant"] == HOUSE_TENANT_SLUG
+        assert row["tenant_id"] == HOUSE_TENANT_ID  # type: ignore[index]
+        assert call["tenant"] == HOUSE_TENANT_ID
         assert row["provider"] == "local"  # type: ignore[index]
         assert row["secret_ref"] is None  # type: ignore[index]
 
@@ -325,12 +329,12 @@ async def test_a_retire_removes_only_the_named_backend_rows() -> None:
     assert receipt.operation is EnumHouseOverlayOperation.RETIRE
     assert [call["filters"] for call in store.deletes] == [
         {
-            "tenant_id": HOUSE_TENANT_SLUG,
+            "tenant_id": HOUSE_TENANT_ID,
             "task_type": "code_generation",
             "backend_id": "lab-omnipc2",
         },
         {
-            "tenant_id": HOUSE_TENANT_SLUG,
+            "tenant_id": HOUSE_TENANT_ID,
             "task_type": "refactor",
             "backend_id": "lab-omnipc2",
         },

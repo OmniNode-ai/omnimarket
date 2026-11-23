@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from omnimarket.handlers.model_catalog import models_dev_price_with_read_time
 from omnimarket.handlers.routing.byok_provider_backends import (
     byok_backend_provider,
     byok_model_price_per_1m,
@@ -46,7 +47,12 @@ def byok_priced_actual_cost(
     backend = resolve_byok_backend_by_id(backend_id)
     if backend is None:
         return None
-    prices = byok_model_price_per_1m(backend_id, backend.endpoint_url, model_name)
+    prices = byok_model_price_per_1m(
+        backend_id,
+        backend.endpoint_url,
+        model_name,
+        models_dev_price=models_dev_price_with_read_time,
+    )
     if prices is None:
         return None
     price_in, price_out = prices
