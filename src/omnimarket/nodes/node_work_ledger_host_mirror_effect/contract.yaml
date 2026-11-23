@@ -13,7 +13,9 @@
 # canonical row on h051, h053, h201 and h202 was 35 days old). One tick reads the rows the host has not seen
 # from the work ledger read node over the bus and appends them to the host's mirror files (the authority rows of the
 # last day, and the rulings and consents of the last 30 days; the status and friction rows, about 6,500 of the
-# 10,500 rows a day, are not mirrored), and writes a receipt naming each mirror's lag behind the record. The tick period plus the projection lag is the bound a ruling
+# 10,500 rows a day, are not mirrored), and writes a receipt naming each mirror's lag behind the record. The rulings a brief template cites by stamp and
+# lane (the standing landing ruling is older than 30 days) are copied from the host's archive rolls onto archive/pinned-rulings-split.md beside the mirror, so
+# a brief built on the host finds them; a pinned ruling the host cannot carry fails the tick and is named in its receipt (OMN-26412). The tick period plus the projection lag is the bound a ruling
 # reaches a host in; the contract's `delivery` block declares both and a test holds their sum under the limit.
 name: "node_work_ledger_host_mirror_effect"
 lifecycle: experimental

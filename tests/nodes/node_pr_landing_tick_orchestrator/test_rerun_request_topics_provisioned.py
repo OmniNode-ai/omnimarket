@@ -46,7 +46,6 @@ KNOWN_NO_LIVE_CONSUMER_COMMAND_TOPICS: dict[str, str] = {
     "onex.cmd.omnimarket.host-disk-read-requested.v1": (
         "no publisher or consumer exists yet; the host disk orchestrator is a later ticket"
     ),
-    "onex.cmd.omnimarket.test-selector-collect-nightly-requested.v1": _COLLECTOR_OWN_PROCESS_REASON,
     "onex.cmd.omnimarket.test-selector-slot-check-requested.v1": _COLLECTOR_OWN_PROCESS_REASON,
 }
 

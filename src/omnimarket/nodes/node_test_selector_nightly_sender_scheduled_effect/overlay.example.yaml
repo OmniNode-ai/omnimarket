@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The schedule overlay of node_test_selector_nightly_sender_scheduled_effect (synthetic values). Every key is required.
+job_id: test_selector_nightly_sender
+# Seconds between two looks for the night's run.
+run_interval_seconds: 900
+grace_seconds: 300
+repository: example-org/example-repo
+workflow_file: nightly-full-suite.yml
+# The nightly's scheduled UTC time of day, the same as its cron. Quoted: an unquoted 02:30 is a number in YAML.
+nightly_slot_time_utc: "02:30"
+# The UTC time of day after which a tick looks for the night's run.
+earliest_check_time_utc: "03:15"
+settle_margin_seconds: 300
+# Hours after the slot by which the night must be sent; the collector's own policy value.
+collector_max_lag_hours: 6
+# The environment variable that names the runtime's writable state directory.
+state_dir_env: ONEX_STATE_DIR
+bus_lane: example-lane
+command_timeout_seconds: 180
