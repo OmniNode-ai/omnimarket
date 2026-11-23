@@ -32,6 +32,13 @@ requirements:
       - id: "AC5"
         statement: |-
           AC5: a check names this class and raises one alert after the first lane -- falsifier: uv run pytest tests/test_golden_chain_pr_create_refusal_alert.py -q over the recorded refusals fails when the check reads none of them
+  - id: "req-query-request-expiry"
+    statement: |-
+      The work-ledger query node drops a request whose caller has stopped waiting and answers a live one.
+    acceptance:
+      - id: "AC6"
+        statement: |-
+          AC6: a request older than its requested_at plus max_age_seconds (or the contract default) gets no answer and a live request is answered -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_request_expiry_omn26433.py -q fails on origin/dev
 evidence_requirements:
   - kind: tests
     description: "The claims read is bounded by the node contract, falls back, and refuses unchecked when unread"
@@ -98,6 +105,7 @@ dod_evidence:
       - check_type: test_passes
         check_value: "uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_request_expiry_omn26433.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC6"]
   - id: "dod-omn26433-query-expiry-deploy-assessment"
     description: "Deploy assessment: the query node's declared handler becomes HandlerWorkLedgerQueryExpiry and its request model gains two optional fields. No migration, no prod mutation, no new topic, no change to partitions or consumer groups. The check reads the node contract and fails when the declared expiry default is missing."
     source: "manual"
