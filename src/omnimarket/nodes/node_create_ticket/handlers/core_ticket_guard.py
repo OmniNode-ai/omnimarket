@@ -12,12 +12,10 @@ per finding, in order, so ``guard_finding_codes`` reads the codes back from the 
 
 from __future__ import annotations
 
-import os
 from functools import lru_cache
 from pathlib import Path
 
 import yaml
-from omnibase_core.cli.cli_work_ledger_render import MD_LEDGER_PATH_ENV
 from omnibase_core.models.contracts.subcontracts.model_validator_subcontract import (
     ModelValidatorSubcontract,
 )
@@ -67,9 +65,6 @@ class CoreTicketGuard:
         self, lane: str | None = None, ledger_path: Path | None = None
     ) -> None:
         self.lane = lane
-        if ledger_path is None:
-            named = os.environ.get(MD_LEDGER_PATH_ENV, "").strip()
-            ledger_path = Path(named) if named else None
         self.ledger_path = ledger_path
 
     def check(self, tool_input: dict[str, object]) -> ModelTicketGuardDecision:
