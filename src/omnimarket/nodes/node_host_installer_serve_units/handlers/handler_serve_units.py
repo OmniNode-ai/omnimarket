@@ -22,6 +22,12 @@ import yaml
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
+from omnimarket.handlers.work_root_volume_bar import (
+    VolumeReader,
+    WorkRootVolumeError,
+    read_live_volume,
+    refuse_work_root_over_bar,
+)
 from omnimarket.models.overlay_keys import ModelLabHostRow, ModelLabHostsTable
 from omnimarket.nodes.node_host_installer_serve_units.models.model_serve_units import (
     ModelServeUnitsOverlay,
@@ -116,7 +122,9 @@ class HandlerServeUnits:
         overlay: OverlayLoader = load_node_overlay,
         user: Callable[[], str] = getpass.getuser,
         contract_path: Path | None = None,
+        volume: VolumeReader = read_live_volume,
     ) -> None:
+        self._volume = volume
         self._run = run
         self._hosts = hosts
         self._overlay = overlay
@@ -324,8 +332,16 @@ class HandlerServeUnits:
                 )
         kb_path = self._knowledge_base(request, row, declared)
         lane_values = self._lane_values(row, request.registry_root, declared)
+        work_root = self._work_root(request, row)
         texts = self._render(
-            request, declared, row, bus_lane, overlay_roots, kb_path, lane_values
+            request,
+            declared,
+            row,
+            bus_lane,
+            overlay_roots,
+            kb_path,
+            lane_values,
+            work_root,
         )
         if request.mode == "dry-run":
             return ModelServeUnitsResult(
@@ -343,7 +359,20 @@ class HandlerServeUnits:
                 "linger-off",
                 f"linger is off; run: sudo loginctl enable-linger {user}",
             )
-        return self._write(request, declared, texts)
+        return self._write(request, declared, texts, work_root)
+
+    def _work_root(self, request: ModelServeUnitsRequest, row: ModelLabHostRow) -> Path:
+        """The serve unit's lane work root: the host row's declared root, else the home directory's, refused above the volume bar."""
+        root = (
+            Path(row.lab_work_root)
+            if row.lab_work_root
+            else Path(request.home) / str(self._unit["work_directory"])
+        )
+        try:
+            refuse_work_root_over_bar(root, reader=self._volume)
+        except WorkRootVolumeError as exc:
+            raise RefusalError(75, "work-root-volume-over-bar", str(exc)) from exc
+        return root
 
     def _render(
         self,
@@ -354,6 +383,7 @@ class HandlerServeUnits:
         overlay_roots: str,
         kb_path: str,
         lane_values: dict[str, str],
+        work_root: Path,
     ) -> dict[str, str]:
         unit = self._unit
         path = str(unit["path"]).format(home=request.home)
@@ -362,7 +392,7 @@ class HandlerServeUnits:
         def header(entry: ModelUnitDeclaration) -> str:
             return str(unit["header"]).format(ticket=entry.ticket)
 
-        def lab_lines(lane: str, work_directory: str) -> list[str]:
+        def lab_lines(lane: str, lane_work_root: str) -> list[str]:
             lines = [
                 f"OMNIBASE_PATH={request.serve_root}",
                 f"LAB_WORK_HOST_NAME={row.name}",
@@ -375,11 +405,11 @@ class HandlerServeUnits:
                 lines.append(f"OMNI_HOME={root}")
                 lines.extend(f"{key}={value}" for key, value in lane_values.items())
             lines.append(f"{SKILL_OVERLAY_ROOTS_ENV}={overlay_roots}")
-            lines.append(f"LAB_WORK_ROOT={request.home}/{work_directory}")
+            lines.append(f"LAB_WORK_ROOT={lane_work_root}")
             lines.append(f"PATH={path}")
             return lines
 
-        lab = lab_lines(bus_lane, str(unit["work_directory"]))
+        lab = lab_lines(bus_lane, str(work_root))
 
         sync = _quoted_env_value(
             shlex.join(["python3", f"{root}/{unit['sync_engine']}", "sync", "--repo"])
@@ -408,7 +438,10 @@ class HandlerServeUnits:
         }
         for entry in declared.lane_serves:
             texts[Path(entry.env_file).name] = header(entry) + "".join(
-                f"{line}\n" for line in lab_lines(entry.bus_lane, entry.work_directory)
+                f"{line}\n"
+                for line in lab_lines(
+                    entry.bus_lane, f"{request.home}/{entry.work_directory}"
+                )
             )
         return texts
 
@@ -417,12 +450,13 @@ class HandlerServeUnits:
         request: ModelServeUnitsRequest,
         declared: ModelServeUnitsOverlay,
         texts: dict[str, str],
+        work_root: Path,
     ) -> ModelServeUnitsResult:
         unit = self._unit
         home = Path(request.home)
         unit_dir = home / str(unit["unit_directory"])
         unit_dir.mkdir(parents=True, exist_ok=True)
-        (home / str(unit["work_directory"])).mkdir(parents=True, exist_ok=True)
+        work_root.mkdir(parents=True, exist_ok=True)
         for lane_serve in declared.lane_serves:
             (home / lane_serve.work_directory).mkdir(parents=True, exist_ok=True)
         changed = False
