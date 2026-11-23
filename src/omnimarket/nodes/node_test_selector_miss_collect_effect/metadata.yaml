@@ -18,7 +18,7 @@ dependencies:
   - "omnibase_infra"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["effect", "test-selector", "nightly", "OMN-26271"]
+tags: ["effect", "test-selector", "nightly", "OMN-26271", "OMN-26325"]
 pack: "pipeline"
 display_name: "Test Selector Miss Collect"
 node_role: "effect"
