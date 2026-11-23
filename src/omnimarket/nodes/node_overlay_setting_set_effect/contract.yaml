@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# OMN-24028. The overlay home is only a bootstrap (operator ruling 2026-11-12T15:16:12Z: once a system is
+# initialized it goes to no file for its settings): a setting changes in the store. This node sets one declared key
+# of one overlay in the store and leaves one audit row. node_overlay_store_load_effect publishes the overlay home's
+# version, node_projection_overlay_store stores every version; this node publishes a version of its own on the same topic.
+name: overlay_setting_set_effect
+lifecycle: experimental
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: Sets one declared key of one overlay in the settings store, refusing an undeclared key, and publishes one audit row naming who set it with the previous and the new value.
+output_model: omnimarket.nodes.node_overlay_setting_set_effect.models.model_overlay_setting_set_result.ModelOverlaySettingSetResult
+handler:
+  module: omnimarket.nodes.node_overlay_setting_set_effect.handlers.handler_overlay_setting_set
+  class: HandlerOverlaySettingSet
+  input_model: omnimarket.nodes.node_overlay_setting_set_effect.models.model_overlay_setting_set_request.ModelOverlaySettingSetRequest
+  output_model: omnimarket.nodes.node_overlay_setting_set_effect.models.model_overlay_setting_set_result.ModelOverlaySettingSetResult
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  side_effects: [bus-publish]
+  timeout_ms: 120000
+  runtime_profiles: [effects]
+runtime_dispatch:
+  external_trigger: "python -m omnimarket.nodes.node_overlay_setting_set_effect --overlay <id> --key <declared key> --value-json <json> --actor <who>, which reads the live record from the snapshot topic and publishes the record and the audit row"
+  # A setting changes when a person or a lane sets it, never on a timer: the command below is the whole trigger.
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_overlay_setting_set_effect --overlay <id> --key <declared key> --value-json <json> --actor <who>
+    owner: OmniNode Platform Team
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    # The record: node_projection_overlay_store stores it as the overlay's current version.
+    - onex.evt.omnimarket.overlay-store-loaded.v1
+    # The audit row: who set which key, the previous value and the new value.
+    - onex.evt.omnimarket.overlay-setting-set.v1
+# OMN-18013 sink declaration: no node contract subscribes to the audit row; it is read from the topic by operators and audit tooling.
+externally_consumed_topics:
+  - onex.evt.omnimarket.overlay-setting-set.v1
+# The set runs under the same host login as the loader (the overlay scope broker_acl_principals), and writes the two topics it publishes.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_HOST_RECONCILER_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-store-loaded.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-store-loaded.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-setting-set.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-setting-set.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.overlay-store.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.overlay-store.v1, operation: DESCRIBE}
+      - {resource_type: GROUP, pattern: PREFIXED, name: node_overlay_setting_set_effect.live, operation: READ}
+      - {resource_type: GROUP, pattern: PREFIXED, name: node_overlay_setting_set_effect.live, operation: DESCRIBE}
+# What a set may name. A key not declared here for the overlay is refused, with nothing written. A whole segment
+# ``{lane}`` stands for any one name; the lane must already be a row of the live document. ``path`` is the setting path
+# the refresh keeps (keys from the document's root joined by "/"); ``document_model`` is the model the whole document
+# must satisfy with the value set. A declared setting holds no secret: its values ride in the audit row.
+settable_settings:
+  - overlay_id: runtime_contract_hotload
+    key: lanes.{lane}.lazy_start
+    path: lanes/{lane}/lazy_start
+    document_model: "omnimarket.models.overlay_documents.model_contract_hotload_lane_overlay:ModelContractHotloadLaneOverlay"
+config:
+  # The live record the set builds on must have been loaded within this many seconds: the loader asserts every overlay
+  # each cycle, so an older record means the read did not reach the newest one, and a set built on it would replace newer settings.
+  max_live_age_s: 7200
+  # How long the command listens on the snapshot topic for the live record.
+  read_window_s: 30
+  group_prefix: node_overlay_setting_set_effect.live
+snapshot_read:
+  # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+  topic: onex.snapshot.projection.overlay-store.v1
+overlay:
+  node: node_overlay_store_load_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+metadata:
+  transport_type: kafka
+  ticket: OMN-24028
