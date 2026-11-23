@@ -39,3 +39,20 @@ def _value(name: str, key: str | None, field: str) -> str:
 def loopback_url(port: int) -> str:
     """The URL of a process setup started on this machine's loopback interface."""
     return f"http://{_value('contract.yaml', 'metadata', 'loopback_host')}:{port}"
+
+
+def supported_linux_distributions() -> tuple[str, ...]:
+    """Exact os-release identities supported by this node's reviewed contract."""
+    try:
+        value = _mapping("contract.yaml", "metadata").get("native_linux_distributions")
+    except yaml.YAMLError as exc:
+        raise ValueError("The setup platform contract could not be read") from exc
+    if (
+        not isinstance(value, list)
+        or not value
+        or not all(isinstance(item, str) and item for item in value)
+    ):
+        raise ValueError(
+            "The setup contract does not declare supported Linux distributions"
+        )
+    return tuple(value)
