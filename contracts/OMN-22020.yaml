@@ -158,7 +158,7 @@ dod_evidence:
   binds_ac:
   - AC1
   checks:
-  - check_type: command
+  - check_type: test_passes
     check_value: "env -u PYTHONPATH uv run --frozen pytest src/omnimarket/nodes/node_seam_conservation_compute/tests -k seam_graph_declared -q --no-cov"
 - id: dod-omn22020-ac2-accepted-20261122t2145z
   description: "AC2: the event-chain walk, the graph check refusing a removed emitter then restoring, and the runtime close readings. Re-run by the accepting lane on omnimarket dev 8c2a3542cc: 34 passed, 20 deselected. Absent at the parent of 23ff5b270d."
@@ -166,7 +166,7 @@ dod_evidence:
   binds_ac:
   - AC2
   checks:
-  - check_type: command
+  - check_type: test_passes
     check_value: "env -u PYTHONPATH uv run --frozen pytest src/omnimarket/nodes/node_seam_conservation_compute/tests -k three_part_proof -q --no-cov"
 - id: dod-omn22020-ac6-accepted-20261122t2145z
   description: "AC6: a mismatched VS-02 reading with every publish step ok raises MISSING seam:VS-02, an absent reading raises UNKNOWN, and the feed builds the typed tick field and measures VS-17 from sender ids against consumed ids. Re-run by the accepting lane on omnimarket dev 8c2a3542cc: 11 passed. Absent at the parent of 23ff5b270d."
@@ -174,5 +174,5 @@ dod_evidence:
   binds_ac:
   - AC6
   checks:
-  - check_type: command
+  - check_type: test_passes
     check_value: "env -u PYTHONPATH uv run --frozen pytest src/omnimarket/nodes/node_throughput_tick_decision_compute/tests/test_seam_readings.py src/omnimarket/nodes/node_seam_conservation_compute/tests/test_seam_readings_feed.py -q --no-cov"
