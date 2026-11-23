@@ -11,7 +11,7 @@
 # It is deliberately NOT node_projection_tenant_credentials, which writes the
 # CUSTOMER arm of the same table and exists to bind a customer to their own
 # key. The two arms must not share a writer: this node cannot name a tenant at
-# all (tenant_id is a constant in its handler), and that one cannot name the
+# all (tenant_id is a constant in its handler: the house tenant UUID), and that one cannot name the
 # house.
 ---
 name: node_house_routing_overlay_effect
@@ -22,7 +22,7 @@ runtime_profiles: [effects]
 
 description: >
   EFFECT: declares or retires a HOUSE inference rung as rows in
-  delegation_routing_tenant_overlay, scoped to HOUSE_TENANT_SLUG. Takes a typed
+  delegation_routing_tenant_overlay, scoped to the house tenant's canonical UUID (the form a runtime configured with the house tenant carries on every request and the resolver reads). Takes a typed
   declaration (backend_id, endpoint_url, model_name, provider, tier membership,
   optional secret_ref) and refuses a partial one at the model boundary. Tier
   membership is validated against the deployed routing-tiers contract, so a

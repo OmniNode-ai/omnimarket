@@ -1,0 +1,31 @@
+schema_version: 1.0.0
+ticket_id: OMN-26488
+title: Omnimarket dev CI Summary is red at 4c9f4e97eb on Tests Split 14/20, and the cause is found and fixed
+summary: "The repo contract binding test failed on dev because seven accepted evidence items in contracts/OMN-22016.yaml and contracts/OMN-22020.yaml named their pytest run under check_type command, which the binding check reads as no test file when the run carries uv's --frozen flag. The seven items now use check_type test_passes with the same command text, so the binding test reads each pytest target and finds it in the tree. No check was widened, skipped or retried."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26488-contract-binding-green
+  statement: The repo contract binding test passes on dev again because the accepted evidence items declare their pytest runs as test_passes checks.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a regression is fixed by a pull request against dev with a test that fails on the broken code and passes on the fix, with no skip and no widened check -- falsifier: uv run pytest on the named test fails at dev head 4c9f4e97eb and passes on the PR head'
+evidence_requirements:
+- kind: tests
+  description: 'The repo contract binding test at the pushed head.'
+  command: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26488-ac2-contract-binding-test
+  description: 'tests/ci/test_repo_evidence_caller_workflow.py::test_every_repo_contract_binds_every_criterion fails at dev head 4c9f4e97eb with seven binds_ac violations in OMN-22016.yaml and OMN-22020.yaml and passes at the pushed head with the same test code and no skip.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py::test_every_repo_contract_binds_every_criterion -q --no-cov -n 0 -p no:randomly
+    cwd: .

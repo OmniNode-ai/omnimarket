@@ -21,6 +21,8 @@ class ModelReceiptNight(BaseModel):
 
     slot_date: datetime.date
     nightly_run_id: int = Field(ge=1)
+    #: The commit the nightly suite ran on, where the night's record is published as a check run.
+    tested_head_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
 
 
 class ModelMeasuredTargets(BaseModel):
@@ -81,6 +83,7 @@ class EnumStageReceiptViolation(StrEnum):
     RECORDS_UNAVAILABLE = "records_unavailable"
     RECORD_MISSING = "record_missing"
     RECORD_MISMATCH = "record_mismatch"
+    DUPLICATE_RECORD = "duplicate_record"
     RECORD_WRONG_STAGE_ENTRY = "record_wrong_stage_entry"
     NIGHT_NOT_CLEAN = "night_not_clean"
     VERSION_MISMATCH = "version_mismatch"
