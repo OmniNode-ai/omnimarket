@@ -160,26 +160,26 @@ dod_evidence:
     description: "AC1: the unrelated-directory session prints nothing, sends no bus request and journals no miss; the registry and internal-clone sessions emit the package; the inline consumer the session-start skill calls returns the same package in all three. Re-run by the accepting lane on omnimarket dev 8c2a3542cc: 2 passed, 40 deselected. Neither test file exists at the parent of the implementing merge 214cadd3dc."
     source: manual
     checks:
-      - check_type: command
+      - check_type: test_passes
         check_value: "env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_claude_code_hook_adapter_effect/test_additive_rows_omn22016.py tests/nodes/node_context_pack_orchestrator/test_additive_gate_omn22016.py -k session_start_scope -q -m 'not kafka' --no-cov"
   - id: dod-omn22016-ac2-accepted-20261122t2145z
     binds_ac: [AC2]
     description: "AC2: each row's wait never exceeds its budget, a budget above its cap is refused, per_prompt is refused by the list loader and a package after the budget is not injected. Re-run by the accepting lane on omnimarket dev 8c2a3542cc: 14 passed, 28 deselected. Absent at the parent of 214cadd3dc."
     source: manual
     checks:
-      - check_type: command
+      - check_type: test_passes
         check_value: "env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_claude_code_hook_adapter_effect/test_additive_rows_omn22016.py tests/nodes/node_context_pack_orchestrator/test_additive_gate_omn22016.py -k 'additive_latency_budget or additive_list_loader' -q -m 'not kafka' --no-cov"
   - id: dod-omn22016-ac3-accepted-20261122t2145z
     binds_ac: [AC3]
     description: "AC3: with the list empty every additive call answers none and the hook prints nothing, with a positive control when the list names the profile. Re-run by the accepting lane on omnimarket dev 8c2a3542cc: 9 passed, 33 deselected. Absent at the parent of 214cadd3dc."
     source: manual
     checks:
-      - check_type: command
+      - check_type: test_passes
         check_value: "env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_claude_code_hook_adapter_effect/test_additive_rows_omn22016.py tests/nodes/node_context_pack_orchestrator/test_additive_gate_omn22016.py -k additive_list_empty -q -m 'not kafka' --no-cov"
   - id: dod-omn22016-ac5-accepted-20261122t2145z
     binds_ac: [AC5]
     description: "AC5: a timed-out, partial, unhashable or failing bus answer prints nothing, exits within the budget and journals exactly one miss record. Re-run by the accepting lane on omnimarket dev 8c2a3542cc: 8 passed, 19 deselected. Absent at the parent of 214cadd3dc."
     source: manual
     checks:
-      - check_type: command
+      - check_type: test_passes
         check_value: "env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_claude_code_hook_adapter_effect/test_additive_rows_omn22016.py -k additive_forced_timeout -q -m 'not kafka' --no-cov"
