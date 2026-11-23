@@ -43,8 +43,6 @@ dod_evidence:
 - id: dod-omn26471-ac7-hosted-deploy-probe
   description: 'Deploy scope: the pushed head carries the cross-owner ask check handler, read from GitHub at the checked-out revision so the hosted runner can run it.'
   source: manual
-  binds_ac:
-  - AC7
   checks:
   - check_type: command
     check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_cross_owner_ask_check_compute/handlers/handler_cross_owner_ask_check.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerCrossOwnerAskCheck" >/dev/null'
