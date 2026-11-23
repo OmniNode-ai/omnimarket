@@ -10,6 +10,7 @@ window unread and append nothing to the file.
 
 from __future__ import annotations
 
+import ast
 import subprocess
 import sys
 from pathlib import Path
@@ -95,8 +96,10 @@ def test_golden_an_append_sends_the_row_on_standard_input_under_the_alarms_lane(
     bus = FakeBus([])
     install(monkeypatch, bus)
     row = "2026-11-01T15:33:25Z | STATUS | lane=silent-failure-alarm | ticket=OMN-19998 | text"
-    assert BusAlarmLedger().append(row)[0] is True
-    assert BusAlarmLedger().append(row)[0] is True
+    first_accepted, _ = BusAlarmLedger().append(row)
+    second_accepted, _ = BusAlarmLedger().append(row)
+    assert first_accepted is True
+    assert second_accepted is True
     (first, first_input), (second, _) = bus.appends
     assert first_input == row
     assert first[first.index("--lane") + 1] == ALARM_LANE
@@ -148,3 +151,57 @@ def _not_running() -> Any:
     from omnimarket.models.silent_failure_alarm import ModelDrainerObservation
 
     return ModelDrainerObservation(job_state="not-running", status_readable=False)
+
+
+# The two CodeQL rules the first push of this change tripped, checked on the source so a later edit cannot bring
+# them back: "An assert statement has a side-effect" (a call to a mutating method inside an assert) and
+# "Statement has no effect" (a bare ``...`` as a Protocol method body).
+REPO_ROOT = Path(__file__).resolve().parents[3]
+CODEQL_CLEAN_FILES = (
+    "src/omnimarket/nodes/node_silent_failure_alarm_effect/protocols.py",
+    "tests/nodes/node_silent_failure_alarm_effect/test_ledger_over_bus_omn26332.py",
+)
+MUTATING_CALLS = frozenset({"append", "add", "pop", "remove", "update", "extend"})
+
+
+def codeql_findings(source: str) -> list[str]:
+    """Name each assert that calls a mutating method and each function whose whole body is a bare Ellipsis."""
+    findings: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Assert):
+            for call in ast.walk(node.test):
+                if (
+                    isinstance(call, ast.Call)
+                    and isinstance(call.func, ast.Attribute)
+                    and call.func.attr in MUTATING_CALLS
+                ):
+                    findings.append(
+                        f"line {node.lineno}: assert calls .{call.func.attr}()"
+                    )
+        if isinstance(node, ast.FunctionDef):
+            body = node.body
+            if (
+                len(body) == 1
+                and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and body[0].value.value is Ellipsis
+            ):
+                findings.append(f"line {node.lineno}: {node.name} body is a bare ...")
+    return findings
+
+
+def test_control_the_codeql_check_flags_both_idioms() -> None:
+    bad = (
+        "class P:\n    def f(self) -> int: ...\n\n"
+        "def t(x) -> None:\n    assert x.append(1)[0] is True\n"
+    )
+    assert codeql_findings(bad) == [
+        "line 2: f body is a bare ...",
+        "line 5: assert calls .append()",
+    ]
+
+
+@pytest.mark.parametrize("relative", CODEQL_CLEAN_FILES)
+def test_error_the_changed_files_hold_no_codeql_idiom(relative: str) -> None:
+    source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+    assert codeql_findings(source) == []
