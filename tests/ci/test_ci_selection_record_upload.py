@@ -70,7 +70,7 @@ def _step(name_part: str) -> dict[str, Any]:
 
 
 def _narrowed_selection() -> ModelTestSelection:
-    """A fixed narrowed stage-0 selection, so the flag tests do not walk the repository's import graph."""
+    """A fixed narrowed selection, so the flag tests do not walk the repository's import graph."""
     return ModelTestSelection(
         selected_paths=["tests/intelligence/"],
         split_count=2,
@@ -110,6 +110,11 @@ def _request(
     )
 
 
+def _stage_entries(selection: ModelTestSelection) -> dict[int, ModelTestSelection]:
+    """The entries the workflow passes: the one selection under stage 0 and stage 1."""
+    return {0: selection, 1: selection}
+
+
 def _handler() -> HandlerSelectionRecord:
     policy = load_policy()
     selector = HandlerTestSelectionSelector(
@@ -128,10 +133,27 @@ def test_workflow_passes_the_flag_from_the_repository_variable() -> None:
     assert 'FLAG: "on"' not in WORKFLOW.read_text(encoding="utf-8")
 
 
+def test_policy_selection_stage_is_one_and_the_workflow_feeds_that_stage() -> None:
+    # The pin: the stage the policy names is 1, and the record step passes an entry for it, so the
+    # executed selection is that entry and never the selection_unavailable full suite.
+    policy = load_policy()
+    assert policy.selection_stage == 1
+    run = str(_step("Build selection record")["run"])
+    assert f"--stage-selection {policy.selection_stage}=" in run
+    assert "--stage-selection 0=selection-stage-0.json" in run
+    assert "--stage-selection 1=selection-stage-1.json" in run
+    narrowed = _narrowed_selection()
+    record = _handler().handle(_request(_stage_entries(narrowed), flag=True))
+    assert record.selection_stage == 1
+    assert record.executed_selection.kind == "narrowed"
+    assert record.executed_selection.reason_code is None
+    assert record.executed_selection.selected_paths == narrowed.selected_paths
+
+
 def test_flag_states_same_input() -> None:
     narrowed = _narrowed_selection()
     assert narrowed.is_full_suite is False
-    entries = {0: narrowed}
+    entries = _stage_entries(narrowed)
     on = _handler().handle(_request(entries, flag=True))
     off = _handler().handle(_request(entries, flag=False))
     assert on.executed_selection.kind == "narrowed"
@@ -146,7 +168,7 @@ def test_flag_states_same_input() -> None:
 
 def test_flag_off_full_matrix() -> None:
     full_split_count = load_policy().full_split_count
-    off = _handler().handle(_request({0: _narrowed_selection()}, flag=False))
+    off = _handler().handle(_request(_stage_entries(_narrowed_selection()), flag=False))
     assert off.executed_selection.split_count == full_split_count
     detect_off = _stage0_selection(flag=False)
     assert detect_off.split_count == full_split_count
@@ -161,7 +183,7 @@ def _assert_executed_matches_decided(changed: list[str], ref: str) -> None:
         event_name="pull_request",
         feature_flag_enabled=True,
     )
-    record = _handler().handle(_request({0: decided}, flag=True))
+    record = _handler().handle(_request(_stage_entries(decided), flag=True))
     executed = record.executed_selection
     assert executed.selected_paths == decided.selected_paths
     assert executed.split_count == decided.split_count
@@ -169,7 +191,7 @@ def _assert_executed_matches_decided(changed: list[str], ref: str) -> None:
     assert executed.reason_code == decided.full_suite_reason
 
 
-def test_stage_zero_flag_on_runs_what_the_existing_selector_decides() -> None:
+def test_flag_on_runs_what_the_existing_selector_decides() -> None:
     for changed, ref in (
         (["src/omnimarket/models/x.py"], "feature/branch"),
         (["pyproject.toml"], "feature/branch"),
@@ -178,7 +200,7 @@ def test_stage_zero_flag_on_runs_what_the_existing_selector_decides() -> None:
         _assert_executed_matches_decided(changed, ref)
 
 
-def test_stage_zero_narrowed_input_matches_the_graph_selector() -> None:
+def test_narrowed_input_matches_the_graph_selector() -> None:
     # Walks the repository's whole import graph (about a minute), so the Done gate's 30 s
     # per-check ceiling cannot hold it; hosted CI runs it.
     _assert_executed_matches_decided(NARROWABLE, "feature/branch")

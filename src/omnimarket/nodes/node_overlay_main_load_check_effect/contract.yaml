@@ -20,6 +20,14 @@ handler:
   class: HandlerOverlayMainLoadCheck
   input_model: omnimarket.nodes.node_overlay_main_load_check_effect.models.model_overlay_main_load_check.ModelOverlayMainLoadCommand
 
+# Run through runtime_overlay_required_check.py; its constructor takes non-injectable
+# parameters, so it is bound here for the file-shape gate and not routed at boot.
+standalone_handlers:
+  - operation: overlay_required_check
+    handler:
+      name: HandlerOverlayRequiredCheck
+      module: omnimarket.nodes.node_overlay_main_load_check_effect.handlers.handler_overlay_required_check
+
 descriptor:
   node_archetype: effect
   runtime_profiles: [effects]
