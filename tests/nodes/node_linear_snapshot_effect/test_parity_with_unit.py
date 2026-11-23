@@ -194,20 +194,19 @@ def test_tick_given_a_failed_sweep_result_keeps_its_window_pointer(
         "- 2026-09-16T21:27:48Z 60m checkpoint: earlier\n"
     )
     (home / "pointer.txt").write_text("2026-09-16T21:20:00Z\n")
-    (home / "ledger.md").write_text(
-        "2026-09-16T21:31:00Z | CLAIM | lane=other | body\n"
-        "2026-09-16T21:40:57Z | TERMINAL | lane=last | body\n"
+    bus_rows = (
+        "2026-09-16T21:31:00Z | CLAIM | lane=other | body",
+        "2026-09-16T21:40:57Z | TERMINAL | lane=last | body",
     )
 
     def tick(**extra: object) -> Any:
         return asyncio.run(
-            HandlerHourlyTick().handle(
+            HandlerHourlyTick(read_rows=lambda _reader, _hours: bus_rows).handle(
                 ModelHourlyTickRequest.model_validate(
                     {
                         "registry_root": str(home),
                         "checkpointFile": "checkpoints.md",
                         "sweepStateFile": "pointer.txt",
-                        "ledgerFile": "ledger.md",
                         "now": "2026-09-16T21:40:57Z",
                         "fireId": "fire-1",
                         **extra,

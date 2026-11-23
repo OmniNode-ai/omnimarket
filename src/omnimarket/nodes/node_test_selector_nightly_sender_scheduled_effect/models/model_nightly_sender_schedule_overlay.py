@@ -1,16 +1,19 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The overlay the nightly sender reads: every setting of the node, none with a default."""
+"""The overlay the nightly sender reads: every setting of the node, one optional (the mounted config root)."""
 
 from __future__ import annotations
 
 from datetime import time
+from typing import Annotated
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from omnimarket.models.schedule_trigger.model_schedule_trigger import (
     ModelScheduleDeclaration,
 )
+
+ConfigRoot = Annotated[str, Field(pattern=r"^/[A-Za-z0-9._/-]*$")]
 
 
 def _time_of_day(value: object) -> object:
@@ -60,6 +63,14 @@ class ModelNightlySenderScheduleOverlay(ModelScheduleDeclaration):
     command_timeout_seconds: int = Field(
         ge=1,
         description="Seconds to wait for the terminal event that answers one command.",
+    )
+    workspace_config_root: ConfigRoot | None = Field(
+        default=None,
+        description=(
+            "The directory holding config/lab/ci_bus_lanes.yaml in the runtime that runs the node. A runtime that mounts "
+            "the declaration but exports no ONEX_WORKSPACE_CONFIG_ROOT cannot resolve the bus lane; a root the "
+            "environment already names wins."
+        ),
     )
 
     @field_validator("nightly_slot_time_utc", "earliest_check_time_utc", mode="before")
