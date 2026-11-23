@@ -40,7 +40,7 @@ _REPO_EDIT_PROMPT = re.compile(
     r"|\bverify with\b",
     re.IGNORECASE,
 )
-_VERIFY_LINE = re.compile(r"\bverify\b", re.IGNORECASE)
+_VERIFY_LINE = re.compile(r"\bverify\b[^:\n]*:\s*(?P<rest>.+)$", re.IGNORECASE)
 _BACKTICK_SPAN = re.compile(r"`([^`\n]+)`")
 
 
@@ -55,9 +55,16 @@ def _check_commands(request: ModelReplayRouteRequest) -> tuple[str, ...]:
         return request.check_commands
     found: list[str] = []
     for line in request.prompt.splitlines():
-        if _VERIFY_LINE.search(line):
-            found.extend(span.strip() for span in _BACKTICK_SPAN.findall(line))
-    return tuple(span for span in found if span)
+        match = _VERIFY_LINE.search(line)
+        if match is None:
+            continue
+        rest = match.group("rest")
+        spans = _BACKTICK_SPAN.findall(rest)
+        if spans:
+            found.extend(span.strip() for span in spans)
+        else:
+            found.extend(part.strip().rstrip(".") for part in rest.split(";"))
+    return tuple(command for command in found if command)
 
 
 def _refuse(
