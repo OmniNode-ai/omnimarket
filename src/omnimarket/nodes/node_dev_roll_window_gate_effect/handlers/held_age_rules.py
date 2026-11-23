@@ -84,12 +84,11 @@ def held_age_alarm(
     held command older than the bound; it is raised only when one of them has not been alarmed before, so a
     command that grows old later raises a new alarm that names it, and nothing repeats.
     """
+    bound = policy.held_age_alarm_after_seconds
+    if bound is None:
+        return None, tuple(state.alarmed_ids)
     aged = sorted(
-        (
-            h
-            for h in state.held
-            if (now - h.held_at).total_seconds() > policy.held_age_alarm_after_seconds
-        ),
+        (h for h in state.held if (now - h.held_at).total_seconds() > bound),
         key=lambda h: (h.held_at, str(h.command.correlation_id)),
     )
     held_ids = {str(h.command.correlation_id) for h in state.held}
@@ -101,8 +100,7 @@ def held_age_alarm(
     subject = f"roll {roll_id} holds {', '.join(aged_ids)}"
     detail = (
         f"{len(aged)} dev deploy command(s) held more than "
-        f"{policy.held_age_alarm_after_seconds} s behind roll {roll_id}: "
-        + "; ".join(_line(h, now) for h in aged)
+        f"{bound} s behind roll {roll_id}: " + "; ".join(_line(h, now) for h in aged)
     )
     request = ModelLabAlarmDeliveryRequest(
         correlation_id=str(uuid5(_REQUEST_NAMESPACE, subject)),
@@ -113,7 +111,7 @@ def held_age_alarm(
         ),
         evidence=(
             f"dev roll window gate: roll {roll_id}, observed_at {now.isoformat()}, "
-            f"held_age_alarm_after_seconds {policy.held_age_alarm_after_seconds}, "
+            f"held_age_alarm_after_seconds {bound}, "
             f"held {len(state.held)}, aged {len(aged)}"
         ),
     )

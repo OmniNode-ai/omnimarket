@@ -38,7 +38,7 @@ from omnimarket.nodes.node_dev_roll_request_compute.handlers import decide_dev_r
 from omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.gate_context import (
     DevRollGateContext,
 )
-from omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.handler_dev_roll_window_held_age import (
+from omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.held_age_rules import (
     abandon_after_seconds,
     bounded_last_roll,
     held_age_alarm,
