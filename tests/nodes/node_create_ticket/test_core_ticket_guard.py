@@ -77,7 +77,7 @@ def test_handler_default_guard_is_the_core_validator(
 
 
 @pytest.mark.unit
-def test_core_guard_names_no_ledger_file_unless_injected(tmp_path: Path) -> None:
-    assert CoreTicketGuard(lane=None).ledger_path is None
+def test_core_guard_takes_the_ledger_only_by_injection(tmp_path: Path) -> None:
     ledger = tmp_path / "ledger.md"
+    assert CoreTicketGuard(lane=None).ledger_path is None
     assert CoreTicketGuard(lane=None, ledger_path=ledger).ledger_path == ledger

@@ -825,8 +825,6 @@ class _ReconcilePass:
                     repo,
                     "--state-dir",
                     str(self.root / ".onex_state"),
-                    "--ledger",
-                    self.request.ledger,
                     "--lock-age-s",
                     str(self.request.step_timeout_s),
                 ]
