@@ -33,6 +33,7 @@ MIN_INTERVAL = 900
 HEALTHY_FOR = 600
 FAILED_RELEASE = 3600
 DEADLINE = 1800
+HELD_AGE_ALARM = 1800
 HELD_KEPT = 50
 ISSUER_PATTERN = r"^gha/(?P<repository>[a-z0-9_]+)/pr-[0-9]+$"
 POLICY = ModelDevRollWindowGatePolicy(
@@ -43,6 +44,7 @@ POLICY = ModelDevRollWindowGatePolicy(
     healthy_for_seconds=HEALTHY_FOR,
     failed_roll_release_after_seconds=FAILED_RELEASE,
     roll_completion_deadline_seconds=DEADLINE,
+    held_age_alarm_after_seconds=HELD_AGE_ALARM,
     known_repositories=("omnimarket", "omnibase_infra"),
     build_context_repository="omnibase_infra",
     fallback_git_ref="origin/dev",
@@ -60,6 +62,7 @@ OVERLAY_DOC: dict[str, Any] = {
     "healthy_for_seconds": HEALTHY_FOR,
     "failed_roll_release_after_seconds": FAILED_RELEASE,
     "roll_completion_deadline_seconds": DEADLINE,
+    "held_age_alarm_after_seconds": HELD_AGE_ALARM,
     "known_repositories": ["omnimarket", "omnibase_infra"],
     "build_context_repository": "omnibase_infra",
     "fallback_git_ref": "origin/dev",
