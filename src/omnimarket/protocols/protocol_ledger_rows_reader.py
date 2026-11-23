@@ -26,6 +26,11 @@ class ProtocolLedgerRowsReader(Protocol):
     """One named reader's ledger rows of a window, one string per row."""
 
     def rows(
-        self, *, reader: str, window_hours: int, kinds: Sequence[str] = ()
+        self,
+        *,
+        reader: str,
+        window_hours: int,
+        kinds: Sequence[str] = (),
+        lanes: Sequence[str] = (),
     ) -> tuple[str, ...]:
-        """The window's rows of the given row types (every type when ``kinds`` is empty); raises LedgerReadError."""
+        """The window's rows of the given row types (every type when ``kinds`` is empty) and lanes (every lane when ``lanes`` is empty); raises LedgerReadError."""
