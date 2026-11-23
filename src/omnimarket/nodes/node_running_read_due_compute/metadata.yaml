@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_running_read_due_compute
+version: "1.0.0"
+description: The running-read due row at merge plus 60 minutes, and the alarm and Done hold when no run line arrives
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_running_read_due_compute: omnimarket.nodes.node_running_read_due_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: none
+dependencies:
+  - pydantic>=2.11.0
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, landing, ledger, running-read]
+node_role: compute
+pack: "pr_lifecycle"
+display_name: "Running Read Due Compute"
