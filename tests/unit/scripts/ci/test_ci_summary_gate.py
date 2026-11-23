@@ -812,8 +812,9 @@ def test_red_replay_deploy_gate_red_now_fails() -> None:
 EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
     ("delegation-health-check.yml", "delegation-health-check"): (
         "OMN-25514: a dev signal that reads lab and stability verdicts, in no "
-        "required list; its red row is admitted by a dated sweep exclusion "
-        "until its triggers move to schedule and push on dev."
+        "required list; it runs on schedule and push to dev, and a dated "
+        "sweep exclusion admits the red row a head that ran the old "
+        "pull_request caller still carries."
     ),
     ("omn20025-ac1-postgres-proof.yml", "ac1-postgres16"): (
         "advisory read-only PostgreSQL 16 proof scoped to one PR; emits "
@@ -873,6 +874,10 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
     ("auto-tag-on-merge.yml", "auto-tag"): (
         "post-merge automation (if: pull_request.merged == true) — "
         "structurally cannot gate the merge that already happened."
+    ),
+    ("auto-tag-on-merge.yml", "reopen-dev"): (
+        "post-merge automation (needs auto-tag, which runs only on a merged "
+        "release PR) — structurally cannot gate the merge that already happened."
     ),
     # --- OMN-19554: the report-only contract walker.
     ("contract-walker.yml", "contract-walker"): (

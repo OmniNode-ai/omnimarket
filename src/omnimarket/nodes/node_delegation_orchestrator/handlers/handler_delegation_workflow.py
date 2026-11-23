@@ -306,6 +306,7 @@ from omnimarket.pricing import (
     get_manifest_version_int,
     recompute_actual_cost_and_savings,
 )
+from omnimarket.routing.tenant_overlay_resolver import HOUSE_OVERLAY_COST_TIER
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 # A request id or byte count containing 429 was misread as a rate limit.
@@ -1195,7 +1196,9 @@ def expected_credential_source_for(
 
     The tenant-overlay TIER decides first, before the reference is consulted at
     all. A decision resolved from a tenant overlay row is a customer route
-    whether or not it still carries a usable reference, and a route whose
+    whether or not it still carries a usable reference (the house tenant's own
+    row, stamped ``house_overlay`` by the reducer, is the one exception and is
+    read by its reference like a platform rung), and a route whose
     reference has already gone missing is exactly the case that must not read as
     an auth-free backend. Keying on the reference alone would classify that
     ``NONE`` and license the headerless call this exists to refuse.
@@ -1211,7 +1214,12 @@ def expected_credential_source_for(
     credential is correct, and saying so positively is what distinguishes it
     from a producer that predates this field and makes no claim.
     """
-    if (decision.tier_name or "").strip() == TENANT_OVERLAY_TIER_NAME:
+    # OMN-26365: the house tenant's own overlay row is not a customer route; the
+    # reducer stamps its owner as ``cost_tier`` and it falls to the reference check.
+    if (
+        (decision.tier_name or "").strip() == TENANT_OVERLAY_TIER_NAME
+        and decision.cost_tier != HOUSE_OVERLAY_COST_TIER
+    ):
         return EnumCredentialSource.CUSTOMER_KEY
     ref = (decision.api_key_ref or "").strip()
     if not ref:
