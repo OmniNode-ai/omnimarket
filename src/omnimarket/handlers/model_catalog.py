@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
+import importlib
 import json
 import os
 import stat
@@ -27,12 +28,8 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from functools import cache
 from pathlib import Path
+from types import ModuleType
 from typing import Any, NamedTuple
-
-try:
-    import fcntl
-except ImportError:  # no POSIX file locking on this platform
-    fcntl = None  # type: ignore[assignment]
 
 import yaml
 from pydantic import SecretStr
@@ -50,6 +47,12 @@ from omnimarket.models.model_catalog_entry import (
     ModelStatus,
 )
 from omnimarket.models.model_local_server_details import ModelLocalServerDetails
+
+fcntl: ModuleType | None
+try:
+    fcntl = importlib.import_module("fcntl")
+except ImportError:  # no POSIX file locking on this platform
+    fcntl = None
 
 _CONFIG_PATH = Path(__file__).resolve().parents[1] / "configs" / "model_catalog.yaml"
 _PRICE_LIST_DIR = Path(__file__).resolve().parents[1] / "data" / "model_prices"
