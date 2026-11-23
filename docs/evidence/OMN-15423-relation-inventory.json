@@ -10567,7 +10567,8 @@
       "foreign_keys": [],
       "grants": [
         "SELECT TO app_dashboard",
-        "SELECT, INSERT, DELETE TO tenant_projection_writer"
+        "SELECT, INSERT, UPDATE TO tenant_projection_writer",
+        "SELECT, INSERT, UPDATE, DELETE TO tenant_projection_writer"
       ],
       "indexes": [],
       "internal_tenant_column_transform": null,

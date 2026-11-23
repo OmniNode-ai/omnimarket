@@ -23,8 +23,34 @@ CREATE TABLE IF NOT EXISTS public.savings_priced_models (
     free BOOLEAN NOT NULL
 );
 
+-- ---- BEGIN OMN-15376 shape reconciliation: savings_priced_models ----
+-- COLUMN RECONCILIATION: one guarded ADD COLUMN per declared column, so CREATE
+-- TABLE IF NOT EXISTS stays idempotent in SHAPE, not just existence.
+ALTER TABLE public.savings_priced_models ADD COLUMN IF NOT EXISTS model_key TEXT;
+ALTER TABLE public.savings_priced_models ADD COLUMN IF NOT EXISTS free BOOLEAN;
+
+-- NOT NULL RECONCILIATION: SET NOT NULL refuses (fails the migration) when a
+-- pre-existing row holds NULL; it never invents a value.
+ALTER TABLE public.savings_priced_models ALTER COLUMN model_key SET NOT NULL;
+ALTER TABLE public.savings_priced_models ALTER COLUMN free SET NOT NULL;
+
+-- PRIMARY KEY RECONCILIATION.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_catalog.pg_constraint
+        WHERE conrelid = 'public.savings_priced_models'::regclass AND contype = 'p'
+    ) THEN
+        ALTER TABLE public.savings_priced_models
+            ADD CONSTRAINT savings_priced_models_pkey
+            PRIMARY KEY (model_key);
+    END IF;
+END$$;
+-- ---- END OMN-15376 shape reconciliation: savings_priced_models ----
+
 GRANT SELECT ON public.savings_priced_models TO app_dashboard;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.savings_priced_models TO tenant_projection_writer;
+GRANT SELECT, INSERT, UPDATE ON public.savings_priced_models TO tenant_projection_writer;
 
 CREATE OR REPLACE VIEW public.projection_delegation_savings AS
 WITH raw_savings_sessions AS (
