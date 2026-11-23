@@ -60,6 +60,9 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.tenant-api-key-register-completed.v1
     - onex.evt.omnimarket.tenant-api-key-revoke-completed.v1
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.tenant-api-key-revoke-requested.v1
+    producer: "the operator's CLI, the only principal holding WRITE on this topic (see broker_acl_grants) -- not a node contract"
 externally_consumed_topics:
   - onex.evt.omnimarket.tenant-api-key-register-completed.v1
   - onex.evt.omnimarket.tenant-api-key-revoke-completed.v1
@@ -99,9 +102,12 @@ tenant_identity:
     dsn_env: TENANT_IDENTITY_DATABASE_DSN
 # The creating migrations are named by basename (omnibase_core's public migration inventory, omninode_cloud). The closed
 # declaration shape has no column key, so the expires_at column the register insert needs is declared by the deploy
-# preflight of plan task T6b, not here. database_ref omninode_cloud resolves only on an omnibase_infra pin that carries
-# the omninode_cloud topology entry.
-db_io:
+# preflight of plan task T6b, not here. Not `db_io`: that key is resolved against the deployment topology, which on the
+# pinned omnibase_infra declares no `omninode_cloud` database, so declaring these tables there fails contract discovery
+# for the whole repository (ValueError: Unknown database_ref 'omninode_cloud'). The tables are owned by the identity
+# database; the node reaches it through the TENANT_IDENTITY_DATABASE_DSN variable named above. The entries move to
+# `db_io` on an omnibase_infra pin that carries the omninode_cloud topology entry.
+identity_io:
   db_tables:
     - name: tenant_api_keys
       database_ref: omninode_cloud
@@ -129,5 +135,5 @@ dod_evidence:
   - test: tests/nodes/node_tenant_api_key_effect/test_golden_chain_tenant_api_key_effect.py
     description: "Each command arrives on its completed topic through topic_match routing"
 metadata:
-  transport_type: kafka
+  transport_type: database
   related_tickets: [OMN-26474]

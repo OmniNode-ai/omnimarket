@@ -90,7 +90,7 @@ def test_the_dev_only_block_holds_only_the_allowed_lane_name() -> None:
 
 
 def test_db_tables_use_the_six_key_shape_on_the_cloud_database() -> None:
-    tables = {t["name"]: t for t in _contract()["db_io"]["db_tables"]}
+    tables = {t["name"]: t for t in _contract()["identity_io"]["db_tables"]}
     assert set(tables) == {"tenant_api_keys", "tenants"}
     for table in tables.values():
         assert set(table) == {
