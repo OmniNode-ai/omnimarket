@@ -211,7 +211,10 @@ class ModelCaptureProcessRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     store_dir: Path
-    ledger_path: Path
+    ledger_path: Path | None = Field(
+        default=None,
+        description="the ledger host's own ledger file; None: the window is read through the ledger reader node",
+    )
     max_captures: int = Field(default=20, ge=1)
     delegate: bool = True
     promotion_lane: str | None = Field(
@@ -234,7 +237,10 @@ class ModelCaptureDigestRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     store_dir: Path
-    ledger_path: Path
+    ledger_path: Path | None = Field(
+        default=None,
+        description="the ledger host's own ledger file; None: the window is read through the ledger reader node",
+    )
     now: datetime
     push_overdue: bool = False
 
