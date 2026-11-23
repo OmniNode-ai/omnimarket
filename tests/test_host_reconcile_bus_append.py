@@ -73,7 +73,6 @@ def test_a_failed_reconcile_writes_its_row_with_no_ledger_path_named(
     cmd = command(
         root,
         target_host=socket.gethostname() + "-other",
-        ledger="",
         ledger_append_command=writer,
     )
     result = handler(RecordingEvaluator(), RecordingPublisher()).handle(cmd)

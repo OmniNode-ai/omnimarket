@@ -9,6 +9,9 @@ import subprocess
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
+from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.inode_alarm import (
+    load_inode_alarm,
+)
 from omnimarket.nodes.node_lab_disk_watermark_effect.models.model_lab_disk_watermark import (
     ModelLabDiskWatermarkSchedule,
     ModelLabDiskWatermarkScheduleResult,
@@ -68,8 +71,14 @@ def render_units(
     home: Path,
     workspace_root: Path,
     workspace_config_root: Path,
+    ledger_append_command: str = "",
 ) -> tuple[str, str]:
-    """The systemd user service and timer text of the watermark reading on one host."""
+    """The systemd user service and timer text of the watermark reading on one host.
+
+    ``ledger_append_command`` is the bus append command the inode alarm writes its rows through (OMN-24562); it is set
+    in the unit's environment under the variable the contract's ``inode_alarm`` names. Blank: the unit carries none and
+    an inode alarm reports that it has no ledger route.
+    """
     interpreter = _safe(python, "interpreter")
     user_home = _safe(home, "home")
     environment = {
@@ -82,6 +91,10 @@ def render_units(
         ),
         OVERLAY_ENV: _safe(overlay_file, "overlay file"),
     }
+    if ledger_append_command:
+        environment[load_inode_alarm().ledger_append_command_env] = (
+            ledger_append_command
+        )
     service = (
         "# Rendered by the lab disk watermark node (schedule install).\n"
         "[Unit]\nDescription=ONEX lab disk watermark (reading file and page past the page mark)\n"
@@ -130,6 +143,7 @@ class WatermarkScheduler:
         workspace_root: Path,
         workspace_config_root: Path,
         dry_run: bool = False,
+        ledger_append_command: str = "",
     ) -> ModelLabDiskWatermarkScheduleResult:
         try:
             service, timer = render_units(
@@ -141,6 +155,7 @@ class WatermarkScheduler:
                 home=self.home,
                 workspace_root=workspace_root,
                 workspace_config_root=workspace_config_root,
+                ledger_append_command=ledger_append_command,
             )
         except ValueError as exc:
             return ModelLabDiskWatermarkScheduleResult(exit_code=1, stderr=f"{exc}\n")

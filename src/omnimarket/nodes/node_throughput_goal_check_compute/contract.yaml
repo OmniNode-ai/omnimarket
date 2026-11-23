@@ -14,6 +14,10 @@ description: >-
   pull requests, and whether the open count fell. Reads no file, runs no process, has no clock (the caller
   supplies now), mutates nothing. Behaviour-preserving port of goal_tick_fold of the retired
   throughput_tick.py, parity-tested on 20 recorded ticks. Keeping the record is node_throughput_tick_record_effect's job.
+  A second operation, check_goal_scope_stale (OMN-26522), is handed the goal_scope overlay text and the
+  rolling ledger text and returns one MISSING goal-scope-stale line when the overlay's ruling_date is older than
+  the newest RULING row carrying kind=goal; an unreadable ruling_date or ledger prints UNKNOWN goal-scope-stale
+  and a ledger with no goal RULING row prints a NOTE, never a silent pass.
 input_model:
   name: ModelThroughputGoalCheckRequest
   module: omnimarket.nodes.node_throughput_goal_check_compute.models.model_throughput_goal_check
@@ -34,6 +38,12 @@ handler_routing:
       handler:
         name: HandlerThroughputGoalCheck
         module: omnimarket.nodes.node_throughput_goal_check_compute.handlers.handler_throughput_goal_check
+    - operation: check_goal_scope_stale
+      handler:
+        name: HandlerGoalScopeStale
+        module: omnimarket.nodes.node_throughput_goal_check_compute.handlers.handler_goal_scope_stale
+      input_model: omnimarket.nodes.node_throughput_goal_check_compute.models.model_goal_scope_stale.ModelGoalScopeStaleRequest
+      output_model: omnimarket.nodes.node_throughput_goal_check_compute.models.model_goal_scope_stale.ModelGoalScopeStaleResult
 descriptor:
   node_archetype: compute
   purity: pure
@@ -79,4 +89,4 @@ metadata:
   description: The hourly check's goal check
   author: OmniNode Team
   created: "2026-11-14"
-  related_tickets: [OMN-23734]
+  related_tickets: [OMN-23734, OMN-26522]
