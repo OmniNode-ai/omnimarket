@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: landing_downstream_check_effect
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Before the landing controller merges a pull request into a repository other repositories install (omnibase_core,
+  omnibase_spi), installs the pull request head into each downstream repository in a throwaway venv with no
+  lockfile, runs the import smoke the downstream repository's own CI runs (tests/ci/latest_core_smoke.py, which
+  names each failing module, symbol and importing file and line) and any extra command the target declares, and
+  answers pass, break or unread. A break in any downstream repository, or any step that did not run to an answer
+  (venv, install, timeout, a smoke that imported nothing), is not a pass: the controller holds the head. The check
+  runs where the controller runs, so the pull-request repository's own CI never calls a downstream repository.
+
+input_model: omnimarket.nodes.node_landing_downstream_check_effect.models.model_landing_downstream_check_request.ModelLandingDownstreamCheckRequest
+output_model: omnimarket.models.model_downstream_gate.ModelDownstreamGateFact
+handler:
+  module: omnimarket.nodes.node_landing_downstream_check_effect.handlers.handler_landing_downstream_check
+  class: HandlerLandingDownstreamCheck
+  input_model: omnimarket.nodes.node_landing_downstream_check_effect.models.model_landing_downstream_check_request.ModelLandingDownstreamCheckRequest
+  output_model: omnimarket.models.model_downstream_gate.ModelDownstreamGateFact
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: check_landing_downstream
+      handler:
+        name: HandlerLandingDownstreamCheck
+        module: omnimarket.nodes.node_landing_downstream_check_effect.handlers.handler_landing_downstream_check
+      input_model: omnimarket.nodes.node_landing_downstream_check_effect.models.model_landing_downstream_check_request.ModelLandingDownstreamCheckRequest
+      output_model: omnimarket.models.model_downstream_gate.ModelDownstreamGateFact
+
+descriptor:
+  runtime_profiles: []
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  side_effects:
+    - creates one throwaway venv per downstream repository under the request's work_dir and installs the downstream checkout and the pull request head into it
+    - runs the smoke script and each declared extra command with that venv's interpreter in the downstream checkout
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+runtime_dispatch:
+  external_trigger: "python -m omnimarket.nodes.node_landing_downstream_check_effect invokes the typed handler locally on the controller host, before it merges a core or spi pull request."
+
+metadata:
+  ticket: OMN-26513
+  transport_type: local

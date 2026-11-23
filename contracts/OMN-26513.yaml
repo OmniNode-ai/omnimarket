@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: OMN-26513
+title: "The landing controller installs a core or spi pull request head into omnimarket and omnibase_infra and holds the merge when an import breaks"
+summary: A landing downstream check node installs a core or spi pull request head into each downstream repository, runs the import smoke that names the failing file and line, and the landing decision holds the merge on a break, an unread check or a check of another head.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26513-downstream-check
+    statement: A core or spi head is installed into each downstream repository before the landing controller merges it, and a break holds the merge.
+    acceptance:
+      - id: AC1
+        statement: "AC1: the downstream check node installs the head from its sha into a venv per downstream repository, proves by the venv's own interpreter that the head and not a release is installed, runs the import smoke and answers break naming the importing file and line -- falsifier: uv run pytest tests/nodes/node_landing_downstream_check_effect -q fails on the base commit, where the node does not exist"
+      - id: AC2
+        statement: "AC2: the landing decision holds a pull request into a gated repository (omnibase_core, omnibase_spi) as downstream_break, downstream_unread or downstream_other_head unless the check passed on its exact head -- falsifier: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_downstream_gate.py -q fails on the base commit"
+      - id: AC3
+        statement: "AC3: the import smoke names the importing file and line of a failing import -- falsifier: uv run pytest tests/ci/test_latest_core_smoke.py -k importing_file -q fails on the base commit"
+evidence_requirements:
+  - kind: tests
+    description: The three falsifier tests of the node, the landing hold and the smoke location.
+    command: uv run pytest tests/nodes/node_landing_downstream_check_effect tests/unit/nodes/node_pr_landing_decision_compute/test_landing_downstream_gate.py tests/ci/test_latest_core_smoke.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26513-n6-ac1
+    description: "The node answers break naming the importing file and line for a head that dropped a name a downstream file imports, and pass for the control."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_landing_downstream_check_effect -q --no-cov
+        cwd: .
+  - id: dod-omn26513-n6-ac2
+    description: "The landing decision holds a gated-repository pull request on a break, an unread check or a check of another head, and merges it on a pass of the exact head."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_downstream_gate.py -q --no-cov
+        cwd: .
+  - id: dod-omn26513-n6-ac3
+    description: "A failing import in the smoke carries the file and line that holds it."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/ci/test_latest_core_smoke.py -k importing_file -q --no-cov
+        cwd: .
+  - id: dod-omn26513-integration-proof
+    description: "Run the node, landing hold and smoke tests on a lab host at the pushed head; the local Done gate runs this unbound check."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26513 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_landing_downstream_check_effect tests/unit/nodes/node_pr_landing_decision_compute/test_landing_downstream_gate.py tests/ci/test_latest_core_smoke.py -q --no-cov
+        cwd: .
