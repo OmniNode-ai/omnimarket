@@ -174,6 +174,11 @@ terminal_event: onex.evt.omnimarket.lab-alarm-broker-lag-completed.v1
 runtime_dispatch:
   external_trigger: true
   command_topic: onex.cmd.omnimarket.lab-alarm-broker-lag-requested.v1
+  # The broker lag read runs on the schedule its overlay declares (a launchd or systemd unit per host) and when a person or a lane
+  # runs it; the command below is the on-demand form of the same read.
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_lab_alarm broker-lag
+    owner: OmniNode Platform Team
 
 topics:
   broker_lag_requested: onex.cmd.omnimarket.lab-alarm-broker-lag-requested.v1
