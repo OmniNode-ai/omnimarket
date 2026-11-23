@@ -56,10 +56,10 @@ caller_subscription:
   auto_offset_reset: earliest
   read_window_seconds: 5
 
-# One principal holds the grants a sender and a reader need. The per-host logins that fill this placeholder are declared by
-# the broker permission piece of the agent message bus; this block is the one declared grant the topic's use needs.
+# The runtime principal holds the grants a sender and a reader need on the topic. Per-host agent logins are declared by the
+# broker permission piece of the agent message bus, not here.
 broker_acl_grants:
-  - principal: "${ONEX_ACL_AGENT_MESSAGE_PRINCIPAL}"
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
     grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.agent-message.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.agent-message.v1, operation: READ}

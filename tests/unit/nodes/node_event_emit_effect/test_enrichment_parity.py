@@ -248,7 +248,9 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     # event, held byte-identical by the same assertion: 106 -> 107.
     # OMN-25093 registers the host job claim run event, held byte-identical
     # by the same assertion: 107 -> 108.
-    assert len(event_types) == 108, (
+    # The agent message node registers its agent.message event, held
+    # byte-identical by the same assertion: 108 -> 109.
+    assert len(event_types) == 109, (
         f"registry drifted to {len(event_types)} event types; update the "
         "expected parity count deliberately, do not auto-follow it"
     )
