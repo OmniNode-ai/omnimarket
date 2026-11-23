@@ -23,7 +23,8 @@ description: >-
   selection of every stage) behind the stage gate in policy.yaml; the workflow uploads it and builds the pytest matrix
   from the executed selection only. HandlerSelectionReplay (operation replay_selection) replays stage 0 of the selector
   over a list of merges against a frozen tree snapshot and reports each merge's primary reason, every trigger, its
-  selected paths and recorded seconds, and the totals; it reuses the handlers above and changes what no pull request runs.
+  selected paths and recorded seconds, and the totals; it reuses the handlers above and changes what no pull request runs. A request at the closure's stage,
+  with the request's closure settings, replays the file-level closure in place of the module-level ladder.
   HandlerStageReceiptValidation checks the stage receipts under config/test_selection_stage_receipts/ (operation
   validate_stage_receipt): a stage is entered one at a time, by a receipt that names stage_clean_nights consecutive
   nightly runs, and the receipt's totals and its selector and policy versions are recomputed from the nightly
@@ -33,6 +34,10 @@ description: >-
   Rollback is an owner change that lowers selection_stage, or the owner setting the ENABLE_SMART_TESTS repository
   variable false; no job writes the variable. A narrowing rule changes what a pull request runs only at or above its
   stage, so data files and entry points narrow only once their stage is entered.
+  HandlerFileLevelClosure runs the closure for every module by file, a vertex being a file except a node package, behind
+  the policy's file_level_closure_stage: a deleted or renamed file seeds from the files that still name it, a nested
+  conftest.py selects its directory, the root conftest edge is the policy's root_conftest_edge, and a source file the
+  closure cannot place escalates as unresolved_source.
   HandlerPolicyBound derives the narrowed-run bound, each merge's shard count, the share of replayed merges over
   each candidate bound, the test-seconds each saves, the full-run crossover and the per-merge runner-cost columns
   from policy.yaml, the durations file and the replay inputs, and lists every test file without a duration entry
@@ -76,6 +81,12 @@ handler_routing:
       handler:
         name: HandlerSelectionReplay
         module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_selection_replay
+    - operation: resolve_file_level_closure
+      input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_file_level_closure.ModelFileLevelClosureRequest
+      output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_file_level_closure.ModelFileLevelClosureResult
+      handler:
+        name: HandlerFileLevelClosure
+        module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_file_level_closure
     - operation: calculate_policy_bound
       input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_policy_bound.ModelPolicyBoundRequest
       output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_policy_bound.ModelPolicyBoundResult
@@ -106,4 +117,4 @@ externally_consumed_topics:
   - onex.evt.omnimarket.test-selection-select-failed.v1
 metadata:
   transport_type: kafka
-  related_tickets: [OMN-23296, OMN-26270]
+  related_tickets: [OMN-23296, OMN-26270, OMN-26277]

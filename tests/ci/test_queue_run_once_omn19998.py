@@ -236,6 +236,8 @@ def test_heavy_job_event_admission(event, ref, docs, expected):
                     "github.event.pull_request.draft": False,
                     "needs.repo-evidence-preflight.result": "success",
                     "needs.zone-filter.outputs.docs_only": docs,
+                    # OMN-26446: a dev push runs the shards only when the probe says so.
+                    "needs.dev-tree-pass-probe.outputs.run_tests": "false",
                 },
             )
             is expected
@@ -293,9 +295,11 @@ def test_workflow_admission_and_marker_wiring():
         if step.get("name") == "Resolve test selection"
     )
     # The flag is the repository variable; a merge group runs the full suite whatever it says.
-    assert (
-        resolve["env"]["FLAG"]
-        == "${{ vars.ENABLE_SMART_TESTS == 'true' && 'on' || 'off' }}"
+    # OMN-26446: a dev push is a merged tree and takes the full suite too, flag or not.
+    assert resolve["env"]["FLAG"] == (
+        "${{ (vars.ENABLE_SMART_TESTS == 'true' && "
+        "!(github.event_name == 'push' && github.ref == 'refs/heads/dev')) "
+        "&& 'on' || 'off' }}"
     )
     assert "merge_group" in jobs["detect-changes"]["if"]
     for key in (
@@ -426,7 +430,7 @@ def test_dev_reuses_queue_tree_across_squash_commit_identity(
     tmp_path, scenario, expected
 ):
     jobs = yaml.safe_load(CI.read_text())["jobs"]
-    script = jobs["dev-suite-reuse-verdict"]["steps"][0]["run"]
+    script = jobs["dev-tree-pass-probe"]["steps"][0]["run"]
     tree, pushed, queued = "a" * 40, "b" * 40, "c" * 40
     repo = "repos/example/repo"
     table = {
@@ -461,6 +465,7 @@ def test_dev_reuses_queue_tree_across_squash_commit_identity(
             del table[f"{repo}/rules/branches/dev?per_page=100"]
     fixture = tmp_path / "api.json"
     fixture.write_text(json.dumps(table))
+    (tmp_path / "github_output").write_text("")
     gh = tmp_path / "gh"
     gh.write_text(
         f"#!{os.sys.executable}\n"
@@ -480,6 +485,7 @@ def test_dev_reuses_queue_tree_across_squash_commit_identity(
             **os.environ,
             "PATH": f"{tmp_path}:{os.environ['PATH']}",
             "FAKE_API": str(fixture),
+            "GITHUB_OUTPUT": str(tmp_path / "github_output"),
             "GITHUB_REPOSITORY": "example/repo",
             "GITHUB_SHA": pushed,
             "REUSE": "true" if scenario == "core-reused" else "false",
@@ -490,13 +496,20 @@ def test_dev_reuses_queue_tree_across_squash_commit_identity(
         check=False,
     )
     assert result.returncode == expected, result.stdout + result.stderr
+    outputs = (tmp_path / "github_output").read_text().split()
     if scenario == "queue-off":
         assert "::warning::No merge_queue rule is active on dev" in result.stdout
+        # OMN-26446: the warning no longer admits the push; the shards of this run decide.
+        assert outputs == ["tree_pass=false", "run_tests=true"]
+    elif expected == 0:
+        assert outputs == ["tree_pass=true", "run_tests=false"]
+    else:
+        assert "run_tests=true" not in outputs
 
 
 def test_dev_verdict_is_strict_while_a_queue_rule_is_active():
     jobs = yaml.safe_load(CI.read_text())["jobs"]
-    script = jobs["dev-suite-reuse-verdict"]["steps"][0]["run"]
+    script = jobs["dev-tree-pass-probe"]["steps"][0]["run"]
     assert 'select(.type == "merge_queue")' in script
     assert script.index('done <<< "$markers"') < script.index(
         "exit 0", script.index('if [ "$queue_rules" = "0" ]; then')
@@ -505,7 +518,7 @@ def test_dev_verdict_is_strict_while_a_queue_rule_is_active():
 
 def test_queue_provenance_jq_filters_match_api_shapes():
     jobs = yaml.safe_load(CI.read_text())["jobs"]
-    script = jobs["dev-suite-reuse-verdict"]["steps"][0]["run"]
+    script = jobs["dev-tree-pass-probe"]["steps"][0]["run"]
     filters = re.findall(r"--jq '([^']+)'", script)
     head = "a" * 40
     fixtures = [

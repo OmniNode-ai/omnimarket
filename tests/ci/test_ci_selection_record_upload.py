@@ -48,7 +48,12 @@ UPLOAD_ACTION = (
     "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"  # v4.6.2
 )
 ADJACENCY_DEFAULT = REPO_ROOT / "scripts" / "ci" / "test_selection_adjacency.yaml"
-FLAG_EXPRESSION = "${{ vars.ENABLE_SMART_TESTS == 'true' && 'on' || 'off' }}"
+# OMN-26446: a dev push is a merged tree and takes the full-suite matrix, flag or not.
+FLAG_EXPRESSION = (
+    "${{ (vars.ENABLE_SMART_TESTS == 'true' && "
+    "!(github.event_name == 'push' && github.ref == 'refs/heads/dev')) "
+    "&& 'on' || 'off' }}"
+)
 NARROWABLE = ["src/omnimarket/intelligence/client.py"]
 
 
@@ -281,13 +286,19 @@ def test_detect_changes_keeps_its_needs_and_outputs() -> None:
     workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
     job = workflow["jobs"]["detect-changes"]
     assert job["name"] == "Detect Changes"
-    assert job["needs"] == ["repo-evidence-preflight", "zone-filter"]
+    assert job["needs"] == [
+        "repo-evidence-preflight",
+        "zone-filter",
+        "dev-tree-pass-probe",
+    ]
     assert set(job["outputs"]) == {
         "is_full_suite",
         "full_suite_reason",
         "split_count",
         "matrix",
         "selected_paths",
+        # OMN-26277: read by the one whole-tree collection job, which follows this job.
+        "collection_gate",
     }
     assert workflow["jobs"]["test"]["needs"] == [
         "repo-evidence-preflight",

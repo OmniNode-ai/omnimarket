@@ -1,0 +1,117 @@
+schema_version: 1.0.0
+ticket_id: OMN-26330
+title: 'Ledger-file census group 2: its 13 src files read the work ledger through the bus or are deleted, and their census rows are lowered'
+summary: The lab story log CLI and the merged-running count read their ledger rows from the moved work ledger reader node (a rows read through the reader's handler) and no longer open the ledger file or name its path variable, and their census rows are lowered. The iLO redfish CLI reads its consent row through the reader's row-at point read, the remote setup check asks for the ledger bus variables, and their rows are lowered. The reader node gains a history read and a row-at point read. The ledger reconcile compute's line citation pattern no longer carries the ledger file's name, and its row is lowered. The other eight group 2 files are left, each with its reason in the lane report.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26330-ledger-census-group-2
+    statement: Group 2 files that read the ledger file read it through the bus reader instead, and the census rows of the cleared files are lowered.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: after the change, none of the group''s runtime files holds an executable reader or writer of the ledger file or its path variable, and each is moved to the bus or deleted -- falsifier: cd omnimarket && uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --repos omnimarket --directory omnimarket=. --per-file exits non-zero or prints a hit for a group 2 src file'
+      - id: AC2
+        statement: 'AC2: the census ratchet rows for the cleared files are lowered with the census node''s --lower, and no row is raised or added -- falsifier: git diff origin/dev -- src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml shows a raised or added line, or the census run exits non-zero'
+      - id: AC3
+        statement: 'AC3: each moved reader or writer has a test that fails on the old code and passes on the change, and every node test of the group stays green -- falsifier: cd omnimarket && uv run pytest tests/nodes/node_idle_slot_fill_effect tests/nodes/node_ilo_redfish_effect tests/nodes/node_lab_fill_effect tests/nodes/node_lab_fill_plan_compute tests/nodes/node_lab_history_archive_effect tests/nodes/node_lab_story_log_effect tests/nodes/node_ledger_reconcile_compute tests/nodes/node_ledger_reconcile_effect tests/nodes/node_merged_running_count_effect tests/nodes/node_operator_access_mode_effect tests/nodes/node_operator_capture_effect -q exits non-zero'
+evidence_requirements:
+  - kind: tests
+    description: The moved readers' tests and the reader node's rows-read tests at the pushed head.
+    command: uv run pytest tests/unit/nodes/node_lab_story_log_effect tests/nodes/node_merged_running_count_effect tests/unit/nodes/node_work_ledger_reader_effect/test_rows_read.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn26330-ac1
+    description: The lab story log CLI and the merged-running count read their rows through the reader node and name no ledger path variable. At the merge base these tests do not exist, so this fails.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_lab_story_log_effect/test_lab_story_log.py tests/nodes/node_merged_running_count_effect/test_effect_merged_running_count.py -q --no-cov --tb=line -k "reads_the_week_from_the_bus_reader or read_the_ledger_from_the_reader_node"
+        cwd: .
+  - id: dod-omn26330-ac2
+    description: The census rows of the two cleared src files are gone from the ratchet and the census run exits 0. At the merge base both rows are present, so this fails.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: bash -c '! grep -qE "node_lab_story_log_effect/cli.py|node_merged_running_count_effect/contract.yaml" src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml && env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --ratchet-file src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml --repos omnimarket --directory omnimarket=.'
+        cwd: .
+  - id: dod-omn26330-ac3
+    description: The reader node's rows-read helper answers the node's lines and refuses every other outcome, and the group's moved nodes keep their tests green. At the merge base the helper does not exist, so this fails.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_rows_read.py tests/unit/nodes/node_lab_story_log_effect tests/nodes/node_merged_running_count_effect -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn26330-ac3-history-verbs
+    description: The reader node answers a history read (an absolute since/until range older than the 30 day window) and a row-at point read (one instant, one kind), and fails closed on a node fault, a stale answer or a reader not moved. At the merge base the read_history_rows and read_row_at helpers do not exist, so this fails.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_history_and_row_at.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn26330-ac1-ilo-consent
+    description: The iLO write path reads its consent row by timestamp and kind through the reader's row-at point read and refuses the write when the answer is unreadable, absent or ambiguous. At the merge base ReaderApprovalSource does not exist, so this fails.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_ilo_redfish_effect/test_reader_approvals.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn26330-ac1-remote-setup
+    description: The remote setup check asks for the ledger bus variables and not for the ledger file path. At the merge base a ledger file path alone satisfies the check, so this fails.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_operator_access_mode_effect/test_operator_access_mode.py -q --no-cov --tb=line -k "ledger_file_path_alone or each_gap_is_named or ready_remote_setup"
+        cwd: .
+  - id: dod-omn26330-ac2-more-rows
+    description: The census rows of the iLO redfish CLI and the remote setup check are gone from the ratchet and the census run exits 0. At the merge base both rows are present, so this fails.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: bash -c '! grep -qE "node_ilo_redfish_effect/runtime_ilo_redfish_cli.py|node_operator_access_mode_effect/handlers/handler_remote_setup_check.py" src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml && env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --ratchet-file src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml --repos omnimarket --directory omnimarket=.'
+        cwd: .
+  - id: dod-omn26330-ac1-reconcile-line-ref
+    description: The reconcile compute's line citation pattern reads a cited ledger line without naming the ledger file, and the census run prints no hit for ledger_rows.py. At the merge base the file holds a hit, so the cleared-files test fails.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_ledger_reconcile_compute/test_line_ref_re.py tests/unit/nodes/node_work_ledger_file_census_effect/test_group2_cleared_files.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn26330-ac2-reconcile-row
+    description: The census row of the reconcile compute's ledger_rows.py is gone from the ratchet and the ratchet count equals the table's rows. At the merge base the row is present, so this fails.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: bash -c '! grep -q "node_ledger_reconcile_compute/handlers/ledger_rows.py" src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml'
+        cwd: .
+  - id: dod-omn26330-ac2-ratchet-test
+    description: The ratchet table holds no row for a cleared group 2 file, read from the live ratchet file; the case fails on the merge base, where the rows still stand.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_group2_cleared_files.py -q --no-cov --tb=line -k "ratchet_table_holds_no_row_for_a_cleared_file"
+        cwd: .
+  - id: dod-omn26330-integration-proof
+    description: "Run the focused tests of the moved readers on a lab host at the pushed head; the local Done gate runs this unbound check."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26330 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_work_ledger_reader_effect/test_rows_read.py tests/unit/nodes/node_lab_story_log_effect tests/nodes/node_merged_running_count_effect -q --no-cov
