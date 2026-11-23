@@ -108,12 +108,12 @@ def _write_pool(
         ModelLaneHostPoolSnapshot,
     )
 
-    from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.adapter_snapshot_file import (
-        FileSnapshotStore,
-    )
-    from omnimarket.nodes.node_lane_host_pool_snapshot_effect.models.model_pool_snapshot import (
+    from omnimarket.models.model_pool_snapshot import (
         ModelPoolHostRow,
         ModelPoolSnapshotRecord,
+    )
+    from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.adapter_snapshot_file import (
+        FileSnapshotStore,
     )
 
     snapshot = ModelLaneHostPoolSnapshot(
