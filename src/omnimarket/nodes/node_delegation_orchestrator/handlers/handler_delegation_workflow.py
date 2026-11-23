@@ -143,6 +143,7 @@ from omnimarket.handlers.routing.byok_provider_backends import (
 )
 from omnimarket.handlers.routing.customer_key_terminus import (
     CUSTOMER_PROVIDER_KEY_ABSENT_ONEX_CODE,
+    is_customer_attributed,
 )
 from omnimarket.handlers.routing.measured_correct_ceiling import (
     refuse_above_measured_correct_ceiling,
@@ -1180,8 +1181,22 @@ class InferenceIntentCredentialLostError(Exception):
         )
 
 
+def _is_house_tenant(tenant_id: str | None) -> bool:
+    """True only for a present tenant that is the house (slug or UUID form).
+
+    ``is_customer_attributed`` is False for a missing or blank tenant too, which
+    is the untenanted platform path; that is not evidence of the house for a
+    credential decision, so presence is required here.
+    """
+    return bool(tenant_id and tenant_id.strip()) and not is_customer_attributed(
+        tenant_id
+    )
+
+
 def expected_credential_source_for(
     decision: ModelRoutingDecision,
+    *,
+    tenant_id: str | None = None,
 ) -> EnumCredentialSource:
     """Classify what the effect boundary must authenticate this route with.
 
@@ -1210,8 +1225,21 @@ def expected_credential_source_for(
     as a local model. That is the one shape under which a call with no
     credential is correct, and saying so positively is what distinguishes it
     from a producer that predates this field and makes no claim.
+
+    OMN-26365: the overlay-tier rule above is a rule about CUSTOMER routes. The
+    house tenant reads its own routing rows through the same overlay (a declared
+    house row for our own local model), and such a row carries no reference
+    because there is no key to carry. Stamping it ``customer_key`` made the
+    effect boundary refuse a call that is correct. ``tenant_id`` is the workflow's
+    tenant, and only a tenant that is positively the house
+    (``not is_customer_attributed``, non-blank) lifts the overlay-tier rule, so
+    the reference decides as it does on a platform tier: none declares ``NONE``,
+    a house reference ``HOUSE``, a minted ``cred_`` reference ``CUSTOMER_KEY``.
+    An omitted, blank or customer tenant keeps the rule: a missing tenant never
+    reads as the house.
     """
-    if (decision.tier_name or "").strip() == TENANT_OVERLAY_TIER_NAME:
+    is_overlay_route = (decision.tier_name or "").strip() == TENANT_OVERLAY_TIER_NAME
+    if is_overlay_route and not _is_house_tenant(tenant_id):
         return EnumCredentialSource.CUSTOMER_KEY
     ref = (decision.api_key_ref or "").strip()
     if not ref:
@@ -1660,7 +1688,8 @@ def _evaluate_compliance(
             # path -- the one that produces the final content -- as the only
             # dispatch the boundary cannot refuse.
             expected_credential_source=expected_credential_source_for(
-                workflow.routing_decision
+                workflow.routing_decision,
+                tenant_id=_resolve_tenant_id(workflow),
             ),
             task_type=workflow.request.task_type,
         )
@@ -3120,7 +3149,9 @@ class HandlerDelegationWorkflow:
                 # OMN-18201: declare what this route must be authenticated with,
                 # derived from the decision rather than from the reference alone
                 # -- see expected_credential_source_for.
-                expected_credential_source=expected_credential_source_for(decision),
+                expected_credential_source=expected_credential_source_for(
+                    decision, tenant_id=_resolve_tenant_id(workflow)
+                ),
                 task_type=workflow.request.task_type,
             )
         ]

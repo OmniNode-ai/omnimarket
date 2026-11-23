@@ -18,10 +18,20 @@ requirements:
         statement: "AC2: a retire through the node removes the rows the resolver reads, the node writes no row under the slug form, and every store call carries the runtime tenant id -- falsifier: uv run pytest tests/nodes/node_house_routing_overlay_effect/test_omn26365_house_overlay_runtime_tenant.py -k 'retire_removes or every_row_and_store_call' fails"
       - id: AC3
         statement: "AC3: a keyless house row read under the UUID form is a route on the cloud surface and is labelled house_overlay, while a keyless customer row is still refused -- falsifier: uv run pytest tests/nodes/node_house_routing_overlay_effect/test_omn26365_house_overlay_runtime_tenant.py -k 'keyless_house_row or labelled_house' fails"
+  - id: req-omn26365-house-credential-source
+    statement: "A routing decision that resolves to the house tenant is authenticated as the house, so a keyless house overlay row is not refused by the effect boundary, while a customer tenant overlay route still requires its own key."
+    acceptance:
+      - id: AC4
+        statement: "AC4: a tenant_overlay decision with no reference under the house tenant (slug or UUID) is classified NONE, the intent the orchestrator builds for it carries expected_credential_source none, and the effect boundary calls the provider instead of refusing with ONEX_MARKET_EFFECT_CREDENTIAL_UNRESOLVED -- falsifier: uv run pytest tests/unit/delegation/test_omn26365_house_overlay_credential_source.py -k 'keyless_house_overlay_row or reaches_the_provider_without_a_key' fails"
+      - id: AC5
+        statement: "AC5: a customer tenant overlay decision, with or without a reference, and an overlay decision with no tenant still expect a customer key, and the effect boundary still refuses the customer call that holds no credential -- falsifier: uv run pytest tests/unit/delegation/test_omn26365_house_overlay_credential_source.py -k 'customer or unattributed or still_refused' fails"
 evidence_requirements:
   - kind: tests
     description: "The node's tests and the house tenant reader tests at the pushed head."
     command: "uv run --frozen pytest tests/nodes/node_house_routing_overlay_effect tests/nodes/node_delegation_routing_reducer/test_omn19186_house_tenant_overlay.py -q --no-cov -n 0 -p no:randomly -m 'not kafka'"
+  - kind: tests
+    description: "The house credential source tests and the own-key tests at the pushed head."
+    command: "uv run --frozen pytest tests/unit/delegation/test_omn26365_house_overlay_credential_source.py tests/unit/delegation/test_omn18201_effect_boundary_auth_header.py -q --no-cov -n 0 -p no:randomly -m 'not kafka'"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -53,6 +63,24 @@ dod_evidence:
       - check_type: test_passes
         check_value: >-
           uv run --frozen pytest tests/nodes/node_house_routing_overlay_effect/test_omn26365_house_overlay_runtime_tenant.py -k "keyless_house_row or labelled_house" -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn26365-ac4-house-row-not-refused
+    description: "Failing-first house case: a keyless house overlay row classifies NONE and the built intent reaches the provider through the real effect handler instead of being refused as an unresolved credential."
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run --frozen pytest tests/unit/delegation/test_omn26365_house_overlay_credential_source.py -k "keyless_house_overlay_row or reaches_the_provider_without_a_key" -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn26365-ac5-customer-still-refused
+    description: "Customer-still-refused case: a customer tenant overlay route, with or without a reference, and an overlay route with no tenant still expect a customer key, and the effect boundary refuses the customer call that holds no credential."
+    source: manual
+    binds_ac: [AC5]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run --frozen pytest tests/unit/delegation/test_omn26365_house_overlay_credential_source.py tests/unit/delegation/test_omn18201_effect_boundary_auth_header.py -k "customer or unattributed or still_refused or tenant_overlay_route" -q --no-cov -n 0 -p no:randomly
         cwd: .
   - id: dod-omn26365-integration-proof
     description: "Run the node's tests and the house tenant reader tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check; the runtime-affecting proof (the dev runtime running the merged fix and a lane call answered by the declared rung) is read from the dev lane after the merge."
