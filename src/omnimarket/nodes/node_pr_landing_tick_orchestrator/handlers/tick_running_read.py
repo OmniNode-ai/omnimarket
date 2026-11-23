@@ -26,7 +26,7 @@ from uuid import UUID
 
 import yaml
 
-from omnimarket.events.running_read_due import (
+from omnimarket.models.running_read_due import (
     ModelRunningReadDueRequest,
 )
 from omnimarket.models.topic_provision.model_writer_topics_template import (

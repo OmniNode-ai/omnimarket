@@ -9,9 +9,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.events.running_read_due import (
-    ModelMergedPrFact,
-)
 from omnimarket.models.landing_controller_carry import ModelLandingControllerDecisions
 from omnimarket.models.landing_decision import (
     EnumLivenessRead,
@@ -27,6 +24,9 @@ from omnimarket.models.pr_landing_rerun_request.model_landing_rerun_answer impor
 )
 from omnimarket.models.pr_landing_rerun_request.model_landing_rerun_request import (
     ModelLandingRerunRequest,
+)
+from omnimarket.models.running_read_due import (
+    ModelMergedPrFact,
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_running_read import (
     ModelTickRunningRead,

@@ -4,7 +4,7 @@
 
 from datetime import UTC, datetime
 
-from omnimarket.events.running_read_due import (
+from omnimarket.models.running_read_due import (
     ModelMergedPrFact,
     ModelRunningReadDueRequest,
 )

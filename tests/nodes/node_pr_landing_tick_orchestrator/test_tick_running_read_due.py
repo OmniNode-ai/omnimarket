@@ -23,11 +23,11 @@ from uuid import uuid4
 import pytest
 import yaml
 
-from omnimarket.events.running_read_due import (
-    ModelMergedPrFact,
-)
 from omnimarket.handlers import ledger_row_grammar as grammar
 from omnimarket.models.landing_controller_carry import decisions_of
+from omnimarket.models.running_read_due import (
+    ModelMergedPrFact,
+)
 from omnimarket.models.work_ledger_append import ModelWorkLedgerAppendRequest
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.handler_pr_landing_tick_orchestrator import (
     HandlerPrLandingTickOrchestrator,
