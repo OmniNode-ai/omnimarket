@@ -22,7 +22,7 @@ runtime_dispatch:
 descriptor:
   node_archetype: effect
   purity: effectful
-  runtime_profiles: [main, effects]
+  runtime_profiles: [main]
   idempotent: false
 description: >
   Registers a gateway key by the sha256 digest of a key the caller holds, and revokes a key by id. The key itself is
