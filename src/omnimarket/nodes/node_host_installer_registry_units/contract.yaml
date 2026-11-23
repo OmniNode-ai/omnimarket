@@ -575,8 +575,9 @@ units:
     evidence_file: .local/state/omni/lane-dispatch/last-run.json
     state_directory: .onex_state/lane-dispatch
   # The daily ledger-file census record (node_work_ledger_file_census_effect): once a day and at load one tick runs the
-  # census over the registry root's omnimarket clone with the overlay and ratchet file packaged with the node, prints the daily
-  # record as one typed JSON line and keeps it in the unit's evidence file. The run limit (300 s) is the node's timeout_ms and
+  # census over every registered repository's clone under the registry root, each against its own ratchet row and per-file
+  # table, with the overlay and ratchet file packaged with the node, prints the daily record (one row per repository and the
+  # runtime-code count) as one typed JSON line and keeps it in the unit's evidence file. The run limit (300 s) is the node's timeout_ms and
   # is under the 86400 s interval. The tick reads and writes no ledger file.
   ledger-file-census-systemd:
     platform: systemd
