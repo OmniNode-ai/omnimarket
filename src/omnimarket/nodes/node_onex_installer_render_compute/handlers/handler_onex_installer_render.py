@@ -71,8 +71,12 @@ UV_DEFAULT_BASE_URL="@UV_DOWNLOAD_BASE_URL@"
 SUPPORT_URL="@SUPPORT_URL@"
 
 TMP_DIR=""
+STEP_OUT=""
+STEP_WATCHER=""
+INTERACTIVE=0
 
 if [ -t 2 ]; then
+    INTERACTIVE=1
     BOLD="$(printf '\033[1m')"
     RED="$(printf '\033[31m')"
     YELLOW="$(printf '\033[33m')"
@@ -96,7 +100,47 @@ fail() {
     exit 1
 }
 
+# Stops the progress watcher of a step, and clears its spinner line.
+stop_watcher() {
+    if [ -n "$STEP_WATCHER" ]; then
+        kill "$STEP_WATCHER" 2>/dev/null || true
+        { wait "$STEP_WATCHER" 2>/dev/null || true; } 2>/dev/null
+        STEP_WATCHER=""
+        if [ "$INTERACTIVE" = "1" ]; then
+            printf '\r\033[K' >&2
+        fi
+    fi
+}
+
+# run_step STEP COMMAND...: runs COMMAND with its output kept in $STEP_OUT and
+# returns its status. A step that takes longer than one second says what it is
+# doing: a spinner and STEP on a terminal, one plain line when stderr is a pipe
+# or a log. A quicker step prints nothing.
+run_step() {
+    local step="$1" status=0
+    shift
+    STEP_OUT="$TMP_DIR/step-output"
+    (
+        sleep 1
+        if [ "$INTERACTIVE" = "1" ]; then
+            while :; do
+                for frame in '|' '/' '-' "\\"; do
+                    printf '\r%s %s' "$frame" "$step" >&2
+                    sleep 0.1
+                done
+            done
+        else
+            say "$step (still running)"
+        fi
+    ) &
+    STEP_WATCHER=$!
+    "$@" >"$STEP_OUT" 2>&1 || status=$?
+    stop_watcher
+    return "$status"
+}
+
 cleanup() {
+    stop_watcher
     if [ -n "$TMP_DIR" ] && [ -d "$TMP_DIR" ]; then
         rm -rf "$TMP_DIR"
     fi
@@ -220,9 +264,9 @@ ensure_uv() {
     archive="$TMP_DIR/uv-$target.tar.gz"
     say "Downloading uv $UV_VERSION for $target" >&2
     case "$url" in
-        https://*) curl --proto '=https' --tlsv1.2 -fsSL --retry 3 -o "$archive" "$url" ||
+        https://*) run_step "Downloading uv $UV_VERSION" curl --proto '=https' --tlsv1.2 -fsSL --retry 3 -o "$archive" "$url" ||
             fail "could not download uv from $url." "Check your network connection (and any proxy) and run the installer again." ;;
-        *) curl -fsSL -o "$archive" "$url" || fail "could not download uv from $url." ;;
+        *) run_step "Downloading uv $UV_VERSION" curl -fsSL -o "$archive" "$url" || fail "could not download uv from $url." ;;
     esac
     actual="$(sha256_of "$archive")"
     if [ "$actual" != "$expected" ]; then
@@ -347,15 +391,18 @@ EOF
         [ -x "$bin_dir/$launcher" ] || fail "the install finished but $bin_dir/$launcher is missing."
     done
     local reported
-    reported="$("$bin_dir/onex" --version 2>&1)" ||
-        fail "onex was installed but 'onex --version' failed:" "$reported"
+    run_step "Checking that onex starts" "$bin_dir/onex" --version ||
+        fail "onex was installed but 'onex --version' failed:" "$(cat "$STEP_OUT")"
+    reported="$(cat "$STEP_OUT")"
     # --help loads every command's entry point, so it catches a command that
     # cannot import, which --version alone does not.
     local help_output
-    help_output="$("$bin_dir/onex" --help 2>&1)" ||
+    run_step "Checking that every onex command loads" "$bin_dir/onex" --help ||
         fail "onex was installed but 'onex --help' failed, so a command cannot load:" \
-            "$(printf '%s\n' "$help_output" | grep -E 'Error' | tail -n 1 | cut -c1-300)" \
+            "$(grep -E 'Error' "$STEP_OUT" | tail -n 1 | cut -c1-300)" \
             "Report it at $SUPPORT_URL; installing again will not fix it."
+    help_output="$(cat "$STEP_OUT")"
+    : "$help_output"
     say "Installed: $reported ($bin_dir/onex)"
     path_guidance "$bin_dir"
     say "Done. Run 'onex' to open ONEX: use /config to set up a model, then type a task to delegate it."

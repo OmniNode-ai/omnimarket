@@ -271,6 +271,9 @@ class ModelTuiDesign(BaseModel):
     aliases: dict[str, str]
     #: CLI command paths a shortcut replaces: the TUI neither lists nor runs them.
     replaced_commands: tuple[tuple[str, ...], ...] = ()
+    #: CLI command paths the TUI runs inside itself instead of starting a new
+    #: onex program (OMN-26611); a path covers every command under it.
+    in_process: tuple[tuple[str, ...], ...] = ()
     model_table: ModelTuiModelTable
     delegation: ModelTuiDelegation
     dashboard: ModelTuiDashboard
@@ -335,6 +338,11 @@ class ModelTuiDesign(BaseModel):
             if wanted not in table.status:
                 raise ValueError(f"model_table status has no word for {wanted!r}")
         return self
+
+    @property
+    def tab_ids(self) -> frozenset[str]:
+        """The shortcut actions that open a tab."""
+        return frozenset(spec.id for spec in self.tabs)
 
     def replaces(self, path: tuple[str, ...]) -> bool:
         """Whether ``path`` is, or sits under, a CLI command a shortcut replaces."""
