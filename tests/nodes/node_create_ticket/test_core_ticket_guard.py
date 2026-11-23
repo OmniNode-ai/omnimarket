@@ -77,10 +77,7 @@ def test_handler_default_guard_is_the_core_validator(
 
 
 @pytest.mark.unit
-def test_core_guard_takes_the_ledger_only_from_its_argument(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_core_guard_takes_the_ledger_only_by_injection(tmp_path: Path) -> None:
     ledger = tmp_path / "ledger.md"
-    ledger.write_text("row\n", encoding="utf-8")
-    assert CoreTicketGuard(lane=None, ledger_path=ledger).ledger_path == ledger
     assert CoreTicketGuard(lane=None).ledger_path is None
+    assert CoreTicketGuard(lane=None, ledger_path=ledger).ledger_path == ledger

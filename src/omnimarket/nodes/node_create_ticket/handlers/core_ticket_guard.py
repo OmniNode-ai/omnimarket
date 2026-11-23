@@ -32,11 +32,7 @@ from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
     ModelTicketGuardDecision,
 )
 
-__all__ = [
-    "CORE_GUARD_ID",
-    "CoreTicketGuard",
-    "core_lane_intake_policy",
-]
+__all__ = ["CORE_GUARD_ID", "CoreTicketGuard", "core_lane_intake_policy"]
 
 #: The ``guard_path`` a decision of this guard carries: the validator, not a file.
 CORE_GUARD_ID = "omnibase_core.validation.checker_ticket_creation"
