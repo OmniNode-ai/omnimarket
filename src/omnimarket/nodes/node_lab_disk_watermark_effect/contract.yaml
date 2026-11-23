@@ -47,6 +47,17 @@ schedule:
     accuracy: 30s
     timeout_start_seconds: 600
     description: a first reading at install, then every 300 s
+# OMN-24562: a volume below this free share of inodes alarms (the byte share alone never saw h053 at 95% of its inodes).
+# The alarm is the lab stack reaper's route: a FRICTION row and a STATUS row with `alarms=<n>`, appended through the bus
+# append command named here; each row names the owner.
+inode_alarm:
+  free_percent_below: 15
+  owner: orchestrator-31d9-swarm
+  lane: lab-disk-watermark
+  ticket: OMN-24562
+  repeat_minutes: 60
+  ledger_append_command_env: ONEX_LEDGER_BUS_APPEND_COMMAND
+  ledger_append_timeout_seconds: 60
 event_bus:
   publish_topics:
     - onex.evt.omnimarket.host-disk-read.v1

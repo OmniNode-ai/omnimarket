@@ -14,7 +14,7 @@ import asyncio
 import contextlib
 import inspect
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import cast
@@ -38,6 +38,7 @@ CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 COLLECT_OPERATION = "collect_nightly"
 PUBLISH_OPERATION = "publish_attribution_record"
 RESULT_KEY = "result"
+CONFIG_ROOT_ENV = "ONEX_WORKSPACE_CONFIG_ROOT"
 
 
 def load_command_topics(
@@ -60,6 +61,24 @@ def answer_body(payload: dict[str, JsonValue]) -> dict[str, JsonValue]:
     return wrapped if isinstance(wrapped, dict) else payload
 
 
+@contextlib.contextmanager
+def config_root_declared(declared: str | None) -> Iterator[None]:
+    """Name the overlay's mounted config root for the lane resolver while the bus opens.
+
+    The dev runtime mounts the lane declaration but exports no ONEX_WORKSPACE_CONFIG_ROOT, so the resolver found no
+    ci_bus_lanes.yaml and every night was recorded missed. A root the environment already names wins; the variable is
+    put back as it was once the bus is open, because only the open reads it.
+    """
+    if declared is None or os.environ.get(CONFIG_ROOT_ENV, "").strip():
+        yield
+        return
+    os.environ[CONFIG_ROOT_ENV] = declared
+    try:
+        yield
+    finally:
+        os.environ.pop(CONFIG_ROOT_ENV, None)
+
+
 class BusNightlyCommandSender:
     """Publishes on the declared lane and awaits the answer, the way the scheduled ticket closer's bus call does."""
 
@@ -68,10 +87,12 @@ class BusNightlyCommandSender:
         *,
         bus_lane: str,
         timeout_s: float,
+        workspace_config_root: str | None = None,
         call: Callable[[ModelScmTopics, BaseModel], ModelScmTerminal] | None = None,
     ) -> None:
         self._lane = bus_lane
         self._timeout_s = timeout_s
+        self._config_root = workspace_config_root
         self._call = call or self._call_on_bus
 
     def _call_on_bus(
@@ -100,7 +121,11 @@ class BusNightlyCommandSender:
         values = ("kafka", self._lane, None, Path(workspace) if workspace else None)
 
         async def run() -> ModelScmTerminal:
-            async with opener(**dict(zip(names, values, strict=True))) as bus:
+            async with contextlib.AsyncExitStack() as stack:
+                with config_root_declared(self._config_root):
+                    bus = await stack.enter_async_context(
+                        opener(**dict(zip(names, values, strict=True)))
+                    )
                 return await ScmBusCaller(bus).call_topics(
                     topics=topics,
                     request=request,
