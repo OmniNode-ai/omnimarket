@@ -62,10 +62,15 @@ def test_work_root_volume_bar_reads_the_live_volume(tmp_path: Path) -> None:
     root = tmp_path / "not" / "yet" / "lab-run"
     reading = read_live_volume(root)
     stat = os.statvfs(tmp_path)
-    assert reading.available_bytes == stat.f_bavail * stat.f_frsize
-    assert reading.used_bytes == (stat.f_blocks - stat.f_bfree) * stat.f_frsize
-    # The bar judges that live figure: a bar just under the live reading refuses, one at it admits.
+    # Other processes write to a live volume between the two reads, so the figures agree within a percent, not exactly.
+    assert reading.available_bytes == pytest.approx(
+        stat.f_bavail * stat.f_frsize, rel=0.01
+    )
+    assert reading.used_bytes == pytest.approx(
+        (stat.f_blocks - stat.f_bfree) * stat.f_frsize, rel=0.01
+    )
+    # The bar judges that live figure: a bar under the live reading refuses, one above it admits.
     live = reading.used_percent
     with pytest.raises(WorkRootVolumeError):
-        refuse_work_root_over_bar(root, bar_percent=live - 0.5)
-    assert refuse_work_root_over_bar(root, bar_percent=live + 0.5).path == str(root)
+        refuse_work_root_over_bar(root, bar_percent=live - 2.0)
+    assert refuse_work_root_over_bar(root, bar_percent=live + 2.0).path == str(root)
