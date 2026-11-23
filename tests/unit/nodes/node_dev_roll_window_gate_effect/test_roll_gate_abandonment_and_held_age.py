@@ -129,12 +129,14 @@ def test_roll_gate_abandoned_typed_reason_is_an_enum_never_a_bare_string() -> No
     field = ModelDevRollGateAbandonedRoll.model_fields["reason"]
     assert field.annotation is EnumDevRollGateAbandonReason
     with pytest.raises(ValueError, match="reason"):
-        ModelDevRollGateAbandonedRoll(
-            command_correlation_id="job",
-            git_ref="ref",
-            reason="completion_overdue",  # type: ignore[arg-type]
-            runtime_started_at=datetime(2026, 11, 22, tzinfo=UTC),
-            abandoned_at=datetime(2026, 11, 22, tzinfo=UTC),
+        ModelDevRollGateAbandonedRoll.model_validate(
+            {
+                "command_correlation_id": "job",
+                "git_ref": "ref",
+                "reason": "completion_overdue",
+                "runtime_started_at": datetime(2026, 11, 22, tzinfo=UTC),
+                "abandoned_at": datetime(2026, 11, 22, tzinfo=UTC),
+            }
         )
 
 
@@ -181,6 +183,13 @@ def test_roll_gate_release_from_start_even_when_the_deadline_is_longer(
 
 
 # --- AC3: a held command older than the overlay's bound alarms once ------------------------------
+
+
+def test_roll_gate_held_age_alarm_topic_is_declared_by_the_node_contract() -> None:
+    contract = Path(__file__).parents[4] / (
+        "src/omnimarket/nodes/node_dev_roll_window_gate_effect/contract.yaml"
+    )
+    assert "onex.cmd.omnimarket.lab-alarm-delivery-requested.v1" in contract.read_text()
 
 
 def test_roll_gate_held_age_alarm_names_the_roll_and_the_held_commands_once() -> None:
