@@ -13,9 +13,9 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
 
-from omnimarket.handlers.handler_release_cut_changelog import (
+from scripts.ci.post_release_dev_bump import (
     release_cut_added_changelog,
-    remove_release_cut_changelog,
+    remove_cut_changelog_file,
 )
 
 pytestmark = pytest.mark.unit
@@ -72,14 +72,14 @@ def test_a_cut_that_only_edits_an_existing_changelog_is_not(repo: Path) -> None:
     _git(repo, "tag", "v0.4.324")
 
     assert release_cut_added_changelog(repo, "v0.4.324") is False
-    assert remove_release_cut_changelog(repo, "v0.4.324", apply=True) is False
+    assert remove_cut_changelog_file(repo, "v0.4.324", apply=True) is False
     assert (repo / "CHANGELOG.md").is_file()
 
 
 def test_an_unknown_tag_removes_nothing(repo: Path) -> None:
     _commit(repo, "chore: release", {"CHANGELOG.md": "## v0.4.324\n"})
 
-    assert remove_release_cut_changelog(repo, "v9.9.9", apply=True) is False
+    assert remove_cut_changelog_file(repo, "v9.9.9", apply=True) is False
     assert (repo / "CHANGELOG.md").is_file()
 
 
@@ -95,8 +95,8 @@ def test_without_apply_the_file_is_reported_and_kept(repo: Path) -> None:
     _commit(repo, "chore: release", {"CHANGELOG.md": "## v0.4.324\n"})
     _git(repo, "tag", "v0.4.324")
 
-    assert remove_release_cut_changelog(repo, "v0.4.324", apply=False) is True
+    assert remove_cut_changelog_file(repo, "v0.4.324", apply=False) is True
     assert (repo / "CHANGELOG.md").is_file()
-    assert remove_release_cut_changelog(repo, "v0.4.324", apply=True) is True
+    assert remove_cut_changelog_file(repo, "v0.4.324", apply=True) is True
     assert not (repo / "CHANGELOG.md").exists()
-    assert remove_release_cut_changelog(repo, "v0.4.324", apply=True) is False
+    assert remove_cut_changelog_file(repo, "v0.4.324", apply=True) is False

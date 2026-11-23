@@ -61,9 +61,9 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import re
+import subprocess
 import sys
 import tomllib
 from dataclasses import asdict, dataclass
@@ -71,7 +71,6 @@ from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_PYPROJECT = _REPO_ROOT / "pyproject.toml"
-_CUT_CHANGELOG = _REPO_ROOT / "src/omnimarket/handlers/handler_release_cut_changelog.py"
 
 #: Final releases only. A pre-release/rc tag must never drive a dev bump: rc
 #: builds are not what the release-identity gate compares against, and bumping
@@ -224,15 +223,55 @@ def apply_decision(pyproject: Path, decision: BumpDecision) -> bool:
     return True
 
 
+CHANGELOG_PATH = "CHANGELOG.md"
+_GIT_TIMEOUT_SECONDS = 60
+
+
+def release_cut_added_changelog(root: Path, tag: str) -> bool:
+    """Whether ``tag``'s commit added a root ``CHANGELOG.md`` over its first parent.
+
+    A tag, a parent or a git repository that cannot be read answers ``False``: an
+    unreadable cut never removes a file.
+    """
+    listing = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "diff",
+            "--name-only",
+            "--diff-filter=A",
+            "--no-renames",
+            f"{tag}^1",
+            f"{tag}^{{commit}}",
+            "--",
+            CHANGELOG_PATH,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=_GIT_TIMEOUT_SECONDS,
+    )
+    return listing.returncode == 0 and listing.stdout.strip() == CHANGELOG_PATH
+
+
+def remove_cut_changelog_file(root: Path, tag: str, *, apply: bool) -> bool:
+    """Whether ``CHANGELOG.md`` is on the tree and ``tag``'s cut added it.
+
+    ``apply`` deletes the file when the answer is ``True``; staging that deletion
+    is the caller's.
+    """
+    changelog = root / CHANGELOG_PATH
+    if not changelog.is_file() or not release_cut_added_changelog(root, tag):
+        return False
+    if apply:
+        changelog.unlink()
+    return True
+
+
 def remove_cut_changelog(root: Path, decision: BumpDecision, apply: bool) -> bool:
-    """Whether the cut's ``CHANGELOG.md`` goes (deleted when ``apply``); loaded by path."""
-    spec = importlib.util.spec_from_file_location("cut_changelog", _CUT_CHANGELOG)
-    if spec is None or spec.loader is None:
-        raise BumpConfigError(f"cannot load {_CUT_CHANGELOG}")
-    handler = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(handler)
-    tag = f"v{decision.released_version}"
-    return bool(handler.remove_release_cut_changelog(root, tag, apply=apply))
+    """Whether the cut's ``CHANGELOG.md`` goes (deleted when ``apply``)."""
+    return remove_cut_changelog_file(root, f"v{decision.released_version}", apply=apply)
 
 
 def _build_parser() -> argparse.ArgumentParser:
