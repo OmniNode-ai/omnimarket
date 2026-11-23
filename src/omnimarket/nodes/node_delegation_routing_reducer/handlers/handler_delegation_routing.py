@@ -91,6 +91,7 @@ from omnimarket.handlers.routing.customer_key_terminus import (
 from omnimarket.handlers.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
 )
+from omnimarket.handlers.routing.endpoint_load_reader import endpoint_load_targets
 from omnimarket.handlers.routing.input_token_bound import input_bound_members
 from omnimarket.handlers.routing.measured_correct_ceiling import (
     exceeds_measured_correct_ceiling,
@@ -139,6 +140,9 @@ from omnimarket.models.delegation.credential_withheld_rung import (
 )
 from omnimarket.models.delegation.model_delegation_backend_placement import (
     ModelPlacedDelegationBackend,
+)
+from omnimarket.models.delegation.model_endpoint_load_snapshot import (
+    ModelEndpointLoadSnapshot,
 )
 from omnimarket.models.delegation.model_entry_tier_share import (
     entry_first_order,
@@ -508,6 +512,7 @@ def _select_model_for_task(
     spread_peers: dict[str, tuple[str, ...]] | None = None,
     spread_member_weights: dict[str, float] | None = None,
     quota_state: ModelProviderQuotaSnapshot | None = None,
+    load_state: ModelEndpointLoadSnapshot | None = None,
 ) -> ModelTierModel | None:
     """Select a model from a tier, then spread it across its same-model peers.
 
@@ -575,6 +580,7 @@ def _select_model_for_task(
                 backend, require_credential=require_credential, quota_state=quota_state
             )
         ),
+        load=load_state,
     )
 
 
@@ -2139,6 +2145,7 @@ def backend_id_for_tier(
     spread_key: str | None = None,
     byok_backends: tuple[ModelResolvedDelegationBackend, ...] = (),
     prompt: str,
+    load_state: ModelEndpointLoadSnapshot | None = None,
 ) -> str | None:
     """Return the bifrost ``backend_id`` ``tier_name`` would select for ``task_type``.
 
@@ -2204,10 +2211,18 @@ def backend_id_for_tier(
         spread_key=spread_key,
         spread_peers=_spread_peers_for(config),
         spread_member_weights=_spread_weights_for(config),
+        load_state=load_state,
     )
     if selected is None:
         return None
     return selected.backend_ref
+
+
+def spread_load_targets() -> dict[str, str]:
+    """Endpoints whose load a caller reads (OMN-26534); empty with no spread peer."""
+    return endpoint_load_targets(
+        _spread_peers_for(_get_config()), _load_bifrost_endpoints()
+    )
 
 
 def credential_withheld_rung(
@@ -2747,6 +2762,7 @@ def delta(
     surface: EnumDelegationSurface = EnumDelegationSurface.CLOUD,
     quota_state: ModelProviderQuotaSnapshot | None = None,
     capability_map: ModelCapabilityMapRead | None = None,
+    load_state: ModelEndpointLoadSnapshot | None = None,
 ) -> ModelRoutingDecision:
     """Compute routing decision for a delegation request.
 
@@ -3160,6 +3176,7 @@ def delta(
                     spread_peers=spread_peers,
                     spread_member_weights=spread_member_weights,
                     quota_state=quota_state,
+                    load_state=load_state,
                 )
                 if selected is not None and selected.backend_ref in spread_members:
                     # The receipt's backend_id cannot tell two hosts serving
@@ -3213,6 +3230,8 @@ def delta(
                 and selected.id == contract_model_ref
             ):
                 rationale += f" Contract-override: model='{contract_model_ref}'."
+            if load_state is not None and selected.backend_ref in spread_members:
+                rationale += f" Load-aware (OMN-26534), {load_state.describe()}."
             if requested_backend_ref is None and entry is not None:
                 policy_val = entry.get("cloud_routing_policy")
                 policy_str = policy_val if isinstance(policy_val, str) else "allowed"

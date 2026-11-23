@@ -405,6 +405,9 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     tier_for_backend,
     tier_max_retries,
 )
+from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_spread_load_snapshot import (
+    read_spread_load_snapshot,
+)
 from omnimarket.nodes.node_delegation_shrink_retry_compute.handlers.handler_shrink_retry_policy import (
     next_best_configuration,
 )
@@ -4803,6 +4806,7 @@ class LocalDelegationDispatchPort:
                 task_type,
                 spread_key=spread_key,
                 prompt=_ACTIVE_PROMPT.get(),
+                load_state=read_spread_load_snapshot(),
                 **byok_kwargs,
             )
             blocked = quota_blocked_backend_refs(quota_state)
