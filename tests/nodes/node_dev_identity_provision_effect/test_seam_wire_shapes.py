@@ -75,6 +75,7 @@ def _overlay(**overrides: object) -> ModelDevIdentityProvisionOverlay:
             "provision_path": "/v1/auth/provision",
             "timeout_seconds": 15.0,
         },
+        "protected_usernames": [],
         "secret_store": None,
     }
     fields.update(overrides)

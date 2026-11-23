@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The stall responder's contract names a pure node and routes both handlers (OMN-22885)."""
+"""The stall responder's contract names a pure node and routes both handlers (OMN-22885, OMN-26438)."""
 
 from __future__ import annotations
 
@@ -30,18 +30,25 @@ def test_contract_is_pure_and_routes_its_operation_to_a_callable_handler() -> No
     assert contract["node_type"] == "compute"
     assert contract["descriptor"]["purity"] == "pure"
     handlers = contract["handler_routing"]["handlers"]
-    assert [h["operation"] for h in handlers] == ["decide_stall_responses"]
+    assert [h["operation"] for h in handlers] == [
+        "decide_stall_responses",
+        "stall_responder.scheduled_fire",
+    ]
     for entry in handlers:
         module = importlib.import_module(entry["handler"]["module"])
         assert callable(getattr(module, entry["handler"]["name"])().handle)
-        event = importlib.import_module(entry["event_model"]["module"])
-        assert getattr(event, entry["event_model"]["name"])
+    command = handlers[0]
+    event = importlib.import_module(command["event_model"]["module"])
+    assert getattr(event, command["event_model"]["name"])
 
 
 def test_contract_topics_are_declared_and_the_terminal_event_is_published() -> None:
     contract = _contract()
     topics = contract["event_bus"]
-    assert topics["subscribe_topics"] == [contract["runtime_dispatch"]["command_topic"]]
+    assert topics["subscribe_topics"] == [
+        contract["runtime_dispatch"]["command_topic"],
+        "onex.intent.platform.runtime-tick.v1",
+    ]
     assert topics["publish_topics"] == [contract["terminal_event"]]
     assert (
         contract["terminal_event"] == "onex.evt.omnimarket.stall-responder-decided.v1"

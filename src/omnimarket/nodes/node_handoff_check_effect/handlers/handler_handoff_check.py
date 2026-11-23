@@ -7,18 +7,24 @@ reader and the live probes, and refuses (exit 1) when a ruling or consent in the
 status of done, in_flight, dropped or held; an unhealthy service is recorded and never refuses.
 ``resume`` reads the newest committed handoff and re-probes its stale lines. ``record-slice``
 records a scrubbed ledger slice as a test fixture. Exit: 0 ok, 1 refused, 2 bad input, 3 no
-handoff found. The policy is the ``handoff_check`` section of this node's contract.yaml.
+handoff found, 69 the ledger rows were not readable from the bus reader.
+The ledger is read only through the injected ledger-rows port (the bus reader node), never a file. The policy is the ``handoff_check`` section of this node's contract.yaml.
 """
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.nodes.node_handoff_check_effect.adapters.bus_ledger_rows import (
+    build_bus_ledger_rows,
+)
 from omnimarket.nodes.node_handoff_check_effect.handlers.assemble import assemble
+from omnimarket.nodes.node_handoff_check_effect.handlers.ledger_rows import (
+    LedgerRowsUnreadableError,
+)
 from omnimarket.nodes.node_handoff_check_effect.handlers.record_slice import (
     record_slice,
 )
@@ -29,6 +35,7 @@ from omnimarket.nodes.node_handoff_check_effect.models import (
     ModelHandoffCheckResult,
     ModelHandoffPolicy,
 )
+from omnimarket.nodes.node_handoff_check_effect.protocols import ProtocolLedgerRows
 
 POLICY_KEY = "handoff_check"
 CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
@@ -45,23 +52,29 @@ def load_policy(contract_path: Path = CONTRACT_PATH) -> ModelHandoffPolicy:
 class HandlerHandoffCheck:
     """Assemble, resume and record-slice over the declared handoff contract."""
 
-    def __init__(self, contract_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        contract_path: Path | None = None,
+        ledger_rows: ProtocolLedgerRows | None = None,
+    ) -> None:
         self._contract_path = contract_path or CONTRACT_PATH
+        self._ledger_rows = ledger_rows
 
     def handle(self, request: ModelHandoffCheckRequest) -> ModelHandoffCheckResult:
-        ledger = request.ledger or os.environ.get("ONEX_LEDGER_PATH")
-        if not ledger:
-            return self._bad_input(
-                request.command,
-                "handoff_check: set ledger or ONEX_LEDGER_PATH (there is no default)",
-            )
         try:
             policy = load_policy(self._contract_path)
+            rows = self._ledger_rows or build_bus_ledger_rows()
             if request.command is EnumHandoffCommand.ASSEMBLE:
-                return self._assemble(request, policy, ledger)
+                return self._assemble(request, policy, rows)
             if request.command is EnumHandoffCommand.RESUME:
-                return resume(request, policy, ledger)
-            return record_slice(request, policy, ledger)
+                return resume(request, policy, rows)
+            return record_slice(request, policy, rows)
+        except LedgerRowsUnreadableError as exc:
+            return ModelHandoffCheckResult(
+                command=request.command,
+                exit_code=69,
+                errors=[f"handoff_check: {exc}"],
+            )
         except (OSError, ValueError, KeyError, ValidationError, yaml.YAMLError) as exc:
             # json.JSONDecodeError is a ValueError.
             return self._bad_input(
@@ -76,9 +89,11 @@ class HandlerHandoffCheck:
 
     @staticmethod
     def _assemble(
-        request: ModelHandoffCheckRequest, policy: ModelHandoffPolicy, ledger: str
+        request: ModelHandoffCheckRequest,
+        policy: ModelHandoffPolicy,
+        ledger_rows: ProtocolLedgerRows,
     ) -> ModelHandoffCheckResult:
-        handoff = assemble(request, policy, ledger)
+        handoff = assemble(request, policy, ledger_rows)
         dropped = handoff.dropped
         out = [dropped.summary_line()]
         out += [

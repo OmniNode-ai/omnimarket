@@ -25,6 +25,7 @@ from omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.gate_context imp
     DevRollGateContext,
 )
 from omnimarket.nodes.node_dev_roll_window_gate_effect.models import (
+    EnumDevRollGateRollOutcome,
     ModelDevRollGateRollRecorded,
     ModelDevRollWindowGatePolicy,
 )
@@ -89,6 +90,10 @@ class HandlerDevRollWindowCompleted:
         )
         return ModelDevRollGateRollRecorded(
             command_correlation_id=request.correlation_id,
-            outcome="finished_healthy" if healthy else "finished_unhealthy",
+            outcome=(
+                EnumDevRollGateRollOutcome.FINISHED_HEALTHY
+                if healthy
+                else EnumDevRollGateRollOutcome.FINISHED_UNHEALTHY
+            ),
             observed_at=now,
         )

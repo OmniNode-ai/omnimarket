@@ -6,7 +6,9 @@ On each runtime tick with commands held, asks the batching decision of
 node_dev_roll_request_compute (the pure ``decide_dev_roll``) whether to roll now. A hold
 changes nothing. Roll now releases EVERY held command the decision covered, oldest first,
 each marked released so the deploy effect publishes it without holding it again; the
-agent's own queue folding then makes one roll of the batch. The state (held commands,
+agent's own queue folding then makes one roll of the batch. A roll no completion reaches by the
+overlay's ``roll_completion_deadline_seconds`` is abandoned (a typed record in the state) and the held
+commands go to the next roll in the same tick. The state (held commands,
 the roll started, the released ids) is saved before the commands are returned: the
 release is at most once. A crash between the save and the runtime's publish, or a
 producer failure part-way through the batch (the redelivered tick finds nothing held),
@@ -37,6 +39,9 @@ from omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.gate_context imp
     DevRollGateContext,
 )
 from omnimarket.nodes.node_dev_roll_window_gate_effect.models import (
+    EnumDevRollGateAbandonReason,
+    EnumDevRollGateRollOutcome,
+    ModelDevRollGateAbandonedRoll,
     ModelDevRollGateDecision,
     ModelDevRollGateRollRecorded,
     ModelDevRollGateState,
@@ -76,6 +81,52 @@ class HandlerDevRollWindowTick:
             h.command.model_copy(update={"roll_window_released": True}) for h in flushed
         ]
 
+    def _abandon_unfinished_roll(
+        self,
+        state: ModelDevRollGateState,
+        policy: ModelDevRollWindowGatePolicy,
+        now: datetime,
+        store: ProtocolDevRollGateStore,
+    ) -> tuple[ModelDevRollGateState, ModelDevRollGateRollRecorded | None]:
+        """Give up on a released roll no completion reached by the deadline, instead of holding every later release for ever.
+
+        The roll is recorded in the state as a typed abandoned roll and cleared as the last roll, so the batching
+        decision sees no roll to wait for and the held commands go to the next roll in this tick. A roll the earlier
+        deadline code had already ended as not healthy (finished, health unknown: the agent's completion only ever
+        reads healthy or unhealthy) is abandoned the same way.
+        """
+        last = state.last_roll
+        if (
+            last is None
+            or last.runtime_started_at is None
+            or last.health is not EnumDevRollHealth.UNKNOWN
+        ):
+            return state, None
+        deadline_at = last.runtime_started_at + timedelta(
+            seconds=policy.roll_completion_deadline_seconds
+        )
+        if last.finished_at is None and now < deadline_at:
+            return state, None
+        abandoned = ModelDevRollGateAbandonedRoll(
+            command_correlation_id=last.job_id,
+            git_ref=last.git_ref,
+            reason=EnumDevRollGateAbandonReason.COMPLETION_DEADLINE_PASSED,
+            runtime_started_at=last.runtime_started_at,
+            abandoned_at=last.finished_at or deadline_at,
+        )
+        ended = state.model_copy(
+            update={
+                "last_roll": None,
+                "abandoned": (*state.abandoned, abandoned)[-policy.held_kept :],
+            }
+        )
+        store.save(ended)
+        return ended, ModelDevRollGateRollRecorded(
+            command_correlation_id=last.job_id,
+            outcome=EnumDevRollGateRollOutcome.ABANDONED,
+            observed_at=now,
+        )
+
     def handle(self, request: ModelRuntimeTick) -> Sequence[BaseModel] | None:
         try:
             policy = self._context.policy()
@@ -88,35 +139,7 @@ class HandlerDevRollWindowTick:
         now = self._context.now()
         if policy.mode == "off":
             return self._flush(state, store)
-        overdue: ModelDevRollGateRollRecorded | None = None
-        last = state.last_roll
-        if (
-            last is not None
-            and last.finished_at is None
-            and last.runtime_started_at is not None
-            and now
-            >= last.runtime_started_at
-            + timedelta(seconds=policy.roll_completion_deadline_seconds)
-        ):
-            # No completion arrived in time (a lost event, an agent that never answered):
-            # end the roll as not healthy so the batching decision's failed-roll bound
-            # applies, instead of holding every later release forever.
-            ended = ModelDevRollRecord(
-                job_id=last.job_id,
-                git_ref=last.git_ref,
-                runtime_started_at=last.runtime_started_at,
-                finished_at=last.runtime_started_at
-                + timedelta(seconds=policy.roll_completion_deadline_seconds),
-                health=EnumDevRollHealth.UNKNOWN,
-                healthy_since=None,
-            )
-            state = state.model_copy(update={"last_roll": ended})
-            store.save(state)
-            overdue = ModelDevRollGateRollRecorded(
-                command_correlation_id=last.job_id,
-                outcome="completion_overdue",
-                observed_at=now,
-            )
+        state, overdue = self._abandon_unfinished_roll(state, policy, now, store)
         if not state.held:
             return None if overdue is None else [overdue]
         facts = ModelDevRollFacts(

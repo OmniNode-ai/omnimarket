@@ -28,13 +28,11 @@ class EnumHandoffCommand(StrEnum):
 
 
 class ModelHandoffCheckRequest(BaseModel):
-    """One handoff check call; the paths are read on the host that runs the node."""
+    """One handoff check call; the ledger is read through the bus reader, never named here."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     command: EnumHandoffCommand
-    ledger: str | None = None
-    archive_dir: str | None = None
     now: str | None = Field(
         default=None, description="UTC time to evaluate at; the clock when absent"
     )
@@ -230,6 +228,17 @@ class ModelHandoffPolicy(BaseModel):
     stale: ModelStalePolicy
     probes: tuple[ModelProbeSpec, ...]
     sections: tuple[ModelSectionSpec, ...]
+
+
+class ModelLedgerRowsRead(BaseModel):
+    """What the ledger-rows port answered: a status, the row lines and why it is not ok."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    status: str
+    lines: tuple[str, ...] = ()
+    reason: str = ""
+    watermark_age_s: int | None = None
 
 
 # --- ledger rows, facts, probes -----------------------------------------------------------

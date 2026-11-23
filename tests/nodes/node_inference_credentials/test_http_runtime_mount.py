@@ -111,8 +111,8 @@ async def _runtime(contracts: list[Path]) -> tuple[ServiceHealth, str]:
     server.attach_manifest(manifest)
     assert server._mount_task is not None
     await server._mount_task
-    assert server._runner is not None
-    return server, f"http://127.0.0.1:{int(server._runner.addresses[0][1])}"
+    assert server._site is not None
+    return server, f"http://127.0.0.1:{server._site.port}"
 
 
 async def test_runtime_mount_serves_submit_list_and_revoke_and_fails_closed(
