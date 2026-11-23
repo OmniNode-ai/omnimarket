@@ -126,3 +126,11 @@ async def test_the_previous_value_restores_through_the_same_command() -> None:
     payload = json.loads(bus_two.on(contract()["event_bus"]["publish_topics"][0])[0][1])
     assert payload["document"]["lanes"]["lane-a"]["lazy_start"] == OLD_LAZY_START
     assert payload["loaded_by"] == "restore"
+
+
+def test_the_contract_publishes_the_record_topic_and_the_audit_topic() -> None:
+    topics = contract()["event_bus"]["publish_topics"]
+    assert topics == [
+        "onex.evt.omnimarket.overlay-store-loaded.v1",
+        "onex.evt.omnimarket.overlay-setting-set.v1",
+    ]

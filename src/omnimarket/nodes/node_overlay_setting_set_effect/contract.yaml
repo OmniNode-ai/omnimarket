@@ -33,6 +33,9 @@ event_bus:
     - onex.evt.omnimarket.overlay-store-loaded.v1
     # The audit row: who set which key, the previous value and the new value.
     - onex.evt.omnimarket.overlay-setting-set.v1
+# OMN-18013 sink declaration: no node contract subscribes to the audit row; it is read from the topic by operators and audit tooling.
+externally_consumed_topics:
+  - onex.evt.omnimarket.overlay-setting-set.v1
 # The set runs under the same host login as the loader (the overlay scope broker_acl_principals), and writes the two topics it publishes.
 broker_acl_grants:
   - principal: "${ONEX_ACL_HOST_RECONCILER_PRINCIPAL}"
