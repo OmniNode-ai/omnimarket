@@ -14,7 +14,25 @@ class PoolSnapshotSourceError(RuntimeError):
 
 
 class PoolSnapshotStaleError(PoolSnapshotSourceError, LaneHostPoolUnreadableError):
-    """The snapshot record is missing, unreadable, or older than the freshness bound; the lane start ends it pool-unreadable."""
+    """The snapshot record is missing, unreadable, or older than the freshness bound; the lane start ends it pool-unreadable.
+
+    ``age_seconds`` is the record's age when it was read and stale; ``None`` when there was no age to state. ``absent`` is True when
+    there was no record file at all. ``bound_seconds`` is the freshness bound the reader held it to, ``None`` when the error did
+    not come from the reader of a bound.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        age_seconds: int | None = None,
+        bound_seconds: int | None = None,
+        absent: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.age_seconds = age_seconds
+        self.bound_seconds = bound_seconds
+        self.absent = absent
 
 
 __all__: list[str] = ["PoolSnapshotSourceError", "PoolSnapshotStaleError"]
