@@ -19,6 +19,8 @@ from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from omnimarket.models.node_overlays.model_node_overlays import ModelSharedCatalogLine
+
 
 class EnumDuplicateEvidence(StrEnum):
     """Shared intent outside a stack; ownerless drafts supply notes, except for BRANCH."""
@@ -91,12 +93,44 @@ class ModelDuplicateStackConfig(BaseModel):
 
 
 class ModelDuplicateDigestConfig(BaseModel):
-    """Changed-line fingerprint settings owned by the snapshot contract."""
+    """Changed-line fingerprint settings owned by the snapshot contract, plus the deployment's shared catalog lines.
+
+    ``shared_catalog_lines`` maps a repository's short name to the lines its rendered catalogs rewrite in every
+    pull request (a path glob and a line pattern each, read from the deployment overlay beside ``generated_paths``).
+    Each pattern is compiled when the model is built, so an expression that does not compile refuses at load.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     min_line_chars: int = Field(ge=1)
     prefix_chars: int = Field(ge=1, le=40)
+    shared_catalog_lines: dict[str, tuple[ModelSharedCatalogLine, ...]] = Field(
+        default_factory=dict
+    )
+
+    @field_validator("shared_catalog_lines")
+    @classmethod
+    def _repos_are_short_names(
+        cls, value: dict[str, tuple[ModelSharedCatalogLine, ...]]
+    ) -> dict[str, tuple[ModelSharedCatalogLine, ...]]:
+        return {_repo_key(name): lines for name, lines in value.items()}
+
+    def with_shared_catalog_lines(
+        self, lines: dict[str, tuple[ModelSharedCatalogLine, ...]]
+    ) -> ModelDuplicateDigestConfig:
+        """This config with the deployment's per-repository catalog lines."""
+        return ModelDuplicateDigestConfig(
+            min_line_chars=self.min_line_chars,
+            prefix_chars=self.prefix_chars,
+            shared_catalog_lines=lines,
+        )
+
+    def is_shared_catalog_line(self, repo: str, path: str, text: str) -> bool:
+        """True when a removed line ``text`` of ``path`` in ``repo`` is a declared shared catalog line."""
+        return any(
+            line.matches(path, text)
+            for line in self.shared_catalog_lines.get(_repo_key(repo), ())
+        )
 
 
 def _repo_key(repo: str) -> str:
@@ -188,7 +222,9 @@ class ModelFileTouch(BaseModel):
     path: str = Field(min_length=1)
     added: bool = False
     spans: tuple[tuple[int, int], ...] = ()
-    #: Sorted unique sha1 prefixes of normalized, signed changed lines.
+    #: Sorted unique sha1 prefixes of normalized, signed changed lines: the one scored digest. The share rule scores
+    #: one share over all the changed lines of both diffs, added and removed together, less the removed lines a
+    #: deployment declares shared catalog lines for this path (a file that changes nothing else is scored on them).
     digest: tuple[str, ...] = ()
     #: For each pre-image span of this file's diff that the new branch also changes, the commits that introduced
     #: the changed lines (read with ``git blame``). Empty unless the caller named a replaced pull request.
@@ -357,7 +393,6 @@ class ModelPrDuplicateSnapshotRequest(BaseModel):
     lane: str | None = None
     cause: str | None = None
     watcher_state: str | None = None
-    ledger: str | None = None
     clone: str | None = None
     worktree: str | None = None
     #: ``OWNER/REPO#N`` pull requests the caller says this change replaces; the snapshot reads each one's state.

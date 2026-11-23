@@ -110,8 +110,8 @@ async def read_from_the_runtime(
         server.attach_manifest(manifest)
         assert server._mount_task is not None
         await server._mount_task
-        assert server._runner is not None
-        base = f"http://127.0.0.1:{int(server._runner.addresses[0][1])}"
+        assert server._site is not None
+        base = f"http://127.0.0.1:{server._site.port}"
         async with aiohttp.ClientSession() as session:
             for item in wanted:
                 path = re.sub(r"\{[^}]+\}", "probe", item["path"])
@@ -176,6 +176,9 @@ async def test_the_recorded_served_identities_answer_from_the_one_container(
 async def test_the_recorded_pending_identities_fall_through_today(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # The last pending identity (GET /v1/workflows/contracts) was served by the workflow
+    # gateway node; with none pending this holds vacuously, and a port that is later added
+    # as pending again is read here. The injected break below keeps the reading able to fail.
     pending = [i for i in identities() if i["state"] == "pending"]
     answers = await read_from_the_runtime(
         runtime_contract_paths(), pending, monkeypatch

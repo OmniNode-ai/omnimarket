@@ -90,6 +90,8 @@ RECORDS = (
 
 
 def _seed_events(path: Path, records: Any = RECORDS) -> None:
+    # OMN-26413: the runs are this install's own, recorded under its minted identity (minting is idempotent).
+    tenant = str(mint_local_tenant_identity(db_path=path).tenant_uuid)
     db = SqliteDatabaseAdapter(path)
     for cid, at, tokens_in, tokens_out, spend in records:
         db.upsert(
@@ -97,9 +99,10 @@ def _seed_events(path: Path, records: Any = RECORDS) -> None:
             "correlation_id",
             {
                 "correlation_id": cid,
+                "tenant_id": tenant,
                 "created_at": at.isoformat(),
-                "delegated_to": "worker",
-                "model_name": "worker",
+                "delegated_to": "gpt-4o-mini",
+                "model_name": "gpt-4o-mini",
                 "task_type": "",
                 "cost_savings_usd": None,
                 "tokens_input": tokens_in,
@@ -120,7 +123,7 @@ def _other_tenant_rows(path: Path) -> None:
                     ModelMeteringRecord(
                         correlation_id="other",
                         occurred_at=AS_OF - timedelta(days=3),
-                        model="worker",
+                        model="gpt-4o-mini",
                         tokens_in=9000,
                         tokens_out=900,
                         spend_usd=Decimal("7"),

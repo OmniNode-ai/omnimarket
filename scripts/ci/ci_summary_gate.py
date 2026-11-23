@@ -352,19 +352,6 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     # eligibility` has no producer. S6 also retires the standalone preflight.
     "call-reject-skip-token / scan / reject-skip-gate-token",
     "contract-validation",
-    # OMN-19451 (delegation-health-check.yml): the delegation-health check on
-    # runtime PRs, calling the omnibase_infra reusable pinned by commit. A
-    # runtime-affecting PR is red while the delegation regression nightly or the
-    # M4 C17 verdict is red, unless it carries a `delegation-fix-forward:OMN-<n>`
-    # label. Standalone and unconditional on pull_request and merge_group -- no
-    # `branches:`, no `paths:`, no job-level `if:`, no `needs:` -- so it cannot be
-    # legitimately absent. A single caller job with no `name:` over a called job
-    # named "Delegation Health Check", so the check-run reads
-    # "<caller job id> / <called job name>". Registered here for the reason the
-    # Git env scrub gate entry above records: a context missing from this tuple is
-    # silently unenforced, and there is no shadow or advisory state (operator
-    # ruling 2026-09-29T12:02:35Z).
-    "delegation-health-check / Delegation Health Check",
     "deploy-gate / deploy-gate",
     "dispatcher-route-coverage",
     "fsm-handler-drift",
@@ -996,7 +983,9 @@ def evaluate(
     )
 
     # (3) Test-matrix completeness (dynamic split jobs).
-    matrix_state = _evaluate_test_matrix(latest, require_full_suite=queue_run)
+    # OMN-26446: a dev push whose Detect Changes succeeded ran the Tests shards itself (no queue
+    # run recorded its tree), so its matrix must be the whole full suite; a partial one waits.
+    matrix = _evaluate_test_matrix(latest, require_full_suite=queue_run or dev_push)
 
     # Completeness anchor: every named gate present AND completed.
     gate_missing_or_pending = [
@@ -1021,7 +1010,7 @@ def evaluate(
             skippable_failures,
             sweep_failures,
             gate_missing_or_pending,
-            matrix_state,
+            matrix,
             docs_only=docs_only,
             relaxed=relaxed,
             reuse_skips=reuse_skips,
@@ -1035,7 +1024,7 @@ def evaluate(
     if (
         gate_missing_or_pending
         or sweep_running
-        or matrix_state == "pending"
+        or matrix == "pending"
         or provisional_own_cancellations
     ):
         return EXIT_PENDING, _rep("PENDING")

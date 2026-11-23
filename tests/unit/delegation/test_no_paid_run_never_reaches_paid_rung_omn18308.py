@@ -154,9 +154,12 @@ def test_no_paid_run_unpinned_walk_never_leaves_the_free_rung(
     """Every escalation target under the opt-out is a free rung, typed cost included."""
     monkeypatch.setenv(_ALLOW_PAID_ENV, "0")
 
-    assert routing.first_eligible_tier("research") == "local"
+    assert routing.first_eligible_tier("research", prompt="") == "local"
     assert (
-        routing.next_eligible_tier("local", frozenset(), task_type="research") is None
+        routing.next_eligible_tier(
+            "local", frozenset(), task_type="research", prompt=""
+        )
+        is None
     )
 
 

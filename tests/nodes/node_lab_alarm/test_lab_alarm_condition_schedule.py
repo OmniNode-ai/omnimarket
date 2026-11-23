@@ -241,3 +241,33 @@ def test_condition_schedule_seam_every_scheduled_verb_is_a_verb_and_an_operation
     operations = {entry["operation"] for entry in contract["cli_handlers"]}
     assert verb.replace("-", "_") in operations
     assert verb in SCHEDULABLE_VERBS
+
+
+def test_condition_schedule_container_restarts_has_a_schedule_of_its_own(
+    tmp_path: Path,
+) -> None:
+    """The container-restarts verb was a condition no unit could run: it is schedulable and installs a dry-run launchd agent (OMN-26024)."""
+    assert "container-restarts" in SCHEDULABLE_VERBS
+    code = runtime_lab_alarm.run_schedule(
+        "install",
+        _MAC,
+        overlay=_overlay(),
+        condition="container-restarts",
+        omni_root=_root(tmp_path),
+        overlay_root=tmp_path / "overlays",
+        dry_run=True,
+    )
+    assert code == 0
+    with pytest.raises(SystemExit) as parsed:
+        runtime_lab_alarm.main(
+            [
+                "schedule",
+                "install",
+                "--host",
+                _MAC,
+                "--condition",
+                "container-restarts",
+                "--help",
+            ]
+        )
+    assert parsed.value.code == 0

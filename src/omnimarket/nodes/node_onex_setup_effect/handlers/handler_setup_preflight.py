@@ -1,0 +1,169 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Check supported client platforms; capability owners check their own effects."""
+
+from __future__ import annotations
+
+import platform
+import shutil
+from collections.abc import Callable
+from contextlib import suppress
+from pathlib import Path
+
+from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_command import (
+    HandlerSetupCommand,
+)
+from omnimarket.nodes.node_onex_setup_effect.handlers.setup_contract_values import (
+    supported_linux_distributions,
+)
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_command_request import (
+    ModelSetupCommandRequest,
+)
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_machine_facts import (
+    ModelSetupMachineFacts,
+)
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_observation import (
+    ModelSetupObservation,
+)
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
+    ModelSetupPlan,
+)
+
+
+def collect_machine_facts(workspace: Path) -> ModelSetupMachineFacts:
+    """Read bounded OS facts without starting services or probing stack ports."""
+    system = platform.system()
+    free_disk_bytes = None
+    if system in ("Darwin", "Linux"):
+        # Other platforms are refused on the platform alone: a Windows drive root
+        # can be missing and is its own parent, so its workspace is never walked.
+        ancestor = workspace
+        while not ancestor.exists():
+            ancestor = ancestor.parent
+        free_disk_bytes = shutil.disk_usage(ancestor).free
+    linux_distribution = None
+    kernel_release = None
+    if system == "Linux":
+        kernel_release = platform.release()
+        # Keep unreadable facts unknown; the preflight boundary refuses them.
+        with suppress(OSError, ValueError):
+            # os-release(5) allows /usr/lib/os-release only when /etc/os-release
+            # is missing; the standard library also falls back when it is unreadable.
+            with suppress(FileNotFoundError):
+                open("/etc/os-release", "rb").close()
+            linux_distribution = platform.freedesktop_os_release().get("ID", "")
+    observations: dict[str, bool | None] = {}
+    if system == "Darwin":
+        command = HandlerSetupCommand()
+        for name, key in (
+            ("rosetta", "sysctl.proc_translated"),
+            ("virtual_machine", "kern.hv_vmm_present"),
+        ):
+            result = command.handle(
+                ModelSetupCommandRequest(
+                    argv=("/usr/sbin/sysctl", "-n", key), timeout_seconds=5
+                )
+            )
+            observations[name] = (
+                {"0": False, "1": True}.get(result.stdout.strip())
+                if result.returncode == 0
+                else None
+            )
+    return ModelSetupMachineFacts(
+        platform=system,
+        architecture=platform.machine(),
+        macos_version=platform.mac_ver()[0],
+        linux_distribution=linux_distribution,
+        kernel_release=kernel_release,
+        free_disk_bytes=free_disk_bytes,
+        rosetta=observations.get("rosetta"),
+        virtual_machine=observations.get("virtual_machine"),
+    )
+
+
+def _wsl1_kernel(kernel_release: str | None) -> bool:
+    # WSL 1 reports a kernel release naming "Microsoft" (microsoft/WSL#423); the
+    # WSL 2 kernels carry a lowercase "-microsoft-standard" local version.
+    return (
+        kernel_release is not None
+        and "Microsoft" in kernel_release
+        and "WSL2" not in kernel_release
+    )
+
+
+class HandlerSetupPreflight:
+    """Shared platform check; no component name enables hidden resource floors."""
+
+    name = "preflight"
+
+    def __init__(
+        self,
+        *,
+        collect: Callable[[Path], ModelSetupMachineFacts] | None = None,
+    ) -> None:
+        self._collect = collect or collect_machine_facts
+
+    def handle(self, plan: ModelSetupPlan) -> ModelSetupObservation:
+        try:
+            facts = self._collect(plan.workspace)
+            evidence = {
+                "platform": facts.platform,
+                "architecture": facts.architecture,
+                "macos_version": facts.macos_version,
+                "rosetta": "unknown"
+                if facts.rosetta is None
+                else str(facts.rosetta).lower(),
+                "virtual_machine": "unknown"
+                if facts.virtual_machine is None
+                else str(facts.virtual_machine).lower(),
+            }
+            reasons: list[str] = []
+            if facts.platform == "Linux":
+                if facts.linux_distribution is None:
+                    raise ValueError("The Linux distribution could not be observed")
+                evidence["linux_distribution"] = facts.linux_distribution or "unknown"
+                if facts.linux_distribution not in supported_linux_distributions():
+                    reasons.append(
+                        "Run onboarding on Ubuntu Linux or macOS 14 or newer."
+                    )
+                if _wsl1_kernel(facts.kernel_release):
+                    reasons.append(
+                        "WSL 1 is not supported. Convert this distribution to"
+                        " WSL 2 (wsl --set-version <distribution> 2 in Windows)"
+                        " and run onex setup there."
+                    )
+            elif facts.platform == "Windows":
+                reasons.append(
+                    "Run onboarding in Ubuntu under WSL 2 instead of native Windows."
+                )
+            elif facts.platform == "Darwin":
+                if int(facts.macos_version.split(".")[0]) < 14:
+                    reasons.append("Upgrade to macOS 14 or newer.")
+                if facts.architecture not in ("arm64", "x86_64"):
+                    reasons.append("Use a supported arm64 or x86_64 Mac architecture.")
+                if facts.rosetta:
+                    reasons.append("Open a native arm64 terminal instead of Rosetta.")
+            else:
+                reasons.append("Run onboarding on Ubuntu Linux or macOS 14 or newer.")
+            if reasons:
+                return ModelSetupObservation(
+                    step=self.name,
+                    status="action_required" if facts.rosetta else "unavailable",
+                    evidence=evidence,
+                    fix=" ".join(reasons),
+                )
+            return ModelSetupObservation(
+                step=self.name, status="success", evidence=evidence
+            )
+        except (OSError, ValueError):
+            return ModelSetupObservation(
+                step=self.name,
+                status="failure",
+                fix="A platform observation could not complete. Check the OS release data and run onex setup --preflight-only from Ubuntu Linux or a supported native macOS terminal.",
+            )
+
+    def observe(self, plan: ModelSetupPlan) -> ModelSetupObservation:
+        return self.handle(plan)
+
+    def apply(self, plan: ModelSetupPlan) -> None:
+        raise ValueError("Resolve the preflight observation before provisioning")

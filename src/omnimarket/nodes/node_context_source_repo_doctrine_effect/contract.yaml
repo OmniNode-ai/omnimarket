@@ -59,8 +59,6 @@ context_source_repo_doctrine:
         - "Handler No-Publish Constraint"
         - "Pydantic Model Standards"
   registry_glob: "{repository}/src/{repository}/nodes/node_architectural_invariant_loop/invariants/ARCH-*.yaml"
-  ledger_env: ONEX_LEDGER_PATH
-  ledger_archive_glob: "archive/*.md"
   max_rulings: 3
   exemplar:
     ref: origin/dev

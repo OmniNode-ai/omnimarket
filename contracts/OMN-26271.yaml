@@ -1,0 +1,129 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-26271"
+title: "Each nightly red result on the dev head is attributed to the merged pull requests whose selection skipped the red test, with a completeness check, an alarm and a declared owner"
+summary: "Adds the attribute_nightly_failures operation (compute, pure) to node_test_selector_reading_compute and a new effect node_test_selector_miss_collect_effect that checks a nightly is complete, attributes each red test file, and raises one keyed alarm to the owner role the overlay declares, with the slot check as its dead-man operation."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn26271-classes"
+    statement: |-
+      Each nightly red file is classed miss, interaction, preexisting or unattributable, independent of pull request order.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: each of the four classes and the mixed cases (two suspects, one suspect plus one candidate without evidence, preexisting with a skipper present) is produced by its own fixture, and swapping the order of two pull requests does not change the class -- falsifier: `uv run pytest tests/nodes/node_test_selector_reading_compute/test_nightly_attribution.py -q --no-cov -k attribution_classes`
+  - id: "req-omn26271-no-evidence"
+    statement: |-
+      A candidate without usable evidence is never a pass.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: a missing record, a cancelled run, a skipped shard and a green attempt that finished after the merge are each no evidence and never a pass, and a new test, a direct push and an empty commit range are unattributable with their reasons -- falsifier: a fixture of each; the class must change from interaction to unattributable
+  - id: "req-omn26271-completeness"
+    statement: |-
+      An incomplete night or a silent collector raises one alarm.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: a night with fewer than `nightly_shard_count` artifacts, a shard in error, or no collector result within `collector_max_lag_hours` raises one alarm, also with the collector disabled -- falsifier: fixtures of each in `tests/nodes/node_test_selector_miss_collect_effect/test_miss_collect.py`, count alarm events (one)
+  - id: "req-omn26271-dedup"
+    statement: |-
+      One keyed alarm survives reruns, overlap and crashes.
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: dedup key `(repo, nightly slot date, test file or *)`: a rerun appends no second alarm, two concurrent invocations append one, a crash after the upsert and before delivery or after receipt and before acknowledgment leaves one receiver-visible alarm -- falsifier: run each case and count alarm events (one)
+  - id: "req-omn26271-owner"
+    statement: |-
+      The effect refuses to start without an owner role.
+    acceptance:
+      - id: "AC5"
+        statement: |-
+          AC5: the effect refuses to start with the owner role unset -- falsifier: unset the key; the effect must exit nonzero with a typed error
+  - id: "req-omn26271-injected-miss"
+    statement: |-
+      A real miss raises one alarm and a selected test raises none.
+    acceptance:
+      - id: "AC6"
+        statement: |-
+          AC6: an injected miss (a skipped test broken on a scratch branch or fixtures) is classed miss and raises one alarm, and the same fixture with the test selected raises none -- falsifier: the real effect over both fixtures
+evidence_requirements:
+  - kind: "tests"
+    description: "The attribution and collector tests."
+    command: "uv run pytest tests/nodes/node_test_selector_reading_compute/test_nightly_attribution.py tests/nodes/node_test_selector_miss_collect_effect/test_miss_collect.py -q --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn26271-ac1"
+    description: "Each class and the mixed cases have their own fixture; the order of two pull requests does not change the class. Mutation: unsorted candidates fail 2 tests."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_test_selector_reading_compute/test_nightly_attribution.py -q --no-cov -k attribution_classes"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26271-ac2"
+    description: "Missing record, missing run, cancelled run, skipped shard, a run finished after the merge, a mismatched checkout and a failed shard are each no evidence; new test, direct push and empty range are unattributable with their reasons. Mutation: treating no evidence as a pass fails 12 tests."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_test_selector_reading_compute/test_nightly_attribution.py -q --no-cov -k 'no_evidence or new_test or direct_push or empty_commit_range'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26271-ac3"
+    description: "Nine artifacts, a shard in error, a run that is not terminal, an unreadable night and no collector result past the lag each raise one alarm, the slot check also with the collector disabled."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_test_selector_miss_collect_effect/test_miss_collect.py -q --no-cov -k completeness"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26271-ac4"
+    description: "A rerun, two concurrent invocations, a crash after the upsert and a crash after receipt each leave one alarm row and one receiver-visible alarm. Mutation: an upsert that always creates fails 2 tests."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_test_selector_miss_collect_effect/test_miss_collect.py -q --no-cov -k dedup"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26271-ac5"
+    description: "An unset, blank or invalid owner role raises the typed OwnerRoleUnsetError and the start check exits 2 with a typed error."
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_test_selector_miss_collect_effect/test_miss_collect.py -q --no-cov -k owner"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26271-ac6"
+    description: "The collector over a skipped-test fixture classes miss and raises one alarm; the same fixture with the test selected raises none. Run over the in-memory gateway and over the real gateway adapter (typed gateway results, real zip archives)."
+    source: "manual"
+    binds_ac: ["AC6"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_test_selector_miss_collect_effect/test_miss_collect.py -q --no-cov -k injected_miss"
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_test_selector_miss_collect_effect/test_gateway_adapter.py -q --no-cov -k injected_miss"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26271-integration-proof"
+    description: >-
+      Run the attribution, collector and golden-chain tests on a lab host at the pushed revision.
+      This local completion proof carries no hosted AC bindings.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run
+          --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+          --lane dod-integration-proof-26271 --kind test --
+          env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest -p no:randomly
+          tests/nodes/node_test_selector_reading_compute
+          tests/nodes/node_test_selector_miss_collect_effect
+          tests/nodes/node_lab_alarm
+          -q -n 0 --no-cov --refuse-skips
+        cwd: "."

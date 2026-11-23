@@ -1,0 +1,15 @@
+# The dev-lane scope overlay rows (overlays/broker_acls_dev_runtime_ledger_append/overlay.yaml) for User:lane-a, as read in the incident:
+# six rows, WRITE on the writer command topic among them. Beside it, a principal of another scope that holds no write on a writer topic.
+scope: broker_acls_dev_runtime_ledger_append
+principals:
+  - principal: User:lane-a
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.work-ledger-append-from-lane-a.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.work-ledger-append-from-lane-a.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.work-ledger-append-completed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.work-ledger-append-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.work-ledger-append-failed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.work-ledger-append-failed.v1, operation: DESCRIBE}
+  - principal: User:ci-ledger-read
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.work-ledger-append-completed.v1, operation: READ}

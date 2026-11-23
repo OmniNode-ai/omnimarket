@@ -1,0 +1,276 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Typed install request, result, decision and owed reading (OMN-19998, root 5: the install request).
+
+A lane that ends with a change that needs an install on a named host (a lab host or the launching Mac) publishes one
+``ModelInstallRequest`` on the bus. The installer node on that host decides with the pure decision compute, resolves the
+request's ref on its own mirror, runs the declared installer when it is safe, and publishes one
+``ModelInstallRequestResult`` carrying the line the verify the request NAMES printed. The message never carries a
+command or an expected line: the host runs only what its own overlay declares. Until a ``verified`` result exists the
+request owns the ``NOT RUNNING`` line; one not verified inside its expiry is the ``expired`` line the throughput tick
+shows. Every model here is shared by the decision compute, the owed reading compute and the effect node, so a change of
+shape in one breaks the seam test of the others.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from enum import StrEnum
+from typing import Literal
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+#: A repository is ``owner/name``; a ref is a branch name or a commit sha and can never read as an option.
+REPOSITORY_PATTERN = r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+REF_PATTERN = r"^[A-Za-z0-9_][A-Za-z0-9_./-]*$"
+UNIT_PATTERN = r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$"
+#: A broker login names its own writer topic; the node contract's ``writer_topics.principal_pattern`` is the same pattern.
+LOGIN_PATTERN = r"^[a-z0-9][a-z0-9-]{0,62}$"
+
+#: The words the owed and unread lines carry; the throughput tick matches on them (the seam test pins them).
+NOT_RUNNING_MARK = "NOT RUNNING"
+EXPIRED_MARK = "INSTALL-REQUEST-EXPIRED"
+UNREAD_MARK = "INSTALL-REQUEST-UNREAD"
+
+#: The reason of a refusal for a publisher the host row does not allow: answered, never journalled, and never the answer
+#: that ends a request (a real request id may still be answered by its own publisher).
+PUBLISHER_REFUSED_REASON = "publisher_not_allowed"
+
+
+class EnumInstallTarget(StrEnum):
+    """What the request installs: a code tree a unit runs from, or the launching host's plugin tree."""
+
+    UNIT_TREE = "unit-tree"
+    PLUGIN_TREE = "plugin-tree"
+
+
+class EnumInstallRequestAction(StrEnum):
+    """What the installer on a host does with one request."""
+
+    EXECUTE = "execute"
+    REFUSE = "refuse"
+    HOLD = "hold"
+    EXPIRE = "expire"
+    SKIP_DONE = "skip_done"
+    IGNORE = "ignore"
+
+
+class EnumInstallRequestStatus(StrEnum):
+    """How a request ended; only ``verified`` clears the request's ``NOT RUNNING`` line."""
+
+    VERIFIED = "verified"
+    VERIFY_FAILED = "verify_failed"
+    INSTALL_FAILED = "install_failed"
+    REFUSED = "refused"
+    EXPIRED = "expired"
+
+
+def _aware(value: datetime, name: str) -> None:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f"{name} must carry a time zone")
+
+
+class ModelInstallRequestDraft(BaseModel):
+    """What a lane gives the publisher; the publisher adds the id and both times from the overlay's expiry.
+
+    The request names the verify by the name the unit's overlay row declares and carries no command and no expected
+    line: the host runs only what its own overlay declares, so a message can never talk the host into running code.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lane: str = Field(min_length=1)
+    host: str = Field(min_length=1)
+    kind: EnumInstallTarget
+    repository: str = Field(pattern=REPOSITORY_PATTERN)
+    ref: str = Field(pattern=REF_PATTERN)
+    unit: str = Field(pattern=UNIT_PATTERN)
+    #: The NAME of a verify the unit's overlay row declares; never a command.
+    verify: str = Field(pattern=UNIT_PATTERN)
+    #: True only when the request deliberately goes back to an older commit.
+    rollback: bool = False
+
+    @model_validator(mode="after")
+    def _shape(self) -> ModelInstallRequestDraft:
+        if ".." in self.ref.split("/"):
+            raise ValueError("ref must not contain '..'")
+        return self
+
+
+class ModelInstallRequest(ModelInstallRequestDraft):
+    """One request to install one unit or tree on one host, with the check that proves it runs."""
+
+    request_id: UUID
+    requested_at: datetime
+    expires_at: datetime
+
+    @model_validator(mode="after")
+    def _times(self) -> ModelInstallRequest:
+        _aware(self.requested_at, "requested_at")
+        _aware(self.expires_at, "expires_at")
+        if self.expires_at <= self.requested_at:
+            raise ValueError("expires_at must be after requested_at")
+        return self
+
+
+class ModelInstallRequestResult(BaseModel):
+    """The typed result the installer on the host publishes: the revision it installed and the verify line it read."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    request_id: UUID
+    host: str = Field(min_length=1)
+    unit: str = Field(min_length=1)
+    status: EnumInstallRequestStatus
+    at: datetime
+    #: The revision the installer reports (a commit sha); empty when none was installed.
+    revision: str = ""
+    #: The first line of the verify command's output that holds the expected line; empty when none did.
+    verify_line: str = ""
+    #: A short code: ``ok``, ``unit_unknown``, ``installer_failed``, ``verify_mismatch``, ``expired`` and so on.
+    reason: str = ""
+    detail: str = ""
+    #: True when the host restored its previous revision after this result's install or verify failed.
+    rolled_back: bool = False
+
+    @model_validator(mode="after")
+    def _time(self) -> ModelInstallRequestResult:
+        _aware(self.at, "at")
+        if self.status is EnumInstallRequestStatus.VERIFIED and not self.verify_line:
+            raise ValueError("a verified result carries the verify line")
+        return self
+
+    def integration_line(self) -> str:
+        """The ``installed=<host>:<revision> observed=<verify line>`` words a handoff reads; empty unless verified with a revision."""
+        if self.status is not EnumInstallRequestStatus.VERIFIED or not self.revision:
+            return ""
+        return f"installed={self.host}:{self.revision} observed={self.verify_line}"
+
+
+class ModelInstallRequestReceived(BaseModel):
+    """One request as the serving host read it off the bus, with the envelope producer.
+
+    The publisher is the log the envelope named. It is the decision compute's refusal fact: a request from a login the
+    host's overlay row does not allow is refused, and the refusal is not journalled, so a forged message cannot poison
+    the idempotency of a real request id.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    request: ModelInstallRequest
+    #: The envelope producer the host read; empty string when the envelope named none.
+    publisher: str = ""
+
+
+class ModelInstallRequestDecisionInput(BaseModel):
+    """The facts the installer on ``executor_host`` read: the request, the clock, any result already published, who
+    published it and the logins and command age the overlay allows."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    request: ModelInstallRequest
+    executor_host: str = Field(min_length=1)
+    now: datetime
+    prior_result: ModelInstallRequestResult | None = None
+    #: Reasons the host is not safe to install on right now (an install lock held, a unit mid-run); empty means safe.
+    blockers: tuple[str, ...] = ()
+    #: The envelope producer the host read; empty string when the envelope named none.
+    publisher: str = ""
+    #: The logins that may publish a request for this host; the overlay's host row declares them.
+    allowed_publishers: tuple[str, ...]
+    #: A request older than this many seconds at decision time is expired even inside its own expiry.
+    max_age_seconds: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def _time(self) -> ModelInstallRequestDecisionInput:
+        _aware(self.now, "now")
+        return self
+
+
+class ModelInstallRequestDecision(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    request_id: UUID
+    action: EnumInstallRequestAction
+    reason: str
+    detail: str = ""
+
+
+class ModelInstallUnreadRequest(BaseModel):
+    """One request a reader could not read back off the bus: the id, the host and why."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    request_id: UUID
+    host: str
+    reason: str
+
+
+class ModelInstallOwedInput(BaseModel):
+    """Every request and every result a reader holds, and the clock."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    requests: tuple[ModelInstallRequest, ...] = ()
+    results: tuple[ModelInstallRequestResult, ...] = ()
+    #: The records that arrived but could not be read back; each is listed as an unread line.
+    unread_requests: tuple[ModelInstallUnreadRequest, ...] = ()
+    #: True when no record at all arrived on the bus within the quiet window: the bus reading itself is unread.
+    bus_quiet: bool = False
+    now: datetime
+
+    @model_validator(mode="after")
+    def _time(self) -> ModelInstallOwedInput:
+        _aware(self.now, "now")
+        return self
+
+
+class ModelInstallOwedLine(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    request_id: UUID
+    kind: Literal["not_running", "expired", "unread"]
+    line: str
+
+
+class ModelInstallOwedReading(BaseModel):
+    """``owed`` counts the requests with no verified result; ``expired`` counts those of them past their expiry.
+
+    ``unread`` counts the requests the reader could not read back off the bus;
+    ``readable`` is False only when the bus itself was quiet, so the reading is
+    unread rather than a true zero.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    owed: int = Field(ge=0)
+    expired: int = Field(ge=0)
+    unread: int = Field(default=0, ge=0)
+    readable: bool = True
+    lines: tuple[ModelInstallOwedLine, ...] = ()
+
+
+__all__: list[str] = [
+    "EXPIRED_MARK",
+    "LOGIN_PATTERN",
+    "NOT_RUNNING_MARK",
+    "PUBLISHER_REFUSED_REASON",
+    "REF_PATTERN",
+    "REPOSITORY_PATTERN",
+    "UNIT_PATTERN",
+    "UNREAD_MARK",
+    "EnumInstallRequestAction",
+    "EnumInstallRequestStatus",
+    "EnumInstallTarget",
+    "ModelInstallOwedInput",
+    "ModelInstallOwedLine",
+    "ModelInstallOwedReading",
+    "ModelInstallRequest",
+    "ModelInstallRequestDecision",
+    "ModelInstallRequestDecisionInput",
+    "ModelInstallRequestDraft",
+    "ModelInstallRequestReceived",
+    "ModelInstallRequestResult",
+    "ModelInstallUnreadRequest",
+]

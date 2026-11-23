@@ -25,6 +25,10 @@ job_log_cache:
   # the explicit job_log_fill verb is not counted.
   lane_miss_fill_max: 30
   lane_miss_fill_window_seconds: 3600
+  # A request that cannot get the per-job lock, or whose download does not finish, answers a
+  # typed refusal inside these bounds; it is never left without a terminal reply.
+  lock_wait_seconds: 30
+  download_deadline_seconds: 45
 
 cli_aliases:
   job-log-cached:
@@ -118,6 +122,8 @@ operations:
   # OMN-21146: commit checks and one PR's merge details.
   - name: commit_check_runs
     description: "Request ModelGithubGatewayRequest, result ModelCommitCheckRunsResult; replaces gh api repos/<r>/commits/<sha>/check-runs."
+  - name: commit_statuses
+    description: "Request ModelGithubGatewayRequest with head_sha, result ModelCommitStatusesResult (id, context, state, target_url per status, newest first); replaces gh api repos/<r>/commits/<sha>/statuses."
   - name: merged_pr
     description: "Request ModelGithubGatewayRequest, result ModelMergedPrResult; replaces gh pr view --json state,mergedAt,mergeCommit,headRefOid,headRefName,baseRefName."
 

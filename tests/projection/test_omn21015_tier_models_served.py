@@ -52,16 +52,17 @@ _TOPICS = {
 }
 
 # (tenant, tier, model, cost) per run. None is a run whose cost was not recorded.
+# OMN-25862: the local $0 runs name a model the pricing manifest lists (as free), so they stay measured zeros.
 _RUNS: list[tuple[str, str, str, float | None]] = [
-    (_TENANT, "local", "qwen-a", 0.0),
-    (_TENANT, "local", "qwen-a", 0.0),
-    (_TENANT, "local", "qwen-a", 0.0),
+    (_TENANT, "local", "qwen2.5-7b", 0.0),
+    (_TENANT, "local", "qwen2.5-7b", 0.0),
+    (_TENANT, "local", "qwen2.5-7b", 0.0),
     (_TENANT, "local", "qwen-b", None),
-    (_TENANT, "cheap_cloud", "gemini", 0.004),
-    (_TENANT, "cheap_cloud", "gemini", 0.005),
+    (_TENANT, "cheap_cloud", "gemini-2.5-flash", 0.004),
+    (_TENANT, "cheap_cloud", "gemini-2.5-flash", 0.005),
     (_TENANT, "", "unrouted-model", 0.0),
-    (_OTHER, "local", "qwen-a", 0.0),
-    (_OTHER, "local", "qwen-a", 0.0),
+    (_OTHER, "local", "qwen2.5-7b", 0.0),
+    (_OTHER, "local", "qwen2.5-7b", 0.0),
 ]
 
 
@@ -80,6 +81,9 @@ def client(tmp_path: Path) -> TestClient:
                 "delegated_to": model,
                 "cost_tier_name": tier,
                 "cost_usd": cost,
+                # OMN-26413: each run recorded its tokens, so it is a run the metering headline counts.
+                "tokens_input": 100,
+                "tokens_output": 10,
                 "quality_gate_passed": True,
                 "data_source": "real",
                 "created_at": f"2026-10-14T05:{index:02d}:00+00:00",
@@ -106,7 +110,7 @@ def _tiers(client: TestClient) -> dict[str, dict[str, object]]:
 
 def test_f1_two_models_in_one_tier_are_two_entries(client: TestClient) -> None:
     local = _tiers(client)["local"]
-    assert [m["model_name"] for m in local["models"]] == ["qwen-a", "qwen-b"]
+    assert [m["model_name"] for m in local["models"]] == ["qwen2.5-7b", "qwen-b"]
     assert [m["count"] for m in local["models"]] == [3, 1]
 
 
@@ -138,9 +142,9 @@ def test_f4_a_measured_cost_is_summed_and_a_measured_zero_is_zero(
     gemini = tiers["cheap_cloud"]["models"][0]
     assert gemini["cost_usd"] == pytest.approx(0.009)
     assert gemini["unmeasured_cost_count"] == 0
-    qwen_a = tiers["local"]["models"][0]
-    assert qwen_a["cost_usd"] == 0
-    assert qwen_a["unmeasured_cost_count"] == 0
+    qwen_7b = tiers["local"]["models"][0]
+    assert qwen_7b["cost_usd"] == 0
+    assert qwen_7b["unmeasured_cost_count"] == 0
 
 
 def test_f5_another_tenant_never_enters_this_tenant(client: TestClient) -> None:

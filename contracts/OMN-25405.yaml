@@ -1,0 +1,77 @@
+schema_version: 1.0.0
+ticket_id: OMN-25405
+title: A launchd job alarms the operator when the orchestrating session stops dequeuing input or firing its ticks for 15 minutes
+summary: The orchestrating session stopped dequeuing queued input and firing its scheduled ticks from 07:58:57Z to 11:37:15Z on 2026-11-17 and nothing alarmed, because every check that could have said so ran inside that session. node_session_stall_alarm_compute judges the transcript's queue rows (the oldest enqueue with no dequeue for 15 minutes, or no scheduled task for 45 minutes while a recurring tick is declared); node_session_stall_alarm_effect reads the newest transcript and delivers a stall once through node_lab_alarm_deliver_effect; a declared launchd unit (session-stall-alarm, installed with onex-host-install-units) ticks it every 300 s on the operator Mac.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25405-ac1
+  statement: a launchd job on the operator Mac reads the orchestrating session transcript every 5 minutes and raises a stall when the oldest queued enqueue has had no dequeue for 15 minutes, or no scheduled task has fired for 45 minutes while a recurring session tick is declared
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a launchd job on the operator Mac reads the orchestrating session transcript every 5 minutes and raises a stall when the oldest queued enqueue has had no dequeue for 15 minutes, or no scheduled task has fired for 45 minutes while a recurring session tick is declared -- falsifier: `uv run pytest -q -k session_stall_alarm` replaying the recorded 2026-11-17T07:52Z to 11:38Z queue-operation rows as a fixture raises exactly one stall by 08:14Z and none on the 05:00Z to 07:50Z slice'
+- id: req-omn25405-ac2
+  statement: a raised stall is delivered once to the operator through the alert node and recorded as one ledger row, and is not re-sent until the stall clears
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a raised stall is delivered once to the operator through the alert node and recorded as one ledger row, and is not re-sent until the stall clears -- falsifier: `uv run pytest -q -k session_stall_delivery` with a planted stall asserts one delivery and one row across three judged ticks'
+- id: req-omn25405-ac3
+  statement: the job is installed by the host installer and its PID and a fresh stdout line are read on the Mac
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the job is installed by the host installer and its PID and a fresh stdout line are read on the Mac -- falsifier: `launchctl list <label>` PID column and the log tail quoted in the PR body'
+evidence_requirements:
+- kind: tests
+  description: The judge, the delivery, the transcript reader, the tick and the unit's declaration pass at the pushed head.
+  command: uv run --frozen pytest -q -k session_stall tests/nodes/node_session_stall_alarm_compute tests/nodes/node_session_stall_alarm_effect -p no:cacheprovider --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25405-ac1
+  description: 'The judge replays the 2026-11-17 queue rows (fixture rows marked quoted or shaped) and raises exactly one stall, first at 08:14:00Z, none on 05:00Z to 07:50Z; the declared launchd unit ticks every 300 s (render test). The reading of the unit running on the Mac is AC3.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q -k session_stall_alarm tests/nodes/node_session_stall_alarm_compute -p no:cacheprovider --no-cov
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q tests/nodes/node_session_stall_alarm_effect/test_session_stall_unit.py -p no:cacheprovider --no-cov
+    cwd: .
+- id: dod-omn25405-ac2
+  description: A planted stall judged on three ticks gives one channel post and one ledger row, a clearing tick ends the episode, and an unreadable transcript neither alarms nor clears.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q -k session_stall_delivery tests/nodes/node_session_stall_alarm_effect -p no:cacheprovider --no-cov
+    cwd: .
+- id: dod-omn25405-ac3
+  description: 'Hosted proxy: the installer contract declares the session-stall-alarm unit and it renders a plist with StartInterval 300 that runs the tick module; one tick prints one stdout line. The PID column of launchctl list and the log tail on the operator Mac are read by the orchestrating session after the merge (the lane cannot reach that machine).'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q tests/nodes/node_session_stall_alarm_effect/test_session_stall_unit.py tests/nodes/node_session_stall_alarm_effect/test_session_stall_tick.py -p no:cacheprovider --no-cov
+    cwd: .
+- id: dod-omn25405-deploy
+  description: 'Deploy probe the hosted runner can run: the installer contract at the checked-out commit on GitHub declares the session-stall-alarm unit; the unit does not exist at the merge base, so the probe fails there.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "session-stall-alarm:" > /dev/null'
+    cwd: .
+- id: dod-omn25405-integration-proof
+  description: the focused judge, delivery, reader, tick and unit tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The unit running on the operator Mac is read after the merge (AC3).
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25405 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest -q -k session_stall tests/nodes/node_session_stall_alarm_compute tests/nodes/node_session_stall_alarm_effect --no-cov -n 0 -p no:randomly
+    cwd: .

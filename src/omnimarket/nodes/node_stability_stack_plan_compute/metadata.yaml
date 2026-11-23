@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_stability_stack_plan_compute
+version: "0.1.0"
+description: "The ordered install or remove plan for a declared stability stack, or a refusal naming the offender"
+pack: stability_stack
+node_role: compute
+display_name: "Stability Stack Plan"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_stability_stack_plan_compute: "omnimarket.nodes.node_stability_stack_plan_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "stability-stack", "compose"]

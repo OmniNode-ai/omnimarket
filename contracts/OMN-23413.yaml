@@ -1,0 +1,675 @@
+schema_version: 1.0.0
+ticket_id: OMN-23413
+title: Unified ONEX CLI onboarding, delegation, dashboard and Claude integration
+summary: Executable evidence for approved package-installed endpoint-only onboarding. Protocol fixtures
+  and actual operator/model proof remain distinct. Required local proof fails when absent. This contract
+  asserts no completion status.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn23413-ac1
+  statement: 'Explicit legacy disposition. Evidence: inventory omission tests and explicit legacy dispositions.
+    Reconcile all 273 audited legacy surfaces to an implemented outcome, a compatibility alias, or an
+    explicit operator-approved retirement/external responsibility. Source cloning, automatic model-runtime
+    management, and blanket hardware floors are retired by this revision. No other missing capability
+    is hidden as complete. Omission controls must still fail. Include optional completion/audio consent
+    and advanced stack behavior in the mapping.'
+  acceptance:
+  - id: AC1
+    statement: 'Explicit legacy disposition. Evidence: inventory omission tests and explicit legacy dispositions.
+      Reconcile all 273 audited legacy surfaces to an implemented outcome, a compatibility alias, or an
+      explicit operator-approved retirement/external responsibility. Source cloning, automatic model-runtime
+      management, and blanket hardware floors are retired by this revision. No other missing capability
+      is hidden as complete. Omission controls must still fail. Include optional completion/audio consent
+      and advanced stack behavior in the mapping.'
+- id: req-omn23413-ac2
+  statement: 'Install without source. Evidence: clean-account packaged install and recorded child-process
+    trace. A clean supported account installs and runs the package/bootstrap path without Git, GitHub
+    CLI, Homebrew, Xcode, Docker or source clones as universal prerequisites. No onboarding command runs
+    Git clone, fetch or checkout. Existing contributor checkouts are untouched.'
+  acceptance:
+  - id: AC2
+    statement: 'Install without source. Evidence: clean-account packaged install and recorded child-process
+      trace. A clean supported account installs and runs the package/bootstrap path without Git, GitHub
+      CLI, Homebrew, Xcode, Docker or source clones as universal prerequisites. No onboarding command
+      runs Git clone, fetch or checkout. Existing contributor checkouts are untouched.'
+- id: req-omn23413-ac3
+  statement: 'Requirements by capability. Evidence: low-resource endpoint-client tests and selected-component
+    refusal controls. A small-client fixture below the former CPU/RAM/disk floors can configure a remote
+    endpoint. No SSD-class or local GPU gate exists. Detect actual permission, runtime, dependency, allocation
+    or port failures for the selected component before its dependent effects. A local-stack plugin can
+    report its own actual requirements without blocking endpoint-only use.'
+  acceptance:
+  - id: AC3
+    statement: 'Requirements by capability. Evidence: low-resource endpoint-client tests and selected-component
+      refusal controls. A small-client fixture below the former CPU/RAM/disk floors can configure a remote
+      endpoint. No SSD-class or local GPU gate exists. Detect actual permission, runtime, dependency,
+      allocation or port failures for the selected component before its dependent effects. A local-stack
+      plugin can report its own actual requirements without blocking endpoint-only use.'
+- id: req-omn23413-ac4
+  statement: 'Dynamic endpoint models. Evidence: discovery fixtures, connection-isolation tests and real
+    inference receipt readback. A server added without editing the CLI can expose previously unknown model
+    IDs. Discovery lists them, selection persists, ordered models and named connections remain independent,
+    and real inference receipt/provider/model/endpoint readback matches the choice. Wrong auth, unreachable
+    endpoints, stale catalogs and wrong receipts fail visibly. Paid inference requires a separate cost
+    review and authorization.'
+  acceptance:
+  - id: AC4
+    statement: 'Dynamic endpoint models. Evidence: discovery fixtures, connection-isolation tests and
+      real inference receipt readback. A server added without editing the CLI can expose previously unknown
+      model IDs. Discovery lists them, selection persists, ordered models and named connections remain
+      independent, and real inference receipt/provider/model/endpoint readback matches the choice. Wrong
+      auth, unreachable endpoints, stale catalogs and wrong receipts fail visibly. Paid inference requires
+      a separate cost review and authorization.'
+- id: req-omn23413-ac5
+  statement: 'Dashboard proof. Evidence: browser/terminal run-ID join and canonical usage readback. Existing
+    dashboard lifecycle starts a loopback, authenticated session. Browser and terminal show the same actual
+    delegation run ID and canonical served usage/cost. Missing cost remains unknown. No replacement server
+    or direct database query shortcut.'
+  acceptance:
+  - id: AC5
+    statement: 'Dashboard proof. Evidence: browser/terminal run-ID join and canonical usage readback.
+      Existing dashboard lifecycle starts a loopback, authenticated session. Browser and terminal show
+      the same actual delegation run ID and canonical served usage/cost. Missing cost remains unknown.
+      No replacement server or direct database query shortcut.'
+- id: req-omn23413-ac6
+  statement: 'Dynamic plugins/hooks. Evidence: unknown-plugin loading, dependency/conflict tests and installed-hook
+    execution. Install and enable a fixture plugin unknown to the engine without editing its central lists.
+    Its declared command/lifecycle behavior works; duplicate, incompatible, cyclic and failing plugins
+    are caught. Reinstall does not duplicate hooks. Disable/remove preserves unrelated and later user
+    settings. Installed customer hooks include their complete dependency closure.'
+  acceptance:
+  - id: AC6
+    statement: 'Dynamic plugins/hooks. Evidence: unknown-plugin loading, dependency/conflict tests and
+      installed-hook execution. Install and enable a fixture plugin unknown to the engine without editing
+      its central lists. Its declared command/lifecycle behavior works; duplicate, incompatible, cyclic
+      and failing plugins are caught. Reinstall does not duplicate hooks. Disable/remove preserves unrelated
+      and later user settings. Installed customer hooks include their complete dependency closure.'
+- id: req-omn23413-ac7
+  statement: 'Optional components. Evidence: native no-Docker E2E and selected-stack reconciliation tests.
+    Native endpoint use succeeds without Docker or model software. Selected dashboard, Claude and advanced
+    local-stack capabilities install and reconcile through their existing owners. Changed model/endpoint/tenant
+    configuration is verified even if a service is already healthy.'
+  acceptance:
+  - id: AC7
+    statement: 'Optional components. Evidence: native no-Docker E2E and selected-stack reconciliation
+      tests. Native endpoint use succeeds without Docker or model software. Selected dashboard, Claude
+      and advanced local-stack capabilities install and reconcile through their existing owners. Changed
+      model/endpoint/tenant configuration is verified even if a service is already healthy.'
+- id: req-omn23413-ac8
+  statement: 'Migration and repair. Evidence: migration, interruption, concurrency and unchanged-rerun
+    snapshot tests. One authoritative versioned setup journal, nonblocking lock and atomic checkpoints.
+    Import existing CLI/shell choices once, re-observe effects, resume interrupted runs, preserve user
+    files, and prove an unchanged rerun performs no provisioning or configuration writes. Retired source
+    checkout choices do not trigger clone acquisition during migration.'
+  acceptance:
+  - id: AC8
+    statement: 'Migration and repair. Evidence: migration, interruption, concurrency and unchanged-rerun
+      snapshot tests. One authoritative versioned setup journal, nonblocking lock and atomic checkpoints.
+      Import existing CLI/shell choices once, re-observe effects, resume interrupted runs, preserve user
+      files, and prove an unchanged rerun performs no provisioning or configuration writes. Retired source
+      checkout choices do not trigger clone acquisition during migration.'
+- id: req-omn23413-ac9
+  statement: 'Complete CLI behavior. Evidence: typed CLI/JSON E2E and positive-control secret scans. Interactive
+    discovery/selection and unattended plans share the same engine. JSON is typed and clean; help/status
+    work offline. Hidden/stdin secrets, positive-control leak scans and actionable secret-free failures/retries
+    cover argv, output, logs, plans, journals and receipts. Effective config explains where each non-secret
+    choice came from.'
+  acceptance:
+  - id: AC9
+    statement: 'Complete CLI behavior. Evidence: typed CLI/JSON E2E and positive-control secret scans.
+      Interactive discovery/selection and unattended plans share the same engine. JSON is typed and clean;
+      help/status work offline. Hidden/stdin secrets, positive-control leak scans and actionable secret-free
+      failures/retries cover argv, output, logs, plans, journals and receipts. Effective config explains
+      where each non-secret choice came from.'
+- id: req-omn23413-ac10
+  statement: 'Packaged end-to-end evidence. Evidence: built-package clean/existing-account E2E artifacts
+    and full AC/TI report. Test clean and existing installations on supported macOS using the built package
+    and thin bootstrap. Capture version, package hashes, plugin versions, effective non-secret configuration,
+    outcomes, receipts, terminal evidence and dashboard/Claude proof in a repeatable artifact. Mocked
+    servers prove fault controls; they do not replace actual model proof.'
+  acceptance:
+  - id: AC10
+    statement: 'Packaged end-to-end evidence. Evidence: built-package clean/existing-account E2E artifacts
+      and full AC/TI report. Test clean and existing installations on supported macOS using the built
+      package and thin bootstrap. Capture version, package hashes, plugin versions, effective non-secret
+      configuration, outcomes, receipts, terminal evidence and dashboard/Claude proof in a repeatable
+      artifact. Mocked servers prove fault controls; they do not replace actual model proof.'
+- id: req-omn23413-ac21
+  statement: 'Model catalogue normalisation and merge: provider ids are kept exactly; prices convert to USD per 1M with Decimal; unknown capability and price stay unknown; a catalogue-only model is not listed as available; per-field provenance is shown in details.'
+  acceptance:
+  - id: AC21
+    statement: 'Model catalogue normalisation and merge: provider ids are kept exactly; prices convert to USD per 1M with Decimal; unknown capability and price stay unknown; a catalogue-only model is not listed as available; per-field provenance is shown in details.'
+- id: req-omn23413-ac22
+  statement: '/config selects models from a live list, never a typed id. After the provider and its key or URL, the provider''s models load on their own and show provider, model, context, price (USD per 1M tokens, in / out), capabilities and status, with search, filter, sort and a details view. Any number can be ticked; every ticked model is stored in order and used by delegation. Values no source states show "-", never zero or "no". A model on the user''s own server is named by that server (Ollama or vLLM) with the context and capabilities it reports.'
+  acceptance:
+  - id: AC22
+    statement: '/config selects models from a live list, never a typed id. After the provider and its key or URL, the provider''s models load on their own and show provider, model, context, price (USD per 1M tokens, in / out), capabilities and status, with search, filter, sort and a details view. Any number can be ticked; every ticked model is stored in order and used by delegation. Values no source states show "-", never zero or "no". A model on the user''s own server is named by that server (Ollama or vLLM) with the context and capabilities it reports.'
+- id: req-omn23413-ac25
+  statement: '/delegation needs no typed input and refuses without a model. It shows selected models and one delegation switch for ordinary prompts under bit 11; subagents stay on Claude (Amendment 14a, 2026-11-17: one prompt hook). CLI and TUI install and remove that hook, with its history helper, without changing Claude model, aliases, provider, authentication, permissions or unrelated settings.'
+  acceptance:
+  - id: AC25
+    statement: '/delegation needs no typed input and refuses without a model. It shows selected models and one delegation switch for ordinary prompts under bit 11; subagents stay on Claude (Amendment 14a, 2026-11-17: one prompt hook). CLI and TUI install and remove that hook, with its history helper, without changing Claude model, aliases, provider, authentication, permissions or unrelated settings.'
+- id: req-omn23413-ac27
+  statement: 'One catalogue, no hard-coded lists. /model, /config and /delegation read the same entries; the providers, capabilities, columns and words come from configuration. /model chooses the first model or Auto.'
+  acceptance:
+  - id: AC27
+    statement: 'One catalogue, no hard-coded lists. /model, /config and /delegation read the same entries; the providers, capabilities, columns and words come from configuration. /model chooses the first model or Auto.'
+- id: req-omn23413-ac35
+  statement: 'AC35: a call is priced from that combined entry. The provider''s own price is used when it serves one. Otherwise models.dev''s price for that provider and model is used. Otherwise it is unknown as AC28 says. Each run records which source priced it and when that source was read. Both sources are read live. A reused copy is never older than the age set in configuration and never committed. -- falsifier: tests with recorded responses show a Beam call on a Reflection key booked at 0 with cost basis zero_marginal_api_cost and source models.dev, a model absent from both sources left unknown, and a source older than the configured age read again'
+  acceptance:
+  - id: AC35
+    statement: 'AC35: a call is priced from that combined entry. The provider''s own price is used when it serves one. Otherwise models.dev''s price for that provider and model is used. Otherwise it is unknown as AC28 says. Each run records which source priced it and when that source was read. Both sources are read live. A reused copy is never older than the age set in configuration and never committed. -- falsifier: tests with recorded responses show a Beam call on a Reflection key booked at 0 with cost basis zero_marginal_api_cost and source models.dev, a model absent from both sources left unknown, and a source older than the configured age read again'
+- id: req-omn23413-ac33
+  statement: Every ordinary prompt goes to delegation first when bit 11 is enabled; documented slash and @claude skips remain native. A quality-passed answer is shown with model and full run ID without native Claude inference. Decline via the fixed CANNOT_ANSWER marker, failure, timeout, quality veto or OFF continues to Claude. Bounded delegated history is deduplicated by run ID and delivered once on the next native turn. onex delegation on/off and the TUI switch add and remove the one prompt hook while preserving Claude settings; subagents stay on Claude (Amendment 14a, 2026-11-17). Real inference and token receipt evidence is required separately from deterministic process controls.
+  acceptance:
+  - id: AC33
+    statement: Every ordinary prompt goes to delegation first when bit 11 is enabled; documented slash and @claude skips remain native. A quality-passed answer is shown with model and full run ID without native Claude inference. Decline via the fixed CANNOT_ANSWER marker, failure, timeout, quality veto or OFF continues to Claude. Bounded delegated history is deduplicated by run ID and delivered once on the next native turn. onex delegation on/off and the TUI switch add and remove the one prompt hook while preserving Claude settings; subagents stay on Claude (Amendment 14a, 2026-11-17). Real inference and token receipt evidence is required separately from deterministic process controls.
+- id: req-omn23413-ac37
+  statement: 'No Claude gateway remains (Amendment 11): no claude_gateway, cli_gateway, gateway_owns_session or `onex claude` command in omnimarket; Claude Code delegation is the one prompt hook (Amendment 14a).'
+  acceptance:
+  - id: AC37
+    statement: 'No Claude gateway remains (Amendment 11): no claude_gateway, cli_gateway, gateway_owns_session or `onex claude` command in omnimarket; Claude Code delegation is the one prompt hook (Amendment 14a).'
+- id: req-omn23413-ac38
+  statement: '`onex delegation status` reports on only when the prompt hook (UserPromptSubmit) is installed and bit 11 is set; an older install that has only the subagent hook reports off and names the missing prompt hook. The prompt hook can be paused on its own (operator 2026-11-15); Amendment 14a (2026-11-17) removed the subagent hook.'
+  acceptance:
+  - id: AC38
+    statement: '`onex delegation status` reports on only when the prompt hook (UserPromptSubmit) is installed and bit 11 is set; an older install that has only the subagent hook reports off and names the missing prompt hook. The prompt hook can be paused on its own (operator 2026-11-15); Amendment 14a (2026-11-17) removed the subagent hook.'
+- id: req-omn23413-ac28
+  statement: 'An unpriced model''s cost is unknown, never $0 (Amendment 6, 2026-11-13). A run whose cost
+    no source priced is stored and served as unknown with no measured saving; omnidash shows it as Unknown
+    and Not measured; onex delegate prints cost unknown. A really free model (local, a :free id, a free
+    tier, a declared zero price) still shows $0. Existing local rows stored as 0 are re-derived, never
+    deleted.'
+  acceptance:
+  - id: AC28
+    statement: 'An unpriced model''s cost is unknown, never $0 (Amendment 6, 2026-11-13). A run whose
+      cost no source priced is stored and served as unknown with no measured saving; omnidash shows it
+      as Unknown and Not measured; onex delegate prints cost unknown. A really free model (local, a :free
+      id, a free tier, a declared zero price) still shows $0. Existing local rows stored as 0 are re-derived,
+      never deleted.'
+evidence_requirements:
+- kind: tests
+  description: Run fixture controls plus required installed-wheel and actual model/Claude evidence; preserve
+    artifacts before closure.
+  command: env ONEX_E2E_REQUIRE_COMPLETE=1 uv run pytest tests/e2e/test_setup_close_evidence.py -q --no-cov
+    -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23413-ac1-legacy-disposition
+  description: 'Legacy inventory and opt-in completion mapping: omission controls fail when a surface
+    has no disposition.'
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/cli/test_lab_setup_inventory.py tests/unit/nodes/node_onex_setup_effect/test_setup_completion.py
+      tests/unit/nodes/node_onex_setup_effect/test_setup_legacy_import.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac2-no-source-install
+  description: The default endpoint workflow reaches model configuration without any source acquisition
+    or provisioning subprocess. Fixture control; the clean-account packaged trace is the local installed-journey
+    item.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_thin_client.py -q --no-cov
+      -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac3-capability-requirements
+  description: A small client below the former floors configures an endpoint; selected-component requirements
+    refuse before dependent effects.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_thin_client.py tests/unit/nodes/node_onex_setup_effect/test_setup_preflight.py
+      tests/unit/nodes/node_onex_setup_effect/test_setup_machine_observation.py tests/e2e/test_setup_stack_requirements.py
+      -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac3-engine-reader-compatibility
+  description: When the installed infra package lacks the engine reader, the selected local stack's
+    requirements step returns action_required naming the infra upgrade before any command or process
+    launches. This is AC3's dependency failure detected before dependent effects; it does not exercise
+    the stack owner's install or reconciliation, so it binds no AC7 clause.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/e2e/test_setup_stack_requirements.py::test_selected_stack_with_older_infra_reports_install_action
+      -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac4-dynamic-endpoint-models
+  description: Discovery lists unknown model ids, selection persists, named connections stay independent,
+    wrong auth and unreachable endpoints fail visibly. Protocol fixtures; the real receipt is the local
+    actual-model item.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_model_setup_effect/test_endpoint_discovery.py tests/unit/test_named_endpoint_connections.py
+      tests/e2e/test_endpoint_catalog_cli.py tests/e2e/test_endpoint_catalog_bounds.py tests/e2e/test_named_connections_cli.py
+      -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac5-dashboard-lifecycle
+  description: Loopback authenticated dashboard lifecycle and stale-tenant refusal. The same-run browser
+    join is the local installed-journey item.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/e2e/test_setup_dashboard_lifecycle.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac6-plugins-hooks
+  description: An unknown plugin loads without central edits; duplicate, incompatible, cyclic and failing
+    plugins are caught; hook reinstall does not duplicate rows and removal keeps user settings.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_plugins.py tests/unit/nodes/node_onex_setup_effect/test_setup_plugin_lifecycle.py
+      tests/unit/nodes/node_onex_setup_effect/test_setup_legacy_hooks.py tests/e2e/test_setup_plugin_lifecycle_cli.py
+      -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac7-optional-components
+  description: Selected local stack and tenant endpoint registration reconcile through their owners and
+    re-verify changed configuration on a healthy service.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/e2e/test_setup_local_stack.py tests/e2e/test_setup_stack_requirements.py
+      tests/e2e/test_setup_tenant_endpoint_registration.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-t2-ac9-platform-preflight
+  description: >-
+    Evidence for delivery-plan T2 AC9 (Linux admission), which is not this
+    contract's AC9. It binds contract criterion AC9 (Complete CLI behavior) only
+    for what its tests show of the preflight command: typed, clean JSON output,
+    and actionable, secret-free failures (a sentinel planted in an unreadable
+    os-release error never reaches the observation). No criterion of this
+    contract states Linux admission, so admission itself is bound to none, and
+    these tests record none of the delivery-unit ownership, prerequisites or
+    AC/TI report that the ticket's AC32 requires. The tests check that the
+    preflight admits an os-release ID the setup contract lists (ubuntu) and
+    refuses unlisted distributions, ID_LIKE clones, other platforms and an
+    unreadable /etc/os-release; that Ubuntu on a WSL 1 kernel is refused with
+    the WSL 2 remedy while native Ubuntu and WSL 2 kernels are admitted; that
+    native Windows gets the Ubuntu under WSL 2 remedy without reading the
+    workspace or its disk, with Unix locking unavailable, and leaves the profile
+    and workspace untouched; and that the installed preflight succeeds on an
+    Ubuntu host.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_linux_preflight.py
+      tests/e2e/test_setup_preflight_cli.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac8-migration-repair
+  description: One versioned journal, nonblocking lock, atomic checkpoints, one-time import, resume and
+    a no-write unchanged rerun.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py tests/unit/nodes/node_onex_setup_effect/test_setup_legacy_import.py
+      tests/e2e/test_setup_configuration_cli.py tests/e2e/test_setup_workflow_cli.py -q --no-cov -n 0
+      -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac8-existing-project-files
+  description: 'Setup in an existing project keeps the customer''s own files instead of refusing the folder. It binds no criterion: it proves only the preserve-user-files clause of AC8, and a binding would mark all of AC8 verified. AC8 is bound by dod-omn23413-ac8-migration-repair, whose check runs this test file.'
+  source: manual
+  execution_scope: hosted_and_local
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py::test_setup_in_an_existing_project_preserves_customer_files -q --no-cov -n 0 -p no:randomly'
+    cwd: .
+- id: dod-omn23413-ac21-field-provenance
+  description: 'Every AC21 clause, each by its own test: the provider''s exact ids are listed and a model only models.dev knows is never offered (test_config_lists_the_providers_own_ids_exactly_and_no_catalogue_only_model, on a captured OpenRouter body); prices convert to USD per 1M (test_openrouter_rows_carry_name_context_and_price_per_million) as exact Decimal (test_prices_are_exact_decimals_and_print_in_dollars); an unstated capability or price stays unknown (test_nothing_stated_stays_unknown_never_free_or_no); the details name the source of each fact (test_details_attribute_each_model_fact_to_its_source, and test_capabilities_a_provider_lists_reach_the_details_from_its_own_list through the real listing path).'
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC21
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run pytest tests/unit/handlers/test_model_catalog.py::test_details_attribute_each_model_fact_to_its_source tests/unit/handlers/test_model_catalog.py::test_capabilities_a_provider_lists_reach_the_details_from_its_own_list tests/unit/handlers/test_model_catalog.py::test_prices_are_exact_decimals_and_print_in_dollars tests/unit/handlers/test_model_catalog.py::test_nothing_stated_stays_unknown_never_free_or_no tests/unit/handlers/routing/test_byok_model_listing.py::test_openrouter_rows_carry_name_context_and_price_per_million tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py::test_config_lists_the_providers_own_ids_exactly_and_no_catalogue_only_model -q --no-cov -n 0 -p no:randomly'
+    cwd: .
+- id: dod-omn23413-ac9-cli-behavior
+  description: Interactive and unattended share one engine; typed JSON, offline help and positive-control
+    secret scans over argv, output, plans and journals; a plan carrying a secret is refused before any write.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/cli/test_setup_model_picker.py tests/unit/nodes/node_onex_setup_effect/test_setup_configuration.py
+      tests/e2e/test_setup_json_errors.py tests/e2e/test_setup_unattended_terminal.py tests/e2e/test_setup_model_probe_cli.py
+      "tests/e2e/test_setup_workflow_cli.py::test_secret_bearing_plan_is_refused_before_writes"
+      -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac10-close-evidence
+  description: The close-evidence and packaged-journey controls refuse missing or mismatched proof inputs.
+    The built-package run itself is the local installed-journey item.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC10
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/e2e/test_setup_close_evidence.py tests/e2e/test_setup_packaged_journey.py
+      -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-portable-controls
+  description: Pure inventory/schema and isolated connection-store controls remain portable; they do not
+    establish supported-macOS installed readiness.
+  source: manual
+  execution_scope: hosted_and_local
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/cli/test_setup_step_inventory.py tests/unit/cli/test_lab_setup_inventory.py
+      tests/unit/test_named_endpoint_connections.py tests/unit/test_setup_named_connections.py -q --no-cov
+      -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-legacy
+  description: Inventory omission controls and opt-in completion retain explicit legacy outcomes; unmatched
+    capabilities are not retired by this check. Local supported-macOS proof only; the hosted items below
+    carry the criterion bindings.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/cli/test_setup_step_inventory.py tests/unit/cli/test_lab_setup_inventory.py
+      tests/e2e/test_setup_completion_cli.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-capabilities
+  description: Low-resource endpoint client and actual CLI preflight controls enforce selected capabilities
+    without provisioning model software. Local supported-macOS proof only; the hosted items below carry
+    the criterion bindings.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_thin_client.py tests/e2e/test_setup_preflight_cli.py
+      -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-plugins-hooks
+  description: Unknown installed capability and plugin lifecycle execute real subprocesses; hook tests
+    exercise installed artifacts. Dependency, conflict and failure controls preserve user edits. Local
+    supported-macOS proof only; the hosted items below carry the criterion bindings.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/e2e/test_setup_external_plugin_cli.py tests/e2e/test_setup_plugin_lifecycle_cli.py
+      tests/e2e/test_setup_claude_hook_component.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-optional-components
+  description: Selected stack isolated lifecycle fixtures reject changed routes, missing capability,
+    credentials and concurrent writers. Not operator account or actual model proof. Local supported-macOS
+    proof only; the hosted items below carry the criterion bindings.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/e2e/test_setup_local_stack.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-resume-config
+  description: Migration, interrupted workflow retry, no-op, exported-profile intake and unattended terminal
+    controls use shared setup/config commands. Local supported-macOS proof only; the hosted items below
+    carry the criterion bindings.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/e2e/test_setup_workflow_cli.py tests/e2e/test_setup_configuration_cli.py
+      tests/e2e/test_setup_shell_safety.py tests/e2e/test_setup_unattended_terminal.py tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py
+      tests/unit/nodes/node_onex_setup_effect/test_setup_legacy_import.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-dashboard
+  description: Authenticated lifecycle and stale-tenant controls verify served behavior and preserve unrelated
+    processes. Installed same-run projection readback is separately required. Local supported-macOS proof
+    only; the hosted items below carry the criterion bindings.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/e2e/test_setup_dashboard_lifecycle.py tests/e2e/test_setup_packaged_journey.py::test_dashboard_lifecycle_cli_preserves_profile_and_other_process
+      tests/e2e/test_setup_packaged_journey.py::test_dashboard_observation_rejects_changed_current_tenant
+      -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-installed-journey
+  description: 'Required installed-wheel suite, never all-skips: exact package bytes/hashes, clean/existing
+    settings, local Claude assets, named receipts, authenticated same-run dashboard projection, config
+    profile roundtrip, fallback, plugins and no-op. Protocol fixtures are labeled. PATH
+    child tracing does not observe absolute executable paths. Missing inputs fail. Local supported-macOS
+    proof only; the hosted items below carry the criterion bindings.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env -u PYTHONPATH ONEX_E2E_REQUIRE_COMPLETE=1 sh -c 'test -n "$ONEX_TEST_WHEEL" && test
+      -n "$ONEX_TEST_CORE_WHEEL" && test -n "$ONEX_TEST_CLAUDE_WHEEL" && exec "$(dirname "$ONEX_TEST_CLI")/python"
+      -m pytest tests/e2e/test_setup_packaged_journey.py::test_built_package_setup_delegation_dashboard_journey
+      tests/e2e/test_named_connections_cli.py tests/e2e/test_setup_external_plugin_cli.py tests/e2e/test_setup_plugin_lifecycle_cli.py
+      -q --no-cov -n 0 -p no:randomly'
+    cwd: .
+- id: dod-omn23413-actual-model-close
+  description: Actual operator-selected model receipt must match the explicit endpoint/model. Missing
+    proof fails. Protocol fixtures cannot substitute; operator account/browser readback remains separately
+    required by the approved report. Local supported-macOS proof only; the hosted items below carry the
+    criterion bindings.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env ONEX_E2E_REQUIRE_COMPLETE=1 uv run pytest tests/e2e/test_setup_close_evidence.py::test_required_customer_evidence_close_probe
+      -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-integration-proof
+  description: A registered custom endpoint is stored, projected and read back through real Postgres in
+    an isolated schema on the lab, at the pushed head. Local lab proof; the hosted items carry the criterion
+    bindings.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git
+      rev-parse HEAD)" --lane dod-integration-proof-23413 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/integration/test_setup_registered_endpoint_postgres.py -m integration
+      -q --no-cov
+    cwd: .
+- id: dod-omn23413-ac22-config-model-table
+  description: '/config lists the provider''s models with full details, ticks any number, and names a local model by its server.'
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC22
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py tests/unit/handlers/test_local_model_details.py -q --no-cov -n 0 -p no:randomly -k "config or server or ticked or searchable or key"'
+    cwd: .
+- id: dod-omn23413-ac35-models-dev-price
+  description: 'Proves the pricing half of AC35 for a customer-key call: the provider''s own price wins and is recorded with its read time; otherwise models.dev is read live and prices the call (a Beam call on a Reflection key is booked at 0 as zero_marginal_api_cost, source models.dev, with the read time); a paid models.dev price is booked as cloud cost; a model absent from both sources stays unknown; a copy older than the configured age is read again, and a stale copy whose re-read fails never prices a call. The live read and the age limit are proved for the models.dev copy only, not for the provider listing, which the call reads from the copy the explorer kept. It does not prove AC35''s "never committed" clause as a scan of the repository, and it proves nothing of AC34 (one combined entry for limits, price and the model table) or AC36 (token usage provenance).'
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC35
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run pytest tests/unit/delegation/test_byok_models_dev_price_omn23413.py -q'
+    cwd: .
+- id: dod-omn23413-ac25-delegation-no-typed-input
+  description: '/delegation uses one prompt-hook switch (Amendment 14a), refuses without a model, and preserves Claude settings.'
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC25
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py tests/unit/nodes/node_onex_setup_effect/test_cli_delegation.py tests/unit/nodes/node_onex_setup_effect/test_combined_delegation.py -q --no-cov -n 0 -p no:randomly -k "delegation"'
+    cwd: .
+- id: dod-omn23413-ac27-one-catalogue
+  description: 'One catalogue for every screen, data-driven words, unknown never free, and /model first or Auto.'
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC27
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run pytest tests/unit/handlers/test_model_catalog.py tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py -q --no-cov -n 0 -p no:randomly -k "catalog or literal or provider or model_lists or stored or price or cache or json"'
+    cwd: .
+- id: dod-omn23413-ac22-ac27-local-model-per-server
+  description: 'Two local servers can run a model of the same name: each is its own row with its own test, /model and the CLI choose one by URL, and remove and reorder never touch the other server.'
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC22
+  - AC27
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run pytest tests/unit/cli/test_local_model_by_server_omn23413.py tests/unit/nodes/node_onex_setup_effect/test_onex_tui_local_servers.py -q --no-cov -n 0 -p no:randomly'
+    cwd: .
+
+- id: dod-omn23413-ac33-prompt-routing
+  description: The evidence item check runs two unit-test files against the hook node handler. For an
+    eligible prompt the hook node calls delegation and returns a block decision that carries the
+    accepted answer. An action request such as "you can fix it" stays with Claude with no delegation
+    call. A declined prompt and a timed-out delegation pass the prompt to Claude, and with no pending
+    history the check asserts empty hook output; for a decline the quality gate vetoed, the check
+    asserts only the declined outcome and its run id. A plain process failure is covered by the local
+    Done gate item below. The prompt switch pauses only prompts. The hook output of the next
+    same-session prompt that passes through to Claude carries what delegation answered while blocked, a
+    later such prompt's hook output carries nothing, and the history in that output is bounded; the
+    check reads the hook output and does not observe what a Claude client does with it. Amendment 14a
+    requires onex delegation on to register only the prompt hook so that subagents stay on Claude. This
+    check does not verify which hooks an installation registers. This check calls the handler directly,
+    which still answers a subagent request, and does not observe a Claude session. The skip prefix, the
+    fixture installed-hook journey and the captured-receipt readback are covered by the unbound local
+    Done gate item below.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC33
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_hook_delegate_effect/tests/test_prompt_delegate.py
+      src/omnimarket/nodes/node_hook_delegate_effect/tests/test_hook_switches.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+
+- id: dod-omn23413-ac33-installed-prompt-controls
+  description: The isolated installed-hook journey in tests/e2e/test_combined_hook_journey.py runs the
+    hook with a fixture onex that prints a canned receipt and a stub claude that only prints its
+    version, so it runs no real inference, and its own artifact says so. It executes accepted prompt
+    blocking, fixed decline, quality veto, process failure, timeout, OFF and skip controls, and history
+    delivery once. It checks that installing leaves every setting other than hooks equal to the original
+    and keeps the user's existing prompt hook entry. After a second install and at the end, the parsed
+    settings stay equal to the first install's parsed settings. The test calls the hook script directly
+    with an Agent event, which the script answers with exit 2, the answer on stderr and one delegation
+    call, and then with a Task event carrying the same session and task text, which exits 2 and adds no
+    new delegation call. The test comment attributes this to the same accepted receipt, which the test
+    does not check further. Amendment 14a requires onex delegation on to register only the prompt hook
+    so that subagents stay on Claude. This journey does not verify which hooks an installation
+    registers, and it does not observe a real session. omniclaude#3270 merged on 2026-11-19, and this
+    journey still calls the script directly with Agent and Task events. It needs the companion
+    omniclaude source or unpacked wheel resource root, through ONEX_COMBINED_HOOK_SOURCE or the sibling
+    omniclaude checkout; the installed plugin must also contain hooks/delegation-runtime.json; missing
+    assets fail. The lifecycle test in tests/e2e/test_prompt_hook_lifecycle.py needs a real claude CLI
+    on PATH. The same command also checks the TUI. It re-reads three captured files named by
+    ONEX_PROMPT_PROOF_RECEIPT, ONEX_PROMPT_PROOF_DATABASE and ONEX_PROMPT_PROOF_CLAUDE, and compares the
+    receipt's model with the model name in ONEX_PROMPT_PROOF_MODEL, and all four are mandatory. It runs
+    no new inference. It checks each file's recorded values and their agreement. The receipt joins
+    exactly one delegation_events row with matching trace, model, passed gate and token counts, with at
+    least one attempt marked measured. The native capture records no native provider request, zero API
+    duration, empty model usage, zero cost, a passed instrument control, exactly one fallback request, a
+    recorded flag that the fallback received history, and a recorded flag that OFF was verified; its
+    result contains the receipt's run id, model and answer. Self-consistent synthetic files pass, so it
+    does not prove a real installed run. Its scope is the local Done gate, so hosted verification skips
+    it, and AC33 is bound by dod-omn23413-ac33-prompt-routing above.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: test_passes
+    check_value: env ONEX_E2E_REQUIRE_COMPLETE=1 uv run pytest tests/e2e/test_combined_hook_journey.py
+      tests/e2e/test_prompt_hook_lifecycle.py tests/e2e/test_prompt_delegation_real_evidence.py
+      tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+
+- id: dod-omn23413-ac37-no-gateway
+  description: No gateway identifier in omnimarket's source and no `onex claude` command group; a leftover
+    gateway journal does not stop delegation; the CLI offers no gateway mode.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC37
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_no_claude_gateway_omn23413.py
+      tests/unit/nodes/node_onex_setup_effect/test_combined_delegation.py src/omnimarket/nodes/node_hook_delegate_effect/tests/test_hook_review.py
+      -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac38-both-hooks
+  description: A bundle or install with one hook is never on; status names each hook and its switch;
+    one hook can be paused alone; matchers, malformed settings and removal edges hold.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC38
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_legacy_hooks.py tests/unit/nodes/node_onex_setup_effect/test_cli_delegation.py
+      tests/unit/nodes/node_onex_setup_effect/test_setup_delegation_hook_edges.py tests/unit/nodes/node_onex_setup_effect/test_cli_delegation_switches.py
+      tests/unit/nodes/node_onex_setup_effect/test_onex_tui_hook_switches.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac28-historical-unknown-read
+  description: 'The local SQLite read of stored delegation rows, the only part of AC28 this check runs.
+    On the decisions and run-detail exposures a stored zero that no price stood behind is served as
+    unknown spend with no saving, and the stored row is unchanged. A zero is served as stored when the
+    row records a charge or a cost source other than no_cost_model, a free_local tier type (or, recording
+    neither source nor tier type, a tier the routing registry declares free_local), a model id ending
+    in :free, or a model that the pricing manifest, the provider catalogue for the backend the row names,
+    or models.dev read live for that backend''s provider prices at zero. A models.dev copy older than its
+    configured age is not used, and the price list shipped with the install never makes a zero free.
+    The configured deadline for a models.dev read is at most a quarter of the models.dev fetch timeout;
+    with models.dev hanging, a served read finishes within that deadline plus one second, fetches once
+    per retry interval, and leaves the run unknown. A fresh copy that cannot be parsed is read again,
+    and when that read fails the failure is marked and the run stays unknown.
+    A rejected attempt the provider answered that is itself such a zero makes the whole run unknown.
+    The writer, omnidash Unknown and Not measured, the onex delegate cost-unknown summary and the browser
+    check of AC28 are not run here and are separate evidence.'
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC28
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn23413_historical_unknown_cost.py -q --no-cov
+      -n 0 -p no:randomly
+    cwd: .

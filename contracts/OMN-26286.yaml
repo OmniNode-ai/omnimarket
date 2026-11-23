@@ -1,0 +1,56 @@
+schema_version: 1.0.0
+ticket_id: OMN-26286
+title: omnimarket pins the omnibase_infra, omnibase-core and omnimemory dev tags that name one omnibase-core tag, so the onex setup fix resolves
+summary: Two dev tags (omnibase_infra and omnimemory) named no common omnibase-core tag, so uv could not resolve omnimarket and the pull request carrying the onex setup fix stayed red. omnibase_infra#6116 merged and its dev tag dev-20261120235610-e1c7b1f075d2, the omnimemory dev tag dev-20261120144838-db14a337f1ab and the omnibase-core dev tag dev-20261120075721-2a9efbda3548 are one consistent triple. This change moves the three pins in pyproject.toml to that triple, relocks uv.lock with uv lock, records the new lock hash in the 70 work contracts that pin it, and adds the new infra and core rows to the pin tests.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26286-one-core-tag
+  statement: pyproject.toml and uv.lock name the omnibase_infra, omnibase-core and omninode-memory dev tags of one consistent triple, and the lock is fresh.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the lock is fresh and the infra and core tags in uv.lock form a recorded pair -- falsifier: uv lock --check exits non-zero, or tests/ci/test_sibling_core_pin_pair_omn17427.py fails'
+  - id: AC2
+    statement: 'AC2: the pin tests name the new triple and the work contracts record the relocked hash, with no skip or xfail marker added to a pin test -- falsifier: the pin test files name a skip or xfail marker, or tests/ci/test_infra_pin_aa87c2dd6abe_work_contracts_omn23865.py fails'
+evidence_requirements:
+- kind: tests
+  description: The three pin tests at the pushed head.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/ci/test_core_pin_compat_omn17427.py tests/ci/test_sibling_core_pin_pair_omn17427.py tests/ci/test_infra_pin_aa87c2dd6abe_work_contracts_omn23865.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26286-ac1
+  description: The lock is fresh against pyproject.toml and the infra and core tags in uv.lock are a recorded pair.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: uv lock --check
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_sibling_core_pin_pair_omn17427.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26286-ac2
+  description: The three pin tests pass at the pushed head and none of them names a skip or xfail marker.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_core_pin_compat_omn17427.py tests/ci/test_sibling_core_pin_pair_omn17427.py tests/ci/test_infra_pin_aa87c2dd6abe_work_contracts_omn23865.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+  - check_type: command
+    check_value: sh -c '! grep -nE "pytest\.mark\.(skip|xfail)|pytest\.(skip|xfail)" tests/ci/test_core_pin_compat_omn17427.py tests/ci/test_sibling_core_pin_pair_omn17427.py tests/ci/test_infra_pin_aa87c2dd6abe_work_contracts_omn23865.py'
+    cwd: .
+- id: dod-omn26286-integration-proof
+  description: The dev tag lineage live test runs on a lab host at the pushed head through the lab work node; it needs network and about two minutes, so only the local Done gate runs it, and it binds no criterion.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26286 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_dev_tag_lineage_effect/live/test_dev_tag_lineage_live.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

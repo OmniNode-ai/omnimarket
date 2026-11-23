@@ -5,6 +5,11 @@
 ``run``    create the dev user if needed, store its generated password, sign in, provision the probe tenant.
 ``probe``  read only: the admin credential present is the ready answer; nothing is written and nothing is called.
 
+With no identity flag the overlay's user is provisioned. ``--username`` names another user, which then needs its own
+``--email`` and ``--password-key-id`` (a key id the secret store node declares in its ``generated_keys``). An existing user is
+refused unless ``--reset-existing`` is given, and a user in the overlay's ``protected_usernames`` is refused unless
+``--allow-protected`` is given.
+
 Exit codes: 0 the run provisioned or the probe was ready; 1 a typed failure; 3 a deployment fact is
 missing (INDETERMINATE).
 """
@@ -50,7 +55,15 @@ def _run(args: argparse.Namespace) -> int:
     )
     result = asyncio.run(
         handler.handle(
-            ModelDevIdentityProvisionCommand(lane=args.lane, write=args.verb == "run")
+            ModelDevIdentityProvisionCommand(
+                lane=args.lane,
+                write=args.verb == "run",
+                username=args.username,
+                email=args.email,
+                password_key_id=args.password_key_id,
+                reset_existing=args.reset_existing,
+                allow_protected=args.allow_protected,
+            )
         )
     )
     sys.stdout.write(
@@ -66,6 +79,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog=NODE_NAME, description=__doc__)
     parser.add_argument("verb", choices=("run", "probe"))
     parser.add_argument("--lane", required=True)
+    parser.add_argument("--username")
+    parser.add_argument("--email")
+    parser.add_argument("--password-key-id")
+    parser.add_argument("--reset-existing", action="store_true")
+    parser.add_argument("--allow-protected", action="store_true")
     try:
         return _run(parser.parse_args(list(sys.argv[1:] if argv is None else argv)))
     except (NodeOverlayError, ValidationError, ValueError, OSError) as exc:

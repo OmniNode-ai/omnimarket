@@ -1,0 +1,7 @@
+{
+  "correlation_id": "8e2c41f7-93b0-4a5d-8f61-0c3d7e9a2b45",
+  "reason": "route_unconfirmed",
+  "scope": "runtime",
+  "instance": "deploy-instance-a.example",
+  "host": "lab-host-01.example"
+}

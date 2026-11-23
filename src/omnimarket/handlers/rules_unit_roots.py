@@ -21,6 +21,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 
+from omnimarket.models.model_skipped_unit import ModelSkippedUnit
+
 #: The directory name every lane worktree sits under.
 WORKTREE_SEGMENT = "omni_worktrees"
 
@@ -70,6 +72,23 @@ class UnitRootRefusedError(ValueError):
         super().__init__(
             f"{unit} runs from {WORKTREE_SEGMENT}, which the worktree reconcile removes: "
             + ", ".join(self.paths)
+        )
+
+
+class UnitRootPinnedError(ValueError):
+    """A unit's overlay root pins a plugin version; ``paths`` names every offending path."""
+
+    def __init__(self, unit: str, paths: Iterable[str]) -> None:
+        self.unit = unit
+        self.paths = tuple(sorted(set(paths)))
+        versions = ", ".join(
+            f"{path} (version {pinned_plugin_cache_version(path)})"
+            for path in self.paths
+        )
+        super().__init__(
+            f"{unit} pins a plugin version in an overlay root, so an old copy of a node's overlay "
+            f"in that folder answers after the plugin moved on; name the plugin through the "
+            f"marketplace root instead: {versions}"
         )
 
 
@@ -188,6 +207,24 @@ def under_worktrees(path: str) -> bool:
     return WORKTREE_SEGMENT in PurePosixPath(path).parts
 
 
+_PLUGIN_VERSION = re.compile(r"\d+\.\d+\.\d+")
+
+
+def pinned_plugin_cache_version(path: str) -> str | None:
+    """The version a ``plugins/cache/<marketplace>/<plugin>/<x.y.z>`` path pins, or ``None``.
+
+    Only a path inside a plugin cache's version folder pins one; the marketplace clone's
+    ``plugins/<plugin>`` folder and any other path with a number in it do not.
+    """
+    parts = PurePosixPath(path).parts
+    for index in range(len(parts) - 4):
+        if parts[index] == "plugins" and parts[index + 1] == "cache":
+            candidate = parts[index + 4]
+            if _PLUGIN_VERSION.fullmatch(candidate):
+                return candidate
+    return None
+
+
 def worktree_paths(text: str) -> tuple[str, ...]:
     """The paths of the unit text that sit under ``omni_worktrees``, sorted."""
     return tuple(sorted(path for path in unit_paths(text) if under_worktrees(path)))
@@ -235,6 +272,8 @@ class UnitRoots:
 
     named: Mapping[str, str] = field(default_factory=dict)
     units_read: int = 0
+    #: Units the reader skipped with a reason; each is a typed record, not a failure.
+    skipped: tuple[ModelSkippedUnit, ...] = ()
 
     def naming(self, tree: str) -> str:
         """The unit that names ``tree`` or a path inside it; empty when none does."""
@@ -246,9 +285,13 @@ class UnitRoots:
         return ""
 
     @classmethod
-    def from_paths(cls, per_unit: Mapping[str, Iterable[str]]) -> UnitRoots:
+    def from_paths(
+        cls,
+        per_unit: Mapping[str, Iterable[str]],
+        skipped: Iterable[ModelSkippedUnit] = (),
+    ) -> UnitRoots:
         named: dict[str, str] = {}
         for unit, paths in per_unit.items():
             for path in paths:
                 named.setdefault(path, unit)
-        return cls(named=named, units_read=len(per_unit))
+        return cls(named=named, units_read=len(per_unit), skipped=tuple(skipped))

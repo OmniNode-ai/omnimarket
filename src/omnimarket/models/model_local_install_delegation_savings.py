@@ -43,6 +43,26 @@ DELEGATION_SAVINGS_VIEW_STEPS = (
         "sqlite/delegation_savings_view_null_cost.sql",
         "served a run with no stored cost as a null session cost",
     ),
+    (
+        "omn24615_delegation_savings_one_definition_view",
+        "sqlite/delegation_savings_view_one_definition.sql",
+        "served each run's modelled saving, none for a failed run, with its baseline",
+    ),
+    (
+        "omn24615_delegation_savings_priced_spend_view",
+        "sqlite/delegation_savings_view_priced_spend.sql",
+        "served spend from a named price only and read a store with no call record as measured",
+    ),
+    (
+        "omn25862_delegation_savings_one_unpriced_rule",
+        "sqlite/delegation_savings_view_one_unpriced_rule.sql",
+        "counted a run as unpriced by the metering headline's rule",
+    ),
+    (
+        "omn26413_delegation_savings_one_unpriced_population",
+        "sqlite/delegation_savings_view_one_unpriced_population.sql",
+        "counted unpriced only over the runs the metering headline classes as priced or unknown spend",
+    ),
 )
 
 

@@ -3,9 +3,10 @@
 """The snapshot the duplicate-fix pull request guard folds over (OMN-17427).
 
 Reads, never searches GitHub: the PR watcher's state file for the open pull requests of one repository,
-the rolling ledger file, and ``git diff -U0`` for what each open pull request and the new branch change.
-A source it cannot read is ``DuplicateGuardUncheckedError`` with the reason: an unread watcher or ledger never
-means no duplicate, and a lane that cannot be checked does not open a pull request.
+the ledger rows the ledger reader node answers from the bus-fed projection, and ``git diff -U0`` for what each
+open pull request and the new branch change. A source it cannot read is ``DuplicateGuardUncheckedError`` with the
+reason: an unread watcher or ledger never means no duplicate, and a lane that cannot be checked does not open a
+pull request.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ import logging
 import os
 import re
 import subprocess
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime, timedelta
 from functools import cache
 from hashlib import sha1
@@ -24,6 +25,9 @@ from typing import Final
 
 import yaml
 
+from omnimarket.handlers.adapter_work_ledger_rows_reader import (
+    SubprocessLedgerRowsReader,
+)
 from omnimarket.handlers.scm.handler_scm_local_state import (
     WATCHER_SCHEMA,
     default_clone_path,
@@ -33,7 +37,6 @@ from omnimarket.models.model_github_gateway_io import ModelOpenPrFactsResult
 from omnimarket.models.model_pr_duplicate_guard import (
     EnumStackBaseRule,
     ModelDuplicateDigestConfig,
-    ModelDuplicateGuardRules,
     ModelDuplicateStackConfig,
     ModelFileTouch,
     ModelJudgedCommit,
@@ -46,14 +49,28 @@ from omnimarket.models.model_pr_duplicate_guard import (
     ModelSpanCommits,
     validate_replaces,
 )
+from omnimarket.models.node_overlays.model_node_overlays import (
+    ModelDuplicateGuardGeneratedPathsOverlay,
+)
+from omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers.ledger_claims_read import (
+    load_ledger_read_config,
+    read_claims_text,
+)
 from omnimarket.nodes.node_pr_duplicate_snapshot_effect.ports.protocol_open_pr_facts_source import (
     OpenPrFactsUnreadableError,
     ProtocolOpenPrFactsSource,
 )
+from omnimarket.protocols.protocol_ledger_rows_reader import (
+    LedgerReadError,
+    ProtocolLedgerRowsReader,
+)
 
 logger = logging.getLogger(__name__)
 
-LEDGER_ENV: Final[str] = "ONEX_LEDGER_PATH"
+#: The ledger reader node's name for the claims read and the window it covers (a CLAIM older than a week names no live lane).
+#: Both, the rows read and every wait come from this node's contract (``config.ledger_read``, OMN-26433), not from this module.
+LEDGER_READER: Final[str] = load_ledger_read_config().reader
+LEDGER_WINDOW_HOURS: Final[int] = load_ledger_read_config().window_hours
 #: Where a deployment's overlay for the guard is found: the roots every node overlay is read from, then the
 #: workspace configuration root's overlays directory.
 OVERLAY_ROOTS_ENV: Final[str] = "ONEX_SKILL_OVERLAY_ROOTS"
@@ -119,11 +136,19 @@ def _git(cwd: Path, *args: str, timeout: int = 30) -> str | None:
     return done.stdout if done.returncode == 0 else None
 
 
-def parse_diff(diff: str) -> ModelPrTouch:
-    """Files, old-line spans and signed changed-line fingerprints, excluding diff headers."""
-    config = load_digest_config()
+def parse_diff(
+    diff: str, *, repo: str = "", config: ModelDuplicateDigestConfig | None = None
+) -> ModelPrTouch:
+    """Files, old-line spans and signed changed-line fingerprints, excluding diff headers.
+
+    A file's ``digest`` is the one scored digest: its added and removed lines together, less the removed lines
+    that ``config`` declares shared catalog lines for ``repo`` at this path. A file whose only changed lines are
+    such removed lines is scored on them, so two deletions of the same catalog line stay one change.
+    """
+    config = config or load_digest_config()
     spans: dict[str, list[tuple[int, int]]] = {}
     digests: dict[str, set[str]] = {}
+    catalog_removed: dict[str, set[str]] = {}
     added: set[str] = set()
     current: str | None = None
     in_hunk = False
@@ -133,6 +158,7 @@ def parse_diff(diff: str) -> ModelPrTouch:
             current = header[1]
             spans[current] = []
             digests[current] = set()
+            catalog_removed[current] = set()
             in_hunk = False
         elif current is None:
             continue
@@ -148,18 +174,22 @@ def parse_diff(diff: str) -> ModelPrTouch:
             elif in_hunk and line.startswith(("-", "+")):
                 text = line[1:].strip()
                 if text and len(text) >= config.min_line_chars:
-                    digests[current].add(
-                        sha1(
-                            (line[0] + text).encode(), usedforsecurity=False
-                        ).hexdigest()[: config.prefix_chars]
-                    )
+                    digest = sha1(
+                        (line[0] + text).encode(), usedforsecurity=False
+                    ).hexdigest()[: config.prefix_chars]
+                    if line[0] == "-" and config.is_shared_catalog_line(
+                        repo, current, text
+                    ):
+                        catalog_removed[current].add(digest)
+                    else:
+                        digests[current].add(digest)
     return ModelPrTouch(
         files=tuple(
             ModelFileTouch(
                 path=path,
                 added=path in added,
                 spans=tuple(found),
-                digest=tuple(sorted(digests[path])),
+                digest=tuple(sorted(digests[path] or catalog_removed[path])),
             )
             for path, found in sorted(spans.items())
         )
@@ -173,7 +203,13 @@ def _resolves(repo_dir: Path, ref: str) -> bool:
     )
 
 
-def _diff(repo_dir: Path, base_ref: str, head_ref: str) -> ModelPrTouch | None:
+def _diff(
+    repo_dir: Path,
+    base_ref: str,
+    head_ref: str,
+    repo: str = "",
+    config: ModelDuplicateDigestConfig | None = None,
+) -> ModelPrTouch | None:
     text = _git(
         repo_dir,
         "diff",
@@ -184,7 +220,7 @@ def _diff(repo_dir: Path, base_ref: str, head_ref: str) -> ModelPrTouch | None:
         f"{base_ref}...{head_ref}",
         timeout=DIFF_TIMEOUT_S,
     )
-    return parse_diff(text) if text is not None else None
+    return parse_diff(text, repo=repo, config=config) if text is not None else None
 
 
 def _base_ref(repo_dir: Path, base: str | None) -> str | None:
@@ -235,6 +271,7 @@ def new_branch_touch(
     worktree: Path | None,
     clone: Path | None,
     diff_base: str | None = None,
+    config: ModelDuplicateDigestConfig | None = None,
 ) -> ModelPrTouch:
     """What the new branch changes against its base, read where the lane holds it: its worktree, else the clone."""
     if not _BRANCH.match(head_ref):
@@ -249,7 +286,7 @@ def new_branch_touch(
             continue
         _refresh_base(repo_dir, base)
         base_ref = diff_base or _base_ref(repo_dir, base)
-        touch = _diff(repo_dir, base_ref, head) if base_ref else None
+        touch = _diff(repo_dir, base_ref, head, repo, config) if base_ref else None
         if touch is not None:
             return touch
     raise DuplicateGuardUncheckedError(
@@ -538,16 +575,12 @@ def _open_pr_state(
             ) from None
 
 
-def _load_ledger(path: Path | None) -> str:
-    if path is None:
-        raise DuplicateGuardUncheckedError(
-            f"{LEDGER_ENV} is not set; it names the rolling work ledger (rule 8)"
-        )
+def _load_ledger(reader_for: Callable[[float], ProtocolLedgerRowsReader]) -> str:
     try:
-        return path.read_text(encoding="utf-8", errors="replace")
-    except OSError as exc:
+        return read_claims_text(reader_for)
+    except LedgerReadError as exc:
         raise DuplicateGuardUncheckedError(
-            f"the ledger {path} is unreadable: {exc}"
+            f"the ledger could not be read ({exc}); an unread ledger never proves no live CLAIM covers this change"
         ) from exc
 
 
@@ -560,6 +593,7 @@ def _open_prs(
     worktree: Path | None = None,
     new_head: str | None = None,
     attribute_against: ModelPrTouch | None = None,
+    config: ModelDuplicateDigestConfig | None = None,
 ) -> tuple[ModelOpenPr, ...]:
     prs = state["prs"]
     assert isinstance(prs, dict)
@@ -601,7 +635,7 @@ def _open_prs(
         wanted = base is None or pr_base == base
         if wanted and clone is not None and sha and _resolves(clone, sha):
             base_ref = _base_ref(clone, pr_base)
-            touch = _diff(clone, base_ref, sha) if base_ref else None
+            touch = _diff(clone, base_ref, sha, repo, config) if base_ref else None
             if touch is not None and base_ref and attribute_against is not None:
                 touch = _attribute(clone, base_ref, sha, touch, attribute_against)
         out.append(
@@ -786,26 +820,25 @@ def _overlay_candidates() -> list[Path]:
     return [Path(root) / OVERLAY_NODE / OVERLAY_FILE for root in roots]
 
 
-def load_generated_paths() -> dict[str, tuple[str, ...]]:
-    """The deployment overlay's per-repository generated paths: the first overlay found, or none declared.
+def _load_overlay() -> ModelDuplicateGuardGeneratedPathsOverlay | None:
+    """The deployment overlay of this node: the first one found, or none declared.
 
-    An overlay that exists and is not exactly a ``generated_paths`` mapping is unchecked, never ignored: a
-    guard that silently dropped its declarations would refuse every plan pull request again.
+    An overlay that exists and is not a valid document (``generated_paths`` and, optionally, ``shared_catalog_lines``
+    with each pattern compiling) is unchecked, never ignored: a guard that silently dropped its declarations would
+    refuse every plan pull request again, or read a catalog line as a shared change.
     """
     path = next((c for c in _overlay_candidates() if c.is_file()), None)
     if path is None:
-        return {}
+        return None
     try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-        if not isinstance(raw, dict) or set(raw) != {"generated_paths"}:
-            raise ValueError("overlay must contain exactly generated_paths")
-        return ModelDuplicateGuardRules.model_validate(
-            {"generated_paths": raw["generated_paths"]}
-        ).generated_paths
+        return ModelDuplicateGuardGeneratedPathsOverlay.model_validate(
+            yaml.safe_load(path.read_text(encoding="utf-8"))
+        )
     except (OSError, UnicodeError, yaml.YAMLError, ValueError, TypeError) as exc:
         raise DuplicateGuardUncheckedError(
             f"the duplicate guard's deployment overlay {path} is invalid ({type(exc).__name__}): "
-            "it must be a mapping with exactly generated_paths, repository to a list of paths"
+            "it must be a mapping with generated_paths (repository to a list of paths) and, optionally, "
+            "shared_catalog_lines (repository to a list of path and line patterns, each pattern a valid expression)"
         ) from None
 
 
@@ -819,7 +852,7 @@ def read_request(
     lane: str | None,
     cause: str | None,
     watcher_state: Path | None = None,
-    ledger: Path | None = None,
+    ledger_reader: ProtocolLedgerRowsReader | None = None,
     clone: Path | None = None,
     worktree: Path | None = None,
     now: datetime | None = None,
@@ -828,9 +861,20 @@ def read_request(
 ) -> ModelPrDuplicateGuardRequest:
     """The fold's request for one new pull request, or ``DuplicateGuardUncheckedError``."""
     moment = now or datetime.now(UTC)
+    overlay = _load_overlay()
+    digest_config = load_digest_config().with_shared_catalog_lines(
+        {} if overlay is None else overlay.shared_catalog_lines
+    )
     state = _open_pr_state(repo, watcher_state, moment, open_prs_source)
-    declared = os.environ.get(LEDGER_ENV)
-    ledger_text = _load_ledger(ledger or (Path(declared) if declared else None))
+    ledger_text = _load_ledger(
+        (lambda _timeout: ledger_reader)
+        if ledger_reader is not None
+        else (
+            lambda timeout: SubprocessLedgerRowsReader(
+                os.environ, timeout_seconds=timeout
+            )
+        )
+    )
     where = clone or default_clone_path(repo)
     lane_dir = worktree or Path.cwd()
     dirs = (lane_dir, where)
@@ -840,7 +884,9 @@ def read_request(
     # Only a caller that names a replaced pull request pays for reading the new branch's diff first and blaming
     # the overlaps; without ``replaces`` the reads and their order are exactly what they were.
     early_touch = (
-        new_branch_touch(repo, head_ref, base, lane_dir, where, diff_base)
+        new_branch_touch(
+            repo, head_ref, base, lane_dir, where, diff_base, digest_config
+        )
         if replaces
         else None
     )
@@ -852,6 +898,7 @@ def read_request(
         worktree=lane_dir,
         new_head=head,
         attribute_against=early_touch,
+        config=digest_config,
     )
     return ModelPrDuplicateGuardRequest(
         repo=repo,
@@ -863,12 +910,14 @@ def read_request(
         cause=cause,
         now=moment,
         touch=early_touch
-        or new_branch_touch(repo, head_ref, base, lane_dir, where, diff_base),
+        or new_branch_touch(
+            repo, head_ref, base, lane_dir, where, diff_base, digest_config
+        ),
         judged_commits=judged_commits(dirs, head, base, diff_base, contained.values()),
         judged_base=diff_base[:12] if diff_base else None,
         open_prs=open_prs,
         ledger_text=ledger_text,
-        generated_paths=load_generated_paths(),
+        generated_paths={} if overlay is None else overlay.generated_paths,
         replaced=_replaced_facts(state, replaces, repo, where, open_prs_source)
         if replaces
         else (),
@@ -879,9 +928,12 @@ class HandlerPrDuplicateSnapshot:
     """Read the watcher state (or the gateway), the ledger and git for one pull request about to be opened."""
 
     def __init__(
-        self, open_prs_source: ProtocolOpenPrFactsSource | None = None
+        self,
+        open_prs_source: ProtocolOpenPrFactsSource | None = None,
+        ledger_reader: ProtocolLedgerRowsReader | None = None,
     ) -> None:
         self._open_prs_source = open_prs_source
+        self._ledger_reader = ledger_reader
 
     def handle(
         self, request: ModelPrDuplicateSnapshotRequest
@@ -898,7 +950,7 @@ class HandlerPrDuplicateSnapshot:
                 watcher_state=Path(request.watcher_state)
                 if request.watcher_state
                 else None,
-                ledger=Path(request.ledger) if request.ledger else None,
+                ledger_reader=self._ledger_reader,
                 clone=Path(request.clone) if request.clone else None,
                 worktree=Path(request.worktree) if request.worktree else None,
                 open_prs_source=self._open_prs_source,

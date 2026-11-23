@@ -4,7 +4,8 @@
 #
 # Builds the Python import graph of the declared repositories at their default-branch heads,
 # reachability from the declared roots, and a verdict against a frozen sample with known-used
-# controls; appends one reading row per run through the configured append command. It writes
+# controls; appends one reading row per run through the configured append command and writes each
+# repository's version into Memgraph (OMN-26104) when a Bolt address resolves. It writes
 # code graph rows and nothing else: a reading is never a gate, a stop or an admission.
 name: node_code_graph_effect
 contract_name: node_code_graph_effect
@@ -21,8 +22,15 @@ description: >
   the known-used controls, and appends one row. The check verb compares a pull request's head with
   its base and names the modules the head adds that no root reaches, and names every allowlist entry
   past its date as a finding. The shadow verb runs that check over every open pull request of the
-  declared repositories, appends one row of what it would refuse, and holds no merge. An unreadable
-  repository, pull request source or an append that does not land are typed failures.
+  declared repositories, appends one row of what it would refuse, and holds no merge. The lookup verb
+  answers from Memgraph by Cypher and falls back to the file store, with a typed reason on the answer,
+  only when Memgraph is unreachable. Its locate question (OMN-26202) answers where a node, its
+  contract.yaml, metadata.yaml, overlay.yaml or overlay.example.yaml and the workflow files that name it
+  live, from the stored version, indexed through the overlay's contract_globs and command_globs. The
+  compare_selection operation (OMN-26273) asks REACH of the graph for a merged pull request's changed files and
+  compares its test files with the parse selection, in a worker terminated at the overlay's lookup deadline, with
+  a separate fallback deadline for the file store; selection_verdict writes the two-part verdict over the rows.
+  An unreadable repository, pull request source or an append that does not land are typed failures.
 
 handler:
   module: omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph_requested
@@ -53,13 +61,25 @@ handler_routing:
         module: omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph_requested
       input_model: omnimarket.models.model_code_graph_lookup.ModelCodeGraphLookupCommand
       output_model: omnimarket.models.model_code_graph_lookup.ModelCodeGraphLookupResult
+    - operation: compare_selection
+      handler:
+        name: HandlerCodeGraphCompareSelectionRequested
+        module: omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph_requested
+      input_model: omnimarket.models.model_code_graph_selection_compare.ModelSelectionCompareCommand
+      output_model: omnimarket.models.model_code_graph_selection_compare.ModelSelectionCompareResult
+    - operation: selection_verdict
+      handler:
+        name: HandlerCodeGraphSelectionVerdictRequested
+        module: omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph_requested
+      input_model: omnimarket.models.model_code_graph_selection_verdict.ModelSelectionVerdictRequest
+      output_model: omnimarket.models.model_code_graph_selection_verdict.ModelSelectionVerdict
 
 descriptor:
   node_archetype: effect
   runtime_profiles: [effects]
   purity: impure
   idempotent: true
-  side_effects: [ledger-append]
+  side_effects: [ledger-append, memgraph-write]
   timeout_ms: 3600000
 
 input_model:
@@ -90,6 +110,10 @@ topics:
   code_graph_shadow_failed: onex.evt.omnimarket.code-graph-shadow-failed.v1
   code_graph_lookup_requested: onex.cmd.omnimarket.code-graph-lookup-requested.v1
   code_graph_lookup_answered: onex.evt.omnimarket.code-graph-lookup-answered.v1
+  code_graph_compare_selection_requested: onex.cmd.omnimarket.code-graph-compare-selection-requested.v1
+  code_graph_selection_compared: onex.evt.omnimarket.code-graph-selection-compared.v1
+  code_graph_selection_verdict_requested: onex.cmd.omnimarket.code-graph-selection-verdict-requested.v1
+  code_graph_selection_verdict_written: onex.evt.omnimarket.code-graph-selection-verdict-written.v1
 
 event_bus:
   subscribe_topics: []
@@ -104,6 +128,8 @@ externally_consumed_topics:
   - onex.evt.omnimarket.code-graph-shadow-completed.v1
   - onex.evt.omnimarket.code-graph-shadow-failed.v1
   - onex.evt.omnimarket.code-graph-lookup-answered.v1
+  - onex.evt.omnimarket.code-graph-selection-compared.v1
+  - onex.evt.omnimarket.code-graph-selection-verdict-written.v1
 
 # The node's own nightly schedule, installed by `schedule install --host <name>` as a systemd user
 # timer on a host the overlay declares, removed by `schedule uninstall` (the rollback).

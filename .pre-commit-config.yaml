@@ -45,6 +45,13 @@ repos:
         files: ^(src/omnimarket/nodes/node_(plan_list|usage_privileges)/.*|src/omnimarket/models/model_catalog_postgres_pool\.py|tests/nodes/node_(plan_list|usage_privileges)/.*)$
         pass_filenames: false
         stages: [pre-commit]
+      - id: workflow-gateway-http
+        name: Workflow gateway runtime HTTP mount (submit, status, receipt, contracts)
+        entry: uv run --frozen pytest tests/nodes/node_workflow_gateway_effect -q --no-cov
+        language: system
+        files: ^(src/omnimarket/nodes/node_workflow_gateway_effect/.*|tests/nodes/node_workflow_gateway_effect/.*)$
+        pass_filenames: false
+        stages: [pre-commit]
       - id: envelope-example-route-nodes
         name: Example-envelope route nodes (runtime HTTP mount)
         entry: uv run --frozen pytest tests/nodes/node_envelope_example_post_effect/test_http_ingress.py tests/nodes/node_envelope_example_post_effect/test_overlay_fail_closed.py tests/nodes/node_envelope_example_get_effect/test_http_ingress.py tests/nodes/node_envelope_example_get_effect/test_overlay_fail_closed.py -q --no-cov
@@ -1204,7 +1211,7 @@ repos:
       - id: ledger-file-census
         name: Ledger file census ratchet
         language: system
-        entry: env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --repos omnimarket --directory omnimarket=.
+        entry: env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --ratchet-file src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml --repos omnimarket --directory omnimarket=. --per-file
         pass_filenames: false
         files: '\.(py|sh|bash|zsh|ya?ml|json|toml|plist|service|timer|cfg|ini|js|ts|mjs|cjs|tmpl|j2)$'
         stages: [pre-commit]
@@ -1395,6 +1402,14 @@ repos:
         language: system
         entry: uv run python scripts/ci/run_runtime_profiles_validator.py
         files: ^src/omnimarket/nodes/node_.*/contract\.yaml$
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: typed-runtime-command-subscriptions
+        name: Validate typed runtime command subscriptions
+        language: system
+        entry: uv run --frozen pytest tests/test_runtime_command_subscriptions.py -q -n 0 --no-cov -k typed_runtime_commands_are_subscribed
+        files: ^(src/omnimarket/nodes/node_.*/contract\.yaml|tests/test_runtime_command_subscriptions\.py)$
         pass_filenames: false
         stages: [pre-commit]
 

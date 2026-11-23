@@ -85,13 +85,13 @@ class HandlerEntrypointLib:
                     "set OMNI_HOME to the registry root",
                     timing,
                 )
-            if not request.ledger_path:
+            if not request.bus_append_command:
                 return _refusal(
                     op,
                     2,
                     "env",
-                    "ONEX_LEDGER_PATH is required",
-                    "set ONEX_LEDGER_PATH to the rolling work ledger",
+                    "ONEX_LEDGER_BUS_APPEND_COMMAND is required",
+                    "set ONEX_LEDGER_BUS_APPEND_COMMAND to the ledger bus append command",
                     timing,
                 )
             return ModelEntrypointLibResult(operation=op)

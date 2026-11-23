@@ -23,7 +23,10 @@ from omnimarket.nodes.node_dev_roll_window_gate_effect.handlers import (
     HandlerDevRollWindowTick,
 )
 from omnimarket.nodes.node_dev_roll_window_gate_effect.models import (
+    EnumDevRollGateAbandonReason,
     EnumDevRollGateRefusal,
+    EnumDevRollGateRollOutcome,
+    ModelDevRollGateAbandonedRoll,
     ModelDevRollGateDecision,
     ModelDevRollGateHeld,
     ModelDevRollGateRefused,
@@ -174,12 +177,13 @@ def test_after_a_healthy_finish_the_next_release_waits_for_the_interval_and_heal
     )  # health bound is inside the interval in this policy
 
 
-def test_an_unhealthy_finish_holds_until_the_failed_roll_release_bound(
+def test_an_unhealthy_finish_holds_until_the_failed_roll_release_bound_from_the_roll_start(
     gate: Gate,
 ) -> None:
     held = hold_three(gate)
     gate.clock.advance(WINDOW)
     gate.tick.handle(a_tick(gate))
+    started = gate.clock.now
     gate.hold.handle(command(number=9, age_seconds=WINDOW))
     gate.clock.advance(60)
     finished = gate.clock.now
@@ -196,8 +200,10 @@ def test_an_unhealthy_finish_holds_until_the_failed_roll_release_bound(
     out = gate.tick.handle(a_tick(gate))
     (decision,) = decisions(out)
     assert decision.hold_reason == "previous_roll_not_healthy"
-    assert decision.hold_until == finished + timedelta(seconds=FAILED_RELEASE)
-    gate.clock.now = finished + timedelta(seconds=FAILED_RELEASE)
+    # the failed-roll hold is counted from the roll's start, not from its finish
+    assert decision.hold_until == started + timedelta(seconds=FAILED_RELEASE)
+    assert finished < decision.hold_until
+    gate.clock.now = started + timedelta(seconds=FAILED_RELEASE)
     assert len(released(gate.tick.handle(a_tick(gate)))) == 1
 
 
@@ -278,27 +284,104 @@ def test_only_the_completion_of_the_newest_released_command_ends_the_roll(
     assert gate.store.load().last_roll.finished_at == gate.clock.now
 
 
-def test_a_roll_with_no_completion_by_the_deadline_is_ended_as_not_healthy_and_the_gate_recovers(
+def test_a_roll_with_no_completion_by_the_deadline_is_abandoned_and_the_held_commands_go_to_the_next_roll(
     gate: Gate,
 ) -> None:
     hold_three(gate)
     gate.clock.advance(WINDOW)
-    gate.tick.handle(a_tick(gate))
+    first = released(gate.tick.handle(a_tick(gate)))
     started = gate.clock.now
     gate.hold.handle(command(number=9, age_seconds=WINDOW))
     gate.clock.advance(DEADLINE - 1)
     out = gate.tick.handle(a_tick(gate))
     assert [d.hold_reason for d in decisions(out)] == ["roll_in_progress"]
+    assert gate.store.load().abandoned == ()
     gate.clock.advance(1)  # the deadline
     out = gate.tick.handle(a_tick(gate))
     recorded = [m for m in (out or []) if isinstance(m, ModelDevRollGateRollRecorded)]
-    assert [r.outcome for r in recorded] == ["completion_overdue"]
+    assert [r.outcome for r in recorded] == [EnumDevRollGateRollOutcome.ABANDONED]
+    assert isinstance(recorded[0].outcome, EnumDevRollGateRollOutcome)
+    # released at the deadline, not FAILED_RELEASE seconds after it
+    assert len(released(out)) == 1
+    (decision,) = decisions(out)
+    assert decision.action == "roll_now"
+    state = gate.store.load()
+    assert state.held == ()
+    (abandoned,) = state.abandoned
+    assert isinstance(abandoned, ModelDevRollGateAbandonedRoll)
+    assert abandoned.command_correlation_id == str(first[-1].correlation_id)
+    assert abandoned.reason is EnumDevRollGateAbandonReason.COMPLETION_DEADLINE_PASSED
+    assert abandoned.runtime_started_at == started
+    assert abandoned.abandoned_at == started + timedelta(seconds=DEADLINE)
+    assert state.last_roll is not None
+    assert state.last_roll.job_id != abandoned.command_correlation_id
+
+
+def test_a_late_completion_of_an_abandoned_roll_changes_nothing(gate: Gate) -> None:
+    held = hold_three(gate)
+    gate.clock.advance(WINDOW)
+    gate.tick.handle(a_tick(gate))
+    gate.clock.advance(DEADLINE)
+    gate.tick.handle(a_tick(gate))
+    before = gate.store.load()
+    assert before.last_roll is None
+    gate.clock.advance(60)
+    assert (
+        gate.completed.handle(completed(held[-1].correlation_id, at=gate.clock.now))
+        is None
+    )
+    assert gate.store.load() == before
+
+
+def test_a_roll_the_earlier_deadline_code_ended_with_health_unknown_is_abandoned_too(
+    gate: Gate,
+) -> None:
+    """The state a gate that ran the earlier code holds: finished at the deadline, health unknown, five commands held."""
+    hold_three(gate)
+    gate.clock.advance(WINDOW)
+    gate.tick.handle(a_tick(gate))
+    state = gate.store.load()
+    last = state.last_roll
+    assert last is not None
+    assert last.runtime_started_at is not None
+    finished = last.runtime_started_at + timedelta(seconds=DEADLINE)
+    gate.store.save(
+        state.model_copy(
+            update={"last_roll": last.model_copy(update={"finished_at": finished})}
+        )
+    )
+    gate.hold.handle(command(number=9, age_seconds=WINDOW))
+    gate.clock.advance(DEADLINE + 60)
+    out = gate.tick.handle(a_tick(gate))
+    assert len(released(out)) == 1
+    (abandoned,) = gate.store.load().abandoned
+    assert abandoned.abandoned_at == finished
+    assert abandoned.command_correlation_id == last.job_id
+
+
+def test_an_unhealthy_finished_roll_still_waits_the_failed_roll_bound_from_its_start(
+    gate: Gate,
+) -> None:
+    held = hold_three(gate)
+    gate.clock.advance(WINDOW)
+    gate.tick.handle(a_tick(gate))
+    started = gate.clock.now
+    gate.clock.advance(60)
+    gate.completed.handle(
+        completed(
+            held[-1].correlation_id,
+            at=gate.clock.now,
+            status=EnumRedeployStatus.FAILED,
+        )
+    )
+    gate.hold.handle(command(number=9, age_seconds=WINDOW))
+    gate.clock.advance(DEADLINE)
+    out = gate.tick.handle(a_tick(gate))
+    assert released(out) == []
+    assert gate.store.load().abandoned == ()
     (decision,) = decisions(out)
     assert decision.hold_reason == "previous_roll_not_healthy"
-    finished = started + timedelta(seconds=DEADLINE)
-    assert decision.hold_until == finished + timedelta(seconds=FAILED_RELEASE)
-    gate.clock.now = finished + timedelta(seconds=FAILED_RELEASE)
-    assert len(released(gate.tick.handle(a_tick(gate)))) == 1
+    assert decision.hold_until == started + timedelta(seconds=FAILED_RELEASE)
 
 
 def test_failing_control_without_the_deadline_the_gate_would_hold_for_ever(
@@ -322,6 +405,7 @@ def test_an_overdue_roll_is_recorded_even_when_nothing_is_held(gate: Gate) -> No
     gate.clock.advance(DEADLINE)
     out = gate.tick.handle(a_tick(gate))
     assert [type(m).__name__ for m in out or []] == ["ModelDevRollGateRollRecorded"]
+    assert len(gate.store.load().abandoned) == 1
     assert gate.tick.handle(a_tick(gate)) is None
 
 

@@ -22,7 +22,6 @@ def _state_home() -> Path:
 
 # The calendar-fired jobs of launchd/morning-workflows and their fire spacing in seconds.
 CALENDAR_JOB_INTERVALS: dict[str, int] = {
-    "ai.omninode.lab-fill": 1200,
     "ai.omninode.hourly-tick": 3600,
     "ai.omninode.merged-worktree-reaper": 3600,
     "ai.omninode.morning-ground-state": 86400,
@@ -123,6 +122,17 @@ class ModelSilentFailureAlarmOptions(BaseModel):
     # Exit codes a job declares as its own finding, by label (OMN-19998): a floor job exiting 1 for
     # floors under is working, so its episode briefs a lane to act on the finding, not the job.
     job_finding_exits: dict[str, tuple[int, ...]] = Field(default_factory=dict)
+    # The job-exit reraise bound and the install-failure alarm settings (OMN-21663).
+    job_reraise_after_minutes: int = Field(default=240, ge=0)
+    install_failures_file: Path | None = None
+    install_failure_threshold: int = Field(default=3, gt=0)
+    install_failure_window_minutes: int = Field(default=360, gt=0)
+    install_failure_reraise_minutes: int = Field(default=240, ge=0)
+    install_failure_state_file: Path = Field(
+        default_factory=lambda: (
+            _state_home() / "omni/silent-failure-alarm/install-failure.json"
+        )
+    )
     # The ticket closer's staleness check (OMN-20718). None means this caller configured none,
     # which the tick reports as UNCONFIGURED and never treats as a pass.
     closer: ModelCloserLivenessOptions | None = None
@@ -172,4 +182,10 @@ class ModelSilentFailureAlarmOptions(BaseModel):
             raise ValueError(
                 "OMNI_HOME or ONEX_SILENT_FAILURE_ALARM_CONFIG is required"
             )
-        return cls(registry_root=Path(root))
+        return cls(
+            registry_root=Path(root),
+            install_failures_file=Path(
+                os.environ.get("ONEX_INSTALL_FAILURES_FILE")
+                or _state_home() / "omni/landing/install-failures.jsonl"
+            ),
+        )

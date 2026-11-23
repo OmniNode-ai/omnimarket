@@ -294,7 +294,9 @@ def test_typecheck_job_proves_the_plan_partitions_the_collected_tree() -> None:
         i for i, run in enumerate(runs) if "merge_test_durations.py verify" in run
     )
     assert collect < verify
-    assert 'tests/ --collect-only -q -m "not kafka"' in runs[collect]
+    assert (
+        'tests/ --collect-only -q -m "not kafka and not release_proof"' in runs[collect]
+    )
     assert "--collected collected.txt" in runs[verify]
     # An empty verify would pass a plan against nothing: it reads the collect output.
     assert "> collected.txt" in runs[collect]
@@ -309,8 +311,10 @@ def test_integration_guard_does_not_collect_the_whole_tree() -> None:
 
 
 def test_verified_split_count_is_the_full_suite_split_count() -> None:
+    from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_record import (
+        EnumFullSuiteReason,
+    )
     from scripts.ci import detect_test_paths
-    from scripts.ci.test_selection_models import EnumFullSuiteReason
 
     full = detect_test_paths._full_suite(EnumFullSuiteReason.MAIN_BRANCH)
     assert full.split_count == FULL_SUITE_SPLITS

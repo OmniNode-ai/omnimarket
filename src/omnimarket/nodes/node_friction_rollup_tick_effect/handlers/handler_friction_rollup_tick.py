@@ -9,7 +9,9 @@ handler, run in process; the pure decisions of the tick are in ``friction_rollup
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+import os
+import shlex
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
@@ -31,6 +33,11 @@ from omnimarket.nodes.node_friction_rollup_compute.handlers.friction_rollup_core
 from omnimarket.nodes.node_friction_rollup_compute.handlers.handler_friction_rollup import (
     HandlerFrictionRollup,
 )
+from omnimarket.nodes.node_friction_rollup_tick_effect.handlers.friction_rollup_tick_bus import (
+    LedgerUnreadError,
+    read_command,
+    read_window_sources,
+)
 from omnimarket.nodes.node_friction_rollup_tick_effect.handlers.friction_rollup_tick_core import (
     _cell,
     compute_trend,
@@ -47,7 +54,6 @@ from omnimarket.nodes.node_friction_rollup_tick_effect.handlers.friction_rollup_
     load_settings,
     prune_reports,
     read_previous,
-    read_sources,
     write_atomic,
 )
 from omnimarket.nodes.node_friction_rollup_tick_effect.models.model_friction_rollup_tick import (
@@ -56,9 +62,13 @@ from omnimarket.nodes.node_friction_rollup_tick_effect.models.model_friction_rol
     ModelFrictionRollupTickResult,
     ModelFrictionRollupTickSettings,
 )
-from omnimarket.nodes.node_friction_rollup_tick_effect.protocols.protocol_ledger_appender import (
-    ProtocolLedgerAppender,
-    SubprocessLedgerAppender,
+from omnimarket.nodes.node_friction_rollup_tick_effect.protocols.protocol_bus_ledger_appender import (
+    BusCommandLedgerAppender,
+    ModelBusAppendOutcome,
+    ProtocolBusLedgerAppender,
+)
+from omnimarket.nodes.node_work_ledger_reader_effect.protocols import (
+    ProtocolLedgerPointRead,
 )
 
 NODE_DIR = Path(__file__).resolve().parent.parent
@@ -71,27 +81,57 @@ def _refused(message: str) -> ModelFrictionRollupTickResult:
     )
 
 
+class _UnsetAppender:
+    """The appender of a tick whose bus append command or host name is not set: every append refuses, naming the variable."""
+
+    def __init__(self, detail: str) -> None:
+        self._detail = detail
+
+    def append(self, row: str) -> ModelBusAppendOutcome:
+        return ModelBusAppendOutcome(ok=False, detail=self._detail)
+
+
 class HandlerFrictionRollupTick:
-    """Run one tick; the appender and the settings can be injected, otherwise the overlay and the real command are used."""
+    """Run one tick over the bus.
+
+    The read port, the appender and the settings can be injected; otherwise the overlay's settings and the bus commands the
+    environment names are used (``ledger_read_command_env``, ``ledger_append_command_env`` and ``ledger_host_env``).
+    """
 
     def __init__(
         self,
-        appender: ProtocolLedgerAppender | None = None,
+        appender: ProtocolBusLedgerAppender | None = None,
         settings: ModelFrictionRollupTickSettings | None = None,
         environ: Mapping[str, str] | None = None,
+        source: ProtocolLedgerPointRead | None = None,
     ) -> None:
         self._environ = environ
         self._settings = (
             settings if settings is not None else load_settings(DEFAULT_OVERLAY)
         )
-        self._appender: ProtocolLedgerAppender = (
-            appender
-            if appender is not None
-            else SubprocessLedgerAppender(
-                self._settings.appender_command, self._settings.appender_timeout_seconds
-            )
+        self._source = source
+        self._appender: ProtocolBusLedgerAppender = (
+            appender if appender is not None else self._bus_appender()
         )
         self._rollup = HandlerFrictionRollup()
+
+    def _env(self) -> Mapping[str, str]:
+        return os.environ if self._environ is None else self._environ
+
+    def _bus_appender(self) -> ProtocolBusLedgerAppender:
+        settings = self._settings
+        env = self._env()
+        command: Sequence[str] = shlex.split(
+            env.get(settings.ledger_append_command_env, "")
+        )
+        host = env.get(settings.ledger_host_env, "").strip()
+        if not command or not host:
+            return _UnsetAppender(
+                f"{settings.ledger_append_command_env} or {settings.ledger_host_env} is not set"
+            )
+        return BusCommandLedgerAppender(
+            command, settings.lane, host, settings.appender_timeout_seconds
+        )
 
     @property
     def settings(self) -> ModelFrictionRollupTickSettings:
@@ -144,12 +184,6 @@ class HandlerFrictionRollupTick:
         self, request: ModelFrictionRollupTickRequest
     ) -> ModelFrictionRollupTickResult:
         settings = self._settings
-        ledger = Path(request.ledger_path)
-        archive_dir = (
-            Path(request.archive_dir)
-            if request.archive_dir
-            else ledger.parent / settings.archive_subdir
-        )
         registry_root = Path(request.registry_root)
         state_dir = (
             Path(request.state_dir)
@@ -161,11 +195,14 @@ class HandlerFrictionRollupTick:
         except ValueError as exc:
             return _refused(str(exc))
         now = now.replace(microsecond=0)
-        if not ledger.is_file():
-            return _refused(f"friction-rollup: ledger {ledger} is absent")
         rules, owners, rules_note = self._class_rules()
         try:
-            sources = read_sources(ledger, archive_dir, settings)
+            sources = read_window_sources(
+                settings,
+                now=now,
+                argv=read_command(settings, self._env()),
+                source=self._source,
+            )
             current = {
                 window.name: self._window_report(
                     sources,
@@ -177,7 +214,7 @@ class HandlerFrictionRollupTick:
                 )
                 for window in settings.windows
             }
-        except (OSError, UnicodeError) as exc:
+        except LedgerUnreadError as exc:
             return _refused(f"friction-rollup: input could not be read: {exc}")
 
         latest_json = state_dir / f"{settings.latest_stem}.json"
@@ -256,7 +293,7 @@ class HandlerFrictionRollupTick:
             return _refused(f"friction-rollup: output could not be written: {exc}")
 
         report_path = str(state_dir / report_name)
-        outcome = self._appender.append(ledger, row)
+        outcome = self._appender.append(row)
         refused = not outcome.ok
         state: Literal["OK", "APPEND-FAILED"] = "APPEND-FAILED" if refused else "OK"
         return ModelFrictionRollupTickResult(

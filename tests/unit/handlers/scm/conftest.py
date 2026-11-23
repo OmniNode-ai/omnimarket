@@ -7,6 +7,10 @@ from __future__ import annotations
 import pytest
 
 from omnimarket.handlers.scm import scm_cli
+from omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers import (
+    handler_pr_duplicate_snapshot,
+)
+from tests.helpers.fake_ledger_rows import FakeLedgerRows
 
 
 @pytest.fixture(autouse=True)
@@ -17,3 +21,18 @@ def _pr_create_finds_no_duplicate(
     if "duplicate_guard" in request.module.__name__:
         return
     monkeypatch.setattr(scm_cli, "refuse_or_continue", lambda **_: None)
+
+
+@pytest.fixture(autouse=True)
+def ledger_rows(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> FakeLedgerRows:
+    """The guard's ledger read goes to this fake: the CLI builds its default reader, which the guard suites replace."""
+    rows = FakeLedgerRows()
+    if "duplicate_guard" in request.module.__name__:
+        monkeypatch.setattr(
+            handler_pr_duplicate_snapshot,
+            "SubprocessLedgerRowsReader",
+            lambda _environ, **_kwargs: rows,
+        )
+    return rows

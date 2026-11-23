@@ -39,6 +39,7 @@ from omnimarket.github_landing.github_landing_requests import (
     review_threads_request,
     run_artifacts_request,
     run_jobs_request,
+    split_repository,
     tags_request,
     workflow_runs_request,
 )
@@ -63,6 +64,8 @@ from omnimarket.models.model_github_gateway_io import (
     ModelCodeScanningAlert,
     ModelCodeScanningAlertsResult,
     ModelCommitCheckRunsResult,
+    ModelCommitStatus,
+    ModelCommitStatusesResult,
     ModelGithubGatewayRequest,
     ModelJobLogFillResult,
     ModelJobLogTailResult,
@@ -345,6 +348,10 @@ def _nested_str(raw: object, key: str) -> str:
         if isinstance(value, str):
             return value
     return ""
+
+
+def _nested_raw(raw: object, key: str) -> object:
+    return raw.get(key) if isinstance(raw, dict) else None
 
 
 def _cut(text: object) -> tuple[str, bool]:
@@ -852,6 +859,35 @@ def read_open_pr_facts(
     )
 
 
+def read_commit_statuses(
+    transport: GitHubReadTransportProtocol, request: ModelGithubGatewayRequest
+) -> ModelCommitStatusesResult:
+    """The statuses posted on a commit, newest first; a status of another commit is never listed."""
+    head_sha = request.head_sha
+    if head_sha is None:  # defensive; the request validator already enforces this
+        raise ValueError("this operation requires head_sha.")
+    owner, name = split_repository(request.repo)
+    raw, total, truncated = _collect(
+        transport,
+        ModelGithubHttpRequest(
+            method="GET",
+            path=(
+                f"/repos/{owner}/{name}/commits/{head_sha}/statuses"
+                f"?per_page={min(request.limit, LIST_PAGE_SIZE)}"
+            ),
+        ),
+        item_key="value",
+        limit=request.limit,
+    )
+    return ModelCommitStatusesResult(
+        repo=request.repo,
+        head_sha=head_sha,
+        total_count=total,
+        truncated=truncated,
+        statuses=[_pick(ModelCommitStatus, item) for item in raw],
+    )
+
+
 def read_commit_check_runs(
     transport: GitHubReadTransportProtocol, request: ModelGithubGatewayRequest
 ) -> ModelCommitCheckRunsResult:
@@ -884,6 +920,12 @@ def read_commit_check_runs(
                     "app_slug": _nested_str(run.get("app"), "slug") or None,
                     "head_branch": _nested_str(run.get("check_suite"), "head_branch")
                     or None,
+                    "output_summary": (
+                        _cut(_nested_raw(run.get("output"), "summary"))[0]
+                        if request.include_output
+                        and _nested_raw(run.get("output"), "summary") is not None
+                        else None
+                    ),
                 },
             )
             for run in raw
@@ -1207,6 +1249,7 @@ __all__: list[str] = [
     "read_ci_checks",
     "read_code_scanning_alerts",
     "read_commit_check_runs",
+    "read_commit_statuses",
     "read_job_log_fill",
     "read_job_log_tail",
     "read_merge_commit_sha",

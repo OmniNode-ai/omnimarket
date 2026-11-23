@@ -20,9 +20,10 @@ never read or written (``_isolated_home`` asserts that).
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import shlex
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import click
@@ -30,11 +31,26 @@ import pytest
 from click.testing import CliRunner, Result
 from omnibase_core.cli.cli_commands import cli
 
+from omnimarket.handlers import handler_model_keys, setup_model_connections
+from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result import (
+    ModelModelStatus,
+    ModelModelTestResult,
+)
 from omnimarket.nodes.node_onex_setup_effect.handlers import handler_onex_setup
+from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_preflight import (
+    HandlerSetupPreflight,
+)
 from omnimarket.nodes.node_onex_setup_effect.models import (
     ModelOnexSetupReceipt,
     ModelOnexSetupRequest,
 )
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_observation import (
+    ModelSetupObservation,
+)
+from omnimarket.nodes.node_runtime_bus_forward_effect.adapter_core_forwarder import (
+    CoreRuntimeBusForwarder,
+)
+from tests.helpers.setup_shell_environment import isolate_setup_shell
 
 _UNSET_ENV: dict[str, str | None] = {"OMNIBASE_PATH": None, "OMNI_HOME": None}
 # The model step has its own tests (tests/unit/nodes/node_onex_setup_effect); here it
@@ -43,9 +59,16 @@ _MODEL_ARGS = ["--provider", "local", "--url", "http://127.0.0.1:9", "--model", 
 
 
 def _answering_model_step(request: ModelOnexSetupRequest) -> ModelOnexSetupReceipt:
+    (request.onex_home / ".model-fixture.json").write_text(
+        json.dumps(
+            {"provider": request.provider, "model": request.model, "url": request.url}
+        )
+    )
     return ModelOnexSetupReceipt(
         provider=request.provider or "",
         model=request.model or "",
+        backend_id="fixture-model",
+        endpoint=request.url,
         tested_at="2026-11-08T00:00:00+00:00",
     )
 
@@ -59,12 +82,59 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     monkeypatch.setenv("HOME", str(fake_home))
     monkeypatch.delenv("OMNIBASE_PATH", raising=False)
     monkeypatch.delenv("OMNI_HOME", raising=False)
+    isolate_setup_shell(monkeypatch)
     assert Path.home() == fake_home
     assert Path.home() != real_home
+    # omnibase-core 0.47.74 ends a hosted run non-zero when none of its recorded events reached the
+    # hosted bus. The hosted bus is the boundary here: the installed forwarder carries every event.
+    monkeypatch.setattr(
+        CoreRuntimeBusForwarder,
+        "forward",
+        lambda _self, events: {"forwarded": len(events), "failed": 0, "detail": ""},
+    )
     # Every prerequisite present by default; tests remove what they need to.
     monkeypatch.setattr(handler_onex_setup, "which", lambda name: f"/usr/bin/{name}")
-    monkeypatch.setattr(handler_onex_setup, "compose_available", lambda: True)
     monkeypatch.setattr(handler_onex_setup, "prove_model", _answering_model_step)
+    monkeypatch.setattr(
+        HandlerSetupPreflight,
+        "observe",
+        lambda _self, _plan: ModelSetupObservation(step="preflight", status="success"),
+    )
+    monkeypatch.setattr(
+        "omnimarket.inference.local_byok_credential_adapter.default_evidence_db_path",
+        lambda: fake_home / ".model-store" / "delegation.sqlite",
+    )
+
+    def fixture_statuses(**_selection: object) -> tuple[ModelModelStatus, ...]:
+        path = fake_home / ".onex" / ".model-fixture.json"
+        if not path.exists():
+            return ()
+        data = json.loads(path.read_text())
+        return (
+            ModelModelStatus(
+                provider=data["provider"],
+                set_up=True,
+                models=(data["model"],),
+                last_test=ModelModelTestResult(
+                    provider=data["provider"],
+                    status="passed",
+                    tested_at="2026-11-08T00:00:00+00:00",
+                    model=data["model"],
+                    backend_id="fixture-model",
+                    endpoint=data["url"],
+                ),
+            ),
+        )
+
+    monkeypatch.setattr(handler_model_keys, "list_providers", fixture_statuses)
+    # Since 0e2529429 the models step reads status through
+    # setup_model_connections.provider_status, not list_providers, so the
+    # fixture model is answered there too (OMN-23413).
+    monkeypatch.setattr(
+        setup_model_connections,
+        "provider_status",
+        lambda _provider, _url, _models: fixture_statuses(),
+    )
     return fake_home
 
 
@@ -79,7 +149,12 @@ def _run(
         args = [*args, *_MODEL_ARGS]
     merged: dict[str, str | None] = dict(_UNSET_ENV)
     merged.update(env)
-    return CliRunner().invoke(cli, ["setup", *args], input=prompt_input, env=merged)
+    return CliRunner().invoke(
+        cli,
+        ["setup", "--yes", "--component", "delegation", *args],
+        input=prompt_input,
+        env=merged,
+    )
 
 
 def _snapshot(*roots: Path) -> dict[str, str]:
@@ -112,20 +187,21 @@ class TestSetupWalk:
 
         assert result.exit_code == 0, result.output
         assert "Workspace root" not in result.output, "prompted for a derivable value"
-        runtime = workspace / "config/onex/runtime/runtime_config.yaml"
+        runtime = workspace / handler_onex_setup.RUNTIME_CONFIG_RELPATH
         assert runtime.read_text().splitlines()[0] == handler_onex_setup.SETUP_MARKER
         assert 'type: "inmemory"' in runtime.read_text()
         assert (home / ".onex/config.yaml").is_file()
         assert (home / ".onex/setup.json").is_file()
-        assert f'export OMNIBASE_PATH="{workspace}"' in result.output
+        assert "Setup complete" in result.output
 
-    def test_omni_home_bridge_is_a_derivation_source(
+    def test_omni_home_is_not_a_derivation_source(
         self, home: Path, tmp_path: Path
     ) -> None:
         workspace = tmp_path / "bridge"
         result = _run(["--no-interactive"], OMNI_HOME=str(workspace))
-        assert result.exit_code == 0, result.output
-        assert (workspace / "config/onex/runtime/runtime_config.yaml").is_file()
+        assert result.exit_code == 1
+        assert "--workspace is missing" in result.output
+        assert not (workspace / handler_onex_setup.RUNTIME_CONFIG_RELPATH).exists()
 
     def test_scripted_empty_environment_prompts_once_for_the_workspace(
         self, home: Path, tmp_path: Path
@@ -139,7 +215,7 @@ class TestSetupWalk:
         ]
         assert len(prompts) == 1, result.output
         assert "Install path" not in result.output, "prompted for a defaulted value"
-        assert (workspace / "config/onex/runtime/runtime_config.yaml").is_file()
+        assert (workspace / handler_onex_setup.RUNTIME_CONFIG_RELPATH).is_file()
 
     def test_empty_environment_without_a_terminal_stops_and_names_the_fix(
         self, home: Path
@@ -148,7 +224,6 @@ class TestSetupWalk:
 
         assert result.exit_code == 1
         assert "Workspace root" not in result.output, "prompted without a terminal"
-        assert "step 'arguments' failed" in result.output
         assert "--workspace is missing" in result.output
         assert "export OMNIBASE_PATH" in result.output
         assert not (home / ".onex").exists(), "wrote state before the walk could run"
@@ -159,7 +234,7 @@ class TestSetupWalk:
         workspace = tmp_path / "remembered"
         first = _run(["--no-interactive", "--workspace", str(workspace)])
         assert first.exit_code == 0, first.output
-        second = _run(["--interactive"], prompt_input="")
+        second = _run(["--interactive"], prompt_input="\n")
         assert second.exit_code == 0, second.output
         assert "Workspace root" not in second.output
 
@@ -170,10 +245,12 @@ class TestSetupWalk:
         result = _run(
             ["--no-interactive", "--path", "docker"], OMNIBASE_PATH=str(workspace)
         )
-        assert result.exit_code == 0, result.output
-        runtime = workspace / "config/onex/runtime/runtime_config.yaml"
-        assert 'type: "kafka"' in runtime.read_text()
-        assert "# install-path: docker" in runtime.read_text()
+        # The legacy command only wrote Kafka settings. Until the actual Docker
+        # lifecycle is connected, a selected Docker setup must refuse before
+        # claiming completion or writing a partial native installation.
+        assert result.exit_code != 0
+        assert not workspace.exists()
+        assert not (home / ".onex").exists()
 
     def test_cloud_path_is_refused_with_the_choices(
         self, home: Path, tmp_path: Path
@@ -202,6 +279,13 @@ class TestSetupIdempotent:
             path_choice,
         ]
         first = _run(args)
+        if path_choice == "docker":
+            before = _snapshot(home)
+            second = _run(args)
+            assert first.exit_code != 0
+            assert second.exit_code != 0
+            assert _snapshot(home) == before
+            return
         assert first.exit_code == 0, first.output
         before = _snapshot(home, workspace)
 
@@ -215,7 +299,7 @@ class TestSetupIdempotent:
     ) -> None:
         workspace = tmp_path / "ws"
         first = _run(
-            ["--no-interactive", "--workspace", str(workspace), "--path", "docker"]
+            ["--no-interactive", "--workspace", str(workspace), "--path", "local"]
         )
         assert first.exit_code == 0, first.output
         before = _snapshot(home, workspace)
@@ -235,6 +319,147 @@ class TestSetupIdempotent:
         assert config.read_text() == "version: 1\nmode: local\n"
 
 
+@pytest.mark.unit
+def test_a_workspace_link_is_followed_and_setup_names_the_real_folder(
+    home: Path, tmp_path: Path
+) -> None:
+    """OMN-23413, operator decision 23413-G9-FOLLOW (2026-11-22): an explicit
+    --workspace that is a symlink is followed as the user's choice, and what
+    setup prints says which real folder it writes to, next to the link given."""
+    base = tmp_path.resolve()  # tmp_path itself may sit behind a link (macOS /var)
+    real = base / "real"
+    real.mkdir()
+    link = base / "link"
+    link.symlink_to(real, target_is_directory=True)
+
+    result = _run(["--no-interactive", "--workspace", str(link)])
+
+    assert result.exit_code == 0, result.output
+    assert (real / handler_onex_setup.RUNTIME_CONFIG_RELPATH).is_file()
+    named = [
+        line
+        for line in result.output.splitlines()
+        if str(link) in line and str(real) in line
+    ]
+    assert named, (
+        f"setup never said that the link {link} writes into the real folder "
+        f"{real}:\n{result.output}"
+    )
+
+    # A folder that is not a link, or a path with ".." and no link, gets no
+    # link notice.
+    (base / "sub").mkdir()
+    for plain_path in (base / "plain", base / "sub" / ".." / "plain-too"):
+        plain = _run(["--no-interactive", "--workspace", str(plain_path)])
+        assert plain.exit_code == 0, plain.output
+        assert _LINK_NOTICE not in plain.output
+
+
+_LINK_NOTICE = "through a link"
+
+
+def _link_then_dotdot(base: Path, relative: bool) -> tuple[str, Path, Path]:
+    """a/link -> b/c, so a/link/../x is b/x on disk, while a/x as text."""
+    (base / "a").mkdir()
+    (base / "b" / "c").mkdir(parents=True)
+    (base / "a" / "link").symlink_to(base / "b" / "c", target_is_directory=True)
+    typed = Path("a") / "link" / ".." / "x"
+    return str(typed if relative else base / typed), base / typed, base / "b" / "x"
+
+
+def _parent_folder_link(base: Path) -> tuple[str, Path, Path]:
+    """Only a parent folder is a link: a/link/sub, a/link -> b/c."""
+    (base / "a").mkdir()
+    (base / "b" / "c").mkdir(parents=True)
+    (base / "a" / "link").symlink_to(base / "b" / "c", target_is_directory=True)
+    given = base / "a" / "link" / "sub"
+    return str(given), given, base / "b" / "c" / "sub"
+
+
+def _relative_link(base: Path) -> tuple[str, Path, Path]:
+    (base / "real").mkdir()
+    (base / "link").symlink_to(base / "real", target_is_directory=True)
+    return "link", base / "link", base / "real"
+
+
+def _link_to_link(base: Path) -> tuple[str, Path, Path]:
+    (base / "real").mkdir()
+    (base / "first").symlink_to(base / "real", target_is_directory=True)
+    (base / "second").symlink_to(base / "first", target_is_directory=True)
+    return str(base / "second"), base / "second", base / "real"
+
+
+def _dangling_link(base: Path) -> tuple[str, Path, Path]:
+    (base / "link").symlink_to(base / "missing", target_is_directory=True)
+    return str(base / "link"), base / "link", base / "missing"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "layout",
+    [
+        lambda base: _link_then_dotdot(base, relative=False),
+        lambda base: _link_then_dotdot(base, relative=True),
+        _parent_folder_link,
+        _relative_link,
+        _link_to_link,
+        _dangling_link,
+    ],
+    ids=[
+        "link-then-dotdot-absolute",
+        "link-then-dotdot-relative",
+        "parent-folder-link",
+        "relative-link",
+        "link-to-link",
+        "dangling-link",
+    ],
+)
+def test_every_workspace_reached_through_a_link_names_where_setup_writes(
+    home: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    layout: Callable[[Path], tuple[str, Path, Path]],
+) -> None:
+    """OMN-23413, 23413-G9-FOLLOW: the notice names the folder setup really
+    writes to, the way setup resolves the workspace (links first, then ..), and
+    says only what is true when the link is a parent folder."""
+    base = tmp_path.resolve()
+    monkeypatch.chdir(base)
+    typed, given, real = layout(base)
+
+    result = _run(["--no-interactive", "--workspace", typed])
+
+    assert result.exit_code == 0, result.output
+    assert (real / handler_onex_setup.RUNTIME_CONFIG_RELPATH).is_file()
+    notices = [line for line in result.output.splitlines() if _LINK_NOTICE in line]
+    assert len(notices) == 1, (
+        f"no notice said {typed} reaches the real folder {real} {_LINK_NOTICE}:\n"
+        f"{result.output}"
+    )
+    assert str(given) in notices[0]
+    assert str(real) in notices[0]
+    assert "is a link" not in result.output
+
+
+@pytest.mark.unit
+def test_under_json_the_link_notice_goes_to_stderr(home: Path, tmp_path: Path) -> None:
+    """OMN-23413, 23413-G9-FOLLOW: stdout stays the one typed result."""
+    base = tmp_path.resolve()
+    (base / "real").mkdir()
+    link = base / "link"
+    link.symlink_to(base / "real", target_is_directory=True)
+
+    result = _run(["--no-interactive", "--json", "--workspace", str(link)])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["workspace"] == str(base / "real")
+    assert _LINK_NOTICE not in result.stdout
+    notices = [line for line in result.stderr.splitlines() if _LINK_NOTICE in line]
+    assert len(notices) == 1, result.stderr
+    assert str(link) in notices[0]
+    assert str(base / "real") in notices[0]
+
+
 def _break_workspace(home: Path, workspace: Path, mp: pytest.MonkeyPatch) -> list[str]:
     workspace.parent.mkdir(parents=True, exist_ok=True)
     workspace.write_text("a file where the workspace directory should be\n")
@@ -249,15 +474,23 @@ def _break_prerequisites(
     home: Path, workspace: Path, mp: pytest.MonkeyPatch
 ) -> list[str]:
     mp.setattr(
-        handler_onex_setup,
-        "which",
-        lambda name: None if name == "docker" else f"/usr/bin/{name}",
+        HandlerSetupPreflight,
+        "observe",
+        lambda _self, _plan: ModelSetupObservation(
+            step="preflight",
+            status="unavailable",
+            fix="Install the missing prerequisite tool.",
+        ),
     )
-    return ["--no-interactive", "--workspace", str(workspace), "--path", "docker"]
+    return ["--no-interactive", "--workspace", str(workspace)]
 
 
 def _fix_prerequisites(home: Path, workspace: Path, mp: pytest.MonkeyPatch) -> None:
-    mp.setattr(handler_onex_setup, "which", lambda name: f"/usr/bin/{name}")
+    mp.setattr(
+        HandlerSetupPreflight,
+        "observe",
+        lambda _self, _plan: ModelSetupObservation(step="preflight", status="success"),
+    )
 
 
 def _break_user_config(
@@ -276,20 +509,21 @@ def _fix_user_config(home: Path, workspace: Path, mp: pytest.MonkeyPatch) -> Non
 def _break_runtime_config(
     home: Path, workspace: Path, mp: pytest.MonkeyPatch
 ) -> list[str]:
-    runtime = workspace / "config/onex/runtime/runtime_config.yaml"
+    runtime = workspace / handler_onex_setup.RUNTIME_CONFIG_RELPATH
     runtime.parent.mkdir(parents=True, exist_ok=True)
+    (workspace / ".onex-setup-workspace").write_text("onex setup\n")
     runtime.write_text("name: hand-written\n")
     return ["--no-interactive", "--workspace", str(workspace)]
 
 
 def _fix_runtime_config(home: Path, workspace: Path, mp: pytest.MonkeyPatch) -> None:
-    runtime = workspace / "config/onex/runtime/runtime_config.yaml"
+    runtime = workspace / handler_onex_setup.RUNTIME_CONFIG_RELPATH
     runtime.rename(runtime.with_suffix(".yaml.bak"))
 
 
 def _break_model(home: Path, workspace: Path, mp: pytest.MonkeyPatch) -> list[str]:
     def refuse(request: ModelOnexSetupRequest) -> ModelOnexSetupReceipt:
-        raise handler_onex_setup._StepFailedError(
+        raise handler_onex_setup.StepFailedError(
             "model", "the provider refused the key", "check the key"
         )
 
@@ -327,7 +561,9 @@ class TestSetupFailureAndResume:
 
         failed = _run(args)
         assert failed.exit_code == 1, failed.output
-        assert f"step '{step}' failed" in failed.output
+        actual_step = {"prerequisites": "preflight", "model": "models"}.get(step, step)
+        # Through the local runtime (OMN-24455) a failed step reads "step '<step>' failed".
+        assert re.search(rf"step '{actual_step}' failed", failed.output), failed.output
         fix_lines = [
             line for line in failed.output.splitlines() if line.startswith("Fix: ")
         ]
@@ -339,7 +575,7 @@ class TestSetupFailureAndResume:
         fix(home, workspace, monkeypatch)
         resumed = _run(retry_args)
         assert resumed.exit_code == 0, resumed.output
-        assert (workspace / "config/onex/runtime/runtime_config.yaml").is_file()
+        assert (workspace / handler_onex_setup.RUNTIME_CONFIG_RELPATH).is_file()
         assert (home / ".onex/setup.json").is_file()
 
 

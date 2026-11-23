@@ -7,8 +7,9 @@
     {
       "pr": 5375,
       "sha": "0b0c45e11276ab22ac5d8c90a83d50783d73e2c6",
-      "verdicts": {"pull_request:": {"exit": 0, "layers": [0, 0, 0], "report_sha256": "7a880c3e98ba3cf832c96f401de9dcb3c2c0b5b5771b14ae8dd3a0881386f646"}, "merge_group:": {"exit": 0, "layers": [0, 0, 0], "report_sha256": "b257319af16e6edb8ca0434763f4c5936990e0c2519079d3ebefd1be5200d9f6"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "730dbf069741d089dcef914de7fa6873b59f1067f1da905f449174f8d3cbc70e"}},
+      "verdicts": {"pull_request:": {"exit": 0, "layers": [0, 0, 0], "report_sha256": "b4a619a7457c65e7d572354e4ebf2809bb827e1013b52f6d0df05a7e9940d252"}, "merge_group:": {"exit": 0, "layers": [0, 0, 0], "report_sha256": "b2c58e6f708f0f0e201fa93b7203d8b05c93b6930fb60db9b641796d3ee30e52"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "5daddff61bf1f3d3006a7f5fb3fde35d5b1575ee5c45f9cd943b8cafe92a348f"}},
       "check_runs": [
+        {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:21:18Z", "started_at": "2026-11-08T02:21:18Z", "id": 128699999001},
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T02:21:18Z", "started_at": "2026-11-08T02:21:18Z", "id": 128601453810},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:24:17Z", "started_at": "2026-11-08T02:24:17Z", "id": 128601996635},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:21:46Z", "started_at": "2026-11-08T02:21:46Z", "id": 128601483725},
@@ -66,6 +67,8 @@
         {"name": "Projection Exposure Drift Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:21:58Z", "started_at": "2026-11-08T02:21:58Z", "id": 128601450804},
         {"name": "Public Runner Placement (OMN-19998)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:21:53Z", "started_at": "2026-11-08T02:21:53Z", "id": 128601455639},
         {"name": "Release Identity Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:21:44Z", "started_at": "2026-11-08T02:21:44Z", "id": 128601455609},
+        {"name": "Release Proof (OMN-23413)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:24:17Z", "started_at": "2026-11-08T02:24:17Z", "id": 128607209155},
+        {"name": "Collection Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:24:17Z", "started_at": "2026-11-08T02:24:17Z", "id": 128607209156},
         {"name": "Release Staleness (OMN-18010)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:21:34Z", "started_at": "2026-11-08T02:21:34Z", "id": 128601455603},
         {"name": "Repo Evidence Dependency", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:23:41Z", "started_at": "2026-11-08T02:23:41Z", "id": 128601455387},
         {"name": "Repository Structure Validation", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:21:29Z", "started_at": "2026-11-08T02:21:29Z", "id": 128601451657},
@@ -167,8 +170,9 @@
     {
       "pr": 5382,
       "sha": "808536f285661b93bf3604681e0a282d550aa160",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "92307d5b38cae914796f1974dfd5c3d1b775e9ca72e795228d72aba8f0da3f4d"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "a7649929a0fff960d019ef62c640d586c304b128811c278cda249d778513b8c9"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "573f210beebebb6ab0a3208ad160c2e6ebc5f9909d055b961dc825d7feba8b44"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "2244f8ce146d4520d36842d4f3658eef0cd101a9702c72b3c94b7714ec35cdbf"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "dc4efaff144085fe12ba98c821525079d222667fdffd7186f0298989808fc5a0"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "a51b58ef85abb03d2945992462135d73a2394fb7667884e286e434b5c6e68ea1"}},
       "check_runs": [
+        {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:51:48Z", "started_at": "2026-11-08T04:51:48Z", "id": 128699999002},
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:51:48Z", "started_at": "2026-11-08T04:51:48Z", "id": 128632429137},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:52:17Z", "started_at": "2026-11-08T04:52:17Z", "id": 128632468497},
         {"name": "BYOK Catalogue No House Entry", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:52:26Z", "started_at": "2026-11-08T04:52:26Z", "id": 128632427857},
@@ -208,6 +212,8 @@
         {"name": "Projection Exposure Drift Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:52:36Z", "started_at": "2026-11-08T04:52:36Z", "id": 128632427969},
         {"name": "Public Runner Placement (OMN-19998)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:10Z", "started_at": "2026-11-08T04:53:10Z", "id": 128632595852},
         {"name": "Release Identity Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:08Z", "started_at": "2026-11-08T04:53:08Z", "id": 128632595844},
+        {"name": "Release Proof (OMN-23413)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:52:17Z", "started_at": "2026-11-08T04:52:17Z", "id": 128632690991},
+        {"name": "Collection Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:52:17Z", "started_at": "2026-11-08T04:52:17Z", "id": 128632690992},
         {"name": "Release Staleness (OMN-18010)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:52:59Z", "started_at": "2026-11-08T04:52:59Z", "id": 128632595971},
         {"name": "Repo Evidence Dependency", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:52:44Z", "started_at": "2026-11-08T04:52:44Z", "id": 128632595922},
         {"name": "Repository Structure Validation", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:52:00Z", "started_at": "2026-11-08T04:52:00Z", "id": 128632427980},
@@ -272,8 +278,9 @@
     {
       "pr": 5383,
       "sha": "f0ff9238311b32bdc791e7b50cc4ae601507f927",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "871963dd0e1fb70ba8e849205f5eda652586aa6f3d43e058c5dead50f6b78e12"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "7dc1f5b12237f0883d90097995528b622a4fe92c98d6b48791eb39c590b6f8ed"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "5e762e2679cecb77e48ca1546bed080bac9e23809b46c8a039eaa3817e93c5e2"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "3dbf2b67e0bc78d0834ddae447c67fc3d3a8505454dcc99c7e21ab4434e657c2"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "a725c8ef794a1a3184a6e8481e868e30e08ccbe03ea48edb2db152b04e366188"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "68fdcd5361e8fde78041fa77ea9f55f768bcd7a6ded6e0bd1f8c9a86e459bfce"}},
       "check_runs": [
+        {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:45:43Z", "started_at": "2026-11-08T04:45:43Z", "id": 128699999003},
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:45:43Z", "started_at": "2026-11-08T04:45:43Z", "id": 128631228834},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:54Z", "started_at": "2026-11-08T04:47:54Z", "id": 128631545714},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:46:07Z", "started_at": "2026-11-08T04:46:07Z", "id": 128631259382},
@@ -328,6 +335,8 @@
         {"name": "Projection Exposure Drift Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:46:32Z", "started_at": "2026-11-08T04:46:32Z", "id": 128631227974},
         {"name": "Public Runner Placement (OMN-19998)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:46:16Z", "started_at": "2026-11-08T04:46:16Z", "id": 128631229255},
         {"name": "Release Identity Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:46:07Z", "started_at": "2026-11-08T04:46:07Z", "id": 128631229200},
+        {"name": "Release Proof (OMN-23413)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:54Z", "started_at": "2026-11-08T04:47:54Z", "id": 128631672679},
+        {"name": "Collection Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:54Z", "started_at": "2026-11-08T04:47:54Z", "id": 128631672680},
         {"name": "Release Staleness (OMN-18010)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:46:00Z", "started_at": "2026-11-08T04:46:00Z", "id": 128631229131},
         {"name": "Repo Evidence Dependency", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:18Z", "started_at": "2026-11-08T04:47:18Z", "id": 128631229174},
         {"name": "Repository Structure Validation", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:45:56Z", "started_at": "2026-11-08T04:45:56Z", "id": 128631227190},
@@ -407,8 +416,9 @@
     {
       "pr": 5384,
       "sha": "6a0dde94e04bedeeec651f9a2f152b51e58f2cb7",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "12ffcad2ba040491dd8a2c3e82c5232be43816a558507348f6c25e2ef4f48360"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "d4283c455e9c6a6a3c00752b64468aa84a8cecde9aafab4d8f02b8740844886e"}, "push:dev": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "26adf2b591806865df24b365d7e2459cb162c3c52f7d2a942222b6ee470458a7"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "fe44a8b6a344a1121ba1b5561d96476747092739351c15c3a4c31ef6255cc85e"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "9b37cb5bda4f102c52830320d774c5822c4ae4ba2c59cd26aa5fcd87dfaad56d"}, "push:dev": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "7975ddbb68ecb04d3310547eff2ed23e55a112d73dea10270aa2b2f48baf9a3c"}},
       "check_runs": [
+        {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:03Z", "started_at": "2026-11-08T04:53:03Z", "id": 128699999004},
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:53:03Z", "started_at": "2026-11-08T04:53:03Z", "id": 128632668388},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:26Z", "started_at": "2026-11-08T04:53:26Z", "id": 128632692280},
         {"name": "BYOK Catalogue No House Entry", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:34Z", "started_at": "2026-11-08T04:53:34Z", "id": 128632667593},
@@ -432,6 +442,8 @@
         {"name": "PR Arch Review Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:33Z", "started_at": "2026-11-08T04:53:33Z", "id": 128632745570},
         {"name": "Precommit Fail-Loud Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:23Z", "started_at": "2026-11-08T04:53:23Z", "id": 128632667420},
         {"name": "Projection Exposure Drift Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:50Z", "started_at": "2026-11-08T04:53:50Z", "id": 128632667378},
+        {"name": "Release Proof (OMN-23413)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:26Z", "started_at": "2026-11-08T04:53:26Z", "id": 128632745572},
+        {"name": "Collection Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:26Z", "started_at": "2026-11-08T04:53:26Z", "id": 128632745573},
         {"name": "Repo Evidence Dependency", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:53:07Z", "started_at": "2026-11-08T04:53:07Z", "id": 128632667588},
         {"name": "Repository Structure Validation", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:15Z", "started_at": "2026-11-08T04:53:15Z", "id": 128632667027},
         {"name": "Resolve Bot Token", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:10Z", "started_at": "2026-11-08T04:53:10Z", "id": 128632667522},
@@ -488,8 +500,9 @@
     {
       "pr": 5385,
       "sha": "bb637ecedd986e136442d0112323b1bce505432a",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "72b77ea6843a7ce4e19e8f537e8a813c31553ad29acc7fb91acbd76d7b0adcf6"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "9148445a6fbed071f2ddd2f072fa8ebdefa80ec044ef5f0fd083657dce2a6719"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "5fabd46ea9042bdf14aa67afb0b3090043c1b63ba1f7fc7856a6560ae49675af"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "1331b92d73582c2b32f3fd1898a149c280e442885a0f2665edd20d1be972a385"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "3bd542895aabc873633a7afc0e544f1680980217aca0d735de5e80f9f007220c"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "89070027d50ebab59a2d1e0e747d7c5b759b48536153ef57a7529a6712ae2779"}},
       "check_runs": [
+        {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:16Z", "started_at": "2026-11-08T04:47:16Z", "id": 128699999005},
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:47:16Z", "started_at": "2026-11-08T04:47:16Z", "id": 128631541593},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:50:24Z", "started_at": "2026-11-08T04:50:24Z", "id": 128632031835},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:37Z", "started_at": "2026-11-08T04:47:37Z", "id": 128631563643},
@@ -544,6 +557,8 @@
         {"name": "Projection Exposure Drift Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:57Z", "started_at": "2026-11-08T04:47:57Z", "id": 128631540401},
         {"name": "Public Runner Placement (OMN-19998)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:48:47Z", "started_at": "2026-11-08T04:48:47Z", "id": 128631702736},
         {"name": "Release Identity Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:48:35Z", "started_at": "2026-11-08T04:48:35Z", "id": 128631702841},
+        {"name": "Release Proof (OMN-23413)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:50:24Z", "started_at": "2026-11-08T04:50:24Z", "id": 128632148786},
+        {"name": "Collection Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:50:24Z", "started_at": "2026-11-08T04:50:24Z", "id": 128632148787},
         {"name": "Release Staleness (OMN-18010)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:48:24Z", "started_at": "2026-11-08T04:48:24Z", "id": 128631702726},
         {"name": "Repo Evidence Dependency", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:49:47Z", "started_at": "2026-11-08T04:49:47Z", "id": 128631702770},
         {"name": "Repository Structure Validation", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:27Z", "started_at": "2026-11-08T04:47:27Z", "id": 128631539964},
@@ -642,8 +657,9 @@
     {
       "pr": 5386,
       "sha": "afcf58c713b910e950c14d4669b80d46011eeace",
-      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "7c2d30b2b1a6be4b684126d36fa99666b0900fc1b270ecc368d4624a3add4a5b"}, "merge_group:": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "68dd60984e432c3ad6034ea7bfd1fd341d09ba05642a567d4c3a14dc4f52e753"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "bec7f4fb028f1487b6fbc9b3b26eb2f4978e16d1682572b66f8fd4fa4e6e2488"}},
+      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "43ca9127f616790081cce4745ce56d44b90bb96a928af95f967b5251f9ad7f1e"}, "merge_group:": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "52ab2ffa993db7939895671e92eb8f658bf058d3f78ae5ea71e2876e629fa645"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "708e31ff7d8dde38400e9ed0da3c92623a28878cd3b159ea443ea7a484325db0"}},
       "check_runs": [
+        {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:46:22Z", "started_at": "2026-11-08T03:46:22Z", "id": 128699999006},
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T03:46:22Z", "started_at": "2026-11-08T03:46:22Z", "id": 128619273518},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:48:51Z", "started_at": "2026-11-08T03:48:51Z", "id": 128619656276},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:46:50Z", "started_at": "2026-11-08T03:46:50Z", "id": 128619306175},
@@ -702,6 +718,8 @@
         {"name": "Projection Exposure Drift Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:47:12Z", "started_at": "2026-11-08T03:47:12Z", "id": 128619272448},
         {"name": "Public Runner Placement (OMN-19998)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:47:00Z", "started_at": "2026-11-08T03:47:00Z", "id": 128619274203},
         {"name": "Release Identity Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:46:51Z", "started_at": "2026-11-08T03:46:51Z", "id": 128619274159},
+        {"name": "Release Proof (OMN-23413)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:48:51Z", "started_at": "2026-11-08T03:48:51Z", "id": 128623711359},
+        {"name": "Collection Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:48:51Z", "started_at": "2026-11-08T03:48:51Z", "id": 128623711360},
         {"name": "Release Staleness (OMN-18010)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:46:42Z", "started_at": "2026-11-08T03:46:42Z", "id": 128619274177},
         {"name": "Repo Evidence Dependency", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:48:18Z", "started_at": "2026-11-08T03:48:18Z", "id": 128619274054},
         {"name": "Repository Structure Validation", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:46:35Z", "started_at": "2026-11-08T03:46:35Z", "id": 128619272282},
@@ -801,8 +819,9 @@
     {
       "pr": 5387,
       "sha": "3089a0191b93e6e73129090a539051d3f1893382",
-      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "5d2ee6bad54dcb03f73da6f8cd65438c2215b29b30b52ed691d9ebae2044b747"}, "merge_group:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "6bddd0b7219b2512a7267e571848be0829bc6bab2a220f5a0bdeea17fd88addf"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "51df73512b5830d7550880ea082bfe63fa89c89b7146d9f9f7f349a8ac1b0c81"}},
+      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "1e28d2e3d2d9a87a46211b7fd9dd265b120de8c419ce8954c44fa7a12059121e"}, "merge_group:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "1aee39044225b2fa11fec16417e8446a4ad54275106600aa995ba632463caf20"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "cac2424dbc71dd9ca74723093e491573902faba3c291fa3f9e60896e63922fbd"}},
       "check_runs": [
+        {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:53:39Z", "started_at": "2026-11-08T03:53:39Z", "id": 128699999007},
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T03:53:39Z", "started_at": "2026-11-08T03:53:39Z", "id": 128620718211},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:57:18Z", "started_at": "2026-11-08T03:57:18Z", "id": 128621301995},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:54:00Z", "started_at": "2026-11-08T03:54:00Z", "id": 128620719242},
@@ -861,6 +880,8 @@
         {"name": "Projection Exposure Drift Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:54:15Z", "started_at": "2026-11-08T03:54:15Z", "id": 128620698632},
         {"name": "Public Runner Placement (OMN-19998)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:54:15Z", "started_at": "2026-11-08T03:54:15Z", "id": 128620700992},
         {"name": "Release Identity Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:54:04Z", "started_at": "2026-11-08T03:54:04Z", "id": 128620700918},
+        {"name": "Release Proof (OMN-23413)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:57:18Z", "started_at": "2026-11-08T03:57:18Z", "id": 128625468171},
+        {"name": "Collection Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:57:18Z", "started_at": "2026-11-08T03:57:18Z", "id": 128625468172},
         {"name": "Release Staleness (OMN-18010)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:53:54Z", "started_at": "2026-11-08T03:53:54Z", "id": 128620700945},
         {"name": "Repo Evidence Dependency", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:56:46Z", "started_at": "2026-11-08T03:56:46Z", "id": 128620700728},
         {"name": "Repository Structure Validation", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:53:52Z", "started_at": "2026-11-08T03:53:52Z", "id": 128620698861},
@@ -961,8 +982,9 @@
     {
       "pr": 5388,
       "sha": "96516f0fb24f479eb24e1e72da4913afdc0b7c3d",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 0, 0], "report_sha256": "461d9af6caac87698b854110fd6be82f1be025c2e8f0ebf52f2bdcc859acf0c9"}, "merge_group:": {"exit": 2, "layers": [2, 0, 0], "report_sha256": "bd9a4ce74debd43fb73b31e861581bed4351f041f0ece388dee0e8e663efb3d5"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "24b83f775b2a0d5feefafeaeadff0a470b9a7c08828c0bcf3c0c43876682f5fa"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 0, 0], "report_sha256": "e7d06680d593dc98f6264f279bcb731dbcdddaa8428d4a0347b8eb4d8003cd59"}, "merge_group:": {"exit": 2, "layers": [2, 0, 0], "report_sha256": "d776e1110a6c79a52dde2602990114686c6213fa1eec18d59b9b7f624d67abcc"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "a042b54ef572178f8a8c84698322661bdb0e4408d63100b1f7d74dbec4eac897"}},
       "check_runs": [
+        {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:11:26Z", "started_at": "2026-11-08T04:11:26Z", "id": 128699999008},
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:11:26Z", "started_at": "2026-11-08T04:11:26Z", "id": 128624302580},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:14:15Z", "started_at": "2026-11-08T04:14:15Z", "id": 128624794593},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:11:51Z", "started_at": "2026-11-08T04:11:51Z", "id": 128624326835},
@@ -1019,6 +1041,8 @@
         {"name": "Projection Exposure Drift Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:12:14Z", "started_at": "2026-11-08T04:12:14Z", "id": 128624301216},
         {"name": "Public Runner Placement (OMN-19998)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:12:08Z", "started_at": "2026-11-08T04:12:08Z", "id": 128624303415},
         {"name": "Release Identity Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:12:01Z", "started_at": "2026-11-08T04:12:01Z", "id": 128624303389},
+        {"name": "Release Proof (OMN-23413)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:14:15Z", "started_at": "2026-11-08T04:14:15Z", "id": 128628499898},
+        {"name": "Collection Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:14:15Z", "started_at": "2026-11-08T04:14:15Z", "id": 128628499899},
         {"name": "Release Staleness (OMN-18010)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:11:52Z", "started_at": "2026-11-08T04:11:52Z", "id": 128624303497},
         {"name": "Repo Evidence Dependency", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:13:48Z", "started_at": "2026-11-08T04:13:48Z", "id": 128624303372},
         {"name": "Repository Structure Validation", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:11:36Z", "started_at": "2026-11-08T04:11:36Z", "id": 128624301576},
@@ -1101,8 +1125,9 @@
     {
       "pr": 5389,
       "sha": "331d81e5857a04e9cc89d3c497649bf0847070b7",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "d5f0b10d8fca9e96f79534e8bdc24fbf749cd25f3617e4feb9531d3ed6f763ba"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "95cde150556db28c7fa61b4c23b22f2165ca2dc74d2bd0e43488c51c873d3eb0"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "0847be6e946eadb8579cd0989d052c685b53fe76445ed65560513f43548c7549"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "85da0750905642f648c69d1c469a3a83ee5795c41c2901305a0bf6009f35f03f"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "7fb3fa051f0aa4f01bb852c88dc4e43665fe9169ecef363ea35df840ba200fda"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "bceb512ddb66ffc2eed4324802e9f7fa497ebee92153fc9da9622a18f3418b85"}},
       "check_runs": [
+        {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:45Z", "started_at": "2026-11-08T04:53:45Z", "id": 128699999009},
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:53:45Z", "started_at": "2026-11-08T04:53:45Z", "id": 128632805016},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:54:10Z", "started_at": "2026-11-08T04:54:10Z", "id": 128632831327},
         {"name": "BYOK Catalogue No House Entry", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:53:48Z", "started_at": "2026-11-08T04:53:48Z", "id": 128632804174},
@@ -1141,6 +1166,8 @@
         {"name": "Projection Exposure Drift Gate", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:53:48Z", "started_at": "2026-11-08T04:53:48Z", "id": 128632803514},
         {"name": "Public Runner Placement (OMN-19998)", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:53:48Z", "started_at": "2026-11-08T04:53:48Z", "id": 128632804836},
         {"name": "Release Identity Gate", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:53:49Z", "started_at": "2026-11-08T04:53:49Z", "id": 128632804868},
+        {"name": "Release Proof (OMN-23413)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:54:10Z", "started_at": "2026-11-08T04:54:10Z", "id": 128632882921},
+        {"name": "Collection Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:54:10Z", "started_at": "2026-11-08T04:54:10Z", "id": 128632882922},
         {"name": "Release Staleness (OMN-18010)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:54:04Z", "started_at": "2026-11-08T04:54:04Z", "id": 128632804820},
         {"name": "Repo Evidence Dependency", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:53:48Z", "started_at": "2026-11-08T04:53:48Z", "id": 128632804829},
         {"name": "Repository Structure Validation", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:56Z", "started_at": "2026-11-08T04:53:56Z", "id": 128632802870},
@@ -1205,8 +1232,9 @@
     {
       "pr": 5390,
       "sha": "bee0521217f19edf949d2199c84d76cd21689d90",
-      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "a26ad741d1a422e17fbb60143097f85caf0daf3cc91aa55c7de07e9989435dc5"}, "merge_group:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "51050db75c1929c0bb71919cd29a1251b404d9bccf9db204a97008d774ed73c4"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "0957716202b927e90ff8ba21e1f9af8c102677a14f630ab7d3d28cb3acbe63a7"}},
+      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "0e2da1b9e6d173794bc153be1aac10e6af5afd15f1ce3ea4f7c1c7912d0c2302"}, "merge_group:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "7f2f816e5d470e79c80c7982722edc0da9f06171d0b14c94b3c3af1fd3dc551b"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "4bc5bbdbe2511e64d5b86228e3af5021f9218feb39aad33cd0ce449d374fdebd"}},
       "check_runs": [
+        {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:20:55Z", "started_at": "2026-11-08T04:20:55Z", "id": 128699999010},
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:20:55Z", "started_at": "2026-11-08T04:20:55Z", "id": 128626262060},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:25:30Z", "started_at": "2026-11-08T04:25:30Z", "id": 128627104963},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:24:32Z", "started_at": "2026-11-08T04:24:32Z", "id": 128626727782},
@@ -1263,6 +1291,8 @@
         {"name": "Projection Exposure Drift Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:23:47Z", "started_at": "2026-11-08T04:23:47Z", "id": 128626260758},
         {"name": "Public Runner Placement (OMN-19998)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:24:02Z", "started_at": "2026-11-08T04:24:02Z", "id": 128626262341},
         {"name": "Release Identity Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:23:47Z", "started_at": "2026-11-08T04:23:47Z", "id": 128626262112},
+        {"name": "Release Proof (OMN-23413)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:25:30Z", "started_at": "2026-11-08T04:25:30Z", "id": 128629438511},
+        {"name": "Collection Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:25:30Z", "started_at": "2026-11-08T04:25:30Z", "id": 128629438512},
         {"name": "Release Staleness (OMN-18010)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:23:47Z", "started_at": "2026-11-08T04:23:47Z", "id": 128626262356},
         {"name": "Repo Evidence Dependency", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:25:08Z", "started_at": "2026-11-08T04:25:08Z", "id": 128626260537},
         {"name": "Repository Structure Validation", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:23:09Z", "started_at": "2026-11-08T04:23:09Z", "id": 128626260472},
@@ -1361,8 +1391,9 @@
     {
       "pr": 5391,
       "sha": "7101e23cf733189b1ff5e1d20a85192a3cff366e",
-      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "fe33d0a1363dd6afdd6affbedeaea2e5ff4f4399a34d1ca157a136b50de51184"}, "merge_group:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "e447c4e4522961c08ffe85fcdbf3e38e9742535d0e7bcbd30de4c661c1a5833e"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "44f21f342c721d1ad75b58bc7edd8d1bdcaff6f1aaf7dad9b28d1af0b5b87fec"}},
+      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "09a156b9e1e298018f1b19b08b0b467aa2cd4af08f49ea192cbb83a7248f6c22"}, "merge_group:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "69de3edbd31b5db0d9f2bebe40bb49811e6ff5f2393727b86e04a4a97ef6683a"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "07e8e7dcbaf1005fd827c59ee7fa0a92a54d2960f7c424f6743fd665d5f460b4"}},
       "check_runs": [
+        {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:39:44Z", "started_at": "2026-11-08T04:39:44Z", "id": 128699999011},
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:39:44Z", "started_at": "2026-11-08T04:39:44Z", "id": 128630057022},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:41:22Z", "started_at": "2026-11-08T04:41:22Z", "id": 128630287785},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:40:13Z", "started_at": "2026-11-08T04:40:13Z", "id": 128630089283},
@@ -1420,6 +1451,8 @@
         {"name": "Projection Exposure Drift Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:40:25Z", "started_at": "2026-11-08T04:40:25Z", "id": 128630054628},
         {"name": "Public Runner Placement (OMN-19998)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:40:27Z", "started_at": "2026-11-08T04:40:27Z", "id": 128630057233},
         {"name": "Release Identity Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:40:14Z", "started_at": "2026-11-08T04:40:14Z", "id": 128630057350},
+        {"name": "Release Proof (OMN-23413)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:41:22Z", "started_at": "2026-11-08T04:41:22Z", "id": 128630366548},
+        {"name": "Collection Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:41:22Z", "started_at": "2026-11-08T04:41:22Z", "id": 128630366549},
         {"name": "Release Staleness (OMN-18010)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:39:59Z", "started_at": "2026-11-08T04:39:59Z", "id": 128630057176},
         {"name": "Repo Evidence Dependency", "status": "completed", "conclusion": "failure", "completed_at": "2026-11-08T04:40:55Z", "started_at": "2026-11-08T04:40:55Z", "id": 128630057073},
         {"name": "Repository Structure Validation", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:39:55Z", "started_at": "2026-11-08T04:39:55Z", "id": 128630055782},
@@ -1500,8 +1533,9 @@
     {
       "pr": 5392,
       "sha": "36ef6b9dd813cfdfd272f87ad177c8dee69e3ae3",
-      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "4c623a9a55576ab172fdc5bce0a14fe7e0899517964e0ed3983088d0cf714c27"}, "merge_group:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "85f81bdc9971a8af2467291e95fe7396a2216b3ca1dfc4576718d8b0d76bfd26"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "201568ad1e957fc0e34117f07144c013b63f5af0d7ba3e965a3e2ed86453758e"}},
+      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "864c21280945c6c0047acf45bdb3dc7a7b0314f4e39d20f4c6de13004e2826a5"}, "merge_group:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "d4001a82058042a7d1badacb201cab2ea240a0b59855b3c8a4b6023e6e5024bb"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "3fd07171e77ba1213373b9a931b239b639b3e121ea440f440306eb31471e916e"}},
       "check_runs": [
+        {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:44:30Z", "started_at": "2026-11-08T04:44:30Z", "id": 128699999012},
         {"name": "AC1 exact revision row on PostgreSQL 16", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:44:30Z", "started_at": "2026-11-08T04:44:30Z", "id": 128630985447},
         {"name": "Aislop Sweep (strict, PR diff)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:00Z", "started_at": "2026-11-08T04:47:00Z", "id": 128631351149},
         {"name": "Architectural Compliance Lint", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:44:59Z", "started_at": "2026-11-08T04:44:59Z", "id": 128631007646},
@@ -1559,6 +1593,8 @@
         {"name": "Projection Exposure Drift Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:45:25Z", "started_at": "2026-11-08T04:45:25Z", "id": 128630985470},
         {"name": "Public Runner Placement (OMN-19998)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:45:32Z", "started_at": "2026-11-08T04:45:32Z", "id": 128630986189},
         {"name": "Release Identity Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:45:19Z", "started_at": "2026-11-08T04:45:19Z", "id": 128630986105},
+        {"name": "Release Proof (OMN-23413)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:00Z", "started_at": "2026-11-08T04:47:00Z", "id": 128631411124},
+        {"name": "Collection Gate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:00Z", "started_at": "2026-11-08T04:47:00Z", "id": 128631411125},
         {"name": "Release Staleness (OMN-18010)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:44:55Z", "started_at": "2026-11-08T04:44:55Z", "id": 128630986252},
         {"name": "Repo Evidence Dependency", "status": "completed", "conclusion": "failure", "completed_at": "2026-11-08T04:46:20Z", "started_at": "2026-11-08T04:46:20Z", "id": 128630986053},
         {"name": "Repository Structure Validation", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:44:49Z", "started_at": "2026-11-08T04:44:49Z", "id": 128630984663},

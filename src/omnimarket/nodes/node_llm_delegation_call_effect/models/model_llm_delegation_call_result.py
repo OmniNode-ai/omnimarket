@@ -8,7 +8,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from omnibase_core.models.delegation.wire import ModelDelegationRawResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from omnimarket.enums.enum_anthropic_stop_reason import EnumAnthropicStopReason
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
@@ -33,6 +33,16 @@ class ModelLlmDelegationCallResult(BaseModel):
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
+
+    _local_output_ceiling: int | None = PrivateAttr(default=None)
+
+    def record_local_output_ceiling(self, tokens: int) -> None:
+        """Carry the worker's budget to the local attempt recorder without changing the wire."""
+        self._local_output_ceiling = tokens
+
+    @property
+    def local_output_ceiling(self) -> int | None:
+        return self._local_output_ceiling
 
     request_id: str
     success: bool
@@ -62,8 +72,24 @@ class ModelLlmDelegationCallResult(BaseModel):
     actual_cost_usd: Decimal = Decimal("0")
     opus_equivalent_cost_usd: Decimal = Decimal("0")
     savings_usd: Decimal = Decimal("0")
+    # Token evidence only; cost provenance is carried separately by cost_basis.
     usage_source: EnumUsageSource = EnumUsageSource.UNKNOWN
     cost_basis: EnumCostBasis = EnumCostBasis.UNKNOWN
+    # OMN-23413 AC35: which source priced this call (the provider's own list,
+    # models.dev, or packaged configuration) and when that source was read
+    # (ISO UTC; None for packaged configuration). Both None when unpriced.
+    price_source: str | None = None
+    price_read_at: str | None = None
+
+    @property
+    def cost_usage_source(self) -> EnumUsageSource:
+        """Preserve the existing cost-source contracts at downstream boundaries."""
+        return (
+            EnumUsageSource.UNKNOWN
+            if self.cost_basis is EnumCostBasis.UNKNOWN
+            else EnumUsageSource.MEASURED
+        )
+
     # OMN-23756: the cost the provider itself reported for this call in its
     # usage accounting (``usage.cost``), beside the cost booked from the
     # declared price. None when the provider reported none.

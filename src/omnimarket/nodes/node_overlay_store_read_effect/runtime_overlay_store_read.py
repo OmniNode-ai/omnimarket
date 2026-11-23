@@ -26,7 +26,10 @@ from omnimarket.handlers.node_overlay_reader import (
     load_structured_overlay,
 )
 from omnimarket.handlers.overlay_store.bus_opener import open_lane_bus, workspace_root
-from omnimarket.handlers.overlay_store.snapshot_root import FileOverlaySnapshot
+from omnimarket.handlers.overlay_store.snapshot_root import (
+    FileOverlaySnapshot,
+    OverlaySnapshotError,
+)
 from omnimarket.handlers.overlay_store.store_bus_snapshot import BusSnapshotOverlayStore
 from omnimarket.handlers.overlay_store.store_in_memory import InMemoryOverlayStore
 from omnimarket.models.overlay_store import (
@@ -39,10 +42,16 @@ from omnimarket.nodes.node_overlay_store_read_effect.handlers import (
     HandlerOverlayStoreRead,
     compare_documents,
 )
+from omnimarket.nodes.node_overlay_store_read_effect.handlers.source_head import (
+    overlays_main_sha,
+)
 
 NODE = "node_overlay_store_read_effect"
 EXIT_UNREADABLE = 65
 EXIT_DIFFERS = 1
+# What one tick may spend listening on past its first window for the record of overlays main (OMN-26432). The tick's own
+# deadline is the contract's timeout_ms (120 s) and the fleet read takes a window after the refresh, so this leaves both room.
+CATCH_UP_BUDGET_S = 60.0
 
 
 def _contract() -> dict[str, Any]:
@@ -99,6 +108,14 @@ def _postgres_store(
     )
 
 
+def _readable(snapshot: FileOverlaySnapshot, overlay_id: str) -> bool:
+    try:
+        snapshot.read_stamp(overlay_id)
+    except OverlaySnapshotError:
+        return False
+    return True
+
+
 def _bus_snapshot_store(
     overlay: ModelOverlayStoreReadOverlay,
     host: str,
@@ -134,12 +151,19 @@ def _bus_snapshot_store(
             root=workspace_root(env),
         )
 
+    # A stable group resumes where the last window stopped, so a link too slow to replay the whole topic in one window
+    # still reaches its newest record in a few ticks. A host whose snapshot is missing or unreadable listens under a
+    # fresh group instead, which replays from the earliest offset and so fills it, whatever the stable group's position.
+    snapshot = _snapshot(overlay)
+    resume = all(_readable(snapshot, overlay_id) for overlay_id in overlay.overlays)
     return (
         BusSnapshotOverlayStore(
             open_bus=open_snapshot_bus,
             topic=contract["snapshot_read"]["topic"],
             group_prefix=f"{NODE}.{host}",
             window_s=overlay.read_window_s,
+            group_id=f"{NODE}.{host}.snapshot" if resume else None,
+            catch_up_budget_s=CATCH_UP_BUDGET_S,
         ),
         _BusReporter(open_bus, contract["event_bus"]["publish_topics"][0]),
     )
@@ -169,6 +193,7 @@ def build_handler(
         reporter=reporter,
         host=host,
         policies=overlay.overlays,
+        source_head=lambda: overlays_main_sha(env),
     )
 
 

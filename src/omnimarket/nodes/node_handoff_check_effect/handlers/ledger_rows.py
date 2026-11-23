@@ -1,22 +1,26 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Read the rolling work ledger and its archive rolls into typed rows."""
+"""Typed rows of the rolling work ledger, read through the ledger-rows port."""
 
 from __future__ import annotations
 
 import datetime as dt
 import re
 from collections.abc import Sequence
-from pathlib import Path
 
+from omnimarket.nodes.node_handoff_check_effect.adapters.bus_ledger_rows import (
+    MAX_WINDOW_HOURS,
+)
 from omnimarket.nodes.node_handoff_check_effect.models import (
     ModelLedgerRow,
     ModelRulingGatePolicy,
     fmt_ts,
     parse_ts,
 )
+from omnimarket.nodes.node_handoff_check_effect.protocols import ProtocolLedgerRows
 
 ROW_RE = re.compile(r"^(20\d\d-\d\d-\d\dT\d\d:\d\d:\d\dZ) \| ([A-Z][A-Z-]*) \|")
+LEDGER_REF = "ledger"
 KV_RE = re.compile(r"^([A-Za-z][A-Za-z0-9_-]*)=(.*)$")
 
 
@@ -38,20 +42,26 @@ def parse_row(line: str, ref: str) -> ModelLedgerRow | None:
     )
 
 
-def load_rows(ledger: Path, archive_dir: Path | None) -> list[ModelLedgerRow]:
-    files = (
-        sorted(archive_dir.glob("*.md")) if archive_dir and archive_dir.is_dir() else []
-    )
+class LedgerRowsUnreadableError(Exception):
+    """The ledger-rows port gave no rows (unreadable or not moved); never read as an empty ledger."""
+
+
+def load_rows(
+    port: ProtocolLedgerRows, window_hours: int = MAX_WINDOW_HOURS
+) -> list[ModelLedgerRow]:
+    """The ledger's rows of the window through the port, oldest first, duplicates dropped."""
+    answer = port.read_rows(window_hours)
+    if answer.status not in ("ok", "stale"):
+        raise LedgerRowsUnreadableError(
+            f"ledger rows {answer.status}: {answer.reason or 'no reason given'}"
+        )
     seen: set[str] = set()
     rows: list[ModelLedgerRow] = []
-    for path in [*files, ledger]:
-        label = f"{path.parent.name}/{path.name}" if path != ledger else "ledger"
-        text = path.read_text(encoding="utf-8", errors="replace")
-        for number, line in enumerate(text.splitlines(), 1):
-            row = parse_row(line, f"{label}:{number}")
-            if row and row.raw not in seen:
-                seen.add(row.raw)
-                rows.append(row)
+    for number, line in enumerate(answer.lines, 1):
+        row = parse_row(line, f"{LEDGER_REF}:{number}")
+        if row and row.raw not in seen:
+            seen.add(row.raw)
+            rows.append(row)
     rows.sort(key=lambda r: r.ts)
     return rows
 

@@ -53,6 +53,8 @@ class EnumGithubGatewayOperation(StrEnum):
     PR_HEADS = "pr_heads"
     # OMN-21146
     COMMIT_CHECK_RUNS = "commit_check_runs"
+    # The statuses posted on a commit (the review gate's fable-review-gate is one).
+    COMMIT_STATUSES = "commit_statuses"
     MERGED_PR = "merged_pr"
     # The review threads of a PR, with the resolved state only GraphQL reports.
     PR_REVIEW_THREADS = "pr_review_threads"
@@ -161,13 +163,20 @@ class ModelGithubGatewayRequest(BaseModel):
         pattern=r"^[0-9a-f]{40}$",
         description=(
             "workflow_runs: runs at this head commit; pr_heads: PRs whose head is this commit; "
-            "commit_check_runs: required commit to read."
+            "commit_check_runs and commit_statuses: required commit to read."
         ),
     )
     check_name: str | None = Field(
         default=None,
         min_length=1,
         description="commit_check_runs only: keep check runs of this name",
+    )
+    include_output: bool = Field(
+        default=False,
+        description=(
+            "commit_check_runs only: also return each check run's output summary "
+            "(cut at MAX_TEXT_CHARS); off by default so a plain read stays small."
+        ),
     )
     workflow: str | None = Field(
         default=None,
@@ -230,18 +239,20 @@ class ModelGithubGatewayRequest(BaseModel):
     )
 
     @model_serializer(mode="wrap")
-    def _omit_unset_file_path(
+    def _omit_fields_a_read_does_not_use(
         self, handler: SerializerFunctionWrapHandler
     ) -> dict[str, object]:
-        """Send ``file_path`` only when a read names one (OMN-24187).
+        """Leave off the wire what a read does not use.
 
-        A node that predates the field refuses every request that carries it
-        (``extra_forbid``), so a null ``file_path`` on each other read would
-        break all of them until the node is redeployed.
+        A node that predates ``file_path`` (OMN-24187) or ``include_output``
+        refuses every request carrying it (``extra_forbid``), so a null
+        ``file_path`` or an off ``include_output`` must not be sent.
         """
-        data: dict[str, object] = handler(self)
+        data: dict[str, object] = dict(handler(self))
         if data.get("file_path") is None:
             data.pop("file_path", None)
+        if data.get("include_output") is False:
+            data.pop("include_output")
         return data
 
     @model_validator(mode="after")
@@ -277,6 +288,11 @@ class ModelGithubGatewayRequest(BaseModel):
             raise ValueError(
                 "operation 'commit_check_runs' requires head_sha to be set."
             )
+        if (
+            self.operation is EnumGithubGatewayOperation.COMMIT_STATUSES
+            and self.head_sha is None
+        ):
+            raise ValueError("operation 'commit_statuses' requires head_sha to be set.")
         if self.operation is EnumGithubGatewayOperation.CODE_SCANNING_ALERTS and (
             self.pr_number is None
         ) == (self.branch is None):
@@ -787,6 +803,18 @@ class ModelCheckRun(BaseModel):
     head_branch: str | None = None
     started_at: str | None = None
     completed_at: str | None = None
+    #: The check run's output summary, only when the request set ``include_output``.
+    output_summary: str | None = Field(default=None, max_length=MAX_TEXT_CHARS)
+
+    @model_serializer(mode="wrap")
+    def _omit_an_unset_summary(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, object]:
+        """An answer that carries no summary has the shape it had before the field existed, so an older consumer decodes it."""
+        dumped = dict(handler(self))
+        if dumped.get("output_summary") is None:
+            dumped.pop("output_summary", None)
+        return dumped
 
 
 class ModelCommitCheckRunsResult(_ModelBoundedList):
@@ -797,6 +825,28 @@ class ModelCommitCheckRunsResult(_ModelBoundedList):
     head_sha: str
     check_name: str | None = None
     check_runs: list[ModelCheckRun] = Field(default_factory=list)
+
+
+class ModelCommitStatus(BaseModel):
+    """One commit status posted on a commit."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: int
+    context: str
+    state: str
+    target_url: str | None = None
+    description: str | None = None
+    created_at: str | None = None
+
+
+class ModelCommitStatusesResult(_ModelBoundedList):
+    """The statuses posted on a commit, newest first (replaces ``gh api repos/<r>/commits/<sha>/statuses``)."""
+
+    operation: Literal["commit_statuses"] = "commit_statuses"
+    repo: str
+    head_sha: str
+    statuses: list[ModelCommitStatus] = Field(default_factory=list)
 
 
 class ModelCodeScanningAlert(BaseModel):
@@ -971,6 +1021,7 @@ GithubGatewayResult = Annotated[
     | ModelReleasesResult
     | ModelPrHeadsResult
     | ModelCommitCheckRunsResult
+    | ModelCommitStatusesResult
     | ModelMergedPrResult
     | ModelRepoFileResult
     | ModelCodeScanningAlertsResult
@@ -1014,6 +1065,8 @@ __all__: list[str] = [
     "ModelCodeScanningAlert",
     "ModelCodeScanningAlertsResult",
     "ModelCommitCheckRunsResult",
+    "ModelCommitStatus",
+    "ModelCommitStatusesResult",
     "ModelGithubGatewayRequest",
     "ModelGithubGatewayResponse",
     "ModelJobLogFillResult",

@@ -504,10 +504,178 @@ units:
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
     evidence_file: .local/state/omni/lane-ctx-ledger-dedupe/last-run.json
     state_directory: .onex_state/lane-ctx-ledger-dedupe
+  # The lab host's ledger mirror (node_work_ledger_host_mirror_effect, OMN-25537): every 120 s a Linux lab host appends the
+  # rows of the ledger of record it has not seen to <registry root>/.onex_state/ledger-mirror/host-ledger-mirror.md (authority rows, 1 day) and host-ledger-rulings.md (rulings and consents, 30 days), read over
+  # the bus from the work ledger read node (the unit names the read command and the workspace config root the command resolves
+  # its lane from). The hourly clone fast-forward moves only tracked files, so on 2026-11-18 the newest canonical row on
+  # h051, h053, h201 and h202 was 35 days old. The period (120 s), the 100 s run limit and the projection lag (60 s) sum
+  # to under the 300 s a ruling may take to reach a host; a test holds that sum. The probe runs the module's help request.
+  ledger-host-mirror-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-ledger-host-mirror
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 120
+      run_timeout_s: 100
+      run_at_load: true
+      description: every 120 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_work_ledger_host_mirror_effect.runtime_work_ledger_host_mirror_tick
+    entry_file: src/omnimarket/nodes/node_work_ledger_host_mirror_effect/runtime_work_ledger_host_mirror_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment:
+      ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/omnibase_infra/.venv/bin/onex ledger query --stdin"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/ledger-host-mirror/last-run.json
+    state_directory: .onex_state/ledger-host-mirror
+  # The standing lane dispatcher on a lab host (node_lane_dispatch_intake_effect, OMN-26412): every 60 s one tick reads the MSG
+  # rows addressed to labdispatch from the host's ledger mirror and places at most max_placements requested lanes, strictly one
+  # after another, through the lane-brief skill and the remote-lane runner detached, with one STATUS row per placement. The
+  # run limit (580 s) is under the 600 s any one call of the tick may take, and a oneshot service never overlaps itself, so two
+  # ticks never place at once. MSG rows are read and STATUS rows written over the bus (no ledger file is read or written by the tick); the
+  # unit template already sets the registry root and the tool directory that holds claude and uv.
+  lane-dispatch-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-lane-dispatch
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 60
+      run_timeout_s: 580
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_lane_dispatch_intake_effect.runtime_lane_dispatch_tick
+    entry_file: src/omnimarket/nodes/node_lane_dispatch_intake_effect/runtime_lane_dispatch_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment:
+      ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/omnibase_infra/.venv/bin/onex ledger query --stdin"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+      ONEX_LANE_DISPATCH_BUS_APPEND: "{registry_root}/.onex-dispatch-venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+      ONEX_LEDGER_HOST_NAME: h202
+      ONEX_LANE_DISPATCH_PARENT: labdispatch
+      ONEX_LANE_DISPATCH_PLUGIN_ROOT: "{marketplace_root}/plugins/omni"
+    evidence_file: .local/state/omni/lane-dispatch/last-run.json
+    state_directory: .onex_state/lane-dispatch
+  # The daily ledger-file census record (node_work_ledger_file_census_effect): once a day and at load one tick runs the
+  # census over the registry root's omnimarket clone with the overlay and ratchet file packaged with the node, prints the daily
+  # record as one typed JSON line and keeps it in the unit's evidence file. The run limit (300 s) is the node's timeout_ms and
+  # is under the 86400 s interval. The tick reads and writes no ledger file.
+  ledger-file-census-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-ledger-file-census
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 86400
+      run_timeout_s: 300
+      run_at_load: true
+      description: once a day and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    probe_argv: ["--probe"]
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_work_ledger_file_census_effect.runtime_file_census_tick
+    entry_file: src/omnimarket/nodes/node_work_ledger_file_census_effect/runtime_file_census_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment:
+      ONEX_LEDGER_CENSUS_ROOT: "{registry_root}"
+    evidence_file: .local/state/omni/ledger-file-census/last-run.json
+    state_directory: .onex_state/ledger-file-census
   # The capture silence watch (node_capture_silence_watch_effect): the host ran this node from a /tmp copy of the source
   # until this declaration replaced it. The database address (no password) and the reference of the login's password are request
   # inputs persisted in the unit (OMN-24325); the environment file stays an optional place for overrides and is never required.
   # The unit holds no secret value.
+  # OMN-25405: the alarm for a stalled orchestrating session, on the operator Mac. One tick every 300 s reads the newest
+  # session transcript the node's overlay names (the overlays repository, node_session_stall_alarm_effect), judges its queue
+  # rows and delivers a stall once through the lab alarm delivery (node_lab_alarm_deliver_effect, whose overlay names the
+  # alert channel and the ledger). A run that outlives run_timeout_s is ended with its process group and exits 124.
+  session-stall-alarm:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.session-stall-alarm
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 300
+      run_at_load: true
+      description: every 300 s and at load
+    registry_project: omnimarket
+    # Equal to the node contract's timeout_ms (120000 / 1000); under the 300 s interval.
+    run_timeout_s: 120
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_session_stall_alarm_effect.runtime_session_stall_tick
+    entry_file: src/omnimarket/nodes/node_session_stall_alarm_effect/runtime_session_stall_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+    evidence_file: .local/state/omni/session-stall-alarm/last-run.json
+    state_directory: .onex_state/session-stall-alarm
+    log_directory: .local/state/omni/session-stall-alarm
+  tailscale-key-expiry-alarm:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.tailscale-key-expiry-alarm
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 21600
+      run_at_load: true
+      description: every six hours and at load
+    registry_project: omnimarket
+    run_timeout_s: 360
+    tick_no_sync: true
+    probe_argv: [--probe]
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_tailscale_key_expiry_alarm_effect.runtime_key_expiry_tick
+    entry_file: src/omnimarket/nodes/node_tailscale_key_expiry_alarm_effect/runtime_key_expiry_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      TAILSCALE_BE_CLI: "1"
+    evidence_file: .local/state/omni/tailscale-key-expiry-alarm/last-run.json
+    state_directory: .onex_state/tailscale-key-expiry-alarm
+    log_directory: .local/state/omni/tailscale-key-expiry-alarm
   capture-silence-watch:
     platform: systemd
     kind: registry_module_tick
@@ -595,10 +763,12 @@ units:
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
     evidence_file: .local/state/omni/c32-auth-boundary-probe/last-run.json
     state_directory: .onex_state/c32-auth-boundary-probe
-  # The overlay store's loader on a Linux pool host (OMN-23353): once an hour it loads the overlays the loader's overlay
-  # names from this host's clone of the overlay home, and only while that clone is at the head of the branch the overlay
+  # The overlay store's loader on a Linux pool host (OMN-23353): every 300 s it checks this host's clone of the overlay home,
+  # and loads the overlays the loader's overlay names when the clone's main has moved past the revision of the last load
+  # (and once an hour to assert an unchanged overlay), and only while that clone is at the head of the branch the overlay
   # names (main), so the store is never filled from a side branch. The overlay root is that clone itself. This replaces
-  # a hand-started transient timer that loaded a stale branch.
+  # a hand-started transient timer that loaded a stale branch. At one run an hour a merged change waited up to an hour for
+  # the store (OMN-26432); the tick publishes only on a move, so the shorter interval adds no record to the topic.
   overlay-store-load-systemd:
     platform: systemd
     kind: registry_module_tick
@@ -606,10 +776,10 @@ units:
     template: templates/onex-registry-module-tick.service.tmpl
     timer_template: templates/onex-registry-module-tick.timer.tmpl
     schedule:
-      start_interval: 3600
+      start_interval: 300
       run_timeout_s: 120
       run_at_load: true
-      description: every 3600 s and at load
+      description: every 300 s and at load
     registry_project: omnimarket
     tick_no_sync: true
     interpreter_candidates:
@@ -714,6 +884,82 @@ units:
     required_environment_inputs: [ONEX_LEDGER_HOST_NAME]
     evidence_file: .local/state/omni/pilot-measurement/last-run.json
     state_directory: .onex_state/pilot-measurement
+  # The node's daily read of the copies of the lab host table; its copies, row lane and ledger route are in the node's
+  # overlay (found under ONEX_SKILL_OVERLAY_ROOTS); the unit holds only where the appender and host name are on this host (OMN-25159).
+  host-table-copies-drift-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-host-table-copies-drift
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 86400
+      run_timeout_s: 120
+      run_at_load: false
+      description: every 86400 s
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_host_table_copies_drift_compute.runtime_host_table_copies_drift_tick
+    entry_file: src/omnimarket/nodes/node_host_table_copies_drift_compute/runtime_host_table_copies_drift_tick.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    environment_inputs:
+      ONEX_LEDGER_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_LEDGER_HOST_NAME]
+    evidence_file: .local/state/omni/host-table-copies-drift/last-run.json
+    state_directory: .onex_state/host-table-copies-drift
+  # The host job claim read (node_host_job_claim_compute, OMN-25093): once an hour one pass reads the unit files of this
+  # machine against its role's job table (the node's overlay, found under ONEX_SKILL_OVERLAY_ROOTS) and puts the run record
+  # on the bus as the node's run-completed topic. The host is the one the unit is installed on, named by
+  # ONEX_LEDGER_HOST_NAME; the node only reads, so the unit writes the evidence file and publishes, and nothing else.
+  host-job-claim-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-host-job-claim
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 3600
+      run_timeout_s: 120
+      run_at_load: true
+      description: every 3600 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_host_job_claim_compute.runtime_host_job_claim_tick
+    entry_file: src/omnimarket/nodes/node_host_job_claim_compute/runtime_host_job_claim_tick.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    environment_inputs:
+      ONEX_LEDGER_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_LEDGER_HOST_NAME]
+    evidence_file: .local/state/omni/host-job-claim/last-run.json
+    state_directory: .onex_state/host-job-claim
   # The R2 delegation scenario's tick: the scenario's settings are not in the unit (the tick reads them from the
   # secret store through the host's machine identity), and the optional environment file may hold overrides.
   scenario-r2-systemd:
@@ -832,7 +1078,8 @@ units:
     timer_template: templates/onex-registry-module-tick.timer.tmpl
     schedule:
       start_interval: 21600
-      run_timeout_s: 900
+      # Leave the original run budget after the readiness wait of up to 850 s.
+      run_timeout_s: 1800
       run_at_load: true
       description: every 21600 s and at load
     registry_project: omnimarket
@@ -874,7 +1121,8 @@ units:
     timer_template: templates/onex-registry-module-tick.timer.tmpl
     schedule:
       start_interval: 3600
-      run_timeout_s: 900
+      # Leave the original run budget after the readiness wait of up to 850 s.
+      run_timeout_s: 1800
       run_at_load: true
       description: every 3600 s and at load
     registry_project: omnimarket
@@ -906,6 +1154,40 @@ units:
     required_environment_inputs: [ONEX_HOST_NAME]
     evidence_file: .local/state/omni/delegation-scenario-r9/last-run.json
     state_directory: .onex_state/delegation-scenario-r9
+  # The delegation scenario alarm's tick (OMN-24874): reads the R8 and R9 last-run records on this host and appends one ledger
+  # alarm row per failed run over the bus; it holds no secret and no environment file.
+  scenario-alarm-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-delegation-scenario-alarm
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 900
+      run_timeout_s: 300
+      run_at_load: true
+      description: every 900 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_delegation_scenario_alarm_effect.runtime_delegation_scenario_alarm_tick
+    entry_file: src/omnimarket/nodes/node_delegation_scenario_alarm_effect/runtime_delegation_scenario_alarm_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment:
+      PATH: "{registry_root}/omnibase_infra/scripts:{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+      ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+      # The ledger append opens the lane's bus: the lane declaration table (config/lab/ci_bus_lanes.yaml) is found under this root.
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    environment_inputs:
+      ONEX_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_HOST_NAME]
+    evidence_file: .local/state/omni/delegation-scenario-alarm/last-run.json
+    state_directory: .onex_state/delegation-scenario-alarm
   # The R4 delegation scenario's tick: loopback stubs, so the unit holds no secret setting and no environment file.
   scenario-r4-systemd:
     platform: systemd
@@ -1093,6 +1375,39 @@ units:
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/job-log-filler/last-run.json
     state_directory: .onex_state/job-log-filler
+  # The host owning the PR watcher and the rolling ledger runs the review-gate probe.
+  review-gate-context-probe:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.review-gate-context-probe
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 300
+      run_at_load: true
+      description: every 300 s and at load
+    registry_project: omnimarket
+    run_timeout_s: 120
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_review_gate_context_orchestrator.runtime_review_gate_context_sweep
+    entry_file: src/omnimarket/nodes/node_review_gate_context_orchestrator/runtime_review_gate_context_sweep.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+      - ONEX_PR_WATCHER_STATE
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      ONEX_PR_WATCHER_STATE: "{registry_root}/.claude_scratch/pr-watcher/state.json"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/.onex-dispatch-venv/bin/onex ledger query --stdin"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/review-gate-context-probe/last-run.json
+    state_directory: .onex_state/review-gate-context-probe
   # The hourly work-ledger parity receipt writer (OMN-23258, node_work_ledger_parity_receipt_effect of OMN-23251). It runs on the
   # host that holds both the parity DSN and the current ledger file (h200). The schedule host, interval and settings are the
   # node's overlay in the overlays repository; the host-specific paths below are overridable at install (the ledger command
@@ -1445,6 +1760,137 @@ units:
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
     evidence_file: .local/state/omni/lab-disk-hygiene/last-run.json
     state_directory: .onex_state/lab-disk-hygiene
+  # The Temporal health alarm on the lab host that runs the self-hosted Temporal server (OMN-24900): every 60 s it reads
+  # the server's cluster health and the worker's task queue pollers and appends one alarm row per episode.
+  temporal-health-alarm-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-temporal-health-alarm
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 60
+      run_timeout_s: 55
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_temporal_health_alarm_effect
+    entry_file: src/omnimarket/nodes/node_temporal_health_alarm_effect/__main__.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    # The alarm's environment is rendered into the unit by this installer (the pinned CLI the server unit fetched, the
+    # workflow 1 task queue, and the bus ledger writer); the optional environment file may only add to it.
+    environment:
+      ONEX_TEMPORAL_CLI: "{home}/.local/share/onex-temporal/cli/v1.10.1/temporal"
+      ONEX_TEMPORAL_ADDRESS: "127.0.0.1:7233"
+      ONEX_TEMPORAL_TASK_QUEUE: "onex-prove-running"
+      ONEX_LEDGER_WRITE_VIA: "bus"
+      ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+    environment_inputs:
+      ONEX_LEDGER_HOST_NAME: ledger_host_name
+      ONEX_TEMPORAL_LEDGER_FILE: ledger_path
+      OMNIBASE_INTERNAL_HOME: appender_root
+    required_environment_inputs: [ONEX_LEDGER_HOST_NAME, ONEX_TEMPORAL_LEDGER_FILE, OMNIBASE_INTERNAL_HOME]
+    environment_file: .config/onex/temporal-health-alarm.env
+    evidence_file: .local/state/omni/temporal-health-alarm/last-run.json
+    state_directory: .onex_state/temporal-health-alarm
+  # The self-hosted Temporal server on the lab host (OMN-24900): one pinned temporalio CLI release (version and sha256 in
+  # the server block of node_temporal_health_alarm_effect's contract), its SQLite store under
+  # .local/share/onex-temporal in the home. A long-running service (service_type simple, so it reads active (running)):
+  # systemd starts it again after RestartSec on failure, and the timer starts it at load (so at boot, with linger) and
+  # after a clean exit; run_timeout_s (30 days) is the bound of one run. The installer restarts the service when it
+  # installs a changed unit.
+  temporal-server-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    service_type: simple
+    label: onex-temporal-server
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 60
+      run_timeout_s: 2592000
+      run_at_load: true
+      description: at load and within 60 s of any exit
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_temporal_health_alarm_effect.runtime_temporal_server
+    entry_file: src/omnimarket/nodes/node_temporal_health_alarm_effect/runtime_temporal_server.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    evidence_file: .local/state/omni/temporal-server/last-run.json
+    state_directory: .onex_state/temporal-server
+  # The one persistent worker of the host (OMN-24901): workflow 1 (node_prove_running_workflow, task queue
+  # onex-prove-running) and the reader, closer and prune workflows (the also_serves entries of node_temporal_health_alarm_effect's
+  # worker block, each on the queue its schedule starts it on), all against that server. The same long-running service
+  # (service_type simple), started again after RestartSec on failure, so a worker that starts before the server answers
+  # retries. Its steps append rows through the bus ledger writer. The unit sets no OMNIBASE_PATH: the closer's step runs
+  # `onex node`, whose drift guard reads that variable as the workspace root and then refuses a worker checkout that is
+  # not the canonical clone's revision. The reader probes the runtime and the unit hosts over ssh,
+  # so the unit takes the runtime host's ssh target (ONEX_RUNTIME_SSH_HOST) and the unit hosts' targets from the host-owned
+  # environment file of the reader; a missing file is not an error (those lines then read unread, with the cause).
+  temporal-worker-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    service_type: simple
+    label: onex-temporal-worker
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 60
+      run_timeout_s: 2592000
+      run_at_load: true
+      description: at load and within 60 s of any exit
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_temporal_health_alarm_effect.runtime_temporal_worker
+    entry_file: src/omnimarket/nodes/node_temporal_health_alarm_effect/runtime_temporal_worker.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    # ONEX_TEMPORAL_WORKER_PROJECT is the checkout whose environment runs the workflow node: the canonical clone once the
+    # workflow node is merged, or a clean checkout of its branch named with --set at install.
+    environment_path_overrides:
+      - ONEX_TEMPORAL_WORKER_PROJECT
+      - ONEX_SKILL_OVERLAY_ROOTS
+    # The workflow's read step runs node_merged_change_reading_effect, which finds its runners overlay under
+    # ONEX_SKILL_OVERLAY_ROOTS; with no root every reading exits 1 and the workflow can only alarm. An overlay root is
+    # never a worktree.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_TEMPORAL_ADDRESS: "127.0.0.1:7233"
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      ONEX_TEMPORAL_WORKER_PROJECT: "{registry_root}/omnimarket"
+      ONEX_LEDGER_WRITE_VIA: "bus"
+      ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+    # The unit names no ledger file (OMN-26329): no worker queue's node reads a ledger path, so the unit asks for none; the
+    # steps append through the bus append command above and the closer reads rows through the host's declared reader argv.
+    environment_inputs:
+      ONEX_LEDGER_HOST_NAME: ledger_host_name
+      OMNIBASE_INTERNAL_HOME: appender_root
+      ONEX_RUNTIME_SSH_HOST: runtime_ssh_host
+    required_environment_inputs: [ONEX_LEDGER_HOST_NAME, OMNIBASE_INTERNAL_HOME]
+    environment_file: .config/onex/merged-change-runner-read.env
+    evidence_file: .local/state/omni/temporal-worker/last-run.json
+    state_directory: .onex_state/temporal-worker
   # The three landing units on a Linux pool host (OMN-23662): the same modules, overlays, probes and environment as the
   # launchd units above, as a systemd user service and timer, so the new landing workflow runs in observe mode on a lab host
   # beside the controller. Each start check runs the unit with its rendered --omni-home and --state-dir plus --probe.
@@ -1640,6 +2086,48 @@ units:
     required_environment_inputs: [ONEX_HOST_NAME]
     evidence_file: .local/state/omni/claude-pool-rotation-tick/last-run.json
     state_directory: .onex_state/claude-pool-rotation-tick
+  # The host thermal hold report (OMN-19998): on a host whose thermal guard closes the lab-run folder, it delivers the guard's queued
+  # status rows (which its own posting path could not) through the declared ledger bus append command, and posts one ledger MSG when the
+  # guard trips and one when it releases, which the hourly tick prints as a MISSING inbox line. The host's name is the request's
+  # ledger_host_name; its guard directory, lanes and texts are the node overlay's row for it.
+  host-thermal-hold-report-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-host-thermal-hold-report
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 60
+      run_timeout_s: 90
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_host_thermal_hold_report_effect.runtime_host_thermal_hold_tick
+    entry_file: src/omnimarket/nodes/node_host_thermal_hold_report_effect/runtime_host_thermal_hold_tick.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+      # The declared ledger publisher of the host's row in the lab_hosts overlay (ledger_bus_python): the dispatch venv.
+      ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/.onex-dispatch-venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+    environment_inputs:
+      ONEX_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_HOST_NAME]
+    evidence_file: .local/state/omni/host-thermal-hold-report/last-run.json
+    state_directory: .onex_state/host-thermal-hold-report
   claude-pool-rotation-tick:
     platform: launchd
     kind: registry_module_tick
@@ -1811,26 +2299,29 @@ units:
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/consumer-group-guard/last-run.json
     state_directory: .onex_state/consumer-group-guard
-  # The lab fill on the operator Mac (OMN-24419; node_lab_fill_effect's runtime_lab_fill_tick): every 1200 s one pass reads the lane host pool
-  # snapshot (the free slots per host), selects on the bus ledger reader's rows and runs the whole tick with no model in the loop. It takes the
-  # label of the morning workflow's lab-fill job it replaces (that job ran the retired lab-fill.js; its calendar minutes 10, 30 and 50 were every
-  # 20 minutes). The overlay (node_lab_fill_effect in the overlays repository) names every path, bound, repository list and the pool snapshot's
-  # age bound; the reader overlay names lab-fill-selection. This unit holds none of it.
-  lab-fill-tick:
-    platform: launchd
+  # The lab fill on a Linux pool host (node_lab_fill_effect's runtime_lab_fill_tick): every 1200 s one pass reads the lane host pool
+  # snapshot (the free slots per host), reads the fill's work live in goal order (the work sources the overlay declares), selects on the bus
+  # ledger reader's rows and runs the whole tick with no model in the loop; its lanes are placed through the remote-lane runner over the bus,
+  # never by ssh. It moved from the operator Mac's launchd job (label ai.omninode.lab-fill, OMN-24419), which could not read the lab's state: the
+  # Mac entry is gone from this contract. One run is bounded by run_timeout_s 1020, the old job's bound. The overlay (node_lab_fill_effect in
+  # the overlays repository) names every path, bound, repository list and the pool snapshot's age bound; the reader overlay names
+  # lab-fill-selection. This unit holds none of it.
+  lab-fill-tick-systemd:
+    platform: systemd
     kind: registry_module_tick
-    label: ai.omninode.lab-fill
-    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    label: onex-filler-tick
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
     schedule:
       start_interval: 1200
+      run_timeout_s: 1020
       run_at_load: true
       description: every 1200 s and at load
     registry_project: omnimarket
-    # The old job's bound for one fire was 1020 s; a pass that outlives it is ended with its process group and exits 124 (run_timeout_s, OMN-22881).
-    run_timeout_s: 1020
     tick_no_sync: true
     interpreter_candidates:
-      - /opt/homebrew/bin/python3.13
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
       - /usr/local/bin/python3.13
     module: omnimarket.nodes.node_lab_fill_effect.runtime_lab_fill_tick
     entry_file: src/omnimarket/nodes/node_lab_fill_effect/runtime_lab_fill_tick.py
@@ -1843,12 +2334,62 @@ units:
       - ONEX_SKILL_OVERLAY_ROOTS
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
     environment:
-      # The overlays canonical clone first (the unit's overlays and the selection and reader overlays live there), then the plugin's overlays.
-      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      # The overlays canonical clone (the unit's overlay and the selection and reader overlays live there).
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
       OMNIBASE_PATH: "{registry_root}"
       # The tick launches lanes through the remote-lane runner and the onex command line by name: the registry's launcher directory leads the search path.
-      PATH: "{registry_root}/omnibase_infra/scripts:{home}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+      PATH: "{registry_root}/omnibase_infra/scripts:{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
+      # The select step reads the rolling ledger's rows over the bus, never from the ledger file: the reader overlay's read names this variable.
+      ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/.onex-dispatch-venv/bin/onex ledger query --stdin"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/lab-fill-tick/last-run.json
     state_directory: .onex_state/lab-fill-tick
+  # The friction rollup tick (OMN-22987, node_friction_rollup_tick_effect, the unit of OMN-19715 moved into the
+  # node): every two hours one pass reads the ledger and archive files, rolls up the FRICTION rows by class,
+  # writes the reports under the state directory and appends one STATUS row; the class rules are the overlay of
+  # node_friction_rollup_compute in the overlays repository; the unit holds no rule; it replaces the copied-tree
+  # unit of the same label in the private host installer (OMN-24574).
+  friction-rollup:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.friction-rollup
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 7200
+      run_at_load: false
+      description: every 7200 s
+    registry_project: omnimarket
+    # The tick's node timeout is 120000 ms (its contract); 300 s is a hung run, well under the 7200 s interval.
+    run_timeout_s: 300
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_friction_rollup_tick_effect.runtime_friction_rollup_tick
+    entry_file: src/omnimarket/nodes/node_friction_rollup_tick_effect/runtime_friction_rollup_tick.py
+    # The start check runs the module's own argparse help request, which runs no pass, no bus read and no write.
+    probe_argv: ["--help"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      # The class rules are the overlay of node_friction_rollup_compute: the overlays canonical clone first, then the plugin's overlays.
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      # The ledger over the bus (OMN-26329): the tick reads its window with the paged read command and appends its STATUS row with
+      # the append command, as the other ledger-writing units do; the unit names no ledger file.
+      ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/omnibase_infra/.venv/bin/onex ledger query --stdin"
+      ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+    # The name the ledger knows this host by: the append command writes the row as this host. Required: a unit installed
+    # without it refuses every append.
+    environment_inputs:
+      ONEX_LEDGER_HOST_NAME: ledger_host_name
+    required_environment_inputs: [ONEX_LEDGER_HOST_NAME]
+    evidence_file: .local/state/omni/friction-rollup/last-run.json
+    state_directory: .onex_state/friction-rollup

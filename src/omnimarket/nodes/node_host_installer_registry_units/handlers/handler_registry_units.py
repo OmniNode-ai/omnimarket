@@ -36,7 +36,12 @@ import yaml
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
 from omnimarket.handlers.rules_overlay_root_declared import declared_overlay_root
-from omnimarket.handlers.rules_unit_roots import UnitRootRefusedError, under_worktrees
+from omnimarket.handlers.rules_unit_roots import (
+    UnitRootPinnedError,
+    UnitRootRefusedError,
+    pinned_plugin_cache_version,
+    under_worktrees,
+)
 from omnimarket.models.overlay_keys import ModelLabHostsTable
 from omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units import (
     ModelCopiedUnitPayload,
@@ -145,6 +150,8 @@ def restore_previous(kept: Path, manifest: dict[str, dict[str, object]]) -> list
 
 
 STALE_INTERVALS = 3
+# The service types a systemd registry unit may declare: a timer-fired tick (the default) or a long-running service.
+SERVICE_TYPES = ("oneshot", "simple")
 PLACEHOLDER = re.compile(r"\{[a-z_]+\}")
 NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 # The modes that change what the host runs. A dry-run, a status read and a kickstart change nothing, so they never take the lock.
@@ -523,6 +530,15 @@ class HandlerRegistryUnits:
             ]
             if offending:
                 raise UnitRootRefusedError(request.unit, offending)
+            # OMN-22809: the same variables never pin a plugin version either (the plugin is named through
+            # {marketplace_root}); an old copy of a node's overlay in a versioned cache folder would answer.
+            pinned = [
+                entry
+                for entry in filled.get(str(name), "").split(os.pathsep)
+                if pinned_plugin_cache_version(entry) is not None
+            ]
+            if pinned:
+                raise UnitRootPinnedError(request.unit, pinned)
         if request.mode == "install":
             for name in unit.get("required_environment_inputs") or []:
                 if not filled.get(str(name)):
@@ -782,6 +798,11 @@ class HandlerRegistryUnits:
             raise ValueError(
                 f"{unit['label']} declares kill_mode {unit['kill_mode']!r}; "
                 "launchd units do not support a kill mode, keep every process in the job's own care"
+            )
+        if unit.get("service_type"):
+            raise ValueError(
+                f"{unit['label']} declares service_type {unit['service_type']!r}; "
+                "launchd units do not support a service type, launchd keeps a job alive with its own keys"
             )
         if unit.get("declared_files"):
             raise ValueError(
@@ -1062,6 +1083,32 @@ class HandlerRegistryUnits:
             )
         return f"\nKillMode={declared}"
 
+    @staticmethod
+    def service_type(unit: dict[str, Any]) -> str:
+        """The service type a systemd unit declares: ``oneshot`` (a timer-fired tick, the default) or ``simple``."""
+        declared = str(unit.get("service_type") or "oneshot")
+        if declared not in SERVICE_TYPES:
+            raise ValueError(
+                f"{unit['label']} declares service_type {declared!r}; it must be one of: {', '.join(SERVICE_TYPES)}"
+            )
+        return declared
+
+    def service_type_lines(self, unit: dict[str, Any]) -> str:
+        """The Type line of the service, and for a ``simple`` unit its restart policy.
+
+        A long-running unit (the Temporal server and worker) is Type=simple, so it reads ``active (running)`` once it
+        runs; Restart=on-failure starts it again after RestartSec, the start interval the node's other long-running
+        units use between a timer start and the next. The timer stays: it starts the unit at load and after a clean exit.
+        """
+        declared = self.service_type(unit)
+        if declared == "oneshot":
+            return "Type=oneshot"
+        delay = int(unit["schedule"]["start_interval"])
+        return (
+            "# A long-running service: Type=simple, started again on failure; the timer starts it at load.\n"
+            f"Type=simple\nRestart=on-failure\nRestartSec={delay}"
+        )
+
     def render_systemd(
         self,
         request: ModelRegistryUnitsRequest,
@@ -1108,6 +1155,7 @@ class HandlerRegistryUnits:
             "__ENVIRONMENT_FILE__", self.environment_file(request, unit)
         )
         service = service.replace("__KILL_MODE__", self.kill_mode(unit))
+        service = service.replace("__SERVICE_TYPE__", self.service_type_lines(unit))
         service = service.replace(
             "__TICK_SYNC_ARGS__", '"--no-sync"' if unit.get("tick_no_sync") else ""
         )
@@ -1221,10 +1269,11 @@ class HandlerRegistryUnits:
             path: (path.read_bytes() if path.exists() else None)
             for path in (service_path, timer_path)
         }
-        if (
+        changed = (
             previous[service_path] != service.encode()
             or previous[timer_path] != timer.encode()
-        ):
+        )
+        if changed:
             keep_previous(
                 state,
                 request.unit,
@@ -1235,11 +1284,18 @@ class HandlerRegistryUnits:
             staged.write_text(body, encoding="utf-8")
             staged.chmod(0o644)
             staged.replace(path)
-        steps = (
+        steps = [
             [*systemctl, "daemon-reload"],
             [*systemctl, "enable", f"{label}.timer"],
             [*systemctl, "restart", f"{label}.timer"],
-        )
+        ]
+        # A changed unit file does not reach a process that already runs, and a timer start does not touch an active
+        # service: a long-running unit is restarted here, when its text changed or it is not active.
+        if self.service_type(unit) == "simple" and (
+            changed
+            or self.run([*systemctl, "is-active", f"{label}.service"]).returncode
+        ):
+            steps.append([*systemctl, "restart", f"{label}.service"])
         for step in steps:
             done = self.run(step)
             if done.returncode:
