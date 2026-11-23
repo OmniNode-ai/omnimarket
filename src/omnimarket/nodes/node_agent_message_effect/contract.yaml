@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_agent_message_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: EFFECT_GENERIC
+node_version: {major: 0, minor: 1, patch: 0}
+description: >
+  One declared topic carries messages between agents of different platforms (Claude, Codex, GLM, Hermes,
+  Gemini and others). The node owns the topic's I/O. send validates one message (from, to, thread, kind,
+  text, sent_at, platform), builds the event the emit effect spools and publishes it on the topic, and
+  refuses an incomplete or unknown message with a typed result and nothing published. read returns the
+  typed messages addressed to one recipient, optionally in one thread, bounded by a count and a since-time,
+  oldest first. Both operations use the broker this node's contract overlay declares (event_bus, resolved
+  by resolve_dialable_broker); a node with no declaration answers a typed broker_not_declared result.
+
+handler:
+  module: omnimarket.nodes.node_agent_message_effect.handlers.handler_agent_message
+  class: HandlerAgentMessage
+  input_model: omnimarket.nodes.node_agent_message_effect.models.model_agent_message_request.ModelAgentMessageRequest
+  output_model: omnimarket.nodes.node_agent_message_effect.models.model_agent_message_result.ModelAgentMessageResult
+
+input_model:
+  name: ModelAgentMessageRequest
+  module: omnimarket.nodes.node_agent_message_effect.models.model_agent_message_request
+  description: "One operation: send (a message) or read (a recipient, optional thread, count and since-time)."
+output_model:
+  name: ModelAgentMessageResult
+  module: omnimarket.nodes.node_agent_message_effect.models.model_agent_message_result
+  description: "Whether the operation was taken, the typed messages a read returned, or the typed refusal."
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: true  # event_id is the message's content hash; a retry keeps the same spool record
+  timeout_ms: 30000
+
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the agent message clients, with the declared broker bound by the container.
+
+# The one agent message topic. send publishes it through the emit effect's durable spool
+# (registries/topics.yaml, event type agent.message, duty_critical); read subscribes to it below.
+# Kept equal to that registry entry by tests/unit/nodes/node_agent_message_effect/test_agent_message_contract.py.
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    - onex.evt.omnimarket.agent-message.v1
+
+# read is a bounded one-shot scan, so it uses a fresh consumer group per call (prefix + random suffix)
+# from the earliest offset and leaves no committed offsets for a later read to skip.
+caller_subscription:
+  mode: fresh_group_per_read
+  topics:
+    - onex.evt.omnimarket.agent-message.v1
+  group_id_prefix: agent-message-read
+  auto_offset_reset: earliest
+  read_window_seconds: 5
+
+# One principal holds the grants a sender and a reader need. The per-host logins that fill this placeholder are declared by
+# the broker permission piece of the agent message bus; this block is the one declared grant the topic's use needs.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_AGENT_MESSAGE_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.agent-message.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.agent-message.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.agent-message.v1, operation: DESCRIBE}
+      - {resource_type: CLUSTER, pattern: LITERAL, name: kafka-cluster, operation: IDEMPOTENT_WRITE}
+      - {resource_type: GROUP, pattern: PREFIXED, name: agent-message-read-, operation: READ}
+
+# The agent clients and every other platform's agent consume the topic; no node in this repository subscribes to it.
+externally_consumed_topics:
+  - onex.evt.omnimarket.agent-message.v1
+
+metadata:
+  transport_type: kafka

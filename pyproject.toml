@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.325"
+version = "0.4.326"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -356,6 +356,7 @@ node_adversarial_pipeline_orchestrator = "omnimarket.nodes.node_adversarial_pipe
 node_agent_coordinator_orchestrator = "omnimarket.nodes.node_agent_coordinator_orchestrator"
 node_agent_inbox_spool = "omnimarket.nodes.node_agent_inbox_spool"
 node_agent_learning_retrieval_effect = "omnimarket.nodes.node_agent_learning_retrieval_effect"
+node_agent_message_effect = "omnimarket.nodes.node_agent_message_effect"
 node_agent_review_cloud_rung_effect = "omnimarket.nodes.node_agent_review_cloud_rung_effect"
 node_agent_review_dispatch_orchestrator = "omnimarket.nodes.node_agent_review_dispatch_orchestrator"
 node_agent_review_gate_accept_effect = "omnimarket.nodes.node_agent_review_gate_accept_effect"
