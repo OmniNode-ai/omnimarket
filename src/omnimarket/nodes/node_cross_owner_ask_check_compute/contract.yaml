@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Cross-Owner Ask Check Compute (OMN-26471)
+#
+# A request to another owner about that owner's repository is checked against that repository
+# first. The caller reads the owner's file at the owner's base through the canonical clone and
+# this node judges the read; it runs no command itself.
+name: node_cross_owner_ask_check_compute
+contract_name: node_cross_owner_ask_check_compute
+node_name: node_cross_owner_ask_check_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+
+description: >
+  Decides ABSENT, PRESENT, UNREADABLE or NONCANONICAL_READ for the objects an ask would have
+  another owner add to that owner's repository. The read counts only as
+  git -C "${OMNI_HOME:?}/<repo>" show origin/<base>:<path>; every object is looked up by its bare
+  name as well as its qualified name, because a file that lists an object by its bare name under
+  a domain holds it for every schema. Only ABSENT lets the draft go on. The result carries the
+  verified-by line, command and observation, that the draft must hold. Reads no file, runs no
+  command and calls no model.
+
+handler:
+  module: omnimarket.nodes.node_cross_owner_ask_check_compute.handlers.handler_cross_owner_ask_check
+  class: HandlerCrossOwnerAskCheck
+  input_model: omnimarket.models.cross_owner_ask.model_cross_owner_ask_request.ModelCrossOwnerAskRequest
+  output_model: omnimarket.models.cross_owner_ask.model_cross_owner_ask_result.ModelCrossOwnerAskResult
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 10000
+  runtime_profiles: [main]
+
+input_model:
+  name: ModelCrossOwnerAskRequest
+  module: omnimarket.models.cross_owner_ask.model_cross_owner_ask_request
+  description: The owner's repository, base and path, the objects the ask names, and the read the caller made.
+output_model:
+  name: ModelCrossOwnerAskResult
+  module: omnimarket.models.cross_owner_ask.model_cross_owner_ask_result
+  description: The verdict, whether the draft may go on, the verified-by line and the matches.
+
+runtime_dispatch:
+  external_trigger: true
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+metadata:
+  ticket: OMN-26471
+  transport_type: inmemory
