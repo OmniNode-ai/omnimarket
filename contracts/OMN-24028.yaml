@@ -59,3 +59,10 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24028 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_overlay_store -q -n 0 --no-cov -p no:cacheprovider
+- id: dod-omn24028-setting-set
+  description: 'the settings store gains a set command for one declared key of one overlay: an undeclared key is refused with a typed error and nothing is written, the audit row names the actor with the previous and the new value, and the written value survives a refresh that keeps operator-set paths'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_setting_set -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
