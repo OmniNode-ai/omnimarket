@@ -13,7 +13,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-from omnibase_core.cli.cli_work_ledger_render import MD_LEDGER_PATH_ENV
 
 from omnimarket.nodes.node_handoff_check_effect import runtime_handoff_check_cli as cli
 from omnimarket.nodes.node_handoff_check_effect.adapters.bus_ledger_rows import (
@@ -50,6 +49,14 @@ from .ledger_rows_stub import StubRows
 
 pytestmark = pytest.mark.unit
 
+_CENSUS_OVERLAY = (
+    Path(__file__).resolve().parents[3]
+    / "src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml"
+)
+# The ledger path variable name, read from the census overlay that declares it.
+MD_LEDGER_PATH_ENV = str(
+    yaml.safe_load(_CENSUS_OVERLAY.read_text(encoding="utf-8"))["path_variables"][0]
+)
 NOW = "2026-11-01T23:00:00Z"
 CLOCK = datetime(2026, 11, 1, 23, 0, 0, tzinfo=UTC)
 RULING = (

@@ -70,3 +70,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_setting_set -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
+- id: dod-omn24028-latest-core-imports
+  description: 'no file in src, tests or scripts imports a module the newest omnibase-core removed (cli_work_ledger_render), so the latest-core smoke job that imports every node module on the newest core release no longer fails on node_create_ticket; the ledger path variable name is the guard''s own constant'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_no_removed_core_ledger_render_import.py tests/nodes/node_create_ticket/test_core_ticket_guard.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
