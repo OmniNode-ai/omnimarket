@@ -89,6 +89,7 @@ def test_the_request_names_no_ledger_file() -> None:
 
 def test_the_contract_declares_no_ledger_path_variable_or_file_age_probe() -> None:
     text = CONTRACT_PATH.read_text(encoding="utf-8")
+    assert "ledger_path" not in text.lower()
     raw = yaml.safe_load(text)
     assert "ledger" not in raw["inputs"]
     assert "archive_dir" not in raw["inputs"]
@@ -98,6 +99,8 @@ def test_the_contract_declares_no_ledger_path_variable_or_file_age_probe() -> No
 def test_assemble_refuses_a_ruling_that_the_port_answers(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    poison = tmp_path / "poison-ledger.md"
+    poison.write_text("2026-11-01T21:00:00Z | RULING | lane=x | ticket=T-9 | q\n")
     port = StubRows(RULING, CLAIM)
     probes = tmp_path / "probes.json"
     probes.write_text("[]", encoding="utf-8")
