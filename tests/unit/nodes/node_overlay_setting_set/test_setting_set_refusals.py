@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -114,7 +115,8 @@ async def test_no_audit_row_when_the_overlay_is_not_in_the_store() -> None:
 
 async def test_no_audit_row_when_the_lane_row_is_missing() -> None:
     document = hotload_document()
-    del document["lanes"]["lane-a"]  # type: ignore[call-overload]
+    lanes: Any = document["lanes"]
+    del lanes["lane-a"]
     handler, bus, _ = build(live={OVERLAY_ID: live_record(document)})
     with pytest.raises(SettingParentMissingError):
         await handler.handle(request())

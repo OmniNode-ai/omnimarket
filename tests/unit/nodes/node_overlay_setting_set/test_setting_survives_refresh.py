@@ -10,6 +10,7 @@ one runs; until then the copy below, which is that function as read at that head
 from __future__ import annotations
 
 import copy
+import importlib
 import json
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
@@ -69,18 +70,20 @@ def _vendored_refresh(
 
 def _refresh_rule() -> Callable[..., Any]:
     try:
-        from omnimarket.handlers.overlay_store.setting_paths import (  # type: ignore[import-not-found,unused-ignore]
-            refresh_document,
+        module = importlib.import_module(
+            "omnimarket.handlers.overlay_store.setting_paths"
         )
     except ImportError:
         return _vendored_refresh
-    return refresh_document  # type: ignore[no-any-return,unused-ignore]
+    result: Callable[..., Any] = module.refresh_document
+    return result
 
 
 def _repository_document() -> dict[str, JsonValue]:
     """What the settings repository holds: the old boot set, and a setting nobody set through the store, changed since."""
     document = hotload_document()
-    document["lanes"]["lane-b"]["allowed_environments"] = ["stage", "stage2"]  # type: ignore[index,call-overload]
+    lanes: Any = document["lanes"]
+    lanes["lane-b"]["allowed_environments"] = ["stage", "stage2"]
     return document
 
 

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 
@@ -96,11 +97,12 @@ async def test_the_record_is_keyed_by_overlay_id_carries_the_new_value_and_marks
     assert base.loaded_by == ACTOR
     assert base.loaded_at == NOW
     assert base.source_ref == "runtime_contract_hotload@abc123"
-    lanes = base.document["lanes"]
-    assert lanes["lane-a"]["lazy_start"] == BOOT_SET  # type: ignore[index,call-overload]
+    lanes: Any = base.document["lanes"]
+    held: Any = live_record()["document"]
+    assert lanes["lane-a"]["lazy_start"] == BOOT_SET
     # Every other setting is as the live record held it.
-    assert lanes["lane-b"] == live_record()["document"]["lanes"]["lane-b"]  # type: ignore[index,call-overload]
-    assert lanes["lane-a"]["mode"] == "on_demand"  # type: ignore[index,call-overload]
+    assert lanes["lane-b"] == held["lanes"]["lane-b"]
+    assert lanes["lane-a"]["mode"] == "on_demand"
     assert result.actor == ACTOR
     assert result.previous_value == OLD_LAZY_START
     assert result.new_value == BOOT_SET
