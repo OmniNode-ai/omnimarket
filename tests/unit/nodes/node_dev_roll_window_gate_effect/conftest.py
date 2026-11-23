@@ -20,6 +20,7 @@ from omnimarket.nodes.node_dev_roll_window_gate_effect.handlers import (
     HandlerDevRollWindowCompleted,
     HandlerDevRollWindowHold,
     HandlerDevRollWindowTick,
+    HandlerDevRollWindowTickPublish,
     InMemoryDevRollGateStore,
 )
 from omnimarket.nodes.node_dev_roll_window_gate_effect.models import (
@@ -126,7 +127,7 @@ def completed(
 
 
 class Gate:
-    """The three handlers over one in-memory store and one clock."""
+    """The handlers over one in-memory store and one clock; ``tick_publish`` is the tick handler the contract declares."""
 
     def __init__(
         self,
@@ -139,6 +140,9 @@ class Gate:
             self.store, policy=policy, clock=self.clock
         )
         self.tick = HandlerDevRollWindowTick(
+            self.store, policy=policy, clock=self.clock
+        )
+        self.tick_publish = HandlerDevRollWindowTickPublish(
             self.store, policy=policy, clock=self.clock
         )
         self.completed = HandlerDevRollWindowCompleted(
