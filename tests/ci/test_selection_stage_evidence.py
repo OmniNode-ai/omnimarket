@@ -178,7 +178,7 @@ def _replayed() -> ModelReplayResult:
 class _ReplayOnce(HandlerSelectionReplay):
     """The replay handler answering from the one replay above, for validations over the same recorded merges."""
 
-    def handle(self, request: ModelReplayRequest) -> ModelReplayResult:  # type: ignore[override]
+    def handle(self, request: ModelReplayRequest) -> ModelReplayResult:
         assert request == _recorded_set().replay_input
         return _replayed()
 
