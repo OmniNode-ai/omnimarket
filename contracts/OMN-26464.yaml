@@ -1,0 +1,60 @@
+schema_version: 1.0.0
+title: A real customer workflow posted to the dev gateway through both doors, the batch ingest and the workflow gateway, goes end to end, and its receipt, read back, names the answering model
+ticket_id: OMN-26464
+summary: >-
+  On dev no running process moved a gateway workflow to a terminal status, so every gateway workflow stayed published
+  and GET /v1/workflows/{id}/receipt could not name the answering model. The delegation orchestrator does publish
+  delegation-completed.v1 and delegation-failed.v1 for the gateway's correlation id with tenant_id on the wire (read
+  from the dev bus for workflow 55ece3ba-cedd-4b00-b354-7b136f4721ba, correlation c5f44dd6-b06a-4a72-8d12-00ed8abbf901),
+  and no consumer group writes the row. This change adds the node node_gateway_workflow_terminal_effect, which
+  subscribes to the two terminal topics through its contract and writes the terminal columns onto the one gateway row of
+  the event's tenant and correlation id in one transaction with a status guard, and adds the same status guard to the
+  gateway submit path's status update so a late published cannot overwrite a terminal. This pull request owns the
+  writer and the guard; AC2 and AC6 are read back by the orchestrator on the running dev runtime after the node is
+  wired and the runtime is rolled. AC1, AC3, AC4 and AC5 are not served by this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26464-terminal-writer
+  statement: A delegation terminal event for a gateway workflow's tenant and correlation id moves that row to completed or failed with the answering model, so the gateway receipt can name it.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: one POST /v1/workflows with workflow_type delegation-inference is accepted, GET status reaches a terminal state, and GET receipt names the answering model -- falsifier: the receipt read returns no model name or a 4xx/5xx'
+  - id: AC6
+    statement: 'AC6: integrated: on the running dev runtime on omni-201, one delegation-inference workflow submitted through POST /v1/workflows reaches a terminal status and its receipt read back names the answering model -- falsifier: onex node run on the dev lane of GET status and GET receipt for that workflow id, read back, shows a non-terminal status or a receipt with no model name'
+evidence_requirements:
+- kind: tests
+  description: The terminal writer unit tests and the store SQL tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_gateway_workflow_terminal_effect -q --no-cov -n 0 -p no:randomly -k "not real_postgres"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26464-ac2-writer-unit
+  description: 'AC2 (writer half): the handler writes status, the model, tokens, latency, route, provider, credential source, content, failure fields and rule evaluations for a completed and a failed terminal (including the failed-before-inference payload captured from the dev bus), dead-letters malformed and ambiguous terminals without content, keeps the first terminal, and raises store and publish errors; the gateway submit status update carries the terminal guard. The dev read of the row and the receipt after the roll is the orchestrator''s.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_gateway_workflow_terminal_effect -q --no-cov -n 0 -p no:randomly -k "not real_postgres"
+    cwd: .
+- id: dod-omn26464-ac6-writer-contract
+  description: 'AC6 (node half): the node contract declares the two terminal topics, the dead-letter topic under event_bus.dlq_topics, the handler holds no topic literal, and the new node has a golden-chain test.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_gateway_workflow_terminal_effect -q --no-cov -n 0 -p no:randomly -k contract_declares_topics_and_dead_letter
+    cwd: .
+- id: dod-omn26464-integration-proof-real-postgres
+  description: 'Integration proof: the pushed head ran the writer''s single transaction (lock, status-guarded update, concurrent opposite outcomes with exactly one winner, tenant isolation, replay with unchanged timestamps, every writable starting status, ambiguity) and the submit status guard against a real Postgres on a lab host through the repository integration marker and the lab work runner, and exited 0. The lab host supplies INTEGRATION_POSTGRES_PASSWORD from its own environment; no password is written here. Hosted CI never runs a local_done_gate item, so only the local Done gate runs this unbound check; the AC2 and AC6 bindings above are the hosted ones. The dev read of a workflow row and its receipt after the roll is the orchestrator''s AC2 and AC6 readback.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26464 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_gateway_workflow_terminal_effect -m integration -q --no-cov -n 0 -p no:randomly'
+    cwd: .
