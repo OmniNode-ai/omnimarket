@@ -6,6 +6,11 @@ is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
+- id: req-omn26489-ac1
+  statement: a node that nothing runs is refused at merge unless its contract declares what runs it
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a CI check in omnimarket reads every node contract touched by a pull request and fails when the node has runtime_dispatch.external_trigger true or an empty subscribe_topics and declares none of a runtime tick subscription with a schedule, a named caller found by grep in the repositories of the registry, or an on_demand field that names the command and the owner -- falsifier: uv run pytest tests/unit/contracts/test_every_changed_node_declares_a_caller.py fails on a fixture copy of the omnimarket 6607 contract'
 - id: req-omn26489-ac3
   statement: the nodes of the NOT RUNNING list that declare none of the three are marked or given a trigger
   acceptance:
@@ -13,13 +18,22 @@ requirements:
     statement: 'AC3: the nodes of the current NOT RUNNING list that declare none of the three are each marked on_demand with a command and owner or given a trigger, so the check passes on dev -- falsifier: uv run pytest tests/unit/contracts/test_every_changed_node_declares_a_caller.py --all-nodes exits non-zero on dev'
 evidence_requirements:
 - kind: tests
-  description: The trigger declaration tests pass at the pushed head.
-  command: uv run --frozen pytest -q tests/unit/contracts/test_node_trigger_declarations.py -p no:cacheprovider --no-cov
+  description: The trigger declaration tests and the trigger check tests pass at the pushed head.
+  command: uv run --frozen pytest -q tests/unit/contracts/test_node_trigger_declarations.py tests/unit/contracts/test_every_changed_node_declares_a_caller.py -p no:cacheprovider --no-cov
 emergency_bypass:
   enabled: false
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+- id: dod-omn26489-ac1
+  description: 'Scope of this pull request: the check node node_trigger_declaration_check_effect refuses the fixture copy of the census contract as it stood before it declared a trigger, passes the control nodes (a schedule, a tick with a schedule, a host unit that runs the node, an on-demand command with an owner, a caller file that names the node) and refuses each declaration that names something that does not hold; the Node Trigger Declaration Check job of the contract validation workflow runs it on every pull request. Making the job a required context is a branch protection setting and the all-nodes list is not clean on dev, so AC2 and AC3 stay open.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q tests/unit/contracts/test_every_changed_node_declares_a_caller.py -p no:cacheprovider --no-cov
+    cwd: .
 - id: dod-omn26489-ac3
   description: 'Scope of this pull request: the three nodes of the ledger''s NOT RUNNING lines named by the ticket (the census, the lane dispatcher, the dev identity provisioner) each declare a trigger: the census a daily host unit, the dispatcher its host unit, the provisioner an on-demand command and owner; each declaration is checked against the thing it names, with controls. The check and the all-nodes list belong to the second pull request.'
   source: manual
@@ -35,6 +49,13 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "ledger-file-census-systemd:" > /dev/null'
+    cwd: .
+- id: dod-omn26489-check-deploy
+  description: 'Deploy probe the hosted runner can run: the check node contract at the checked-out commit on GitHub names the contract validation workflow as its caller; the node does not exist at the merge base, so the probe fails there.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_trigger_declaration_check_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F ".github/workflows/contract-validation.yml" > /dev/null'
     cwd: .
 - id: dod-omn26489-integration-proof
   description: The pushed head ran the trigger declaration tests, which run one census tick against a registry clone, on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.

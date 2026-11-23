@@ -40,3 +40,8 @@ def selector_version(path: Path = CONTRACT_PATH) -> str:
     """The selector node's version, as its contract declares it."""
     with path.open() as handle:
         return str(yaml.safe_load(handle)["node_version"])
+
+
+def repo_root() -> Path:
+    """The checkout the selector node lives in: the root the receipts' recorded-set paths are relative to."""
+    return POLICY_PATH.parents[4]
