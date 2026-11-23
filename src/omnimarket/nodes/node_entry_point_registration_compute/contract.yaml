@@ -47,6 +47,8 @@ event_bus:
   publish_topics: []
 runtime_dispatch:
   external_trigger: "Direct Python invocation of the handler by node-drift-gate and the node inventory test."
+  callers:
+    - path: scripts/validate_node_drift.py
 descriptor:
   node_archetype: compute
   purity: pure

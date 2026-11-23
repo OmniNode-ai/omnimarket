@@ -47,6 +47,12 @@ handler:
   input_model: omnimarket.nodes.node_undeclared_read_check_compute.models.ModelUndeclaredReadCheckRequest
   output_model: omnimarket.nodes.node_undeclared_read_check_compute.models.ModelUndeclaredReadCheckResult
 
+runtime_dispatch:
+  external_trigger: true
+  # The undeclared read job of the CI workflow runs it on every pull request.
+  callers:
+    - path: .github/workflows/ci.yml
+
 descriptor:
   node_archetype: compute
   purity: pure
