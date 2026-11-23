@@ -70,3 +70,17 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_setting_set -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
+- id: dod-omn24028-store-load-continues
+  description: 'the hourly store load goes on past a refused overlay: a refusal planted on the second of three ids leaves the first and third published, the tick exits non-zero naming the second, and an unchanged clone asserts each overdue id again within the hour; the four tick tests failed on origin/dev before the change'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_store/test_overlay_store_load_continue.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24028-assertion-alarm
+  description: 'each loader assertion (overlay id, digest, time) is kept in the loader state apart from what a set writes, and an id whose newest assertion is older than two hours, or that has none, raises one alarm naming the id and its owner on the topic the loader contract declares'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_store/test_overlay_assertion_stale.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
