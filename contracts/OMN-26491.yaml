@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: OMN-26491
+title: "A merge to dev writes a running-read due row an hour later naming the node, the unit or the overlay to read, and a due row with no run line alarms the ticket owner and holds the ticket out of Done"
+summary: A node maps a merged runtime-affecting pull request to one due row at merge plus 60 minutes, and reads the ledger for due rows with no run line, raising one alarm to the owner and naming the tickets held out of Done.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26491-running-read-due
+    statement: A merged runtime-affecting pull request leaves a due row, and a due row with no run line alarms its owner once and holds the ticket out of Done.
+    acceptance:
+      - id: AC1
+        statement: "AC1: the landing controller writes one ledger row at each merge of a runtime-affecting pull request with a due time of merge plus 60 minutes, the ticket, and the reading named by the pull request body (node and topic, unit and host, or overlay and reader) -- falsifier: uv run pytest tests/landing/test_running_read_due_row.py fails when a merged fixture pull request produces no due row"
+      - id: AC2
+        statement: "AC2: a due row with no STATUS row carrying observed= and read_at= by its due time raises one alarm to the ticket owner and the ticket cannot move to Done while it is open -- falsifier: uv run pytest tests/landing/test_running_read_due_alarm.py fails on a fixture due row older than 60 minutes"
+      - id: AC3
+        statement: "AC3: the first week of rows is read and the share of merged runtime changes with a run line inside 60 minutes is written on the integration ledger -- falsifier: the week's rows carry no figure, or the figure is below the 2026-11-22 reading of 0 of 9"
+evidence_requirements:
+  - kind: tests
+    description: The two falsifier tests of the due row and its alarm.
+    command: uv run pytest tests/landing/test_running_read_due_row.py tests/landing/test_running_read_due_alarm.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26491-ac1
+    description: "A merged fixture runtime-affecting pull request produces one STATUS row due at merge plus 60 minutes with the ticket and the reading its body names."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/landing/test_running_read_due_row.py -q --no-cov
+        cwd: .
+  - id: dod-omn26491-ac2
+    description: "A fixture due row older than 60 minutes with no observed= and read_at= row raises one alarm to the owner and holds the ticket out of Done."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/landing/test_running_read_due_alarm.py -q --no-cov
+        cwd: .
+  - id: dod-omn26491-ac3
+    description: "AC3 is a week-long reading after merge, out of this change's reach; the row shape the week-one figure is read from (STATUS rows with kind=running-read-due, closed by a STATUS row citing due_id with observed= and read_at=) is declared in the node's handler."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: command
+        check_value: grep -c 'kind=running-read-due' src/omnimarket/nodes/node_running_read_due_compute/handlers/handler_running_read_due.py
+        cwd: .
