@@ -82,6 +82,14 @@ dod_evidence:
       test "$(grep -c 'run_timeout_s: 1800$' src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml)" = 2 &&
       uv run pytest tests/nodes/node_host_installer_registry_units/test_scenario_r3_r5_r8_units.py -q
     cwd: .
+- id: dod-omn25878-ac4-installer-dev-readiness-host
+  description: The host installer carries the dev readiness host into the R8 and R9 scenario units and refuses an install of either unit that names none, so the installed ticks no longer exit 65 on an unset ONEX_DEV_READINESS_HOST.
+  source: manual
+  binds_ac: [AC4]
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_scenario_dev_readiness_host.py -q
+    cwd: .
 - id: dod-omn25878-ac5-hosted-proxy
   description: Hosted proxy for AC5. This contract cites the comment on the idle-converge ticket by its comment id, and the check fails where the r9 scenario contract declares no readiness wait.
   source: manual
