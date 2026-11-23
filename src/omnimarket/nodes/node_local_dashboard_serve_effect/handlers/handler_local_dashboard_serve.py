@@ -72,7 +72,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from fastapi import FastAPI, Query, Request, Response
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 
 from omnimarket.handlers import handler_model_keys as model_keys
 from omnimarket.handlers.handler_local_environment_judgement import (
@@ -542,6 +542,7 @@ def require_local_access(app: FastAPI, *, token: str, port: int) -> None:
                 "this dashboard answers only its own pages",
             )
         presented = _presented_tokens(request, cookie)
+        accept = request.headers.get("accept", "")
         if not any(_matches(p, expected) for p in presented):
             accept = request.headers.get("accept", "")
             if request.url.path == "/" and "text/html" in accept:
@@ -568,8 +569,23 @@ def require_local_access(app: FastAPI, *, token: str, port: int) -> None:
                     ),
                 },
             )
-        response = await call_next(request)
+        accept = request.headers.get("accept", "")
         query_token = request.query_params.get(DASHBOARD_TOKEN_PARAM)
+        if query_token and _matches(query_token, expected) and "text/html" in accept:
+            remaining = [
+                (key, value)
+                for key, value in request.query_params.multi_items()
+                if key != DASHBOARD_TOKEN_PARAM
+            ]
+            location = request.url.path
+            if remaining:
+                location = location + "?" + urllib.parse.urlencode(remaining)
+            response = RedirectResponse(url=location, status_code=303)
+            response.set_cookie(
+                cookie, token, httponly=True, samesite="strict", path="/"
+            )
+            return response
+        response = await call_next(request)
         if query_token and _matches(query_token, expected):
             response.set_cookie(
                 cookie, token, httponly=True, samesite="strict", path="/"
