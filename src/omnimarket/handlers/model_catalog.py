@@ -27,15 +27,11 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from functools import cache
 from pathlib import Path
+from types import ModuleType
 from typing import Any, NamedTuple
 
 import yaml
 from pydantic import SecretStr
-
-try:
-    import fcntl
-except ImportError:  # native Windows: no Unix locks; setup preflight reports WSL
-    fcntl = None  # type: ignore[assignment]
 
 from omnimarket.config.service_endpoints import service_endpoint_url
 from omnimarket.handlers.routing.byok_model_listing import (
@@ -50,6 +46,14 @@ from omnimarket.models.model_catalog_entry import (
     ModelStatus,
 )
 from omnimarket.models.model_local_server_details import ModelLocalServerDetails
+
+fcntl: ModuleType | None
+try:
+    import fcntl as _fcntl_module
+
+    fcntl = _fcntl_module
+except ImportError:  # native Windows: no Unix locks; setup preflight reports WSL
+    fcntl = None
 
 _CONFIG_PATH = Path(__file__).resolve().parents[1] / "configs" / "model_catalog.yaml"
 _PRICE_LIST_DIR = Path(__file__).resolve().parents[1] / "data" / "model_prices"
@@ -349,11 +353,8 @@ def pricing_models_dev_index() -> ModelsDevIndex:
             error="models.dev read failed recently; not read again yet",
         )
 
-    # POSIX file locks are taken only here, on a read that needs the lock, so a
-    # native Windows client importing this module still reaches the setup
-    # preflight's WSL 2 remedy instead of failing on the import.
-    import fcntl
-
+    # POSIX file locks are taken only here; a native Windows client importing
+    # this module still reaches the setup preflight's WSL 2 remedy.
     lock_path = _read_lock_path(home)
     with contextlib.suppress(OSError):
         lock_path.parent.mkdir(parents=True, exist_ok=True)
