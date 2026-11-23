@@ -14,10 +14,14 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.nodes.node_idle_slot_fill_effect.handlers import (
+    handler_ruling_recovery,
+)
 from omnimarket.nodes.node_idle_slot_fill_effect.handlers.handler_idle_slot_fill import (
     HandlerLabFill,
 )
 from omnimarket.nodes.node_idle_slot_fill_effect.models import ModelLabFillRequest
+from tests.helpers.fake_ledger_rows import FakeLedgerRows
 
 pytestmark = pytest.mark.unit
 
@@ -35,9 +39,11 @@ LAND_KEY = "mechanism-owed:OMN-18594:2026-10-24T12:06:44Z"
 def tick(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, text: str, now: str
 ) -> list[tuple[str, str, str, str]]:
-    ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
-    ledger.write_text(text, encoding="utf-8")
-    monkeypatch.setenv("ONEX_LEDGER_PATH", str(ledger))
+    monkeypatch.setattr(
+        handler_ruling_recovery,
+        "SubprocessLedgerRowsReader",
+        lambda _environ, **_kw: FakeLedgerRows(text.splitlines()),
+    )
     monkeypatch.setenv("OMNI_LAB_FILL_GENERATE", "off")
     backlog = tmp_path / "backlog.json"
     backlog.write_text('{"items": []}', encoding="utf-8")

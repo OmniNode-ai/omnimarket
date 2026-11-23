@@ -25,21 +25,35 @@ from omnimarket.nodes.node_operator_capture_compute.handlers.handler_open_asks i
 )
 from omnimarket.nodes.node_operator_capture_effect.handlers import capture_store
 from omnimarket.nodes.node_operator_capture_effect.handlers.ledger_read import (
+    bus_relevant_rows,
     relevant_rows,
+)
+from omnimarket.protocols.protocol_ledger_rows_reader import (
+    LedgerReadError,
+    ProtocolLedgerRowsReader,
 )
 
 PushSender = Callable[[str], tuple[bool, str]]
 
 
 class HandlerCaptureDigest:
-    def __init__(self, push: PushSender | None = None) -> None:
+    def __init__(
+        self,
+        push: PushSender | None = None,
+        ledger_reader: ProtocolLedgerRowsReader | None = None,
+    ) -> None:
         self._push = push
+        self._ledger_reader = ledger_reader
 
     def handle(self, request: ModelCaptureDigestRequest) -> ModelCaptureDigestResult:
         pending = len(capture_store.pending(request.store_dir))
         try:
-            rows = relevant_rows(request.ledger_path)
-        except OSError as exc:
+            rows = (
+                relevant_rows(request.ledger_path)
+                if request.ledger_path is not None
+                else bus_relevant_rows(self._ledger_reader)
+            )
+        except (OSError, LedgerReadError) as exc:
             return ModelCaptureDigestResult(
                 digest=f"Open operator asks: unknown (the ledger could not be read: {exc}).",
                 open_asks=0,

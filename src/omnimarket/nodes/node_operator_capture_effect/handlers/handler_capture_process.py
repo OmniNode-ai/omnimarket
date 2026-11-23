@@ -63,7 +63,12 @@ from omnimarket.nodes.node_operator_capture_effect.handlers.capture_ports import
     onex_ledger_appender,
 )
 from omnimarket.nodes.node_operator_capture_effect.handlers.ledger_read import (
+    bus_relevant_rows,
     relevant_rows,
+)
+from omnimarket.protocols.protocol_ledger_rows_reader import (
+    LedgerReadError,
+    ProtocolLedgerRowsReader,
 )
 
 _DRIFT_KINDS = frozenset({EnumUtteranceKind.DECISION, EnumUtteranceKind.PREFERENCE})
@@ -82,10 +87,12 @@ class HandlerCaptureProcess:
         delegate: DelegateRunner | None = None,
         append: LedgerAppender | None = None,
         now: datetime | None = None,
+        ledger_reader: ProtocolLedgerRowsReader | None = None,
     ) -> None:
         self._delegate = delegate or onex_delegate_runner(None)
         self._append = append or onex_ledger_appender()
         self._now = now
+        self._ledger_reader = ledger_reader
 
     def handle(self, request: ModelCaptureProcessRequest) -> ModelCaptureProcessResult:
         root = request.store_dir
@@ -204,8 +211,12 @@ class HandlerCaptureProcess:
         if any(i.kind in _DRIFT_KINDS for i in classification.items):
             if not prior_cache:
                 try:
-                    prior_cache.append(relevant_rows(request.ledger_path))
-                except OSError:
+                    prior_cache.append(
+                        relevant_rows(request.ledger_path)
+                        if request.ledger_path is not None
+                        else bus_relevant_rows(self._ledger_reader)
+                    )
+                except (OSError, LedgerReadError):
                     prior_cache.append(())
             prior = prior_rulings_from_rows(prior_cache[0])
             for item in classification.items:

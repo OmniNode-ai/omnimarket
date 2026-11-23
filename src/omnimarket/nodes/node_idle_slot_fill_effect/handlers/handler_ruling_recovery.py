@@ -12,22 +12,34 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from omnimarket.handlers.adapter_work_ledger_rows_reader import (
+    SubprocessLedgerRowsReader,
+)
+from omnimarket.protocols.protocol_ledger_rows_reader import (
+    LedgerReadError,
+    ProtocolLedgerRowsReader,
+)
+
 from ..models.model_ruling_recovery import ModelRulingRecoveryResult
 from .ruling_artifacts import local_artifacts
 from .ruling_live_checks import Finding, evaluate_check, packaged_checks, read_check
 from .ruling_owed import owed_findings
 from .ruling_recovery import detect_relaunches, parse_rows
 
+#: The overlay's moved reader that answers the ruling history; the node's 30 day window, as the fixer-hold read.
+RULING_HISTORY_READER = "idle-fill-ruling-recovery"
+RULING_HISTORY_WINDOW_HOURS = 720
 
-def read_ledger(path: Path) -> list[dict[str, str]]:
-    """Read all split rolls: a ruling and its unfinished work never age out."""
-    files = [
-        *sorted((path.parent / "archive").glob("ROLLING_WORK_LEDGER_*-split.md")),
-        path,
-    ]
-    text = "\n".join(p.read_text(encoding="utf-8") for p in files)
-    # Split rolls overlap at their boundary; one ledger row remains one fact.
-    return parse_rows("\n".join(dict.fromkeys(text.splitlines())))
+
+def read_ruling_rows(reader: ProtocolLedgerRowsReader) -> list[dict[str, str]]:
+    """The ruling history of the ledger reader node's 720 h window; an unread history raises LedgerReadError."""
+    return parse_rows(
+        "\n".join(
+            reader.rows(
+                reader=RULING_HISTORY_READER, window_hours=RULING_HISTORY_WINDOW_HOURS
+            )
+        )
+    )
 
 
 def _briefs(rows: list[dict[str, str]], roots: list[Path]) -> dict[str, str]:
@@ -100,9 +112,12 @@ class HandlerRulingRecovery:
     """Read checks on every call, then offer abandoned ruled work to the existing actor."""
 
     def __init__(
-        self, live_reader: Callable[[Mapping[str, Any]], Any] | None = None
+        self,
+        live_reader: Callable[[Mapping[str, Any]], Any] | None = None,
+        ledger_reader: ProtocolLedgerRowsReader | None = None,
     ) -> None:
         self._live_reader = live_reader or read_check
+        self._ledger_reader = ledger_reader
 
     def handle(
         self,
@@ -120,19 +135,11 @@ class HandlerRulingRecovery:
         checks = {c["ruling"]: c for c in packaged_checks()}
         rows: list[dict[str, str]] = []
         registry = environ.get("ONEX_REGISTRY_ROOT") or environ.get("OMNI_HOME")
-        path = environ.get("ONEX_LEDGER_PATH")
-        ledger = (
-            Path(path)
-            if path
-            else Path(registry) / "docs/tracking/ROLLING_WORK_LEDGER.md"
-            if registry
-            else None
-        )
         try:
-            if ledger is None:
-                raise ValueError("ONEX_LEDGER_PATH or ONEX_REGISTRY_ROOT is required")
-            rows = read_ledger(ledger)
-        except (OSError, UnicodeError, ValueError) as exc:
+            rows = read_ruling_rows(
+                self._ledger_reader or SubprocessLedgerRowsReader(environ)
+            )
+        except (LedgerReadError, ValueError) as exc:
             found.append(
                 (
                     "unknown",

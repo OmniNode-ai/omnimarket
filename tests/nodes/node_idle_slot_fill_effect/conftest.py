@@ -19,11 +19,13 @@ from tests.nodes.node_idle_slot_fill_effect.overlay_fixture import ENV
 @pytest.fixture(autouse=True)
 def _overlay_roots(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", ENV["ONEX_SKILL_OVERLAY_ROOTS"])
-    # The throughput effect now reads ruling history every tick. Older fill
-    # scenarios have no ruled work; never consult the developer's live ledger.
-    ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
-    ledger.write_text("")
-    monkeypatch.setenv("ONEX_LEDGER_PATH", str(ledger))
+    # The throughput effect now reads ruling history every tick, through the ledger reader node.
+    # Older fill scenarios have no ruled work; no scenario spawns the reader or consults a ledger file.
+    monkeypatch.setattr(
+        handler_ruling_recovery,
+        "SubprocessLedgerRowsReader",
+        lambda _environ, **_kw: FakeLedgerRows(),
+    )
     # The fixer-HOLD read goes through the ledger reader node, never a file: no scenario spawns it.
     monkeypatch.setattr(
         handler_idle_slot_fill,
