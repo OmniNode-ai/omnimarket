@@ -105,7 +105,7 @@ def test_live_profile_unit_exec_carries_profile_and_live_section(
     ]
     assert json.loads(words[4]) == {
         "floor_fill": OVERLAY,
-        "floor_fill_live": section,
+        "floor_fill_live": {**section, "store_dsn_env_file": None},
         "lab_hosts": [{"name": OVERLAY["host_id"], "available": True}],
     }
 
@@ -138,7 +138,14 @@ def test_default_install_unit_is_unchanged_by_the_live_option(
     assert "--profile" not in default_out
 
 
-@pytest.mark.parametrize("key", sorted(ModelFloorFillLiveSettings.model_fields))
+@pytest.mark.parametrize(
+    "key",
+    sorted(
+        name
+        for name, field in ModelFloorFillLiveSettings.model_fields.items()
+        if field.is_required()
+    ),
+)
 def test_live_profile_missing_key_refuses_naming_it(key: str, tmp_path: Path) -> None:
     section = {
         name: value for name, value in live_section(tmp_path).items() if name != key
