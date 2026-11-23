@@ -812,8 +812,9 @@ def test_red_replay_deploy_gate_red_now_fails() -> None:
 EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
     ("delegation-health-check.yml", "delegation-health-check"): (
         "OMN-25514: a dev signal that reads lab and stability verdicts, in no "
-        "required list; its red row is admitted by a dated sweep exclusion "
-        "until its triggers move to schedule and push on dev."
+        "required list; it runs on schedule and push to dev, and a dated "
+        "sweep exclusion admits the red row a head that ran the old "
+        "pull_request caller still carries."
     ),
     ("omn20025-ac1-postgres-proof.yml", "ac1-postgres16"): (
         "advisory read-only PostgreSQL 16 proof scoped to one PR; emits "
