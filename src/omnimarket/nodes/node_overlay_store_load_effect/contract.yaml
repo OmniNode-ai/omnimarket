@@ -25,6 +25,9 @@ descriptor:
   runtime_profiles: [effects]
 runtime_dispatch:
   external_trigger: true
+  # The loader runs from the declared systemd unit of node_host_installer_registry_units, one tick per timer interval.
+  host_unit:
+    unit: overlay-store-load-systemd
 event_bus:
   subscribe_topics: []
   publish_topics:
