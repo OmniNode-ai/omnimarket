@@ -159,12 +159,18 @@ def test_seam_over_budget_alarm_resolves_when_the_seam_answers_inside_the_budget
 
 
 def test_the_latency_budget_is_the_contracts_value_not_the_handlers() -> None:
-    assert config()["seam_deadline"]["latency_budget_ms"] == 10000  # type: ignore[index]
+    assert _section("seam_deadline")["latency_budget_ms"] == 10000
     tight = HandlerFailureAlarmRouter(
         ports=FakePorts(rows_until(at("2026-11-23T20:45:00Z"))),
         rules=_rules_with(latency_budget_ms=5000),
     ).handle(ModelFailureAlarmRequest(now=at("2026-11-23T20:45:00Z")))
     assert "seam-over-budget:work-ledger-query" in [a.cause for a in tight.alarms]
+
+
+def _section(name: str) -> dict[str, int]:
+    section = config()[name]
+    assert isinstance(section, dict)
+    return section
 
 
 def _rules_with(**seam: int):
@@ -180,7 +186,7 @@ def test_the_cadence_is_declared_in_the_contract_and_the_router_is_wired_to_the_
     None
 ):
     contract = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))
-    assert config()["schedule"]["interval_seconds"] == 300  # type: ignore[index]
+    assert _section("schedule")["interval_seconds"] == 300
     tick = "onex.intent.platform.runtime-tick.v1"
     assert tick in contract["event_bus"]["subscribe_topics"]
     assert any(
