@@ -53,8 +53,12 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # SYNC: the shard matrix below lists 1..NIGHTLY_SPLIT_COUNT.
-  NIGHTLY_SPLIT_COUNT: "10"
+  # SYNC: the shard matrix below lists 1..NIGHTLY_SPLIT_COUNT. Twenty is the PR full-suite split
+  # (full_split_count in the selector policy): at ten, a shard carried 1,143 recorded test seconds
+  # and, with coverage collection and setup on top, ran into its 30-minute timeout and was cancelled
+  # every night from 2026-11-10 to 2026-11-23 (OMN-26274;
+  # tests/ci/test_nightly_full_suite_shard_budget.py holds the share a shard carries).
+  NIGHTLY_SPLIT_COUNT: "20"
 
 jobs:
   resolve-head:
@@ -75,13 +79,14 @@ jobs:
     name: Full Suite Shard ${{ matrix.split }} (nightly)
     needs: resolve-head
     runs-on: ubuntu-24.04
-    # Measured serial full-suite time is ~45m on this runner class; a tenth of
-    # it per shard, with count-balancing slack when no durations cache exists.
+    # The recorded suite is about 190 test minutes serial; a twentieth of it per shard, with the
+    # coverage collection and setup the shard also pays, and count-balancing slack when no
+    # durations cache exists, stays inside the timeout.
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        split: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        split: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     # Same real-Postgres service as ci.yml's `test` job (OMN-14167), so the
     # integration real-DB proofs execute instead of failing closed.
     services:

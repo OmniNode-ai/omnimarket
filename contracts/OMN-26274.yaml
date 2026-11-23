@@ -85,6 +85,13 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/ci/test_selection_stage_evidence.py -q --no-cov -n 0 -p no:randomly -k old_comment
     cwd: .
+- id: dod-omn26274-nightly-shard-budget
+  description: 'Every Nightly Full Suite run from 2026-11-10 to 2026-11-23 concluded cancelled: in run 45100973978 nine of ten shards were cancelled in their pytest step 30 minutes after the job started (the shard timeout-minutes), the tenth finished in 21 minutes. The recorded suite is 11,429 test seconds, 1,143 per shard at ten shards. The nightly now splits twenty ways, the PR full-suite split, with the timeout and the matrix unchanged otherwise: a shard carries at most half its timeout in recorded seconds before coverage and setup. The test file is new at this head, so the check fails at the merge base.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_nightly_full_suite_shard_budget.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn26274-ac2-stage-zero-restored-on-dev
   description: 'AC2, stage 0 restored: with selection_stage 0 back in the policy the six stage evidence tests that fail at dev head 6d15b8e833, picked by name, pass. At dev head 6d15b8e833, where the policy reads 1, the same command reads 6 failed, so this check fails at the merge base and passes at this head.'
   source: manual
