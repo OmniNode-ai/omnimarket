@@ -48,14 +48,14 @@ handler_routing:
       message_category: event
       operation: apply_delegation_completed
       handler:
-        name: HandlerGatewayWorkflowTerminal
+        name: HandlerGatewayWorkflowTerminalCompleted
         module: omnimarket.nodes.node_gateway_workflow_terminal_effect.handlers.handler_gateway_workflow_terminal
       handler_module: omnimarket.nodes.node_gateway_workflow_terminal_effect.handlers.handler_gateway_workflow_terminal
     - topic: onex.evt.omnibase-infra.delegation-failed.v1
       message_category: event
       operation: apply_delegation_failed
       handler:
-        name: HandlerGatewayWorkflowTerminal
+        name: HandlerGatewayWorkflowTerminalFailed
         module: omnimarket.nodes.node_gateway_workflow_terminal_effect.handlers.handler_gateway_workflow_terminal
       handler_module: omnimarket.nodes.node_gateway_workflow_terminal_effect.handlers.handler_gateway_workflow_terminal
 descriptor:

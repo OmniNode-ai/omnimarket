@@ -104,6 +104,16 @@ async def test_the_effects_hold_bytes_are_accepted_by_the_gate_and_the_release_r
         headers={},
     )
     assert await dispatch.drain() == 1
+    while (
+        gate.store.load().outbox
+    ):  # the publisher hands the runtime one event per tick (OMN-26501)
+        await transport.send(
+            TICK_TOPIC,
+            key=KEY,
+            value=envelope(tick_payload(gate.clock.now), "ModelRuntimeTick"),
+            headers={},
+        )
+        assert await dispatch.drain() == 1
     released = [
         ModelEventEnvelope[object].model_validate_json(record.value)
         for record in broker.records(DEPLOY_PUBLISH_TOPIC, 0)

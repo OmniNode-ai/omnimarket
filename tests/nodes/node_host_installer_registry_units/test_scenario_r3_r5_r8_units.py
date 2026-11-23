@@ -141,6 +141,8 @@ def test_install_renders_the_timer_and_the_environment_file_line(
         expected_revision=revision,
         path_overrides={},
         ledger_host_name="h201",
+        # R8 and R9 refuse an install without the dev host their tick waits on (OMN-25878); the other units ignore it.
+        dev_readiness_host="h201",
         workspace_config_root=str(tmp_path / "config"),
     )
     result = HandlerRegistryUnits(run).handle(request)

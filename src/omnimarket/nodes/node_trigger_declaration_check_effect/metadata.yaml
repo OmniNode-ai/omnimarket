@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: trigger_declaration_check_effect
+version: "1.0.0"
+description: "Refuses a node whose contract names no tick, schedule, host unit, caller or on-demand command that runs it."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_trigger_declaration_check_effect: omnimarket.nodes.node_trigger_declaration_check_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+  - "pydantic>=2.0"
+tags: [effect, validation, contract, trigger]
+pack: "data"
+display_name: "Effect: Node Trigger Declaration Check"
+node_role: "effect"
+license: "MIT"
