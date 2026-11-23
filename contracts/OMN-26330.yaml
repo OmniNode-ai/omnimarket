@@ -47,6 +47,9 @@ dod_evidence:
         check_value: >-
           bash -o pipefail -c 'cd "$PWD" && ! env ONEX_LEDGER_CENSUS_ROOT="$(dirname "$PWD")" uv run --frozen python -m omnimarket.nodes.node_work_ledger_file_census_effect --packaged-overlay --repos omnimarket --directory omnimarket="$PWD" --per-file --verbose | grep -E "handler_ruling_recovery.py|node_operator_capture_effect/(contract.yaml|handlers/capture_ports.py|runtime_capture_cli.py)"'
         cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_omn26330_cleared_files.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
   - id: dod-omn26330-ac2-ratchet
     description: The census exits 0 with the lowered per-file rows, the ratchet total reads 133 and no cleared file keeps a row (at the merge base the ratchet reads 140 and still holds those rows, so this fails there).
     source: manual
@@ -55,6 +58,9 @@ dod_evidence:
       - check_type: command
         check_value: >-
           bash -o pipefail -c 'env ONEX_LEDGER_CENSUS_ROOT="$(dirname "$PWD")" uv run --frozen python -m omnimarket.nodes.node_work_ledger_file_census_effect --packaged-overlay --repos omnimarket --directory omnimarket="$PWD" --per-file && r=src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml && grep -qE "^  omnimarket: 133$" "$r" && ! grep -E "handler_ruling_recovery.py|node_operator_capture_effect/(contract.yaml|handlers/capture_ports.py|runtime_capture_cli.py)" "$r"'
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_omn26330_cleared_files.py -q --no-cov -n 0 -p no:randomly
         cwd: .
   - id: dod-omn26330-ac3-tests
     description: The new bus-read tests (ruling recovery, capture digest, capture process, capture CLI, the appender) pass at the head; each fails at the merge base (red then green in the pull request body).
