@@ -1,0 +1,93 @@
+schema_version: 1.0.0
+ticket_id: OMN-26504
+title: The gateway workflow terminal writer applies the delegation terminal the dev runtime delivers, which carries no topic
+summary: 'The runtime hands node_gateway_workflow_terminal_effect the unwrapped wire payload with no topic and no event type, so the writer raised delivery is not declared by the contract on every terminal. The contract now binds one handler class to each of its two delegation terminal routes, and a delivery that names nothing takes the status of the route it was dispatched on; a delivery that names an undeclared topic still raises.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26504-route-bound-status
+  statement: The writer applies a delegation terminal the runtime delivers without a topic, and still refuses a delivery that names an undeclared topic.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the cause of the empty delivery is named from the dev runtime log around 2026-11-23T05:04:13Z on omni-201 (which key the runtime injected, or that none was injected) and from the node contract and handler, with file and line -- falsifier: the PR body or a ticket comment names no injected key and no log line for the 05:04:13Z failure'
+  - id: AC2
+    statement: 'AC2: a regression test built from the recorded dev delivery (the scrubbed log line or runtime dict, fixture path in the PR) fails on the code at 1ff0cc4e32cd with `delivery '''' is not declared by the contract` and passes on the fix -- falsifier: `uv run pytest tests/nodes/node_gateway_workflow_terminal_effect -q` at the commit before the fix exits non-zero naming the empty delivery'
+  - id: AC3
+    statement: 'AC3: after the fix a delivery shaped like the recorded one is applied to the gateway row (outcome completed or failed per its topic) and a delivery with a truly undeclared topic still raises -- falsifier: `uv run pytest tests/nodes/node_gateway_workflow_terminal_effect -q` exits non-zero on either case'
+  - id: AC4
+    statement: 'AC4: the fix is one pull request against dev with every required check green at its head, handed to the landing controller by one ledger MSG -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#<n>` lists a required check red at the head'
+  - id: AC5
+    statement: 'AC5: lane hermes3-0505 is sent one MSG naming the pull request -- falsifier: no MSG row to=hermes3-0505 naming the pull request in the ledger'
+  - id: AC6
+    statement: 'AC6: integrated: on the running dev runtime on omni-201 after the build that carries the fix, one delegation terminal for a gateway workflow moves its row to completed or failed -- falsifier: the dev runtime log of the last 30 minutes shows a line `delivery '''' is not declared by the contract` or the workflow row stays non-terminal'
+evidence_requirements:
+- kind: tests
+  description: The node's tests, including the recorded dev delivery regression, pass at the pushed head.
+  command: uv run pytest tests/nodes/node_gateway_workflow_terminal_effect -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26504-ac1
+  description: 'AC1: the fixture records the 05:04:13Z log lines from the dev runtime and the delivery the dispatch callback builds from them (topic and event type empty, no injected key); the test reads the fixture. The cause is named with file and line in the PR body.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_gateway_workflow_terminal_effect/test_dev_delivery_without_topic.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26504-ac2
+  description: 'AC2: the regression test applies the recorded delivery through the handler class each contract route names; at the commit before the fix it fails with delivery '''' is not declared by the contract (failing run shown in the PR body), at the head it passes.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_gateway_workflow_terminal_effect/test_dev_delivery_without_topic.py -q -n 0 --no-cov -p no:cacheprovider -k recorded_dev_delivery
+    cwd: .
+- id: dod-omn26504-ac3
+  description: 'AC3: the recorded delivery moves the row to completed on the completed route and to failed on the failed route; an undeclared topic raises on both route handlers and on the unbound handler.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_gateway_workflow_terminal_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26504-ac4
+  description: 'hosted proxy for AC4: the node tests pass here; the pull request is handed to the landing controller by one ledger MSG after it is open, which is not met by this change alone.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_gateway_workflow_terminal_effect/test_golden_chain_gateway_workflow_terminal.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26504-ac5
+  description: 'hosted proxy for AC5: the MSG to hermes3-0505 is a ledger row written after the pull request is open and is not met by this change alone; the node tests pass here.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_gateway_workflow_terminal_effect/test_dev_delivery_without_topic.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26504-ac6
+  description: 'hosted proxy for AC6, pending the roll onto dev: the integrated read on omni-201 is taken after the build that carries this change and is not met by this change alone; the test shows the recorded delivery applied through the handler class each route names.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_gateway_workflow_terminal_effect/test_dev_delivery_without_topic.py -q -n 0 --no-cov -p no:cacheprovider -k recorded_dev_delivery
+    cwd: .
+- id: dod-omn26504-integration-proof
+  description: the node tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26504 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_gateway_workflow_terminal_effect -q --no-cov
