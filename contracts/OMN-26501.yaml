@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: OMN-26501
+title: "The dev roll window gate publishes each released deploy command with the multi-event publish seam unset, so a released batch reaches the deploy agent"
+summary: The gate's contract-declared tick handler hands the runtime one event per tick, drawn from an outbox kept in the gate state, so a released batch is published with ONEX_MULTI_EVENT_PUBLISH_SEAM at its default instead of being dropped as a bare sequence.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26501-gate-release-published
+    statement: The tick handler the gate contract declares returns one bare event per tick that the runtime publishes with the multi-event seam unset, and keeps the events of a tick still to publish in the gate state.
+    acceptance:
+      - id: AC1
+        statement: "AC1: a regression test runs the contract-declared tick handler's return through omnibase_infra handler_wiring._normalize_handler_result with the seam at its default and fails on the current handler because the released commands are dropped, then passes on the fix -- falsifier: uv run pytest tests/unit/nodes/node_dev_roll_window_gate_effect/test_runtime_publish_dev_roll_window_gate.py -q fails at omnimarket dev before the fix commit and passes after it"
+      - id: AC2
+        statement: "AC2: the tick handler publishes each released command as its own event with the seam unset, from an outbox kept in the gate state, and the other gate unit tests still pass -- falsifier: uv run pytest tests/unit/nodes/node_dev_roll_window_gate_effect -q exits 0"
+      - id: AC3
+        statement: "AC3: the dev lane builds from a request the gate released after the fix runs on dev -- falsifier: ssh h201 docker inspect omninode-runtime shows StartedAt later than the merge of the fix and the agent job record names the released git_ref"
+evidence_requirements:
+  - kind: tests
+    description: The regression test of the declared tick handler through the runtime's result normalization, and the node's unit tests.
+    command: uv run pytest tests/unit/nodes/node_dev_roll_window_gate_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26501-ac1
+    description: "The regression test fails at omnimarket dev before the fix commit (7 failed, 1 passed, the control) and passes on the fix commit."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_dev_roll_window_gate_effect/test_runtime_publish_dev_roll_window_gate.py -q --no-cov
+        cwd: .
+  - id: dod-omn26501-ac2
+    description: "Every unit test of node_dev_roll_window_gate_effect passes with the publishing tick handler bound from the node contract."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_dev_roll_window_gate_effect -q --no-cov
+        cwd: .
+  - id: dod-omn26501-ac3
+    description: "AC3 is proved after the merge and the dev runtime's next build, out of this change's reach: orchestrator-31d9-swarm reads omninode-runtime StartedAt on the dev host against the merge time and the deploy agent's job record for the released git_ref. The check here is the declared tick handler's contract binding, which the runtime reads at build."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_dev_roll_window_gate_effect/test_runtime_publish_dev_roll_window_gate.py -k declared_tick_handler -q --no-cov
+        cwd: .
