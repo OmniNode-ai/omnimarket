@@ -100,6 +100,11 @@ event_bus:
   publish_topics: []
   dlq_topics:
     - onex.dlq.omnimarket.gateway-workflow-terminal-malformed.v1
+# The node is an event consumer: its trigger is the delegation terminal pair above and it publishes no topic of
+# its own. The runtime publishes the decision for each delivery (ModelGatewayTerminalApplied) on this terminal.
+runtime_dispatch:
+  terminal_events:
+    success: onex.evt.omnimarket.gateway-workflow-terminal-applied.v1
 capabilities:
   - name: "gateway_workflow_terminal_write"
     description: "Write the terminal outcome of a gateway workflow onto its row."
