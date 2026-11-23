@@ -32,13 +32,16 @@ dod_evidence:
     check_value: uv run pytest tests/unit/delegation/test_inference_error_credential_unresolved_omn25827.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn25827-ac2
-  description: 'AC2: the sibling classification tests still pass.'
+  description: 'AC2: the sibling classification tests still pass together with the new test file, which does not exist at the merge base, so the control at the merge base fails.'
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/delegation/test_inference_error_503_status_first_omn20712.py tests/unit/delegation/test_inference_error_429_word_boundary_omn20154.py tests/unit/delegation/test_omn18265_provider_error_in_200_body.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_inference_error_credential_unresolved_omn25827.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn25827-integration-proof
   description: the F3 classification tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
