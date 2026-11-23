@@ -138,7 +138,8 @@ def test_the_census_tick_probe_answers_and_one_tick_keeps_the_daily_record(
 
 def test_the_dispatcher_declares_the_host_unit_the_contract_prose_promised() -> None:
     block = _dispatch_block(DISPATCH)
-    assert block["external_trigger"] is True
+    assert isinstance(block["external_trigger"], str)
+    assert block["external_trigger"].strip()
     trigger = _triggers(DISPATCH).host_unit
     assert trigger is not None
     assert trigger.unit == "lane-dispatch-systemd"
