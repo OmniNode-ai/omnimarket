@@ -21,6 +21,18 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from omnimarket.handlers.projection_ordering import sort_for_presentation
+from omnimarket.handlers.projection_read_page_ordering import (
+    InvalidOrderByError,
+    base_order_by_spec,
+    effective_order_by_spec,
+    reported_ordering,
+)
+from omnimarket.handlers.projection_read_page_window import (
+    InvalidWindowError,
+    parse_window_seconds,
+    window_body,
+    window_read_kwargs,
+)
 from omnimarket.handlers.projection_serving import (
     ServeTimeJudgementError,
     judge_served_rows,
@@ -29,18 +41,6 @@ from omnimarket.projection.models import (
     ProjectionStatus,
     ProjectionTableConfig,
     UnrankedOrderValueError,
-)
-from omnimarket.projection.read_page_ordering import (
-    InvalidOrderByError,
-    base_order_by_spec,
-    effective_order_by_spec,
-    reported_ordering,
-)
-from omnimarket.projection.read_page_window import (
-    InvalidWindowError,
-    parse_window_seconds,
-    window_body,
-    window_read_kwargs,
 )
 from omnimarket.projection.table_reader import (
     ProjectionReadError,

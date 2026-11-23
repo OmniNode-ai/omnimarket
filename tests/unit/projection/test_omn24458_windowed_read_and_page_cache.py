@@ -35,6 +35,7 @@ from uuid import UUID
 
 import pytest
 
+from omnimarket.handlers.projection_read_page_window import parse_window_seconds
 from omnimarket.nodes.node_projection_query_api_effect.handlers import (
     handler_projection_query,
 )
@@ -56,7 +57,6 @@ from omnimarket.nodes.node_projection_query_api_effect.ports.page_cache import (
 from omnimarket.projection.discovery import parse_order_by_clauses
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.read_page import read_projection_page
-from omnimarket.projection.read_page_window import parse_window_seconds
 from omnimarket.projection.table_reader import build_window_query
 
 pytestmark = pytest.mark.unit

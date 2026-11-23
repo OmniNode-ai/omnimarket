@@ -57,11 +57,13 @@ from uuid import UUID
 
 import asyncpg
 
-from omnimarket.projection.models import ProjectionTableConfig
-from omnimarket.projection.table_page_view import (
+from omnimarket.handlers.projection_table_page_view import (
     ProtocolProjectionPageView as ProtocolProjectionPageView,
 )
-from omnimarket.projection.table_page_view import TablePageView as TablePageView
+from omnimarket.handlers.projection_table_page_view import (
+    TablePageView as TablePageView,
+)
+from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.tenant_isolation import TENANT_GUC
 from omnimarket.projection.tenant_registry_resolution import (
     TENANT_REGISTRY_MIRROR_TABLE,
