@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: OMN-26097
+title: "The disk watermark scan skips an entry that vanishes mid-scan and ends inside the unit's start timeout"
+summary: "The onex-disk-watermark user unit on h201 failed 93 of 620 runs from 2026-11-20T00:00-05:00 to 2026-11-23: 83 ended by the 600 s start timeout and 10 by exit 3, each a FileNotFoundError on a uv-cache archive-v0 entry or a worktree that another lane removed while the scan walked it (the owner read of a vanished entry raised). A class scan now skips an entry that is gone and counts it in the reading's scan_skipped result, never raising. The class scan walked every file of the 149 GB uv cache each run (median unit run 527 s of the 600 s timeout), so it now takes a budget (scan_budget_percent of timeout_start_seconds, declared in the contract) and keeps the walk of each uv-cache entry, which is content addressed and written once, keyed by inode and change time, so a later run walks only what is new and a scan that spends its budget reads as an unread class with the reason and exits 0."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26097-wmark-vanish
+    statement: "An entry a class scan lists and then finds gone is skipped and counted in the typed result, and the run exits 0."
+    acceptance:
+      - id: AC6
+        statement: "AC6: a uv-cache entry or worktree removed between the listing and its read is skipped and counted in scan_skipped, the class stays read, and the unit command exits 0 -- falsifier: uv run pytest tests/nodes/node_lab_disk_watermark_effect/test_vanishing_entry_omn26097.py -q --no-cov -k 'vanish or exits_zero'; the tests fail at the merge base with FileNotFoundError from the owner read"
+  - id: req-omn26097-wmark-budget
+    statement: "The class scan stops at its budget, keeps the walks of immutable uv-cache entries, and the next run walks only the entries not yet kept."
+    acceptance:
+      - id: AC7
+        statement: "AC7: a scan that spends its budget reads the uv cache as unread with the reason and keeps the walks it made, the next run walks only the other entries, and the declared budget plus the two docker reads is inside the start timeout -- falsifier: uv run pytest tests/nodes/node_lab_disk_watermark_effect/test_vanishing_entry_omn26097.py -q --no-cov -k 'budget or walked or kept or declared_scan_budget'"
+evidence_requirements:
+  - kind: tests
+    description: "The watermark node's tests pass at the pushed head."
+    command: "uv run --frozen pytest tests/nodes/node_lab_disk_watermark_effect -q --no-cov -n 0 -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26097-wmark-ac6
+    description: "AC6: a vanished entry is skipped and counted, never raised, and the unit command exits 0."
+    source: manual
+    binds_ac: [AC6]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run --frozen pytest tests/nodes/node_lab_disk_watermark_effect/test_vanishing_entry_omn26097.py -q --no-cov -n 0 -p no:randomly -k 'vanish or exits_zero'
+        cwd: .
+  - id: dod-omn26097-wmark-ac7
+    description: "AC7: the scan budget, the kept walks and the declared budget inside the start timeout."
+    source: manual
+    binds_ac: [AC7]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run --frozen pytest tests/nodes/node_lab_disk_watermark_effect/test_vanishing_entry_omn26097.py -q --no-cov -n 0 -p no:randomly -k 'budget or walked or kept or declared_scan_budget'
+        cwd: .
+  - id: dod-omn26097-wmark-integration-proof
+    description: "Local Done gate only, so it binds no criterion here: after the branch is installed on h201 through the declared installer, the unit's newest run finished and its reading is read back from the reading file."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'ssh h201 "journalctl --user -u onex-disk-watermark.service -n 80 -o cat | grep scan_skipped | tail -1" | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); assert d[\"scan_skipped\"] is not None and d[\"level\"] in (\"ok\", \"warn\")"'
