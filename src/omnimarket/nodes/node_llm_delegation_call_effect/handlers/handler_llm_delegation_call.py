@@ -119,6 +119,9 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
     anthropic_messages,
     transport,
 )
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
+    handler_provider_key_failover as provider_key_failover,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.review_cost_recorder import (
     TOPIC_REVIEW_CALL_COST_RECORDED,
     attempt_counter,
@@ -823,7 +826,7 @@ class HandlerLlmDelegationCall:
         """
         byok = self._customer_byok_row(request, endpoint_url)
         if byok is None:
-            return self._execute_call_once(request, endpoint_url, event_publisher)
+            return self._execute_house_call(request, endpoint_url, event_publisher)
         if byok.customer_chooses_model:
             # OMN-20844: the customer chooses this provider's model. A credential
             # with none is refused rather than given a catalogue pick, and a
@@ -881,6 +884,41 @@ class HandlerLlmDelegationCall:
             # answered, so it is the attribution, not the route's stale value.
             result = result.model_copy(update={"served_model_id": request.model_id})
         return result
+
+    key_failover: provider_key_failover.ProviderKeyFailover | None = None
+
+    def _execute_house_call(
+        self,
+        request: ModelLlmDelegationCallRequest,
+        endpoint_url: str,
+        event_publisher: Any,
+    ) -> ModelLlmDelegationCallResult:
+        """One house call, moved to the next declared key when a key is refused (OMN-19432)."""
+        failover = (
+            self.key_failover or provider_key_failover.DEFAULT_PROVIDER_KEY_FAILOVER
+        )
+        result, attempts = failover.run(
+            own_ref=request.secret_ref,
+            provider=request.provider,
+            endpoint_url=endpoint_url,
+            attempt=lambda ref: self._execute_call_once(
+                request.model_copy(update={"secret_ref": ref}),
+                endpoint_url,
+                event_publisher,
+            ),
+            failure_of=lambda res: (res.failure_class, res.http_status),
+            all_cooling=lambda ref: self._failure_result(
+                request.model_copy(update={"secret_ref": ref}),
+                EnumDelegationFailureClass.PROVIDER_AUTH_FAILED,
+                "provider_auth_failed: every declared key for this provider is held "
+                "out of use after an auth failure",
+            ),
+        )
+        return (
+            result.model_copy(update={"key_failover_attempts": attempts})
+            if attempts
+            else result
+        )
 
     def _retry_on_another_model(
         self,
