@@ -53,8 +53,9 @@ floor_fill:
   # Where the fill writes each continuation's brief file (<lane>.md; the lane name carries the attempt).
   stopped_brief_directory: /srv/example/briefs
 # The live profile (``--profile live``) reads this second section. Every key is required and none has a default.
-# The pool, tickets, brake and stop-signal seams have no live source yet and carry no key here: they fail closed
-# naming what is unbound.
+# The pool, tickets, brake and stop-signal seams are bound to their live readers (the pool snapshot, the floor-task
+# ticket nodes over the Linear ticket store, the andon stop gate over the stop queue); a source that cannot be read
+# answers ``UNKNOWN <source>-unread:<cause>`` and the pass starts nothing.
 floor_fill_live:
   # The NAME of the environment variable that holds the state store DSN (the DSN itself is never in an overlay).
   store_dsn_env: EXAMPLE_FLOOR_FILL_DSN
@@ -71,3 +72,13 @@ floor_fill_live:
   ledger_path: /srv/example/ledger/work-ledger.md
   # Where a started lane's log is written.
   process_output_dir: /srv/example/work/lane-logs
+  # The pool seam: the lane host pool snapshot file the snapshot writer keeps, the suffix of the read-at record beside it,
+  # how old that record may be, and the engine the pool is read for. A missing, stale or empty snapshot is unread.
+  pool_snapshot_path: /srv/example/pool-snapshot.json
+  pool_record_suffix: .read-at.json
+  pool_snapshot_max_age_seconds: 180
+  pool_engine: example-engine
+  # The tickets seam: the deadline of each call of the ticket store (search, create, read).
+  mint_timeout_seconds: 10.0
+  # The brake and stop-signal seams: the directory of the andon stop queue (the exception queue's state directory).
+  andon_state_dir: /srv/example/state/exception-queue

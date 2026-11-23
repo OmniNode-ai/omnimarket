@@ -36,6 +36,16 @@ class ModelFloorFillLiveSettings(BaseModel):
     plan_file_pattern: str = Field(min_length=1)
     ledger_path: str = Field(min_length=1)
     process_output_dir: str = Field(min_length=1)
+    # The pool seam: the lane host pool snapshot file the snapshot writer keeps, the suffix of the read-at record
+    # beside it, how old that record may be, and the engine the pool is read for.
+    pool_snapshot_path: str = Field(min_length=1)
+    pool_record_suffix: str = Field(min_length=1)
+    pool_snapshot_max_age_seconds: int = Field(gt=0)
+    pool_engine: str = Field(min_length=1)
+    # The tickets seam: the deadline of each call of the ticket store (search, create, read).
+    mint_timeout_seconds: float = Field(gt=0)
+    # The brake and stop-signal seams: the directory of the andon stop queue (the exception queue's state directory).
+    andon_state_dir: str = Field(min_length=1)
     # The env file the secret store writes the DSN variable into; optional, because the unit's own
     # EnvironmentFile may already carry the variable.
     store_dsn_env_file: str | None = None
