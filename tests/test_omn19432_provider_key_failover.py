@@ -199,3 +199,98 @@ def test_bad_key_stays_out_for_the_cooldown_and_returns_after_it(
     back = _run(handler, KEY_A)
     assert provider.calls == [KEY_A]
     assert back.secret_ref == KEY_A
+
+
+class _KeyedStore:
+    """A read-only secret store holding synthetic values, one per key NAME."""
+
+    def __init__(self, values: dict[str, str]) -> None:
+        self._values = values
+
+    async def get_secret(self, key: str) -> str | None:
+        return self._values.get(key)
+
+    async def set_secret(self, key: str, value: str) -> bool:
+        raise RuntimeError("read-only")
+
+    async def delete_secret(self, key: str) -> bool:
+        raise RuntimeError("read-only")
+
+    async def list_keys(self, prefix: str | None = None) -> list[str]:
+        return []
+
+    async def health_check(self) -> bool:
+        return True
+
+    async def close(self, timeout_seconds: float | None = None) -> None:
+        return None
+
+
+def test_real_http_fake_provider_401_then_200_names_the_second_key() -> None:
+    """The real call effect over HTTP: a fake provider refuses key one and answers key two."""
+    import http.server
+    import json
+    import threading
+
+    from omnimarket.inference.secret_store_resolver import injected_secret_store
+
+    synthetic_a = "synthetic-first-key-for-omn19432"
+    synthetic_b = "synthetic-second-key-for-omn19432"
+    seen: list[str] = []
+
+    class Provider(http.server.BaseHTTPRequestHandler):
+        def _send(self, status: int, body: dict[str, Any]) -> None:
+            payload = json.dumps(body).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def do_GET(self) -> None:
+            self._send(200, {"data": [{"id": "claude-sonnet-5-5"}]})
+
+        def do_POST(self) -> None:
+            self.rfile.read(int(self.headers.get("Content-Length", "0")))
+            token = (self.headers.get("Authorization") or "").removeprefix("Bearer ")
+            seen.append("first" if token == synthetic_a else "second")
+            if token == synthetic_a:
+                self._send(401, {"error": {"message": "invalid x-api-key"}})
+                return
+            self._send(
+                200,
+                {
+                    "model": "claude-sonnet-5-5",
+                    "choices": [
+                        {"message": {"content": "ok"}, "finish_reason": "stop"}
+                    ],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+                },
+            )
+
+        def log_message(self, format: str, *args: object) -> None:
+            return None
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Provider)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        url = f"http://127.0.0.1:{server.server_port}/v1/chat/completions"
+        handler = HandlerLlmDelegationCall()
+        handler.key_failover = failover_module.ProviderKeyFailover(
+            pool=Pool(KEY_A, KEY_B), clock=Clock()
+        )
+        request = _request(KEY_A).model_copy(update={"endpoint_ref": url})
+        store = _KeyedStore({KEY_A: synthetic_a, KEY_B: synthetic_b})
+        with injected_secret_store(store):  # type: ignore[arg-type]
+            result = handler.call_endpoint(request, url)
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    assert seen == ["first", "second"]
+    assert result.success, result.error_message
+    assert result.secret_ref == KEY_B
+    assert [a.key_name for a in result.key_failover_attempts] == [KEY_A, KEY_B]
+    assert synthetic_a not in repr(result)
+    assert synthetic_b not in repr(result)
