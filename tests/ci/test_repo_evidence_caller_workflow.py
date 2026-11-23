@@ -892,3 +892,25 @@ def test_contract_binds_refuses_a_declared_criterion_with_no_hosted_binding() ->
         }
     )
     assert contract_binds_violations("OMN-0.yaml", contract) == []
+
+
+def test_no_repo_contract_hides_a_pytest_run_behind_uv_run_frozen_command() -> None:
+    """OMN-26488: a `command` check with `uv run --frozen pytest` binds no test file.
+
+    The binder finds a command-type run by the literal substring `uv run pytest`,
+    so a uv flag between `run` and `pytest` leaves the item unbound. Such a run
+    belongs in a `test_passes` check, whose parser skips uv flags.
+    """
+    offenders: list[str] = []
+    for path in sorted((REPO_ROOT / "contracts").glob("OMN-*.yaml")):
+        contract = yaml.safe_load(path.read_text(encoding="utf-8"))
+        for item in contract.get("dod_evidence") or []:
+            if not item.get("binds_ac"):
+                continue
+            for check in item.get("checks") or []:
+                value = str(check.get("check_value", ""))
+                if check.get("check_type") == "command" and re.search(
+                    r"^(?:env\s+(?:-u\s+)?\S+\s+)*uv run --frozen pytest", value
+                ):
+                    offenders.append(f"{path.name}:{item.get('id')}")
+    assert not offenders, "\n".join(offenders)
