@@ -4,6 +4,9 @@
 
     python -m omnimarket.nodes.node_work_ledger_file_census_effect.runtime_file_census_tick --omni-home <root> --state-dir <dir>
 
+``--probe`` is the installer's start check: it runs the unit's own tick arguments followed by ``--probe`` and expects one
+``probe_ok`` line, with no census pass and no file written.
+
 The host installer renders the unit (``ledger-file-census-systemd`` in ``node_host_installer_registry_units``) with
 ``ONEX_LEDGER_CENSUS_ROOT`` set to the registry root. One pass runs the census with the overlay and the ratchet file
 packaged beside this node (paths that do not depend on the unit's working directory) and the ``--record`` flag, so the
@@ -63,13 +66,16 @@ def main(
 ) -> int:
     out = sys.stdout if stdout is None else stdout
     args_in = list(sys.argv[1:] if argv is None else argv)
-    if args_in == [PROBE_FLAG]:
+    parser = argparse.ArgumentParser(prog="node_work_ledger_file_census_effect.tick")
+    parser.add_argument("--omni-home", dest="registry_root", type=Path)
+    parser.add_argument("--state-dir", type=Path)
+    parser.add_argument(PROBE_FLAG, dest="probe", action="store_true")
+    args = parser.parse_args(args_in)
+    if args.probe:
         out.write(json.dumps({"status": PROBE_STATUS}) + "\n")
         return 0
-    parser = argparse.ArgumentParser(prog="node_work_ledger_file_census_effect.tick")
-    parser.add_argument("--omni-home", dest="registry_root", required=True, type=Path)
-    parser.add_argument("--state-dir", required=True, type=Path)
-    args = parser.parse_args(args_in)
+    if args.registry_root is None or args.state_dir is None:
+        parser.error("--omni-home and --state-dir are required")
     env = dict(os.environ if environ is None else environ)
     if not env.get(ROOT_ENV, "").strip():
         env[ROOT_ENV] = str(args.registry_root)
