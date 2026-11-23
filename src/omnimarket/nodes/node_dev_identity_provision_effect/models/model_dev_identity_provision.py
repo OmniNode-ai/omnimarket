@@ -26,7 +26,7 @@ class EnumDevIdentityOutcome(StrEnum):
     USER_CREATE_FAILED = "user_create_failed"
     USER_TOKEN_REFUSED = "user_token_refused"
     PROVISION_REFUSED = "provision_refused"
-    API_UNREACHABLE = "api_unreachable"
+    RUNTIME_UNREACHABLE = "runtime_unreachable"
     PROVISION_RESPONSE_INVALID = "provision_response_invalid"
     INVALID_IDENTITY_INPUT = "invalid_identity_input"
     USER_PROTECTED = "user_protected"
@@ -39,8 +39,8 @@ class ModelDevIdentityProvisionCommand(BaseModel):
     ``username``, ``email`` and ``password_key_id`` name the identity to provision; each left out is the overlay user's
     value. A username other than the overlay's must carry its own email and password key id, so a new user never borrows
     the overlay user's. An existing user is never given a new password unless ``reset_existing`` is set, and a username in
-    the overlay's ``protected_usernames`` is refused unless ``allow_protected`` is set. The tenant is the one onex-api
-    binds to the user: its provision endpoint takes no body, so the command carries no tenant name.
+    the overlay's ``protected_usernames`` is refused unless ``allow_protected`` is set. The tenant is created by the
+    runtime's tenant provision command, named from the username, so the command carries no tenant name.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
