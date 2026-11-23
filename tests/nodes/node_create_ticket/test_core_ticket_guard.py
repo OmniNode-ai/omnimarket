@@ -8,7 +8,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from omnibase_core.cli.cli_work_ledger_render import MD_LEDGER_PATH_ENV
 
 from omnimarket.nodes.node_create_ticket.handlers.core_ticket_guard import (
     CORE_GUARD_ID,
@@ -78,12 +77,7 @@ def test_handler_default_guard_is_the_core_validator(
 
 
 @pytest.mark.unit
-def test_core_guard_reads_the_ledger_named_by_the_core_constant(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    ledger = tmp_path / "ledger.md"
-    ledger.write_text("row\n", encoding="utf-8")
-    monkeypatch.setenv(MD_LEDGER_PATH_ENV, str(ledger))
-    assert CoreTicketGuard(lane=None).ledger_path == ledger
-    monkeypatch.delenv(MD_LEDGER_PATH_ENV)
+def test_core_guard_names_no_ledger_file_unless_injected(tmp_path: Path) -> None:
     assert CoreTicketGuard(lane=None).ledger_path is None
+    ledger = tmp_path / "ledger.md"
+    assert CoreTicketGuard(lane=None, ledger_path=ledger).ledger_path == ledger
