@@ -8,11 +8,11 @@ from omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.handler_dev_roll
 from omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.handler_dev_roll_window_hold import (
     HandlerDevRollWindowHold,
 )
-from omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.handler_dev_roll_window_tick import (
-    HandlerDevRollWindowTick,
-)
 from omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.handler_dev_roll_window_tick_publish import (
     HandlerDevRollWindowTickPublish,
+)
+from omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.roll_tick_decision import (
+    HandlerDevRollWindowTick,
 )
 from omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.store_dev_roll_gate import (
     FileDevRollGateStore,

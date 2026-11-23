@@ -34,7 +34,7 @@ from omnimarket.handlers.node_overlay_reader import NodeOverlayNotFoundError
 from omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.gate_context import (
     DevRollGateContext,
 )
-from omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.handler_dev_roll_window_tick import (
+from omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.roll_tick_decision import (
     HandlerDevRollWindowTick,
 )
 from omnimarket.nodes.node_dev_roll_window_gate_effect.models import (
