@@ -70,6 +70,12 @@ CREATE TABLE {_SCHEMA}.delegation_events (
     cost_savings_usd NUMERIC NOT NULL DEFAULT 0,
     data_source TEXT NOT NULL DEFAULT 'real',
     terminal_failure_cause TEXT
+);
+-- OMN-26444: the refresh refills the manifest's priced models first, as
+-- node_projection_savings migration 102 creates them.
+CREATE TABLE {_SCHEMA}.savings_priced_models (
+    model_key TEXT PRIMARY KEY,
+    free BOOLEAN NOT NULL
 )
 """
 

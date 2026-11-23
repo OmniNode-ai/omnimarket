@@ -79,6 +79,14 @@ db_io:
       migration: "0049_delegation_events_data_source.sql"
       access: read
       role: delegation_history
+    # OMN-26444: the refresh refills the manifest's priced models before it
+    # reads runs; node_projection_savings owns the DDL (migration 102).
+    - name: savings_priced_models
+      database_ref: application
+      schema: public
+      migration: "102_delegation_savings_unpriced_matches_refresh.sql"
+      access: read_write
+      role: metering_summary
   dedupe_key: [tenant_id, window_kind, window_start, baseline_model]
   ordering_key: as_of
 event_bus:

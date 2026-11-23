@@ -42,6 +42,7 @@ from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
 )
+from omnimarket.projection.shared_priced_models import refresh_shared_priced_models
 from omnimarket.projection.tenant_isolation import resolve_write_tenant
 
 logger = logging.getLogger(__name__)
@@ -250,6 +251,9 @@ class MeteringSummaryProjectionWriter(BaseProjectionRunner):
                 **_coalesce_cells(stats),
             }
         try:
+            # OMN-26444: the shared savings view prices runs from this table, so
+            # it is refilled from the manifest before any run is read.
+            await refresh_shared_priced_models(self.db_for("savings_priced_models"))
             result = await refresh_from_store(
                 decision.request,
                 reads_for=self._reads_for,

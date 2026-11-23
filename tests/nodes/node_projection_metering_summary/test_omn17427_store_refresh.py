@@ -116,6 +116,11 @@ class FakeStore:
             )
             self.rows[key] = row
             return [{"tenant_id": row["tenant_id"]}]
+        if "public.savings_priced_models" in sql:
+            # OMN-26444: each refresh refills the priced models first, with no
+            # tenant; the real adapter's refusal still applies.
+            _refuse_unbound_tenant_scoped_write(sql, tenant)
+            return []
         raise AssertionError(f"unexpected statement: {sql}")
 
 

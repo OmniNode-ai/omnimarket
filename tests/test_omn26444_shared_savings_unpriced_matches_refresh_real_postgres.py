@@ -25,6 +25,7 @@ from omnimarket.nodes.node_metering_summary_compute import (
 from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_summary_store_refresh import (
     refresh_from_store,
 )
+from omnimarket.projection.shared_priced_models import refresh_shared_priced_models
 from tests.test_omn17426_savings_aggregate_views_per_tenant import (
     _CONCURRENT_INDEX,
     _ENSURE_ROLES,
@@ -35,13 +36,6 @@ from tests.test_omn17426_savings_aggregate_views_per_tenant import (
 )
 
 pytestmark = pytest.mark.integration
-
-try:
-    from omnimarket.nodes.node_projection_savings.priced_models import (
-        refresh_shared_priced_models,
-    )
-except ImportError:
-    refresh_shared_priced_models = None
 
 UTC = UTC
 WHEN = datetime(2026, 10, 15, 12, tzinfo=UTC)
@@ -158,8 +152,8 @@ async def store(postgres_fixture):
             await _run(conn, uuid.uuid4(), tenant, **kwargs)
     for kwargs in OTHER_RUNS:
         await _run(conn, uuid.uuid4(), OTHER_TENANT, **kwargs)
-    if refresh_shared_priced_models is not None:
-        await refresh_shared_priced_models(conn)
+    # The writer's own fill, through the same adapter surface the refresh reads use.
+    await refresh_shared_priced_models(_Reads(conn))
     try:
         yield conn
     finally:
