@@ -16,6 +16,8 @@ requirements:
     statement: 'AC2: an invalid load publishes nothing and a runtime with no publisher still stores the record -- falsifier: uv run pytest tests/unit/nodes/node_overlay_store/test_projection_snapshot_key.py -q -n 0 --no-cov -p no:cacheprovider -k "invalid or no_publisher"'
   - id: AC3
     statement: 'AC3: integrated: after the merge reaches the running runtime and one loader tick, the lab host overlay refresh reads lab_hosts with an age under one hour -- falsifier: the lab_hosts snapshot stamp loaded_at on h053 stays older than one hour after the tick; the reading of 3.1 days fails this criterion'
+  - id: AC4
+    statement: 'AC4: the settings store set command refuses an undeclared key with a typed error and writes nothing, records an audit row naming the actor with the previous and the new value, and the written value survives a refresh -- falsifier: uv run --frozen pytest tests/unit/nodes/node_overlay_setting_set -q -n 0 --no-cov -p no:cacheprovider fails when an undeclared key is written or the audit row is missing'
 evidence_requirements:
 - kind: tests
   description: The projection key tests and the overlay store golden and error chain tests pass at the pushed head.
@@ -62,6 +64,8 @@ dod_evidence:
 - id: dod-omn24028-setting-set
   description: 'the settings store gains a set command for one declared key of one overlay: an undeclared key is refused with a typed error and nothing is written, the audit row names the actor with the previous and the new value, and the written value survives a refresh that keeps operator-set paths'
   source: manual
+  binds_ac:
+  - AC4
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_setting_set -q -n 0 --no-cov -p no:cacheprovider
