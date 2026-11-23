@@ -333,6 +333,7 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     # out no onex_change_control; it keeps its context name.
     "ONEX Change Control Schema Compatibility",
     "PR Arch Review Gate",
+    "Node Trigger Declaration Check",
     "Precommit Fail-Loud Gate",
     "Projection Exposure Drift Gate",
     "Repository Structure Validation",
