@@ -59,12 +59,12 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/routing/test_cheap_frontier_ac2_withdrawn_and_renamed_omn26129.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn26129-ac3-no-paid-model-on-the-tier"
-    description: "AC3, one module holds it all: no deepseek or qwen3.8 model is placed on cheap_frontier by any of three routes (bifrost on-tier, a placement block, the routing_tiers.yaml models list), each route and provider spelling caught when planted and malformed entries failing closed; and they join only as pinned-only code-eval arms: a deepseek and a qwen3.8 arm load through the routing overlay and through append_eval_arm_backends as explicit_pin_only with no placement, and an unpinned arm or one placed on cheap_frontier is refused. Also, every rung on cheap_frontier is free and listed at 0/0 in the 2026-11-20 capture; its control injects a paid rung and an unlisted rung and both are caught."
+    description: "AC3, one module holds it all: no deepseek or qwen3.8 model is placed on cheap_frontier by any of three routes (bifrost on-tier, a placement block, the routing_tiers.yaml models list), each route and provider spelling caught when planted and malformed entries failing closed; and they join only as pinned-only code-eval arms: a deepseek and a qwen3.8 arm load through the routing overlay and through append_eval_arm_backends as explicit_pin_only with no placement, and an unpinned arm or one placed on cheap_frontier is refused."
     source: "manual"
     binds_ac: ["AC3"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/routing/test_cheap_frontier_stays_free_omn26129.py tests/unit/routing/test_cheap_frontier_no_eval_only_placement_omn26129.py -q -n 0 --no-cov"
+        check_value: "uv run pytest tests/unit/routing/test_cheap_frontier_no_eval_only_placement_omn26129.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn26129-ac4-complete-free-before-paid"
     description: "AC4, one module holds it all: cheap_frontier declared free_local at 0.0, its rung listed and priced 0/0 in the 2026-11-20 capture, every class ladder that names the tier served there by the placed routing config, and no paid tier ahead of it in any ladder; controls plant a metered tier, a priced and an unlisted rung, an unserved tier and a paid tier first, each caught."
