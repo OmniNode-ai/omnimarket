@@ -156,6 +156,14 @@ from omnimarket.nodes.node_dod_verify.services.criteria_drift import (
     extract_criteria_pins,
     merge_criteria_pins,
 )
+from omnimarket.nodes.node_dod_verify.services.dispatch_budget import (
+    DISPATCH_BUDGET_MARKER,
+    budget_exhausted,
+    clamp_to_budget,
+)
+from omnimarket.nodes.node_dod_verify.services.dispatch_budget import (
+    exhausted_message as dispatch_budget_exhausted_message,
+)
 from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
     apply_supersessions,
     default_contract_path,
@@ -915,7 +923,7 @@ def _resolve_pinned_pnpm(
                 [*argv, "--version"],
                 capture_output=True,
                 text=True,
-                timeout=_TOOLCHAIN_PROBE_TIMEOUT_S,
+                timeout=clamp_to_budget(_TOOLCHAIN_PROBE_TIMEOUT_S),
                 env=probe_env,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
@@ -934,7 +942,7 @@ def _resolve_pinned_pnpm(
                         ],
                         capture_output=True,
                         text=True,
-                        timeout=_TOOLCHAIN_PROBE_TIMEOUT_S,
+                        timeout=clamp_to_budget(_TOOLCHAIN_PROBE_TIMEOUT_S),
                         cwd=str(project_root),
                         env=probe_env,
                     )
@@ -969,7 +977,7 @@ def _resolve_pinned_pnpm(
                 [pnpm, "--version"],
                 capture_output=True,
                 text=True,
-                timeout=_TOOLCHAIN_PROBE_TIMEOUT_S,
+                timeout=clamp_to_budget(_TOOLCHAIN_PROBE_TIMEOUT_S),
                 cwd=str(project_root),
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
@@ -4301,7 +4309,9 @@ class EvidenceCollector:
                             unverifiable_cause=(
                                 EnumEvidenceUnverifiableCause.CHECK_BUDGET_EXCEEDED
                             ),
-                            message=(
+                            message=msg
+                            if msg.startswith(DISPATCH_BUDGET_MARKER)
+                            else (
                                 "CHECK_BUDGET_EXCEEDED: this run killed the "
                                 f"command at its {_check_timeout_s()}s "
                                 "per-check ceiling, so the command reached no "
@@ -5464,7 +5474,7 @@ class EvidenceCollector:
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=_git_op_timeout_s(),
+                timeout=clamp_to_budget(_git_op_timeout_s()),
                 env=scrub_git_location_env(os.environ),
             )
         except subprocess.TimeoutExpired:
@@ -5987,7 +5997,7 @@ class EvidenceCollector:
         # non-result as any other build failure, instead of needing a second
         # branch that says the same thing.
         argv = ["uv", "sync", "--frozen", "--project", str(project_root)]
-        timeout_s = _hermetic_sync_timeout_s()
+        timeout_s = clamp_to_budget(_hermetic_sync_timeout_s())
         logger.info(
             "OMN-16846: building lock-exact behaviour-check environment for %s at %s",
             project_root,
@@ -6113,7 +6123,7 @@ class EvidenceCollector:
             self._hermetic_node_envs[project_root] = result
             return result
 
-        timeout_s = _hermetic_sync_timeout_s()
+        timeout_s = clamp_to_budget(_hermetic_sync_timeout_s())
         logger.info(
             "OMN-17863: staging lock-exact behaviour-check tree for %s at %s "
             "(pnpm %s via %s)",
@@ -6248,7 +6258,7 @@ class EvidenceCollector:
             return result
 
         if not (stage / "node_modules").is_dir():
-            timeout_s = _hermetic_sync_timeout_s()
+            timeout_s = clamp_to_budget(_hermetic_sync_timeout_s())
             build_env = dict(os.environ)
             build_env["CI"] = "1"
             try:
@@ -6372,6 +6382,13 @@ class EvidenceCollector:
         # can only ever describe THIS invocation.
         self._last_check_budget_exceeded = False
         self._last_command_failure = None
+
+        # OMN-26310: a merge-event dispatch is bounded as a whole. Once its
+        # budget is spent no further command starts (no build, no subprocess);
+        # the caller records the typed CHECK_BUDGET_EXCEEDED non-result.
+        if budget_exhausted():
+            self._last_check_budget_exceeded = True
+            return False, dispatch_budget_exhausted_message()
 
         # Prefer explicit `command` field; fall back to `check_value`
         cmd_str = check.get("command") or check.get("check_value", "")
@@ -6583,7 +6600,7 @@ class EvidenceCollector:
                 run_env if run_env is not None else os.environ
             )
 
-        timeout_s = _check_timeout_s()
+        timeout_s = clamp_to_budget(_check_timeout_s())
         start = time.monotonic()
         try:
             # OMN-15382: list-form + explicit pipefail (not shell=True /
@@ -6603,6 +6620,8 @@ class EvidenceCollector:
             # OMN-17795: record the fact HERE, where it is known first-hand,
             # rather than letting the caller re-derive it from this message.
             self._last_check_budget_exceeded = True
+            if budget_exhausted():
+                return False, dispatch_budget_exhausted_message()
             return False, f"Timed out after {timeout_s}s: {cmd_str}"
         except Exception as exc:
             return False, f"Execution error: {exc}"

@@ -4,6 +4,8 @@
 
 Load every overlay document through the model class in this tree, or report what is missing.
 
+Subcommands ``added-nodes`` and ``list-missing`` (OMN-26490) are in runtime_overlay_required_check.
+
 Exit codes: 0 every overlay was loaded; 1 an overlay could not be loaded; 3 a deployment fact is missing (INDETERMINATE).
 """
 
@@ -28,15 +30,24 @@ from omnimarket.nodes.node_overlay_main_load_check_effect.handlers.model_resolve
 from omnimarket.nodes.node_overlay_main_load_check_effect.models import (
     ModelOverlayMainLoadCommand,
 )
+from omnimarket.nodes.node_overlay_main_load_check_effect.runtime_overlay_required_check import (
+    SUBCOMMANDS,
+)
+from omnimarket.nodes.node_overlay_main_load_check_effect.runtime_overlay_required_check import (
+    main as required_main,
+)
 
 NODE_NAME = "node_overlay_main_load_check_effect"
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    given = list(sys.argv[1:] if argv is None else argv)
+    if given and given[0] in SUBCOMMANDS:
+        return required_main(given)
     parser = argparse.ArgumentParser(prog=NODE_NAME, description=__doc__)
     parser.add_argument("--overlays-root", required=True)
     parser.add_argument("--pins-file", required=True)
-    args = parser.parse_args(list(sys.argv[1:] if argv is None else argv))
+    args = parser.parse_args(given)
     handler = HandlerOverlayMainLoadCheck(
         resolve=lambda spec: resolve_spec(spec, default_search_roots()),
         floor_check=check_overlays,
