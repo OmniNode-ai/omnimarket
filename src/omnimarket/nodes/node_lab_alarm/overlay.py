@@ -109,6 +109,22 @@ class ModelLagGrowthRule(BaseModel):
     streak_path: str = Field(min_length=1)
 
 
+class ModelLagCeiling(BaseModel):
+    """A bound on a group's lag as a state, with the owner who answers for it (OMN-26609).
+
+    The growth rule never alarms on a lag that holds or drains, so a backlog of requests whose callers gave
+    up passes as long as it shrinks. A ceiling alarms on any watched group whose lag is above ``max_lag``,
+    at once and without a previous sample, and names ``owner`` in the alarm.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: Lag above this many messages, on any watched group, alarms.
+    max_lag: int = Field(ge=1)
+    #: Who answers for the bound; the alarm line carries it.
+    owner: str = Field(min_length=1)
+
+
 class ModelLagSettings(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -121,6 +137,8 @@ class ModelLagSettings(BaseModel):
     record_condition: str = Field(min_length=1)
     #: Absent means the rule before OMN-19998: any growth between two samples alarms at once. Declare it to turn the persistence on.
     growth: ModelLagGrowthRule | None = None
+    #: Absent means no lag bound: only growth and vanished offsets alarm. Declare it to alarm on a high lag that does not grow.
+    ceiling: ModelLagCeiling | None = None
 
 
 class ModelLabAlarmScheduleHost(BaseModel):

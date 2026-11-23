@@ -26,6 +26,12 @@ lag:
   state_path: .onex_state/lab-alarm/broker-lag-sample.json
   record_path: .onex_state/lab-alarm/broker-lag-runs.jsonl
   record_condition: consumer_group_lag
+  # Optional (OMN-26609); absent, a high lag that does not grow never alarms. Declared, a watched group whose lag is above
+  # max_lag alarms at once, even on the first sample, and the alarm names the owner (tests/nodes/node_lab_alarm/
+  # test_lab_alarm_lag_ceiling_omn26609.py declares this block):
+  # ceiling:
+  #   max_lag: 5000
+  #   owner: example-owner-lane
   # Optional; absent, any growth between two samples alarms at once. Declared, a group alarms only after persist_runs
   # samples in a row that each grew it by min_growth or more (tests/nodes/node_lab_alarm/test_lab_alarm_growth_persistence.py
   # declares this block):
