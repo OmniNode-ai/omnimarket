@@ -1359,7 +1359,8 @@ jobs:
       # full-suite matrix (the policy's full_split_count shards), so the shard plan and the pytest
       # steps below read the same flag. What a narrowing rule changes for a pull request is set by
       # selection_stage in the selector's policy.yaml, which rises one stage at a time on a receipt
-      # that tests/ci/test_selection_stage_evidence.py recomputes from the published nightly records.
+      # that tests/ci/test_selection_stage_evidence.py recomputes: stage 1 from one comparison over the
+      # recorded set, a later stage from the published nightly records.
       # Rollback is an owner change that lowers the stage, or the owner setting the variable false.
       - name: Resolve test selection
         id: resolve
@@ -1387,6 +1388,15 @@ jobs:
             --feature-flag on \
             --stage 0 \
             > selection-stage-0.json
+          # The record's stage gate reads the entry of the policy's selection_stage, and an entry it
+          # lacks is a full-suite escalation, so every stage up to the policy's has an entry.
+          python -m scripts.ci.detect_test_paths \
+            --changed-files-from changed.txt \
+            --ref-name "${{ github.ref_name }}" \
+            --event-name "${{ github.event_name }}" \
+            --feature-flag on \
+            --stage 1 \
+            > selection-stage-1.json
 
       # The typed record of this run's selection: the executed selection and the selection of each
       # stage, built by the selector node's build_selection_record operation.
@@ -1413,6 +1423,7 @@ jobs:
             --changed-files-from changed.txt \
             --feature-flag "$FLAG" \
             --stage-selection 0=selection-stage-0.json \
+            --stage-selection 1=selection-stage-1.json \
             --out selection-record.json \
             --github-output "$GITHUB_OUTPUT"
           cat selection-record.json
@@ -4582,6 +4593,8 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           persist-credentials: false
+          # OMN-26490: the pull request checkout is the merge commit; its first parent is the base the added-nodes step compares with.
+          fetch-depth: 2
       # The overlays repository is private and this one is public: the workflow token and OMNI_GITHUB_TOKEN cannot read it (measured
       # on this job's first run: "Repository not found"). A read-only installation token of the CI GitHub App, scoped to that one
       # repository and to contents read, is the pattern hostile-reviewer.yml uses for its private CI overlay.
@@ -4602,6 +4615,8 @@ jobs:
           path: ${{ env.OVERLAYS_CHECKOUT }}
           token: ${{ steps.overlays-token.outputs.token }}
           persist-credentials: false
+          # OMN-26490: the added-nodes step verifies a named overlays pull request against main's history.
+          fetch-depth: 0
       - name: Assert the overlays checkout holds the pins file and documents
         run: |
           set -euo pipefail
@@ -4616,12 +4631,28 @@ jobs:
       - name: Sync the environment
         run: uv sync --locked
       - name: The planted breaks turn the check red (a required key missing from a document is refused)
-        run: uv run pytest tests/unit/nodes/node_overlay_main_load_check_effect tests/nodes/node_overlay_main_load_check_effect -q --no-cov -p no:cacheprovider
+        run: uv run pytest tests/unit/nodes/node_overlay_main_load_check_effect tests/nodes/node_overlay_main_load_check_effect tests/unit/contracts/test_node_overlay_exists_on_overlays_main.py -q --no-cov -p no:cacheprovider
       - name: Every overlays-main document loads through this pull request's node models
         run: |
           uv run python -m omnimarket.nodes.node_overlay_main_load_check_effect \
             --overlays-root "$OVERLAYS_CHECKOUT/$OVERLAYS_DOCUMENTS_DIR" \
             --pins-file "$OVERLAYS_CHECKOUT/$OVERLAYS_PINS_FILE"
+      # OMN-26490: omnimarket 6569 added a node while overlays main held no document for it, and the dev runtime refused the node
+      # at its first tick. The check is the same node (added-nodes command): it judges only the node directories this pull request
+      # adds against its base (the first parent of the merge commit), never the backlog, and refuses one that requires an overlay
+      # overlays main does not hold unless the body names a merged overlays pull request that added it. The body is read at the run
+      # that opened or pushed the head; an edit does not rerun it. Unconditional for a pull request, in the same job as the check
+      # above, so its failure fails CI Summary through the same default-deny sweep. It reads overlays main and the body only: a hosted
+      # runner holds no snapshot of the settings store, so no --store-snapshot-root is named and each refusal says the store was not read.
+      - name: Nodes added in this pull request have their overlay on overlays main (OMN-26490)
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          uv run python -m omnimarket.nodes.node_overlay_main_load_check_effect added-nodes \
+            --base-ref HEAD^1 \
+            --overlays-root "$OVERLAYS_CHECKOUT/$OVERLAYS_DOCUMENTS_DIR" \
+            --overlays-checkout "$OVERLAYS_CHECKOUT"
 
   # OMN-26424: every setting a lane, host, CI job or image build reads is declared in overlays, and a change that ADDS a read of a
   # setting no overlay declares is refused. The decision is node_undeclared_read_check_compute's: it judges the added lines of this
