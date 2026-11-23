@@ -26,6 +26,10 @@ descriptor:
   runtime_profiles: [effects]
 runtime_dispatch:
   external_trigger: "python -m omnimarket.nodes.node_overlay_setting_set_effect --overlay <id> --key <declared key> --value-json <json> --actor <who>, which reads the live record from the snapshot topic and publishes the record and the audit row"
+  # A setting changes when a person or a lane sets it, never on a timer: the command below is the whole trigger.
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_overlay_setting_set_effect --overlay <id> --key <declared key> --value-json <json> --actor <who>
+    owner: OmniNode Platform Team
 event_bus:
   subscribe_topics: []
   publish_topics:
