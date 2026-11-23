@@ -80,8 +80,19 @@ async def test_a_tick_whose_snapshot_is_refused_is_not_attested_control() -> Non
 async def test_a_valid_judged_delivery_eval_rows_upserted_one_and_is_not_attested() -> (
     None
 ):
+    """The zero rows of a tick are told apart from the row a judged event upserts.
+
+    The tick delivery returns ``rows_upserted: 0`` from a non-empty payload; before the
+    change nothing said that was designed, so this test fails on that behaviour (no
+    ``projection_noop_reason`` key). The judged delivery in the same writer upserts its
+    row and carries no attestation.
+    """
     store = MemoryStore()
     writer, _ = make_writer(store)
+    tick = await deliver(writer, TOPIC_TICK, {"now": at(1).isoformat()}, at(1))
+    assert tick["rows_upserted"] == 0
+    assert tick[NOOP_KEY] == "tick"
+    assert store.items == {}
     outcome = await deliver(writer, TOPIC_JUDGED, judged_event(CALL), at(2))
     assert outcome["rows_upserted"] >= 1
     assert len(store.items) == 1
