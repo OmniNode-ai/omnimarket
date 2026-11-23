@@ -180,6 +180,10 @@ def test_the_caller_subscribes_to_the_runtime_tick_and_declares_its_schedule() -
         "onex.intent.platform.runtime-tick.v1"
     ]
     schedule = contract["schedule"]
+    assert contract["event_bus"]["publish_topics"] == [
+        "onex.evt.omnimarket.schedule-run.v1"
+    ]
+    assert contract["terminal_event"] == "onex.evt.omnimarket.schedule-run.v1"
     assert schedule["job_id"] == "topic_reaper_dry_run"
     assert schedule["run_interval_seconds"] > 0
     assert (
