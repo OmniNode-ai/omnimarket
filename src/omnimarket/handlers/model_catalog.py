@@ -354,7 +354,7 @@ def pricing_models_dev_index() -> ModelsDevIndex:
         lock_path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
     try:
-        locked = _flock(fd, exclusive=True)
+        fcntl.flock(fd, fcntl.LOCK_EX)
     except OSError:
         os.close(fd)
         raise
@@ -383,23 +383,9 @@ def pricing_models_dev_index() -> ModelsDevIndex:
             _clear_failed(home)
         return index
     finally:
-        if locked:
-            with contextlib.suppress(OSError):
-                _flock(fd, exclusive=False)
+        with contextlib.suppress(OSError):
+            fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
-
-
-def _flock(fd: int, *, exclusive: bool) -> bool:
-    """Take or release the cross-process read lock; False where the OS has no flock.
-
-    Windows has no ``fcntl``; there the read runs without the cross-process lock.
-    """
-    try:
-        import fcntl
-    except ImportError:
-        return False
-    fcntl.flock(fd, fcntl.LOCK_EX if exclusive else fcntl.LOCK_UN)
-    return True
 
 
 def _kept_pricing_index() -> ModelsDevIndex:
