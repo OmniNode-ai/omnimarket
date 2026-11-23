@@ -23,6 +23,7 @@ import textwrap
 from collections.abc import Iterator, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -136,7 +137,7 @@ class RowStore:
 
     def __init__(self) -> None:
         self.db = InmemoryDatabaseAdapter()
-        self.calls: list[dict[str, object]] = []
+        self.calls: list[tuple[str, str | None, dict[str, object]]] = []
 
     def upsert_returning(
         self,
@@ -147,7 +148,7 @@ class RowStore:
         tenant: str | None = None,
         returning: tuple[str, ...] = (),
     ) -> list[dict[str, object]]:
-        self.calls.append({"op": "upsert", "tenant": tenant, "row": dict(row)})
+        self.calls.append(("upsert", tenant, dict(row)))
         self.db.upsert(table, conflict_key, row)
         return [{key: row.get(key) for key in returning}]
 
@@ -158,7 +159,7 @@ class RowStore:
         *,
         tenant: str | None = None,
     ) -> int:
-        self.calls.append({"op": "delete", "tenant": tenant, "filters": dict(filters)})
+        self.calls.append(("delete", tenant, dict(filters)))
         matching = self.db.query(table, dict(filters))
         rows = self.db.tables.get(table, [])
         self.db.tables[table] = [
@@ -203,7 +204,7 @@ def _request(
 ) -> ModelDelegationRequest:
     return ModelDelegationRequest(
         correlation_id=uuid4(),
-        task_type=task_type,  # type: ignore[arg-type]
+        task_type=cast(Any, task_type),
         prompt="x" * 120,
         emitted_at=datetime.now(tz=UTC),
         tenant_id=tenant_id,
@@ -279,12 +280,9 @@ def test_every_row_and_store_call_carries_the_runtime_tenant_only() -> None:
     assert declared.rows_written == 2
     assert retired.rows_removed == 2
     assert len(store.calls) == 4
-    for call in store.calls:
-        assert call["tenant"] == RUNTIME_TENANT
-        if call["op"] == "upsert":
-            assert call["row"]["tenant_id"] == RUNTIME_TENANT  # type: ignore[index]
-        else:
-            assert call["filters"]["tenant_id"] == RUNTIME_TENANT  # type: ignore[index]
+    for _operation, call_tenant, payload in store.calls:
+        assert call_tenant == RUNTIME_TENANT
+        assert payload["tenant_id"] == RUNTIME_TENANT
 
 
 def test_a_customer_cannot_read_the_house_row() -> None:
