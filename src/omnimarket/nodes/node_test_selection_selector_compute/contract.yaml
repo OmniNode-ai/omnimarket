@@ -19,6 +19,11 @@ description: >-
   deleted or renamed one selects the always set and the tests that still name its old path or dotted name (OMN-26272).
   A diff of only data files (the adjacency map's data_only_globs) selects the tests that read them, found by a text
   index of the test files and the data_reader_overrides, when data_only_selection_enabled is set (OMN-26270).
+  A pyproject.toml change narrows by section when pyproject_section_selection_enabled is set (OMN-26275): the request
+  carries data_file_changes (the changed TOML keys between base and head, from a git source-diff adapter with an
+  in-memory twin) and only a key matching pyproject_narrowable_keys narrows, to the tests that read the file plus the
+  closure of the entry points that moved; any other key, an unparseable side or a uv.lock change beyond the package's
+  own version line answers full_suite_reason test_infrastructure.
   HandlerSelectionRecord builds the typed record of a pull request run's selection (the executed selection and the
   selection of every stage) behind the stage gate in policy.yaml; the workflow uploads it and builds the pytest matrix
   from the executed selection only. HandlerSelectionReplay (operation replay_selection) replays stage 0 of the selector
@@ -144,4 +149,4 @@ externally_consumed_topics:
   - onex.evt.omnimarket.test-selection-select-failed.v1
 metadata:
   transport_type: kafka
-  related_tickets: [OMN-23296, OMN-26270, OMN-26274, OMN-26277]
+  related_tickets: [OMN-23296, OMN-26270, OMN-26274, OMN-26275, OMN-26277]

@@ -609,6 +609,7 @@ node_delegation_readiness_verdict_compute = "omnimarket.nodes.node_delegation_re
 node_delegation_readiness_verdict_effect = "omnimarket.nodes.node_delegation_readiness_verdict_effect"
 node_delegation_receipt_verdict_compute = "omnimarket.nodes.node_delegation_receipt_verdict_compute"
 node_delegation_recombine_compute = "omnimarket.nodes.node_delegation_recombine_compute"
+node_delegation_replay_route_compute = "omnimarket.nodes.node_delegation_replay_route_compute"
 node_delegation_routing_feedback_reducer = "omnimarket.nodes.node_delegation_routing_feedback_reducer"
 node_delegation_routing_order_compute = "omnimarket.nodes.node_delegation_routing_order_compute"
 node_delegation_routing_overlay_check_compute = "omnimarket.nodes.node_delegation_routing_overlay_check_compute"
@@ -1111,6 +1112,7 @@ node_overlay_main_load_check_effect = "omnimarket.nodes.node_overlay_main_load_c
 node_overlay_merge_order_compute = "omnimarket.nodes.node_overlay_merge_order_compute"
 node_overlay_resolver_effect = "omnimarket.nodes.node_overlay_resolver_effect"
 node_overlay_roots_resolve_effect = "omnimarket.nodes.node_overlay_roots_resolve_effect"
+node_overlay_setting_set_effect = "omnimarket.nodes.node_overlay_setting_set_effect"
 node_overlay_store_load_effect = "omnimarket.nodes.node_overlay_store_load_effect"
 node_overlay_store_read_effect = "omnimarket.nodes.node_overlay_store_read_effect"
 node_overlay_tree_install_effect = "omnimarket.nodes.node_overlay_tree_install_effect"
@@ -2112,9 +2114,9 @@ force-include = { "config/ci_bus_lanes.yaml" = "omnimarket/config/ci_bus_lanes.y
 # the pin means replacing those parts too: delete the old ones, then run
 # `split -b 720000 -d <asset> <asset>.part-` in that directory. A test names the
 # pin and the parts that disagree.
-version = "v1.1.14"
-sha256 = "f3718ee217f739ab7a0a00c01d07d887fba1ff01ad3b6663ceb6773e4c2441c5"
-asset = "omnidash-bundle-v1.1.14.tar.gz"
+version = "v1.1.15"
+sha256 = "023f70942857c2494f7799557ebe41b437879567af0fad30be3df9c29e0a4b3b"
+asset = "omnidash-bundle-v1.1.15.tar.gz"
 repository = "OmniNode-ai/omnidash"
 
 [tool.hatch.build]
