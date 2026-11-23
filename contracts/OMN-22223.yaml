@@ -5,6 +5,20 @@ summary: The delegate-skill handler timed its execution budget from pickup while
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn22223-ac1-accepted-20261123t1545z:
+    - label: AC1
+      criterion_hash: 125f68ddd877e199fad02bc92e1f62432dd5d00a6d5be851d76a4303d4cc510a
+      proposed_by: lane=dod-closeout-bind-2026-11-23T1545Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-23T1545Z-c1
+      accepted_at: '2026-11-23T16:19:32Z'
+    dod-omn22223-ac2-accepted-20261123t1545z:
+    - label: AC2
+      criterion_hash: 0e126b4e396f310928255007696fcd6c0d676b25012a471fa489cbc5f6d4781e
+      proposed_by: lane=dod-closeout-bind-2026-11-23T1545Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-23T1545Z-c1
+      accepted_at: '2026-11-23T16:19:32Z'
 requirements:
   - id: req-one-budget-one-clock
     statement: The runtime dispatch timeout is measured from publish and never exceeds the caller wait.
@@ -53,4 +67,20 @@ dod_evidence:
       - check_type: command
         check_value: |-
           uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane delegate-budget-0445 -- uv run --frozen pytest tests/unit/delegation/test_caller_wait_deducts_queue_wait.py -q --no-cov
+        cwd: .
+  - id: dod-omn22223-ac1-accepted-20261123t1545z
+    description: 'AC1 binding (accepted 2026-11-23T1545Z, proposed by lane=dod-closeout-bind-2026-11-23T1545Z-c1, accepted by lane=dod-closeout-accept-2026-11-23T1545Z-c1). A 120 s queue wait of a 300 s budget leaves a ~180 s wait and ~120 s execution timeout, an unstamped request keeps the full budget, and a run whose queue wait exceeds the ceiling returns a queue_budget_exhausted terminal with no port call. Re-run at omnimarket origin/dev e2bd081d5c passed (3 passed, 37 deselected); with the product change of 34eebe3493 reverted, 2 failed, 1 passed.'
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/delegation/test_caller_wait_deducts_queue_wait.py -q --no-cov -p no:cacheprovider -k queue_wait_deducted
+        cwd: .
+  - id: dod-omn22223-ac2-accepted-20261123t1545z
+    description: 'AC2 binding (accepted 2026-11-23T1545Z, proposed by lane=dod-closeout-bind-2026-11-23T1545Z-c1, accepted by lane=dod-closeout-accept-2026-11-23T1545Z-c1). Across queue waits {None,0,90,200}, requested timeouts {None,100,ceiling} and grace {None,15,90}, every runtime wait is at most the caller''s _terminal_wait_seconds for the same request. Re-run at omnimarket origin/dev e2bd081d5c passed (36 passed); with the product change of 34eebe3493 reverted, 8 failed, 28 passed.'
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest "tests/unit/delegation/test_caller_wait_deducts_queue_wait.py::test_caller_wait_covers_runtime_timeout" -q --no-cov -p no:cacheprovider
         cwd: .
