@@ -88,13 +88,11 @@ class HandlerStabilityGatewayKeyProvision:
             EnumStabilityKeyOutcome.ALREADY_PROVISIONED,
         )
         logger.info(
-            "stability gateway key provision outcome=%s lane=%s tenant=%s key_name=%s secret=%s/%s",
+            "stability gateway key provision outcome=%s lane=%s tenant=%s key_name=%s",
             outcome.value,
             lane,
             tenant_slug,
             key_name,
-            secret_folder,
-            secret_key,
         )
         return ModelStabilityKeyProvisionResult(
             ok=ok,
