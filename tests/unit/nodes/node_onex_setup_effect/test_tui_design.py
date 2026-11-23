@@ -49,6 +49,7 @@ def test_the_shipped_design_loads_and_names_every_shortcut_action() -> None:
         "model",
         "delegation",
         "dashboard",
+        "run",
         "clear",
         "help",
         "quit",

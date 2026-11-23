@@ -252,8 +252,13 @@ def _log_text(app: OnexTui) -> str:
     return "\n".join(lines)
 
 
-async def test_slash_opens_a_filtered_palette_and_escape_closes_it() -> None:
+async def test_slash_opens_a_filtered_palette_and_escape_closes_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """F1, F6."""
+    monkeypatch.setenv(
+        "ONEX_CLI_SHOW_ALL_COMMANDS", "1"
+    )  # OMN-26610: the operator view
     app = _app(_Runner([]))
     async with app.run_test() as pilot:
         await pilot.press("slash", "c", "o", "n", "n")
@@ -267,8 +272,13 @@ async def test_slash_opens_a_filtered_palette_and_escape_closes_it() -> None:
         assert not palette.display
 
 
-async def test_enter_runs_the_named_cli_command_and_shows_its_output() -> None:
+async def test_enter_runs_the_named_cli_command_and_shows_its_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """F2."""
+    monkeypatch.setenv(
+        "ONEX_CLI_SHOW_ALL_COMMANDS", "1"
+    )  # OMN-26610: the operator view
     runner = _Runner(["openrouter  ready  qwen/qwen3.8-27b"])
     app = _app(runner)
     async with app.run_test() as pilot:
@@ -373,8 +383,13 @@ async def test_a_failed_command_shows_its_exit_and_the_app_keeps_running() -> No
         assert app.is_running
 
 
-async def test_a_prompting_command_runs_in_the_real_terminal() -> None:
+async def test_a_prompting_command_runs_in_the_real_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """F5."""
+    monkeypatch.setenv(
+        "ONEX_CLI_SHOW_ALL_COMMANDS", "1"
+    )  # OMN-26610: the operator view
     runner = _Runner([])
     app = _app(runner)
     async with app.run_test() as pilot:
@@ -434,17 +449,23 @@ async def _type[T](pilot: Pilot[T], text: str) -> None:
         await pilot.press(names.get(key, key))
 
 
-async def test_shortcuts_lead_the_palette_like_coding_agent_tuis() -> None:
+async def test_shortcuts_lead_the_palette_like_coding_agent_tuis(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "ONEX_CLI_SHOW_ALL_COMMANDS", "1"
+    )  # OMN-26610: the operator view
     app = _app(_Runner([]))
     async with app.run_test() as pilot:
         await pilot.press("slash")
         shown = [str(option.prompt) for option in app.query_one("#palette").options]
-        assert [text.split()[0] for text in shown[:5]] == [
+        assert [text.split()[0] for text in shown[:6]] == [
             "/config",
             "/model",
             "/delegation",
             "/dashboard",
-            "/clear",
+            "/doctor",
+            "/metering",
         ]
         assert not any(text.split()[0] == "/setup" for text in shown)
         assert any(text.startswith("/models connections") for text in shown)

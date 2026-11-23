@@ -86,7 +86,12 @@ def test_ctrl_c_at_guided_setup_keeps_the_tui_usable(tmp_path: Path) -> None:
         stdout=slave,
         stderr=slave,
         start_new_session=True,
-        env={**os.environ, "HOME": str(tmp_path), "TERM": "xterm-256color"},
+        env={
+            **os.environ,
+            "HOME": str(tmp_path),
+            "TERM": "xterm-256color",
+            "ONEX_CLI_SHOW_ALL_COMMANDS": "1",  # OMN-26610: the operator view
+        },
     )
     os.close(slave)
     try:

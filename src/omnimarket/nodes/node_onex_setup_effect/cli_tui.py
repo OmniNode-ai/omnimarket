@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import os
 import re
 import shlex
 import signal
@@ -94,6 +95,15 @@ _PROMPTING_OPTIONS = frozenset(("interactive", "yes"))
 def _shortcut_paths() -> dict[tuple[str, ...], str]:
     """The design file's shortcuts, in order: path -> one-line help."""
     return {s.path: s.help for s in tui_design().shortcuts}
+
+
+def _show_all_commands() -> bool:
+    """The operator switch: list and run every onex command, as before OMN-26610."""
+    return os.environ.get("ONEX_CLI_SHOW_ALL_COMMANDS", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
 
 def _alias_paths() -> set[tuple[str, ...]]:
@@ -2055,7 +2065,7 @@ class OnexTui(App[int]):
                 *local,
                 *(
                     c
-                    for c in self._commands
+                    for c in (self._commands if _show_all_commands() else ())
                     if c.path not in _shortcut_paths() and c.path not in _alias_paths()
                 ),
             )
@@ -2259,11 +2269,27 @@ class OnexTui(App[int]):
             return
         shortcut = tui_design().shortcut_for(words)
         if shortcut is not None:
-            await self._shortcut(shortcut.action)
+            if shortcut.action == "run":
+                await self._run(
+                    ModelTuiCommand(
+                        path=shortcut.path, help=shortcut.help, needs_terminal=False
+                    ),
+                    tuple(words),
+                )
+            else:
+                await self._shortcut(shortcut.action)
             return
         entry = self._resolve(words)
         if entry is None:
             self._write(_say("no_match", command=" ".join(words)))
+            return
+        if not _show_all_commands():
+            self._write(
+                Text(
+                    _say("not_a_tui_command", command=" ".join(words)),
+                    style=_style("warning"),
+                )
+            )
             return
         await self._run(entry, tuple(words))
 

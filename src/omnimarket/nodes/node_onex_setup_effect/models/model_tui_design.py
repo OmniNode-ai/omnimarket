@@ -20,7 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 _COLOUR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 EnumTuiAction = Literal[
-    "config", "model", "delegation", "dashboard", "clear", "help", "quit"
+    "config", "model", "delegation", "dashboard", "run", "clear", "help", "quit"
 ]
 
 

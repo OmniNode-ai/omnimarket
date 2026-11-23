@@ -56,14 +56,19 @@ banner:
     - {key: /config, text: "providers, keys and models"}
     - {key: /model, text: pick the model to use first}
     - {key: /delegation, text: Claude Code on or off}
-    - {key: /, text: "every command   ·   ↑↓ history   ·   ctrl+c quit"}
+    - {key: /, text: "all commands   ·   ↑↓ history   ·   ctrl+c quit"}
 
-# Shortcuts lead the / palette in this order; every onex CLI command follows.
+# The / palette lists exactly these, in this order: the commands a customer needs
+# (OMN-26610). A path with action "run" runs the onex CLI command of that name.
+# Every other onex CLI command stays in the CLI; the TUI lists and runs them only
+# when ONEX_CLI_SHOW_ALL_COMMANDS=1 is set, after these.
 shortcuts:
   - {path: [config], action: config, help: "Manage providers, keys and models or run guided setup."}
   - {path: [model], action: model, help: Pick the model every task tries first.}
   - {path: [delegation], action: delegation, help: Turn delegation on or off for Claude Code.}
   - {path: [dashboard], action: dashboard, help: "Start, open or stop the local dashboard."}
+  - {path: [doctor], action: run, help: Run diagnostic checks on your ONEX environment.}
+  - {path: [metering], action: run, help: "Read this install's own delegation metering and savings."}
   - {path: [clear], action: clear, help: Clear the output.}
   - {path: [help], action: help, help: Show keys and how commands work.}
   - {path: [quit], action: quit, help: Leave the TUI.}
@@ -91,8 +96,10 @@ prompt_placeholder: Ask ONEX to delegate a task, or type / for commands
 help: >-
   Type a task and press Enter to delegate it. /config sets up providers, keys
   and models, /model picks the model tried first, /delegation turns Claude Code
-  delegation on or off, /clear empties this pane. Type / to list every onex
-  command; keep typing to filter, Tab to complete, Enter to run, Esc to close.
+  delegation on or off, /doctor checks your setup, /metering shows your savings,
+  /clear empties this pane. Type / to list the commands; keep typing to filter,
+  Tab to complete, Enter to run, Esc to close. Any other onex command runs in a
+  terminal.
   Up and Down recall earlier entries.
 
 # /config loads a provider's models this long after the key or URL stops
@@ -362,6 +369,8 @@ words:
   unreadable_command: "could not read that command: {error}"
   exit_code: "exit {code}"
   no_match: "no onex command matches '/{command}'; type / to list them"
+  # A real onex command the TUI does not list (OMN-26610).
+  not_a_tui_command: "Not a TUI command: run onex {command} in a terminal"
   setup_ready: "Ready: {provider} · {models}. Type a task to try it, or /model to choose which goes first."
   # One delegated task's facts, and the status bar's note of the last one.
   run_unknown_model: "unknown model"
