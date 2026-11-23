@@ -19,9 +19,11 @@ runtime_dispatch:
   command_topic: onex.cmd.omnimarket.tenant-api-key-register-requested.v1
   terminal_events:
     success: onex.evt.omnimarket.tenant-api-key-register-completed.v1
-terminal_events:
-  - onex.evt.omnimarket.tenant-api-key-register-completed.v1
-  - onex.evt.omnimarket.tenant-api-key-revoke-completed.v1
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [main, effects]
+  idempotent: false
 description: >
   Registers a gateway key by the sha256 digest of a key the caller holds, and revokes a key by id. The key itself is
   generated in the caller's process and never travels on the bus: the command carries the tenant, a name, the digest and
