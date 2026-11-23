@@ -23,6 +23,14 @@ _LOCAL_BASE = re.compile(
 #: The tiers of the chain, in the order the chain tries them.
 CHAIN_TIER_ORDER: tuple[str, ...] = ("local", "openrouter", "claude_api")
 
+#: Whether a tier names an address of its own. A local responder does; the two cloud tiers are resolved by the routing
+#: contract. Code reads this table, never a tier name, so no route is chosen by a literal in code.
+TIER_NAMES_BASE: dict[str, bool] = {
+    "local": True,
+    "openrouter": False,
+    "claude_api": False,
+}
+
 
 class ModelDelegationCheckResponder(BaseModel):
     """One responder of the chain."""
@@ -33,9 +41,14 @@ class ModelDelegationCheckResponder(BaseModel):
     # Required for a local responder, absent for a cloud tier.
     base_url: str | None = None
 
+    @property
+    def names_base(self) -> bool:
+        """True for a responder that names its own address (a local responder)."""
+        return TIER_NAMES_BASE[self.tier]
+
     @model_validator(mode="after")
     def _base_matches_tier(self) -> Self:
-        if self.tier != "local":
+        if not self.names_base:
             if self.base_url is not None:
                 raise ValueError(f"a {self.tier} responder names no base_url")
             return self
@@ -71,9 +84,9 @@ class ModelDelegationCheckRespondersOverlay(BaseModel):
                 "the chain tries local responders first, then openrouter, then claude_api"
             )
         for tier in ("openrouter", "claude_api"):
-            if sum(1 for r in self.responders if r.tier == tier) > 1:
+            if [r.tier for r in self.responders].count(tier) > 1:
                 raise ValueError(f"the chain names {tier} at most once")
-        bases = [r.base_url for r in self.responders if r.tier == "local"]
+        bases = [r.base_url for r in self.responders if r.names_base]
         if len(bases) != len(set(bases)):
             raise ValueError("a local responder is named once")
         return self
@@ -81,6 +94,7 @@ class ModelDelegationCheckRespondersOverlay(BaseModel):
 
 __all__ = [
     "CHAIN_TIER_ORDER",
+    "TIER_NAMES_BASE",
     "ModelDelegationCheckResponder",
     "ModelDelegationCheckRespondersOverlay",
 ]

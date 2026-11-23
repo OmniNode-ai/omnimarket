@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Any
 
 import httpx
 
@@ -131,7 +132,7 @@ class InMemoryCheckPublisher:
     """Records what would go on the bus; ``accept`` False models a bus that refuses."""
 
     def __init__(self, *, accept: bool = True) -> None:
-        self.events: list[dict[str, object]] = []
+        self.events: list[dict[str, Any]] = []
         self._accept = accept
 
     def publish(

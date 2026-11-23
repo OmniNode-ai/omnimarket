@@ -44,3 +44,30 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect tests/handlers/routing/test_delegation_check_responder_chain.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26043-collectors-run-from-node
+  description: "The collectors of C13, C14 and C17 (fresh-container install, egress recorder, routing walk, clean-machine run) run from node_delegation_check_probe_effect on a lab host; the contract declares the result topic each reading is published on, and the tick no longer builds an absent machine by default. Failure cases come first in the tests (no container engine, clean record refused, install fails, egress recorder empty, responder chain exhausted, no collector record), then the green path. The tests fail on the base commit, where neither the container machine nor the collectors exist, and pass after the change. This binds no criterion of this ticket; the lab readings of AC5 are read after the unit is installed."
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+  - check_type: command
+    check_value: grep -q 'delegation-check-probe-completed' src/omnimarket/nodes/node_delegation_check_probe_effect/contract.yaml
+    cwd: .
+- id: dod-omn26043-responder-row-declared
+  description: "The responder list is a settings-store row, overlay delegation_check_responders key responders, declared in the settable settings of node_overlay_setting_set_effect, so it changes only through that command with its audit row. The list in the order Inkling 8111, Qwen 8000, OpenRouter, Claude API is the value set in the store and read back in the lane report; the repository holds no local address for it. This binds no criterion of this ticket."
+  source: manual
+  checks:
+  - check_type: command
+    check_value: "grep -q 'overlay_id: delegation_check_responders' src/omnimarket/nodes/node_overlay_setting_set_effect/contract.yaml"
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_no_check_pins_a_model.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-overlay-docs-and-trigger
+  description: "The node declares its trigger (the host unit delegation-check-probe) so the trigger declaration check passes, and the unit's overlay documents are in the overlays repository (a separate pull request), which Overlay Main Load reads. This binds no criterion of this ticket."
+  source: manual
+  checks:
+  - check_type: command
+    check_value: uv run python -m omnimarket.nodes.node_trigger_declaration_check_effect --root . --changed-since HEAD^1
+    cwd: .

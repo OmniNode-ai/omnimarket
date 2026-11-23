@@ -78,7 +78,7 @@ class ModelChainResolution(BaseModel):
 
     @property
     def is_local(self) -> bool:
-        return self.tier == "local"
+        return self.base_url is not None
 
 
 def window_of(reading: ModelResponderReading) -> int | None:
@@ -138,7 +138,7 @@ def resolve_chain(
     """
     attempts: list[ModelResponderAttempt] = []
     usable: list[tuple[tuple[int, int], ModelResponderReading, int]] = []
-    for index, responder in enumerate(r for r in responders if r.tier == "local"):
+    for index, responder in enumerate(r for r in responders if r.names_base):
         assert responder.base_url is not None
         reading = read(responder.base_url)
         outcome, window = _local_attempt(reading)
@@ -184,7 +184,7 @@ def resolve_chain(
             window=window,
             attempts=marked,
         )
-    cloud = [r for r in responders if r.tier != "local"]
+    cloud = [r for r in responders if not r.names_base]
     for responder in cloud:
         attempts.append(
             ModelResponderAttempt(tier=responder.tier, outcome="advanced-to-tier")

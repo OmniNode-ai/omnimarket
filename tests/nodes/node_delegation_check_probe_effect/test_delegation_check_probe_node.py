@@ -18,6 +18,7 @@ import pytest
 import yaml
 
 from omnimarket.handlers.routing.delegation_check_responder_chain import (
+    ModelChainResolution,
     ModelResponderReading,
 )
 from omnimarket.models.overlay_documents.model_delegation_check_responders_overlay import (
@@ -37,6 +38,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.handler_delega
     contract_topics,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe import (
+    CheckId,
     EnumCheckVerdict,
     ModelBrokenCommandCase,
     ModelDelegateObservation,
@@ -44,7 +46,11 @@ from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation
     ModelRoutingCollection,
     ModelSurfaceObservation,
 )
+from omnimarket.nodes.node_delegation_check_probe_effect.protocols.protocol_delegation_check import (
+    ProtocolCustomerMachine,
+)
 
+TOPIC = "onex.evt.omnimarket.delegation-check-probe-completed.v1"
 INKLING = "http://127.0.0.11:8111"
 QWEN = "http://127.0.0.12:8000"
 ROOT = Path(__file__).resolve().parents[3]
@@ -126,7 +132,7 @@ def good_surface(**over: object) -> ModelSurfaceObservation:
 
 
 def handler(
-    machine: object,
+    machine: ProtocolCustomerMachine,
     *,
     readings: dict[str, ModelResponderReading] | None = None,
     publisher: InMemoryCheckPublisher | None = None,
@@ -136,7 +142,7 @@ def handler(
         HandlerDelegationCheckProbe(
             responders=RESPONDERS,
             reader=InMemoryResponderReader(READINGS if readings is None else readings),
-            machine=machine,  # type: ignore[arg-type]
+            machine=machine,
             publisher=pub,
             topic=contract_topics()[0],
             clock=_clock,
@@ -145,11 +151,15 @@ def handler(
     )
 
 
-def request(check: str) -> ModelDelegationCheckRequest:
-    return ModelDelegationCheckRequest(correlation_id="c-1", check_id=check)  # type: ignore[arg-type]
+def request(check: CheckId) -> ModelDelegationCheckRequest:
+    return ModelDelegationCheckRequest(correlation_id="c-1", check_id=check)
 
 
 # ----- golden ------------------------------------------------------------------------------------------------------
+
+
+def test_the_contract_declares_one_result_topic_for_the_three_checks() -> None:
+    assert contract_topics() == (TOPIC,)
 
 
 def test_c13_sends_its_task_through_the_chain_and_reads_pass() -> None:
@@ -165,8 +175,8 @@ def test_c13_sends_its_task_through_the_chain_and_reads_pass() -> None:
         "chosen",
         "no-answer",
     ] or result.chain
-    assert pub.events[0]["topic"] == contract_topics()[0]
-    assert pub.events[0]["payload"]["criterion"] == "C13"  # type: ignore[index]
+    assert pub.events[0]["topic"] == TOPIC
+    assert pub.events[0]["payload"]["criterion"] == "C13"
     assert result.emitted
 
 
@@ -219,7 +229,7 @@ def test_a_chain_with_no_local_responder_is_not_measured_and_sends_nothing() -> 
     assert result.chosen_tier == "openrouter"
     assert machine.delegated_through == []
     assert pub.events
-    assert pub.events[0]["payload"]["verdict"] == "NOT_MEASURED"  # type: ignore[index]
+    assert pub.events[0]["payload"]["verdict"] == "NOT_MEASURED"
 
 
 def test_a_receipt_naming_a_model_other_than_the_chosen_responders_fails_local_model() -> (
@@ -340,7 +350,9 @@ def test_a_machine_with_no_collector_reads_precondition_absent_after_the_chain_r
 
 def test_a_probe_that_raises_is_an_error_run_and_still_emitted() -> None:
     class Raising(InMemoryCustomerMachine):
-        def run_delegation(self, check_id, responder):  # type: ignore[no-untyped-def]
+        def run_delegation(
+            self, check_id: CheckId, responder: ModelChainResolution
+        ) -> ModelDelegateObservation:
             raise RuntimeError("container engine gone")
 
     h, pub = handler(Raising())
@@ -407,7 +419,7 @@ def test_the_tick_with_no_collector_exits_1_emits_the_record_and_writes_evidence
         publisher=pub,
     )
     assert code == tick.EXIT_FAILED
-    assert pub.events[0]["payload"]["verdict"] == "NOT_MEASURED"  # type: ignore[index]
+    assert pub.events[0]["payload"]["verdict"] == "NOT_MEASURED"
     evidence = json.loads((tmp_path / "state" / tick.EVIDENCE_FILE).read_text())
     assert evidence["runs"][0]["check"] == "C13"
     assert (tmp_path / "state" / "runs.jsonl").read_text().strip()

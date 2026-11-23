@@ -62,6 +62,11 @@ broker_acl_grants:
     grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-check-probe-completed.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-check-probe-completed.v1, operation: DESCRIBE}
+runtime_dispatch:
+  # Once an hour one host timer tick runs the node's tick module on a lab host (the unit is declared in the host installer's contract).
+  external_trigger: One host timer tick runs the check tick on a lab host and publishes each run on the result topic.
+  host_unit:
+    unit: delegation-check-probe
 reading:
   name: delegation_check_newest_scheduled_run
   description: "The conclusion of the newest scheduled run of each check (success only when every clause held), its cause class and its age."
