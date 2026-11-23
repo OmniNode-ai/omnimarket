@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_running_read_due_compute
 node_type: compute
+lifecycle: experimental
 runtime_profiles: []
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: "1.0.0"
