@@ -25,8 +25,8 @@ evidence_requirements:
     description: "AC2: the focused tests named *omnimarket_manifest_after_install*."
     command: "uv run pytest tests/unit/docker -q -k omnimarket_manifest_after_install -n 0 --no-cov"
   - kind: "tests"
-    description: "AC3: the Dockerfile still inherits the base unchanged and declares no entry point, command or health check."
-    command: "uv run pytest tests/unit/docker/test_composed_runtime_image_omn21279.py -q -k inherits_unpinned_argument -n 0 --no-cov"
+    description: "AC3: the Dockerfile with the manifest step still inherits the base unchanged and declares no entry point, command or health check."
+    command: "uv run pytest tests/unit/docker -q -k omnimarket_manifest_after_install_adds_no_entry_point_command_or_health_check -n 0 --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -41,12 +41,12 @@ dod_evidence:
         check_value: "uv run pytest tests/unit/docker -q -k omnimarket_manifest_after_install -n 0 --no-cov"
         cwd: "."
   - id: "dod-omn26405-ac3-gates-unchanged"
-    description: "AC3: Dockerfile.runtime declares no ENTRYPOINT, CMD or HEALTHCHECK and keeps its unpinned base argument."
+    description: "AC3: Dockerfile.runtime with the manifest step declares no ENTRYPOINT, CMD or HEALTHCHECK and keeps its unpinned base argument; the test needs the manifest step, so it fails against the base commit's Dockerfile.runtime."
     source: "manual"
     binds_ac: ["AC3"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/docker/test_composed_runtime_image_omn21279.py -q -k inherits_unpinned_argument -n 0 --no-cov"
+        check_value: "uv run pytest tests/unit/docker -q -k omnimarket_manifest_after_install_adds_no_entry_point_command_or_health_check -n 0 --no-cov"
         cwd: "."
   - id: "dod-omn26405-integration-proof"
     description: >-

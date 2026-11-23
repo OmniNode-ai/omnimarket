@@ -118,6 +118,22 @@ def test_omnimarket_manifest_after_install_comes_after_every_stamp_input(
 
 
 @pytest.mark.unit
+def test_omnimarket_manifest_after_install_adds_no_entry_point_command_or_health_check(
+    dockerfile: str,
+) -> None:
+    """AC3: the layer that adds the manifest step still declares none of the runtime's gates.
+
+    Bound to the manifest step, so a Dockerfile without it fails here: the control at the
+    merge base then fails, as the evidence gate requires of every bound check.
+    """
+    manifest_index(instructions(dockerfile))
+    assert re.search(r"^ARG INFRA_RUNTIME_IMAGE$", dockerfile, re.MULTILINE)
+    assert "FROM ${INFRA_RUNTIME_IMAGE}" in dockerfile
+    assert not re.search(r"^(ENTRYPOINT|CMD|HEALTHCHECK)\b", dockerfile, re.MULTILINE)
+    assert dockerfile.rstrip().endswith("USER root")
+
+
+@pytest.mark.unit
 def test_omnimarket_manifest_after_install_takes_set_and_workload_from_the_stamp(
     dockerfile: str,
 ) -> None:
