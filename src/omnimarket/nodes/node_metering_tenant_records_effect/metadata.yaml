@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_metering_tenant_records_effect
+version: 0.1.0
+description: >
+  Reads one tenant's delegation records from the local evidence store, read
+  only, matching the tenant as the projection writer records it. Called in
+  process by the metering headline refresh and onex metering.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_metering_tenant_records_effect: omnimarket.nodes.node_metering_tenant_records_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- effect
+- metering
+- in_process
+pack: core
+display_name: Metering Tenant Records Effect
+node_role: effect

@@ -26,6 +26,7 @@ from omnimarket.nodes.node_test_selection_selector_compute.models.model_publishe
 )
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_stage_receipt import (
     EnumStageReceiptViolation,
+    ModelReceiptNight,
     ModelStageReceipt,
     ModelStageReceiptValidationRequest,
     ModelStageReceiptValidationResult,
@@ -52,11 +53,18 @@ def _records(name: str) -> list[ModelPublishedAttributionRecord]:
     return [ModelPublishedAttributionRecord.model_validate(r) for r in _load(name)]
 
 
+def _stage_one_raw() -> dict[str, Any]:
+    """The tree's stage 1 receipt: the stage the nightly-record receipts of these tests are entered from."""
+    path = REPO_ROOT / "config" / "test_selection_stage_receipts" / "stage_1.yaml"
+    loaded: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return loaded
+
+
 def _request(**changes: Any) -> ModelStageReceiptValidationRequest:
     payload: dict[str, Any] = {
-        "current_stage": 1,
-        "base_stage": 0,
-        "receipts": [{"stage": 0}, _load("receipt_valid.json")],
+        "current_stage": 2,
+        "base_stage": 1,
+        "receipts": [{"stage": 0}, _stage_one_raw(), _load("receipt_valid.json")],
     }
     payload.update(changes)
     return ModelStageReceiptValidationRequest.model_validate(payload)
@@ -81,7 +89,7 @@ def test_contract_routes_validate_stage_receipt_to_its_handler() -> None:
     assert route["output_model"].endswith(".ModelStageReceiptValidationResult")
 
 
-def test_golden_chain_a_valid_stage_one_receipt_is_accepted() -> None:
+def test_golden_chain_a_valid_stage_two_receipt_is_accepted() -> None:
     result = _handler(_records("records_valid.json")).handle(_request())
     assert result == ModelStageReceiptValidationResult(valid=True, violations=())
 
@@ -95,7 +103,7 @@ def test_golden_chain_the_baseline_alone_is_accepted_at_stage_zero() -> None:
 
 def test_error_chain_each_refusal_carries_its_code_and_stage() -> None:
     result = _handler(_records("records_valid.json")).handle(
-        _request(receipts=[{"stage": 0}])
+        _request(current_stage=1, base_stage=0, receipts=[{"stage": 0}])
     )
     assert result.violations == (
         ModelStageReceiptViolation(
@@ -107,7 +115,12 @@ def test_error_chain_each_refusal_carries_its_code_and_stage() -> None:
 
 
 def test_error_chain_two_receipts_for_one_stage_are_refused() -> None:
-    receipts = [{"stage": 0}, {"stage": 0}, _load("receipt_valid.json")]
+    receipts = [
+        {"stage": 0},
+        {"stage": 0},
+        _stage_one_raw(),
+        _load("receipt_valid.json"),
+    ]
     result = _handler(_records("records_valid.json")).handle(
         _request(receipts=receipts)
     )
@@ -122,7 +135,9 @@ def test_error_chain_a_receipt_with_no_identity_is_refused_before_any_record_is_
     raw = _load("receipt_valid.json")
     for key in ("repository", "selector_version", "policy_version"):
         raw.pop(key)
-    result = _handler(None).handle(_request(receipts=[{"stage": 0}, raw]))
+    result = _handler(None).handle(
+        _request(receipts=[{"stage": 0}, _stage_one_raw(), raw])
+    )
     assert [v.code for v in result.violations] == [
         EnumStageReceiptViolation.RECEIPT_UNIDENTIFIED
     ]
@@ -144,10 +159,13 @@ def test_error_chain_nights_that_skip_a_day_are_not_consecutive() -> None:
         {
             "slot_date": r.nightly_slot_date.isoformat(),
             "nightly_run_id": r.nightly_run_id,
+            "tested_head_sha": r.tested_head_sha,
         }
         for r in gapped
     ]
-    result = _handler(gapped).handle(_request(receipts=[{"stage": 0}, raw]))
+    result = _handler(gapped).handle(
+        _request(receipts=[{"stage": 0}, _stage_one_raw(), raw])
+    )
     assert EnumStageReceiptViolation.NIGHTS_NOT_CONSECUTIVE in {
         v.code for v in result.violations
     }
@@ -174,7 +192,9 @@ def test_error_chain_a_night_with_no_pull_request_record_is_not_clean() -> None:
     raw["pr_record_count"] = 12
     raw["clean_nights"] = 6
     raw["clean_night_share"] = 6 / 7
-    result = _handler(empty).handle(_request(receipts=[{"stage": 0}, raw]))
+    result = _handler(empty).handle(
+        _request(receipts=[{"stage": 0}, _stage_one_raw(), raw])
+    )
     assert [v.code for v in result.violations] == [
         EnumStageReceiptViolation.NIGHT_NOT_CLEAN
     ]
@@ -298,7 +318,16 @@ def test_published_record_is_frozen_and_refuses_an_extra_or_negative_field() -> 
 @pytest.mark.parametrize(
     "payload",
     [
-        {"stage": 0, "nights": [{"slot_date": "2026-12-01", "nightly_run_id": 1}]},
+        {
+            "stage": 0,
+            "nights": [
+                {
+                    "slot_date": "2026-12-01",
+                    "nightly_run_id": 1,
+                    "tested_head_sha": "a" * 40,
+                }
+            ],
+        },
         {"stage": 0, "entered_from_stage": 0},
         {"stage": 1},
         {"stage": 5, "entered_from_stage": 4},
@@ -330,13 +359,32 @@ def test_receipt_and_result_are_frozen() -> None:
 # -- the in-memory twin of the record source ------------------------------------------
 
 
+def _nights(records: list[ModelPublishedAttributionRecord]) -> list[ModelReceiptNight]:
+    return [
+        ModelReceiptNight(
+            slot_date=r.nightly_slot_date,
+            nightly_run_id=r.nightly_run_id,
+            tested_head_sha=r.tested_head_sha,
+        )
+        for r in records
+    ]
+
+
 def test_in_memory_source_answers_only_the_asked_runs_of_the_asked_repository() -> None:
     records = _records("records_valid.json")
     source: ProtocolAttributionRecordSource = SourceAttributionRecordsInMemory(records)
-    got = source.read_records(records[0].repository, [records[0].nightly_run_id])
-    assert got == (records[0],)
-    assert source.read_records("OmniNode-ai/other", [records[0].nightly_run_id]) == ()
+    got = source.read_records(records[0].repository, _nights(records[:1]))
+    assert got is not None
+    assert got.records == (records[0],)
+    other = source.read_records("OmniNode-ai/other", _nights(records[:1]))
+    assert other is not None
+    assert other.records == ()
 
 
 def test_in_memory_source_built_without_records_is_unreadable() -> None:
-    assert SourceAttributionRecordsInMemory(None).read_records("r", [1]) is None
+    assert (
+        SourceAttributionRecordsInMemory(None).read_records(
+            "OmniNode-ai/omnimarket", _nights(_records("records_valid.json")[:1])
+        )
+        is None
+    )

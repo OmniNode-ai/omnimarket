@@ -17,7 +17,11 @@ from omnimarket.nodes.contract_topics import (
     contract_secret_ref,
 )
 from omnimarket.nodes.node_projection_freshness_alert_effect.handlers.build_slack_command import (
+    build_coverage_slack_command,
     build_slack_command,
+)
+from omnimarket.nodes.node_projection_freshness_alert_effect.handlers.classify_done_items_coverage import (
+    classify_done_items_coverage,
 )
 from omnimarket.nodes.node_projection_freshness_alert_effect.handlers.classify_freshness import (
     classify_freshness,
@@ -27,6 +31,7 @@ from omnimarket.nodes.node_projection_freshness_alert_effect.handlers.freshness_
     resolve_reads_source_dsn,
 )
 from omnimarket.nodes.node_projection_freshness_alert_effect.handlers.load_freshness_config import (
+    load_coverage_checks,
     load_freshness_config,
 )
 from omnimarket.nodes.node_projection_freshness_alert_effect.handlers.protocol_freshness_reader import (
@@ -35,6 +40,9 @@ from omnimarket.nodes.node_projection_freshness_alert_effect.handlers.protocol_f
 from omnimarket.nodes.node_projection_freshness_alert_effect.models import (
     EnumFreshnessState,
     FreshnessPolicyError,
+    ModelCoverageCheck,
+    ModelCoverageObservation,
+    ModelCoverageVerdict,
     ModelFreshnessCheck,
     ModelFreshnessDelivery,
     ModelFreshnessEvaluation,
@@ -63,6 +71,7 @@ class HandlerProjectionFreshnessAlert:
         self._policy, self._source, self._checks = load_freshness_config(
             self._contract_path
         )
+        self._coverage_checks = load_coverage_checks(self._contract_path)
         topics = [
             topic
             for topic in contract_publish_topics(self._contract_path)
@@ -133,11 +142,51 @@ class HandlerProjectionFreshnessAlert:
                 )
             elif verdict.state is EnumFreshnessState.STALE:
                 deliveries.append(self._publish(check, verdict, epoch, correlation_id))
+        coverage_verdicts: list[ModelCoverageVerdict] = []
+        for coverage_check in self._coverage_checks:
+            error = None
+            coverage = None
+            try:
+                if self._reader is None:
+                    self._reader = PostgresFreshnessReader(
+                        dsn=resolve_reads_source_dsn(self._source),
+                        now=lambda: datetime.fromtimestamp(self._clock(), tz=UTC),
+                    )
+                coverage = ModelCoverageObservation.model_validate(
+                    self._reader.read_coverage(coverage_check)
+                )
+            except Exception as exc:
+                error = f"{type(exc).__name__}: {exc}"
+            coverage_verdict = classify_done_items_coverage(
+                check_id=coverage_check.check_id,
+                demand_done_tickets=coverage.demand_done_tickets
+                if coverage is not None
+                else None,
+                unprojected_tickets=coverage.unprojected_tickets
+                if coverage is not None
+                else None,
+                refused_rows=(coverage.refused_rows if coverage is not None else None),
+                error=error,
+            )
+            coverage_verdicts.append(coverage_verdict)
+            if coverage_verdict.state is EnumFreshnessState.UNKNOWN:
+                logger.error(
+                    "Done-items coverage UNKNOWN: check_id=%s error=%s",
+                    coverage_check.check_id,
+                    coverage_verdict.error,
+                )
+            elif coverage_verdict.state is EnumFreshnessState.STALE:
+                deliveries.append(
+                    self._publish_coverage(
+                        coverage_check, coverage_verdict, epoch, correlation_id
+                    )
+                )
         return ModelFreshnessEvaluation(
             evaluated=True,
             check_interval_seconds=interval,
             verdicts=tuple(verdicts),
             deliveries=tuple(deliveries),
+            coverage_verdicts=tuple(coverage_verdicts),
         )
 
     def _publish(
@@ -172,6 +221,49 @@ class HandlerProjectionFreshnessAlert:
         if error is not None:
             logger.error(
                 "Freshness alert NOT published: check_id=%s error=%s",
+                check.check_id,
+                error,
+            )
+        return ModelFreshnessDelivery(
+            check_id=check.check_id,
+            command_topic=self._slack_topic,
+            idempotency_key=key,
+            published=error is None,
+            error=error,
+        )
+
+    def _publish_coverage(
+        self,
+        check: ModelCoverageCheck,
+        verdict: ModelCoverageVerdict,
+        epoch: float,
+        correlation_id: UUID,
+    ) -> ModelFreshnessDelivery:
+        bucket = int(epoch) // self._policy.renotify_after_seconds
+        key = f"projection-freshness|{check.check_id}|STALE|{bucket}"
+        error: str | None = None
+        publisher = self._publisher
+        if publisher is None:
+            error = "no event_publisher was injected; Slack command was not published"
+        else:
+            try:
+                ref = contract_secret_ref(self._contract_path, _CHANNEL_SECRET)
+                secret = resolve_api_key_loop_safe(ref, env_var_fallback=ref)
+                if secret is None:
+                    raise RuntimeError(f"secret ref {ref!r} resolved to None")
+                command = build_coverage_slack_command(
+                    check=check,
+                    verdict=verdict,
+                    channel=secret.get_secret_value(),
+                    idempotency_key=key,
+                    correlation_id=correlation_id,
+                )
+                publisher(self._slack_topic, command.model_dump_json().encode("utf-8"))
+            except Exception as exc:
+                error = f"{type(exc).__name__}: {exc}"
+        if error is not None:
+            logger.error(
+                "Done-items coverage alert NOT published: check_id=%s error=%s",
                 check.check_id,
                 error,
             )

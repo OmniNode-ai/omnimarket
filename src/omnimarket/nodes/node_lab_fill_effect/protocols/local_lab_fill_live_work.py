@@ -43,12 +43,27 @@ _SNAPSHOT_STATE = "linear-snapshot-state.json"
 
 
 class LiveWorkSourceError(LabFillPortError):
-    """A declared source that cannot be read: the source's name and the reason, never an empty read."""
+    """A declared source that cannot be read: the source's name and the reason, never an empty read.
 
-    def __init__(self, source: str, reason: str) -> None:
+    ``age_s`` is the source's age when it was read and found stale, ``absent`` is True when there was nothing to age (no file),
+    ``bound_s`` is the bound the read held it to. The pass writes them in its MISSING line.
+    """
+
+    def __init__(
+        self,
+        source: str,
+        reason: str,
+        *,
+        age_s: int | None = None,
+        bound_s: int | None = None,
+        absent: bool = False,
+    ) -> None:
         super().__init__(f"{source}: {reason}")
         self.source = source
         self.reason = reason
+        self.age_s = age_s
+        self.bound_s = bound_s
+        self.absent = absent
 
 
 @dataclass(frozen=True)
@@ -68,10 +83,15 @@ def _check_fresh(source: str, path: Path, bound_s: int, now: float) -> None:
     try:
         age = now - path.stat().st_mtime
     except OSError as exc:
-        raise LiveWorkSourceError(source, type(exc).__name__) from exc
+        raise LiveWorkSourceError(
+            source, type(exc).__name__, bound_s=bound_s, absent=True
+        ) from exc
     if age > bound_s:
         raise LiveWorkSourceError(
-            source, f"{path.name} is {int(age)}s old, older than its {bound_s}s bound"
+            source,
+            f"{path.name} is {int(age)}s old, older than its {bound_s}s bound",
+            age_s=int(age),
+            bound_s=bound_s,
         )
 
 
@@ -148,7 +168,12 @@ def read_red_prs(
     try:
         prs = reader(repos)
     except LabFillPortError as exc:
-        raise LiveWorkSourceError(SOURCE_WATCHER, str(exc)) from exc
+        raise LiveWorkSourceError(
+            SOURCE_WATCHER,
+            str(exc),
+            bound_s=source.max_tick_age_seconds,
+            absent=not Path(source.path).exists(),
+        ) from exc
     rows: list[dict[str, object]] = []
     skipped: dict[str, int] = {}
     for pr in prs:
@@ -176,7 +201,7 @@ def read_red_prs(
     return LiveWorkRead(SOURCE_WATCHER, tuple(rows), skipped)
 
 
-def _newest_snapshot(path: Path) -> Path:
+def _newest_snapshot(path: Path, bound_s: int) -> Path:
     """A declared directory holds dated snapshots (``linear-snapshot-<date>.json``): the newest by modification time."""
     if not path.is_dir():
         return path
@@ -185,7 +210,12 @@ def _newest_snapshot(path: Path) -> Path:
         key=lambda f: f.stat().st_mtime,
     )
     if not files:
-        raise LiveWorkSourceError(SOURCE_TICKETS, f"no snapshot file in {path.name}")
+        raise LiveWorkSourceError(
+            SOURCE_TICKETS,
+            f"no snapshot file in {path.name}",
+            bound_s=bound_s,
+            absent=True,
+        )
     return files[-1]
 
 
@@ -194,7 +224,7 @@ def read_goal_tickets(source: ModelLabFillWorkSource, *, now: float) -> LiveWork
 
     The declared path is the snapshot file or the directory the snapshot node writes its dated files to.
     """
-    path = _newest_snapshot(Path(source.path))
+    path = _newest_snapshot(Path(source.path), source.max_age_seconds)
     _check_fresh(SOURCE_TICKETS, path, source.max_age_seconds, now)
     try:
         document = json.loads(_read_text(SOURCE_TICKETS, path))

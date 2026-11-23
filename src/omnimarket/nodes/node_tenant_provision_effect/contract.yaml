@@ -1,0 +1,161 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Tenant Provision Effect (the database half)
+#
+# On tenant-provision-requested the node inserts one ownerless tenant row (provisioning_state active), the default plan
+# row and one TENANT_CREATED envelope into tenant_event_outbox, all in one transaction, and answers on the completed topic.
+# On tenant-read-requested it answers one tenant by id or slug. Every refusal and every handled error is a typed outcome
+# on a completed topic; there is no failed topic, so a caller's one read sees every answer. The outbox row stays
+# unpublished: the flush is another node's work. Owner fields are refused (refused_owner_not_supported) until the owner
+# path exists.
+name: node_tenant_provision_effect
+contract_name: node_tenant_provision_effect
+node_name: node_tenant_provision_effect
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+lifecycle: experimental
+# runtime_profiles is effects, like every command-consuming effect node: placement is by runtime_profiles alone, and no
+# runtime_lanes is declared. The node reads its identity database DSN through the logical secret
+# tenant_identity.database.dsn, which the runtime that hosts the effects role resolves from its own deployment overlay.
+runtime_profiles: [effects]
+description: >
+  Creates one ownerless tenant with its default plan and one TENANT_CREATED outbox envelope from a bus command, and reads
+  one tenant by id or slug. A command id replayed answers the original created payload. A slug owned by another owner, a
+  command id reused for another tenant, an invalid slug and any owner field are refused with a typed outcome and no write.
+handler:
+  module: omnimarket.nodes.node_tenant_provision_effect.handlers.handler_tenant_provision
+  class: HandlerTenantProvision
+  input_model: omnimarket.nodes.node_tenant_provision_effect.models.model_tenant_provision.ModelTenantProvisionCommand
+input_model:
+  name: ModelTenantProvisionCommand
+  module: omnimarket.nodes.node_tenant_provision_effect.models.model_tenant_provision
+  description: The command id, the tenant slug, an optional name and the optional owner fields (refused for now).
+output_model:
+  name: ModelTenantProvisionResult
+  module: omnimarket.nodes.node_tenant_provision_effect.models.model_tenant_provision
+  description: The typed outcome, a detail line and, for created and already_exists, the tenant fields.
+descriptor:
+  node_archetype: effect
+  purity: impure
+  runtime_profiles: [effects]
+  idempotent: true
+  side_effects: [database-write]
+  timeout_ms: 30000
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - operation: tenant_provision
+      topic: onex.cmd.omnimarket.tenant-provision-requested.v1
+      message_category: command
+      event_model: omnimarket.nodes.node_tenant_provision_effect.models.model_tenant_provision.ModelTenantProvisionCommand
+      handler_module: omnimarket.nodes.node_tenant_provision_effect.handlers.handler_tenant_provision
+      handler:
+        name: HandlerTenantProvision
+        module: omnimarket.nodes.node_tenant_provision_effect.handlers.handler_tenant_provision
+    - operation: tenant_read
+      topic: onex.cmd.omnimarket.tenant-read-requested.v1
+      message_category: command
+      event_model: omnimarket.nodes.node_tenant_provision_effect.models.model_tenant_provision.ModelTenantReadCommand
+      handler_module: omnimarket.nodes.node_tenant_provision_effect.handlers.handler_tenant_read
+      handler:
+        name: HandlerTenantRead
+        module: omnimarket.nodes.node_tenant_provision_effect.handlers.handler_tenant_read
+topics:
+  tenant_provision:
+    requested: onex.cmd.omnimarket.tenant-provision-requested.v1
+    completed: onex.evt.omnimarket.tenant-provision-completed.v1
+  tenant_read:
+    requested: onex.cmd.omnimarket.tenant-read-requested.v1
+    completed: onex.evt.omnimarket.tenant-read-completed.v1
+terminal_event: onex.evt.omnimarket.tenant-provision-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.tenant-provision-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.tenant-provision-completed.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.tenant-provision-requested.v1
+    - onex.cmd.omnimarket.tenant-read-requested.v1
+  # Only the terminal event is declared here: the node's Python never publishes, the runtime publishes each handler's answer
+  # on the completed topic its topic_match route names, and the publish-parity gate refuses a non-terminal publish topic
+  # with no publish call in the node. The read answer's topic is declared under topics and externally_consumed_topics.
+  publish_topics:
+    - onex.evt.omnimarket.tenant-provision-completed.v1
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.tenant-read-requested.v1
+    producer: "the operator's CLI, the only principal holding WRITE on this topic (see broker_acl_grants) -- not a node contract"
+externally_consumed_topics:
+  - onex.evt.omnimarket.tenant-provision-completed.v1
+  - onex.evt.omnimarket.tenant-read-completed.v1
+# The eight tenant command topics are the operator plane (published by the operator's CLI and by the dev provisioning node
+# and by nothing else): WRITE on a requested topic is a working credential for any tenant, so only the operator principal
+# holds it and no tenant principal holds WRITE on these topics or on a tenant-prefixed copy of them.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_TENANT_OPERATOR_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-provision-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-provision-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-provision-completed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-provision-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-read-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-read-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-read-completed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-read-completed.v1, operation: DESCRIBE}
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-provision-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-provision-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-provision-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-provision-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-read-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-read-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-read-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-read-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.tenant.events, operation: WRITE} # onex-topic-allow: control-plane tenant lifecycle topic the outbox flush writes
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.tenant.events, operation: DESCRIBE} # onex-topic-allow: control-plane tenant lifecycle topic the outbox flush writes
+overlay:
+  node: node_tenant_provision_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+secret_dependencies:
+  tenant_identity.database.dsn:
+    required: true
+    description: "The identity database's DSN, asked of the secret store by this logical name (the overlay's database.dsn_secret). The main runtime carries it."
+# Not `db_io`: that key is resolved against the deployment topology, which
+# declares no `omninode_cloud` database, so declaring these tables there fails
+# contract discovery and projection-target resolution for the whole repo. The
+# tables are owned by the identity database; the node reaches it through the
+# `tenant_identity.database.dsn` secret above.
+identity_io:
+  db_tables:
+    - name: tenants
+      database_ref: omninode_cloud
+      schema: public
+      migration: "20251207_tenants_uuid_pk.sql"
+      access: read_insert
+      role: tenant_identity
+    - name: tenant_plans
+      database_ref: omninode_cloud
+      schema: public
+      migration: "20251209_m4_usage_schema.sql"
+      access: read_insert
+      role: tenant_identity
+    - name: plan_tiers
+      database_ref: omninode_cloud
+      schema: public
+      migration: "20251209_m4_usage_schema.sql"
+      access: read
+      role: tenant_identity
+    - name: tenant_event_outbox
+      database_ref: omninode_cloud
+      schema: public
+      migration: "20260816_tenant_event_outbox.sql"
+      access: read_insert
+      role: tenant_identity
+golden_path:
+  - "A provision command for a new slug is published on the provision requested topic"
+  - "One transaction inserts the active tenant row, the default plan row and one TENANT_CREATED outbox envelope"
+  - "The completed topic carries the created outcome with the tenant id, plan code and creation time"
+  - "The same command id replayed carries a payload equal to the first except emitted_at"
+metadata:
+  transport_type: database

@@ -57,5 +57,7 @@ class ModelCatalogEntry(BaseModel):
     #: When supplemental metadata was fetched (ISO UTC), and whether it is stale.
     metadata_fetched_at: str | None = None
     metadata_stale: bool = False
+    #: When the provider's own list this entry came from was read (ISO UTC).
+    provider_listed_at: str | None = None
     #: The provider's kept list has expired, so models.dev fills this model's facts.
     provider_list_expired: bool = False

@@ -58,6 +58,7 @@ event_bus:
     - onex.evt.omnimarket.dev-roll-window-refused.v1
     - onex.evt.omnimarket.dev-roll-window-decision.v1
     - onex.evt.omnimarket.dev-roll-window-recorded.v1
+    - onex.cmd.omnimarket.lab-alarm-delivery-requested.v1
 published_events:
   - event_type: "ModelDeployPublishCommand"
     topic: onex.cmd.omnimarket.redeploy-deploy-publish.v1
@@ -74,6 +75,9 @@ published_events:
   - event_type: "ModelDevRollGateRollRecorded"
     topic: onex.evt.omnimarket.dev-roll-window-recorded.v1
     description: "The agent's completion of a released command ended the gate's last roll."
+  - event_type: "ModelLabAlarmDeliveryRequest"
+    topic: onex.cmd.omnimarket.lab-alarm-delivery-requested.v1
+    description: "OMN-26484: one alarm request to node_lab_alarm_deliver_effect when a held command is older than the overlay's held_age_alarm_after_seconds: it names the roll and the aged held commands, and the delivery appends the one ledger row and, where its overlay routes the condition to an owner lane, the one MSG."
 handler_routing:
   routing_strategy: payload_type_match
   handlers:
@@ -90,8 +94,8 @@ handler_routing:
     - operation: "dev_roll_window.tick"
       message_category: "intent"
       handler:
-        name: "HandlerDevRollWindowTick"
-        module: "omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.handler_dev_roll_window_tick"
+        name: "HandlerDevRollWindowTickPublish"
+        module: "omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.handler_dev_roll_window_tick_publish"
       event_model:
         name: "ModelRuntimeTick"
         module: "omnibase_infra.runtime.models.model_runtime_tick"
@@ -119,6 +123,7 @@ externally_consumed_topics:
   - onex.evt.omnimarket.dev-roll-window-refused.v1
   - onex.evt.omnimarket.dev-roll-window-decision.v1
   - onex.evt.omnimarket.dev-roll-window-recorded.v1
+  - onex.cmd.omnimarket.lab-alarm-delivery-requested.v1
 # The broker rows the principal that runs this node needs. The principal is named by an environment variable
 # so this public file names no identity; the overlays repository holds the concrete login.
 broker_acl_grants:
@@ -140,6 +145,8 @@ broker_acl_grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-window-decision.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-window-recorded.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-roll-window-recorded.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-alarm-delivery-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-alarm-delivery-requested.v1, operation: DESCRIBE}
 overlay:
   node: node_dev_roll_window_gate_effect
   roots_env: ONEX_SKILL_OVERLAY_ROOTS
@@ -150,4 +157,4 @@ metadata:
   author: "OmniNode Team"
   created: "2026-11-14"
   tags: ["effect", "dev-runtime", "roll-batching", "OMN-19998"]
-  related_tickets: ["OMN-23532", "OMN-24251", "OMN-19998"]
+  related_tickets: ["OMN-23532", "OMN-24251", "OMN-19998", "OMN-26484"]

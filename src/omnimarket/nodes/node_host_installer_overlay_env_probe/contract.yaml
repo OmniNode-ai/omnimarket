@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_installer_overlay_env_probe
+node_type: EFFECT_GENERIC
+version: 1.0.0
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Read every environment name and secret key that the overlays of the nodes assigned to a host declare, and record one
+  row per host, node and name as set or unset, never a value. A host with an unset name for a node it runs is marked
+  unavailable for that node: the placement verdicts of node_lab_placement_compute for that node are returned ineligible
+  for it, and one alarm names the host, the node and the name.
+input_model:
+  name: ModelOverlayEnvProbeRequest
+  module: omnimarket.nodes.node_host_installer_overlay_env_probe.models.model_overlay_env_probe
+output_model:
+  name: ModelOverlayEnvProbeResult
+  module: omnimarket.nodes.node_host_installer_overlay_env_probe.models.model_overlay_env_probe
+handler:
+  name: HandlerOverlayEnvProbe
+  module: omnimarket.nodes.node_host_installer_overlay_env_probe.handlers.handler_overlay_env_probe
+entrypoint:
+  name: NodeHostInstallerOverlayEnvProbe
+  module: omnimarket.nodes.node_host_installer_overlay_env_probe.node
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: "Direct Python invocation by the host installer (python -m omnimarket.nodes.node_host_installer_overlay_env_probe < request.json)."
+execution:
+  deterministic: true
+  side_effects: false
+# Which keys of an overlay (found by the shared overlay reader under the roots of the request) and of the node's own
+# contract blocks declare an environment name or secret key. A key whose last segment ends with one of the suffixes
+# and whose value matches the pattern declares a name; a store path such as llm.openrouter.api_key does not match the
+# pattern and is not a host environment name.
+probe:
+  name_key_suffixes: [_env, secret_ref, client_id_ref]
+  name_pattern: "[A-Z][A-Z0-9_]*"
+  contract_blocks: [runtime]
