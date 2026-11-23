@@ -456,6 +456,12 @@ def test_golden_the_tick_writes_the_mirror_and_a_receipt_with_the_lag(
     tmp_path: Path,
 ) -> None:
     command = _command(tmp_path, _answer([ROW]))
+    # The host's tracked archive rolls carry the rulings the briefs cite (the pinned stream, OMN-26412).
+    rolls = tmp_path / "home/docs/tracking/archive"
+    rolls.mkdir(parents=True)
+    (rolls / "x-split.md").write_text(
+        "2026-09-29T06:34:17Z | RULING | lane=orchestrator-83 | the landing ruling\n"
+    )
     done = _tick(tmp_path, {"ONEX_LEDGER_BUS_READ_COMMAND": " ".join(command)})
     assert done.returncode == 0, done.stderr
     mirror = tmp_path / "home/.onex_state/ledger-mirror/host-ledger-mirror.md"

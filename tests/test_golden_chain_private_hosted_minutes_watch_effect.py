@@ -66,7 +66,7 @@ def test_golden_chain_billing_to_alert_and_status_row(tmp_path: Path) -> None:
         calls.append(("alert", text))
         return "sent"
 
-    def appender(ledger: Path, row: str) -> tuple[bool, str]:
+    def appender(row: str, day: date) -> tuple[bool, str]:
         calls.append(("ledger", row))
         return True, "ledger append exit 0: "
 
@@ -82,9 +82,7 @@ def test_golden_chain_billing_to_alert_and_status_row(tmp_path: Path) -> None:
             included_minutes=50, alert_fraction=0.5
         ),
     )
-    request = ModelHostedMinutesWatchRequest(
-        day=date(2026, 10, 18), state_dir=tmp_path, ledger=tmp_path / "ledger.md"
-    )
+    request = ModelHostedMinutesWatchRequest(day=date(2026, 10, 18), state_dir=tmp_path)
     result = handler.handle(request)
 
     assert isinstance(result, ModelHostedMinutesWatchResult)
@@ -112,7 +110,7 @@ def test_error_chain_billing_failure_records_heartbeat(tmp_path: Path) -> None:
 
     handler = HandlerPrivateHostedMinutesWatch(
         billing_reader=reader,
-        ledger_appender=lambda _ledger, _row: (True, ""),
+        ledger_appender=lambda _row, _day: (True, ""),
         alert_sender=lambda _text: "sent",
         clock=lambda: datetime(2026, 10, 19, 6, 0, tzinfo=UTC),
         visibility_reader=lambda _org, repo: (
@@ -124,11 +122,7 @@ def test_error_chain_billing_failure_records_heartbeat(tmp_path: Path) -> None:
     )
     with pytest.raises(RuntimeError, match="HTTP 403"):
         handler.handle(
-            ModelHostedMinutesWatchRequest(
-                day=date(2026, 10, 18),
-                state_dir=tmp_path,
-                ledger=tmp_path / "ledger.md",
-            )
+            ModelHostedMinutesWatchRequest(day=date(2026, 10, 18), state_dir=tmp_path)
         )
     heartbeat = json.loads((tmp_path / "last-run.json").read_text(encoding="utf-8"))
     assert heartbeat["error"] == "gh api exit 1: HTTP 403"

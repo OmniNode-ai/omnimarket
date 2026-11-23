@@ -18,6 +18,9 @@ from typing import Any
 
 import pytest
 
+from omnimarket.nodes.node_test_selection_selector_compute.adapters.adjacency_file import (
+    load_adjacency_map,
+)
 from omnimarket.nodes.node_test_selection_selector_compute.adapters.source_tree_snapshot import (
     read_snapshot_file,
 )
@@ -30,7 +33,6 @@ from omnimarket.nodes.node_test_selection_selector_compute.models.model_selectio
     ModelReplayResult,
 )
 from scripts.ci.detect_test_paths import REPO_ROOT
-from scripts.ci.test_selection_loader import load_adjacency_map
 
 pytestmark = pytest.mark.unit
 
