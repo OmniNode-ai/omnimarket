@@ -246,6 +246,16 @@ jobs:
           PYPI_PIN_RESOLVE_TIMEOUT_SECONDS: '900'
         run: python3 scripts/ci/verify_pypi_pin_resolvability.py dist/
 
+      # OMN-26025 — the clean-install probe, placed BEFORE the tag push like the
+      # pin gate above. The pin gate proves the wheel's pins resolve; it never
+      # imports the package. This step installs the built wheel into an empty
+      # venv outside the source tree and loads the package and every `onex.nodes`
+      # entry point, so a wheel that imports something its metadata does not
+      # declare fails here, before the tag exists. No continue-on-error: a failed
+      # step stops the job and the tag step is not reached.
+      - name: Clean-install probe of the built distribution (OMN-26025)
+        run: python3 src/omnimarket/nodes/node_release/runtime_clean_install_probe.py dist/
+
       - name: Create and push the release tag
         id: tag
         env:

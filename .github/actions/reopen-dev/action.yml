@@ -54,6 +54,10 @@ runs:
         fi
         if [ "$ACTION" = "bump" ]; then
           uv lock
+          # OMN-26025: what pins the files just changed moves in the same commit.
+          # The work contracts pin uv.lock's sha256, and the pins test and the
+          # deploy probe carry a version floor that must fail at the merge base.
+          python3 src/omnimarket/nodes/node_release/runtime_work_contract_repin.py --root . --target "$TARGET"
         fi
 
     - name: Push the reopen commit to dev, falling back to a PR
@@ -73,7 +77,12 @@ runs:
         git config user.name "onexbot-occ-writer[bot]"
         git config user.email "onexbot-occ-writer[bot]@users.noreply.github.com"
         if [ "$ACTION" = "bump" ]; then
-          git add pyproject.toml uv.lock
+          git add pyproject.toml uv.lock \
+            src/omnimarket/configs/work_contracts/contracts \
+            tests/nodes/test_work_contract_pins_current.py contracts/OMN-18010.yaml
+          # A file the job changed and did not stage would be left out of the bump
+          # commit and the bump pull request would be red (OMN-26025).
+          git diff --exit-code
         fi
         if [ "$REMOVE_CHANGELOG" = "true" ]; then
           # The release cut added this file; the removed-prose test forbids it on

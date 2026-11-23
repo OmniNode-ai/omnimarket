@@ -1,0 +1,90 @@
+schema_version: 1.0.0
+ticket_id: OMN-26025
+title: The reopen-dev bump repins what pins the files it changes, so a cut never leaves dev armed and red
+summary: "The reopen-dev job of the release workflow repins the work contracts that pin the uv.lock hash and raises the pins-test and deploy-probe version floor in the same commit, a CI test applies the job's bump to a copy of the tree and runs the pins test and the release-identity check on it, a clean-install probe of the built wheel runs before the tag step, and a pure handler builds the dev-armed row that fires after 30 minutes. Binding the row to the nightly release-cut tick is not part of this change."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26025-reopen-dev-repin
+    statement: The commit the reopen-dev bump produces moves every pin that the bump invalidates, and CI proves it on a copy of the tree.
+    acceptance:
+      - id: AC1
+        statement: "AC1: the commit the reopen-dev bump produces changes pyproject.toml, uv.lock and every contract that pins the uv.lock hash, so the pins test and check-release-identity pass on that commit with no human edit -- falsifier: `uv run pytest tests/ci -q -k reopen_dev_repin` fails on a fixture where a contract still holds the previous uv.lock hash after the bump"
+      - id: AC2
+        statement: "AC2: a CI test applies the bump to a copy of the tree and runs the pins test and check-release-identity on the copy, and fails when the bump leaves one pin behind -- falsifier: `uv run pytest tests/ci -q -k bump_applied_to_copy` run against a bump that skips the repin must fail (red-first control)"
+  - id: req-omn26025-clean-install-probe
+    statement: The release job installs the built wheel into an empty environment and imports it before it tags.
+    acceptance:
+      - id: AC3
+        statement: "AC3: the release workflow runs a clean-install probe of the built distribution before the tag step, and the cut refuses to tag when the probe fails -- falsifier: `uv run pytest tests/ci -q -k clean_install_probe_before_tag` with a built distribution missing a declared dependency must show the tag step not reached"
+  - id: req-omn26025-dev-armed-row
+    statement: A row naming an owner is built when dev's version has equalled the highest published tag for more than 30 minutes.
+    acceptance:
+      - id: AC4
+        statement: "AC4: the release-cut tick raises one row with an owner when dev's [project].version equals the highest published tag for more than 30 minutes, and none at 29 minutes -- falsifier: `uv run pytest tests -q -k dev_armed_row` over fixtures at 29 and 31 minutes"
+evidence_requirements:
+  - kind: tests
+    description: Run the focused tests of this change.
+    command: uv run --frozen pytest tests/ci/test_reopen_dev_repin_omn26025.py tests/ci/test_clean_install_probe_omn26025.py tests/handlers/test_dev_armed_row_omn26025.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn26025-ac1-repin-in-commit
+    description: "The job's bump step and staging run on a copy of the tree: every uv.lock pin moves, the floor rises, and nothing is left unstaged."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_reopen_dev_repin_omn26025.py -q --no-cov -p no:randomly -k reopen_dev_repin
+        cwd: .
+  - id: dod-omn26025-ac2-bump-applied-to-copy
+    description: "The pins test and the release-identity check pass on the bumped copy, and the pins test fails when the repin is skipped or one pin is left behind."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_reopen_dev_repin_omn26025.py -q --no-cov -p no:randomly -k bump_applied_to_copy_passes
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_reopen_dev_repin_omn26025.py -q --no-cov -p no:randomly -k bump_applied_to_copy_fails
+        cwd: .
+  - id: dod-omn26025-ac3-clean-install-probe
+    description: "A wheel that imports a module its metadata does not declare fails the probe step and the tag stand-in is not reached; a sound wheel reaches it."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_clean_install_probe_omn26025.py -q --no-cov -p no:randomly -k clean_install_probe
+        cwd: .
+  - id: dod-omn26025-ac4-dev-armed-row
+    description: "The row is built at 31 minutes with an owner and not at 29 or 30, and not once dev is ahead of the tag."
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/handlers/test_dev_armed_row_omn26025.py -q --no-cov -p no:randomly -k dev_armed_row
+        cwd: .
+  - id: dod-omn26025-deploy-probe
+    description: "Hosted-runner source-artifact check read through the GitHub contents API at the exact checkout commit: the release workflow carries the clean-install probe step, the reopen-dev action carries the repin step, and the repin module defines the repin function. This checks the package artifact and does not attest a running deployment; the pre-change artifact has neither step."
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/.github/workflows/release-cut.yml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'nodes/node_release/runtime_clean_install_probe.py dist/' >/dev/null"
+        cwd: .
+      - check_type: command
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/.github/actions/reopen-dev/action.yml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'nodes/node_release/runtime_work_contract_repin.py --root' >/dev/null"
+        cwd: .
+      - check_type: command
+        check_value: "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_release/runtime_work_contract_repin.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c '^def repin_environment_pins' >/dev/null"
+        cwd: .
+  - id: dod-omn26025-integration-proof
+    description: 'The pushed head ran the three focused test files of this change on a lab host through the lab work runner and exited 0: the job text on a copy of the tree, the probe on built wheels and the dev-armed row. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.'
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26025 -- uv run --frozen pytest tests/ci/test_reopen_dev_repin_omn26025.py tests/ci/test_clean_install_probe_omn26025.py tests/handlers/test_dev_armed_row_omn26025.py -q -p no:cacheprovider --no-cov
+        cwd: .
