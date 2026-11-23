@@ -146,3 +146,36 @@ def test_repo_task_with_no_check_anywhere_is_refused() -> None:
     )
     assert not answer.ok
     assert answer.refusal == EnumReplayRefusal.CHECK_MISSING
+
+
+@pytest.mark.parametrize(
+    ("verify_line", "expected"),
+    [
+        (
+            "Verify with: python3 -m pytest tests/test_x.py -q",
+            ("python3 -m pytest tests/test_x.py -q",),
+        ),
+        (
+            "Verify: uv run pytest tests/test_x.py -q -n 0 --no-cov -p no:cacheprovider",
+            ("uv run pytest tests/test_x.py -q -n 0 --no-cov -p no:cacheprovider",),
+        ),
+        (
+            "Verify with: uv run pytest tests/test_x.py -q ; uv run ruff check src",
+            ("uv run pytest tests/test_x.py -q", "uv run ruff check src"),
+        ),
+        (
+            "Verify command (run before finishing): from scripts/deploy-agent "
+            "`python -m pytest tests/unit/test_y.py -q -x` if the venv works, else report.",
+            ("python -m pytest tests/unit/test_y.py -q -x",),
+        ),
+    ],
+)
+def test_check_is_read_from_the_verify_line_in_each_recorded_shape(
+    verify_line: str, expected: tuple[str, ...]
+) -> None:
+    prompt = f"Task: in this worktree, change src/a.py.\n\n{verify_line}\nDo not touch any other file."
+    answer = HandlerDelegationReplayRoute().handle(
+        _request(prompt=prompt, check_commands=())
+    )
+    assert answer.ok
+    assert answer.check_commands == expected
