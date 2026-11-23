@@ -12,3 +12,9 @@ alarm_route: test_selector_miss
 collector_enabled: true
 # The lab status tick that invokes the slot check as its own process.
 status_tick: example-lab-status-tick
+# Repositories a published attribution record may name (public ones only). Empty refuses every record.
+public_repositories:
+  - example-org/example-repo
+# Names of private repositories, hosts or people the deployment refuses in a record (synthetic here).
+private_terms:
+  - example-private-term

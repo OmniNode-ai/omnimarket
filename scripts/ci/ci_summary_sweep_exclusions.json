@@ -12,7 +12,7 @@
     "expires": "2026-12-20"
   },
   "delegation-health-check / Delegation Health Check": {
-    "reason": "The check left every required list: it reads delegation verdicts from lab and stability runs, so a broken lab held dev merges. Its caller still runs on pull_request and merge_group and still produces the row until its triggers move to schedule and push on dev; this entry admits that row until then.",
+    "reason": "The check left every required list: it reads delegation verdicts from lab and stability runs, so a broken lab held dev merges. Its caller now runs on a schedule and on push to dev, so no new head carries the row; this entry admits the row a head that ran the old pull_request or merge_group caller still carries, until it expires.",
     "ticket": "OMN-25514",
     "added": "2026-11-17",
     "expires": "2026-12-17"
