@@ -53,11 +53,18 @@ def _records(name: str) -> list[ModelPublishedAttributionRecord]:
     return [ModelPublishedAttributionRecord.model_validate(r) for r in _load(name)]
 
 
+def _stage_one_raw() -> dict[str, Any]:
+    """The tree's stage 1 receipt: the stage the nightly-record receipts of these tests are entered from."""
+    path = REPO_ROOT / "config" / "test_selection_stage_receipts" / "stage_1.yaml"
+    loaded: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return loaded
+
+
 def _request(**changes: Any) -> ModelStageReceiptValidationRequest:
     payload: dict[str, Any] = {
-        "current_stage": 1,
-        "base_stage": 0,
-        "receipts": [{"stage": 0}, _load("receipt_valid.json")],
+        "current_stage": 2,
+        "base_stage": 1,
+        "receipts": [{"stage": 0}, _stage_one_raw(), _load("receipt_valid.json")],
     }
     payload.update(changes)
     return ModelStageReceiptValidationRequest.model_validate(payload)
@@ -82,7 +89,7 @@ def test_contract_routes_validate_stage_receipt_to_its_handler() -> None:
     assert route["output_model"].endswith(".ModelStageReceiptValidationResult")
 
 
-def test_golden_chain_a_valid_stage_one_receipt_is_accepted() -> None:
+def test_golden_chain_a_valid_stage_two_receipt_is_accepted() -> None:
     result = _handler(_records("records_valid.json")).handle(_request())
     assert result == ModelStageReceiptValidationResult(valid=True, violations=())
 
@@ -96,7 +103,7 @@ def test_golden_chain_the_baseline_alone_is_accepted_at_stage_zero() -> None:
 
 def test_error_chain_each_refusal_carries_its_code_and_stage() -> None:
     result = _handler(_records("records_valid.json")).handle(
-        _request(receipts=[{"stage": 0}])
+        _request(current_stage=1, base_stage=0, receipts=[{"stage": 0}])
     )
     assert result.violations == (
         ModelStageReceiptViolation(
@@ -108,7 +115,12 @@ def test_error_chain_each_refusal_carries_its_code_and_stage() -> None:
 
 
 def test_error_chain_two_receipts_for_one_stage_are_refused() -> None:
-    receipts = [{"stage": 0}, {"stage": 0}, _load("receipt_valid.json")]
+    receipts = [
+        {"stage": 0},
+        {"stage": 0},
+        _stage_one_raw(),
+        _load("receipt_valid.json"),
+    ]
     result = _handler(_records("records_valid.json")).handle(
         _request(receipts=receipts)
     )
@@ -123,7 +135,9 @@ def test_error_chain_a_receipt_with_no_identity_is_refused_before_any_record_is_
     raw = _load("receipt_valid.json")
     for key in ("repository", "selector_version", "policy_version"):
         raw.pop(key)
-    result = _handler(None).handle(_request(receipts=[{"stage": 0}, raw]))
+    result = _handler(None).handle(
+        _request(receipts=[{"stage": 0}, _stage_one_raw(), raw])
+    )
     assert [v.code for v in result.violations] == [
         EnumStageReceiptViolation.RECEIPT_UNIDENTIFIED
     ]
@@ -149,7 +163,9 @@ def test_error_chain_nights_that_skip_a_day_are_not_consecutive() -> None:
         }
         for r in gapped
     ]
-    result = _handler(gapped).handle(_request(receipts=[{"stage": 0}, raw]))
+    result = _handler(gapped).handle(
+        _request(receipts=[{"stage": 0}, _stage_one_raw(), raw])
+    )
     assert EnumStageReceiptViolation.NIGHTS_NOT_CONSECUTIVE in {
         v.code for v in result.violations
     }
@@ -176,7 +192,9 @@ def test_error_chain_a_night_with_no_pull_request_record_is_not_clean() -> None:
     raw["pr_record_count"] = 12
     raw["clean_nights"] = 6
     raw["clean_night_share"] = 6 / 7
-    result = _handler(empty).handle(_request(receipts=[{"stage": 0}, raw]))
+    result = _handler(empty).handle(
+        _request(receipts=[{"stage": 0}, _stage_one_raw(), raw])
+    )
     assert [v.code for v in result.violations] == [
         EnumStageReceiptViolation.NIGHT_NOT_CLEAN
     ]

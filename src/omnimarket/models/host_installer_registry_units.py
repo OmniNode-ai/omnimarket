@@ -53,6 +53,12 @@ class ModelRegistryUnitsRequest(BaseModel):
     ledger_host_name: str = Field(
         default="", pattern=r"^(?:[A-Za-z0-9][A-Za-z0-9_.-]*)?$"
     )
+    # The lab host-table row name of the dev host, persisted in the R8 and R9 scenario units (OMN-25878): their scheduled tick
+    # waits for that host's /ready before it runs and exits 65 when the name is unset. Empty defers to the installing shell's
+    # ONEX_DEV_READINESS_HOST.
+    dev_readiness_host: str = Field(
+        default="", pattern=r"^(?:[A-Za-z0-9][A-Za-z0-9_.-]*)?$"
+    )
     # The lab_hosts row this install is for; names the declared overlays clone. Empty defers to
     # ledger_host_name, then to the installing shell's ONEX_LEDGER_HOST_NAME.
     host_name: str = Field(default="", pattern=r"^(?:[A-Za-z0-9][A-Za-z0-9_.-]*)?$")
