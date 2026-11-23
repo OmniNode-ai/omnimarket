@@ -56,7 +56,9 @@ output_model:
 # The reaper takes its observation from the caller (the broker reading effects) and declares no bus topic of
 # its own: a topic would need a broker permission row, and the reaper is run in process by its caller.
 runtime_dispatch:
-  external_trigger: HandlerTopicReaper.handle, called in process by the broker reading effect with the injected clock and the observation
+  external_trigger: HandlerTopicReaper.handle, called in process by node_topic_reaper_scheduled_effect on the runtime tick with the injected clock and the observation
+  callers:
+    - path: src/omnimarket/nodes/node_topic_reaper_scheduled_effect/handlers/handler_topic_reaper_scheduled.py
 
 event_bus:
   subscribe_topics: []
