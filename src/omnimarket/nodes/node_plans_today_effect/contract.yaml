@@ -43,7 +43,7 @@ descriptor:
   timeout_ms: 600000
   side_effects:
   - reads the plans repository at origin/main after a git fetch
-  - reads the rolling ledger through the plugin's reader
+  - reads the work ledger's rows through the rows loader node over the bus
   - in member mode, reads each scoped pull request with gh pr view under the member's login
   - writes plans-today.json and detail.md under the output directory
   - sends one ledger MSG per stalled plan with no owner through the ledger-msg executor

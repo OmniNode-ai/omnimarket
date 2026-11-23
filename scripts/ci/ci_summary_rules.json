@@ -486,6 +486,18 @@
             "gated on needs.zone-filter.outputs.docs_only != 'true', so a docs-only PR",
             "legitimately skips it."
           ]
+        },
+        {
+          "name": "Collection Gate",
+          "note": [
+            "OMN-26277: one whole-tree `pytest --collect-only` per pull request, run",
+            "only when the detect job's collection_gate output is 'true' (its `if:` is",
+            "`needs.detect-changes.result == 'success' &&",
+            "needs.detect-changes.outputs.collection_gate == 'true'`). A run whose",
+            "selection is not narrowed past the cut edge, a docs-only PR (Detect Changes",
+            "skipped) and a full-suite run legitimately skip it, so it is not STRICT;",
+            "when it does run, a real failure still fails CI Summary closed."
+          ]
         }
       ]
     },

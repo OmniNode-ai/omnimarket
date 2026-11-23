@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Replays the test selector over merged history against a frozen tree (stage 0).
+"""Replays the test selector over merged history against a frozen tree (stage 0, or the closure's stage).
 
 Pure over its request: the tree, the policy, the adjacency map and the recorded durations all come from the
 request's snapshot, so the same request answers the same on any checkout. The path resolution and the shard
@@ -28,11 +28,17 @@ from omnimarket.nodes.node_test_selection_selector_compute.adapters.source_tree_
 from omnimarket.nodes.node_test_selection_selector_compute.handlers import (
     handler_test_path_resolution as resolution,
 )
+from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_file_level_closure import (
+    HandlerFileLevelClosure,
+)
 from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_path_resolution import (
     HandlerTestPathResolution,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_selection_selector import (
     HandlerTestSelectionSelector,
+)
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_file_level_closure import (
+    ModelFileLevelClosureRequest,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_selection_replay import (
     EnumReplayKind,
@@ -49,6 +55,7 @@ from omnimarket.nodes.node_test_selection_selector_compute.models.model_selectio
 )
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
     ModelPathResolutionRequest,
+    ModelPathResolutionResult,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector import (
     ModelSelectorRequest,
@@ -105,7 +112,7 @@ def changed_sections(base_text: str, head_text: str) -> tuple[str, ...]:
 
 
 class HandlerSelectionReplay:
-    """``replay_selection``: stage 0 of the selector over a list of merges."""
+    """``replay_selection``: the selector over a list of merges, at stage 0 or at the file-level closure's stage."""
 
     def handle(
         self, request: ModelReplayRequest
@@ -203,33 +210,55 @@ class HandlerSelectionReplay:
                 if fnmatchcase(path, pattern):
                     hit(REASON_PROTECTED_SURFACE, path, pattern)
                     break
-        source_paths = [
-            path[len(resolution.SRC_PREFIX) :]
-            for path in changed
-            if path.startswith(resolution.SRC_PREFIX)
-        ]
-        for path in source_paths:
-            if "/" not in path or path.split("/", 1)[0] not in config.adjacency:
-                hit(REASON_UNMAPPED_MODULE, resolution.SRC_PREFIX + path)
-        changed_modules = sorted({path.split("/", 1)[0] for path in source_paths})
-        for module in changed_modules:
-            if module in config.shared_modules:
-                hit(REASON_SHARED_MODULE, module)
-        if len(changed_modules) >= config.thresholds.modules_changed_for_full_suite:
-            hit(REASON_THRESHOLD_MODULES, ",".join(changed_modules))
+        # the request validator makes a stage above 0 one at or above the closure's own
+        closure = request.closure if request.stage > 0 else None
+        if closure is None:
+            source_paths = [
+                path[len(resolution.SRC_PREFIX) :]
+                for path in changed
+                if path.startswith(resolution.SRC_PREFIX)
+            ]
+            for path in source_paths:
+                if "/" not in path or path.split("/", 1)[0] not in config.adjacency:
+                    hit(REASON_UNMAPPED_MODULE, resolution.SRC_PREFIX + path)
+            changed_modules = sorted({path.split("/", 1)[0] for path in source_paths})
+            for module in changed_modules:
+                if module in config.shared_modules:
+                    hit(REASON_SHARED_MODULE, module)
+            if len(changed_modules) >= config.thresholds.modules_changed_for_full_suite:
+                hit(REASON_THRESHOLD_MODULES, ",".join(changed_modules))
 
         if triggers:
             return self._full(
                 merge, triggers, request.full_split_count, suite_seconds, None
             )
 
-        resolved = HandlerTestPathResolution().handle(
-            ModelPathResolutionRequest(
-                changed_files=tuple(changed),
-                adjacency=config,
-                repo_root=str(root),
+        resolved: ModelPathResolutionResult
+        if closure is None:
+            resolved = HandlerTestPathResolution().handle(
+                ModelPathResolutionRequest(
+                    changed_files=tuple(changed),
+                    adjacency=config,
+                    repo_root=str(root),
+                )
             )
-        )
+        else:
+            outcome = HandlerFileLevelClosure().handle(
+                ModelFileLevelClosureRequest(
+                    changed_files=tuple(changed),
+                    adjacency=config,
+                    repo_root=str(root),
+                    root_conftest_edge=closure.root_conftest_edge,
+                )
+            )
+            if outcome.escalation is not None:
+                hit(outcome.escalation.value, ",".join(outcome.unresolved_files))
+                return self._full(
+                    merge, triggers, request.full_split_count, suite_seconds, None
+                )
+            resolved = ModelPathResolutionResult(
+                selected_paths=outcome.selected_paths, data_only=outcome.data_only
+            )
         selected = list(resolved.selected_paths)
         if not selected and not resolved.data_only:
             hit(REASON_NO_NARROWABLE_SELECTION, "selection")

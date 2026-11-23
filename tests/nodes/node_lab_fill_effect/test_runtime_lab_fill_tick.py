@@ -12,6 +12,7 @@ from __future__ import annotations
 import inspect
 import io
 import json
+import os
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -73,7 +74,15 @@ def tick_overlay(root: Path, **changes: Any) -> dict[str, Any]:
         "host_reach": {},
         "fact_hosts": [],
         "ledger_path": str(root / "ledger.md"),
-        "approved_work_path": str(root / "approved-work.json"),
+        "work_sources": {
+            "integration_ledger": None,
+            "pr_watcher": {
+                "path": str(root / "watcher-state.json"),
+                "max_tick_age_seconds": 300,
+                "max_resync_age_seconds": 3600,
+            },
+            "goal_tickets": None,
+        },
         "brief_dir": str(root / "briefs"),
         "state_path": "",
         "pool_snapshot_path": str(root / "pool.json"),
@@ -110,11 +119,44 @@ def write_unit(root: Path, **changes: Any) -> dict[str, str]:
         ),
         encoding="utf-8",
     )
-    (root / "approved-work.json").write_text(
-        json.dumps({"version": 1, "rows": [_row(1), _row(2), _row(3)]}),
+    write_watcher_state(root, tickets=3)
+    return {"ONEX_SKILL_OVERLAY_ROOTS": str(overlays)}
+
+
+def write_watcher_state(root: Path, *, tickets: int) -> None:
+    """The PR watcher's state with ``tickets`` red pull requests, OMN-1.. each, stamped at the test clock's origin."""
+    stamp = T0.strftime("%Y-%m-%dT%H:%M:%SZ")
+    prs = {
+        f"omnimarket#{n}": {
+            "facts": {
+                "draft": False,
+                "head_ref": f"omn-{n}-change",
+                "head_sha": f"{n:040d}",
+                "labels": [],
+                "number": n,
+                "repo": "omnimarket",
+                "state": "OPEN",
+                "title": f"OMN-{n}: change {n}",
+                "updated_at": stamp,
+            },
+            "ci": {"verdict": "RED", "sha": f"{n:040d}"},
+            "queued": False,
+        }
+        for n in range(1, tickets + 1)
+    }
+    (root / "watcher-state.json").write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "operator": "operator-login",
+                "repos": ["omnimarket"],
+                "last_tick": stamp,
+                "last_full_resync": stamp,
+                "prs": prs,
+            }
+        ),
         encoding="utf-8",
     )
-    return {"ONEX_SKILL_OVERLAY_ROOTS": str(overlays)}
 
 
 def write_snapshot(root: Path, *, free_hosts: int = 1, cores: int = 4) -> None:
@@ -172,7 +214,7 @@ def test_the_snapshots_free_slots_become_the_ticks_lanes(tmp_path: Path) -> None
     ]
     assert len(runner.calls) == 2
     assert "step=run_lab_fill_tick outcome=dispatched free_slots=2 placed=2" in err
-    assert "step=run_lab_fill_unit hosts=1 held=0 free=2" in err
+    assert "step=run_lab_fill_unit hosts=1 held=0 free=2 work: pr-watcher=3" in err
     heartbeat = json.loads((tmp_path / "state" / "last-run.json").read_text("utf-8"))
     assert heartbeat["exit_code"] == 0
 
@@ -189,7 +231,29 @@ def test_a_second_free_host_adds_its_slots(tmp_path: Path) -> None:
 
 
 def test_the_selections_hold_skips_its_ticket(tmp_path: Path) -> None:
-    env = write_unit(tmp_path)
+    """A ticket row (not a red pull request: a pr-red row is the work of a handed-off PR, never held by it) is held."""
+    tickets = tmp_path / "linear-snapshot.json"
+    tickets.write_text(
+        json.dumps(
+            {
+                "operator": "operator-id",
+                "issues": [
+                    {"id": f"OMN-{n}", "title": f"ticket {n}", "statusType": "started"}
+                    for n in (1, 2, 3)
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    os.utime(tickets, (T0.timestamp(), T0.timestamp()))
+    env = write_unit(
+        tmp_path,
+        work_sources={
+            "integration_ledger": None,
+            "pr_watcher": None,
+            "goal_tickets": {"path": str(tickets), "max_age_seconds": 3600},
+        },
+    )
     write_snapshot(tmp_path)
     code, out, err, runner = run(
         env, tmp_path, ledger=FakeLedgerRows(lines=(HELD_TICKET_LINE,))
@@ -197,6 +261,7 @@ def test_the_selections_hold_skips_its_ticket(tmp_path: Path) -> None:
     assert code == 0
     result = json.loads(out)
     assert "held=1" in err
+    assert "work: goal-tickets=3" in err
     assert [(s["ticket"], s["reason"]) for s in result["skipped"]] == [
         ("OMN-1", "selection:handed-off")
     ]

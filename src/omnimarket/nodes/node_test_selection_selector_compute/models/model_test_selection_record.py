@@ -40,6 +40,9 @@ class EnumFullSuiteReason(StrEnum):
     # The selection record has no entry for the policy's selection stage, so the stage gate has
     # nothing to run and the full-suite matrix runs.
     SELECTION_UNAVAILABLE = "selection_unavailable"
+    # A changed source file the file-level closure cannot place in the import graph (no package
+    # marker on its path, or not a Python file outside a node package): only the full suite is safe.
+    UNRESOLVED_SOURCE = "unresolved_source"
 
 
 # OMN-17232: a directory under tests/ (trailing slash) or one test file that
