@@ -5,6 +5,14 @@ summary: formal/lander_lease is a TLA+ model of the lane lander (task L1, model 
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn22186-ac2-accepted-20261123t1145z:
+    - label: AC2
+      criterion_hash: 89b00bfd7903131c3f0a1f2279bce843f6153a52adcd555f2d5623ccef907a1d
+      proposed_by: lane=dod-closeout-bind-2026-11-23T1145Z-c1
+      accepted_by: lane=dod-closeout-accept-2026-11-23T1145Z-c1
+      accepted_at: '2026-11-23T12:14:11Z'
 requirements:
   - id: req-omn22186-base-passes
     statement: TLC exits 0 on the base config with the four safety properties and NoStrand.
@@ -98,3 +106,16 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest tests/formal/test_lander_lease_model.py -q -n 0 -p no:randomly --no-cov
         cwd: .
+  - id: dod-omn22186-ac2-accepted-20261123t1145z
+    description: 'AC2 binding (accepted 2026-11-23T1145Z, proposed by lane=dod-closeout-bind-2026-11-23T1145Z-c1,
+      accepted by lane=dod-closeout-accept-2026-11-23T1145Z-c1). Each mutation config M1, M2, M3, M4, M4b and M5
+      ends in a checked-in TLC violation naming the one property it targets, and SUMMARY.txt records result=VIOLATED
+      with that property. Re-run at omnimarket origin/dev 68337bb4d4 passed (6 passed); with the formal/ product
+      paths of cfb8da309a reverted at that head, 6 failed.'
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/formal/test_lander_lease_model.py::test_mutant_violation_names_its_property -q
+        cwd: ${OMNI_HOME}/omnimarket
