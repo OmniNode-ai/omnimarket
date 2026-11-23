@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_lane_path_share_compute
+node_type: COMPUTE_GENERIC
+version: 1.0.0
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Read the lane path sizes a host reports and the mount points that are its mounted data drives, and raise one alarm
+  row naming the host's owner while those drives hold under 10 percent of the host's lane path bytes. A host at or over
+  the bar gets an ok row that resolves the alarm. A host reporting no bytes is refused (exit 65), never read as ok. The
+  rows are STATUS rows the failure alarm router node reads and delivers; this node sends nothing.
+input_model:
+  name: ModelLanePathShareRequest
+  module: omnimarket.nodes.node_host_lane_path_share_compute.models.model_lane_path_share
+output_model:
+  name: ModelLanePathShareResult
+  module: omnimarket.nodes.node_host_lane_path_share_compute.models.model_lane_path_share
+handler:
+  name: HandlerLanePathShare
+  module: omnimarket.nodes.node_host_lane_path_share_compute.handlers.handler_lane_path_share
+entrypoint:
+  name: NodeHostLanePathShareCompute
+  module: omnimarket.nodes.node_host_lane_path_share_compute.node
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: "Direct Python invocation (python -m omnimarket.nodes.node_host_lane_path_share_compute < request.json); the rows it prints are appended to the ledger, where node_failure_alarm_router_effect reads class lane-path-share."
+execution:
+  deterministic: true
+  side_effects: false
