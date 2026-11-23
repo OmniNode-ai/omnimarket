@@ -121,6 +121,7 @@ files:
     tests/unit/nodes/node_context_source_ledger_effect/test_context_source_ledger.py: 2
     tests/unit/nodes/node_context_source_ledger_effect/test_ledger_fold_memo_omn21099.py: 1
     tests/unit/nodes/node_context_source_work_state_effect/test_context_source_work_state.py: 1
+    tests/unit/nodes/node_create_ticket/test_core_ticket_guard_no_ledger_env.py: 2
     tests/unit/nodes/node_dropped_work_audit_scheduled_effect/test_dropped_work_audit_scheduled.py: 1
     tests/unit/nodes/node_operator_capture_compute/test_golden_chain_operator_capture.py: 1
     tests/unit/nodes/node_operator_capture_effect/test_capture_accepted_append.py: 1
@@ -139,4 +140,4 @@ files:
     tests/unit/validators/test_ledger_file_census.py: 27
     tests/unit/work_ledger_bus/test_work_ledger_append_cli.py: 1
 ratchet:
-  omnimarket: 133
+  omnimarket: 134
