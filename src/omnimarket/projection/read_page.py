@@ -137,6 +137,45 @@ def compute_freshness(
         return "degraded"
 
 
+class InvalidWindowError(ValueError):
+    """A ``window`` that is not a whole number of hours or days."""
+
+
+_WINDOW_UNIT_SECONDS = {"h": 3600, "d": 86400}
+
+
+def parse_window_seconds(window: str) -> int:
+    """``24h`` or ``7d`` as seconds; anything else is an :class:`InvalidWindowError`."""
+    text = window.strip().lower()
+    unit = text[-1:]
+    count = text[:-1]
+    if unit not in _WINDOW_UNIT_SECONDS or not count.isdigit() or int(count) < 1:
+        raise InvalidWindowError(
+            f"window {window!r} is not a whole number of hours or days (for example 24h or 7d)"
+        )
+    return int(count) * _WINDOW_UNIT_SECONDS[unit]
+
+
+def window_read_kwargs(window_seconds: int | None, limit: int) -> dict[str, int]:
+    """The bound a windowed read hands the row source: the window and one row more than the page, so the page knows it is cut. A read with no window hands it nothing."""
+    if window_seconds is None:
+        return {}
+    return {"window_seconds": window_seconds, "row_cap": limit + 1}
+
+
+def window_body(
+    window: str | None, window_seconds: int | None, rows_read: int
+) -> dict[str, Any] | None:
+    """What the page says about its window: the request, the bound and the rows the store read."""
+    if window is None or window_seconds is None:
+        return None
+    return {
+        "requested": window,
+        "seconds": window_seconds,
+        "rows_read": rows_read,
+    }
+
+
 def resolve_effective_limit(requested: int | None, contract_limit: int) -> int:
     """Clamp a caller-requested ``limit`` to the contract-declared ceiling.
 
@@ -438,8 +477,16 @@ async def read_projection_page(
     order: str | None = None,
     order_by: str | None = None,
     tenant: str | None = None,
+    window: str | None = None,
 ) -> ProjectionPage:
-    """The page of one contract-declared exposure, or the named refusal."""
+    """The page of one contract-declared exposure, or the named refusal.
+
+    ``window`` (``24h``, ``7d``) bounds the read to the rows of the last that
+    long, newest first, at most one page of them: the statement carries the
+    window predicate and the row cap, so no read walks the whole history. A
+    windowed page is not cursor-paged (it has no ``next_cursor``); ``truncated``
+    says the window held more rows than the page.
+    """
     if topic not in topic_map:
         matches = [
             cfg.topic for cfg in topic_map.values() if topic in cfg.route_aliases
@@ -520,6 +567,33 @@ async def read_projection_page(
             },
         )
 
+    window_seconds: int | None = None
+    if window is not None:
+        try:
+            window_seconds = parse_window_seconds(window)
+        except InvalidWindowError as exc:
+            return ProjectionPage(
+                422,
+                {
+                    "error": "invalid_window",
+                    "topic": topic,
+                    "detail": str(exc),
+                },
+            )
+        if cfg.freshness_column is None:
+            return ProjectionPage(
+                422,
+                {
+                    "error": "unsupported_filter",
+                    "filter": "window",
+                    "topic": topic,
+                    "detail": (
+                        f"Topic '{topic}' does not declare a 'freshness_column' "
+                        "and cannot be read by 'window'."
+                    ),
+                },
+            )
+
     try:
         base_spec = base_order_by_spec(cfg, order_by)
     except InvalidOrderByError as exc:
@@ -551,8 +625,12 @@ async def read_projection_page(
     # with no cursor cannot walk (``since`` is refused above, so no page after
     # the first exists); it serves its newest rows, as the cache did. A ranked
     # exposure ranks the WHOLE set in the source, not a recency cut.
-    ranked_window = cfg.page_selection == "order_by" and since is None
-    if ranked_window:
+    ranked_window = (
+        cfg.page_selection == "order_by" and since is None and window is None
+    )
+    if window_seconds is not None and since is None:
+        selection = "newest"
+    elif ranked_window:
         selection = "ranked"
     elif cfg.cursor_column is not None:
         selection = "walk"
@@ -566,6 +644,7 @@ async def read_projection_page(
             since=since,
             correlation_id=correlation_id,
             selection=selection,
+            **window_read_kwargs(window_seconds, effective_limit),
         )
         # OMN-19971: one window read per page. The unfiltered newest window
         # already holds the newest row; any other window leaves the source to
@@ -628,7 +707,9 @@ async def read_projection_page(
     # the walk that follows starts at the first row, skips none, and repeats
     # only rows the ranked page already served.
     next_cursor: str | None = None
-    if cfg.cursor_column is not None and truncated:
+    if window_seconds is not None and since is None:
+        pass  # a windowed page is newest-first and not cursor-paged
+    elif cfg.cursor_column is not None and truncated:
         if ranked_window:
             try:
                 next_cursor = await source.walk_origin(cfg, tenant_id=scope_tenant)
@@ -649,34 +730,40 @@ async def read_projection_page(
         except ServeTimeJudgementError:
             return ProjectionPage(503, {"error": "serve_time_judgement_failed"})
 
-    return ProjectionPage(
-        200,
-        {
-            "topic": topic,
-            "projection_version": PROJECTION_VERSION,
-            "generated_at": generated_at,
-            "data_freshness": freshness,
-            "ordering": reported_ordering(order_by_spec, order_rank),
-            "row_limit": effective_limit,
-            "latest_event_at": latest_ts,
-            "latest_projection_updated_at": latest_ts,
-            "row_count": len(serialisable_rows),
-            "next_cursor": next_cursor,
-            # OMN-19841: which read this page answers -- "order_by" (the top
-            # rows by the declared order) or "cursor" (one page of the
-            # ascending cursor walk) -- and whether rows were left out of it.
-            "page_selection": "order_by" if ranked_window else "cursor",
-            "truncated": truncated,
-            "rows": serialisable_rows,
-            "backing": source.backing,
-            # OMN-18905 / OMN-20152: whether the serving path has fallen
-            # behind its source. A table read is the writer's durable state at
-            # request time, so it states that; how far the writer is behind
-            # shows in ``data_freshness``.
-            "staleness": source.staleness(topic, latest_ts),
-            # The tenant these rows are scoped to, or None for an exposure
-            # that declares no tenant_column. Stated on the response so a
-            # caller never has to assume which of the two it received.
-            "tenant": scope_tenant,
-        },
-    )
+    body: dict[str, Any] = {
+        "topic": topic,
+        "projection_version": PROJECTION_VERSION,
+        "generated_at": generated_at,
+        "data_freshness": freshness,
+        "ordering": reported_ordering(order_by_spec, order_rank),
+        "row_limit": effective_limit,
+        "latest_event_at": latest_ts,
+        "latest_projection_updated_at": latest_ts,
+        "row_count": len(serialisable_rows),
+        "next_cursor": next_cursor,
+        # OMN-19841: which read this page answers -- "order_by" (the top
+        # rows by the declared order) or "cursor" (one page of the
+        # ascending cursor walk) -- and whether rows were left out of it.
+        "page_selection": (
+            "window"
+            if window_seconds is not None and since is None
+            else "order_by"
+            if ranked_window
+            else "cursor"
+        ),
+        "truncated": truncated,
+        "rows": serialisable_rows,
+        "backing": source.backing,
+        # OMN-18905 / OMN-20152: whether the serving path has fallen
+        # behind its source. A table read is the writer's durable state at
+        # request time, so it states that; how far the writer is behind
+        # shows in ``data_freshness``.
+        "staleness": source.staleness(topic, latest_ts),
+        # The tenant these rows are scoped to, or None for an exposure
+        # that declares no tenant_column. Stated on the response so a
+        # caller never has to assume which of the two it received.
+        "tenant": scope_tenant,
+    }
+    if window_seconds is not None:
+        body["window"] = window_body(window, window_seconds, len(all_rows))
+    return ProjectionPage(200, body)
