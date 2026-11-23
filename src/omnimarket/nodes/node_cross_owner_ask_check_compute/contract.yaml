@@ -47,6 +47,9 @@ output_model:
 
 runtime_dispatch:
   external_trigger: true
+  on_demand:
+    command: uv run onex node node_cross_owner_ask_check_compute --input <request.json>
+    owner: OmniNode Platform Team
 
 event_bus:
   subscribe_topics: []
