@@ -52,6 +52,13 @@ handler:
   class: HandlerLocalDashboardServe
   input_model: omnimarket.nodes.node_local_dashboard_serve_effect.models.model_local_dashboard.ModelLocalDashboardServeRequest
 
+runtime_dispatch:
+  external_trigger: true
+  # Served for as long as an operator keeps `onex dashboard` running; it never runs on a timer.
+  on_demand:
+    command: uv run onex dashboard
+    owner: OmniNode Platform Team
+
 config:
   local_environment_report:
     # OMN-19988 mode 1: the native report is written at start and again on

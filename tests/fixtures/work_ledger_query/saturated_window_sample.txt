@@ -1,0 +1,24 @@
+2026-11-22T06:00:01Z | CLAIM | lane=lane-alpha | actor=claude:sonnet | model=sonnet | ticket=OMN-1001 | parent=orch-a | item=throughput | worktree=none | est ~1 lane-hours; displaces nothing; (OMN-1001)
+2026-11-22T06:00:05Z | STATUS | lane=lane-alpha | ticket=OMN-1001 | pr=OmniNode-ai/repo-a#11 | head=0123456789abcdef | opened the pull request
+2026-11-22T06:01:10Z | MSG | from=lane-alpha | to=landing-controller | pr=OmniNode-ai/repo-a#11 | head=0123456789abcdef | needs=land
+2026-11-22T06:02:00Z | HOLD | id=hold-1 | surface=prepr-3-201 | lane=lane-beta | until=2026-11-22T09:00:00Z | slot held
+2026-11-22T06:03:00Z | RELEASE | re=hold-1 | lane=lane-beta | slot torn down
+2026-11-22T06:05:00Z | TERMINAL | lane=lane-alpha | ticket=OMN-1001 | outcome=handed-off | friction=none | worktree=removed:omni_worktrees/OMN-1001/repo-a | delegated=0 delegation_reason=no-text-or-code
+2026-11-22T06:06:00Z | STATUS | lane=lane-gamma | ticket=OMN-1002 | pr=OmniNode-ai/repo-b#7 | observed=the unit ran | installed=h201:abc123
+2026-11-22T06:07:00Z | MSG | from=orchestrator | to=lane-gamma,lane-delta | read the brief before the first write
+2026-11-22T06:08:00Z | CLAIM | lane=lane-delta | actor=codex | ticket=OMN-1003 | repo=repo-c | worktree=omni_worktrees/OMN-1003/repo-c | scope=fix the check | est ~2 lane-hours; displaces a sweep; (OMN-1003)
+2026-11-22T06:08:30Z | STATUS | lane=lane-delta | note=first one | note=second | ticket=OMN-1003 | two cells share a key
+2026-11-22T06:09:00Z | RULING | lane=orchestrator | ticket=OMN-1003 | principal=operator | question=which one? | kind=decision | a verbatim answer with spaces
+2026-11-22T06:10:00Z | FRICTION | lane=lane-delta | existing=OMN-1004 | cost=~30 min | the gate refused twice
+2026-11-22T06:11:00Z | STATUS | lane=lane-epsilon | ticket=OMN-10010 | pr=OmniNode-ai/repo-a#110 | a ticket whose id extends another
+2026-11-22T06:12:00Z | STATUS | lane=lane-alpha-two | ticket=OMN-1001-b | a lane whose name extends another
+2026-11-22T06:13:00Z
+2026-11-22T06:14:00Z | NOTE
+2026-11-22T06:15:00Z | ACK | re=msg-9 | lane=lane-gamma | ok
+2026-11-22T06:20:00Z | STATUS | lane=lane-beta | scenario=r2 | green
+2026-11-22T06:20:00Z | STATUS | lane=lane-beta | scenario=r4 | red
+2026-11-22T06:25:00Z | OPERATOR-CONSENT | principal=operator | ticket=OMN-1002 | scope=the dev lane only
+2026-11-22T06:30:00Z | HELD | surface=old-lane | legacy hold with no id
+2026-11-22T06:31:00Z | CLAIM | lane=lane-zeta | actor=claude | ticket=OMN-1005 | est ~1 lane-hours; displaces nothing; (OMN-1005)
+2026-11-22T06:40:00Z | STATUS | lane=lane-zeta | ticket=OMN-1005 | pr=OmniNode-ai/repo-a#12 | opened
+2026-11-22T06:59:59Z | TERMINAL | lane=lane-zeta | ticket=OMN-1005 | outcome=done | friction=none

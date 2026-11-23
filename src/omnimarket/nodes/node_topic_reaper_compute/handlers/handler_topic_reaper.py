@@ -30,8 +30,7 @@ from omnibase_core.models.contracts.subcontracts.model_fsm_subcontract import (
 )
 from omnibase_core.utils.util_fsm_executor import execute_transition
 
-from omnimarket.nodes.contract_topics import contract_section
-from omnimarket.nodes.node_topic_reaper_compute.models.model_topic_reaper import (
+from omnimarket.models.model_topic_reaper import (
     REAPER_POLICY_MISSING,
     EnumReaperState,
     ModelReaperDecision,
@@ -42,6 +41,7 @@ from omnimarket.nodes.node_topic_reaper_compute.models.model_topic_reaper import
     ModelTopicReaperRequest,
     ModelTopicReaperResult,
 )
+from omnimarket.nodes.contract_topics import contract_section
 
 CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
 

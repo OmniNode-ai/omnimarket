@@ -146,6 +146,47 @@ class ModelLabDiskWatermarkReading(_Frozen):
     host_disk: ModelHostDiskRead | ModelHostDiskReadFailed | None = None
 
 
+class ModelInodeAlarmDeclaration(_Frozen):
+    """The inode alarm the contract declares: below which free share it fires, who owns it, and the ledger route it uses.
+
+    The route is the one the lab stack reaper and the deploy agent use: a FRICTION row per alarm and one STATUS row with
+    ``alarms=<n>``, appended through the bus append command whose environment variable this declaration names.
+    """
+
+    free_percent_below: float = Field(gt=0, lt=100)
+    owner: NonEmptyStr
+    lane: NonEmptyStr
+    ticket: NonEmptyStr
+    repeat_minutes: int = Field(gt=0)
+    ledger_append_command_env: NonEmptyStr
+    ledger_append_timeout_seconds: int = Field(gt=0)
+
+
+class ModelInodeReading(_Frozen):
+    """The inode use of one declared volume; ``free_percent`` is the free inodes over all inodes."""
+
+    path: str
+    files: int
+    free: int
+    free_percent: float
+    alarm: bool
+
+
+class ModelInodeAlarm(_Frozen):
+    """One volume read below the declared free share: the rows it writes, whether they were written, and why not."""
+
+    host_name: str
+    path: str
+    free_percent: float
+    free: int
+    files: int
+    threshold_percent: float
+    owner: str
+    rows: tuple[str, ...]
+    written: bool
+    note: str = ""
+
+
 class ModelLabDiskWatermarkGrowthReading(ModelLabDiskWatermarkReading):
     """A reading with the growth of each volume against the admission floor (OMN-21663).
 
@@ -155,6 +196,11 @@ class ModelLabDiskWatermarkGrowthReading(ModelLabDiskWatermarkReading):
 
     growth: tuple[ModelVolumeGrowth, ...] = ()
     growth_paged: bool = False
+    #: Inode use per readable volume, the alarms below the declared free share, and the volumes whose inodes were unread
+    #: (OMN-24562). Result only, like the growth: the reading file and the host disk event keep their shape.
+    inodes: tuple[ModelInodeReading, ...] = ()
+    inode_alarms: tuple[ModelInodeAlarm, ...] = ()
+    inodes_unread: tuple[str, ...] = ()
 
 
 class ModelLabDiskWatermarkScheduleResult(_Frozen):
