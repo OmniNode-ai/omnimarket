@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-26332
+title: Ledger-file census group 4, first part - the review key credit probe appends over the bus and two overlay examples stop naming the ledger file
+summary: The review key credit probe no longer takes a ledger file path or runs the ledger command on one; a key's credit flip is an attributed append request on the bus lane the host's lab host table row declares, and the probe refuses to run on a host that declares none. The tailnet and ledger copy overlay examples show the bus-form append command with no ledger file path. The census ratchet rows of the probe handler and the tailnet example are dropped and the copy example's row is lowered, with the census node's --lower. The other group 4 files are not cleared by this change and keep their rows.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26332-probe-bus
+    statement: The probe's ledger write is a bus append and the probe names no ledger file.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a flip row reaches the ledger as a bus append request carrying the probe lane, the host, a req cell and a via cell, a refusal or silence from the ledger is a refused append, and a host with no declared bus lane is refused before any key is probed -- falsifier: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_omn24658.py -q --no-cov -k "bus_append or refused_append or no_bus_lane or bus_lane"'
+      - id: AC2
+        statement: 'AC2: the census holds no hit in the probe handler, the tailnet example and the ledger copy example report row, and no row is raised or added -- falsifier: env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --ratchet-file src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml --repos omnimarket --directory omnimarket=. --per-file exits non-zero'
+      - id: AC3
+        statement: 'AC3: the tailnet and ledger copy node tests stay green with the new examples -- falsifier: uv run pytest tests/unit/nodes/node_tailnet_https_serve_effect tests/unit/nodes/node_work_ledger_copy_effect -q --no-cov exits non-zero'
+evidence_requirements:
+  - kind: tests
+    description: The probe, tailnet and copy node test suites at the pushed head.
+    command: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect tests/unit/nodes/node_tailnet_https_serve_effect tests/unit/nodes/node_work_ledger_copy_effect -q --no-cov -m "not kafka"
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn26332-ac1
+    description: The probe appends over the bus appender, refuses a host with no declared bus lane, and its tests collect only against the change (the base has no bus appender port).
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_omn24658.py -q --no-cov --tb=line -k "bus_append or refused_append or no_bus_lane or bus_lane"
+        cwd: .
+  - id: dod-omn26332-ac2
+    description: The census holds no hit in the probe handler and the tailnet example, their ratchet rows are gone, the copy example row is lowered, and the live census passes; the cases fail on the merge base, where the rows and the hits still stand.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_group4_first_part_omn26332.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn26332-ac3
+    description: The tailnet and copy node suites pass with the new overlay examples, together with the case that reads the examples' append command; that case fails on the merge base, where both examples still carry the ledger file path.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_group4_first_part_omn26332.py tests/unit/nodes/node_tailnet_https_serve_effect tests/unit/nodes/node_work_ledger_copy_effect -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn26332-integration-proof
+    description: "Run the probe and the two node suites on a lab host at the pushed head; the local Done gate runs this unbound check."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26332 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_omn24658.py tests/unit/nodes/node_tailnet_https_serve_effect tests/unit/nodes/node_work_ledger_copy_effect -q --no-cov
+        cwd: .

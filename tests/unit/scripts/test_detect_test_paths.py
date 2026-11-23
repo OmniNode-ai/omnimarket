@@ -50,7 +50,9 @@ _REMOTE_LANE_HANDLER = (
 
 
 def test_adjacency_yaml_loads() -> None:
-    from scripts.ci.test_selection_loader import load_adjacency_map
+    from omnimarket.nodes.node_test_selection_selector_compute.adapters.adjacency_file import (
+        load_adjacency_map,
+    )
 
     config = load_adjacency_map(ADJACENCY_PATH)
     assert config.schema_version == 1
@@ -590,7 +592,12 @@ def test_exemption_list_change_takes_the_full_suite() -> None:
     "bad", ["tests/gates", "src/omnimarket/models/", "scripts/ci/helper.py"]
 )
 def test_path_triggered_selected_paths_reject_a_non_test_entry(bad: str) -> None:
-    from scripts.ci.test_selection_loader import ModelAdjacencyMap, load_adjacency_map
+    from omnimarket.nodes.node_test_selection_selector_compute.adapters.adjacency_file import (
+        load_adjacency_map,
+    )
+    from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
+        ModelAdjacencyMap,
+    )
 
     base = load_adjacency_map(ADJACENCY_PATH).model_dump()
     trigger = {"changed_globs": ["src/*/contract.yaml"], "selected_paths": [bad]}
@@ -601,7 +608,12 @@ def test_path_triggered_selected_paths_reject_a_non_test_entry(bad: str) -> None
 
 
 def test_always_selected_paths_reject_a_non_test_entry() -> None:
-    from scripts.ci.test_selection_loader import ModelAdjacencyMap, load_adjacency_map
+    from omnimarket.nodes.node_test_selection_selector_compute.adapters.adjacency_file import (
+        load_adjacency_map,
+    )
+    from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
+        ModelAdjacencyMap,
+    )
 
     base = load_adjacency_map(ADJACENCY_PATH).model_dump()
     for bad in ("tests/gates", "src/omnimarket/models/", "scripts/ci/helper.py"):
@@ -618,7 +630,9 @@ def test_always_selected_paths_are_not_dropped_when_missing_on_disk() -> None:
     instead of erroring -- the exact vacuous-green shape the gate exists to
     prevent.
     """
-    from scripts.ci.test_selection_loader import load_adjacency_map
+    from omnimarket.nodes.node_test_selection_selector_compute.adapters.adjacency_file import (
+        load_adjacency_map,
+    )
 
     config = load_adjacency_map(ADJACENCY_PATH)
     assert config.always_selected_paths, (
@@ -797,7 +811,9 @@ def _assert_globs_match_tracked_paths(globs: list[str], paths: list[str]) -> Non
 
 
 def test_every_protection_glob_matches_a_tracked_path(tracked_paths: list[str]) -> None:
-    from scripts.ci.test_selection_loader import load_adjacency_map
+    from omnimarket.nodes.node_test_selection_selector_compute.adapters.adjacency_file import (
+        load_adjacency_map,
+    )
 
     config = load_adjacency_map(ADJACENCY_PATH)
     assert config.full_suite_path_globs, (
@@ -814,7 +830,12 @@ def test_typo_in_protection_glob_is_caught(tracked_paths: list[str]) -> None:
 
 
 def test_protection_globs_default_to_empty_list() -> None:
-    from scripts.ci.test_selection_loader import ModelAdjacencyMap, load_adjacency_map
+    from omnimarket.nodes.node_test_selection_selector_compute.adapters.adjacency_file import (
+        load_adjacency_map,
+    )
+    from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
+        ModelAdjacencyMap,
+    )
 
     raw = load_adjacency_map(ADJACENCY_PATH).model_dump()
     raw.pop("full_suite_path_globs")
@@ -825,7 +846,12 @@ def test_protection_globs_default_to_empty_list() -> None:
 def test_protection_globs_reject_invalid_types(invalid: object) -> None:
     from pydantic import ValidationError
 
-    from scripts.ci.test_selection_loader import ModelAdjacencyMap, load_adjacency_map
+    from omnimarket.nodes.node_test_selection_selector_compute.adapters.adjacency_file import (
+        load_adjacency_map,
+    )
+    from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
+        ModelAdjacencyMap,
+    )
 
     raw = load_adjacency_map(ADJACENCY_PATH).model_dump()
     raw["full_suite_path_globs"] = invalid
@@ -930,7 +956,11 @@ def test_without_the_selector_the_heavy_selection_is_two_unplanned_shards(
     )
 
     loose = load_policy().model_copy(
-        update={"target_shard_seconds": 10**9, "max_narrowed_shards": 5}
+        update={
+            "target_shard_seconds": 10**9,
+            "max_narrowed_shards": 5,
+            "narrowed_bound_seconds": 10**9,
+        }
     )
     monkeypatch.setattr(
         sys.modules["scripts.ci.detect_test_paths"],
@@ -996,6 +1026,9 @@ def test_shards_fit_target_heavy_selection_is_the_planned_matrix() -> None:
 def test_split_count_by_duration_mid_weight_gets_more_shards_than_paths() -> None:
     # One mid-weight path, at least three shards. The test is given its own
     # durations record so its claim does not move with the real one.
+    from omnimarket.nodes.node_test_selection_selector_compute.adapters.source_test_files import (
+        SourceTestFilesInMemory,
+    )
     from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_selection_selector import (
         HandlerTestSelectionSelector,
     )
@@ -1012,9 +1045,11 @@ def test_split_count_by_duration_mid_weight_gets_more_shards_than_paths() -> Non
         def read(self, repo_root: str, durations_path: str) -> dict[str, float] | None:
             return self._durations
 
-    estimate = 3.5 * policy.target_shard_seconds
+    estimate = 2.5 * policy.target_shard_seconds
     durations = {f"tests/unit/nodes/node_x/test_{i}.py": estimate / 7 for i in range(7)}
-    decision = HandlerTestSelectionSelector(_FixedDurations(durations), policy).handle(
+    decision = HandlerTestSelectionSelector(
+        _FixedDurations(durations), policy, SourceTestFilesInMemory(tuple(durations))
+    ).handle(
         ModelSelectorRequest(
             selected_paths=("tests/unit/nodes/",), repo_root=str(REPO_ROOT)
         )
@@ -1186,7 +1221,9 @@ def test_changed_node_test_narrows_to_its_directory_and_importers(
 
 
 def test_node_scoped_modules_must_be_mapped() -> None:
-    from scripts.ci.test_selection_loader import ModelAdjacencyMap
+    from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
+        ModelAdjacencyMap,
+    )
 
     raw = yaml.safe_load(ADJACENCY_PATH.read_text())
     raw["node_scoped_modules"] = ["not_a_module"]

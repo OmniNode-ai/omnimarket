@@ -16,6 +16,7 @@ import os
 import sys
 import uuid
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 
 from omnimarket.handlers.emission_sink import (
@@ -32,6 +33,7 @@ from omnimarket.nodes.node_work_ledger_file_census_effect.handlers import (
     HandlerFileCensus,
 )
 from omnimarket.nodes.node_work_ledger_file_census_effect.models import (
+    ModelCensusDailyRecord,
     ModelCensusRepository,
     ModelCensusRequest,
 )
@@ -91,6 +93,12 @@ def main(
         "under the overlay roots",
     )
     parser.add_argument("--verbose", action="store_true", help="print every hit")
+    parser.add_argument(
+        "--record",
+        action="store_true",
+        help="after the CENSUS lines, print the daily record (the per-repository counts and the "
+        "runtime-code count) as one typed JSON line, whether the run passed or failed",
+    )
     parser.add_argument(
         "--json-facts",
         action="store_true",
@@ -167,7 +175,7 @@ def main(
         line = "own-line" if count.own_line else "counted"
         sys.stdout.write(
             f"CENSUS {count.repository} {line} state={count.state} files={count.files} "
-            f"readers={count.readers} writers={count.writers} ratchet={count.ratchet}\n"
+            f"runtime={count.runtime_files} readers={count.readers} writers={count.writers} ratchet={count.ratchet}\n"
         )
         for new in count.new_readers:
             sys.stdout.write(f"  NEW-READER {new}\n")
@@ -175,9 +183,15 @@ def main(
             for hit in count.hits:
                 sys.stdout.write(f"  {hit.kind.value} {hit.path}:{hit.line}\n")
     sys.stdout.write(
-        f"CENSUS total={result.total_files} passed={'yes' if result.passed else 'no'} "
+        f"CENSUS total={result.total_files} runtime={result.runtime_files} "
+        f"passed={'yes' if result.passed else 'no'} "
         f"failure={result.failure_code or 'none'} {result.failure_detail}\n"
     )
+    if args.record:
+        record = ModelCensusDailyRecord.from_result(
+            result, datetime.now(UTC).date().isoformat()
+        )
+        sys.stdout.write(f"CENSUS-RECORD {record.model_dump_json()}\n")
     if result.passed and args.lower:
         store.write(result.lowered_ratchet, _HEADER)
         if baseline is not None:

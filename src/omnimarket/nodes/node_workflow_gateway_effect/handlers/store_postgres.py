@@ -64,7 +64,7 @@ _SQL_INSERT_WORKFLOW = (
 
 _SQL_SET_STATUS = (
     "UPDATE public.gateway_workflows SET status = $1, updated_at = now() "
-    "WHERE workflow_id = $2 AND tenant_id = $3"
+    "WHERE workflow_id = $2 AND tenant_id = $3 AND status NOT IN ('completed', 'failed')"
 )
 
 _SQL_FETCH_ROW = (

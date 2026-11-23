@@ -1,11 +1,13 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The Mac lab-fill unit's entry: one fill pass with no model in the loop (OMN-24419).
+"""The lab-fill unit's entry: one fill pass with no model in the loop (OMN-24419).
 
     python -m omnimarket.nodes.node_lab_fill_effect.runtime_lab_fill_tick --omni-home <root> --state-dir <dir>
 
 One pass reads the unit's overlay (node_lab_fill_effect), the lane host pool snapshot the pool writer keeps
-(the free slots per host), and the approved-work list; runs the select step on the bus ledger reader's rows
+(the free slots per host), and the work the overlay's ``work_sources`` declare, read live in goal order (the integration
+ledger's NOT RUNNING lines, the red pull requests of the PR watcher, the open tickets of the Linear snapshot);
+runs the select step on the bus ledger reader's rows
 (select_entry) and, only when that read was ok, the whole tick (tick_entry) with the select step's holds.
 Every input that is stale, unreadable or not moved ends the pass with a typed REFUSED line and a non-zero
 exit before any lane is launched; no input is ever replaced by an older file.
@@ -43,6 +45,9 @@ from omnimarket.models.model_lane_host_pool_unreadable import (
 from omnimarket.nodes.node_friction_rollup_tick_effect.handlers.friction_rollup_tick_io import (
     write_atomic,
 )
+from omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_launch import (
+    HandlerLabFillLaunch,
+)
 from omnimarket.nodes.node_lab_fill_effect.handlers.handler_lab_fill_select import (
     HandlerLabFillSelect,
 )
@@ -60,6 +65,17 @@ from omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_tick_overlay im
     OVERLAY_FILE_ENV,
     OVERLAY_ID,
     ModelLabFillTickOverlay,
+)
+from omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_work_sources import (
+    ModelLabFillWatcherSource,
+    ModelLabFillWorkSource,
+    ModelLabFillWorkSources,
+)
+from omnimarket.nodes.node_lab_fill_effect.protocols.local_lab_fill_live_work import (
+    LiveWorkRead,
+    LiveWorkRows,
+    LiveWorkSourceError,
+    read_live_work,
 )
 from omnimarket.nodes.node_lab_fill_effect.select_entry import main as run_select_entry
 from omnimarket.nodes.node_lab_fill_effect.tick_entry import main as run_tick_entry
@@ -133,40 +149,76 @@ def _hosts_from_snapshot(
     )
 
 
-def _candidates_from_approved_work(path: Path) -> list[dict[str, object]]:
-    """The approved-work rows as the select step's candidates (key, kind, ticket, repo)."""
-    try:
-        document = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
+def _resolved(sources: ModelLabFillWorkSources) -> ModelLabFillWorkSources:
+    """The declared sources with each path's leading variable expanded (the overlay names them; the code names none)."""
+
+    def file_source(
+        source: ModelLabFillWorkSource | None,
+    ) -> ModelLabFillWorkSource | None:
+        return (
+            None
+            if source is None
+            else source.model_copy(update={"path": str(resolve_path(source.path))})
+        )
+
+    watcher: ModelLabFillWatcherSource | None = sources.pr_watcher
+    if watcher is not None:
+        watcher = watcher.model_copy(update={"path": str(resolve_path(watcher.path))})
+    return ModelLabFillWorkSources(
+        integration_ledger=file_source(sources.integration_ledger),
+        pr_watcher=watcher,
+        goal_tickets=file_source(sources.goal_tickets),
+    )
+
+
+def _read_work(
+    overlay: ModelLabFillTickOverlay, now: datetime
+) -> tuple[LiveWorkRead, ...]:
+    """The declared sources read in goal order; one that is declared and unreadable refuses the pass, naming it."""
+    if overlay.work_sources is None:
         raise _RefusedError(
-            "approved-work",
-            f"{type(exc).__name__} path={path}",
+            "work-source",
+            "the overlay declares no work_sources",
             _EXIT_INPUT_UNAVAILABLE,
-        ) from exc
-    rows = document.get("rows") if isinstance(document, dict) else None
-    if not isinstance(rows, list):
+        )
+    try:
+        return read_live_work(
+            _resolved(overlay.work_sources),
+            (*overlay.mvp_repos, *overlay.process_repos),
+            now=now.timestamp(),
+        )
+    except LiveWorkSourceError as exc:
         raise _RefusedError(
-            "approved-work", f"no rows list path={path}", _EXIT_INPUT_UNAVAILABLE
+            f"work-source:{exc.source}", exc.reason, _EXIT_INPUT_UNAVAILABLE
+        ) from exc
+
+
+def _work_line(reads: tuple[LiveWorkRead, ...]) -> str:
+    """Each source's placed rows and what it read but did not place, for the pass's step line."""
+    return " ".join(
+        f"{read.source}={len(read.rows)}"
+        + (
+            "(skipped:"
+            + ",".join(f"{k}:{v}" for k, v in sorted(read.skipped.items()))
+            + ")"
+            if read.skipped
+            else ""
         )
-    candidates: list[dict[str, object]] = []
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        key, kind, ticket = row.get("id"), row.get("kind"), row.get("ticket")
-        if not (
-            isinstance(key, str) and isinstance(kind, str) and isinstance(ticket, str)
-        ):
-            continue
-        repo = row.get("repo")
-        candidates.append(
-            {
-                "key": key,
-                "kind": kind,
-                "ticket": ticket,
-                "repo": repo if isinstance(repo, str) else "",
-            }
-        )
-    return candidates
+        for read in reads
+    )
+
+
+def _candidates(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    """The rows as the select step's candidates (key, kind, ticket, repo)."""
+    return [
+        {
+            "key": row["id"],
+            "kind": row["kind"],
+            "ticket": row["ticket"],
+            "repo": row["repo"] if isinstance(row["repo"], str) else "",
+        }
+        for row in rows
+    ]
 
 
 def _select_holds(
@@ -232,10 +284,11 @@ def run_once(
     now = clock()
     try:
         hosts = _hosts_from_snapshot(overlay, clock)
-        candidates = _candidates_from_approved_work(
-            resolve_path(overlay.approved_work_path)
+        reads = _read_work(overlay, now)
+        rows = [row for read in reads for row in read.rows]
+        holds = _select_holds(
+            overlay, _candidates(rows), environ, now, selector, stderr
         )
-        holds = _select_holds(overlay, candidates, environ, now, selector, stderr)
     except _RefusedError as refusal:
         stderr.write(
             f"lab-fill unit: step={_STEP} REFUSED reason={refusal.reason} detail={refusal.detail}\n"
@@ -247,14 +300,18 @@ def run_once(
         hosts=hosts,
         selection_holds=holds,
         ledger_path=str(resolve_path(overlay.ledger_path)),
-        approved_work_path=str(resolve_path(overlay.approved_work_path)),
         brief_dir=str(resolve_path(overlay.brief_dir)),
         state_path=str(resolve_path(overlay.state_path)) if overlay.state_path else "",
     )
     stderr.write(
         f"lab-fill unit: step={_STEP} hosts={len(hosts)} held={len(holds)}"
-        f" free={sum(host.free for host in hosts)}\n"
+        f" free={sum(host.free for host in hosts)} work: {_work_line(reads)}\n"
     )
+    if ticker is None:
+        live = LiveWorkRows(rows)
+        ticker = HandlerLabFillTick(
+            approved=live, launch=HandlerLabFillLaunch(approved=live)
+        )
     return run_tick_entry(
         stdin=io.StringIO(request.model_dump_json()),
         stdout=stdout,

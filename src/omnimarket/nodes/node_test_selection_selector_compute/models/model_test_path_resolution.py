@@ -2,8 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Wire types of the test-path resolution handler and the module adjacency map (OMN-23719).
 
-The adjacency map models moved here from scripts/ci/test_selection_loader.py, which keeps loading the
-YAML and re-exports them.
+The adjacency map models live here; ``adapters/adjacency_file.py`` loads the YAML.
 """
 
 from __future__ import annotations
@@ -117,6 +116,31 @@ class ModelAdjacencyMap(BaseModel):
     data_reader_overrides: dict[str, list[str]] = Field(default_factory=dict)
     """Data glob -> test files (or directories) that read a matching file in a way no test text shows."""
 
+    data_file_readers_enabled: bool = False
+    """Whether a changed fixture or data file selects the tests that read it instead of the full suite.
+
+    For a changed non-Python file under one of ``data_reader_roots`` the readers are the tests whose text
+    spells its path, its file name or a directory between a ``data_reader_fixture_roots`` entry and the
+    file, the tests that enumerate its directory, the reverse import closure of any helper among those
+    tests, the tests that import a ``src/`` file naming it, and ``data_reader_overrides``. A file with no
+    reader selects the always set only. The rule changes what a pull request runs, so it is a switch the
+    change that turns it on owns: off, a fixture under ``data_reader_gated_infrastructure_paths`` keeps the
+    full-suite escalation it had.
+    """
+
+    data_reader_roots: list[str] = Field(default_factory=list)
+    """Repo-relative prefixes under which a non-Python file is a data file the rule covers."""
+
+    data_reader_fixture_roots: list[str] = Field(default_factory=list)
+    """Prefixes below which the name of each directory between the prefix and the file also finds readers."""
+
+    data_reader_gated_infrastructure_paths: list[str] = Field(default_factory=list)
+    """Test infrastructure only while ``data_file_readers_enabled`` is off, or for a Python file.
+
+    A non-Python data file under one of these paths is handled by the readers rule when it is on; with it
+    off, and for any Python file beneath them, the path forces the full suite like ``test_infrastructure_paths``.
+    """
+
     @model_validator(mode="after")
     def validate_data_reader_overrides(self) -> ModelAdjacencyMap:
         for glob, paths in self.data_reader_overrides.items():
@@ -159,6 +183,21 @@ class ModelAdjacencyMap(BaseModel):
                         f"adjacency['{module}'].reverse_deps references unknown module '{dep}'"
                     )
         return self
+
+    def is_reader_data_file(self, path: str) -> bool:
+        """Whether the readers rule is on and ``path`` is a non-Python file under a data-reader root."""
+        return (
+            self.data_file_readers_enabled
+            and not path.endswith(".py")
+            and any(path.startswith(root) for root in self.data_reader_roots)
+        )
+
+    def is_test_infrastructure(self, path: str) -> bool:
+        """Whether a changed ``path`` invalidates narrowing: the full suite runs."""
+        paths = self.test_infrastructure_paths
+        if not self.is_reader_data_file(path):
+            paths = [*paths, *self.data_reader_gated_infrastructure_paths]
+        return any(path == p or path.startswith(p.rstrip("/") + "/") for p in paths)
 
     def narrowed_extra_paths(self, changed_files: list[str]) -> set[str]:
         """Always-selected tests plus those a matching changed file triggers."""

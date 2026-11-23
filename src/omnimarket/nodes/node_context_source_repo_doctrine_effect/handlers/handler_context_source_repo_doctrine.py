@@ -32,11 +32,21 @@ from omnibase_core.models.context.model_context_source_span import (
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.handlers.adapter_work_ledger_rows_reader import (
+    SubprocessLedgerRowsReader,
+)
 from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_context_pack_builder_compute.parsers.parser_guidance_section import (
     GuidanceSectionParser,
 )
+from omnimarket.protocols.protocol_ledger_rows_reader import (
+    LedgerReadError,
+    ProtocolLedgerRowsReader,
+)
 
+#: The ledger reader node's name for the ruling read, and the window it covers (a year of rulings).
+RULINGS_READER = "context-source-doctrine-rulings"
+RULINGS_WINDOW_HOURS = 8760
 _CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
 _REPOSITORY_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
 _STAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
@@ -106,8 +116,6 @@ class ModelRepoDoctrineBinding(BaseModel):
     repository_path: str = Field(min_length=1)
     documents: tuple[ModelRepoDoctrineDocument, ...] = Field(min_length=1)
     registry_glob: str = Field(min_length=1)
-    ledger_env: str = Field(min_length=1)
-    ledger_archive_glob: str = Field(min_length=1)
     max_rulings: int = Field(gt=0)
     exemplar: ModelRepoDoctrineExemplar
 
@@ -132,7 +140,9 @@ class HandlerContextSourceRepoDoctrine:
         contract_path: Path | None = None,
         binding: ModelRepoDoctrineBinding | None = None,
         env: Mapping[str, str] | None = None,
+        ledger_reader: ProtocolLedgerRowsReader | None = None,
     ) -> None:
+        self._ledger_reader = ledger_reader
         self._contract_path = contract_path or _CONTRACT_PATH
         self.terminal_event = contract_publish_topics(self._contract_path)[0]
         self._binding = binding or load_repo_doctrine_binding(self._contract_path)
@@ -286,49 +296,32 @@ class HandlerContextSourceRepoDoctrine:
         counts: dict[str, int],
     ) -> list[ModelContextSourceEntry]:
         counts.update(rulings=0, rulings_unavailable=0)
-        value = env.get(self._binding.ledger_env, "")
-        ledger = Path(value)
-        if not value or not ledger.is_absolute() or not ledger.is_file():
+        reader = self._ledger_reader or SubprocessLedgerRowsReader(env)
+        try:
+            lines = reader.rows(
+                reader=RULINGS_READER,
+                window_hours=RULINGS_WINDOW_HOURS,
+                kinds=("RULING",),
+            )
+        except LedgerReadError:
             counts["rulings_unavailable"] = 1
             return []
         mentions = re.compile(
             r"(?<![A-Za-z0-9_-])" + re.escape(repository) + r"(?![A-Za-z0-9_])"
         )
         rows: list[tuple[datetime, int, str, str]] = []
-        # Archive splits overlap, so one row can be read from two files.
+        # A row can arrive twice from overlapping rolls; it is carried once.
         seen: set[str] = set()
-
-        def collect(path: Path) -> None:
-            try:
-                lines = path.read_bytes().decode("utf-8").splitlines()
-            except (OSError, UnicodeError):
-                return
-            for line in lines:
-                match = _RULING.match(line)
-                if match is None or line in seen or not mentions.search(line):
-                    continue
-                ts = match["ts"]
-                when = _revision_stamp(ts)
-                if when is None or (stamp is not None and when > stamp):
-                    continue
-                seen.add(line)
-                rows.append((when, len(rows), ts, line))
-
-        collect(ledger)
-        if len(rows) < self._binding.max_rulings:
-            parent = ledger.resolve().parent
-            pattern = self._path(parent, self._binding.ledger_archive_glob, repository)
-            if pattern is not None:
-                for path in sorted(
-                    parent.glob(pattern.relative_to(parent).as_posix()),
-                    key=lambda p: p.name,
-                    reverse=True,
-                ):
-                    resolved = path.resolve()
-                    if parent in resolved.parents and resolved.is_file():
-                        collect(resolved)
-                    if len(rows) >= self._binding.max_rulings:
-                        break
+        for line in lines:
+            match = _RULING.match(line)
+            if match is None or line in seen or not mentions.search(line):
+                continue
+            ts = match["ts"]
+            when = _revision_stamp(ts)
+            if when is None or (stamp is not None and when > stamp):
+                continue
+            seen.add(line)
+            rows.append((when, len(rows), ts, line))
         selected = sorted(rows, key=lambda row: (row[0], row[1]), reverse=True)[
             : self._binding.max_rulings
         ]

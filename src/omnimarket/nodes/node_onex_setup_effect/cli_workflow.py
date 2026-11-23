@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 import click
@@ -14,6 +14,9 @@ from pydantic import SecretStr, ValidationError
 from omnimarket.handlers.handler_endpoint_connections import (
     HandlerModelConnections,
     ModelEndpointConnectionRequest,
+)
+from omnimarket.nodes.node_onex_setup_effect.cli_choices import (
+    stored_key_for_unchanged_provider,
 )
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import (
     URL_PROVIDERS,
@@ -30,9 +33,44 @@ from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_workflow imp
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
     ModelSetupPlan,
 )
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider import (
+    ModelSetupProvider,
+)
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
     setup_provider_traits,
 )
+
+
+def _credential_key(selection: Mapping[str, object]) -> str:
+    """The credential identity of an inline selection, as the setup plan keys it."""
+    connection = selection.get("connection_id")
+    return f"connection:{connection}" if connection else str(selection["provider"])
+
+
+def _refuse_a_shared_credential_slot(
+    selections: Sequence[Mapping[str, object]],
+) -> None:
+    """Name the slot when a configure re-run would put two keys in one (OMN-23825).
+
+    The plan refuses keyed providers that share a credential slot; without this the
+    participant saw only the generic refusal and no way out.
+    """
+    owners: dict[str, str] = {}
+    for raw in selections:
+        selection = ModelSetupProvider.model_validate(raw)
+        if not selection.needs_key or selection.connection_id:
+            continue
+        slot = str(selection.registration_provider)
+        name = selection.provider + (f" ({selection.url})" if selection.url else "")
+        if slot in owners:
+            raise click.ClickException(
+                f"{owners[slot]} and {name} would share the {slot} credential slot, "
+                "which holds one key. Run setup again and give the server you are "
+                "adding a new named connection with --connection NEW_NAME, a name "
+                "no saved connection uses (it becomes the default route), or "
+                "choose a provider that does not use this slot."
+            )
+        owners[slot] = name
 
 
 def run_workflow_cli(
@@ -61,6 +99,7 @@ def run_workflow_cli(
     topology_file: Path | None = None,
     completion_name: str | None = None,
     set_aside: bool = False,
+    added_to: ModelSetupPlan | None = None,
 ) -> None:
     if plan_file is None:
         if provider and not model:
@@ -114,7 +153,25 @@ def run_workflow_cli(
             ]
             if not provider and (model or url):
                 raise ValueError("Name the provider for inline model selections")
-            reuse = saved is not None and workspace == saved.workspace
+            # A configure re-run (added_to) keeps every saved choice; otherwise
+            # the saved choices apply only to the same workspace.
+            reuse = saved is not None and (
+                added_to is not None or workspace == saved.workspace
+            )
+            if added_to is not None and providers:
+                # OMN-23825: a configure re-run adds the chosen provider to the
+                # saved ones: the entry with the same credential identity (the
+                # provider, or a named connection) is replaced in place, a new
+                # one is appended, and every other saved provider is kept,
+                # whatever folder the re-run starts in (the providers are this
+                # machine's).
+                chosen = {_credential_key(p): p for p in providers}
+                had = {s.credential_identity for s in added_to.providers}
+                providers = [
+                    chosen.get(s.credential_identity, s.model_dump())
+                    for s in added_to.providers
+                ] + [p for key, p in chosen.items() if key not in had]
+                _refuse_a_shared_credential_slot(providers)
             plan = ModelSetupPlan.model_validate(
                 {
                     "workspace": workspace or Path.home() / "Code" / "omnibase",
@@ -161,10 +218,6 @@ def run_workflow_cli(
         ) from None
     credentials: dict[str, SecretStr] = dict(prepared_credentials or {})
     if plan.action != "verify":
-        if "delegation" in plan.components and not plan.providers:
-            raise click.ClickException(
-                "Choose provider models before installation using --provider/--model or --plan."
-            )
         if not yes and not interactive:
             raise click.ClickException(
                 "Review the setup destination, selected models and unknown/API billing costs, then repeat with --yes."
@@ -174,6 +227,16 @@ def run_workflow_cli(
         for selection in keyed:
             identity = selection.credential_identity
             if identity in credentials:
+                continue
+            kept = (
+                stored_key_for_unchanged_provider(
+                    added_to, selection.provider, selection.url
+                )
+                if added_to is not None
+                else None
+            )
+            if kept is not None:
+                credentials[identity] = kept
                 continue
             if selection.connection_id:
                 configured = (
@@ -231,6 +294,11 @@ def run_workflow_cli(
         click.echo(journal.model_dump_json())
     else:
         for item in journal.observations:
+            if item.status == "skipped" and item.evidence:
+                click.echo(
+                    f"[skipped] {item.step}: {'; '.join(item.evidence.values())}"
+                )
+                continue
             click.echo(
                 f"[{item.status}] {item.step} ({'changed' if item.changed else 'unchanged'})"
             )
@@ -251,6 +319,7 @@ def run_workflow_cli(
                     )
         if all(item.status in ("success", "skipped") for item in journal.observations):
             click.echo("Setup complete.")
+            click.echo("Add another provider any time: onex models add <provider>")
     ctx.exit(
         0
         if all(item.status in ("success", "skipped") for item in journal.observations)

@@ -16,8 +16,11 @@ description: >
   Host unit install orchestrator. On an install request it asks the registry installer for the declared render, then
   walks snapshot, install, readback, run read; a failed install, a readback that differs from the render, or a failed
   run read sends a restore of the snapshot. Every step is published as a reducer command carrying the last record the
-  reducer returned; the install ends with one terminal event naming the final state and the digests. A result or record
-  for an install it does not know, or in the wrong phase, is ignored. Every setting comes from the node overlay.
+  reducer returned; the install ends with one terminal event naming the final state and the digests. The typed install
+  request for a unit tree or plugin tree at a merged commit is a second typed input: the orchestrator remembers it and
+  the per-host install request effect carries it out; when that effect answers on the completed topic the orchestrator
+  ends the request with the same terminal event, naming the final state. A result or record for an install it does not
+  know, or in the wrong phase, is ignored. Every setting comes from the node overlay.
 
 handler_routing:
   routing_strategy: topic_match
@@ -67,6 +70,24 @@ handler_routing:
       handler:
         name: HandlerHostInstallOrchestrator
         module: omnimarket.nodes.node_host_install_orchestrator.handlers.handler_host_install_orchestrator
+    - topic: onex.cmd.omnimarket.install-requested.v1
+      message_category: command
+      operation: install_request
+      event_model:
+        name: ModelInstallRequest
+        module: omnimarket.models.install_request
+      handler:
+        name: HandlerHostInstallOrchestrator
+        module: omnimarket.nodes.node_host_install_orchestrator.handlers.handler_host_install_orchestrator
+    - topic: onex.evt.omnimarket.install-request-completed.v1
+      message_category: event
+      operation: install_request_result
+      event_model:
+        name: ModelInstallRequestResult
+        module: omnimarket.models.install_request
+      handler:
+        name: HandlerHostInstallOrchestrator
+        module: omnimarket.nodes.node_host_install_orchestrator.handlers.handler_host_install_orchestrator
 
 handler:
   module: omnimarket.nodes.node_host_install_orchestrator.handlers.handler_host_install_orchestrator
@@ -101,6 +122,8 @@ event_bus:
     - onex.evt.omnimarket.host-install-file-completed.v1
     - onex.evt.omnimarket.host-install-readback-completed.v1
     - onex.evt.omnimarket.host-install-state-updated.v1
+    - onex.cmd.omnimarket.install-requested.v1
+    - onex.evt.omnimarket.install-request-completed.v1
   publish_topics:
     - onex.cmd.omnimarket.host-registry-unit-requested.v1
     - onex.cmd.omnimarket.host-install-file-requested.v1
@@ -124,6 +147,10 @@ broker_acl_grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-install-readback-completed.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-install-state-updated.v1, operation: READ}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-install-state-updated.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.install-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.install-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.install-request-completed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.install-request-completed.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-registry-unit-requested.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-registry-unit-requested.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-install-file-requested.v1, operation: WRITE}

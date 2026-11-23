@@ -20,5 +20,9 @@ writer_markers:
   - 'write_text|write_bytes|\.write\('
   - 'open\([^)]*["''][wax]\+?b?["'']'
   - '--append|\btee\b|\bappend\b'
+# Runtime code is the source tree and the runtime contracts in it; a test, fixture, doc, data file or plan
+# contract is counted but not as runtime code, whatever tree it sits in.
+runtime_include: ['^(src|plugins|scripts|deploy|k8s|operator-tools|tools)/']
+runtime_exclude: ['(^|/)(tests?|fixtures|docs?|data|benchmarks|reports?|reference|examples?)/', '^contracts/', '\.json$', 'overlay\.example\.yaml$']
 journal_env: ONEX_LEDGER_CENSUS_JOURNAL
 ratchet_file: src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml
