@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
-import importlib
 import json
 import os
 import stat
@@ -28,7 +27,6 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from functools import cache
 from pathlib import Path
-from types import ModuleType
 from typing import Any, NamedTuple
 
 import yaml
@@ -323,14 +321,6 @@ _models_dev_read_state: contextvars.ContextVar[_ReadState | None] = (
 )
 
 
-def _load_fcntl() -> ModuleType | None:
-    """Return fcntl, or None where it is absent (it is POSIX only)."""
-    try:
-        return importlib.import_module("fcntl")
-    except ImportError:
-        return None
-
-
 def pricing_models_dev_index() -> ModelsDevIndex:
     """The prices a delegation call reads to price a model (OMN-23413 AC35).
 
@@ -354,14 +344,17 @@ def pricing_models_dev_index() -> ModelsDevIndex:
             error="models.dev read failed recently; not read again yet",
         )
 
+    # POSIX file locks are taken only here, on a read that needs the lock, so a
+    # native Windows client importing this module still reaches the setup
+    # preflight's WSL 2 remedy instead of failing on the import.
+    import fcntl
+
     lock_path = _read_lock_path(home)
     with contextlib.suppress(OSError):
         lock_path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
-    fcntl = _load_fcntl()
     try:
-        if fcntl is not None:
-            fcntl.flock(fd, fcntl.LOCK_EX)
+        fcntl.flock(fd, fcntl.LOCK_EX)
     except OSError:
         os.close(fd)
         raise
@@ -390,9 +383,8 @@ def pricing_models_dev_index() -> ModelsDevIndex:
             _clear_failed(home)
         return index
     finally:
-        if fcntl is not None:
-            with contextlib.suppress(OSError):
-                fcntl.flock(fd, fcntl.LOCK_UN)
+        with contextlib.suppress(OSError):
+            fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
 
 
