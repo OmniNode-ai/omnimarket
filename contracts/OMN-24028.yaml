@@ -18,6 +18,8 @@ requirements:
     statement: 'AC3: integrated: after the merge reaches the running runtime and one loader tick, the lab host overlay refresh reads lab_hosts with an age under one hour -- falsifier: the lab_hosts snapshot stamp loaded_at on h053 stays older than one hour after the tick; the reading of 3.1 days fails this criterion'
   - id: AC4
     statement: 'AC4: the settings store set command refuses an undeclared key with a typed error and writes nothing, records an audit row naming the actor with the previous and the new value, and the written value survives a refresh -- falsifier: uv run --frozen pytest tests/unit/nodes/node_overlay_setting_set -q -n 0 --no-cov -p no:cacheprovider fails when an undeclared key is written or the audit row is missing'
+  - id: AC5
+    statement: 'AC5: no file in src, tests or scripts imports a module the newest omnibase-core removed (cli_work_ledger_render), so the latest-core smoke job imports every node module -- falsifier: uv run --frozen pytest tests/ci/test_no_removed_core_ledger_render_import.py -q -n 0 --no-cov -p no:cacheprovider fails when a file imports the removed module'
 evidence_requirements:
 - kind: tests
   description: The projection key tests and the overlay store golden and error chain tests pass at the pushed head.
@@ -73,6 +75,8 @@ dod_evidence:
 - id: dod-omn24028-latest-core-imports
   description: 'no file in src, tests or scripts imports a module the newest omnibase-core removed (cli_work_ledger_render), so the latest-core smoke job that imports every node module on the newest core release no longer fails on node_create_ticket; the ledger path variable name is the guard''s own constant'
   source: manual
+  binds_ac:
+  - AC5
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/ci/test_no_removed_core_ledger_render_import.py tests/nodes/node_create_ticket/test_core_ticket_guard.py -q -n 0 --no-cov -p no:cacheprovider
