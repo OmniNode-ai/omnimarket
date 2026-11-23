@@ -15,6 +15,7 @@ capabilities:
   side_effect_class: pure
 dependencies:
   - "omnibase_core>=0.40.0"
+  - "omnibase_infra"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["stall", "compute", "deterministic", "OMN-22885"]

@@ -16,6 +16,7 @@ import contextlib
 import json
 import re
 import shlex
+import signal
 import time
 from collections import Counter
 from collections.abc import Awaitable, Callable, Mapping
@@ -799,6 +800,7 @@ class SetupScreen(_TabbedScreen[None]):
     BINDINGS = [
         Binding("escape", "cancel", "Back"),
         Binding("ctrl+s", "save", _say("button_save"), priority=True),
+        Binding("ctrl+g", "guided_setup", _say("button_guided_setup"), priority=True),
     ]
 
     def __init__(
@@ -844,6 +846,7 @@ class SetupScreen(_TabbedScreen[None]):
             yield Static(self._current_line(), id="basket")
             yield Static(keycaps(tui_design().model_table.help["config"]), id="keys")
             with Horizontal(id="buttons"):
+                yield Button(_say("button_guided_setup"), id="guided-setup")
                 yield Button(_say("button_add"), id="add")
                 yield Button(_say("button_save"), variant="primary", id="save")
                 yield Button(_say("button_cancel"), id="cancel")
@@ -1072,6 +1075,14 @@ class SetupScreen(_TabbedScreen[None]):
                 note.update(_say("tick_first"))
         elif event.button.id == "save":
             self.action_save()
+        elif event.button.id == "guided-setup":
+            self.action_guided_setup()
+
+    def action_guided_setup(self) -> None:
+        if self._basket or self.query_one("#found", ModelTable).ticked:
+            self._note(_say("guided_setup_pending"), "warning")
+            return
+        self._run(OnexTui.guided_setup)
 
     def action_save(self) -> None:
         """Set up what is ticked or added, here, and stay; refuse with nothing chosen."""
@@ -2256,14 +2267,34 @@ class OnexTui(App[int]):
             return
         await self._run(entry, tuple(words))
 
+    def _in_terminal(self, argv: tuple[str, ...]) -> int:
+        # Ctrl+C goes to both foreground processes. A caught signal resets on
+        # exec, so the child keeps its normal interrupt and the TUI stays open.
+        previous = signal.signal(signal.SIGINT, lambda _signum, _frame: None)
+        try:
+            try:
+                with self.suspend():
+                    return self._runner.in_terminal(argv)
+            except SuspendNotSupported:
+                return self._runner.in_terminal(argv)
+        finally:
+            signal.signal(signal.SIGINT, previous)
+
+    async def guided_setup(self) -> Text:
+        """Let the installed CLI collect choices, request consent and own the journal."""
+        code = self._in_terminal(("setup",))
+        outcome = Text(
+            _say("guided_setup_exit", code=code) if code else _say("guided_setup_done"),
+            style=_style("error" if code else "success"),
+        )
+        self._toast(outcome, ok=not code)
+        await self._refresh_status()
+        return outcome
+
     async def _run(self, entry: ModelTuiCommand, argv: tuple[str, ...]) -> None:
         self._write(Text(f"$ onex {shlex.join(argv)}", style=_style("muted")))
         if entry.needs_terminal:
-            try:
-                with self.suspend():
-                    code = self._runner.in_terminal(argv)
-            except SuspendNotSupported:  # headless or a terminal that cannot hand over
-                code = self._runner.in_terminal(argv)
+            code = self._in_terminal(argv)
         else:
             code = await self._runner.stream(argv, self._emit)
         if code:

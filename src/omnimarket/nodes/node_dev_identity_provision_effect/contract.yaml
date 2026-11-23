@@ -18,8 +18,8 @@ runtime_profiles: [effects]
 description: >
   Provisions one dev probe identity. The dev-only guard refuses, with no side effect, any command lane, overlay lane or
   Keycloak realm the dev_only block does not declare. A run reads the Keycloak admin credential from the secret store,
-  generates the declared user password key (an existing key is reused, never replaced), creates or resets the one named
-  dev user, signs in with the password grant and asks onex-api to bind a probe tenant; a probe stops at the credential
+  generates the declared user password key (an existing key is reused, never replaced), creates the one named dev user (an existing user is refused, and reset only when the command says so; a protected
+  username is refused), signs in with the password grant and asks onex-api to bind a probe tenant; a probe stops at the credential
   read and answers ready. Every failure is a typed result.
 
 handler:
@@ -41,7 +41,7 @@ descriptor:
 input_model:
   name: ModelDevIdentityProvisionCommand
   module: omnimarket.nodes.node_dev_identity_provision_effect.models.model_dev_identity_provision
-  description: Which lane acts, and whether to write anything.
+  description: Which lane acts, whether to write anything, and optionally which user (username, email, password key id); an existing user is reset only with reset_existing and a protected username is touched only with allow_protected.
 output_model:
   name: ModelDevIdentityProvisionResult
   module: omnimarket.nodes.node_dev_identity_provision_effect.models.model_dev_identity_provision
@@ -51,6 +51,10 @@ terminal_event: onex.evt.omnimarket.dev-identity-provision-completed.v1
 
 runtime_dispatch:
   external_trigger: true
+  # Provisioning writes a user and a tenant, so it never runs on a timer: a lane runs it once, by hand, on the dev lane.
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_dev_identity_provision_effect run --lane dev
+    owner: OmniNode Platform Team
 
 topics:
   command: onex.cmd.omnimarket.dev-identity-provision-requested.v1

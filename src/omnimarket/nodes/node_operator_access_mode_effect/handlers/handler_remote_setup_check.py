@@ -11,7 +11,9 @@ Checks, each read from local files and the environment, never from the network:
 * plugins: the internal ``omni`` plugin and an ``onex`` plugin are enabled;
 * connectors: the ``linear-server`` and ``github`` MCP servers are configured (user config, user
   settings, or the project entry for the session's directory);
-* environment: ``OMNI_HOME`` and ``ONEX_LEDGER_PATH`` are set.
+* environment: ``OMNI_HOME`` and the ledger bus variables the lane runner exports
+  (``ONEX_LEDGER_BUS_APPEND_COMMAND`` and ``ONEX_LEDGER_HOST_NAME``) are set; the ledger file's
+  path is not asked for, because a remote session writes and reads the ledger through the bus.
 
 The report never blocks the session.
 """
@@ -29,7 +31,11 @@ from ..models.model_remote_setup_request import (
 QUIET_PERMISSION_MODES = frozenset({"bypassPermissions", "auto", "dontAsk"})
 REQUIRED_PLUGIN_PREFIXES = ("omni@", "onex@")
 REQUIRED_CONNECTORS = ("linear-server", "github")
-REQUIRED_ENV = ("OMNI_HOME", "ONEX_LEDGER_PATH")
+REQUIRED_ENV = (
+    "OMNI_HOME",
+    "ONEX_LEDGER_BUS_APPEND_COMMAND",
+    "ONEX_LEDGER_HOST_NAME",
+)
 
 
 def _servers(block: Any) -> set[str]:
@@ -95,6 +101,6 @@ class HandlerRemoteSetupCheck:
         else:
             line = (
                 f"Remote setup: OK (permission mode {mode}, push on, omni and onex plugins,"
-                " linear-server and github connectors, OMNI_HOME and ONEX_LEDGER_PATH set)."
+                " linear-server and github connectors, OMNI_HOME and the ledger bus variables set)."
             )
         return ModelRemoteSetupResult(tuple(missing), line)

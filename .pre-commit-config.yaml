@@ -1564,11 +1564,11 @@ repos:
 
       # OMN-26424: a staged change that ADDS a read of a setting (an environment variable, a workflow `vars.` variable, an image build
       # argument) that no overlay declares is refused. Reads the declared_settings register under the overlay roots of this host
-      # (ONEX_SKILL_OVERLAY_ROOTS); a staged diff that adds no read passes without them. SYNC with ci.yml job undeclared-read-check.
+      # (ONEX_SKILL_OVERLAY_ROOTS); a staged diff that adds no read passes without them. A merge commit is judged against the merged-in branch, so only this change counts and not what that branch brought. SYNC with ci.yml job undeclared-read-check.
       - id: undeclared-read-check
         name: Undeclared read check (OMN-26424)
         language: system
-        entry: bash -c 'git diff --cached -U0 --no-color --no-renames | uv run python -m omnimarket.nodes.node_undeclared_read_check_compute.runtime_undeclared_read_check --overlays-root "${ONEX_SKILL_OVERLAY_ROOTS:-}"'
+        entry: bash -c 'base=HEAD; test -f "$(git rev-parse --git-path MERGE_HEAD)" && base=MERGE_HEAD; git diff --cached -U0 --no-color --no-renames "$base" | uv run python -m omnimarket.nodes.node_undeclared_read_check_compute.runtime_undeclared_read_check --overlays-root "${ONEX_SKILL_OVERLAY_ROOTS:-}"'
         files: ^(src/|scripts/|docker/|\.github/workflows/|Dockerfile)
         pass_filenames: false
         require_serial: true

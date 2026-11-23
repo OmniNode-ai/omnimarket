@@ -9,7 +9,7 @@ as JSON (a declare or a retire), validates it as
 ModelHouseRoutingOverlayCommand, and publishes the bare command (no envelope)
 to the node's command topic. The topic is read from the node's contract.yaml,
 never hardcoded. Nothing is published unless the command validates. The command
-cannot name a tenant: the node writes the house tenant only.
+cannot name a tenant: the node writes the house tenant (UUID form) only.
 
 Usage:
     uv run python -m omnimarket.nodes.node_house_routing_overlay_effect.publish_house_overlay_command \

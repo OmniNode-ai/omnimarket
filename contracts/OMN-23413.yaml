@@ -137,6 +137,11 @@ requirements:
       package and thin bootstrap. Capture version, package hashes, plugin versions, effective non-secret
       configuration, outcomes, receipts, terminal evidence and dashboard/Claude proof in a repeatable
       artifact. Mocked servers prove fault controls; they do not replace actual model proof.'
+- id: req-omn23413-ac21
+  statement: 'Model catalogue normalisation and merge: provider ids are kept exactly; prices convert to USD per 1M with Decimal; unknown capability and price stay unknown; a catalogue-only model is not listed as available; per-field provenance is shown in details.'
+  acceptance:
+  - id: AC21
+    statement: 'Model catalogue normalisation and merge: provider ids are kept exactly; prices convert to USD per 1M with Decimal; unknown capability and price stay unknown; a catalogue-only model is not listed as available; per-field provenance is shown in details.'
 - id: req-omn23413-ac22
   statement: '/config selects models from a live list, never a typed id. After the provider and its key or URL, the provider''s models load on their own and show provider, model, context, price (USD per 1M tokens, in / out), capabilities and status, with search, filter, sort and a details view. Any number can be ticked; every ticked model is stored in order and used by delegation. Values no source states show "-", never zero or "no". A model on the user''s own server is named by that server (Ollama or vLLM) with the context and capabilities it reports.'
   acceptance:
@@ -152,6 +157,11 @@ requirements:
   acceptance:
   - id: AC27
     statement: 'One catalogue, no hard-coded lists. /model, /config and /delegation read the same entries; the providers, capabilities, columns and words come from configuration. /model chooses the first model or Auto.'
+- id: req-omn23413-ac35
+  statement: 'AC35: a call is priced from that combined entry. The provider''s own price is used when it serves one. Otherwise models.dev''s price for that provider and model is used. Otherwise it is unknown as AC28 says. Each run records which source priced it and when that source was read. Both sources are read live. A reused copy is never older than the age set in configuration and never committed. -- falsifier: tests with recorded responses show a Beam call on a Reflection key booked at 0 with cost basis zero_marginal_api_cost and source models.dev, a model absent from both sources left unknown, and a source older than the configured age read again'
+  acceptance:
+  - id: AC35
+    statement: 'AC35: a call is priced from that combined entry. The provider''s own price is used when it serves one. Otherwise models.dev''s price for that provider and model is used. Otherwise it is unknown as AC28 says. Each run records which source priced it and when that source was read. Both sources are read live. A reused copy is never older than the age set in configuration and never committed. -- falsifier: tests with recorded responses show a Beam call on a Reflection key booked at 0 with cost basis zero_marginal_api_cost and source models.dev, a model absent from both sources left unknown, and a source older than the configured age read again'
 - id: req-omn23413-ac33
   statement: Every ordinary prompt goes to delegation first when bit 11 is enabled; documented slash and @claude skips remain native. A quality-passed answer is shown with model and full run ID without native Claude inference. Decline via the fixed CANNOT_ANSWER marker, failure, timeout, quality veto or OFF continues to Claude. Bounded delegated history is deduplicated by run ID and delivered once on the next native turn. onex delegation on/off and the TUI switch add and remove the one prompt hook while preserving Claude settings; subagents stay on Claude (Amendment 14a, 2026-11-17). Real inference and token receipt evidence is required separately from deterministic process controls.
   acceptance:
@@ -167,6 +177,19 @@ requirements:
   acceptance:
   - id: AC38
     statement: '`onex delegation status` reports on only when the prompt hook (UserPromptSubmit) is installed and bit 11 is set; an older install that has only the subagent hook reports off and names the missing prompt hook. The prompt hook can be paused on its own (operator 2026-11-15); Amendment 14a (2026-11-17) removed the subagent hook.'
+- id: req-omn23413-ac28
+  statement: 'An unpriced model''s cost is unknown, never $0 (Amendment 6, 2026-11-13). A run whose cost
+    no source priced is stored and served as unknown with no measured saving; omnidash shows it as Unknown
+    and Not measured; onex delegate prints cost unknown. A really free model (local, a :free id, a free
+    tier, a declared zero price) still shows $0. Existing local rows stored as 0 are re-derived, never
+    deleted.'
+  acceptance:
+  - id: AC28
+    statement: 'An unpriced model''s cost is unknown, never $0 (Amendment 6, 2026-11-13). A run whose
+      cost no source priced is stored and served as unknown with no measured saving; omnidash shows it
+      as Unknown and Not measured; onex delegate prints cost unknown. A really free model (local, a :free
+      id, a free tier, a declared zero price) still shows $0. Existing local rows stored as 0 are re-derived,
+      never deleted.'
 evidence_requirements:
 - kind: tests
   description: Run fixture controls plus required installed-wheel and actual model/Claude evidence; preserve
@@ -214,6 +237,20 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_thin_client.py tests/unit/nodes/node_onex_setup_effect/test_setup_preflight.py
       tests/unit/nodes/node_onex_setup_effect/test_setup_machine_observation.py tests/e2e/test_setup_stack_requirements.py
+      -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac3-engine-reader-compatibility
+  description: When the installed infra package lacks the engine reader, the selected local stack's
+    requirements step returns action_required naming the infra upgrade before any command or process
+    launches. This is AC3's dependency failure detected before dependent effects; it does not exercise
+    the stack owner's install or reconciliation, so it binds no AC7 clause.
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/e2e/test_setup_stack_requirements.py::test_selected_stack_with_older_infra_reports_install_action
       -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23413-ac4-dynamic-endpoint-models
@@ -278,6 +315,24 @@ dod_evidence:
     check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py tests/unit/nodes/node_onex_setup_effect/test_setup_legacy_import.py
       tests/e2e/test_setup_configuration_cli.py tests/e2e/test_setup_workflow_cli.py -q --no-cov -n 0
       -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac8-existing-project-files
+  description: 'Setup in an existing project keeps the customer''s own files instead of refusing the folder. It binds no criterion: it proves only the preserve-user-files clause of AC8, and a binding would mark all of AC8 verified. AC8 is bound by dod-omn23413-ac8-migration-repair, whose check runs this test file.'
+  source: manual
+  execution_scope: hosted_and_local
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_workflow.py::test_setup_in_an_existing_project_preserves_customer_files -q --no-cov -n 0 -p no:randomly'
+    cwd: .
+- id: dod-omn23413-ac21-field-provenance
+  description: 'Every AC21 clause, each by its own test: the provider''s exact ids are listed and a model only models.dev knows is never offered (test_config_lists_the_providers_own_ids_exactly_and_no_catalogue_only_model, on a captured OpenRouter body); prices convert to USD per 1M (test_openrouter_rows_carry_name_context_and_price_per_million) as exact Decimal (test_prices_are_exact_decimals_and_print_in_dollars); an unstated capability or price stays unknown (test_nothing_stated_stays_unknown_never_free_or_no); the details name the source of each fact (test_details_attribute_each_model_fact_to_its_source, and test_capabilities_a_provider_lists_reach_the_details_from_its_own_list through the real listing path).'
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC21
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run pytest tests/unit/handlers/test_model_catalog.py::test_details_attribute_each_model_fact_to_its_source tests/unit/handlers/test_model_catalog.py::test_capabilities_a_provider_lists_reach_the_details_from_its_own_list tests/unit/handlers/test_model_catalog.py::test_prices_are_exact_decimals_and_print_in_dollars tests/unit/handlers/test_model_catalog.py::test_nothing_stated_stays_unknown_never_free_or_no tests/unit/handlers/routing/test_byok_model_listing.py::test_openrouter_rows_carry_name_context_and_price_per_million tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py::test_config_lists_the_providers_own_ids_exactly_and_no_catalogue_only_model -q --no-cov -n 0 -p no:randomly'
     cwd: .
 - id: dod-omn23413-ac9-cli-behavior
   description: Interactive and unattended share one engine; typed JSON, offline help and positive-control
@@ -434,6 +489,16 @@ dod_evidence:
   - check_type: test_passes
     check_value: 'uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py tests/unit/handlers/test_local_model_details.py -q --no-cov -n 0 -p no:randomly -k "config or server or ticked or searchable or key"'
     cwd: .
+- id: dod-omn23413-ac35-models-dev-price
+  description: 'Proves the pricing half of AC35 for a customer-key call: the provider''s own price wins and is recorded with its read time; otherwise models.dev is read live and prices the call (a Beam call on a Reflection key is booked at 0 as zero_marginal_api_cost, source models.dev, with the read time); a paid models.dev price is booked as cloud cost; a model absent from both sources stays unknown; a copy older than the configured age is read again, and a stale copy whose re-read fails never prices a call. The live read and the age limit are proved for the models.dev copy only, not for the provider listing, which the call reads from the copy the explorer kept. It does not prove AC35''s "never committed" clause as a scan of the repository, and it proves nothing of AC34 (one combined entry for limits, price and the model table) or AC36 (token usage provenance).'
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC35
+  checks:
+  - check_type: test_passes
+    check_value: 'uv run pytest tests/unit/delegation/test_byok_models_dev_price_omn23413.py -q'
+    cwd: .
 - id: dod-omn23413-ac25-delegation-no-typed-input
   description: '/delegation uses one prompt-hook switch (Amendment 14a), refuses without a model, and preserves Claude settings.'
   source: manual
@@ -555,4 +620,29 @@ dod_evidence:
     check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_legacy_hooks.py tests/unit/nodes/node_onex_setup_effect/test_cli_delegation.py
       tests/unit/nodes/node_onex_setup_effect/test_setup_delegation_hook_edges.py tests/unit/nodes/node_onex_setup_effect/test_cli_delegation_switches.py
       tests/unit/nodes/node_onex_setup_effect/test_onex_tui_hook_switches.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23413-ac28-historical-unknown-read
+  description: 'The local SQLite read of stored delegation rows, the only part of AC28 this check runs.
+    On the decisions and run-detail exposures a stored zero that no price stood behind is served as
+    unknown spend with no saving, and the stored row is unchanged. A zero is served as stored when the
+    row records a charge or a cost source other than no_cost_model, a free_local tier type (or, recording
+    neither source nor tier type, a tier the routing registry declares free_local), a model id ending
+    in :free, or a model that the pricing manifest, the provider catalogue for the backend the row names,
+    or models.dev read live for that backend''s provider prices at zero. A models.dev copy older than its
+    configured age is not used, and the price list shipped with the install never makes a zero free.
+    The configured deadline for a models.dev read is at most a quarter of the models.dev fetch timeout;
+    with models.dev hanging, a served read finishes within that deadline plus one second, fetches once
+    per retry interval, and leaves the run unknown. A fresh copy that cannot be parsed is read again,
+    and when that read fails the failure is marked and the run stays unknown.
+    A rejected attempt the provider answered that is itself such a zero makes the whole run unknown.
+    The writer, omnidash Unknown and Not measured, the onex delegate cost-unknown summary and the browser
+    check of AC28 are not run here and are separate evidence.'
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC28
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn23413_historical_unknown_cost.py -q --no-cov
+      -n 0 -p no:randomly
     cwd: .

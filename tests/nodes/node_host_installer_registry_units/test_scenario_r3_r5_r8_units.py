@@ -29,24 +29,28 @@ UNITS = {
         "entry": "src/omnimarket/nodes/node_delegation_scenario_r3_effect/runtime_scenario_r3_tick.py",
         "module": "omnimarket.nodes.node_delegation_scenario_r3_effect.runtime_scenario_r3_tick",
         "start_interval": 21600,
+        "run_timeout_s": 900,
     },
     "scenario-r5-systemd": {
         "label": "onex-delegation-scenario-r5",
         "entry": "src/omnimarket/nodes/node_delegation_scenario_r5_effect/runtime_scenario_r5_tick.py",
         "module": "omnimarket.nodes.node_delegation_scenario_r5_effect.runtime_scenario_r5_tick",
         "start_interval": 3600,
+        "run_timeout_s": 900,
     },
     "scenario-r8-systemd": {
         "label": "onex-delegation-scenario-r8",
         "entry": "src/omnimarket/nodes/node_delegation_scenario_r8_effect/runtime_scenario_r8_tick.py",
         "module": "omnimarket.nodes.node_delegation_scenario_r8_effect.runtime_scenario_r8_tick",
         "start_interval": 21600,
+        "run_timeout_s": 1800,
     },
     "scenario-r9-systemd": {
         "label": "onex-delegation-scenario-r9",
         "entry": "src/omnimarket/nodes/node_delegation_scenario_r9_effect/runtime_scenario_r9_tick.py",
         "module": "omnimarket.nodes.node_delegation_scenario_r9_effect.runtime_scenario_r9_tick",
         "start_interval": 3600,
+        "run_timeout_s": 1800,
     },
 }
 
@@ -150,7 +154,7 @@ def test_install_renders_the_timer_and_the_environment_file_line(
     assert '"ONEX_HOST_NAME=h201"' in service
     assert f'"ONEX_WORKSPACE_CONFIG_ROOT={tmp_path}/config"' in service
     assert f'"-m" "{spec["module"]}"' in service
-    assert "TimeoutStartSec=900" in service
+    assert f"TimeoutStartSec={spec['run_timeout_s']}\n" in service
     assert f"OnUnitActiveSec={spec['start_interval']}" in timer
     # The scenario runs `onex` by name: the registry's launcher directory leads the unit's search path.
     assert f'"PATH={tmp_path}/omni/omnibase_infra/scripts:' in service

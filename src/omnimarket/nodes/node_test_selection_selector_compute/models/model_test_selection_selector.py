@@ -8,6 +8,10 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_file_level_closure import (
+    EnumRootConftestEdge,
+)
+
 
 class EnumSelectorOutcome(StrEnum):
     #: The selection runs narrowed, split into ``split_count`` shards.
@@ -42,6 +46,12 @@ class ModelSelectorPolicy(BaseModel):
     path_count_max_shards: int = Field(ge=1)
     #: The stage gate: a narrowing rule is active only at or above its stage; 0 is shadow.
     selection_stage: int = Field(ge=0, le=4)
+    #: The stage at which the file-level closure replaces the module-level escalations. None only in
+    #: a frozen replay snapshot made before the rule existed; ``policy.yaml`` always sets it.
+    file_level_closure_stage: int | None = Field(default=None, ge=1, le=4)
+    #: Whether a closure that reaches the root tests/conftest.py selects the tree (keep) or runs the
+    #: whole-tree collection gate instead (cut). None under the same condition.
+    root_conftest_edge: EnumRootConftestEdge | None = None
     #: Shards of the full-suite matrix, which a flag-off run and every escalation take.
     full_split_count: int = Field(ge=1, le=40)
     #: Days a pull request's selection record artifact is kept.
@@ -58,6 +68,18 @@ class ModelSelectorPolicy(BaseModel):
     #: Fewest valid comparisons the comparison's verdict part one needs; fewer is ``insufficient``.
     #: Absent in the frozen replay tree, which predates it.
     graph_min_valid_comparisons: int | None = Field(default=None, ge=1)
+    #: A night's record is the check run ``<prefix>:<slot date>`` on the tested head commit (same default rule).
+    record_check_name_prefix: str = Field(
+        default="nightly-attribution", pattern=r"^[a-z0-9][a-z0-9-]*$"
+    )
+
+    def closure_settings(self) -> tuple[int, EnumRootConftestEdge]:
+        """The closure's stage and root conftest edge; a policy that sets neither cannot select by closure."""
+        if self.file_level_closure_stage is None or self.root_conftest_edge is None:
+            raise ValueError(
+                "the policy sets no file_level_closure_stage and root_conftest_edge"
+            )
+        return self.file_level_closure_stage, self.root_conftest_edge
 
     @model_validator(mode="after")
     def _ladder_is_ordered(self) -> ModelSelectorPolicy:

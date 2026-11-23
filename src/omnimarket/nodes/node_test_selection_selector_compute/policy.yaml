@@ -26,6 +26,13 @@
 #   selection_stage         the stage gate. A narrowing rule is active only at or above its stage.
 #                           0 is shadow: what a pull request runs is today's logic, and the record
 #                           keeps what the later stages would have run. Advancing it is its own change.
+#   file_level_closure_stage  the stage at which the file-level import closure replaces the
+#                           module-level escalations (shared_module, unmapped_module,
+#                           threshold_modules); below it those escalations still apply.
+#   root_conftest_edge      what a closure that reaches the root tests/conftest.py does: "cut" selects
+#                           the closure's own tests and runs the whole-tree collection gate, "keep"
+#                           selects the tree. "cut" is the plan's recommendation and is provisional
+#                           until the operator answers decision D1; the answer is a change of this one key.
 #   full_split_count        shards of the full-suite matrix: what a run with the flag off and every
 #                           escalation to the full suite takes.
 #   record_retention_days   days a pull request's selection record artifact is kept.
@@ -42,6 +49,8 @@
 #                           fewest valid comparisons (clean, from Memgraph) the comparison's verdict
 #                           part one needs; fewer is "insufficient", never a pass. Fixed before the week
 #                           starts and not changed during it.
+#   record_check_name_prefix the check run that carries a night's published attribution record is named
+#                           <prefix>:<slot date>, on the tested head commit the receipt names for that night.
 target_shard_seconds: 571
 max_narrowed_shards: 5
 narrowed_bound_seconds: 1800
@@ -55,10 +64,13 @@ path_count_shards:
   - [10, 3]
   - [16, 4]
 path_count_max_shards: 5
-selection_stage: 1
+selection_stage: 0
+file_level_closure_stage: 3
+root_conftest_edge: cut
 full_split_count: 20
 record_retention_days: 14
 stage_clean_nights: 7
 stage_min_pr_records: 10
 graph_compared_stage: 0
 graph_min_valid_comparisons: 20
+record_check_name_prefix: nightly-attribution

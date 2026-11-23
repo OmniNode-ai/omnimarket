@@ -1041,6 +1041,11 @@ _CI_YML_STRUCTURALLY_COVERED_KEYS: frozenset[str] = frozenset(
         "overlay-main-load",
         # Undeclared Read Check (OMN-26424): unconditional apart from the same fork guard; covered by the L3 default-deny sweep.
         "undeclared-read-check",
+        # OMN-26446: the dev push tree-pass probe. It reports `skipped` on every
+        # pull request and merge group run, and on a dev push a failed probe is a
+        # non-good conclusion the L3 default-deny sweep fails; the verdict job
+        # (`Dev Push Full Suite Reuse`) also reads its result through `needs`.
+        "dev-tree-pass-probe",
     }
 )
 
