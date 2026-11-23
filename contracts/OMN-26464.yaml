@@ -42,7 +42,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_gateway_workflow_terminal_effect -q --no-cov -n 0 -p no:randomly -k "not real_postgres"
     cwd: .
 - id: dod-omn26464-ac6-writer-contract
-  description: 'AC6 (node half): the node contract declares the two terminal topics, the dead-letter topic and the gateway_workflows db_io entry, the handler holds no topic literal, and the new node has a golden-chain test.'
+  description: 'AC6 (node half): the node contract declares the two terminal topics, the dead-letter topic under event_bus.dlq_topics, the handler holds no topic literal, and the new node has a golden-chain test.'
   source: manual
   binds_ac:
   - AC6

@@ -80,17 +80,10 @@ dependencies:
     module: "omnibase_infra.runtime.secret_resolver"
     description: "Resolves the logical DSN secret name the overlay gives, for the gateway's database."
     required: false
-db_io:
-  db_tables:
-    # The table lives in the gateway's database (omninode_cloud, schema public); its migrations belong to the
-    # hosted gateway's database owner, not to this repository, so the migration cell is that owner's path.
-    # The handler selects and locks the row before it updates it, so access is read_write.
-    - name: gateway_workflows
-      database_ref: omninode_cloud
-      schema: public
-      migration: "db/migrations/20260721_gateway_workflows.sql"
-      access: read_write
-      role: gateway_workflow_store
+# The writer's table, public.gateway_workflows, lives in the hosted gateway's own database, which the runtime
+# topology does not declare, so the contract carries no db_io entry (node_workflow_gateway_effect, the store's
+# other user, carries none either). The handler selects and locks the row before it updates it; the connection
+# comes from the logical DSN secret the overlay names, through the SecretResolver dependency above.
 broker_acl_grants:
   - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
     grants:

@@ -392,9 +392,6 @@ def test_contract_declares_topics_and_dead_letter() -> None:
     assert len(declared) == 2
     assert _DLQ in contract["event_bus"]["dlq_topics"]
     assert _DLQ not in contract["event_bus"]["publish_topics"]
-    table = contract["db_io"]["db_tables"][0]
-    assert table["name"] == "gateway_workflows"
-    assert table["access"] == "read_write"
     for module in (handler_module,):
         assert "onex.evt" not in inspect.getsource(module)
         assert "onex.dlq" not in inspect.getsource(module)
