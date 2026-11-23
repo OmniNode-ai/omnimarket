@@ -244,3 +244,17 @@ async def test_view_has_no_per_row_anti_join(store):
     rows = await store.fetch("EXPLAIN (FORMAT TEXT) SELECT * FROM " + SAVINGS)
     plan = "\n".join(r["QUERY PLAN"] for r in rows)
     assert "Nested Loop Anti Join" not in plan, "view uses a per-row anti join"
+
+
+async def test_the_fill_runs_under_the_writer_role(store) -> None:
+    """Review finding 1 (OMN-26444): the metering writer fills savings_priced_models as tenant_projection_writer, not as a superuser, so the role migration 102 grants must be enough for the one-statement upsert-and-delete; without UPDATE the ON CONFLICT DO UPDATE is refused with permission denied."""
+    schema = await store.fetchval("SELECT current_schema()")
+    await store.execute(f'GRANT USAGE ON SCHEMA "{schema}" TO tenant_projection_writer')
+    await store.execute("SET ROLE tenant_projection_writer")
+    try:
+        filled = await refresh_shared_priced_models(_Reads(store))
+        count = await store.fetchval("SELECT count(*) FROM savings_priced_models")
+    finally:
+        await store.execute("RESET ROLE")
+    assert filled > 0, "positive control: the manifest names at least one model"
+    assert count == filled
