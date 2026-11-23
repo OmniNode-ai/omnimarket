@@ -102,9 +102,14 @@ def endpoint_load_targets(
 
 
 def _fetch_scrape(url: str) -> str:
-    response = httpx.get(url, timeout=LOAD_READ_TIMEOUT_SECONDS)
-    response.raise_for_status()
-    return response.text
+    with (
+        httpx.Client(  # no-contract-check: read-only Prometheus scrape boundary, injectable seam
+            timeout=LOAD_READ_TIMEOUT_SECONDS
+        ) as client
+    ):
+        response = client.get(url)
+        response.raise_for_status()
+        return response.text
 
 
 def _read_one(ref: str, endpoint_url: str, fetch: MetricsFetch) -> ModelEndpointLoad:
