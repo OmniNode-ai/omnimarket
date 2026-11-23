@@ -45,24 +45,56 @@ RULING_TYPES = ("RULING", "OPERATOR-CONSENT")
 
 
 class LedgerRow:
-    """One row's first line, split as the markdown readers split it."""
+    """One row's first line, split as the markdown readers split it.
 
-    __slots__ = ("cells", "fields", "record", "row_type", "stamp", "text")
+    A window read holds thousands of rows and most requests keep a few of them, so
+    nothing past the row's stamp and type is split until a reader asks for it: the
+    cells, the keyed fields and the one-token lookup are each built on first use,
+    once, and a row the selection drops on its stamp or type never pays for them.
+    """
+
+    __slots__ = (
+        "_cells",
+        "_fields",
+        "_rest",
+        "_tokens",
+        "record",
+        "row_type",
+        "stamp",
+        "text",
+    )
 
     def __init__(self, record: ModelWorkLedgerRowRecord, match: re.Match[str]) -> None:
         self.record = record
         self.text = record.text
         self.stamp = match.group("stamp")
         self.row_type = match.group("type").strip()
-        rest = match.group("rest")
-        self.cells = [c.strip() for c in rest.split("|")] if rest is not None else []
-        self.fields: dict[str, list[str]] = {}
-        for cell in self.cells:
-            keyed = FIELD_RE.match(cell)
-            if keyed:
-                self.fields.setdefault(keyed.group("key").lower(), []).append(
-                    keyed.group("value").strip()
-                )
+        self._rest: str | None = match.group("rest")
+        self._cells: list[str] | None = None
+        self._fields: dict[str, list[str]] | None = None
+        self._tokens: dict[str, str] | None = None
+
+    @property
+    def cells(self) -> list[str]:
+        if self._cells is None:
+            rest = self._rest
+            self._cells = (
+                [c.strip() for c in rest.split("|")] if rest is not None else []
+            )
+        return self._cells
+
+    @property
+    def fields(self) -> dict[str, list[str]]:
+        if self._fields is None:
+            fields: dict[str, list[str]] = {}
+            for cell in self.cells:
+                keyed = FIELD_RE.match(cell)
+                if keyed:
+                    fields.setdefault(keyed.group("key").lower(), []).append(
+                        keyed.group("value").strip()
+                    )
+            self._fields = fields
+        return self._fields
 
     def value(self, key: str) -> str | None:
         """The first non-empty value of ``key``."""
@@ -70,13 +102,16 @@ class LedgerRow:
 
     def token(self, key: str) -> str | None:
         """A value only when its cell is exactly ``key=<one token>``."""
-        for cell in self.cells:
-            keyed = FIELD_RE.match(cell)
-            if keyed and keyed.group("key").lower() == key:
-                value = keyed.group("value").strip()
-                if value and not re.search(r"\s", value):
-                    return value
-        return None
+        if self._tokens is None:
+            tokens: dict[str, str] = {}
+            for cell in self.cells:
+                keyed = FIELD_RE.match(cell)
+                if keyed:
+                    value = keyed.group("value").strip()
+                    if value and not re.search(r"\s", value):
+                        tokens.setdefault(keyed.group("key").lower(), value)
+            self._tokens = tokens
+        return self._tokens.get(key)
 
     def cell(self, key: str) -> str:
         """The first word of the first cell opening ``key=`` (an awk read)."""
@@ -103,6 +138,20 @@ def _moment(stamp: str) -> datetime:
     return datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
 
 
+def _since_cutoff(since: datetime) -> tuple[str, bool] | None:
+    """``since`` as a stamp to compare a row's stamp with as text, or None to compare as datetimes.
+
+    A stamp is fixed-width UTC to the second, so text order is time order. A row is before
+    ``since`` when its stamp is below the stamp of ``since`` cut to the second, or equal to it
+    when ``since`` carries a fraction of a second. A ``since`` with no zone keeps the datetime
+    comparison, which refuses it as it always did.
+    """
+    if since.tzinfo is None:
+        return None
+    moment = since.astimezone(UTC)
+    return (moment.strftime("%Y-%m-%dT%H:%M:%SZ"), moment.microsecond > 0)
+
+
 def _whole(text: str, value: str) -> bool:
     pattern = rf"(?<![A-Za-z0-9_.-]){re.escape(value)}(?![A-Za-z0-9_.-])"
     return re.search(pattern, text) is not None
@@ -122,8 +171,24 @@ def select_rows(
     """The ``query`` verb's filter, every condition as it applies them."""
     wanted = {kind.upper() for kind in kinds}
     matched = []
+    cutoff = _since_cutoff(since) if since else None
     for row in rows:
-        if since and _moment(row.stamp) < since:
+        if since:
+            if cutoff is None:
+                if _moment(row.stamp) < since:
+                    continue
+            elif row.stamp < cutoff[0] or (cutoff[1] and row.stamp == cutoff[0]):
+                continue
+        # A lane, pr, ticket or row id that decides a match is a piece of the row's own text,
+        # so a row without it is dropped here before any of its cells are split.
+        text = row.text
+        if (
+            (wanted and row.row_type.upper() not in wanted)
+            or (lane and lane not in text)
+            or (pr and pr not in text)
+            or (ticket and ticket not in text)
+            or (row_ref and row_ref not in text)
+        ):
             continue
         if lane and lane not in {
             row.token("lane"),
