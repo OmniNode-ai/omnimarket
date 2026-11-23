@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Work Ledger File Census Effect (OMN-22917, piece 6: reading 2 of plan section 4.3)
+#
+# Counts, per registered repository, the files holding an executable reader or writer of the ledger
+# file's name or its path variable (a comment, a docstring, a document and a ruling's line citation
+# are none), against a shrink-only ratchet file. A count above its row is red.
+name: node_work_ledger_file_census_effect
+contract_name: node_work_ledger_file_census_effect
+node_name: node_work_ledger_file_census_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Reading 2 of the no-file ledger: a census of executable readers and writers of the ledger file's
+  name and path variable over the registered repositories, held by a ratchet that only shrinks. The
+  repositories, names, variables, comment rules and the ratchet file are overlay settings. A repository
+  that is absent or unreadable, one with no ratchet row and an unreadable ratchet file are typed
+  failures, never a pass. Every run is one emission chain (piece 6): a start, then a success or a
+  typed failure under one correlation id.
+
+handler:
+  module: omnimarket.nodes.node_work_ledger_file_census_effect.handlers.handler_file_census
+  class: HandlerFileCensus
+  input_model: omnimarket.nodes.node_work_ledger_file_census_effect.models.model_file_census.ModelCensusRequest
+
+# HandlerFileCensus takes the overlay, the repository source, the ratchet store, the emission sink and
+# the clock as constructor parameters, so the node runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [file-read, event-journal]
+  timeout_ms: 300000
+
+input_model:
+  name: ModelCensusRequest
+  module: omnimarket.nodes.node_work_ledger_file_census_effect.models.model_file_census
+  description: The correlation id and the registered repositories to count (all when none).
+output_model:
+  name: ModelCensusResult
+  module: omnimarket.nodes.node_work_ledger_file_census_effect.models.model_file_census
+  description: Per repository files, readers, writers and ratchet state, the total, the failure code and the lowered ratchet.
+
+runtime_dispatch:
+  external_trigger: true
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+overlay:
+  node: node_work_ledger_file_census_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+metadata:
+  ticket: OMN-22917
+  transport_type: inmemory

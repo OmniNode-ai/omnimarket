@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerGatewayWorkflowTerminalCompleted and HandlerGatewayWorkflowTerminalFailed are resolved at boot from handler_routing in contract.yaml, by module path, not by a Python import
 """Terminal-outcome writer for gateway workflows.
 
 Reads one delegation terminal event (delegation-completed or delegation-failed, both the flat
@@ -116,7 +117,15 @@ def _count(payload: dict[str, Any], key: str) -> int:
 
 
 class HandlerGatewayWorkflowTerminal:
-    """Write one delegation terminal onto its gateway workflow row."""
+    """Write one delegation terminal onto its gateway workflow row.
+
+    The runtime's standard dispatch callback hands an operation_match handler the unwrapped wire
+    payload alone, with no topic or event type, so a delivery can name nothing. A subclass bound
+    to one status by its contract route (below) supplies the status the route implies; this
+    class, bound to none, refuses a delivery that names nothing.
+    """
+
+    bound_status: Literal["completed", "failed"] | None = None
 
     def __init__(
         self,
@@ -157,6 +166,9 @@ class HandlerGatewayWorkflowTerminal:
             parts = topic.split(".")
             if request.event_type and ".".join(parts[2:-1]) == request.event_type:
                 return status
+        if not request.topic and not request.event_type:
+            # The delivery names nothing: the route the runtime dispatched it on decides.
+            return self.bound_status
         return None
 
     async def handle(
@@ -285,4 +297,21 @@ class HandlerGatewayWorkflowTerminal:
         self._count_event(f"dead_lettered_{reason.value}")
 
 
-__all__: list[str] = ["HandlerGatewayWorkflowTerminal", "load_contract_routes"]
+class HandlerGatewayWorkflowTerminalCompleted(HandlerGatewayWorkflowTerminal):
+    """The handler the contract binds to the delegation-completed route."""
+
+    bound_status = "completed"
+
+
+class HandlerGatewayWorkflowTerminalFailed(HandlerGatewayWorkflowTerminal):
+    """The handler the contract binds to the delegation-failed route."""
+
+    bound_status = "failed"
+
+
+__all__: list[str] = [
+    "HandlerGatewayWorkflowTerminal",
+    "HandlerGatewayWorkflowTerminalCompleted",
+    "HandlerGatewayWorkflowTerminalFailed",
+    "load_contract_routes",
+]

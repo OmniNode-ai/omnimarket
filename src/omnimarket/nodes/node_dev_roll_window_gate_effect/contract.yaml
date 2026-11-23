@@ -94,8 +94,8 @@ handler_routing:
     - operation: "dev_roll_window.tick"
       message_category: "intent"
       handler:
-        name: "HandlerDevRollWindowTick"
-        module: "omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.handler_dev_roll_window_tick"
+        name: "HandlerDevRollWindowTickPublish"
+        module: "omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.handler_dev_roll_window_tick_publish"
       event_model:
         name: "ModelRuntimeTick"
         module: "omnibase_infra.runtime.models.model_runtime_tick"
