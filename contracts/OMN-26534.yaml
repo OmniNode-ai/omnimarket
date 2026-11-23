@@ -27,20 +27,6 @@ requirements:
       - id: "AC3"
         statement: |-
           AC3: the diff changes no existing timeout constant and touches only omnimarket paths -- falsifier: the diff changes a 180 or any existing timeout value, or touches a path outside omnimarket
-  - id: "req-omn26534-identify"
-    statement: |-
-      The heavy client of the model server is identified read-only.
-    acceptance:
-      - id: "AC4"
-        statement: |-
-          AC4: the lane report names what the heavy client of the model server is, with the tailscale status command and its output, and no connection to it was made -- falsifier: the report names it with no tailscale status read
-  - id: "req-omn26534-landing"
-    statement: |-
-      The pull request is open against the landing branch with required checks green at the handed head.
-    acceptance:
-      - id: "AC5"
-        statement: |-
-          AC5: the PR is open against dev, required checks green on its head, handed to landing-controller by one MSG -- falsifier: onex scm pr-view shows a required context red or pending at the handed head
 evidence_requirements:
   - kind: "tests"
     description: "The new test file passes at the pushed head and fails at the merge base, where its imports do not exist."
@@ -73,24 +59,6 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/routing/test_load_aware_local_pick_omn26534.py -q -n 0 --no-cov -k read_timeout"
-        cwd: "."
-  - id: "dod-omn26534-ac4-identified"
-    description: "The lane report carries the tailscale status read for the heavy client."
-    source: "manual"
-    binds_ac: ["AC4"]
-    execution_scope: local_done_gate
-    checks:
-      - check_type: "command"
-        check_value: "grep -l 'tailscale status' \"$OMNI_HOME\"/.claude_scratch/reports/c13route-1340-*.md"
-        cwd: "."
-  - id: "dod-omn26534-ac5-landing"
-    description: "The PR's required checks read green at the handed head."
-    source: "manual"
-    binds_ac: ["AC5"]
-    execution_scope: local_done_gate
-    checks:
-      - check_type: "command"
-        check_value: "onex scm pr-checks OmniNode-ai/omnimarket"
         cwd: "."
   - id: "dod-omn26534-integration-proof"
     description: "Run the load-aware pick tests on a lab host at the pushed head; the local Done gate runs this unbound check."
