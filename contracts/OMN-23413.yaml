@@ -319,7 +319,8 @@ dod_evidence:
     the WSL 2 remedy while native Ubuntu and WSL 2 kernels are admitted; that
     native Windows gets the Ubuntu under WSL 2 remedy without reading the
     workspace or its disk, with Unix locking unavailable, and leaves the profile
-    and workspace untouched; and that the installed preflight succeeds on an
+    and workspace untouched; that the model catalogue and the setup CLI import
+    where fcntl does not exist; and that the installed preflight succeeds on an
     Ubuntu host.
   source: manual
   execution_scope: hosted_and_local
@@ -328,7 +329,8 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_setup_linux_preflight.py
-      tests/e2e/test_setup_preflight_cli.py -q --no-cov -n 0 -p no:randomly
+      tests/e2e/test_setup_preflight_cli.py tests/unit/handlers/test_model_catalog_imports_without_fcntl_omn23413.py
+      -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23413-ac8-migration-repair
   description: One versioned journal, nonblocking lock, atomic checkpoints, one-time import, resume and
