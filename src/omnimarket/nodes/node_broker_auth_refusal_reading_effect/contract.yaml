@@ -50,6 +50,9 @@ terminal_event: onex.evt.omnimarket.broker-auth-refusal-run-completed.v1
 
 runtime_dispatch:
   external_trigger: true
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_broker_auth_refusal_reading_effect
+    owner: OmniNode Platform Team
 
 topics:
   broker_auth_refusal_requested: onex.cmd.omnimarket.broker-auth-refusal-requested.v1

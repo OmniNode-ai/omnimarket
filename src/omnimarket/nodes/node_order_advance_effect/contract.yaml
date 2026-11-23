@@ -59,6 +59,9 @@ terminal_event: onex.evt.omnimarket.order-advance-answered.v1
 
 runtime_dispatch:
   external_trigger: true
+  on_demand:
+    command: onex run-node node_order_advance_effect
+    owner: OmniNode Platform Team
 
 # The topics by role; the handler's event mapping reads these and holds no topic string.
 topics:

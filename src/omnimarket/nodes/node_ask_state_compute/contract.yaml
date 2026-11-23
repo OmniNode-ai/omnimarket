@@ -87,6 +87,8 @@ runtime_dispatch:
     success: "onex.evt.omnimarket.ask-state-completed.v1"
     failure: "onex.evt.omnimarket.ask-state-failed.v1"
   external_trigger: "node_ask_state_effect (python -m omnimarket.nodes.node_ask_state_effect --since <UTC stamp>) reads the sources and calls HandlerAskState.handle in process."
+  callers:
+    - path: src/omnimarket/nodes/node_ask_state_effect/handlers/handler_ask_state_report.py
 descriptor:
   node_archetype: compute
   purity: pure

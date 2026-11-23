@@ -56,6 +56,9 @@ terminal_event: onex.evt.omnimarket.delegation-completion-rate-run-completed.v1
 
 runtime_dispatch:
   external_trigger: true
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_delegation_completion_rate_effect
+    owner: OmniNode Platform Team
 
 topics:
   delegation_rate_run_requested: onex.cmd.omnimarket.delegation-completion-rate-run-requested.v1
