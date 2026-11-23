@@ -98,6 +98,8 @@ config:
       reason: "no entry point; listed in the inventory test before this file existed"
     - node: "node_merge_sweep_triage_orchestrator"
       reason: "no entry point; listed in the inventory test before this file existed"
+    - node: "node_metering_tenant_records_effect"
+      reason: "OMN-26449: the tenant-scoped metering records read is called in process by the metering headline refresh (sqlite_metering_summary.py) and onex metering's staleness check (cli_metering.py); it reads the local evidence store read only, publishes nothing and subscribes to no topic, so it has no entry point."
     - node: "node_model_setup_effect"
       reason: "OMN-20817: the model setup effect runs from `onex models`; it returns its status and test results to the CLI shim and subscribes to no topic, so it has no entry point."
     - node: "node_pr_lifecycle_triage_compute"

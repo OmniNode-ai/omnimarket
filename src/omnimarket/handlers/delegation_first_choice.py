@@ -29,6 +29,7 @@ from omnimarket.handlers.routing.delegation_backend_resolution import (
 from omnimarket.handlers.routing.local_byok_route import (
     registered_local_model_routes,
     resolve_pinned_byok_route,
+    with_byok_model,
 )
 from omnimarket.inference.local_byok_credential_adapter import (
     local_byok_key_test_failed,
@@ -173,7 +174,7 @@ def first_choice_route(
     route = resolve_pinned_byok_route(byok.backend_id, db_path=db_path)
     if route is None:
         return None
-    return route.model_copy(update={"model_id": model})
+    return with_byok_model(route, model)
 
 
 def first_choice_routes(
@@ -261,7 +262,7 @@ def selected_model_routes(
         if not models:
             routes.append(route)
         for chosen in models:
-            routes.append(route.model_copy(update={"model_id": chosen}))
+            routes.append(with_byok_model(route, chosen))
     overlay = local_model_tests_path(db_path).with_name("bifrost_overrides.yaml")
     for row in read_named_connections(db_path=db_path):
         connection = ModelEndpointConnection.model_validate(row)

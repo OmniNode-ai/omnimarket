@@ -53,6 +53,15 @@ requirements:
           gate and a market-side run_by_lane_scripts_kept test -- falsifier: uv run pytest
           tests/ci/test_omninode_onex_package_omn25070.py -k run_by_lane fails when omnimarket-projection-api is removed from,
           or retargeted in, pyproject.toml [project.scripts], or declared by packages/omninode-onex.
+  - id: req-omn25070-market-proof-scripts
+    statement: The two proof scripts run the core CLI as a module, not the onex launcher.
+    acceptance:
+      - id: AC3
+        statement: >-
+          AC3 (the launcher move), the part these scripts carry: omnibase-core stops declaring onex, so
+          scripts/run_four_node_proof.sh and scripts/run_l1_proof.sh run uv run python -m
+          omnibase_core.cli.cli_commands node with the same arguments and run no onex launcher -- falsifier: uv run
+          pytest tests/ci/test_proof_scripts_run_core_module_omn25070.py, which fails on dev, where both run uv run onex node.
 evidence_requirements:
   - kind: tests
     description: The package tests; the opt-in install check runs with ONEX_TEST_ONEX_WHEEL set.
@@ -108,4 +117,14 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25070 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_onex_installer_render_compute tests/ci/test_omninode_onex_install_sh_omn25070.py -q --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn25070-market-proof-scripts
+    description: Both proof scripts run nodes through the core module and run no onex launcher. Fails on dev, where both run uv run onex node.
+    source: manual
+    binds_ac:
+      - AC3
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_proof_scripts_run_core_module_omn25070.py -q --no-cov
         cwd: ${OMNI_HOME}/omnimarket
