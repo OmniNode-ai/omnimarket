@@ -193,6 +193,9 @@ from omnimarket.handlers.routing.local_byok_route import (
 from omnimarket.handlers.routing.measured_correct_ceiling import (
     refuse_above_measured_correct_ceiling,
 )
+from omnimarket.handlers.routing.spread_load_snapshot import (
+    read_spread_load_snapshot,
+)
 from omnimarket.handlers.tenant_mirror_requirement import require_tenant_mirrored
 from omnimarket.inference import provider_quota_state
 from omnimarket.inference.protocol_config import (
@@ -404,9 +407,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     sibling_backend_available_in_tier,
     tier_for_backend,
     tier_max_retries,
-)
-from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_spread_load_snapshot import (
-    read_spread_load_snapshot,
 )
 from omnimarket.nodes.node_delegation_shrink_retry_compute.handlers.handler_shrink_retry_policy import (
     next_best_configuration,
