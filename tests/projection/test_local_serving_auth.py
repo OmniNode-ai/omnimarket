@@ -266,5 +266,5 @@ def test_onex_dashboard_prints_the_start_url_with_this_starts_token(
     assert result.exit_code == 0, result.output
     [request] = handed
     token = request.access_token.get_secret_value()
-    assert f"http://127.0.0.1:{_PORT}/?{DASHBOARD_TOKEN_PARAM}={token}" in result.output
-    assert result.output.count(token) == 1
+    assert "onex dashboard open" in result.output
+    assert token not in result.output

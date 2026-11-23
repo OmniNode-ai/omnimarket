@@ -72,7 +72,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from fastapi import FastAPI, Query, Request, Response
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 from omnimarket.handlers import handler_model_keys as model_keys
 from omnimarket.handlers.handler_local_environment_judgement import (
@@ -543,6 +543,20 @@ def require_local_access(app: FastAPI, *, token: str, port: int) -> None:
             )
         presented = _presented_tokens(request, cookie)
         if not any(_matches(p, expected) for p in presented):
+            accept = request.headers.get("accept", "")
+            if request.url.path == "/" and "text/html" in accept:
+                return HTMLResponse(
+                    status_code=200,
+                    content=(
+                        '<!doctype html><html><head><meta charset="utf-8">'
+                        "<title>ONEX dashboard</title></head><body>"
+                        "<h1>ONEX local dashboard</h1>"
+                        "<p>This address needs this start's token. "
+                        "Press Enter in the TUI, use the Open button, or run "
+                        "<code>onex dashboard open</code> to open it.</p>"
+                        "</body></html>"
+                    ),
+                )
             return JSONResponse(
                 status_code=401,
                 headers={"WWW-Authenticate": "Bearer"},
