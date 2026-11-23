@@ -107,4 +107,6 @@ metadata:
   description: "The terminal-outcome writer for gateway workflows."
   author: "OmniNode Team"
   license: "MIT"
-  transport_type: kafka
+  # The effect's own I/O is the gateway database write (asyncpg in handlers/store_postgres.py); the compliance
+  # sweep reads this field as the declared transport. Kafka is the trigger, declared under event_bus above.
+  transport_type: database

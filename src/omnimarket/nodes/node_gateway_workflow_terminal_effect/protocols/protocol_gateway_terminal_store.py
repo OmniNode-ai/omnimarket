@@ -31,7 +31,6 @@ class ProtocolGatewayTerminalStore(Protocol):
         self, update: ModelTerminalUpdate
     ) -> tuple[EnumGatewayTerminalStoreOutcome, UUID | None]:
         """Return the outcome and the workflow id of the row, when there is exactly one."""
-        ...
 
 
 @runtime_checkable
@@ -40,7 +39,6 @@ class ProtocolGatewayTerminalDeadLetter(Protocol):
 
     async def publish(self, *, topic: str, key: str, record: dict[str, Any]) -> None:
         """Raises GatewayTerminalPublishError on every failure path."""
-        ...
 
 
 __all__: list[str] = [

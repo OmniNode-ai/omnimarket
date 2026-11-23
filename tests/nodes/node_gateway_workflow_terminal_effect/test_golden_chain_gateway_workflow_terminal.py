@@ -397,6 +397,24 @@ def test_contract_declares_topics_and_dead_letter() -> None:
         assert "onex.dlq" not in inspect.getsource(module)
 
 
+def test_store_transport_import_is_declared_by_the_contract() -> None:
+    """The store imports asyncpg, so the contract must declare the DATABASE transport.
+
+    The compliance sweep flags an undeclared transport import in a handler file; the
+    declaration it reads is contract.yaml metadata.transport_type (the store's other
+    user, node_workflow_gateway_effect, declares the same way).
+    """
+    from omnimarket.nodes.node_compliance_sweep.handlers.handler_compliance_sweep import (
+        NodeComplianceSweep,
+    )
+
+    store_file = _NODE / "handlers" / "store_postgres.py"
+    violations = NodeComplianceSweep()._check_transport_imports(
+        "", str(store_file), "node_gateway_workflow_terminal_effect", store_file
+    )
+    assert [v.message for v in violations] == []
+
+
 def test_handler_signature_is_canonical() -> None:
     params = inspect.signature(HandlerGatewayWorkflowTerminal.handle).parameters
     assert list(params) == ["self", "request"]

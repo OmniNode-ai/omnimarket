@@ -91,6 +91,7 @@ async def database() -> AsyncIterator[str]:
         asyncpg.PostgresError,
     ) as exc:
         pytest.skip(f"no reachable Postgres for terminal writer proof: {exc}")
+        return  # pytest.skip raises; the return leaves `admin` defined on every path below
     try:
         await admin.execute(f'CREATE DATABASE "{name}"')
         dsn = _admin_dsn(name)
