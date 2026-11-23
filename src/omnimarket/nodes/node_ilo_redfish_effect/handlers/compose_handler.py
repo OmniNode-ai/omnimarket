@@ -5,7 +5,8 @@
 Both callers, the node's own CLI and the host power node, build the handler here, so the pinned-TLS
 transport, the lab-secret-store credentials, the ledger approval source and the file journal are
 composed once. This module reads no environment: the caller passes the overlay, its directory and
-the ledger path. A ``None`` ledger path is a read-only composition: the approval source reads
+the ledger path, or an approval source that reads through the moved ledger reader (which
+needs no path). A ``None`` ledger path with no approval source is a read-only composition: the approval source reads
 nothing, so every write is refused for want of an approval row.
 """
 
@@ -32,6 +33,7 @@ from omnimarket.nodes.node_ilo_redfish_effect.handlers.journal_file import (
     LedgerApprovalSource,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.protocols import (
+    ProtocolApprovalSource,
     ProtocolRedfishTransport,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.transport_pinned_https import (
@@ -40,7 +42,10 @@ from omnimarket.nodes.node_ilo_redfish_effect.handlers.transport_pinned_https im
 
 
 def compose_ilo_handler(
-    overlay: ModelIloOverlay, overlay_dir: Path, ledger_path: Path | None
+    overlay: ModelIloOverlay,
+    overlay_dir: Path,
+    ledger_path: Path | None,
+    approvals: ProtocolApprovalSource | None = None,
 ) -> HandlerIloRedfish:
     def factory(host: ModelIloHost) -> ProtocolRedfishTransport:
         return build_pinned_transport(host, overlay_dir)
@@ -49,7 +54,9 @@ def compose_ilo_handler(
         overlay=overlay,
         transport_factory=factory,
         credentials=StoreCredentialSource(),
-        approvals=LedgerApprovalSource(ledger_path or Path(os.devnull)),
+        approvals=approvals
+        if approvals is not None
+        else LedgerApprovalSource(ledger_path or Path(os.devnull)),
         journal=FileActionJournal(Path(overlay.journal_dir)),
         clock=lambda: datetime.now(UTC),
         sleeper=time.sleep,
