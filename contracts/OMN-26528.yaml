@@ -54,13 +54,13 @@ dod_evidence:
     check_value: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_cli_hang_omn13597.py -q --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26528-ac4
-  description: 'hosted proxy for AC4: the delegate skill orchestrator tests pass at the pushed head; the required contexts reading is the PR watcher state read after the push and is not met by this change alone.'
+  description: 'hosted proxy for AC4: the four delegate skill orchestrator test files that open the evidence store pass at the pushed head, inside the hosted 300 s per-check budget; the whole directory run takes about 17 minutes on a lab host and is not a hosted check, and the required contexts reading is the PR watcher state read after the push, not met by this change alone.'
   source: manual
   binds_ac:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator -q --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_cli_hang_omn13597.py tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_evidence.py tests/unit/nodes/node_delegate_skill_orchestrator/test_evidence_db_resolution_omn14015.py tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_child_boot_budget_omn14883.py -q --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26528-integration-proof
   description: the unreachable-endpoint test runs under injected fsync latency of 10 ms on a lab host at the pushed head; hosted CI cannot inject latency, so only the local Done gate runs this unbound check
