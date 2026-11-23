@@ -62,6 +62,9 @@ from omnimarket.nodes.node_ilo_redfish_effect.handlers.ilo_setup_runner import (
     OVERLAY_NODE_DIR,
     IloSetupSequence,
 )
+from omnimarket.nodes.node_ilo_redfish_effect.handlers.journal_file import (
+    ReaderApprovalSource,
+)
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.setup_adapters import (
     InfisicalSetupSecrets,
     ask_same_password,
@@ -85,7 +88,6 @@ from omnimarket.nodes.node_ilo_redfish_effect.models.model_ilo_setup import (
 NODE_NAME = "node_ilo_redfish_effect"
 SETUP_VERB = "setup"
 LANE_ENV = "ONEX_LANE"
-LEDGER_ENV = "ONEX_LEDGER_PATH"
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -274,17 +276,11 @@ def main(argv: list[str] | None = None) -> int:
         return _fail("overlay_unavailable", str(exc)[:300])
     overlay_dir = overlay_file.parent
 
-    ledger_path = (
-        Path(os.environ[LEDGER_ENV])
-        if request.is_write and LEDGER_ENV in os.environ
-        else None
+    # The consent row is read by timestamp through the moved ledger reader, never from the file. The
+    # lookup is fail-closed: an unreadable, absent or ambiguous answer refuses the write.
+    handler = compose_ilo_handler(
+        overlay, overlay_dir, None, approvals=ReaderApprovalSource()
     )
-    if request.is_write and ledger_path is None:
-        return _fail(
-            "ledger_path_missing",
-            f"a write needs {LEDGER_ENV} to read the approval row",
-        )
-    handler = compose_ilo_handler(overlay, overlay_dir, ledger_path)
     result = handler.handle(request)
     print(result.model_dump_json(indent=2))
     if result.outcome in {EnumIloOutcome.OK, EnumIloOutcome.NOOP}:

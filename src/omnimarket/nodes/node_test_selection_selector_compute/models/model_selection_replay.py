@@ -11,10 +11,13 @@ same input answers the same way on any checkout.
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_file_level_closure import (
+    EnumRootConftestEdge,
+)
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
     ModelAdjacencyMap,
 )
@@ -24,6 +27,8 @@ from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_sel
 
 _HEX40 = r"^[0-9a-f]{40}$"
 _HEX64 = r"^[0-9a-f]{64}$"
+#: Unread by the selector; a frozen policy that never declared a tolerance gets one inside the field's range.
+_LEGACY_RECORD_TOLERANCE_RATIO = 0.5
 
 
 class EnumReplayKind(StrEnum):
@@ -60,6 +65,29 @@ class ModelTreeSnapshot(BaseModel):
     yaml_names: dict[str, tuple[str, ...]]
     """Node names spelled by each YAML file of a node-scoped module's node packages."""
 
+    @field_validator("policy", mode="before")
+    @classmethod
+    def _legacy_policy_fields(cls, value: Any) -> Any:
+        """Read a frozen snapshot's policy that predates the narrowed-run bound fields.
+
+        A snapshot is frozen at a tree id, so one committed before ``narrowed_bound_seconds``,
+        ``untimed_file_seconds``, ``record_tolerance_ratio`` and ``comparison_bounds_seconds`` existed
+        still names the policy it was taken under. Each missing field takes the value that leaves that
+        policy's decisions as they were: the bound is the shard cap's own reach, an untimed file costs
+        nothing and no comparison bound is priced. The live policy file declares every field and
+        ``ModelSelectorPolicy`` still requires them, so this only widens what a frozen snapshot may omit.
+        """
+        if not isinstance(value, dict) or "narrowed_bound_seconds" in value:
+            return value
+        return {
+            **value,
+            "narrowed_bound_seconds": value["max_narrowed_shards"]
+            * value["target_shard_seconds"],
+            "untimed_file_seconds": 0.0,
+            "record_tolerance_ratio": _LEGACY_RECORD_TOLERANCE_RATIO,
+            "comparison_bounds_seconds": (),
+        }
+
 
 class ModelDataFileTexts(BaseModel):
     """One declared data file at a merge's base and head ('' when absent on that side).
@@ -83,14 +111,25 @@ class ModelReplayMerge(BaseModel):
     data_files: tuple[ModelDataFileTexts, ...] = ()
 
 
+class ModelReplayClosure(BaseModel):
+    """The file-level closure's settings for a replay of a stage at or above the closure's own."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    file_level_closure_stage: int = Field(ge=1, le=4)
+    root_conftest_edge: EnumRootConftestEdge
+
+
 class ModelReplayRequest(BaseModel):
     """One replay: the merges, the frozen tree they are replayed against, and the labels of the report."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     operation: Literal["replay_selection"] = "replay_selection"
-    stage: int = Field(default=0, ge=0, le=0)
-    """The selection stage replayed. Only stage 0 (today's selector) exists."""
+    stage: int = Field(default=0, ge=0, le=4)
+    """The selection stage replayed: 0 (the module-level selector) or the closure's stage or above."""
+    closure: ModelReplayClosure | None = None
+    """The file-level closure's settings; required above stage 0, because the frozen snapshot predates them."""
     flag_enabled: bool = True
     full_split_count: int = Field(ge=1, le=40)
     """Shards of a full-suite decision."""
@@ -107,6 +146,18 @@ class ModelReplayRequest(BaseModel):
     data_file_paths: tuple[str, ...] = ("pyproject.toml",)
     """The declared data files whose changed sections are reported."""
     merges: tuple[ModelReplayMerge, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _stage_has_a_rule_set(self) -> ModelReplayRequest:
+        if self.stage == 0:
+            return self
+        if self.closure is None:
+            raise ValueError("a replay above stage 0 needs the closure settings")
+        if self.stage < self.closure.file_level_closure_stage:
+            raise ValueError(
+                "a replay stage is 0 or at least the closure's file_level_closure_stage"
+            )
+        return self
 
     @model_validator(mode="after")
     def _one_snapshot_source(self) -> ModelReplayRequest:

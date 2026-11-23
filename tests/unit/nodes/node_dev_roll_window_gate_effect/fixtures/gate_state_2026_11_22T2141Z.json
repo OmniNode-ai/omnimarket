@@ -1,0 +1,142 @@
+{
+  "fixture_provenance": "Reconstruction of the gate state at 2026-11-22T21:41Z (OMN-26484). Recorded facts: the five held commands (pr-6570, 6581, 6586, 6603, 6607), last_roll job 9088a7e7, runtime_started_at 2026-11-22T20:24:50Z, finished_at 2026-11-22T21:24:50Z (the earlier deadline code), health unknown. Not recorded, so assumed: each command's merged_at and held_at, every sha, every command correlation_id. No recorded gate-state.json was found on the lab host.",
+  "state": {
+    "held": [
+      {
+        "command": {
+          "dev_deploy_protocol": null,
+          "roll_window_released": false,
+          "correlation_id": "00000000-0000-4000-8000-000000006570",
+          "scope": "full",
+          "git_ref": "0000000000000000000000000000000000000001",
+          "runtime_lane": "dev",
+          "promotion_batch_id": null,
+          "promotion_grant": null,
+          "evaluated_at": null,
+          "build_source": "release",
+          "services": [],
+          "image_ref": null,
+          "image_digest": null,
+          "requested_by": "gha/omnimarket/pr-6570",
+          "requested_at": "2026-11-22T20:31:10Z",
+          "smoke_test": false,
+          "rollback_target": "omninode-runtime:v2.3.1"
+        },
+        "repository": "omnimarket",
+        "sha": "0000000000000000000000000000000000000001",
+        "held_at": "2026-11-22T20:31:10Z",
+        "merged_at": "2026-11-22T20:31:10Z"
+      },
+      {
+        "command": {
+          "dev_deploy_protocol": null,
+          "roll_window_released": false,
+          "correlation_id": "00000000-0000-4000-8000-000000006581",
+          "scope": "full",
+          "git_ref": "0000000000000000000000000000000000000002",
+          "runtime_lane": "dev",
+          "promotion_batch_id": null,
+          "promotion_grant": null,
+          "evaluated_at": null,
+          "build_source": "release",
+          "services": [],
+          "image_ref": null,
+          "image_digest": null,
+          "requested_by": "gha/omnimarket/pr-6581",
+          "requested_at": "2026-11-22T20:44:00Z",
+          "smoke_test": false,
+          "rollback_target": "omninode-runtime:v2.3.1"
+        },
+        "repository": "omnimarket",
+        "sha": "0000000000000000000000000000000000000002",
+        "held_at": "2026-11-22T20:44:00Z",
+        "merged_at": "2026-11-22T20:44:00Z"
+      },
+      {
+        "command": {
+          "dev_deploy_protocol": null,
+          "roll_window_released": false,
+          "correlation_id": "00000000-0000-4000-8000-000000006586",
+          "scope": "full",
+          "git_ref": "0000000000000000000000000000000000000003",
+          "runtime_lane": "dev",
+          "promotion_batch_id": null,
+          "promotion_grant": null,
+          "evaluated_at": null,
+          "build_source": "release",
+          "services": [],
+          "image_ref": null,
+          "image_digest": null,
+          "requested_by": "gha/omnimarket/pr-6586",
+          "requested_at": "2026-11-22T20:58:30Z",
+          "smoke_test": false,
+          "rollback_target": "omninode-runtime:v2.3.1"
+        },
+        "repository": "omnimarket",
+        "sha": "0000000000000000000000000000000000000003",
+        "held_at": "2026-11-22T20:58:30Z",
+        "merged_at": "2026-11-22T20:58:30Z"
+      },
+      {
+        "command": {
+          "dev_deploy_protocol": null,
+          "roll_window_released": false,
+          "correlation_id": "00000000-0000-4000-8000-000000006603",
+          "scope": "full",
+          "git_ref": "0000000000000000000000000000000000000004",
+          "runtime_lane": "dev",
+          "promotion_batch_id": null,
+          "promotion_grant": null,
+          "evaluated_at": null,
+          "build_source": "release",
+          "services": [],
+          "image_ref": null,
+          "image_digest": null,
+          "requested_by": "gha/omnimarket/pr-6603",
+          "requested_at": "2026-11-22T21:07:40Z",
+          "smoke_test": false,
+          "rollback_target": "omninode-runtime:v2.3.1"
+        },
+        "repository": "omnimarket",
+        "sha": "0000000000000000000000000000000000000004",
+        "held_at": "2026-11-22T21:07:40Z",
+        "merged_at": "2026-11-22T21:07:40Z"
+      },
+      {
+        "command": {
+          "dev_deploy_protocol": null,
+          "roll_window_released": false,
+          "correlation_id": "00000000-0000-4000-8000-000000006607",
+          "scope": "full",
+          "git_ref": "0000000000000000000000000000000000000005",
+          "runtime_lane": "dev",
+          "promotion_batch_id": null,
+          "promotion_grant": null,
+          "evaluated_at": null,
+          "build_source": "release",
+          "services": [],
+          "image_ref": null,
+          "image_digest": null,
+          "requested_by": "gha/omnimarket/pr-6607",
+          "requested_at": "2026-11-22T21:10:20Z",
+          "smoke_test": false,
+          "rollback_target": "omninode-runtime:v2.3.1"
+        },
+        "repository": "omnimarket",
+        "sha": "0000000000000000000000000000000000000005",
+        "held_at": "2026-11-22T21:10:20Z",
+        "merged_at": "2026-11-22T21:10:20Z"
+      }
+    ],
+    "last_roll": {
+      "job_id": "9088a7e7",
+      "git_ref": "0000000000000000000000000000000000000063",
+      "runtime_started_at": "2026-11-22T20:24:50Z",
+      "finished_at": "2026-11-22T21:24:50Z",
+      "health": "unknown",
+      "healthy_since": null
+    },
+    "released_ids": [],
+    "abandoned": []
+  }
+}

@@ -23,7 +23,7 @@ import hashlib
 import json
 import re
 import shlex
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import click
@@ -46,6 +46,9 @@ from omnimarket.nodes.node_onex_setup_effect.models import (
 )
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_observation import (
     ModelSetupObservation,
+)
+from omnimarket.nodes.node_runtime_bus_forward_effect.adapter_core_forwarder import (
+    CoreRuntimeBusForwarder,
 )
 from tests.helpers.setup_shell_environment import isolate_setup_shell
 
@@ -82,6 +85,13 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     isolate_setup_shell(monkeypatch)
     assert Path.home() == fake_home
     assert Path.home() != real_home
+    # omnibase-core 0.47.74 ends a hosted run non-zero when none of its recorded events reached the
+    # hosted bus. The hosted bus is the boundary here: the installed forwarder carries every event.
+    monkeypatch.setattr(
+        CoreRuntimeBusForwarder,
+        "forward",
+        lambda _self, events: {"forwarded": len(events), "failed": 0, "detail": ""},
+    )
     # Every prerequisite present by default; tests remove what they need to.
     monkeypatch.setattr(handler_onex_setup, "which", lambda name: f"/usr/bin/{name}")
     monkeypatch.setattr(handler_onex_setup, "prove_model", _answering_model_step)
@@ -307,6 +317,147 @@ class TestSetupIdempotent:
         result = _run(["--no-interactive", "--workspace", str(tmp_path / "ws")])
         assert result.exit_code == 0, result.output
         assert config.read_text() == "version: 1\nmode: local\n"
+
+
+@pytest.mark.unit
+def test_a_workspace_link_is_followed_and_setup_names_the_real_folder(
+    home: Path, tmp_path: Path
+) -> None:
+    """OMN-23413, operator decision 23413-G9-FOLLOW (2026-11-22): an explicit
+    --workspace that is a symlink is followed as the user's choice, and what
+    setup prints says which real folder it writes to, next to the link given."""
+    base = tmp_path.resolve()  # tmp_path itself may sit behind a link (macOS /var)
+    real = base / "real"
+    real.mkdir()
+    link = base / "link"
+    link.symlink_to(real, target_is_directory=True)
+
+    result = _run(["--no-interactive", "--workspace", str(link)])
+
+    assert result.exit_code == 0, result.output
+    assert (real / handler_onex_setup.RUNTIME_CONFIG_RELPATH).is_file()
+    named = [
+        line
+        for line in result.output.splitlines()
+        if str(link) in line and str(real) in line
+    ]
+    assert named, (
+        f"setup never said that the link {link} writes into the real folder "
+        f"{real}:\n{result.output}"
+    )
+
+    # A folder that is not a link, or a path with ".." and no link, gets no
+    # link notice.
+    (base / "sub").mkdir()
+    for plain_path in (base / "plain", base / "sub" / ".." / "plain-too"):
+        plain = _run(["--no-interactive", "--workspace", str(plain_path)])
+        assert plain.exit_code == 0, plain.output
+        assert _LINK_NOTICE not in plain.output
+
+
+_LINK_NOTICE = "through a link"
+
+
+def _link_then_dotdot(base: Path, relative: bool) -> tuple[str, Path, Path]:
+    """a/link -> b/c, so a/link/../x is b/x on disk, while a/x as text."""
+    (base / "a").mkdir()
+    (base / "b" / "c").mkdir(parents=True)
+    (base / "a" / "link").symlink_to(base / "b" / "c", target_is_directory=True)
+    typed = Path("a") / "link" / ".." / "x"
+    return str(typed if relative else base / typed), base / typed, base / "b" / "x"
+
+
+def _parent_folder_link(base: Path) -> tuple[str, Path, Path]:
+    """Only a parent folder is a link: a/link/sub, a/link -> b/c."""
+    (base / "a").mkdir()
+    (base / "b" / "c").mkdir(parents=True)
+    (base / "a" / "link").symlink_to(base / "b" / "c", target_is_directory=True)
+    given = base / "a" / "link" / "sub"
+    return str(given), given, base / "b" / "c" / "sub"
+
+
+def _relative_link(base: Path) -> tuple[str, Path, Path]:
+    (base / "real").mkdir()
+    (base / "link").symlink_to(base / "real", target_is_directory=True)
+    return "link", base / "link", base / "real"
+
+
+def _link_to_link(base: Path) -> tuple[str, Path, Path]:
+    (base / "real").mkdir()
+    (base / "first").symlink_to(base / "real", target_is_directory=True)
+    (base / "second").symlink_to(base / "first", target_is_directory=True)
+    return str(base / "second"), base / "second", base / "real"
+
+
+def _dangling_link(base: Path) -> tuple[str, Path, Path]:
+    (base / "link").symlink_to(base / "missing", target_is_directory=True)
+    return str(base / "link"), base / "link", base / "missing"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "layout",
+    [
+        lambda base: _link_then_dotdot(base, relative=False),
+        lambda base: _link_then_dotdot(base, relative=True),
+        _parent_folder_link,
+        _relative_link,
+        _link_to_link,
+        _dangling_link,
+    ],
+    ids=[
+        "link-then-dotdot-absolute",
+        "link-then-dotdot-relative",
+        "parent-folder-link",
+        "relative-link",
+        "link-to-link",
+        "dangling-link",
+    ],
+)
+def test_every_workspace_reached_through_a_link_names_where_setup_writes(
+    home: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    layout: Callable[[Path], tuple[str, Path, Path]],
+) -> None:
+    """OMN-23413, 23413-G9-FOLLOW: the notice names the folder setup really
+    writes to, the way setup resolves the workspace (links first, then ..), and
+    says only what is true when the link is a parent folder."""
+    base = tmp_path.resolve()
+    monkeypatch.chdir(base)
+    typed, given, real = layout(base)
+
+    result = _run(["--no-interactive", "--workspace", typed])
+
+    assert result.exit_code == 0, result.output
+    assert (real / handler_onex_setup.RUNTIME_CONFIG_RELPATH).is_file()
+    notices = [line for line in result.output.splitlines() if _LINK_NOTICE in line]
+    assert len(notices) == 1, (
+        f"no notice said {typed} reaches the real folder {real} {_LINK_NOTICE}:\n"
+        f"{result.output}"
+    )
+    assert str(given) in notices[0]
+    assert str(real) in notices[0]
+    assert "is a link" not in result.output
+
+
+@pytest.mark.unit
+def test_under_json_the_link_notice_goes_to_stderr(home: Path, tmp_path: Path) -> None:
+    """OMN-23413, 23413-G9-FOLLOW: stdout stays the one typed result."""
+    base = tmp_path.resolve()
+    (base / "real").mkdir()
+    link = base / "link"
+    link.symlink_to(base / "real", target_is_directory=True)
+
+    result = _run(["--no-interactive", "--json", "--workspace", str(link)])
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["workspace"] == str(base / "real")
+    assert _LINK_NOTICE not in result.stdout
+    notices = [line for line in result.stderr.splitlines() if _LINK_NOTICE in line]
+    assert len(notices) == 1, result.stderr
+    assert str(link) in notices[0]
+    assert str(base / "real") in notices[0]
 
 
 def _break_workspace(home: Path, workspace: Path, mp: pytest.MonkeyPatch) -> list[str]:

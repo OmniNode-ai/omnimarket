@@ -16,7 +16,7 @@ import logging
 import os
 import re
 import subprocess
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime, timedelta
 from functools import cache
 from hashlib import sha1
@@ -52,6 +52,10 @@ from omnimarket.models.model_pr_duplicate_guard import (
 from omnimarket.models.node_overlays.model_node_overlays import (
     ModelDuplicateGuardGeneratedPathsOverlay,
 )
+from omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers.ledger_claims_read import (
+    load_ledger_read_config,
+    read_claims_text,
+)
 from omnimarket.nodes.node_pr_duplicate_snapshot_effect.ports.protocol_open_pr_facts_source import (
     OpenPrFactsUnreadableError,
     ProtocolOpenPrFactsSource,
@@ -63,10 +67,10 @@ from omnimarket.protocols.protocol_ledger_rows_reader import (
 
 logger = logging.getLogger(__name__)
 
-#: The ledger reader node's name for the open-CLAIM read and the window it covers (a CLAIM older than a week
-#: names no live lane). Every row type is asked for: a lane's heartbeat is any of its rows, not only its CLAIMs.
-LEDGER_READER: Final[str] = "pr-duplicate-guard-claims"
-LEDGER_WINDOW_HOURS: Final[int] = 168
+#: The ledger reader node's name for the claims read and the window it covers (a CLAIM older than a week names no live lane).
+#: Both, the rows read and every wait come from this node's contract (``config.ledger_read``, OMN-26433), not from this module.
+LEDGER_READER: Final[str] = load_ledger_read_config().reader
+LEDGER_WINDOW_HOURS: Final[int] = load_ledger_read_config().window_hours
 #: Where a deployment's overlay for the guard is found: the roots every node overlay is read from, then the
 #: workspace configuration root's overlays directory.
 OVERLAY_ROOTS_ENV: Final[str] = "ONEX_SKILL_OVERLAY_ROOTS"
@@ -571,14 +575,13 @@ def _open_pr_state(
             ) from None
 
 
-def _load_ledger(reader: ProtocolLedgerRowsReader) -> str:
+def _load_ledger(reader_for: Callable[[float], ProtocolLedgerRowsReader]) -> str:
     try:
-        rows = reader.rows(reader=LEDGER_READER, window_hours=LEDGER_WINDOW_HOURS)
+        return read_claims_text(reader_for)
     except LedgerReadError as exc:
         raise DuplicateGuardUncheckedError(
             f"the ledger could not be read ({exc}); an unread ledger never proves no live CLAIM covers this change"
         ) from exc
-    return "\n".join(rows)
 
 
 def _open_prs(
@@ -863,7 +866,15 @@ def read_request(
         {} if overlay is None else overlay.shared_catalog_lines
     )
     state = _open_pr_state(repo, watcher_state, moment, open_prs_source)
-    ledger_text = _load_ledger(ledger_reader or SubprocessLedgerRowsReader(os.environ))
+    ledger_text = _load_ledger(
+        (lambda _timeout: ledger_reader)
+        if ledger_reader is not None
+        else (
+            lambda timeout: SubprocessLedgerRowsReader(
+                os.environ, timeout_seconds=timeout
+            )
+        )
+    )
     where = clone or default_clone_path(repo)
     lane_dir = worktree or Path.cwd()
     dirs = (lane_dir, where)

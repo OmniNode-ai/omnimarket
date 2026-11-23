@@ -4,6 +4,9 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.node_projection_freshness_alert_effect.models.model_done_items_coverage import (
+    ModelCoverageVerdict,
+)
 from omnimarket.nodes.node_projection_freshness_alert_effect.models.model_freshness_delivery import (
     ModelFreshnessDelivery,
 )
@@ -20,3 +23,4 @@ class ModelFreshnessEvaluation(BaseModel):
     check_interval_seconds: int = Field(..., gt=0)
     verdicts: tuple[ModelFreshnessVerdict, ...]
     deliveries: tuple[ModelFreshnessDelivery, ...]
+    coverage_verdicts: tuple[ModelCoverageVerdict, ...] = ()

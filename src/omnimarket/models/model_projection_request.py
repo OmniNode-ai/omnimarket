@@ -10,6 +10,9 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.model_message_meta import MessageMeta
+from omnimarket.models.model_projection_delivery_context_error import (
+    ProjectionDeliveryContextMissingError,
+)
 from omnimarket.projection.handler_shim import (
     INJECTED_OFFSET_KEY,
     INJECTED_PARTITION_KEY,
@@ -52,6 +55,10 @@ class ModelProjectionRequest(BaseModel):
         default=False,
         description="True when the delivery carried both a partition and an offset.",
     )
+    missing_coordinates: tuple[str, ...] = Field(
+        default=(),
+        description="The coordinate keys the delivery lacked, empty when it carried both.",
+    )
     fallback_id: str = Field(
         default="", description="Caller-supplied dedup identity, empty when absent."
     )
@@ -79,6 +86,11 @@ class ModelProjectionRequest(BaseModel):
                     INJECTED_PARTITION_KEY in input_data
                     and INJECTED_OFFSET_KEY in input_data
                 ),
+                "missing_coordinates": tuple(
+                    key
+                    for key in (INJECTED_PARTITION_KEY, INJECTED_OFFSET_KEY)
+                    if key not in input_data
+                ),
                 "fallback_id": str(input_data.get(FALLBACK_ID_KEY, "")),
                 "payload": {
                     key: value
@@ -87,6 +99,27 @@ class ModelProjectionRequest(BaseModel):
                 },
             }
         )
+
+    def require_delivery_context(self) -> Self:
+        """Return this request, or refuse naming the delivery keys it lacks.
+
+        A writer that cannot stamp a snapshot without the source coordinates calls
+        this instead of defaulting them: an absent coordinate is never read as 0.
+        """
+        missing = (
+            *(() if self.topic is not None else (INJECTED_TOPIC_KEY,)),
+            *(
+                self.missing_coordinates
+                or (
+                    ()
+                    if self.has_coordinates
+                    else (INJECTED_PARTITION_KEY, INJECTED_OFFSET_KEY)
+                )
+            ),
+        )
+        if missing:
+            raise ProjectionDeliveryContextMissingError(missing, self.topic)
+        return self
 
     def topic_or(self, default: str) -> str:
         """The delivery's topic, else ``default`` when the runtime named none."""

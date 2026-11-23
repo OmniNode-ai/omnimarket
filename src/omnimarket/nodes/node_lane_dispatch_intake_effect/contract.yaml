@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lane Dispatch Intake Effect (OMN-26412)
+#
+# WHO HOSTS THIS NODE. One systemd user timer tick on the standing dispatcher host, installed by the host installer
+# (`onex-host-install-units lane-dispatch-systemd`). Shared runtimes never attach it: the dispatcher reads a file on a host
+# and starts lanes from it. The handler is invoked locally by the tick; its empty bus topics and runtime profiles keep it
+# outside shared runtime dispatch.
+#
+# WHAT IT DOES. The orchestrator's lane placement crashed the operator workstation twice on 2026-11-21 because many
+# placements ran at once on it. The dispatcher moves placing to a lab host and keeps it serial: it reads the MSG rows
+# addressed to `labdispatch` (the format is in tests/nodes/node_lane_dispatch_intake_effect/data/lane-dispatch-msg-format.md), builds and checks each requested lane's
+# brief through the lane-brief skill, places the lane detached with the remote-lane runner, and writes one STATUS row per
+# placement before it starts the next request.
+name: "node_lane_dispatch_intake_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: []
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: "0.1.0"
+description: >
+  Places the lanes carried by MSG rows to=labdispatch, strictly one at a time, and writes one STATUS row per placement.
+  A request already placed is never placed twice; a malformed message is answered once by a STATUS row that says why.
+input_model:
+  name: "ModelLaneDispatchIntakeRequest"
+  module: "omnimarket.nodes.node_lane_dispatch_intake_effect.models.model_lane_dispatch_intake"
+  description: "One tick: the ledger rows to read, the placements already made and the most this tick places."
+output_model:
+  name: "ModelLaneDispatchIntakeResult"
+  module: "omnimarket.nodes.node_lane_dispatch_intake_effect.models.model_lane_dispatch_intake"
+  description: "The outcome of each placement, the rejected messages and the requests still pending."
+handler:
+  module: "omnimarket.nodes.node_lane_dispatch_intake_effect.handlers.handler_lane_dispatch_intake"
+  class: "HandlerLaneDispatchIntake"
+  input_model: "omnimarket.nodes.node_lane_dispatch_intake_effect.models.model_lane_dispatch_intake.ModelLaneDispatchIntakeRequest"
+  output_model: "omnimarket.nodes.node_lane_dispatch_intake_effect.models.model_lane_dispatch_intake.ModelLaneDispatchIntakeResult"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  runtime_profiles: []
+  # Each external call is bounded at 600 s; a tick places at most max_placements requests, so the unit's run limit is
+  # declared in the installer contract, not here.
+  timeout_ms: 600000
+dependency_ownership:
+  registry_root: "Owned by the host timer that invokes the tick; the registry root (OMNI_HOME) of the host."
+  env: "ONEX_LEDGER_BUS_READ_COMMAND, ONEX_LANE_DISPATCH_BUS_APPEND, ONEX_LEDGER_HOST_NAME and ONEX_LANE_DISPATCH_PARENT, declared by the unit in the host installer's contract."
+runtime_dispatch:
+  # Every 60 s one host timer tick invokes the typed handler with the host registry root and environment.
+  external_trigger: One host timer tick invokes the typed handler with the host registry root and environment.
+  host_unit:
+    unit: lane-dispatch-systemd
+metadata:
+  transport_type: local
+  description: "Hosted by one timer tick on the dispatcher host, never a shared runtime"
+  author: "OmniNode Team"
+  created: "2026-11-21"
+  tags: ["effect", "lab-host", "lane-dispatch", "OMN-26412"]
+  related_tickets: ["OMN-26412"]

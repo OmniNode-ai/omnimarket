@@ -91,7 +91,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
@@ -1162,24 +1162,37 @@ def byok_backend_provider(backend_id: str | None) -> str | None:
     return None
 
 
-def byok_model_price_per_1m(
+#: Reads a model's models.dev ``(input, output)`` USD per 1M tokens and when that
+#: copy was read, given the ONEX provider id and the model. The caller supplies
+#: it (``model_catalog.models_dev_price_with_read_time``) because the model
+#: catalogue imports this module, so this module cannot import it back.
+type ModelsDevPriceLookup = Callable[
+    [str, str], tuple[tuple[Decimal, Decimal], str | None] | None
+]
+
+
+def byok_model_price_with_source(
     backend_id: str | None,
     endpoint_url: str | None,
     model_name: str,
     *,
-    supplemental: bool = True,
-) -> tuple[Decimal, Decimal] | None:
-    """The ``(input, output)`` USD per 1M tokens of a model on a customer's key.
+    models_dev_price: ModelsDevPriceLookup | None = None,
+) -> tuple[tuple[Decimal, Decimal], str, str | None] | None:
+    """The ``(input, output)`` USD per 1M tokens of a model on a customer's key,
+    with the source and read time of the lookup that priced it (OMN-23413 AC35).
 
-    The catalogue's declared price for the endpoint and model first, then the
-    model registry's price for the same provider and model, then models.dev's
-    (OMN-23413 AC35). ``None`` means the model has no known price: the call is
-    unpriced, never booked at a tier rate. ``supplemental=False`` stops before
-    models.dev, for a caller that holds the provider's combined entry (AC34).
+    Returns ``(price, source, read_at)``:
+      - ``(price, "byok_provider_backends", None)`` for the catalogue's declared price
+      - ``(price, "model_registry", None)`` for the model registry's price
+      - ``(price, "models.dev", read_at)`` for models.dev's live price
+
+    ``None`` means the model has no known price: the call is unpriced, never
+    booked at a tier rate. ``models_dev_price=None`` stops before models.dev, for
+    a caller that holds the provider's combined entry (AC34).
     """
     declared = byok_declared_price_per_1m(endpoint_url, model_name)
     if declared is not None:
-        return declared
+        return (declared, "byok_provider_backends", None)
     provider = byok_backend_provider(backend_id)
     if provider is None:
         return None
@@ -1189,14 +1202,44 @@ def byok_model_price_per_1m(
 
     for profile in ModelLlmModelRegistryLoader().load().models.values():
         if profile.provider == provider and profile.model_name == model_name:
-            return (profile.pricing_per_1m_input, profile.pricing_per_1m_output)
-    if not supplemental:
+            return (
+                (profile.pricing_per_1m_input, profile.pricing_per_1m_output),
+                "model_registry",
+                None,
+            )
+    if models_dev_price is None:
         return None
     # OMN-23413 AC35: a model neither the catalogue nor the registry prices is
-    # priced from the price list shipped with the install, never fetched; still None when it states none.
-    from omnimarket.handlers.model_catalog import models_dev_price_per_1m
+    # priced from models.dev, read live (a copy older than its configured age is
+    # read again and never prices a call); still None when it states none.
+    result = models_dev_price(provider, model_name)
+    if result is None:
+        return None
+    price, read_at = result
+    return (price, "models.dev", read_at)
 
-    return models_dev_price_per_1m(provider, model_name)
+
+def byok_model_price_per_1m(
+    backend_id: str | None,
+    endpoint_url: str | None,
+    model_name: str,
+    *,
+    models_dev_price: ModelsDevPriceLookup | None = None,
+) -> tuple[Decimal, Decimal] | None:
+    """The ``(input, output)`` USD per 1M tokens of a model on a customer's key.
+
+    The catalogue's declared price for the endpoint and model first, then the
+    model registry's price for the same provider and model, then models.dev's
+    (OMN-23413 AC35). ``None`` means the model has no known price: the call is
+    unpriced, never booked at a tier rate. Without ``models_dev_price`` it stops
+    before models.dev, for a caller that holds the provider's combined entry (AC34).
+    """
+    result = byok_model_price_with_source(
+        backend_id, endpoint_url, model_name, models_dev_price=models_dev_price
+    )
+    if result is None:
+        return None
+    return result[0]
 
 
 def byok_limit_counter_key(

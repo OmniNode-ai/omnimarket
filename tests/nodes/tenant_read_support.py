@@ -241,8 +241,8 @@ async def probe_runtime_listener(nodes: list[str]) -> None:
                 server.attach_manifest(manifest)
                 assert server._mount_task is not None
                 await server._mount_task
-                assert server._runner is not None
-                base = f"http://127.0.0.1:{server._runner.addresses[0][1]}"
+                assert server._site is not None
+                base = f"http://127.0.0.1:{server._site.port}"
                 async with aiohttp.ClientSession() as session:
                     for node, path in paths.items():
                         async with session.get(
