@@ -3724,6 +3724,7 @@
   "tests/test_omn19377_deploy_effect_durable_publish_record.py": 3.88,
   "tests/test_omn19377_deploy_effect_skips_repeats.py": 7.82,
   "tests/test_omn19408_lab_lane_health_runtime_lanes.py": 0.15,
+  "tests/test_omn19432_provider_key_failover.py": 0.2,
   "tests/test_omn19437_terminal_trace_span.py": 0.86,
   "tests/test_omn19438_savings_rebackfill_migration.py": 0.63,
   "tests/test_omn19438_savings_registry_tenant_uuid.py": 0.25,

@@ -27,6 +27,13 @@ requirements:
       - id: "AC4"
         statement: |-
           AC4: no package YAML names the retired model in any spelling, and the repository detector finds every spelling in keys, values and comments -- falsifier: env -u PYTHONPATH uv run pytest tests/ci/test_retired_model_references.py -q
+  - id: "req-provider-key-failover"
+    statement: |-
+      A house delegation call whose provider key is refused moves to the next key declared for the same provider, holds the refused key out of use for a cooldown, names the key that answered on the call result, and never moves a customer call onto a house key.
+    acceptance:
+      - id: "AC5"
+        statement: |-
+          AC5: a house call whose first key answers 401 is answered by the second declared key and the result names it, all keys refused end provider_auth_failed, a customer reference never touches a house key, and a refused key is held out for the cooldown and returns after it -- falsifier: env -u PYTHONPATH uv run pytest tests/test_omn19432_provider_key_failover.py -q fails
 evidence_requirements:
   - kind: "tests"
     description: "The facts-first tests pass at the head and fail at the merge base, where the node does not exist."
@@ -81,3 +88,19 @@ dod_evidence:
           assert families["gpt"] == ["gpt-"], families["gpt"]
           print("Published answer-gate GPT family excludes retired model entries")'\'''
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn19432-key-failover-ac5"
+    description: "The failover tests prove the second key answers after a 401 and is named on the result, all-keys-refused ends provider_auth_failed, a customer reference never reaches a house key, and the cooldown holds a refused key out and releases it on the injected clock."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn19432_provider_key_failover.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC5"]
+  - id: "dod-omn19432-key-failover-integration-proof"
+    description: "Runs the failover tests at the pushed head on a lab host through the lab work runner, the real call effect against a fake provider that answers 401 for the first key and 200 for the second. Hosted CI has no lab host, so only the local Done gate runs this; it binds no criterion."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-19432 --kind test -- uv run --frozen pytest tests/test_omn19432_provider_key_failover.py -q --no-cov -p no:randomly'
+        cwd: "."
