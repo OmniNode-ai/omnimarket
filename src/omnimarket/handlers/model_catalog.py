@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
-import fcntl
 import json
 import os
 import stat
@@ -350,7 +349,13 @@ def pricing_models_dev_index() -> ModelsDevIndex:
         lock_path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
+        # fcntl is POSIX only; a client without it still reads, unlocked.
+        import fcntl
+    except ImportError:
+        fcntl = None  # type: ignore[assignment]
+    try:
+        if fcntl is not None:
+            fcntl.flock(fd, fcntl.LOCK_EX)
     except OSError:
         os.close(fd)
         raise
@@ -379,8 +384,9 @@ def pricing_models_dev_index() -> ModelsDevIndex:
             _clear_failed(home)
         return index
     finally:
-        with contextlib.suppress(OSError):
-            fcntl.flock(fd, fcntl.LOCK_UN)
+        if fcntl is not None:
+            with contextlib.suppress(OSError):
+                fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
 
 
