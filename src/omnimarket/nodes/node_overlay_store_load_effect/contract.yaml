@@ -33,6 +33,10 @@ event_bus:
     # refused because the live record could not be read.
     - onex.evt.omnimarket.overlay-store-drift.v1
     - onex.evt.omnimarket.overlay-store-refused.v1
+# OMN-26495: drift and refusal reports are read by operators and monitors outside the repo's contracts.
+externally_consumed_topics:
+  - onex.evt.omnimarket.overlay-store-drift.v1
+  - onex.evt.omnimarket.overlay-store-refused.v1
 # OMN-26495: the loader runs hourly on h053 under that host's login, which ONEX_ACL_HOST_RECONCILER_PRINCIPAL names alone
 # (the overlay scope broker_acl_principals); the rows below are what the two new topics and the live read's consumer groups need.
 # The loaded topic's own row stays declared in the overlay scope broker_acls_overlay_store_dev_lane.
