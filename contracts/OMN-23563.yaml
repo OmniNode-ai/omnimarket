@@ -1,0 +1,72 @@
+schema_version: 1.0.0
+ticket_id: OMN-23563
+title: The dev identity node creates its probe tenant through the runtime, since the separate API is gone from dev
+summary: "node_dev_identity_provision_effect no longer posts to the retired onex-api provision route: after it creates the dev user and signs in, it asks the runtime's tenant provision command over the bus (a typed request on the declared command topic, answered on the completed topic for its own command id), the overlay's api block is optional and never read, and a bus that cannot be opened or no answer is a typed runtime_unreachable result."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn23563-dev-identity-runtime-tenant
+  statement: A new dev account and its probe tenant are provisioned through the runtime over the event bus, not through a separate HTTP API.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a run makes no HTTP call to a provision route and asks the runtime''s tenant provision command exactly once, with a slug made from the username and a command id that is the same for the same user -- falsifier: uv run pytest tests/nodes/node_dev_identity_provision_effect -q -k "makes_no_call_to_a_separate_api or command_id_is_the_same"'
+  - id: AC2
+    statement: 'AC2: the bus adapter publishes an envelope on the declared command topic and resolves from the answer carrying its own command id, and no answer inside the declared wait or a bus that cannot be opened is a typed runtime_unreachable result -- falsifier: uv run pytest tests/nodes/node_dev_identity_provision_effect -q -k "adapter or runtime_unreachable or runtime_unavailable"'
+  - id: AC3
+    statement: 'AC3: the declared topics are the tenant provision node''s own, the request is a command that node accepts and its answer is readable by this node -- falsifier: uv run pytest tests/nodes/node_dev_identity_provision_effect/test_runtime_tenant_provision.py -q -k "declared_topics or accepts or readable"'
+  - id: AC4
+    statement: 'AC4: a deployed overlay document that still holds the retired api block loads and the block is never read -- falsifier: uv run pytest tests/nodes/node_dev_identity_provision_effect -q -k retired_api_block'
+evidence_requirements:
+- kind: tests
+  description: 'The node''s focused tests at the pushed head.'
+  command: uv run --frozen pytest tests/nodes/node_dev_identity_provision_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn23563-ac1-no-api-call
+  description: 'A full run against the fakes sends no request to a provision route and hands one typed request to the tenant provisioner seam.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_identity_provision_effect -k "makes_no_call_to_a_separate_api or command_id_is_the_same" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23563-ac2-bus-adapter
+  description: 'The adapter, on an in-memory bus, sends the command envelope, ignores another command''s answer and resolves from its own; a missing answer and a bus that cannot be opened raise the typed unavailable error that the handler reports as runtime_unreachable.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_identity_provision_effect -k "adapter or runtime_unreachable or runtime_unavailable" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23563-ac3-seams
+  description: 'The contract''s command and completed topics equal the tenant provision node''s contract topics, and the two wire shapes validate against that node''s own models.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_identity_provision_effect/test_runtime_tenant_provision.py -k "declared_topics or accepts or readable" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23563-ac4-legacy-overlay
+  description: 'A document with the retired api block loads and no request names its address; the example overlay holds no such block.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_identity_provision_effect -k retired_api_block -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23563-integration-proof
+  description: 'The pushed head ran the node''s tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The node is not run against the live dev runtime in this change: the tenant operator login and the dev roll are the next reading.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-23563 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_dev_identity_provision_effect -q --no-cov'
+    cwd: .

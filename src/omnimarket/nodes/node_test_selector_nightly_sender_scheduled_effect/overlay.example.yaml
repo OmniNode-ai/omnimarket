@@ -18,3 +18,6 @@ collector_max_lag_hours: 6
 state_dir_env: ONEX_STATE_DIR
 bus_lane: example-lane
 command_timeout_seconds: 180
+# The directory that holds config/lab/ci_bus_lanes.yaml in the runtime that runs the node; optional. A runtime that mounts the
+# declaration but exports no ONEX_WORKSPACE_CONFIG_ROOT needs it, and a root the environment already names wins.
+workspace_config_root: /etc/example/workspace-config
