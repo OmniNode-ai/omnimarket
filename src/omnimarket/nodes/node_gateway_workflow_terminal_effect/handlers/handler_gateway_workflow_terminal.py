@@ -116,7 +116,15 @@ def _count(payload: dict[str, Any], key: str) -> int:
 
 
 class HandlerGatewayWorkflowTerminal:
-    """Write one delegation terminal onto its gateway workflow row."""
+    """Write one delegation terminal onto its gateway workflow row.
+
+    The runtime's typed dispatch arm validates the flat wire object into the envelope without the
+    topic it arrived on, so a delivery can name neither ``topic`` nor ``event_type``. Each contract
+    route therefore names a subclass that carries the route's status (``route_status``); the base
+    class reads the status from the envelope's topic or event type, as before.
+    """
+
+    route_status: Literal["completed", "failed"] | None = None
 
     def __init__(
         self,
@@ -162,7 +170,7 @@ class HandlerGatewayWorkflowTerminal:
     async def handle(
         self, request: ModelDelegationTerminalEnvelope
     ) -> ModelGatewayTerminalApplied:
-        status = self._status_of(request)
+        status = self.route_status or self._status_of(request)
         if status is None:
             raise ValueError(
                 f"delivery {request.topic or request.event_type!r} is not declared by the contract"
@@ -260,6 +268,13 @@ class HandlerGatewayWorkflowTerminal:
             rule_evaluations=list(evaluations or []),
         )
 
+    def _route_topic(self) -> str:
+        """The topic of this handler's own route; empty for the base class."""
+        for topic, status in self._routes.items():
+            if status == self.route_status:
+                return topic
+        return ""
+
     async def _publish_dead_letter(
         self,
         request: ModelDelegationTerminalEnvelope,
@@ -268,7 +283,7 @@ class HandlerGatewayWorkflowTerminal:
         payload = request.payload
         record: dict[str, Any] = {
             "reason": reason.value,
-            "source_topic": request.topic or request.event_type,
+            "source_topic": request.topic or request.event_type or self._route_topic(),
             "fields_present": sorted(WIRE_FIELDS.intersection(payload)),
         }
         for key in ("correlation_id", "tenant_id"):
@@ -285,4 +300,21 @@ class HandlerGatewayWorkflowTerminal:
         self._count_event(f"dead_lettered_{reason.value}")
 
 
-__all__: list[str] = ["HandlerGatewayWorkflowTerminal", "load_contract_routes"]
+class HandlerGatewayWorkflowTerminalCompleted(HandlerGatewayWorkflowTerminal):
+    """The delegation-completed route: every delivery it takes writes status completed."""
+
+    route_status = "completed"
+
+
+class HandlerGatewayWorkflowTerminalFailed(HandlerGatewayWorkflowTerminal):
+    """The delegation-failed route: every delivery it takes writes status failed."""
+
+    route_status = "failed"
+
+
+__all__: list[str] = [
+    "HandlerGatewayWorkflowTerminal",
+    "HandlerGatewayWorkflowTerminalCompleted",
+    "HandlerGatewayWorkflowTerminalFailed",
+    "load_contract_routes",
+]
