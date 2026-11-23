@@ -6,27 +6,15 @@
 
 WHY THIS EXISTS
 ---------------
-The OMN-13412 release-identity gate (omnibase_core's ``check-release-identity`` hook) says:
-if a diff touches packaged source (``src/**``), ``[project].version`` MUST be
-strictly greater than the highest *published* ``vX.Y.Z`` tag. Publishing X.Y.Z
-from dev HEAD therefore **arms that gate against dev itself** — dev's version is
-now exactly equal to the published version, so the very next packaged-source PR
-goes red, and stays red for every PR after it, until somebody unrelated notices
-and bumps.
-
-That is not hypothetical. Measured twice in the current release series:
-
-* v0.38.10 tagged at dev HEAD 2026-08-26T01:38:23Z; dev stayed at 0.38.10 until
-  ``a07fefde4`` (OMN-16536, an unrelated feature PR) bumped it to 0.38.11 at
-  2026-08-26T03:44:31Z — a ~2h06m armed window.
-* v0.38.11 tagged at dev HEAD 2026-08-28T00:49:31Z; dev stayed at 0.38.11 until
-  ``93c42ada4`` (OMN-16769, again unrelated) bumped it to 0.38.12 at
-  2026-08-28T02:27:16Z — a ~1h38m armed window.
+The OMN-13412 release-identity gate (omnibase_core's ``check-release-identity``
+hook) says: if a diff touches ``src/**``, ``[project].version`` MUST be strictly
+greater than the highest *published* ``vX.Y.Z`` tag. Publishing X.Y.Z from dev HEAD
+therefore **arms that gate against dev itself**: the very next packaged-source PR
+goes red, and so does every one after it, until somebody unrelated bumps.
 
 **Principle: the event that arms a gate must perform its own disarm in the same
-flow.** The release train arms it, so the release train disarms it. Leaving the
-bump to "whoever trips the gate next" is how a release turns into a dev-wide
-wedge, which is exactly the OMN-13910 incident this ticket was opened for.
+flow.** The release train arms it, so the release train disarms it, not "whoever
+trips the gate next" (the OMN-13910 incident: ~2h armed after each of two releases).
 
 WHAT THIS DOES
 --------------
@@ -35,31 +23,27 @@ Pure decision + a narrow write:
 * ``decide(dev_version, released_version)`` returns ``bump`` to
   ``released + 1 patch`` whenever dev is not already strictly ahead of the
   released version, and ``noop`` when it already is.
-* ``noop`` is what makes the whole step idempotent: a re-run of the release, a
-  second dispatch of the same tag, or a human who already bumped dev by hand all
-  converge on "nothing to do" instead of opening a second bump PR.
+* ``noop`` makes the step idempotent: a re-run, a second dispatch of the same tag
+  or a hand bump all converge on "nothing to do", never a second bump PR.
 * ``--apply`` rewrites ONLY ``[project].version`` in ``pyproject.toml``. It is
   table-scoped on purpose: a bare ``^version = `` regex would also rewrite a
   ``version`` key under some ``[tool.*]`` table.
 
-Deliberately stdlib-only: it runs inside the release job before any project
-install, so it must not need the project's dependency closure to be importable.
+Stdlib-only: it runs in the release job before any project install.
 
 PROVENANCE (OMN-18010)
 ----------------------
-Ported into omnimarket from ``omnibase_infra/scripts/ci/post_release_dev_bump.py``
-— the only repo in the registry that had it — because ``release-on-merge.yml``
-(now retired) made the armed-gate window recur on every merge rather than once
-per release. The port is byte-faithful apart from ``_REPO_ROOT``; the
-omnibase_infra incident history above is quoted as the measured evidence for the
-behaviour, not as a claim about omnimarket's own history.
+Ported from ``omnibase_infra/scripts/ci/post_release_dev_bump.py``. The
+``.github/actions/reopen-dev`` action calls it in ``--released`` mode for both
+release paths: release-cut.yml (a manual cut) and auto-tag-on-merge.yml.
 
-release-cut.yml (the explicit-trigger workflow that replaced release-on-merge,
-same ticket) calls this in ``--released`` mode as its own disarm step, once per
-manual cut. It does NOT use the ``--set`` mode a former job (``arm-dev``) added
-for the per-merge race: with releases cut explicitly rather than on every push,
-there is nothing to race against, so that mode and its ``decide_target`` function
-were retired with it rather than kept unreferenced.
+THE CUT'S CHANGELOG (OMN-26500)
+-------------------------------
+The train stages a ``CHANGELOG.md`` entry in the cut (the ticket-contract
+prerequisite admits a cut only with it); the removed-prose test forbids it on a
+tree. The decision reports ``remove_changelog``: true when ``CHANGELOG.md`` is on
+the tree and the released tag's commit added it, and ``--apply`` deletes it. One
+the cut did not add stays; a rerun reports false.
 
 Usage::
 
@@ -77,6 +61,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
 import sys
@@ -86,6 +71,7 @@ from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _DEFAULT_PYPROJECT = _REPO_ROOT / "pyproject.toml"
+_CUT_CHANGELOG = _REPO_ROOT / "src/omnimarket/handlers/handler_release_cut_changelog.py"
 
 #: Final releases only. A pre-release/rc tag must never drive a dev bump: rc
 #: builds are not what the release-identity gate compares against, and bumping
@@ -238,6 +224,17 @@ def apply_decision(pyproject: Path, decision: BumpDecision) -> bool:
     return True
 
 
+def remove_cut_changelog(root: Path, decision: BumpDecision, apply: bool) -> bool:
+    """Whether the cut's ``CHANGELOG.md`` goes (deleted when ``apply``); loaded by path."""
+    spec = importlib.util.spec_from_file_location("cut_changelog", _CUT_CHANGELOG)
+    if spec is None or spec.loader is None:
+        raise BumpConfigError(f"cannot load {_CUT_CHANGELOG}")
+    handler = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(handler)
+    tag = f"v{decision.released_version}"
+    return bool(handler.remove_release_cut_changelog(root, tag, apply=apply))
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
@@ -270,12 +267,14 @@ def main(argv: list[str] | None = None) -> int:
         dev_version = read_project_version(args.pyproject)
         decision = decide(dev_version, args.released)
         applied = apply_decision(args.pyproject, decision) if args.apply else False
+        removal = remove_cut_changelog(args.pyproject.parent, decision, args.apply)
     except BumpConfigError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 
     payload = asdict(decision)
     payload["applied"] = applied
+    payload["remove_changelog"] = removal
     print(json.dumps(payload, indent=2))
     return 0
 
