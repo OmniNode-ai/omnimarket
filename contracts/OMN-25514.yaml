@@ -71,3 +71,10 @@ dod_evidence:
   - check_type: command
     check_value: "bash -c 'gh api -H \"Accept: application/vnd.github.raw\" \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/models/priced_spend.py?ref=$(git rev-parse HEAD)\" | grep -Fq \"byok_model_price_per_1m(backend_id, row.endpoint_url, model)\"'"
     cwd: .
+- id: dod-omn25514-model-catalog-imports-without-fcntl
+  description: 'src/omnimarket/handlers/model_catalog.py imports fcntl only inside the models.dev read, so onex setup loads on a native Windows client and the Windows preflight remedy test passes.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/e2e/test_setup_preflight_cli.py -q -k windows -p no:cacheprovider --no-cov
+    cwd: .

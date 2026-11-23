@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
-import fcntl
 import json
 import os
 import stat
@@ -344,6 +343,8 @@ def pricing_models_dev_index() -> ModelsDevIndex:
             stale=False,
             error="models.dev read failed recently; not read again yet",
         )
+
+    import fcntl  # POSIX-only; native Windows must still import this module
 
     lock_path = _read_lock_path(home)
     with contextlib.suppress(OSError):
