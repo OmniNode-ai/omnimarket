@@ -24,6 +24,7 @@ from omnibase_core.contract_graph import (
 from omnibase_core.enums.enum_contract_graph_edge_kind import (
     EnumContractGraphEdgeKind,
 )
+from omnibase_core.types import JsonType
 
 from omnimarket.models.model_code_graph_handlers import (
     EnumHandlerReference,
@@ -143,7 +144,7 @@ def _examples(value: object) -> tuple[ModelHandlerExample, ...]:
     return tuple(found)
 
 
-def _operation(entry: dict[str, object], handler_name: str) -> str:
+def _operation(entry: Mapping[str, object], handler_name: str) -> str:
     event_model = entry.get("event_model")
     candidates = (
         entry.get("operation"),
@@ -156,7 +157,7 @@ def _operation(entry: dict[str, object], handler_name: str) -> str:
 
 def _rows_of_contract(
     path: str,
-    document: dict[str, object],
+    document: dict[str, JsonType],
     index: DefinitionIndex,
     revision: str,
 ) -> list[ModelHandlerRow]:
@@ -166,7 +167,7 @@ def _rows_of_contract(
         return []
     import_error: str | None = None
     try:
-        node, edges = import_node_contract(document, path)  # type: ignore[arg-type]
+        node, edges = import_node_contract(document, path)
     except ValueError as exc:
         # The IR import refuses a contract it cannot read (a topic entry that is not a string); the
         # operations are still rows, with no IR topics, and the refusal rides on each of them.
@@ -299,3 +300,13 @@ def handler_rows_of(
         if isinstance(document, dict) and supports_node_contract(document):
             rows.extend(_rows_of_contract(path, document, index, revision))
     return tuple(sorted(rows, key=lambda row: (row.contract, row.operation)))
+
+
+def handlers_summary_line(repo: str, rows: tuple[ModelHandlerRow, ...]) -> str:
+    """The one HANDLERS line the lookup CLI prints: the row, UNRESOLVED and NO_ROUTE counts."""
+    unresolved = sum(row.resolution is EnumHandlerResolution.UNRESOLVED for row in rows)
+    no_route = sum(row.route is EnumHandlerRoute.NO_ROUTE for row in rows)
+    return (
+        f"HANDLERS repo={repo} rows={len(rows)} "
+        f"unresolved={unresolved} no_route={no_route}"
+    )

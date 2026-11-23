@@ -27,6 +27,9 @@ from omnimarket.nodes.node_code_graph_effect.adapters.version_stores import (
     InMemoryCommitClock,
     InMemoryVersionStore,
 )
+from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_handlers import (
+    handlers_summary_line,
+)
 from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_lookup import (
     CodeGraphLookup,
 )
@@ -210,4 +213,14 @@ def test_the_rows_do_not_depend_on_the_order_the_files_arrive_in() -> None:
     assert (
         version("c1", FILES).handler_rows
         == version("c1", dict(reversed(FILES.items()))).handler_rows
+    )
+
+
+def test_the_lookup_cli_handlers_line_counts_rows_unresolved_and_no_route() -> None:
+    rows = _answer(FILES).handler_rows
+    assert handlers_summary_line(REPO, rows) == (
+        f"HANDLERS repo={REPO} rows=3 unresolved=2 no_route=1"
+    )
+    assert handlers_summary_line(REPO, ()) == (
+        f"HANDLERS repo={REPO} rows=0 unresolved=0 no_route=0"
     )

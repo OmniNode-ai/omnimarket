@@ -50,10 +50,6 @@ from omnimarket.models.model_code_graph import (
     ModelCodeGraphResult,
     ModelShadowCommand,
 )
-from omnimarket.models.model_code_graph_handlers import (
-    EnumHandlerResolution,
-    EnumHandlerRoute,
-)
 from omnimarket.models.model_code_graph_lookup import (
     EnumCodeGraphQuestion,
     EnumRemovalKind,
@@ -74,6 +70,9 @@ from omnimarket.nodes.node_code_graph_effect.adapters.pull_request_sources impor
 from omnimarket.nodes.node_code_graph_effect.adapters.repo_sources import GitRepoSource
 from omnimarket.nodes.node_code_graph_effect.adapters.version_stores import (
     InMemoryVersionStore,
+)
+from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_handlers import (
+    handlers_summary_line,
 )
 from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_index import (
     build_version,
@@ -503,17 +502,7 @@ def _lookup(arguments: argparse.Namespace) -> int:
         f"reason={result.reason or 'none'}\n"
     )
     if result.question is EnumCodeGraphQuestion.HANDLERS:
-        unresolved = sum(
-            row.resolution is EnumHandlerResolution.UNRESOLVED
-            for row in result.handler_rows
-        )
-        no_route = sum(
-            row.route is EnumHandlerRoute.NO_ROUTE for row in result.handler_rows
-        )
-        sys.stdout.write(
-            f"HANDLERS repo={result.repo} rows={len(result.handler_rows)} "
-            f"unresolved={unresolved} no_route={no_route}\n"
-        )
+        sys.stdout.write(handlers_summary_line(result.repo, result.handler_rows) + "\n")
     return 1 if result.status == "failed" else 0
 
 
