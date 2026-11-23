@@ -290,8 +290,11 @@ def test_goal_scope_stale_ruling_date_is_older_compares_stamps_and_days() -> Non
 
 def test_goal_scope_stale_request_and_result_are_frozen_and_closed() -> None:
     request = ModelGoalScopeStaleRequest(overlay_text="a", ledger_text="b")
+    field_name = "overlay_text"
     with pytest.raises(ValidationError):
-        request.overlay_text = "c"  # type: ignore[misc]
+        setattr(request, field_name, "c")
     with pytest.raises(ValidationError):
-        ModelGoalScopeStaleRequest(overlay_text="a", ledger_text="b", extra="x")  # type: ignore[call-arg]
+        ModelGoalScopeStaleRequest.model_validate(
+            {"overlay_text": "a", "ledger_text": "b", "extra": "x"}
+        )
     assert ModelGoalScopeStaleResult().lines == []
