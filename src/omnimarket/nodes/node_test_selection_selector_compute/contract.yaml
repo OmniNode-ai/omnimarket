@@ -15,7 +15,40 @@ description: >-
   injected (in-memory default, durations file as the real backend). scripts/ci/detect_test_paths.py
   calls this node. HandlerTestPathResolution (OMN-23719) maps a change's files to the test paths it can
   affect, by the import graph for the modules the adjacency map lists as node-scoped; scripts/ci/detect_test_paths.py
-  calls it as a library handler.
+  calls it as a library handler. A changed root-level tests/*.py file selects itself and the tests that import it; a
+  deleted or renamed one selects the always set and the tests that still name its old path or dotted name (OMN-26272).
+  A diff of only data files (the adjacency map's data_only_globs) selects the tests that read them, found by a text
+  index of the test files and the data_reader_overrides, when data_only_selection_enabled is set (OMN-26270).
+  HandlerSelectionRecord builds the typed record of a pull request run's selection (the executed selection and the
+  selection of every stage) behind the stage gate in policy.yaml; the workflow uploads it and builds the pytest matrix
+  from the executed selection only. HandlerSelectionReplay (operation replay_selection) replays stage 0 of the selector
+  over a list of merges against a frozen tree snapshot and reports each merge's primary reason, every trigger, its
+  selected paths and recorded seconds, and the totals; it reuses the handlers above and changes what no pull request runs. A request at the closure's stage,
+  with the request's closure settings, replays the file-level closure in place of the module-level ladder.
+  HandlerStageReceiptValidation checks the stage receipts under config/test_selection_stage_receipts/ (operation
+  validate_stage_receipt): a stage is entered one at a time, by a receipt that names stage_clean_nights consecutive
+  nightly runs, and the receipt's totals and its selector and policy versions are recomputed from the nightly
+  attribution records the record source publishes (ProtocolAttributionRecordSource), never taken from the
+  receipt. Each record must hold the entry for the stage being entered, and the measured targets (share of merges
+  narrowed, test-seconds per merge, CI minutes per pull request) must be in the receipt. Stage 0 is the baseline.
+  HandlerAttributionRecordRead (operation read_attribution_records) reads those records: for each night of the receipt it
+  asks the repository gateway node (node_github_repo_gateway_effect, operation commit_check_runs, with the check run's
+  output summary) for the check run named <record_check_name_prefix>:<slot date> on the tested head commit the receipt
+  names, parses its summary as the published record, and answers the records it trusts and the nights it refuses (an
+  unparseable summary, two records for one night, a record that names another commit, repository, slot or run). It
+  makes no other read and no call of its own to GitHub; the adapter SourceAttributionRecordsGateway hands its answer to
+  the stage gate, and a gateway that gives no answer is an unreadable source, which the gate refuses.
+  Rollback is an owner change that lowers selection_stage, or the owner setting the ENABLE_SMART_TESTS repository
+  variable false; no job writes the variable. A narrowing rule changes what a pull request runs only at or above its
+  stage, so data files and entry points narrow only once their stage is entered.
+  HandlerFileLevelClosure runs the closure for every module by file, a vertex being a file except a node package, behind
+  the policy's file_level_closure_stage: a deleted or renamed file seeds from the files that still name it, a nested
+  conftest.py selects its directory, the root conftest edge is the policy's root_conftest_edge, and a source file the
+  closure cannot place escalates as unresolved_source.
+  HandlerPolicyBound derives the narrowed-run bound, each merge's shard count, the share of replayed merges over
+  each candidate bound, the test-seconds each saves, the full-run crossover and the per-merge runner-cost columns
+  from policy.yaml, the durations file and the replay inputs, and lists every test file without a duration entry
+  and every entry without a file by path; a file with no entry costs untimed_file_seconds.
 input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector.ModelSelectorRequest
 output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector.ModelSelectorDecision
 handler:
@@ -37,6 +70,42 @@ handler_routing:
       handler:
         name: HandlerTestPathResolution
         module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_path_resolution
+    - operation: build_selection_record
+      input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_record.ModelSelectionRecordRequest
+      output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_record.ModelTestSelectionRecord
+      handler:
+        name: HandlerSelectionRecord
+        module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_selection_record
+    - operation: validate_stage_receipt
+      input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_stage_receipt.ModelStageReceiptValidationRequest
+      output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_stage_receipt.ModelStageReceiptValidationResult
+      handler:
+        name: HandlerStageReceiptValidation
+        module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_stage_receipt_validation
+    - operation: read_attribution_records
+      input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_attribution_record_reading.ModelAttributionRecordReadRequest
+      output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_attribution_record_reading.ModelAttributionRecordReading
+      handler:
+        name: HandlerAttributionRecordRead
+        module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_attribution_record_read
+    - operation: replay_selection
+      input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_selection_replay.ModelReplayRequest
+      output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_selection_replay.ModelReplayResult
+      handler:
+        name: HandlerSelectionReplay
+        module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_selection_replay
+    - operation: resolve_file_level_closure
+      input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_file_level_closure.ModelFileLevelClosureRequest
+      output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_file_level_closure.ModelFileLevelClosureResult
+      handler:
+        name: HandlerFileLevelClosure
+        module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_file_level_closure
+    - operation: calculate_policy_bound
+      input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_policy_bound.ModelPolicyBoundRequest
+      output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_policy_bound.ModelPolicyBoundResult
+      handler:
+        name: HandlerPolicyBound
+        module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_policy_bound
 descriptor:
   node_archetype: compute
   purity: pure
@@ -61,4 +130,4 @@ externally_consumed_topics:
   - onex.evt.omnimarket.test-selection-select-failed.v1
 metadata:
   transport_type: kafka
-  related_tickets: [OMN-23296]
+  related_tickets: [OMN-23296, OMN-26270, OMN-26277]

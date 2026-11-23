@@ -24,6 +24,7 @@ import pytest
 
 from omnimarket.delegated_test_loop.lane_bus import LabRunBusError
 from omnimarket.handlers.scm import scm_cli
+from tests.helpers.fake_ledger_rows import FakeLedgerRows
 from tests.nodes.node_github_repo_gateway_effect.recorded_transport import (
     JsonExchange,
     get,
@@ -45,6 +46,7 @@ from tests.unit.handlers.scm.test_scm_duplicate_guard_replaces import (
     SKILL_LINE,
     TARGET,
     World,
+    carrier_claim,
 )
 
 pytestmark = pytest.mark.unit
@@ -53,9 +55,12 @@ DRAFT_PATH = f"/repos/{TARGET}/pulls/1574"
 
 
 @pytest.fixture
-def aged_out(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
+def aged_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, ledger_rows: FakeLedgerRows
+) -> World:
     """The guard's world with the closed draft gone from the watcher state, as it is days after the close."""
     built = World(tmp_path)
+    ledger_rows.lines = [carrier_claim()]
     state = json.loads(built.state.read_text(encoding="utf-8"))
     del state["prs"]["example_repo#1574"]
     built.state.write_text(json.dumps(state), encoding="utf-8")

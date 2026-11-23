@@ -1,0 +1,39 @@
+schema_version: 1.0.0
+ticket_id: OMN-25863
+title: Stores that already ran the run-savings recompute keep per-run savings priced by the backend alias
+summary: 'Each local store keeps a per-run modelled saving that the savings view sums, computed once by the one-time step omn24615_delegation_events_run_savings_recompute. omnimarket#6442 changed the rule (a run is priced by the model that ran) with no new recompute, so stores that had run the step kept savings priced by the alias; a price manifest change leaves the same gap. The recompute now also runs as a store step named by a digest of the savings rule''s version (RUN_SAVINGS_RULE_VERSION), the manifest''s schema_version and every manifest price, so a store recomputes its stored savings once per change; only the current digest stays recorded, so a reverted change recomputes again. When the manifest does not load, nothing is recomputed or recorded and the store is read as it is. Recorded cost columns are never rewritten.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25863-recompute-on-rule-change
+  statement: A local store recomputes its stored per-run savings once whenever the savings rule or the price manifest changes.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a store that recorded the earlier recompute re-prices its runs by the model that ran, once -- falsifier: uv run pytest over a store with the old step recorded and an alias priced differently from its model fails unless the stored saving is the model''s'
+evidence_requirements:
+- kind: tests
+  description: The recompute-on-rule-change tests pass at the pushed head.
+  command: uv run pytest tests/unit/projection/test_omn25863_recompute_savings_on_rule_change.py -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25863-ac1
+  description: 'AC1: a store an earlier build wrote (the earlier recompute recorded, the run''s saving priced by its alias) re-prices the run by the model that ran on its next open, both for an alias the manifest does not list and for an alias the manifest prices differently from the model (gpt-4o-mini, paid, reached through qwen2.5-7b, listed free); a manifest change (one rate, or the version) recomputes once more and a reverted change recomputes again, a second open with nothing changed recomputes nothing, recorded cost is untouched, a read-only store and a store whose manifest does not load are read as they are; fails without the rule-digest step.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn25863_recompute_savings_on_rule_change.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn25863-integration-proof
+  description: the store step and its tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25863 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/projection/test_omn25863_recompute_savings_on_rule_change.py -q --no-cov
+    cwd: .

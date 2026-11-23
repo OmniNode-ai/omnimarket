@@ -1,0 +1,71 @@
+schema_version: 1.0.0
+ticket_id: OMN-24566
+title: The dev broker permission step removes permissions no declaration holds
+summary: The broker permission reconcile node (node_broker_acl_reconcile_effect) could only add rows and count the undeclared ones; 24 rows on the dev broker that the early run-node caller derivation applied are no longer declared (six lab logins hold write and describe on the landing status topic and read and describe on the branch claim check's terminal topic) and nothing revoked them. The node gains a reconcile mode. A dry run that names the topics it may remove lists every row planned for removal, every undeclared row it leaves (out of scope or not named) and the declared rows it would add. Reconcile adds what is declared and missing as before, then removes only undeclared rows of the logins the principals overlay declares, inside the contract's removal scope (topic resources under the onex namespace), for the named topics, at the operator's expected count, never a row any scoped overlay declares, and reads back. An unreadable declaration refuses the whole run.
+is_seam_ticket: true
+interface_change: true
+requirements:
+- id: req-omn24566-reconcile-removes-undeclared
+  statement: The reconcile mode removes the undeclared rows of the node's own logins inside the contract's removal scope for the named topics at the expected count, and reports every row removed, every row left and every row planned in its typed result.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a reconcile removes a live row no declaration holds, inside the removal scope, and lists it in the typed result, so an undeclared row surviving a reconcile turns the test red on today's code -- falsifier: uv run pytest tests/nodes/node_broker_acl_reconcile_effect/test_reconcile_removes_undeclared.py -q --no-cov -k \"golden or failing_control\""
+  - id: AC2
+    statement: "AC2: a reconcile refuses and changes nothing when the expected count differs from the count found, and never removes a row outside the removal scope, held by the named streams, of a login it does not manage, or declared by any overlay -- falsifier: uv run pytest tests/nodes/node_broker_acl_reconcile_effect/test_reconcile_removes_undeclared.py -q --no-cov -k \"error_chain or scope or overlay\""
+  - id: AC3
+    statement: "AC3: a seam test fails when the contract's removal scope, the declared overlay rows or the typed result change shape, on the in-memory bus -- falsifier: uv run pytest tests/nodes/node_broker_acl_reconcile_effect/test_reconcile_seams.py -q --no-cov"
+  - id: AC4
+    statement: "AC4: integrated: on the dev broker, through the node from the branch, the dry run lists exactly the 24 rows, the reconcile removes them and the readback shows present equals declared for those logins with one landing status event still flowing from its real writer -- falsifier: the lab receipt names the host, the revision running, the dry run count, the removed rows and the readback counts"
+evidence_requirements:
+- kind: tests
+  description: The reconcile golden, failing control and error chain tests, the scope and overlay tests, the seam tests on the in-memory bus, and the neighbouring broker permission node tests.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_broker_acl_reconcile_effect tests/test_golden_chain_broker_acl_reconcile_effect.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24566-ac1-golden-and-control
+  description: The golden reconcile removes exactly the eight stale rows of the incident in small and reads back zero undeclared; the failing control shows apply mode leaving all eight and a named break of the split leaving them too.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_broker_acl_reconcile_effect/test_reconcile_removes_undeclared.py -q --no-cov -n 0 -p no:randomly -k "golden or failing_control"
+    cwd: .
+- id: dod-omn24566-ac2-error-chain-and-scope
+  description: A count mismatch, an unreadable broker or declaration, a row outside the scope, a row of an unmanaged login, a row a scoped overlay declares and a name not asked for all leave the broker unchanged.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_broker_acl_reconcile_effect/test_reconcile_removes_undeclared.py -q --no-cov -n 0 -p no:randomly -k "error_chain or scope or overlay"
+    cwd: .
+- id: dod-omn24566-ac3-seams
+  description: The seam tests read the contract's removal scope against the claim check's topics, the request and result shapes, the report lines against the typed rows, the scoped overlay model against the declared rows and the in-memory bus command to terminal.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_broker_acl_reconcile_effect/test_reconcile_seams.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24566-ac4-hosted-half
+  description: "The hosted half of AC4. The node's own test directories pass: the reconcile golden chain, the failing controls, the error chain, the scope and overlay tests and the seams, which are the same behaviour the dev broker reading below depends on."
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_broker_acl_reconcile_effect tests/test_golden_chain_broker_acl_reconcile_effect.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24566-ac4-integration-proof
+  description: Hosted CI cannot reach the dev broker, so only the local Done gate runs this unbound check. The pushed head ran the node tests on a lab host through the lab work runner and exited 0. The running reading (dry run count, removed rows, readback, one landing status event from its real writer) is read from the lab receipt comment on the ticket.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-omn24566 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_broker_acl_reconcile_effect tests/test_golden_chain_broker_acl_reconcile_effect.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

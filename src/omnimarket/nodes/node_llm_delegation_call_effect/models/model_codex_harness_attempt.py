@@ -15,7 +15,8 @@ class ModelCodexHarnessRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid", hide_input_in_errors=True)
     prompt: str = Field(min_length=1, repr=False)
-    model: str = Field(min_length=1)
+    # None passes no model flag: the host account's configured default model runs.
+    model: str | None = Field(default=None, min_length=1)
     timeout_seconds: float = Field(gt=0, allow_inf_nan=False)
 
 
@@ -48,7 +49,8 @@ class ModelCodexHarnessReceipt(BaseModel):
     tokens_out: int | None = Field(default=None, ge=0)
     tokens_cached: int | None = Field(default=None, ge=0)
     wall_seconds: float = Field(ge=0, allow_inf_nan=False)
-    # CLI model selection is explicit. Codex JSONL does not attest an observed model.
+    # CLI model selection is explicit. Codex JSONL does not attest an observed model;
+    # empty when the request named none and the account default ran.
     model: str
     model_source: Literal["requested"] = "requested"
     exit_cause: Literal[

@@ -1,0 +1,19 @@
+{
+  "source": "dev delegation_events, read-only, 2026-11-20",
+  "task_type": "code_generation",
+  "delegated_to": "glm-5.3-flash",
+  "model_name": "glm-5.3-flash",
+  "backend_id": "harness:claude-glm:glm-5.3-flash",
+  "cost_usd": null,
+  "tokens_input": 0,
+  "tokens_output": 0,
+  "latency_ms": 181373,
+  "terminal_ok": false,
+  "terminal_failure_cause": "provider_error",
+  "quality_gate_passed": false,
+  "escalation_count": 0,
+  "cost_tier_name": "harness",
+  "operational_outcome": "inference_failed",
+  "attempt_failure_class": "HarnessRunFailed",
+  "attempt_error_class": "provider usage limit (HTTP 429), request ids removed"
+}

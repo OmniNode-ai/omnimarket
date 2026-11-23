@@ -1,0 +1,67 @@
+schema_version: 1.0.0
+ticket_id: OMN-20540
+title: a bus writer that cannot reach the broker spools its request locally and replays it under the same req= id
+summary: >-
+  The work-ledger append command keeps a durable local spool (handlers/bus_binding/outbox.py) for requests it
+  cannot publish. This change makes the spool answer the way the ticket states: an append made while the broker
+  is unreachable exits 0 and prints status=spooled (it printed queued), and the request file of a send is
+  fsynced, with its directory entry, before the publish (the first-attempt record was written without an fsync).
+  Replay under the same request id, the duplicate answer after a lost receipt and removal only on a receipt hold
+  on the dev mechanism already and are pinned by tests in tests/ledger.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn20540-spool
+  statement: A bus ledger writer that cannot reach the broker spools its request, fsynced before the publish, and the replay sends the same request id, so the ledger holds one row.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: with the broker unreachable the append exits 0 with status=spooled and the request is in the spool -- falsifier: uv run pytest tests/ledger -k spool_unreachable -q'
+  - id: AC2
+    statement: 'AC2: after the broker returns, one replay produces exactly one row, and a replay after a lost receipt answers duplicate and appends nothing -- falsifier: uv run pytest tests/ledger -k ''spool_replay or spool_duplicate'' -q'
+  - id: AC3
+    statement: 'AC3: a spooled request is removed only on a receipt and the spool file is fsynced before the publish -- falsifier: uv run pytest tests/ledger -k spool_durability -q'
+evidence_requirements:
+- kind: tests
+  description: The three spool test groups pass at the pushed head.
+  command: uv run pytest tests/ledger/test_ledger_spool_omn20540.py -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn20540-ac1
+  description: AC1 the append command, run with the durable open failing on a lane that declares an in-memory fallback, exits 0 and prints a receipt with status spooled naming the request id, and the request file is in the spool directory.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ledger -k spool_unreachable -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn20540-ac2
+  description: AC2 a spooled request replayed against a serve that appends once per request id lands one row, a second drain lands none, and a request whose first attempt landed (receipt lost) is answered duplicate with no second row. A retry of a timed-out send reuses the first attempt's request id and is answered duplicate.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ledger -k 'spool_replay or spool_duplicate' -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn20540-ac3
+  description: AC3 the request file is fsynced before the publish callable runs and is on disk when it runs; a timeout or an error receipt leaves the spooled file, and only an accepted receipt removes it.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ledger -k spool_durability -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn20540-integration-proof
+  description: The spool test file runs on a lab host through onex lab-work at the pushed sha with the repository's real dependencies. The spool behaviour against the real dev broker (stop reaching it, append one row, read status spooled, restore, read one replay produce one row) is recorded in the pull request's lab comment and a STATUS row of the lane.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-20540 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/ledger -k spool -q -p no:randomly --no-cov'
+    cwd: .

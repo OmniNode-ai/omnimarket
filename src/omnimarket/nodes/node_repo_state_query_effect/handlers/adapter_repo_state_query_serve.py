@@ -458,7 +458,7 @@ _omni_root_option = click.option(
     "--omni-root",
     type=click.Path(path_type=Path, file_okay=False),
     required=True,
-    help="The registry root on the host ($OMNI_HOME in the overlay).",
+    help="The registry root on the host, the base the overlay's registry-root paths resolve against.",
 )
 _overlay_root_option = click.option(
     "--overlay-root",

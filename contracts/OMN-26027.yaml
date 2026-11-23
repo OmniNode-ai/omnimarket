@@ -1,0 +1,48 @@
+schema_version: 1.0.0
+ticket_id: OMN-26027
+title: Every bus client the Mac's ledger serve and the alarms use opens with a connect deadline and a LAN second address, and a worker spawn refuses a worker without its ledger and bus environment
+summary: One bus-opening function that every ledger serve, ledger append and alarm client goes through starts each broker address inside a declared deadline, tries the lane's second address after it (declared in the connect policy, or by the lane), and raises a typed error naming each address. This contract carries AC1 and AC2; the worker spawn preflight (AC3) follows in a second pull request, and AC4 is judged after the drill of 2026-11-26.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26027-bus-connect
+    statement: Open every Kafka bus client under a declared connect deadline, with the lane's second address.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: every bus client the Mac''s ledger serve and the alarms use opens with a connect deadline and returns a typed error inside it when the bootstrap address blackholes -- falsifier: `uv run pytest tests -q -k bus_connect_deadline` against an unroutable bootstrap address must return inside the deadline plus one second'
+      - id: AC2
+        statement: 'AC2: the declared bootstrap carries the LAN second address beside the ts.net name, and a client whose ts.net name does not resolve connects through the LAN address -- falsifier: `uv run pytest tests -q -k lan_bootstrap_second_address` with the ts.net name unresolvable'
+evidence_requirements:
+  - kind: tests
+    description: Bus connect deadline and second address behaviour.
+    command: uv run pytest tests/test_bus_connect_deadline.py -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn26027-ac1-deadline
+    description: A blackholed bootstrap (a reserved test-net address) returns a typed BusConnectDeadlineError inside the declared deadline plus one second.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_bus_connect_deadline.py -q -k bus_connect_deadline
+        cwd: .
+  - id: dod-omn26027-ac2-second-address
+    description: With the first address unresolvable the client connects through the lane's declared second address and says which one it used.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/test_bus_connect_deadline.py -q -k lan_bootstrap_second_address
+        cwd: .
+  - id: dod-omn26027-integration-proof
+    description: The connect deadline and second address tests run on a lab host through onex lab-work at the pushed sha. Local Done gate only.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26027 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_bus_connect_deadline.py -q --no-cov -n 0 -p no:randomly
+        cwd: .

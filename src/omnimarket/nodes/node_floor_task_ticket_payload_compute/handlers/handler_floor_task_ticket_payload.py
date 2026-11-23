@@ -174,8 +174,8 @@ def _description(
         f" -- falsifier: the pull request of each repository reads merged on its landing branch\n"
         f"- The change is deployed on the dev lane"
         f" -- falsifier: the dev deployment evidence names the merged commit\n"
-        f"- Integration check: {integration}"
-        f" -- falsifier: the integration check is run and its output is read\n"
+        f"- integrated: Integration check: {integration}"
+        f" -- falsifier: the integration check is run on the dev lane and its output is read back\n"
     )
 
 

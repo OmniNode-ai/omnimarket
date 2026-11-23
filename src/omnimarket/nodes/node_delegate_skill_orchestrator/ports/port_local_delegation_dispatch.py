@@ -55,6 +55,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
+from functools import partial
 from pathlib import Path
 from typing import Any, ClassVar, Literal, TypedDict, cast
 from uuid import UUID
@@ -150,7 +151,9 @@ from omnimarket.handlers.handler_size_band_measurement import measure_size_band
 from omnimarket.handlers.local_snapshot_publisher import (
     LocalEvidenceNoRepublishPublisher as _LocalEvidenceNoRepublishPublisher,
 )
+from omnimarket.handlers.model_catalog import call_read_deadline
 from omnimarket.handlers.routing.byok_provider_backends import (
+    ModelByokProviderBackend,
     byok_backend_max_retries,
     byok_backend_retry_wait_seconds,
     resolve_byok_backend_by_id,
@@ -175,6 +178,8 @@ from omnimarket.handlers.routing.delegation_backend_resolution import (
 from omnimarket.handlers.routing.input_token_bound import clamp_max_tokens
 from omnimarket.handlers.routing.local_byok_route import (
     is_registered_named_connection_route,
+    model_budget_backend,
+    model_output_budget,
     next_chosen_model_byok_route,
     next_registered_byok_route,
     registered_byok_routes,
@@ -183,6 +188,7 @@ from omnimarket.handlers.routing.local_byok_route import (
     resolve_pinned_byok_route,
     substitute_any_registered_byok_route,
     substitute_local_byok_route,
+    with_byok_model,
 )
 from omnimarket.handlers.routing.measured_correct_ceiling import (
     refuse_above_measured_correct_ceiling,
@@ -411,6 +417,7 @@ from omnimarket.nodes.node_llm_delegation_call_effect import (
     ModelLlmDelegationCallRequest,
     ModelLlmDelegationCallResult,
     current_call_observer,
+    current_local_model_entry,
 )
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
     HandlerProjectionDelegation,
@@ -1159,6 +1166,46 @@ type _EffectWorkerMessage = (
     | tuple[Literal["ok"], ModelLlmDelegationCallResult]
     | tuple[Literal["error"], str, str]
 )
+
+
+def _call_with_model_budget(
+    handler: _EffectHandler,
+    row: ModelByokProviderBackend,
+    requested: int | None,
+    request: ModelLlmDelegationCallRequest,
+) -> ModelLlmDelegationCallResult:
+    """Read the output ceiling and price entry inside the supervised effect.
+
+    models.dev is read here, inside the cancellable worker, and only when its
+    copy is older than the configured age, within a total deadline taken from
+    the call's remaining time (OMN-23413 AC35).
+    """
+    started = time.monotonic()
+    ceiling, entry = model_output_budget(
+        row,
+        request.model_id,
+        live=True,
+        deadline_seconds=call_read_deadline(request.timeout_seconds),
+    )
+    spent = time.monotonic() - started
+    limit = resolve_effective_max_tokens(
+        requested=requested, backend_max_tokens=ceiling
+    )
+    # The read's time comes out of the provider call's own timeout, so optional
+    # price metadata never pushes the call past its deadline.
+    request = request.model_copy(
+        update={
+            "max_tokens": limit,
+            "timeout_seconds": max(request.timeout_seconds - spent, 0.001),
+        }
+    )
+    entry_token = current_local_model_entry.set(entry)
+    try:
+        result = handler(request)
+    finally:
+        current_local_model_entry.reset(entry_token)
+    result.record_local_output_ceiling(ceiling)
+    return result
 
 
 def _resolve_child_boot_budget_seconds(*, observed_boot_seconds: float | None) -> float:
@@ -2319,9 +2366,8 @@ class LocalDelegationDispatchPort:
         ) -> ModelResolvedDelegationBackend:
             if model is None or candidate.backend_id != chosen_route_id:
                 return candidate
-            return candidate.model_copy(
+            return with_byok_model(candidate, model).model_copy(
                 update={
-                    "model_id": model,
                     "model_id_source": "the caller's --model for this delegation",
                 }
             )
@@ -3137,6 +3183,7 @@ class LocalDelegationDispatchPort:
                 named_tests=named_tests,
             )
             _settle_in_flight_attempt(progress, attempt_outcome)
+            backend = attempt_outcome.recorded_backend(backend)
             last_attempt_seconds = self._clock() - attempt_started
 
             # A hard transport/timeout failure: classify retryable vs terminal and,
@@ -5474,6 +5521,12 @@ class LocalDelegationDispatchPort:
                 backend_id=backend.backend_id,
                 model_id=backend.model_id,
             )
+        effect_handler = self._effect_handler
+        budget_backend = model_budget_backend(backend.backend_id)
+        if budget_backend is not None:
+            effect_handler = partial(
+                _call_with_model_budget, effect_handler, budget_backend, max_tokens
+            )
         try:
             with dispatch_stage("inference"):
                 # OMN-23162: a faults-mode probe answers a faulted model id's call
@@ -5483,7 +5536,7 @@ class LocalDelegationDispatchPort:
                     result = injected_fault_result
                 elif self._effect_process_boundary:
                     effect_child = _run_effect_handler_with_killable_timeout(
-                        self._effect_handler,
+                        effect_handler,
                         call_request,
                         timeout_seconds=dispatch_deadline_seconds,
                     )
@@ -5501,7 +5554,7 @@ class LocalDelegationDispatchPort:
                         None if progress is None else progress.in_flight_calls.append
                     )
                     try:
-                        result = self._effect_handler(call_request)
+                        result = effect_handler(call_request)
                     finally:
                         current_call_observer.reset(observer_token)
         except TimeoutError:
@@ -6752,6 +6805,15 @@ class _AttemptOutcome:
         # class DoD, so the executed-test rule is not the check set in force.
         self.response_contract_governed = response_contract_governed
 
+    def recorded_backend(
+        self, backend: ModelResolvedDelegationBackend
+    ) -> ModelResolvedDelegationBackend:
+        if self.result is not None and self.result.local_output_ceiling is not None:
+            return backend.model_copy(
+                update={"max_tokens": self.result.local_output_ceiling}
+            )
+        return backend
+
 
 _SPLIT_BANDS: dict[str, EnumDelegationSizeBand] = {
     "S": EnumDelegationSizeBand.SMALL,
@@ -6826,6 +6888,7 @@ class _LocalShrinkPorts:
             temperature=self._temperature,
             response_format=self._response_format,
         )
+        backend = outcome.recorded_backend(backend)
         attempt: dict[str, object] = {
             "tier": _routing_tier_name(backend),
             "backend_id": backend.backend_id,

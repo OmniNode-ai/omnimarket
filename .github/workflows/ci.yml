@@ -314,8 +314,13 @@ jobs:
       pull-requests: read
     uses: OmniNode-ai/omnibase_core/.github/workflows/full-suite-reuse.yml@dev-20261018024445-b6ee996befa1
 
-  dev-suite-reuse-verdict:
-    name: Dev Push Full Suite Reuse
+  # OMN-26446: the probe looks for a recorded tree pass and never decides the push. It
+  # exits 0 only when the tree is proven (a queue run recorded it) or when no merge_queue
+  # rule is active on dev, which means no queue run can ever record one: then `run_tests`
+  # is true and this run's own full-suite shards below decide. With a queue rule active and
+  # no proof it exits 1 as before, and no shard runs.
+  dev-tree-pass-probe:
+    name: Dev Tree Pass Probe (OMN-26446)
     needs: dev-full-suite-reuse
     if: always() && github.event_name == 'push' && github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
@@ -323,8 +328,12 @@ jobs:
     permissions:
       actions: read
       contents: read
+    outputs:
+      tree_pass: ${{ steps.probe.outputs.tree_pass }}
+      run_tests: ${{ steps.probe.outputs.run_tests }}
     steps:
-      - name: Require the queued tree's full-suite pass
+      - name: Look for the queued tree's full-suite pass
+        id: probe
         env:
           GH_TOKEN: ${{ github.token }}
           REUSE: ${{ needs.dev-full-suite-reuse.outputs.reuse }}
@@ -333,6 +342,7 @@ jobs:
           set -euo pipefail
           if [ "$REUSE" = "true" ] && [ -n "$PRODUCER_RUN" ]; then
             echo "Full suite inherited from run $PRODUCER_RUN."
+            printf 'tree_pass=true\nrun_tests=false\n' >> "$GITHUB_OUTPUT"
             exit 0
           fi
           # OMN-19998: a squash can change the commit identity while preserving
@@ -354,18 +364,61 @@ jobs:
               --jq '.jobs[] | select(.name == "CI Summary") | "\(.status) \(.conclusion // "none")"')" || continue
             if [ "$verdict" = "completed success" ]; then
               echo "Full suite inherited from queue run $producer for tree $tree."
+              printf 'tree_pass=true\nrun_tests=false\n' >> "$GITHUB_OUTPUT"
               exit 0
             fi
           done <<< "$markers"
-          # OMN-19998: while the dev merge queue ruleset is off no merge_group
-          # producer can exist; stay strict whenever a merge_queue rule is active on dev.
+          # OMN-26446: while the dev merge queue ruleset is off no merge_group producer can
+          # exist, so the pushed tree is tested here, by the full-suite shards of this run,
+          # and a warning alone no longer admits it. Stay strict whenever a merge_queue
+          # rule is active on dev.
           queue_rules="$(gh api "repos/$GITHUB_REPOSITORY/rules/branches/dev?per_page=100" \
             --jq '[.[] | select(.type == "merge_queue")] | length')"
           if [ "$queue_rules" = "0" ]; then
-            echo "::warning::No merge_queue rule is active on dev, so no queue run can record a tree pass; the pull request ran its selected tests, which are the full suite only when the change forces it (OMN-17232). Strict again once the dev merge queue ruleset is enabled (OMN-19998)."
+            echo "::warning::No merge_queue rule is active on dev, so no queue run can record a tree pass; this push runs the full suite itself and is admitted only when every shard passes (OMN-26446)."
+            printf 'tree_pass=false\nrun_tests=true\n' >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "::error::No verified full-suite pass for this dev tree; heavy tests stay in the queue."
+          exit 1
+
+  # The verdict the CI Summary reads as `Dev Push Full Suite Reuse`. It passes on a proven
+  # queue tree, or on this push's own full suite passing, and on nothing else.
+  dev-suite-reuse-verdict:
+    name: Dev Push Full Suite Reuse
+    needs: [dev-tree-pass-probe, detect-changes, test]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require a full-suite pass for the pushed dev tree
+        env:
+          PROBE: ${{ needs.dev-tree-pass-probe.result }}
+          TREE_PASS: ${{ needs.dev-tree-pass-probe.outputs.tree_pass }}
+          RUN_TESTS: ${{ needs.dev-tree-pass-probe.outputs.run_tests }}
+          DETECT: ${{ needs.detect-changes.result }}
+          IS_FULL_SUITE: ${{ needs.detect-changes.outputs.is_full_suite }}
+          SPLIT_COUNT: ${{ needs.detect-changes.outputs.split_count }}
+          TESTS: ${{ needs.test.result }}
+        run: |
+          set -euo pipefail
+          if [ "$PROBE" != "success" ]; then
+            echo "::error::The dev tree pass probe ended $PROBE; no verified full-suite pass for this dev tree."
+            exit 1
+          fi
+          if [ "$TREE_PASS" = "true" ]; then
+            echo "Full suite inherited from a queue run that recorded this tree."
+            exit 0
+          fi
+          if [ "$RUN_TESTS" != "true" ]; then
+            echo "::error::No verified full-suite pass for this dev tree and this run did not run the suite."
+            exit 1
+          fi
+          if [ "$DETECT" = "success" ] && [ "$IS_FULL_SUITE" = "true" ] && [ "$TESTS" = "success" ]; then
+            echo "Full suite ran on this push: all $SPLIT_COUNT Tests shards passed."
+            exit 0
+          fi
+          echo "::error::The full suite did not pass on this dev push (Detect Changes $DETECT, full suite $IS_FULL_SUITE, Tests $TESTS)."
           exit 1
 
   lint:
@@ -432,6 +485,13 @@ jobs:
         run: uv run pytest tests/ci/test_queue_run_once_omn19998.py -q -n 0 -p no:randomly --no-cov
       - name: Lane census alias parity (OMN-19998)
         run: uv run --frozen pytest tests/nodes/node_lane_census_alias_parity_compute/test_alias_parity.py -q --no-cov
+      # OMN-24445: the CI twin of the ledger-file-census pre-commit hook. The count of executable
+      # readers and writers of the ledger file may not grow past its ratchet row; SYNC with the hook.
+      - name: Ledger file census ratchet (OMN-24445)
+        env:
+          ONEX_LEDGER_CENSUS_ROOT: .
+          ONEX_LEDGER_CENSUS_OVERLAY: src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml
+        run: uv run --frozen python -m omnimarket.nodes.node_work_ledger_file_census_effect --ratchet-file src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml --repos omnimarket --directory omnimarket=. --per-file
       - name: Ruff format check
         run: uv run ruff format --check src/ tests/ benchmarks/
       - name: Delegation target and lab-job seam gate
@@ -1250,8 +1310,10 @@ jobs:
   # ---------------------------------------------------------------------------
   detect-changes:
     name: Detect Changes
-    needs: [repo-evidence-preflight, zone-filter]
-    if: needs.repo-evidence-preflight.result == 'success' && (github.event_name == 'merge_group' || needs.zone-filter.outputs.docs_only != 'true') && !(github.event_name == 'push' && github.ref == 'refs/heads/dev')
+    needs: [repo-evidence-preflight, zone-filter, dev-tree-pass-probe]
+    # OMN-26446: a dev push runs the Tests shards when no queue run recorded its tree. The
+    # docs-only skip does not apply to a dev push: the shards are the only proof it has.
+    if: always() && needs.repo-evidence-preflight.result == 'success' && (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/dev' && needs.dev-tree-pass-probe.outputs.run_tests == 'true') || (needs.zone-filter.outputs.docs_only != 'true' && !(github.event_name == 'push' && github.ref == 'refs/heads/dev')))
     runs-on: ubuntu-latest
     outputs:
       is_full_suite: ${{ steps.detect.outputs.is_full_suite }}
@@ -1259,6 +1321,7 @@ jobs:
       split_count: ${{ steps.detect.outputs.split_count }}
       matrix: ${{ steps.detect.outputs.matrix }}
       selected_paths: ${{ steps.detect.outputs.selected_paths }}
+      collection_gate: ${{ steps.record.outputs.collection_gate }}
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
@@ -1285,17 +1348,25 @@ jobs:
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             base="${{ github.event.pull_request.base.sha }}"
             git fetch --no-tags --depth=1 origin "$base" || true
-            git diff --name-only "$base"...HEAD > changed.txt
+            git diff --name-only --no-renames "$base"...HEAD > changed.txt
           else
-            git diff --name-only HEAD~1 HEAD > changed.txt || echo "" > changed.txt
+            git diff --name-only --no-renames HEAD~1 HEAD > changed.txt || echo "" > changed.txt
           fi
           echo "Changed files:"
           cat changed.txt
 
+      # The flag is the repository variable, not a literal: with it not true the selection is the
+      # full-suite matrix (the policy's full_split_count shards), so the shard plan and the pytest
+      # steps below read the same flag. What a narrowing rule changes for a pull request is set by
+      # selection_stage in the selector's policy.yaml, which rises one stage at a time on a receipt
+      # that tests/ci/test_selection_stage_evidence.py recomputes from the published nightly records.
+      # Rollback is an owner change that lowers the stage, or the owner setting the variable false.
       - name: Resolve test selection
-        id: detect
+        id: resolve
         env:
-          FLAG: "on"
+          # OMN-26446: a dev push is a merged tree, never a narrowed diff: with the flag off the
+          # selection is the full-suite matrix (the policy's full_split_count shards).
+          FLAG: ${{ (vars.ENABLE_SMART_TESTS == 'true' && !(github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'on' || 'off' }}
           # OMN-23296: the selector calls node_test_selection_selector_compute, which
           # imports only pydantic and pyyaml; src/ holds it without installing the package.
           PYTHONPATH: src
@@ -1308,20 +1379,111 @@ jobs:
             --feature-flag "$FLAG" \
             > selection.json
           cat selection.json
-          is_full=$(python -c "import json; d=json.load(open('selection.json')); print(str(d['is_full_suite']).lower())")
-          reason=$(python -c "import json; d=json.load(open('selection.json')); print(d['full_suite_reason'] or '')")
-          split_count=$(python -c "import json; d=json.load(open('selection.json')); print(d['split_count'])")
-          matrix=$(python -c "import json; d=json.load(open('selection.json')); print(json.dumps(d['matrix']))")
-          paths=$(python -c "import json; d=json.load(open('selection.json')); print(json.dumps(d['selected_paths']))")
+          # The stage entries are computed as if the flag were on, whatever the flag says.
+          python -m scripts.ci.detect_test_paths \
+            --changed-files-from changed.txt \
+            --ref-name "${{ github.ref_name }}" \
+            --event-name "${{ github.event_name }}" \
+            --feature-flag on \
+            --stage 0 \
+            > selection-stage-0.json
+
+      # The typed record of this run's selection: the executed selection and the selection of each
+      # stage, built by the selector node's build_selection_record operation.
+      - name: Build selection record
+        id: record
+        env:
+          FLAG: ${{ (vars.ENABLE_SMART_TESTS == 'true' && !(github.event_name == 'push' && github.ref == 'refs/heads/dev')) && 'on' || 'off' }}
+          PYTHONPATH: src
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}
+        run: |
+          . .venv/bin/activate
+          pr_args=()
+          if [ -n "$PR_NUMBER" ]; then pr_args=(--pr-number "$PR_NUMBER"); fi
+          python -m omnimarket.nodes.node_test_selection_selector_compute.runtime_selection_record \
+            --repo "$REPO" "${pr_args[@]}" \
+            --head-sha "$HEAD_SHA" \
+            --base-sha "$BASE_SHA" \
+            --checkout-sha "$(git rev-parse HEAD)" \
+            --run-id "${{ github.run_id }}" \
+            --run-attempt "${{ github.run_attempt }}" \
+            --changed-files-from changed.txt \
+            --feature-flag "$FLAG" \
+            --stage-selection 0=selection-stage-0.json \
+            --out selection-record.json \
+            --github-output "$GITHUB_OUTPUT"
+          cat selection-record.json
+
+      # A rerun is a new attempt and so a new name; a repeated key is refused, never overwritten.
+      - name: Upload selection record
+        if: always() && steps.record.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: test-selection-${{ github.event.pull_request.number || 0 }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: selection-record.json
+          overwrite: false
+          if-no-files-found: error
+          retention-days: ${{ steps.record.outputs.retention_days }}
+
+      # The pytest shard matrix is built from the record's executed_selection and from no other entry.
+      - name: Expose the executed selection
+        id: detect
+        run: |
+          read_executed() {
+            python3 -c "import json; d=json.load(open('selection-record.json'))['executed_selection']; $1"
+          }
+          is_full=$(read_executed "print(str(d['kind'] == 'full_suite').lower())")
+          reason=$(read_executed "print(d['reason_code'] or '')")
+          split_count=$(read_executed "print(d['split_count'])")
+          matrix=$(read_executed "print(json.dumps(list(range(1, d['split_count'] + 1))))")
+          paths=$(read_executed "print(json.dumps(d['selected_paths']))")
           echo "is_full_suite=$is_full" >> "$GITHUB_OUTPUT"
           echo "full_suite_reason=$reason" >> "$GITHUB_OUTPUT"
           echo "split_count=$split_count" >> "$GITHUB_OUTPUT"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           echo "selected_paths=$paths" >> "$GITHUB_OUTPUT"
 
+  # ---------------------------------------------------------------------------
+  # Collection gate (OMN-26277): with the root conftest edge cut, a closure that reaches
+  # tests/conftest.py selects its own tests and not the tree, so one whole-tree collection proves
+  # that no import breaks anywhere. It follows the detect job and runs once per pull request, never
+  # inside the sharded `test` job below (a collection step there would run once per shard). It runs
+  # only when the detect job's collection_gate output is true: the policy's cut edge, at or above
+  # file_level_closure_stage, for a narrowed selection.
+  # ---------------------------------------------------------------------------
+  collection-gate:
+    name: Collection Gate
+    needs: [repo-evidence-preflight, detect-changes]
+    if: needs.detect-changes.result == 'success' && needs.detect-changes.outputs.collection_gate == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - name: Clone omnibase_core
+        run: git clone --depth=1 --branch "$(awk -v p=omnibase-core '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+      - name: Clone omnimemory
+        run: git clone --depth=1 --branch "$(awk -v p=omninode-memory '$0=="name = \""p"\""{f=1;next} f&&/^version = /{v=$3;gsub(/"/,"",v);next} f&&/^source = /{t="";if(match($0,/[?&]tag=[^&#"]+/))t=substr($0,RSTART+5,RLENGTH-5);if(t=="")t="v" v;print t;exit}' uv.lock)" https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a  # v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Collect the whole tree once
+        run: uv run pytest tests/ --collect-only -q -m "not kafka and not release_proof" -p no:cacheprovider
+
   test:
     name: Tests (Split ${{ matrix.split }}/${{ needs.detect-changes.outputs.split_count }})
     needs: [repo-evidence-preflight, detect-changes]
+    # OMN-26446: detect-changes now needs dev-tree-pass-probe, which is skipped on a pull
+    # request. A skipped ancestor skips this job under the implicit success(), so no shard
+    # ran and Coverage Sweep Gate found no artifacts. Name the two results this job needs.
+    if: always() && needs.repo-evidence-preflight.result == 'success' && needs.detect-changes.result == 'success'
     runs-on: ubuntu-24.04
     # OMN-18405: no timeout-minutes meant a stuck shard fell back to GitHub's
     # implicit 360m job default. Measured p95 across 524 successful shards
@@ -2709,6 +2871,44 @@ jobs:
         env:
           PYTHONPATH: src
         run: .venv-core-only/bin/python scripts/ci/core_only_install_harness.py
+
+  # ============================================================================
+  # LATEST-CORE SMOKE (OMN-26215)
+  # CI installs the lockfile's core while dispatch venvs resolve the newest, so a
+  # core removal (core#2335 dropped run_node_in_process) was seen first about 43
+  # hours later, in the field. This job installs the newest published
+  # omnibase-core with NO lockfile into a throwaway venv and imports every
+  # `onex.nodes` entry point and its non-test submodules, naming each failing
+  # module and symbol. Strict CI Summary gate (ci_summary_rules.json). A core PR
+  # runs the same steps through latest-core-smoke-reusable.yml (keep them in sync).
+  # ============================================================================
+  latest-core-smoke:
+    needs: repo-evidence-preflight
+    if: always()
+    name: Latest Core Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+        with:
+          version: "latest"
+      - name: Build a throwaway venv with this head (no lockfile)
+        run: |
+          uv venv --python 3.12 "$RUNNER_TEMP/smoke-venv"
+          uv pip install --python "$RUNNER_TEMP/smoke-venv/bin/python" -e .
+      - name: Replace core with the newest published release
+        run: |
+          uv pip install --python "$RUNNER_TEMP/smoke-venv/bin/python" --upgrade --no-deps omnibase-core
+          "$RUNNER_TEMP/smoke-venv/bin/python" -c "import importlib.metadata as m; print('omnibase-core', m.version('omnibase-core'))"
+      - name: Import every node entry point
+        env:
+          OMNI_HOME: ${{ github.workspace }}
+        run: |
+          "$RUNNER_TEMP/smoke-venv/bin/python" tests/ci/latest_core_smoke.py
 
   # ============================================================================
   # CUSTOMER CLEAN-INSTALL DELEGATE GATE (OMN-16200, M4 C13/C17)
@@ -4348,7 +4548,7 @@ jobs:
         env:
           ONEX_LEDGER_CENSUS_ROOT: .
           ONEX_LEDGER_CENSUS_OVERLAY: src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml
-        run: uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --repos omnimarket --directory omnimarket=.
+        run: uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --repos omnimarket --directory omnimarket=. --per-file
       - name: Ledger file census ratchet turns red on a seeded reader (OMN-22917)
         run: uv run pytest tests/unit/validators/test_ledger_file_census.py tests/unit/nodes/node_work_ledger_file_census_effect -q --no-cov -p no:cacheprovider
       - name: The seven no-file readings turn red on their planted breaks (OMN-22917)

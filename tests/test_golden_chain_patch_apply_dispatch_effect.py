@@ -16,6 +16,7 @@ import pytest
 import yaml
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
+from omnimarket.handlers.ledger_rows_unreadable_error import LedgerRowsUnreadableError
 from omnimarket.nodes.node_patch_apply_dispatch_effect.handlers import (
     handler_patch_apply_dispatch as h,
 )
@@ -91,12 +92,14 @@ class World:
         self.reports = self.home / ".claude_scratch/reports"
         self.reports.mkdir(parents=True)
         (self.reports / f"{LANE}-2026-10-17T0955Z.md").write_text("blocked on a hook\n")
-        self.ledger = root / "ROLLING_WORK_LEDGER.md"
-        self.ledger.write_text(
-            "2026-10-17T09:25:38Z | CLAIM | lane=sample-lane-r2 | ticket=OMN-17427 | x\n"
+        # The rows the rows loader node answers: the ledger file is never read.
+        self.rows: list[str] = [
+            "2026-10-17T09:25:38Z | CLAIM | lane=sample-lane-r2 | ticket=OMN-17427 | x",
             "2026-10-17T09:49:31Z | TERMINAL | lane=sample-lane-r2 | ticket=OMN-17427 | "
-            "closes-CLAIM=2026-10-17T09:25:38Z | outcome=blocked | patch left\n"
-        )
+            "closes-CLAIM=2026-10-17T09:25:38Z | outcome=blocked | patch left",
+        ]
+        self.unreadable = False
+        self.reads: list[tuple[str, int]] = []
         self.patch = self.patch_dir / PATCH
         scratch = root / "scratch"
         git(root, "clone", "-q", str(self.upstream), str(scratch))
@@ -104,6 +107,12 @@ class World:
         self.patch.write_text(git(scratch, "diff"))
         self.scratch = scratch
         self.age(hours=1)
+
+    def read_rows(self, reader: str, window_hours: int) -> tuple[str, ...]:
+        self.reads.append((reader, window_hours))
+        if self.unreadable:
+            raise LedgerRowsUnreadableError("the rows loader exited 69")
+        return tuple(self.rows)
 
     def age(self, hours: float) -> None:
         stamp = (NOW - timedelta(hours=hours)).timestamp()
@@ -119,7 +128,6 @@ class World:
             {
                 "now": NOW,
                 "registry_root": self.home,
-                "ledger_path": self.ledger,
                 "state_dir": self.root / "state",
                 "repos": ("sample", "other"),
                 **kwargs,
@@ -136,7 +144,9 @@ def tick(
     world: World, recorder: Recorder, **kwargs: object
 ) -> ModelPatchApplyDispatchResult:
     return h.HandlerPatchApplyDispatch(
-        dispatch=recorder.dispatch, append_row=recorder.append
+        dispatch=recorder.dispatch,
+        append_row=recorder.append,
+        read_rows=world.read_rows,
     ).handle(world.request(**kwargs))
 
 
@@ -202,10 +212,9 @@ def test_patch_at_47_hours_is_still_dispatched(world: World) -> None:
 
 
 def test_a_live_claim_on_the_lane_family_holds_the_patch(world: World) -> None:
-    with world.ledger.open("a") as handle:
-        handle.write(
-            "2026-10-17T13:30:00Z | CLAIM | lane=sample-lane-r3 | ticket=OMN-17427 | y\n"
-        )
+    world.rows.append(
+        "2026-10-17T13:30:00Z | CLAIM | lane=sample-lane-r3 | ticket=OMN-17427 | y"
+    )
     recorder = Recorder()
     (finding,) = tick(world, recorder).findings
     assert finding.disposition == "held-owned"
@@ -216,17 +225,14 @@ def test_a_live_claim_on_the_lane_family_holds_the_patch(world: World) -> None:
 def test_a_claim_older_than_45_minutes_or_already_closed_does_not_hold_it(
     world: World,
 ) -> None:
-    with world.ledger.open("a") as handle:
-        handle.write(
-            "2026-10-17T13:10:00Z | CLAIM | lane=sample-lane-r3 | ticket=OMN-17427 | y\n"
-        )
-        handle.write(
-            "2026-10-17T13:40:00Z | CLAIM | lane=sample-lane-r4 | ticket=OMN-17427 | y\n"
-        )
-        handle.write(
+    world.rows.extend(
+        [
+            "2026-10-17T13:10:00Z | CLAIM | lane=sample-lane-r3 | ticket=OMN-17427 | y",
+            "2026-10-17T13:40:00Z | CLAIM | lane=sample-lane-r4 | ticket=OMN-17427 | y",
             "2026-10-17T13:50:00Z | TERMINAL | lane=sample-lane-r4 | ticket=OMN-17427 | "
-            "closes-CLAIM=2026-10-17T13:40:00Z | outcome=done | z\n"
-        )
+            "closes-CLAIM=2026-10-17T13:40:00Z | outcome=done | z",
+        ]
+    )
     recorder = Recorder()
     (finding,) = tick(world, recorder).findings
     assert finding.disposition == "dispatched"
@@ -445,17 +451,14 @@ def test_a_runner_that_refuses_the_brief_is_a_failed_dispatch(tmp_path: Path) ->
             "import sys; print('REMOTE-LANE-NO-TICKET'); sys.exit(2)",
             "--",
         ),
-        tmp_path / "l",
     )
     ok, detail = refuse(brief, "mech-patch-apply-x", "OMN-1", "sample")
     assert not ok
     assert "exited 2" in detail
     assert "REMOTE-LANE-NO-TICKET" in detail
-    accept = h.runner_dispatch(("python3", "-c", "pass", "--"), tmp_path / "l")
+    accept = h.runner_dispatch(("python3", "-c", "pass", "--"))
     assert accept(brief, "mech-patch-apply-y", "OMN-1", "sample") == (True, "")
-    assert (
-        h.runner_dispatch((), tmp_path / "l")(brief, "z", "OMN-1", "sample")[0] is False
-    )
+    assert h.runner_dispatch(())(brief, "z", "OMN-1", "sample")[0] is False
 
 
 def test_git_reads_ignore_an_inherited_worktree_environment(
@@ -483,7 +486,13 @@ def test_bus_tick_dispatches_with_configured_host_adapters(
     rows = world.root / "appended.json"
     writer.write_text(
         "import json, pathlib, sys\n"
-        "pathlib.Path(sys.argv[1]).write_text(json.dumps(sys.argv[2:]))\n"
+        "pathlib.Path(sys.argv[1]).write_text("
+        "json.dumps({'argv': sys.argv[2:], 'row': sys.stdin.read()}))\n"
+    )
+    monkeypatch.setattr(
+        h,
+        "read_ledger_rows_via_node",
+        lambda reader, hours: world.read_rows(reader, hours),
     )
     monkeypatch.setenv(
         h.APPEND_COMMAND_ENV, shlex.join([sys.executable, str(writer), str(rows)])
@@ -497,9 +506,45 @@ def test_bus_tick_dispatches_with_configured_host_adapters(
     assert result.dispatched == 1
     assert result.correlation_id == request.correlation_id
     written = json.loads(rows.read_text())
-    assert written[:2] == [str(world.ledger), "--append"]
-    assert "dispatched=yes" in written[2]
+    assert written["argv"][:2] == ["append", "--lane"]
+    assert written["argv"][2] == h.LANE
+    assert "--request-id" in written["argv"]
+    assert "dispatched=yes" in written["row"]
+    assert world.reads == [(h.ROWS_READER, 49)]
     assert world.patch.exists()
+
+
+def test_request_names_no_ledger_file(world: World) -> None:
+    with pytest.raises(ValueError, match="ledger_path"):
+        ModelPatchApplyDispatchRequest.model_validate(
+            {
+                "now": NOW,
+                "registry_root": world.home,
+                "ledger_path": world.root / "a-ledger-file.md",
+                "state_dir": world.root / "state",
+                "repos": ("sample",),
+            }
+        )
+
+
+def test_runner_is_started_with_no_ledger_file(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    started: list[list[str]] = []
+
+    class Started:
+        def __init__(self, argv: list[str], **_: object) -> None:
+            started.append(argv)
+
+        def wait(self, timeout: float) -> int:
+            raise subprocess.TimeoutExpired("runner", timeout)
+
+    monkeypatch.setattr(h.subprocess, "Popen", Started)
+    brief = world.root / "brief.md"
+    brief.write_text("brief")
+    ok, _ = h.runner_dispatch(("runner",))(brief, "a-lane", "OMN-17427", "sample")
+    assert ok is True
+    assert "--ledger" not in started[0]
 
 
 def test_ledger_writer_refusal_is_reported_and_fails_the_tick(
@@ -509,11 +554,14 @@ def test_ledger_writer_refusal_is_reported_and_fails_the_tick(
         h.APPEND_COMMAND_ENV,
         shlex.join([sys.executable, "-c", "import sys; sys.exit(2)"]),
     )
-    result = h.HandlerPatchApplyDispatch(dispatch=Recorder().dispatch).handle(
-        world.request()
-    )
+    result = h.HandlerPatchApplyDispatch(
+        dispatch=Recorder().dispatch, read_rows=world.read_rows
+    ).handle(world.request())
     assert result.exit_code == 1
-    assert any("status row not appended: exit 2" in error for error in result.errors)
+    assert any(
+        "status row not appended: ledger append exit 2" in error
+        for error in result.errors
+    )
 
 
 def test_cli_requires_a_host_registry_and_accepts_a_configured_registry(
@@ -523,12 +571,11 @@ def test_cli_requires_a_host_registry_and_accepts_a_configured_registry(
         runtime_patch_apply_dispatch_cli as cli,
     )
 
+    monkeypatch.setattr(h, "read_ledger_rows_via_node", world.read_rows)
     monkeypatch.delenv("ONEX_REPO_REGISTRY", raising=False)
     argv = [
         "--omni-home",
         str(world.home),
-        "--ledger",
-        str(world.ledger),
         "--now",
         NOW.isoformat(),
         "--dry-run",
@@ -545,7 +592,7 @@ def test_cli_requires_a_host_registry_and_accepts_a_configured_registry(
 
 
 def test_unreadable_ledger_defers_a_patch_without_dispatching(world: World) -> None:
-    world.ledger.unlink()
+    world.unreadable = True
     recorder = Recorder()
     result = tick(world, recorder)
     assert result.exit_code == 1

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_test_selection_selector_compute
 version: "1.0.0"
-description: Decides the shard count of a narrowed test selection, and whether it is too heavy to stay narrowed, from estimated test time
+description: Decides the shard count of a narrowed test selection, and whether it is too heavy to stay narrowed, from estimated test time; builds the typed record of a pull request run's selection behind the stage gate; replays the selector over merged history against a frozen tree; validates the stage receipts that gate each stage advance against published nightly attribution records, which it reads as check runs through the repository gateway node
 omnibase_core_compat: ">=0.47.28,<0.48.0"
 entry_points:
   onex.nodes:
@@ -18,7 +18,7 @@ dependencies:
   - pydantic>=2.11.0
 authors: [OmniNode Team]
 license: MIT
-tags: [compute, ci, test-selection, shard-count]
+tags: [compute, ci, test-selection, shard-count, selection-record, replay, stage-gate]
 node_role: compute
 pack: pr_lifecycle
 display_name: Test Selection Selector

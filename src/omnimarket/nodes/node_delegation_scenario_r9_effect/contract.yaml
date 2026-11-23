@@ -38,8 +38,8 @@ descriptor:
   runtime_profiles: [effects]
   purity: impure
   idempotent: false
-  side_effects: [bus-publish, file-write, ledger-append, bus-read]
-  timeout_ms: 900000
+  side_effects: [http-read, bus-publish, file-write, ledger-append, bus-read]
+  timeout_ms: 1800000
 
 input_model:
   name: ModelScenarioR9RunCommand
@@ -82,6 +82,11 @@ bus:
   workspace_env: ONEX_WORKSPACE_CONFIG_ROOT
 
 runtime:
+  dev_readiness:
+    host_env: ONEX_DEV_READINESS_HOST
+    port: 8085
+    wait_seconds: 850
+    poll_seconds: 5
   home_env: OMNI_HOME
   ledger_append_command_env: ONEX_LEDGER_BUS_APPEND_COMMAND
   ledger_append_timeout_seconds: 60

@@ -34,6 +34,7 @@ from tests.nodes.node_plans_today_effect.conftest import (
     URL,
     FakeGh,
     body,
+    bus_rows,
     by_title,
     fake_plugin,
     gh_for_member,
@@ -96,10 +97,11 @@ def test_hook_call_runs_member_mode_with_no_watcher_and_leaves_the_other_red_pr_
     snapshot = plans_dir / f"linear-{today}.txt"
     snapshot.write_text(fx["linear"].read_text())
     snapshot.with_suffix(".json").write_text(fx["sidecar"].read_text())
-    plugin = fake_plugin(tmp_path, fx["ledger"].read_text())
+    plugin = fake_plugin(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin))
-    monkeypatch.setenv("ONEX_LEDGER_PATH", str(tmp_path / "ledger.md"))
-    fake = gh_for_member(monkeypatch)
+    fake = gh_for_member(
+        monkeypatch, ledger_rows=bus_rows(fx["ledger"].read_text().splitlines()[1:])
+    )
     assert not (tmp_path / ".claude_scratch" / "pr-watcher" / "state.json").exists()
 
     from omnimarket.nodes.node_plans_today_effect.runtime_plans_today import (
@@ -116,6 +118,13 @@ def test_hook_call_runs_member_mode_with_no_watcher_and_leaves_the_other_red_pr_
     assert all("99" not in " ".join(c) for c in fake.calls), (
         "the other member's PR is never read"
     )
+    assert len(fake.rows_loader_calls) == 1
+    assert fake.rows_loader_calls[0][-4:] == [
+        "--reader",
+        "plans-today",
+        "--window-hours",
+        "336",
+    ]
 
 
 def test_operator_subject_runs_the_operators_mode(
