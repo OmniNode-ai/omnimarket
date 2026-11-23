@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerGatewayWorkflowTerminalCompleted and HandlerGatewayWorkflowTerminalFailed are resolved at boot from handler_routing in contract.yaml, by module path, not by a Python import
 """Terminal-outcome writer for gateway workflows.
 
 Reads one delegation terminal event (delegation-completed or delegation-failed, both the flat
