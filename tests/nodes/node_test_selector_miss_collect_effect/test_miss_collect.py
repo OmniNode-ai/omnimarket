@@ -601,7 +601,7 @@ def test_routed_receiver_maps_the_delivery_outcomes() -> None:
         )
 
 
-def test_the_contract_declares_both_operations_and_their_handlers() -> None:
+def test_the_contract_declares_its_operations_and_their_handlers() -> None:
     contract = yaml.safe_load(
         (
             Path(__file__).resolve().parents[3]
@@ -612,6 +612,7 @@ def test_the_contract_declares_both_operations_and_their_handlers() -> None:
     assert routes == {
         "collect_nightly": "HandlerCollectNightly",
         "check_slot_result": "HandlerCheckSlotResult",
+        "publish_attribution_record": "HandlerPublishAttributionRecord",
     }
     assert {s["operation"] for s in contract["input_subscriptions"]} == set(routes)
 

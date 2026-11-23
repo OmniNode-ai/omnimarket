@@ -1,11 +1,23 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
 schema_version: 1.0.0
 ticket_id: OMN-26549
 title: Five merged changes to the dev boot, deploy agent and lane placement are each read SEEN RUNNING or NOT RUNNING on dev, with one evidence line each
-summary: 'The overlay environment probe (node_host_installer_overlay_env_probe) was merged with direct invocation by the host installer as its only trigger and nothing called it. This change declares the caller: the systemd unit overlay-env-probe-systemd of node_host_installer_registry_units runs runtime_overlay_env_probe_tick every 900 s and at load on a lab host, which prints one line per declared name as set or unset (never a value) and keeps the rows in the unit evidence file.'
+summary: 'The landing tick orchestrator becomes the caller of the merged running-read due node: a merged runtime-affecting pull request maps to one due row request, and each tick reads the due rows at its own clock. The overlay environment probe (node_host_installer_overlay_env_probe) was merged with direct invocation by the host installer as its only trigger and nothing called it. This change declares the caller: the systemd unit overlay-env-probe-systemd of node_host_installer_registry_units runs runtime_overlay_env_probe_tick every 900 s and at load on a lab host, which prints one line per declared name as set or unset (never a value) and keeps the rows in the unit evidence file.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
+- id: req-omn26549-running-read-due-caller
+  statement: The merged running-read due node has a caller. The landing tick requests its due row once per merged runtime-affecting pull request and reads the due rows at each tick.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: a test built from the tick''s real contract and the recorded merge of omnimarket#6623 (merged 2026-11-23T03:45:03Z) fails at the merge base and passes at the pull request head -- falsifier: uv run pytest tests/nodes/node_pr_landing_tick_orchestrator/test_tick_running_read_due.py passes at the merge base'
+  - id: AC5
+    statement: 'AC5: exactly one running-read-due row is requested per merge, keyed on the due id -- falsifier: a second tick for the same merge, in the same process or in a new one that reads the due row on the ledger text, requests a second row'
+  - id: AC6
+    statement: 'AC6: the row is read on the ledger after the merged tick runs in act mode -- falsifier: the ledger grep for kind=running-read-due returns zero rows after that tick'
 - id: req-omn26549-overlay-env-probe-caller
   statement: Each merged change is read through its declared caller; the overlay env probe has a declared caller that runs it on a lab host.
   acceptance:
@@ -15,6 +27,9 @@ requirements:
     statement: 'AC2: one tick prints one line per declared name as set or unset and keeps the rows in the unit evidence file, and neither carries a value -- falsifier: the tick test fails when a sentinel value set in the environment appears in the output or the record'
 evidence_requirements:
 - kind: tests
+  description: The tick's running-read tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_pr_landing_tick_orchestrator/test_tick_running_read_due.py -q -n 0 --no-cov -p no:cacheprovider
+- kind: tests
   description: The unit registry holds a unit that invokes the overlay env probe, and the tick prints names and states only.
   command: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_env_probe_unit.py tests/nodes/node_host_installer_overlay_env_probe -q -n 0 --no-cov -p no:cacheprovider
 emergency_bypass:
@@ -22,6 +37,41 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+- id: running-read-due-ac1
+  description: The recorded merge of omnimarket#6623 through the tick's real contract produces one due-row request in act mode and one alarm once the due time has passed; at the merge base the request model refuses the merge fact and every case fails.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_pr_landing_tick_orchestrator/test_tick_running_read_due.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: running-read-due-ac2
+  description: A second tick for the same merge in the same process, and a fresh process that reads the due row on the ledger text, each request no second row.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_pr_landing_tick_orchestrator/test_tick_running_read_due.py -k "second_tick or new_process" -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: running-read-due-ac3
+  description: 'The ledger read after the merged tick runs in act mode is a live reading, out of this change''s reach: it names the row id and is recorded in the lane report; the tick''s request that the ledger row comes from is covered here.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_pr_landing_tick_orchestrator/test_tick_running_read_due.py -k "act_tick or unit_pass" -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: running-read-due-integration-proof
+  description: Run the tick orchestrator and running-read due node tests on a lab host at the pushed head; the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26549 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_pr_landing_tick_orchestrator tests/nodes/node_running_read_due_compute tests/landing -q --no-cov
+    cwd: .
 - id: overlay-env-probe-caller-unit
   description: 'AC2 (the missing piece of the omnimarket 6622 NOT RUNNING verdict): the real unit registry declares a systemd unit whose module is the probe tick; at the merge base the same test fails because no unit invokes the probe.'
   source: manual
