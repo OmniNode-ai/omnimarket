@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Delegation Check Probe Effect (OMN-26043)
+#
+# Moved from the cloud repository's c13, c14 and m4-c17 producers (operator ruling 2026-11-09: the cloud repository is cloud
+# only; delegation work goes to omnimarket). One run sends the check's task through the delegation responder chain the settings
+# store declares (local least busy, then OpenRouter, then the Claude API: a check never names one model), grades what a
+# customer machine observed and puts the run on the result topic, where the beta board reads C13, C14 and C17. A timer unit
+# runs the node on the lab.
+name: node_delegation_check_probe_effect
+lifecycle: experimental
+node_type: effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+description: >
+  EFFECT: run one delegation check (C13 customer-local delegation, C14 customer-local routing, C17 customer surface) and
+  publish the run (run id, trigger, verdict PASS, FAIL, NOT_MEASURED, PRECONDITION-ABSENT or ERROR, conclusion success only
+  for PASS, every graded clause, the responder chain tried and the responder chosen) on the result topic. A task that never
+  reached a local responder reads NOT_MEASURED with cause lab-model; a FAIL carries cause product.
+input_model:
+  name: ModelDelegationCheckRequest
+  module: omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe
+  description: "Correlation id, the check (C13, C14 or C17) and the trigger (schedule or manual)."
+output_model:
+  name: ModelDelegationCheckResult
+  module: omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe
+  description: "The run record: run id, times, event, status, conclusion, verdict, cause, clauses, responder chain and the responder chosen."
+handler:
+  module: omnimarket.nodes.node_delegation_check_probe_effect.handlers.handler_delegation_check_probe
+  class: HandlerDelegationCheckProbe
+  input_model: omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe.ModelDelegationCheckRequest
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: false
+  # Three checks, each as long as its customer-machine run (the producer workflows' own limit was 30 minutes).
+  timeout_ms: 3600000
+  runtime_profiles:
+    - effects
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    - onex.evt.omnimarket.delegation-check-probe-completed.v1
+terminal_event: onex.evt.omnimarket.delegation-check-probe-completed.v1
+externally_produced_topics: []
+externally_consumed_topics:
+  - topic: onex.evt.omnimarket.delegation-check-probe-completed.v1
+    consumer: "the beta board reads C13, C14 and C17 from the newest scheduled run of each"
+overlay:
+  id: node_delegation_check_probe_effect
+  file_env: ONEX_DELEGATION_CHECK_PROBE_OVERLAY
+  example: overlay.example.yaml
+# The responder chain every check sends its task through: one list-valued row of the settings store, set only through
+# node_overlay_setting_set_effect (overlay delegation_check_responders, key responders), which leaves an audit row.
+responder_chain:
+  overlay_id: delegation_check_responders
+  file_env: ONEX_DELEGATION_CHECK_RESPONDERS_OVERLAY
+  setting_key: responders
+# The tick publishes the run record on the result topic under the runtime's broker login.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-check-probe-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-check-probe-completed.v1, operation: DESCRIBE}
+reading:
+  name: delegation_check_newest_scheduled_run
+  description: "The conclusion of the newest scheduled run of each check (success only when every clause held), its cause class and its age."
+  injected_fault: "A responder row whose local responders all fail to answer: the run reads NOT_MEASURED, cause lab-model, and the tick exits 1."
+metadata:
+  transport_type: kafka
+  description: "Runs the delegation checks C13, C14 and C17 through the delegation responder chain and publishes each run"
+  author: "OmniNode Team"
+  tags: ["effect", "probe", "delegation", "c13", "c14", "c17", "OMN-26043"]

@@ -61,6 +61,12 @@ settable_settings:
     key: lanes.{lane}.lazy_start
     path: lanes/{lane}/lazy_start
     document_model: "omnimarket.models.overlay_documents.model_contract_hotload_lane_overlay:ModelContractHotloadLaneOverlay"
+  # OMN-26043: the delegation responder chain every delegation check sends its task through, one list-valued row (local
+  # responders, then openrouter, then claude_api). The row holds no secret: a local responder is a private http://<ipv4>:<port> base.
+  - overlay_id: delegation_check_responders
+    key: responders
+    path: responders
+    document_model: "omnimarket.models.overlay_documents.model_delegation_check_responders_overlay:ModelDelegationCheckRespondersOverlay"
 config:
   # The live record the set builds on must have been loaded within this many seconds: the loader asserts every overlay
   # each cycle, so an older record means the read did not reach the newest one, and a set built on it would replace newer settings.

@@ -763,6 +763,43 @@ units:
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
     evidence_file: .local/state/omni/c32-auth-boundary-probe/last-run.json
     state_directory: .onex_state/c32-auth-boundary-probe
+  # The delegation checks C13, C14 and C17 (node_delegation_check_probe_effect, OMN-26043), once an hour on a Linux lab host: a
+  # systemd user service and timer. One run sends each check's task through the responder row of the settings store (local
+  # least busy, then openrouter, then claude_api) and publishes each run on the node's result topic, where the beta board reads
+  # the check. The checks, the history size and the responder timeout are the node's overlay and the responder chain is the
+  # settings store's delegation_check_responders row, both found under ONEX_SKILL_OVERLAY_ROOTS; this unit holds none of them.
+  delegation-check-probe:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-delegation-check-probe
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 3600
+      # The node's own timeout_ms is 3600000 (its contract); the unit ends a hung run at 3660 s and exits 124.
+      run_timeout_s: 3660
+      run_at_load: true
+      description: every 3600 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_delegation_check_probe_effect.runtime_delegation_check_probe_tick
+    entry_file: src/omnimarket/nodes/node_delegation_check_probe_effect/runtime_delegation_check_probe_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+    evidence_file: .local/state/omni/delegation-check-probe/last-run.json
+    state_directory: .onex_state/delegation-check-probe
   # The overlay store's loader on a Linux pool host (OMN-23353): every 300 s it checks this host's clone of the overlay home,
   # and loads the overlays the loader's overlay names when the clone's main has moved past the revision of the last load
   # (and once an hour to assert an unchanged overlay), and only while that clone is at the head of the branch the overlay
