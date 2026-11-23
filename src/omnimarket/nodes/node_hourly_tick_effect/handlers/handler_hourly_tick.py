@@ -7,10 +7,16 @@ from __future__ import annotations
 import json
 import os
 import re
-from datetime import UTC, datetime
+from collections.abc import Callable, Sequence
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
+from omnimarket.handlers.ledger_rows_via_node import (
+    MAX_WINDOW_HOURS,
+    read_ledger_rows_via_node,
+    window_hours_covering,
+)
 from omnimarket.nodes.node_hourly_tick_effect.models.model_hourly_tick import (
     ModelHourlyTickRequest,
     ModelHourlyTickResult,
@@ -28,6 +34,8 @@ HELD_CLASS_ORDER = (
     "transport",
     "timeout",
 )
+LEDGER_READER = "hourly-tick"
+LedgerRowsRead = Callable[[str, int], Sequence[str]]
 TS = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 FIRE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
@@ -144,7 +152,11 @@ def facts_from_tail(tail: list[str], limit: int) -> str:
     )
 
 
-def probe(root: Path, request: ModelHourlyTickRequest) -> ModelTickState:
+def probe(
+    root: Path,
+    request: ModelHourlyTickRequest,
+    read_rows: LedgerRowsRead | None = None,
+) -> ModelTickState:
     tail = (root / request.checkpoint_file).read_text().splitlines()
     checkpoints = [
         m.group(1)
@@ -160,10 +172,20 @@ def probe(root: Path, request: ModelHourlyTickRequest) -> ModelTickState:
             "hourly-tick: probe field SWEEP_SINCE is not an ISO-Z timestamp"
         )
     now = request.now or datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    ledger = (root / request.ledger_file).read_text().splitlines()
+    # The window's rows come over the bus from the work ledger reader node, never from the ledger file.
+    wall_now = datetime.now(UTC)
+    start = datetime.strptime(prev, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+    if request.now is None and wall_now - start > timedelta(hours=MAX_WINDOW_HOURS):
+        raise ValueError(
+            f"hourly-tick: the last checkpoint {prev} is older than the {MAX_WINDOW_HOURS} hour ledger read window"
+        )
+    read = read_rows or read_ledger_rows_via_node
+    ledger = list(read(LEDGER_READER, window_hours_covering(start, wall_now)))
     timestamped = [
         line for line in ledger if len(line) >= 20 and TS.fullmatch(line[:20])
     ]
+    if not timestamped:
+        raise ValueError("hourly-tick: the ledger read returned no rows")
     rows = [line for line in timestamped if prev < line[:20] <= now]
     terminal = [line for line in rows if "| TERMINAL |" in line]
     lanes: set[str] = set()
@@ -211,6 +233,9 @@ class HandlerHourlyTick:
     The unconverted sweep is invoked by the host caller.
     """
 
+    def __init__(self, read_rows: LedgerRowsRead | None = None) -> None:
+        self.read_rows = read_rows
+
     async def handle(self, request: ModelHourlyTickRequest) -> ModelHourlyTickResult:
         env_root = os.environ.get("OMNI_HOME")
         root = request.registry_root or (Path(env_root) if env_root else None)
@@ -242,7 +267,7 @@ class HandlerHourlyTick:
             readbacks.update(prepared.readbacks)
             state = prepared.state
         else:
-            state = probe(root, request)
+            state = probe(root, request, self.read_rows)
         if state is None:
             raise ValueError("hourly-tick: record requires prepared state")
         facts = request.facts or facts_from_tail(state.tail, request.tail_lines)
