@@ -23,7 +23,7 @@ from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReaso
 from omnimarket.handlers.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
 )
-from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_thinking_budget import (
+from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.thinking_budget import (
     bound_thinking_budget_to_answer_room,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch import (

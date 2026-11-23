@@ -316,7 +316,7 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_shrink_r
     HandlerShrinkRetry,
     unit_slice_text,
 )
-from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_thinking_budget import (
+from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.thinking_budget import (
     bound_thinking_budget_to_answer_room,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_dispatch_progress import (
