@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 
+from omnimarket.handlers.work_root_volume_bar import ModelVolumeReading
 from omnimarket.models.overlay_keys import ModelLabHostsTable
 from omnimarket.nodes.node_host_installer_serve_units.handlers.handler_serve_units import (
     NODE_DIR,
@@ -24,12 +25,20 @@ from omnimarket.nodes.node_host_installer_serve_units.models.model_serve_units i
 )
 
 ROOTS_ENV = "ONEX_SKILL_OVERLAY_ROOTS"
+GIB = 1024**3
 SERVE_ENV = "serve-a.env"
 REFRESH_ENV = "refresh-a.env"
 SERVE_UNIT = "unit-a.service"
 REFRESH_UNIT = "unit-b.service"
 KB_VARIABLE = "KB_CLONE_PATH"
 CONFIG_ROOT_VARIABLE = "ONEX_WORKSPACE_CONFIG_ROOT"
+
+
+def _quiet_volume(path: Path) -> ModelVolumeReading:
+    """A volume at 30 percent used, so a test's outcome does not depend on the runner's own disk."""
+    return ModelVolumeReading(
+        path=str(path), used_bytes=300 * GIB, available_bytes=700 * GIB
+    )
 
 
 def _overlay(roots: dict[str, list[str]]) -> ModelServeUnitsOverlay:
@@ -127,6 +136,7 @@ class Host:
             "hosts": kw.pop("hosts", self.table),
             "overlay": kw.pop("overlay", lambda: _overlay(self.roots)),
             "user": lambda: "lab",
+            "volume": kw.pop("volume", _quiet_volume),
             **kw,
         }
 
@@ -334,6 +344,7 @@ def test_host_command_failure_ends_the_run_with_its_status(tmp_path: Path) -> No
         hosts=host.table,
         overlay=lambda: _overlay(host.roots),
         user=lambda: "lab",
+        volume=_quiet_volume,
     ).handle(host.request(mode="install"))
     assert result.status == "failure"
     assert result.exit_code == 5
