@@ -14,6 +14,9 @@ event id, so a redelivered merge asks for the same run and the verdict
 projection upserts it instead of storing a second one. The hosted audience is
 the one a runtime-issued verification carries, as for a delegation's (OMN-19514):
 a runtime verifier never runs local Done-gate commands.
+
+The run is bounded as a whole (OMN-26310): see
+:mod:`omnimarket.nodes.node_dod_verify.services.dispatch_budget`.
 """
 
 from __future__ import annotations
@@ -34,6 +37,10 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_start_command impo
 )
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     ModelDodVerifyState,
+)
+from omnimarket.nodes.node_dod_verify.services.dispatch_budget import (
+    dispatch_budget,
+    on_merge_budget_s,
 )
 
 VERIFY_ON_MERGE_NAMESPACE = "onex:omnimarket:dod-verify-on-merge:"
@@ -75,7 +82,12 @@ class HandlerDodVerifyOnMerge:
             ),
             execution_audience=EnumDodVerifyExecutionAudience.HOSTED,
         )
-        return self._verifier.handle(command)
+        # OMN-26310: the dispatch deadline is 600 s and the verification's own
+        # calls were each bounded but not their sum (810 to 948 s measured). A
+        # check the budget cannot cover is deferred with a typed cause, never
+        # passed.
+        with dispatch_budget(on_merge_budget_s()):
+            return self._verifier.handle(command)
 
 
 __all__: list[str] = [

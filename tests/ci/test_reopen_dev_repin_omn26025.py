@@ -36,7 +36,7 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
 pytestmark = pytest.mark.unit
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release-cut.yml"
+WORKFLOW = REPO_ROOT / ".github" / "actions" / "reopen-dev" / "action.yml"
 CORPUS = Path("src/omnimarket/configs/work_contracts")
 PINS_TEST = Path("tests/nodes/test_work_contract_pins_current.py")
 RELEASE_IDENTITY = "omnibase_core.nodes.node_release_identity_check_compute.runtime_release_identity_check"
@@ -65,13 +65,13 @@ lock.write_text(new)
 
 def _bump_step() -> dict[str, Any]:
     workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    steps = workflow["jobs"]["reopen-dev"]["steps"]
+    steps = workflow["runs"]["steps"]
     return next(s for s in steps if s.get("id") == "bump")
 
 
 def _commit_step() -> dict[str, Any]:
     workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    steps = workflow["jobs"]["reopen-dev"]["steps"]
+    steps = workflow["runs"]["steps"]
     return next(s for s in steps if "git add" in s.get("run", ""))
 
 

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.325"
+version = "0.4.326"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -1111,6 +1111,7 @@ node_overlay_main_load_check_effect = "omnimarket.nodes.node_overlay_main_load_c
 node_overlay_merge_order_compute = "omnimarket.nodes.node_overlay_merge_order_compute"
 node_overlay_resolver_effect = "omnimarket.nodes.node_overlay_resolver_effect"
 node_overlay_roots_resolve_effect = "omnimarket.nodes.node_overlay_roots_resolve_effect"
+node_overlay_setting_set_effect = "omnimarket.nodes.node_overlay_setting_set_effect"
 node_overlay_store_load_effect = "omnimarket.nodes.node_overlay_store_load_effect"
 node_overlay_store_read_effect = "omnimarket.nodes.node_overlay_store_read_effect"
 node_overlay_tree_install_effect = "omnimarket.nodes.node_overlay_tree_install_effect"
@@ -1491,6 +1492,7 @@ node_tech_debt_sweep_orchestrator = "omnimarket.nodes.node_tech_debt_sweep_orche
 node_temp_retention_effect = "omnimarket.nodes.node_temp_retention_effect"
 node_temporal_health_alarm_effect = "omnimarket.nodes.node_temporal_health_alarm_effect"
 node_tenant_delegations_read_effect = "omnimarket.nodes.node_tenant_delegations_read_effect"
+node_tenant_provision_effect = "omnimarket.nodes.node_tenant_provision_effect"
 node_tenant_savings_read_effect = "omnimarket.nodes.node_tenant_savings_read_effect"
 node_test_duration_record_check_effect = "omnimarket.nodes.node_test_duration_record_check_effect"
 node_test_generator = "omnimarket.nodes.node_test_generator"
@@ -1537,6 +1539,7 @@ node_transcript_session_facts_compute = "omnimarket.nodes.node_transcript_sessio
 node_transcript_session_scan_effect = "omnimarket.nodes.node_transcript_session_scan_effect"
 node_triage_fences_compute = "omnimarket.nodes.node_triage_fences_compute"
 node_triage_fences_effect = "omnimarket.nodes.node_triage_fences_effect"
+node_trigger_declaration_check_effect = "omnimarket.nodes.node_trigger_declaration_check_effect"
 node_two_backend_suite_effect = "omnimarket.nodes.node_two_backend_suite_effect"
 node_two_strike_arbiter = "omnimarket.nodes.node_two_strike_arbiter"
 node_typed_decision_effect = "omnimarket.nodes.node_typed_decision_effect"

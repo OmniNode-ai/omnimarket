@@ -10,8 +10,10 @@ ideas and preferences on the ledger. These commands are the operator's hand tool
 * ``process``: one worker run over the store's inbox (what the bus host retries on its own).
 * ``digest``: print the open-ask digest; ``--push-overdue`` also sends the attention push.
 
-Environment: ``ONEX_LEDGER_PATH`` (the ledger), ``ONEX_OPERATOR_CAPTURE_LEDGER_BIN`` (its
-append command), ``ONEX_OPERATOR_CAPTURE_ONEX_BIN`` (the onex CLI for delegation, else ``onex``
+Both read the ledger window through the ledger reader node, never a ledger file.
+
+Environment: ``ONEX_OPERATOR_CAPTURE_LEDGER_BIN`` (the ledger's append command),
+``ONEX_OPERATOR_CAPTURE_ONEX_BIN`` (the onex CLI for delegation, else ``onex``
 on PATH), ``ONEX_OPERATOR_CAPTURE_DIR`` (the store), ``ONEX_ALERT_CHANNEL_LIB`` and
 ``ONEX_ALERT_CHANNEL_ENV_FILE`` (the push channel).
 """
@@ -23,7 +25,6 @@ import os
 import subprocess
 import sys
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 import click
@@ -47,18 +48,10 @@ from omnimarket.nodes.node_operator_capture_effect.handlers.handler_capture_proc
 
 ALERT_LIB_ENV = "ONEX_ALERT_CHANNEL_LIB"
 ALERT_ENV_FILE_ENV = "ONEX_ALERT_CHANNEL_ENV_FILE"
-LEDGER_PATH_ENV = "ONEX_LEDGER_PATH"
 _ALERT_COMMAND = (
     'set -a; [ -n "$1" ] && [ -r "$1" ] && . "$1" >/dev/null 2>&1; set +a; '
     '. "$2" && alert_channel_send "$3" "$4"'
 )
-
-
-def _ledger_path() -> Path:
-    value = os.environ.get(LEDGER_PATH_ENV, "").strip()
-    if not value:
-        raise click.UsageError(f"{LEDGER_PATH_ENV} is unset: no ledger to record on")
-    return Path(value)
 
 
 def alert_channel_push(text: str) -> tuple[bool, str]:
@@ -104,7 +97,6 @@ def process_command(max_captures: int, delegate_lane: str | None) -> None:
     ).handle(
         ModelCaptureProcessRequest(
             store_dir=capture_store.store_dir(),
-            ledger_path=_ledger_path(),
             max_captures=max_captures,
             delegate=delegate_lane is not None,
         )
@@ -118,7 +110,6 @@ def digest(push_overdue: bool) -> ModelCaptureDigestResult:
     return HandlerCaptureDigest(push=alert_channel_push).handle(
         ModelCaptureDigestRequest(
             store_dir=capture_store.store_dir(),
-            ledger_path=_ledger_path(),
             now=datetime.now(UTC),
             push_overdue=push_overdue,
         )
