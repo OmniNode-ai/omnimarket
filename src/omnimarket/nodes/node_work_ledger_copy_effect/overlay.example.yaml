@@ -26,7 +26,7 @@ target:
     timeout_seconds: 300
     scratch_database: ledger_copy_drill
 report:
-  append_argv: [onex-ledger, /srv/ledger/ROLLING_WORK_LEDGER.md, --append]
+  append_argv: [onex-ledger, --append]
   lane: ledger-copy
   actor: node:node_work_ledger_copy_effect
 launchd:

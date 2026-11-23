@@ -1,0 +1,91 @@
+{
+ "about": "The 2026-11-22 refusals of onex scm pr-create's duplicate guard on lab hosts. 'recorded' holds the ledger reader node answers: the exit 69 bus-session-failed-timeouterror of the lanes' own rows (h053, h201; the lanes recorded the exit and the cause, not the reader's stderr, so those two stderr lines are rebuilt in the reader's own summary format from the lane row and marked rebuilt) and three reads made on h202 at 2026-11-22T03:4xZ with the reader command the guard runs, stderr verbatim. 'refusal_rows' holds the lanes' own STATUS and TERMINAL rows, reduced to its stamp, kind, lane, ticket and the cells that name the refusal, cut after the sentence that names it. 'seam_probe' holds the dev broker's reply latency for the work-ledger query seam as the seam-deadline probe recorded it on h053 (ms per reply, null when silent).",
+ "reader": "pr-duplicate-guard-claims",
+ "window_hours": 168,
+ "recorded": [
+  {
+   "host": "h053",
+   "lane": "undecl-0150",
+   "recorded_at": "2026-11-22T02:44Z",
+   "source": "lane STATUS row 2026-11-22T02:44:37Z",
+   "exit": 69,
+   "elapsed_s": 392,
+   "stdout_rows": 0,
+   "stderr_origin": "rebuilt",
+   "stderr": "READER reader=pr-duplicate-guard-claims query=rows status=unreadable source=none reason=node-read-failed-bus-session-failed-timeouterror watermark_age_s=none max_age_s=900 parity=unread matched=0 file_read=no elapsed_s=392"
+  },
+  {
+   "host": "h201",
+   "lane": "requeue-0240",
+   "recorded_at": "2026-11-22T03:26Z",
+   "source": "lane STATUS row 2026-11-22T03:26:36Z, twice",
+   "exit": 69,
+   "elapsed_s": null,
+   "stdout_rows": 0,
+   "stderr_origin": "rebuilt",
+   "stderr": "READER reader=pr-duplicate-guard-claims query=rows status=unreadable source=none reason=node-read-failed-bus-session-failed-timeouterror watermark_age_s=none max_age_s=900 parity=unread matched=0 file_read=no elapsed_s=none"
+  },
+  {
+   "host": "h202",
+   "lane": "dupguard-0330",
+   "recorded_at": "2026-11-22T03:40Z",
+   "source": "reader run on h202, rows --window-hours 1, route timeout 120 s, page_size 1000",
+   "exit": 69,
+   "elapsed_s": 120.851,
+   "stdout_rows": 0,
+   "stderr_origin": "verbatim",
+   "stderr": "READER reader=pr-duplicate-guard-claims query=rows status=unreadable source=none reason=node-read-failed-bus-session-failed-timeouterror watermark_age_s=none max_age_s=900 parity=unread matched=0 file_read=no elapsed_s=120.596"
+  },
+  {
+   "host": "h202",
+   "lane": "dupguard-0330",
+   "recorded_at": "2026-11-22T03:42Z",
+   "source": "reader run on h202, rows --window-hours 1, route timeout 60 s, page_size 50",
+   "exit": 69,
+   "elapsed_s": 60.964,
+   "stdout_rows": 0,
+   "stderr_origin": "verbatim",
+   "stderr": "READER reader=pr-duplicate-guard-claims query=rows status=unreadable source=none reason=node-read-failed-bus-session-failed-timeouterror watermark_age_s=none max_age_s=900 parity=unread matched=0 file_read=no elapsed_s=60.696"
+  }
+ ],
+ "refusal_rows": [
+  {
+   "lane": "undecl-0150",
+   "host": "h053",
+   "kind": "STATUS",
+   "text": "2026-11-22T02:44:37Z | STATUS | lane=undecl-0150 | ticket=OMN-26424 | PR NOT OPENED: onex scm pr-create through landing_text.py guard-create refused (PR-DUPLICATE-GUARD unchecked: ledger reader pr-duplicate-guard-claims exited 69, bus session TimeoutError, elapsed 392s)."
+  },
+  {
+   "lane": "noprdone2-0050",
+   "host": "h053",
+   "kind": "STATUS",
+   "text": "2026-11-22T02:12:15Z | STATUS | lane=noprdone2-0050 | ticket=OMN-26423 | needs=pr-open | onex scm pr-create hung twice (300 s and 200 s, no output, rc 124) and no PR appeared in the watcher state through 02:09:08Z;"
+  },
+  {
+   "lane": "noprdone2-0050",
+   "host": "h053",
+   "kind": "TERMINAL",
+   "text": "2026-11-22T02:12:56Z | TERMINAL | lane=noprdone2-0050 | ticket=OMN-26423 | outcome=blocked | blocker=`onex scm pr-create OmniNode-ai/<repo> --head omn-26423-runner-opens-pr --base main` hung twice (rc 124, no output) and no PR appeared in the watcher state through 02:09:08Z;"
+  },
+  {
+   "lane": "requeue-0240",
+   "host": "h201",
+   "kind": "STATUS",
+   "text": "2026-11-22T03:26:36Z | STATUS | lane=requeue-0240 | ticket=OMN-26429 | needs=pr-open | pr-open blocked: PR-DUPLICATE-GUARD unchecked (ledger reader pr-duplicate-guard-claims exit 69 bus-session-failed-timeouterror) twice;"
+  }
+ ],
+ "seam_probe": {
+  "host": "h053",
+  "seam": "work-ledger-query",
+  "deadline_ms": 30000,
+  "replies_ms": [
+   81185,
+   90102,
+   null,
+   60746,
+   55424,
+   null,
+   137154
+  ]
+ }
+}

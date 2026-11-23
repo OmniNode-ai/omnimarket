@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -17,6 +18,7 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
 
+from omnimarket.handlers.ledger_rows_via_node import ROWS_LOADER_MODULE
 from omnimarket.nodes.node_plans_today_effect.handlers import (
     handler_plans_today as plans_today,
 )
@@ -259,16 +261,25 @@ class FakeGh:
         prs: dict[str, dict[str, Any]],
         login: str = MEMBER_A_GH,
         fail: set[str] | None = None,
+        ledger_rows: tuple[str, ...] | None = None,
     ) -> None:
+        self.ledger_rows = ledger_rows
         self.prs = prs
         self.login = login
         self.fail = fail or set()
         self.calls: list[list[str]] = []
+        self.rows_loader_calls: list[list[str]] = []
         self.real = plans_today.run
 
     def __call__(
         self, argv: list[str], **kwargs: Any
     ) -> subprocess.CompletedProcess[Any]:
+        if ROWS_LOADER_MODULE in argv:
+            self.rows_loader_calls.append(list(argv))
+            assert self.ledger_rows is not None, argv
+            return subprocess.CompletedProcess(
+                argv, 0, "".join(f"{line}\n" for line in self.ledger_rows), ""
+            )
         if Path(str(argv[0])).name != "gh":
             return self.real(argv, **kwargs)
         self.calls.append(list(argv))
@@ -310,14 +321,20 @@ def gh_pr(
     }
 
 
-def fake_plugin(root: Path, ledger_rows: str) -> Path:
-    """An omni plugin root with a ledger reader that prints ``ledger_rows`` and a MSG executor that accepts."""
+def bus_rows(rows: list[str]) -> tuple[str, ...]:
+    """Fixture rows as the rows loader prints them: the stamp row itself, with no line-number prefix."""
+    return tuple(re.sub(r"^L\d+ ", "", line) for line in rows)
+
+
+def fake_plugin(root: Path) -> Path:
+    """An omni plugin root whose ledger reader fails if it runs and whose MSG executor accepts.
+
+    The ledger is read through the rows loader node, so a run of the plugin's reader is a defect.
+    """
     scripts = root / "plugin" / "scripts"
     scripts.mkdir(parents=True)
-    rows_file = root / "plugin-ledger-rows.txt"
-    rows_file.write_text(ledger_rows, encoding="utf-8")
     (scripts / "onex_ledger.py").write_text(
-        f"import sys\nsys.stdout.write(open({str(rows_file)!r}).read())\n",
+        "import sys\nsys.stderr.write('the plugin ledger reader must not run')\nsys.exit(97)\n",
         encoding="utf-8",
     )
     msg_dir = root / "plugin-msg"

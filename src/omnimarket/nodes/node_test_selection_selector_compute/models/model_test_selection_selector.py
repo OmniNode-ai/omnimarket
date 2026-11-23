@@ -8,6 +8,10 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_file_level_closure import (
+    EnumRootConftestEdge,
+)
+
 
 class EnumSelectorOutcome(StrEnum):
     #: The selection runs narrowed, split into ``split_count`` shards.
@@ -23,26 +27,69 @@ class ModelSelectorPolicy(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    #: Estimated test seconds one shard of a narrowed selection carries; the full suite's own share
+    #: (the recorded suite total over ``full_split_count``), held within ``record_tolerance_ratio`` by a test.
     target_shard_seconds: int = Field(ge=1)
+    #: Most shards a narrowed selection may take.
     max_narrowed_shards: int = Field(ge=1)
+    #: Estimated test seconds above which a selection takes the full suite (the operator's narrowed-run bound).
+    narrowed_bound_seconds: int = Field(ge=1)
+    #: Seconds a test file with no duration entry costs: the durations file's p90.
+    untimed_file_seconds: float = Field(ge=0)
+    #: Allowed relative gap between ``target_shard_seconds * full_split_count`` and the recorded suite total,
+    #: and between ``untimed_file_seconds`` and the durations file's p90.
+    record_tolerance_ratio: float = Field(gt=0, lt=1)
+    #: Bounds the policy-bound report prices beside the policy bound.
+    comparison_bounds_seconds: tuple[int, ...]
     durations_path: str = Field(min_length=1)
     path_count_shards: tuple[tuple[int, int], ...]
     path_count_max_shards: int = Field(ge=1)
     #: The stage gate: a narrowing rule is active only at or above its stage; 0 is shadow.
     selection_stage: int = Field(ge=0, le=4)
+    #: The stage at which the file-level closure replaces the module-level escalations. None only in
+    #: a frozen replay snapshot made before the rule existed; ``policy.yaml`` always sets it.
+    file_level_closure_stage: int | None = Field(default=None, ge=1, le=4)
+    #: Whether a closure that reaches the root tests/conftest.py selects the tree (keep) or runs the
+    #: whole-tree collection gate instead (cut). None under the same condition.
+    root_conftest_edge: EnumRootConftestEdge | None = None
     #: Shards of the full-suite matrix, which a flag-off run and every escalation take.
     full_split_count: int = Field(ge=1, le=40)
     #: Days a pull request's selection record artifact is kept.
     record_retention_days: int = Field(ge=1, le=90)
+    #: Consecutive clean nightly runs a stage receipt covers before the stage may be entered. The default
+    #: lets the frozen replay snapshot of the baseline receipt, written before this key existed, still load;
+    #: ``policy.yaml`` holds the value the gate reads.
+    stage_clean_nights: int = Field(default=7, ge=1, le=30)
+    #: Pull request records, over the receipt's nights, that hold an entry for the stage entered (same default rule).
+    stage_min_pr_records: int = Field(default=10, ge=1)
     #: The ``selection_by_stage`` entry the code graph comparison reads as the parse side. Absent in
     #: the frozen replay tree, which predates it.
     graph_compared_stage: int | None = Field(default=None, ge=0, le=4)
     #: Fewest valid comparisons the comparison's verdict part one needs; fewer is ``insufficient``.
     #: Absent in the frozen replay tree, which predates it.
     graph_min_valid_comparisons: int | None = Field(default=None, ge=1)
+    #: A night's record is the check run ``<prefix>:<slot date>`` on the tested head commit (same default rule).
+    record_check_name_prefix: str = Field(
+        default="nightly-attribution", pattern=r"^[a-z0-9][a-z0-9-]*$"
+    )
+
+    def closure_settings(self) -> tuple[int, EnumRootConftestEdge]:
+        """The closure's stage and root conftest edge; a policy that sets neither cannot select by closure."""
+        if self.file_level_closure_stage is None or self.root_conftest_edge is None:
+            raise ValueError(
+                "the policy sets no file_level_closure_stage and root_conftest_edge"
+            )
+        return self.file_level_closure_stage, self.root_conftest_edge
 
     @model_validator(mode="after")
     def _ladder_is_ordered(self) -> ModelSelectorPolicy:
+        if (
+            self.narrowed_bound_seconds
+            > self.max_narrowed_shards * self.target_shard_seconds
+        ):
+            raise ValueError(
+                "narrowed_bound_seconds may not exceed max_narrowed_shards * target_shard_seconds"
+            )
         bounds = [paths for paths, _ in self.path_count_shards]
         if bounds != sorted(set(bounds)):
             raise ValueError("path_count_shards must rise by selected path count")

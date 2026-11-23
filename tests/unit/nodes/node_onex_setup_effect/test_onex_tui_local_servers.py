@@ -522,7 +522,14 @@ async def test_clicking_another_tab_never_shows_the_main_screen() -> None:
         await pilot.press("enter")
         await _settle(pilot, 20)
         assert isinstance(app.screen, ModelPickScreen)
-        app.screen.query_one(Tabs).active = "tab-config"
+        tabs = app.screen.query_one(Tabs)
+        # On a loaded runner the Tab children mount after the screen shows;
+        # setting `active` before they exist raises "No Tab with id".
+        for _ in range(100):
+            if tabs.query("#tabs-list > #tab-config"):
+                break
+            await pilot.pause(0.05)
+        tabs.active = "tab-config"
         for _ in range(40):
             await pilot.pause(0.05)
             assert len(app.screen_stack) >= 2, "the main screen showed"

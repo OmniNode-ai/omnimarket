@@ -14,10 +14,12 @@ still stored with no cost. The price comes from
 
 from __future__ import annotations
 
+from decimal import Decimal
 from uuid import uuid4
 
 import pytest
 
+from omnimarket.nodes.node_projection_delegation.handlers import byok_actual_cost
 from omnimarket.projection.runner import MessageMeta
 from tests.test_omn15909_real_postgres_projection_write_path_gate import (
     _provisioned_runner,
@@ -92,3 +94,42 @@ class TestByokPricedCostLandsInRealRow:
             assert row is not None, "the write must have landed a real row"
             assert row["cost_measurement_source"] == "no_cost_model"
             assert row["cost_usd"] is None or float(row["cost_usd"]) == 0.0
+
+    async def test_a_model_only_models_dev_prices_lands_its_cost_in_the_row(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OMN-23413 AC35: the projection prices from the lookup it passes the backends.
+
+        The catalogue and the registry price nothing for this model, so the
+        cost can only come from the models.dev lookup ``byok_actual_cost``
+        passes in; a recorded price stands in for the live read.
+        """
+        monkeypatch.setattr(
+            byok_actual_cost,
+            "models_dev_price_with_read_time",
+            lambda _provider, _model: (
+                (Decimal("0.2"), Decimal("0.4")),
+                "2026-11-22T00:00:00+00:00",
+            ),
+        )
+        async with _provisioned_runner() as (runner, admin_conn, _schema):
+            correlation_id = str(uuid4())
+            data = _byok_payload(
+                correlation_id=correlation_id, model="glm-model-only-models-dev-prices"
+            )
+            meta = MessageMeta(partition=0, offset=0, fallback_id=correlation_id)
+
+            ok = await runner.project_event(
+                runner._topic_delegation_completed, data, meta
+            )
+
+            assert ok is True
+            row = await admin_conn.fetchrow(
+                "SELECT cost_usd, cost_measurement_source"
+                " FROM delegation_events WHERE correlation_id = $1",
+                correlation_id,
+            )
+            assert row is not None, "the write must have landed a real row"
+            # (231 * 0.2 + 277 * 0.4) / 1_000_000
+            assert float(row["cost_usd"]) == pytest.approx(0.000157)
+            assert row["cost_measurement_source"] == "metered"

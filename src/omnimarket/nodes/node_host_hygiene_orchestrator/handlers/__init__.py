@@ -7,11 +7,13 @@ from .handler_host_hygiene_record_read import (
     HandlerHostHygieneRecordRead,
     HandlerHostHygieneRecordReadFailed,
 )
+from .handler_host_hygiene_run_requested import HandlerHostHygieneRunRequested
 from .handler_host_hygiene_scheduled import HandlerHostHygieneScheduled
 
 __all__: list[str] = [
     "HOST_DISK_READINGS",
     "HandlerHostHygieneRecordRead",
     "HandlerHostHygieneRecordReadFailed",
+    "HandlerHostHygieneRunRequested",
     "HandlerHostHygieneScheduled",
 ]

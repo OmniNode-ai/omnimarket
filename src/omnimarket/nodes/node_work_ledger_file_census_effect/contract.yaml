@@ -49,6 +49,10 @@ output_model:
 
 runtime_dispatch:
   external_trigger: true
+  # Once a day and at load, the host timer of node_host_installer_registry_units runs runtime_file_census_tick, which prints and
+  # keeps the daily record.
+  host_unit:
+    unit: ledger-file-census-systemd
 
 event_bus:
   subscribe_topics: []

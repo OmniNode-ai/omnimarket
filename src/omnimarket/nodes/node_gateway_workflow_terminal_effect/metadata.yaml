@@ -1,0 +1,30 @@
+---
+name: node_gateway_workflow_terminal_effect
+version: "0.1.0"
+display_name: "Gateway Workflow Terminal Effect"
+description: >
+  Writes the delegation terminal outcome (completed or failed, the answering model, tokens,
+  latency, route, provider, result content and failure fields) onto the gateway workflow row of
+  the event's tenant and correlation id, so the gateway's receipt route can name the model.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_gateway_workflow_terminal_effect: "omnimarket.nodes.node_gateway_workflow_terminal_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "asyncpg"
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.38.3,<0.39.0"
+  - "omnibase_spi"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["gateway", "workflow", "terminal", "effect", "postgres"]
+pack: "gateway"
+node_role: "effect"

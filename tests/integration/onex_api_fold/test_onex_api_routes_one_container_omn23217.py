@@ -110,8 +110,8 @@ async def read_from_the_runtime(
         server.attach_manifest(manifest)
         assert server._mount_task is not None
         await server._mount_task
-        assert server._runner is not None
-        base = f"http://127.0.0.1:{int(server._runner.addresses[0][1])}"
+        assert server._site is not None
+        base = f"http://127.0.0.1:{server._site.port}"
         async with aiohttp.ClientSession() as session:
             for item in wanted:
                 path = re.sub(r"\{[^}]+\}", "probe", item["path"])

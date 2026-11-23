@@ -68,6 +68,7 @@ def _overlay(
             "provision_path": "/v1/auth/provision",
             "timeout_seconds": 15.0,
         },
+        protected_usernames=[],
         secret_store=None,
     )
 
