@@ -35,6 +35,8 @@ CLEARED = (
     f"{NODES}/node_handoff_check_effect/handlers/facts.py",
     f"{NODES}/node_handoff_check_effect/handlers/handler_handoff_check.py",
     f"{NODES}/node_handoff_check_effect/runtime_handoff_check_cli.py",
+    f"{NODES}/node_host_reconcile_effect/__main__.py",
+    f"{NODES}/node_hourly_tick_effect/models/model_hourly_tick.py",
 )
 LOWERED = f"{NODES}/node_host_installer_registry_units/contract.yaml"
 #: The registry units contract held eight counted hits before this change; the rest stay for a later change.
