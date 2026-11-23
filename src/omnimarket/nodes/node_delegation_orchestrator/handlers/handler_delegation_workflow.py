@@ -883,6 +883,12 @@ def _finish_reason_of_failed_call(
     return None
 
 
+# The code ``CredentialUnresolvedError`` (node_llm_delegation_call_effect) leads
+# its message with; spelled here because a node does not import another node's
+# handler.
+_CREDENTIAL_UNRESOLVED_ERROR_CODE = "ONEX_MARKET_EFFECT_CREDENTIAL_UNRESOLVED"
+
+
 def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureClass:
     """Classify a retryable inference error into a failure class for the escalation
     event (OMN-13140). The classification is derived from the error text the
@@ -893,6 +899,13 @@ def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureC
     if provider_class is not None:
         return provider_class
     normalized = error_message.lower()
+    # OMN-25827: the inference effect refused the call locally because no
+    # credential resolved for the route (``CredentialUnresolvedError``). No
+    # provider answered, so this is never a rejected credential; its sentence
+    # names the "Authorization header" and so is matched before every marker
+    # below.
+    if _CREDENTIAL_UNRESOLVED_ERROR_CODE.lower() in normalized:
+        return EnumDelegationFailureClass.PROVIDER_CREDENTIAL_MISSING
     # OMN-20157: a typed provider refusal about the account or the model leads
     # its message with the class value (``describe_provider_refusal``), and is
     # matched before every generic marker below, since a billing or not-found
@@ -932,7 +945,7 @@ def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureC
         return EnumDelegationFailureClass.TIMEOUT
     if "rate limit" in normalized or _HTTP_429_TOKEN_PATTERN.search(normalized):
         return EnumDelegationFailureClass.RATE_LIMITED
-    if "401" in normalized or "unauthorized" in normalized or "auth" in normalized:
+    if "401" in normalized or "unauthorized" in normalized:
         return EnumDelegationFailureClass.PROVIDER_AUTH_FAILED
     if "unavailable" in normalized or "connection" in normalized or "503" in normalized:
         return EnumDelegationFailureClass.MODEL_UNAVAILABLE
