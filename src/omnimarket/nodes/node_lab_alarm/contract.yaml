@@ -177,6 +177,10 @@ terminal_event: onex.evt.omnimarket.lab-alarm-broker-lag-completed.v1
 runtime_dispatch:
   external_trigger: true
   command_topic: onex.cmd.omnimarket.lab-alarm-broker-lag-requested.v1
+  # No topic subscription starts this node on a schedule: the lab alarm sweep and a lane run it by hand with a request document.
+  on_demand:
+    command: uv run onex node node_lab_alarm --input <request.json>
+    owner: OmniNode Platform Team
 
 topics:
   broker_lag_requested: onex.cmd.omnimarket.lab-alarm-broker-lag-requested.v1
