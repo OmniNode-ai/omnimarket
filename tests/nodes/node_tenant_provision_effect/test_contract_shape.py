@@ -56,7 +56,7 @@ def test_topics_are_requested_in_completed_out_and_there_is_no_failed_topic() ->
         PROVISION_REQUESTED,
         READ_REQUESTED,
     }
-    assert set(contract["event_bus"]["publish_topics"]) == completed | {TENANT_EVENTS}
+    assert set(contract["event_bus"]["publish_topics"]) == completed
     assert all(c.endswith("-completed.v1") for c in completed)
     every = set(contract["event_bus"]["subscribe_topics"]) | set(
         contract["event_bus"]["publish_topics"]

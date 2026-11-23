@@ -81,11 +81,9 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.tenant-provision-completed.v1
     - onex.evt.omnimarket.tenant-read-completed.v1
-    - onex.tenant.events # onex-topic-allow: control-plane tenant lifecycle topic the registry projection consumes
 externally_consumed_topics:
   - onex.evt.omnimarket.tenant-provision-completed.v1
   - onex.evt.omnimarket.tenant-read-completed.v1
-  - onex.tenant.events # onex-topic-allow: control-plane tenant lifecycle topic the registry projection consumes
 # The eight tenant command topics are the operator plane (published by the operator's CLI and by the dev provisioning node
 # and by nothing else): WRITE on a requested topic is a working credential for any tenant, so only the operator principal
 # holds it and no tenant principal holds WRITE on these topics or on a tenant-prefixed copy of them.
@@ -110,8 +108,8 @@ broker_acl_grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-read-requested.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-read-completed.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-read-completed.v1, operation: DESCRIBE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.tenant.events, operation: WRITE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.tenant.events, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.tenant.events, operation: WRITE} # onex-topic-allow: control-plane tenant lifecycle topic the outbox flush writes
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.tenant.events, operation: DESCRIBE} # onex-topic-allow: control-plane tenant lifecycle topic the outbox flush writes
 overlay:
   node: node_tenant_provision_effect
   roots_env: ONEX_SKILL_OVERLAY_ROOTS
