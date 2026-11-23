@@ -42,10 +42,11 @@ from tests.unit.nodes.node_overlay_store.support import (
 
 pytestmark = pytest.mark.integration
 
-MIGRATION = (
+MIGRATIONS = tuple(
     Path(__file__).resolve().parents[1]
     / "src/omnimarket/nodes/node_projection_overlay_store/migrations"
-    / "0000_create_overlay_store.sql"
+    / name
+    for name in ("0000_create_overlay_store.sql", "0002_add_operator_paths.sql")
 )
 META = MessageMeta(topic="t", partition=0, offset=1, fallback_id="f")
 
@@ -119,7 +120,8 @@ async def _migrated() -> AsyncIterator[
     connection = await asyncpg.connect(_dsn(database))
     try:
         await connection.execute("CREATE SCHEMA IF NOT EXISTS omninode_internal")
-        await connection.execute(MIGRATION.read_text(encoding="utf-8"))
+        for migration in MIGRATIONS:
+            await connection.execute(migration.read_text(encoding="utf-8"))
         published: list[tuple[str, bytes | None, bytes]] = []
 
         async def publish(topic: str, key: bytes | None, value: bytes) -> None:
@@ -209,3 +211,24 @@ async def test_a_malformed_load_raises_for_the_dead_letter_and_stores_nothing() 
             == 0
         )
         assert published == []
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_the_settings_an_operator_set_are_stored_and_published_with_the_record() -> (
+    None
+):
+    async with _migrated() as (runner, connection, published):
+        paths = ("hosts/[name=h1]/cap",)
+        await runner.project_event(
+            "t", record(operator_paths=paths).model_dump(mode="json"), META
+        )
+        row = await connection.fetchrow(
+            "SELECT operator_paths FROM omninode_internal.overlay_store"
+        )
+        assert row is not None
+        assert json.loads(row["operator_paths"]) == list(paths)
+        assert (
+            ModelOverlayStoreRecord.model_validate_json(published[-1][2]).operator_paths
+            == paths
+        )

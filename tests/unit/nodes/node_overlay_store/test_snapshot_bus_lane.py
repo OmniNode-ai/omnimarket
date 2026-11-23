@@ -144,8 +144,11 @@ def test_seam_the_topics_of_loader_projection_and_reader_are_the_same_names() ->
     assert contract_topics("node_projection_overlay_store", "subscribe_topics") == [
         LOADED_TOPIC
     ]
+    # The loaded topic first: the projection subscribes to it. OMN-26495 adds the drift and refusal reports.
     assert contract_topics("node_overlay_store_load_effect", "publish_topics") == [
-        LOADED_TOPIC
+        LOADED_TOPIC,
+        "onex.evt.omnimarket.overlay-store-drift.v1",
+        "onex.evt.omnimarket.overlay-store-refused.v1",
     ]
 
 
