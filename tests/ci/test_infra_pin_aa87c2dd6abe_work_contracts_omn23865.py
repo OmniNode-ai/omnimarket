@@ -24,8 +24,8 @@ pytestmark = pytest.mark.unit
 REPO_ROOT = Path(__file__).resolve().parents[2]
 LOCK_PATH = REPO_ROOT / "uv.lock"
 INFRA_LOCK_URL = (
-    "omnibase_infra.git?tag=dev-20261123105315-1e0559bbc392"
-    "#1e0559bbc392817bb0d84360b7bfdabc3fab3737"
+    "omnibase_infra.git?tag=dev-20261123161237-878ab2e30086"
+    "#878ab2e30086260b9ccd68e1d1a96dc27551b500"
 )
 CONTRACTS_GLOB = "src/omnimarket/configs/work_contracts/contracts/*.yaml"
 LOCK_PIN_MARKER = "path: uv.lock"
@@ -34,7 +34,7 @@ MIN_CONTRACT_FILES = 70
 
 
 def test_the_lock_names_the_pinned_infra_build() -> None:
-    """The relocked uv.lock names the dev merge tag and commit of the pinned infra build (moved to a679b44e2cfe by OMN-25505, then to b6f27747506c by OMN-26115, then to e1c7b1f075d2 by OMN-26286, then to 0f7f2b730399 by OMN-25103, then to 1e0559bbc392 by OMN-26336)."""
+    """The relocked uv.lock names the dev merge tag and commit of the pinned infra build (moved to a679b44e2cfe by OMN-25505, then to b6f27747506c by OMN-26115, then to e1c7b1f075d2 by OMN-26286, then to 0f7f2b730399 by OMN-25103, then to 1e0559bbc392 and 878ab2e30086 by OMN-26336)."""
     lock_text = LOCK_PATH.read_text(encoding="utf-8")
     assert INFRA_LOCK_URL in lock_text
 
