@@ -6,15 +6,12 @@ node_type: effect
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 lifecycle: experimental
-# runtime_profiles is main, not effects: only omninode-runtime carries TENANT_IDENTITY_DATABASE_DSN, its anchor neighbour
-# GATEWAY_DATABASE_DSN is merged into that service alone and not into runtime-effects. A lane-scoped contract owned by the
-# effects profile resolves no DSN there. The same reasoning as node_branch_claim_check_effect (OMN-17427, OMN-19408);
-# the effects-profile sibling node_dev_identity_provision_effect needs no database and is no exemplar for this field.
-runtime_profiles: [main]
-# runtime_lanes is not declared in this file. Plan task T7 names a single lane for this field, and a lane id written in a
-# public repository is refused on a lab host by the public-repo hygiene gate's lab-config class (never exemptable). Where
-# that lane is declared is the orchestrator's decision; until then this node is discoverable on every lane's main runtime
-# and answers store_unavailable where the identity database address is not set.
+# runtime_profiles is effects, like every command-consuming effect node: placement is by runtime_profiles alone, and no
+# runtime_lanes is declared (a lane id added to a public repository is refused by the public-repo hygiene gate's lab-config
+# class, and a main-owned lane-scoped contract must list one, tests/validation/test_runtime_profile_contracts.py). The dev lane's
+# overlay merges the fail-closed TENANT_IDENTITY_DATABASE_DSN into runtime-effects as well as omninode-runtime, so the node
+# resolves its identity database there; where the address is not set it answers store_unavailable.
+runtime_profiles: [effects]
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.tenant-api-key-register-requested.v1
   terminal_events:
@@ -22,7 +19,7 @@ runtime_dispatch:
 descriptor:
   node_archetype: effect
   purity: effectful
-  runtime_profiles: [main]
+  runtime_profiles: [effects]
   idempotent: false
 description: >
   Registers a gateway key by the sha256 digest of a key the caller holds, and revokes a key by id. The key itself is

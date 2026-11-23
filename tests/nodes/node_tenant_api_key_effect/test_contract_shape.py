@@ -17,10 +17,6 @@ CONTRACT = (
     Path(__file__).resolve().parents[3]
     / "src/omnimarket/nodes/node_tenant_api_key_effect/contract.yaml"
 )
-EXEMPLAR = (
-    Path(__file__).resolve().parents[3]
-    / "src/omnimarket/nodes/node_branch_claim_check_effect/contract.yaml"
-)
 REQUESTED = {
     "onex.cmd.omnimarket.tenant-api-key-register-requested.v1",
     "onex.cmd.omnimarket.tenant-api-key-revoke-requested.v1",
@@ -77,12 +73,12 @@ def test_the_operator_plane_grants_write_on_requested_and_read_on_completed() ->
                 assert principal.endswith("RUNTIME_PRINCIPAL}")
 
 
-def test_the_node_is_owned_by_the_main_runtime_which_carries_the_identity_dsn() -> None:
+def test_the_node_is_owned_by_the_effects_runtime_and_declares_no_lane_list() -> None:
     contract = _contract()
-    assert contract["runtime_profiles"] == ["main"]
-    # The lane list is declared by the orchestrator's decision (see the contract's comment); the exemplar still names one.
+    assert contract["runtime_profiles"] == ["effects"]
+    assert contract["descriptor"]["runtime_profiles"] == ["effects"]
+    # A lane id added to this public repository is refused by the hygiene gate, and an effects-owned contract needs none.
     assert "runtime_lanes" not in contract
-    assert "runtime_lanes" in yaml.safe_load(EXEMPLAR.read_text(encoding="utf-8"))
 
 
 def test_the_dev_only_block_holds_only_the_allowed_lane_name() -> None:
