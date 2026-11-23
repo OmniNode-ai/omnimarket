@@ -116,9 +116,12 @@ from omnimarket.delegation.response_contract_conformance import (
 )
 from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
 from omnimarket.inference.provider_finish_reason import (
+    EMPTY_AFTER_SPENT_OUTPUT_CHECK_NAME,
     TRUNCATED_RESPONSE_GATE_FAILURE_REASON,
     TRUNCATION_CHECK_NAME,
     EnumProviderFinishReason,
+    empty_after_spent_output_gate_failure_reason,
+    is_empty_answer_after_spent_output,
     is_truncated_by_output_budget,
 )
 from omnimarket.inference.task_class_authority import (
@@ -3435,6 +3438,37 @@ def _truncated_by_output_budget_result(
     )
 
 
+def _empty_after_spent_output_result(
+    gate_input: ModelQualityGateInput, output_tokens_spent: int
+) -> ModelQualityGateResult:
+    """The verdict for an empty answer the provider billed output tokens for (OMN-26588).
+
+    Same floor as ``_truncated_by_output_budget_result`` and for the same reason:
+    the output budget went to reasoning, the next rung brings its own, so the
+    reason carries ``WEAK_OUTPUT`` and climbs. ``MALFORMED`` never climbs, and an
+    empty answer that billed no output tokens still gets it from
+    ``output_parses``.
+    """
+    reason = empty_after_spent_output_gate_failure_reason(output_tokens_spent)
+    reasons = (reason,)
+    return ModelQualityGateResult(
+        correlation_id=gate_input.correlation_id,
+        passed=False,
+        fail_category="fail_deterministic",
+        quality_score=0.0,
+        failure_reasons=reasons,
+        fallback_recommended=_recommends_fallback(reasons),
+        rule_evaluations=(
+            ModelQualityRuleEvaluation(
+                rule=EMPTY_AFTER_SPENT_OUTPUT_CHECK_NAME,
+                enforcement=EnumQualityRuleEnforcement.BLOCKING,
+                passed=False,
+                detail=reason,
+            ),
+        ),
+    )
+
+
 def _deliverable_locatable_without_a_boundary(
     content: str,
     response_contract: dict[str, object] | None,
@@ -3669,6 +3703,7 @@ def delta(
     finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
     reasoning_stripped_chars: int = 0,
     named_tests_requested: bool = False,
+    output_tokens_spent: int = 0,
 ) -> ModelQualityGateResult:
     """Refuse leaked reasoning at the deterministic floor, then grade clean output.
 
@@ -3700,6 +3735,11 @@ def delta(
     ``ABSENT``, is the honest record that no signal reached this evaluation —
     the bus path carries none today — and never a claim that a response
     completed.
+
+    OMN-26588. ``output_tokens_spent`` is what the provider billed for the
+    response. An empty answer with tokens spent is a spent output budget (the
+    model reasoned and never answered) and climbs as ``WEAK_OUTPUT``; the default
+    ``0`` is the record that no figure reached this evaluation.
     """
     if grounding_source is None:
         # OMN-19529: the bus path's gate input may carry the delegated prompt
@@ -3735,6 +3775,13 @@ def delta(
     )
     if is_truncated_by_output_budget(finish_reason):
         result = _truncated_by_output_budget_result(gate_input)
+    elif is_empty_answer_after_spent_output(
+        gate_input.llm_response_content, output_tokens_spent
+    ):
+        # OMN-26588: an empty answer the provider billed output tokens for is a
+        # spent budget, not a malformed artifact. Second, after the provider's own
+        # ``length``, and ahead of every content heuristic, which only see "".
+        result = _empty_after_spent_output_result(gate_input, output_tokens_spent)
     elif (
         segmentation.boundary_rule is EnumReasoningBoundaryRule.PREAMBLE_UNRESOLVED
         and not _deliverable_locatable_without_a_boundary(
