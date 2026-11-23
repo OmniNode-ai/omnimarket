@@ -82,7 +82,8 @@ node_scoped_modules:
 # other unmatched file keeps the full escalation. The rule changes what a pull request runs, so it stays
 # off until its stage is entered: selection_stage in the selector's policy.yaml rises one stage at a time,
 # each on a receipt under config/test_selection_stage_receipts/ that
-# tests/ci/test_selection_stage_evidence.py recomputes from the published nightly records.
+# tests/ci/test_selection_stage_evidence.py recomputes (stage 1 from one comparison over the recorded set,
+# a later stage from the published nightly records).
 data_only_selection_enabled: false
 data_only_globs:
   - contracts/OMN-*.yaml
@@ -108,6 +109,27 @@ data_reader_fixture_roots:
   - tests/fixtures/
 data_reader_gated_infrastructure_paths:
   - tests/fixtures/
+# A pyproject.toml change narrows by section instead of taking the full suite as test infrastructure.
+# The selector compares the file's base and head text key by key (a git source-diff adapter); only a
+# changed key matching pyproject_narrowable_keys narrows, to the tests that read the file plus the closure
+# of the entry points that moved. Any other key, one this list has never seen, an unparseable side, or a
+# uv.lock change beyond the package's own version line keeps the full suite (reason test_infrastructure).
+# project.version narrows beside a lock change only when the lock's sole change is the package's own
+# version line. pyproject_reader_globs are the source files indexed for a read of pyproject.toml (a file
+# that opens it or reads entry-point metadata); the tests that import one, transitively, are readers.
+# The rule is the stage 2 entry of the selection record; like the data-only rule it stays off until the
+# change that turns it on, and it needs the base ref (detect_test_paths --base-ref).
+pyproject_section_selection_enabled: false
+pyproject_paths:
+  - pyproject.toml
+pyproject_lock_paths:
+  - uv.lock
+pyproject_narrowable_keys:
+  - project.entry-points.onex.nodes.*
+  - project.version
+  - tool.onex.dashboard_bundle.*
+pyproject_reader_globs:
+  - src/omnimarket/**/*.py
 
 # Test infrastructure — any change forces the full suite.
 test_infrastructure_paths:

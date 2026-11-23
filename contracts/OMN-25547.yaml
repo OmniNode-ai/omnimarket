@@ -274,16 +274,16 @@ dod_evidence:
     check_value: uv run --frozen pytest -q -p no:cacheprovider --no-cov -k at_least_once tests/nodes/node_gateway_batch_ingest_effect
     cwd: .
 - id: dod-omn25547-ac18
-  description: Focused tests of AC18 pass at the pushed head. The shared_topic half (a record built by PublisherHttps and one built like the merged forwarder leg) needs unmerged code and is pending (test_shared_topic_two_clients.py).
+  description: Focused tests of AC18 pass at the pushed head. The shared_topic half (a record built by PublisherHttps reads the id the door derives, over a TLS loopback socket) is test_shared_topic_two_clients.py.
   source: manual
   binds_ac:
   - AC18
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest -q -p no:cacheprovider --no-cov -k dedup_identity tests/nodes/node_gateway_batch_ingest_effect
+    check_value: uv run --frozen pytest -q -p no:cacheprovider --no-cov -k 'dedup_identity or shared_topic' tests/nodes/node_gateway_batch_ingest_effect
     cwd: .
 - id: dod-omn25547-ac19
-  description: Focused tests of AC19 pass at the pushed head. Covered here at the ASGI seam; the real-client loopback half needs unmerged code and is pending (test_header_budget_real_client.py).
+  description: Focused tests of AC19 pass at the pushed head. Covered at the ASGI seam and, over a TLS loopback socket with the merged PublisherHttps and an httpx client, in test_header_budget_real_client.py.
   source: manual
   binds_ac:
   - AC19
