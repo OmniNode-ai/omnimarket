@@ -25,9 +25,6 @@ files:
     src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml: 5
     src/omnimarket/nodes/node_host_installer_registry_units/handlers/handler_registry_units.py: 3
     src/omnimarket/nodes/node_host_reading_effect/overlay.example.yaml: 4
-    src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/handler_ruling_recovery.py: 3
-    src/omnimarket/nodes/node_host_reconcile_effect/__main__.py: 1
-    src/omnimarket/nodes/node_hourly_tick_effect/models/model_hourly_tick.py: 1
     src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_launch.py: 1
     src/omnimarket/nodes/node_lab_fill_plan_compute/handlers/handler_lab_fill_lane_render.py: 1
     src/omnimarket/nodes/node_lab_history_archive_effect/handlers/handler_lab_history_archive.py: 1
@@ -140,4 +137,4 @@ files:
     tests/unit/validators/test_ledger_file_census.py: 27
     tests/unit/work_ledger_bus/test_work_ledger_append_cli.py: 1
 ratchet:
-  omnimarket: 134
+  omnimarket: 131
