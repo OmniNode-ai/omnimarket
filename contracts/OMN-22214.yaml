@@ -64,3 +64,47 @@ dod_evidence:
       - check_type: command
         check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22214 --kind test -- uv run --frozen pytest tests/unit/delegation/test_test_class_gate_runs_tests.py -q --no-cov
         cwd: .
+  - id: dod-omn22214-ac1-accepted-2026-11-23
+    description: AC1 binding (proposed by lane=dod-closeout-bind-2026-11-23T1345Z-c2, accepted by lane=dod-closeout-accept-2026-11-23T1345Z-c2). The clamp_ratio file with a wrong expected value is run against the reference and refused by generated_tests_pass_reference. Re-run at origin/dev f42e0c134e on a lab host PASSED; with the product change of c2a85310df reverted the test fails (the request model refuses the reference, or the test module does not import).
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest "tests/unit/delegation/test_test_class_gate_runs_tests.py::test_failing_test_refused" -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn22214-ac2-accepted-2026-11-23
+    description: AC2 binding (proposed by lane=dod-closeout-bind-2026-11-23T1345Z-c2, accepted by lane=dod-closeout-accept-2026-11-23T1345Z-c2). A clamp_ratio test file whose tests all pass against the reference is accepted with the criterion PASS. Re-run at origin/dev f42e0c134e on a lab host PASSED; with the product change of c2a85310df reverted it fails.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest "tests/unit/delegation/test_test_class_gate_runs_tests.py::test_passing_test_accepted" -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn22214-ac3-accepted-2026-11-23
+    description: AC3 binding (proposed by lane=dod-closeout-bind-2026-11-23T1345Z-c2, accepted by lane=dod-closeout-accept-2026-11-23T1345Z-c2). Each of the three recorded wrong expected values (runs ec36740b, fdc2c87b, 9fcc7932) passes the old rubric with no reference and is refused with it. Re-run at origin/dev f42e0c134e on a lab host PASSED all 3 cases; with the product change of c2a85310df reverted all 3 fail.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest "tests/unit/delegation/test_test_class_gate_runs_tests.py::test_receipt_ec36740b_fdc2c87b_9fcc7932_refused" -q --no-cov --tb=line
+        cwd: .
+context:
+  ac_binding_provenance:
+    dod-omn22214-ac1-accepted-2026-11-23:
+      - label: AC1
+        criterion_hash: be816d6d6c9f2fac621629d68dfb652bf7dc2d0df0b707545c82577850454c7f
+        proposed_by: lane=dod-closeout-bind-2026-11-23T1345Z-c2
+        accepted_by: lane=dod-closeout-accept-2026-11-23T1345Z-c2
+        accepted_at: '2026-11-23T14:28:23Z'
+    dod-omn22214-ac2-accepted-2026-11-23:
+      - label: AC2
+        criterion_hash: a896d0633a04e293db850793854f4308c2e4f5522dadbe886106bb9e249205ea
+        proposed_by: lane=dod-closeout-bind-2026-11-23T1345Z-c2
+        accepted_by: lane=dod-closeout-accept-2026-11-23T1345Z-c2
+        accepted_at: '2026-11-23T14:28:23Z'
+    dod-omn22214-ac3-accepted-2026-11-23:
+      - label: AC3
+        criterion_hash: 52d484a5088757478a634c5f6778d3305b91f483f540e1adf02091d3e1a71d4d
+        proposed_by: lane=dod-closeout-bind-2026-11-23T1345Z-c2
+        accepted_by: lane=dod-closeout-accept-2026-11-23T1345Z-c2
+        accepted_at: '2026-11-23T14:28:23Z'
