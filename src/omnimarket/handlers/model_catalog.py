@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
-import fcntl
 import json
 import os
 import stat
@@ -32,6 +31,11 @@ from typing import Any, NamedTuple
 
 import yaml
 from pydantic import SecretStr
+
+try:
+    import fcntl
+except ImportError:  # native Windows: no Unix locks; setup preflight reports WSL
+    fcntl = None  # type: ignore[assignment]
 
 from omnimarket.config.service_endpoints import service_endpoint_url
 from omnimarket.handlers.routing.byok_model_listing import (
@@ -350,7 +354,8 @@ def pricing_models_dev_index() -> ModelsDevIndex:
         lock_path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
+        if fcntl is not None:
+            fcntl.flock(fd, fcntl.LOCK_EX)
     except OSError:
         os.close(fd)
         raise
@@ -379,8 +384,9 @@ def pricing_models_dev_index() -> ModelsDevIndex:
             _clear_failed(home)
         return index
     finally:
-        with contextlib.suppress(OSError):
-            fcntl.flock(fd, fcntl.LOCK_UN)
+        if fcntl is not None:
+            with contextlib.suppress(OSError):
+                fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
 
 
