@@ -239,29 +239,21 @@ class ModelGithubGatewayRequest(BaseModel):
     )
 
     @model_serializer(mode="wrap")
-    def _omit_unset_file_path(
+    def _omit_fields_a_read_does_not_use(
         self, handler: SerializerFunctionWrapHandler
     ) -> dict[str, object]:
-        """Send ``file_path`` only when a read names one (OMN-24187).
+        """Leave off the wire what a read does not use.
 
-        A node that predates the field refuses every request that carries it
-        (``extra_forbid``), so a null ``file_path`` on each other read would
-        break all of them until the node is redeployed.
+        A node that predates ``file_path`` (OMN-24187) or ``include_output``
+        refuses every request carrying it (``extra_forbid``), so a null
+        ``file_path`` or an off ``include_output`` must not be sent.
         """
-        data: dict[str, object] = handler(self)
+        data: dict[str, object] = dict(handler(self))
         if data.get("file_path") is None:
             data.pop("file_path", None)
+        if data.get("include_output") is False:
+            data.pop("include_output")
         return data
-
-    @model_serializer(mode="wrap")
-    def _omit_include_output_when_off(
-        self, handler: SerializerFunctionWrapHandler
-    ) -> dict[str, object]:
-        """A request that does not ask for the summary has the shape it had before the flag existed, so a gateway that predates it still accepts it."""
-        dumped = dict(handler(self))
-        if dumped.get("include_output") is False:
-            dumped.pop("include_output")
-        return dumped
 
     @model_validator(mode="after")
     def _require_scope_fields(self) -> ModelGithubGatewayRequest:
