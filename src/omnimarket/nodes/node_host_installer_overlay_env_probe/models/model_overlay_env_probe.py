@@ -12,9 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_lab_placement_compute.models.model_lab_placement import (
-    ModelHostTableVerdict,
-)
+from omnimarket.models.model_host_table_verdict import ModelHostTableVerdict
 
 
 class ModelProbeHost(BaseModel):

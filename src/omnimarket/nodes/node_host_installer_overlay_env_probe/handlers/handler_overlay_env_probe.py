@@ -27,6 +27,7 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     find_node_overlay,
 )
+from omnimarket.models.model_host_table_verdict import ModelHostTableVerdict
 from omnimarket.nodes.node_host_installer_overlay_env_probe.models.model_overlay_env_probe import (
     ModelEnvAlarm,
     ModelEnvNameRow,
@@ -34,9 +35,6 @@ from omnimarket.nodes.node_host_installer_overlay_env_probe.models.model_overlay
     ModelOverlayEnvProbeRequest,
     ModelOverlayEnvProbeResult,
     ModelProbeHost,
-)
-from omnimarket.nodes.node_lab_placement_compute.models.model_lab_placement import (
-    ModelHostTableVerdict,
 )
 
 NODE_PACKAGE = "omnimarket.nodes.node_host_installer_overlay_env_probe"
