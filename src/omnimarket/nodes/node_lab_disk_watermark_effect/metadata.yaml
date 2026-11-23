@@ -4,7 +4,8 @@ name: node_lab_disk_watermark_effect
 version: 0.1.0
 description: >
   Disk watermark of a lab pool host: writes its reading and pages past the declared page mark; marks, volumes and the
-  reading file come from the overlay.
+  reading file come from the overlay. A volume below the free share of inodes the contract declares writes the lab
+  stack reaper's alarm rows, naming the owner, through the bus append command.
 omnibase_core_compat: '>=0.47.31,<0.48.0'
 entry_points:
   onex.nodes:

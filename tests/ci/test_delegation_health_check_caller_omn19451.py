@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT
 """OMN-19451 -- enforce the omnimarket delegation-health reusable caller.
 
-The caller must always produce the CI Summary context and pin the infra owner
-of the verdict sources and implementation. Replay infra's own fixtures in a
+The caller runs on a schedule and on push to dev (OMN-25514, a signal in no
+required list) and pins the infra owner of the verdict sources and
+implementation. Replay infra's own fixtures in a
 subprocess so its ``scripts`` and ``tests`` packages cannot collide with ours.
 Missing callers, invalid pins, and unreadable upstream files fail loudly.
 """
@@ -263,14 +264,15 @@ def test_caller_pins_an_immutable_infra_dev_merge_tag() -> None:
     _infra_pin()
 
 
-def test_caller_runs_for_pr_labels_and_merge_queue_without_filters() -> None:
+def test_caller_runs_on_a_schedule_and_push_to_dev_only() -> None:
+    """OMN-25514 (S1-B): no pull_request or merge_group run, so no head carries the row."""
     triggers = _triggers(_workflow(CALLER_PATH))
-    assert "merge_group" in triggers
-    pull_request = _mapping(triggers["pull_request"])
-    types = pull_request["types"]
-    assert isinstance(types, list), types
-    assert {"labeled", "unlabeled"} <= set(types)
-    assert not {"paths", "paths-ignore", "branches"}.intersection(pull_request)
+    assert set(triggers) == {"schedule", "push"}, triggers
+    assert triggers["push"] == {"branches": ["dev"]}
+    schedule = triggers["schedule"]
+    assert isinstance(schedule, list), schedule
+    assert schedule, schedule
+    assert all("cron" in _mapping(entry) for entry in schedule), schedule
 
 
 def test_caller_passes_both_app_secrets() -> None:
@@ -307,6 +309,15 @@ def test_pinned_reusable_produces_the_registered_context(infra_tree: Path) -> No
     assert inner["name"] == "Delegation Health Check"
     (caller_job_id,) = _mapping(_workflow(CALLER_PATH)["jobs"])
     assert f"{caller_job_id} / {inner['name']}" == CONTEXT
+
+
+def test_pinned_reusable_reads_every_verdict_on_push_and_schedule(
+    infra_tree: Path,
+) -> None:
+    """OMN-25514: the pin must serve the events the caller now runs on."""
+    text = (infra_tree / REUSABLE_PATH).read_text(encoding="utf-8")
+    assert "push|schedule)" in text
+    assert 'labels="runtime_change"' in text
 
 
 def test_pinned_reusable_has_exactly_the_repo_key_input(infra_tree: Path) -> None:

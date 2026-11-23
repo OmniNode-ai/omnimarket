@@ -7,41 +7,41 @@
 # and config/delegation_health_check.yaml); nothing of it is copied here, so the
 # source list cannot fork.
 #
-# SIGNAL, NOT A GATE (OMN-25514, decoupling plan step S1-A). The check-run this
-# caller produces, `delegation-health-check / Delegation Health Check`, is in no
-# required list: it is not in EXPECTED_EXTERNAL_CONTEXTS in
+# SIGNAL, NOT A GATE (OMN-25514, decoupling plan steps S1-A and S1-B). The
+# check-run this caller produces, `delegation-health-check / Delegation Health
+# Check`, is in no required list: it is not in EXPECTED_EXTERNAL_CONTEXTS in
 # scripts/ci/ci_summary_gate.py, not in ci_summary_external_producers.json, and
-# CI Summary admits its row through a dated entry in
-# scripts/ci/ci_summary_sweep_exclusions.json, so a red row never fails a pull
-# request. The job below still runs and still reports the delegation regression
-# nightly and the M4 C17 verdict in its job summary; a PR that repairs the red
-# may still carry the label `delegation-fix-forward:OMN-<n>`. A docs-only PR is
-# never blocked.
+# CI Summary admits the row a head that ran the old pull_request caller still
+# carries through a dated entry in scripts/ci/ci_summary_sweep_exclusions.json.
 #
-# The shape is kept until step S1-B moves the triggers: it runs on `pull_request` AND
-# `merge_group`, the one job carries no `needs:`, no job-level `if:` and no path
-# filter, so it can neither skip-as-passed nor leave a queue head waiting on a
-# context that never reports. There is no `branches:` filter either, because
-# ci.yml also runs on pull requests to main and L4 would wait on a context that
-# never arrives there. A fork pull request carries no secrets, so it cannot read
-# the verdicts and fails closed.
+# It reads delegation verdicts from lab, stability and customer-surface runs, so
+# a red verdict elsewhere (the M4 C17 customer-surface workflow) put a red row
+# on every pull request head, and GitHub's rollup of that head then read red to
+# the landing controller although no required context failed. The caller now
+# runs on a schedule and on every push to dev, reads every verdict and writes it
+# to the job summary; it runs on no pull_request and no merge_group, so no pull
+# request head or queue head carries the row. A head that predates this change
+# keeps its row until it moves. The same shape runs in omnibase_infra.
+#
+# The one job carries no `needs:`, no job-level `if:` and no `continue-on-error`.
 #
 # THE PIN. The reusable is called at a full commit sha, and it checks its own
 # scripts and config out at github.job_workflow_sha, so the YAML and the code it
 # runs are one omnibase_infra commit (the same pinning runtime-rebuild-trigger.yml
-# uses, OMN-18387). tests/ci/test_delegation_health_check_caller_omn19451.py
+# uses, OMN-18387). The pin is a tag that carries the reusable's push and
+# schedule branch (omnibase_infra#6054). tests/ci/test_delegation_health_check_caller_omn19451.py
 # replays infra's own fixtures at this pin, so moving it re-proves the check.
 name: Delegation Health Check
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, labeled, unlabeled]
-  merge_group:
+  schedule:
+    - cron: "41 */4 * * *"
+  push:
+    branches: [dev]
 
 concurrency:
-  # A merge-queue entry carries its own github.ref, so queue heads never
-  # cancel one another; pull-request runs cancel their superseded predecessor.
-  group: delegation-health-check-${{ github.event.pull_request.number || github.ref }}
+  # One run per ref at a time; a newer push to dev supersedes an older run.
+  group: delegation-health-check-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -55,7 +55,7 @@ jobs:
   # matches a called workflow's job by.
   # advisory-automation: OMN-25514 reports the delegation nightly and M4 C17 verdicts as a dev signal; in no required list, so a red row cannot block a merge
   delegation-health-check:
-    uses: OmniNode-ai/omnibase_infra/.github/workflows/delegation-health-reusable.yml@dev-20261107104119-e3cff8e210fe
+    uses: OmniNode-ai/omnibase_infra/.github/workflows/delegation-health-reusable.yml@dev-20261118210333-41821105a4a7
     with:
       repo_key: omnimarket
     secrets:
