@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import subprocess
 from collections.abc import Sequence
@@ -205,19 +206,23 @@ def test_uninstall_removes_the_units(tmp_path: Path) -> None:
     assert not (tmp_path / "home/.config/systemd/user" / TIMER).exists()
 
 
-def test_the_packaged_overlay_validates_and_declares_both_pool_hosts() -> None:
+def test_the_packaged_overlay_validates_and_declares_the_pool_hosts() -> None:
     overlay = load_overlay(str(NODE_DIR / "overlay.yaml"))
-    assert [h.name for h in overlay.hosts] == ["h051", "h053"]
+    assert [h.name for h in overlay.hosts] == ["h051", "h053", "h201", "h202"]
     bounds = load_bounds()
     for declared in overlay.hosts:
         for root in declared.temp_roots:
-            assert Path(root.path).name in bounds.temp_root_leaf_names
+            leaf = Path(root.path).name
+            assert leaf in bounds.temp_root_leaf_names or any(
+                fnmatch.fnmatchcase(leaf, pattern)
+                for pattern in bounds.temp_root_leaf_patterns
+            )
         for store in declared.store_ceilings:
             assert Path(store.path).name == bounds.store_leaf_names[store.kind]
         assert declared.windows.retain_hours == 12
         assert declared.windows.pressure_retain_hours == 2
-    # the recorded gap: the lanes' TMPDIR and the package store sit beside the runs on both hosts
-    for declared in overlay.hosts:
+    # the recorded gap: the lanes' TMPDIR and the package store sit beside the runs on both runs-mount hosts
+    for declared in overlay.hosts[:2]:
         assert "/data/lab-run/runs/.tmp" in [r.path for r in declared.temp_roots]
         assert "/data/lab-run/runs/.pnpm-store" in [
             s.path for s in declared.store_ceilings

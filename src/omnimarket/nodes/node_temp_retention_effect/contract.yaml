@@ -38,10 +38,12 @@ execution:
 overlay:
   file: overlay.yaml
   environment_pin: ONEX_TEMP_RETENTION_OVERLAY
-# What an overlay may not exceed. A declared directory whose last component is not named here is refused, so an
-# overlay cannot make this node remove from anywhere else.
+# Each declared directory's last component must match the allowed names or patterns for its kind.
 retention_bounds:
   temp_root_leaf_names: [tmp, .tmp]
+  # Pytest keeps its run folders under /tmp/pytest-of-<user>. Each new run updates that parent,
+  # so the /tmp rule never reached old pytest-N directories inside it.
+  temp_root_leaf_patterns: ["pytest-of-?*"]
   store_leaf_names:
     pnpm: .pnpm-store
 schedule:

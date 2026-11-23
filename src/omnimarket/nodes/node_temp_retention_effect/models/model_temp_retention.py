@@ -3,8 +3,8 @@
 """The declared policy of the temp-directory retention node, and the report of one pass.
 
 Every host, path and number the node acts on is a field of the overlay model below. The contract
-declares only the bounds an overlay may not exceed (which leaf names a temp directory may have, which
-store kinds exist) and the schedule.
+declares only the bounds an overlay may not exceed (which leaf names and patterns a temp directory
+may match, which store kinds exist) and the schedule.
 """
 
 from __future__ import annotations
@@ -85,9 +85,10 @@ class ModelRetentionCadence(_Frozen):
 
 
 class ModelRetentionBounds(_Frozen):
-    """What an overlay may not exceed, owned by the contract."""
+    """Contract bounds for an overlay, including fnmatch patterns for temp root leaf names."""
 
     temp_root_leaf_names: Annotated[tuple[NonEmptyStr, ...], Field(min_length=1)]
+    temp_root_leaf_patterns: tuple[NonEmptyStr, ...] = ()
     store_leaf_names: dict[Literal["pnpm"], NonEmptyStr] = Field(min_length=1)
 
 
@@ -115,6 +116,8 @@ class ModelRetentionPass(_Frozen):
     busy: tuple[str, ...] = ()
     busy_count: int = 0
     kept_count: int = 0
+    deferred_count: int = 0  # temp entries left for a later pass
+    budget_exhausted: bool = False
     unreadable_count: int = (
         0  # same-user processes whose working directory or files could not be read
     )
