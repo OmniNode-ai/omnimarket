@@ -61,6 +61,9 @@ externally_consumed_topics:
   - onex.snapshot.projection.floor-work-state.v1
 runtime_dispatch:
   external_trigger: "python -m omnimarket.nodes.node_work_state_projection_effect, by the floor publish tick and the fill orchestrator's pass."
+  # The scheduled projection node's file_sources projector imports this node's run() and calls it once per tick.
+  callers:
+    - path: src/omnimarket/nodes/node_work_state_projection_scheduled_effect/protocols/adapter_file_sources_projector.py
 descriptor:
   node_archetype: effect
   purity: effectful
