@@ -57,7 +57,7 @@ from omnimarket.nodes.node_dev_roll_window_gate_effect.protocols import (
 )
 
 
-class HandlerDevRollWindowTick:
+class DevRollTickDecision:
     """``handle(ModelRuntimeTick) -> None | ModelDevRollGateDecision | the released commands and the decision``."""
 
     def __init__(
@@ -253,3 +253,7 @@ class HandlerDevRollWindowTick:
             )
         )
         return commands
+
+
+# Public name the package exports and callers construct.
+HandlerDevRollWindowTick = DevRollTickDecision

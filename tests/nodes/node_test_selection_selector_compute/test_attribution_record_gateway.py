@@ -59,6 +59,14 @@ def _load(name: str) -> Any:
     return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
 
 
+def _stage_one() -> ModelStageReceipt:
+    """The tree's stage 1 receipt: a stage above 1 is entered from it, and the stage 1 receipt reads no record."""
+    path = REPO_ROOT / "config" / "test_selection_stage_receipts" / "stage_1.yaml"
+    return ModelStageReceipt.model_validate(
+        yaml.safe_load(path.read_text(encoding="utf-8"))
+    )
+
+
 def _records() -> list[ModelPublishedAttributionRecord]:
     return [
         ModelPublishedAttributionRecord.model_validate(r)
@@ -86,10 +94,11 @@ def _validate(gateway: GatewayReadInMemory) -> ModelStageReceiptValidationResult
     handler = HandlerStageReceiptValidation(source, load_policy())
     return handler.handle(
         ModelStageReceiptValidationRequest(
-            current_stage=1,
-            base_stage=0,
+            current_stage=2,
+            base_stage=1,
             receipts=(
                 ModelStageReceipt(stage=0),
+                _stage_one(),
                 ModelStageReceipt.model_validate(_load("receipt_valid.json")),
             ),
         )
@@ -278,10 +287,11 @@ def test_adapter_absence_a_gateway_that_answers_another_operation_is_unavailable
     )
     result = handler.handle(
         ModelStageReceiptValidationRequest(
-            current_stage=1,
-            base_stage=0,
+            current_stage=2,
+            base_stage=1,
             receipts=(
                 ModelStageReceipt(stage=0),
+                _stage_one(),
                 ModelStageReceipt.model_validate(_load("receipt_valid.json")),
             ),
         )
