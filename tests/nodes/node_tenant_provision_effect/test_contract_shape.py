@@ -56,11 +56,14 @@ def test_topics_are_requested_in_completed_out_and_there_is_no_failed_topic() ->
         PROVISION_REQUESTED,
         READ_REQUESTED,
     }
-    assert set(contract["event_bus"]["publish_topics"]) == completed
+    assert completed == {
+        "onex.evt.omnimarket.tenant-provision-completed.v1",
+        "onex.evt.omnimarket.tenant-read-completed.v1",
+    }
+    assert set(contract["event_bus"]["publish_topics"]) == {contract["terminal_event"]}
+    assert set(contract["externally_consumed_topics"]) == completed
     assert all(c.endswith("-completed.v1") for c in completed)
-    every = set(contract["event_bus"]["subscribe_topics"]) | set(
-        contract["event_bus"]["publish_topics"]
-    )
+    every = set(contract["event_bus"]["subscribe_topics"]) | completed
     assert not [t for t in every if "failed" in t]
 
 

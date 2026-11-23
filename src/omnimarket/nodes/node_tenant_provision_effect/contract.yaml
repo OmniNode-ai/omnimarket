@@ -78,9 +78,11 @@ event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.tenant-provision-requested.v1
     - onex.cmd.omnimarket.tenant-read-requested.v1
+  # Only the terminal event is declared here: the node's Python never publishes, the runtime publishes each handler's answer
+  # on the completed topic its topic_match route names, and the publish-parity gate refuses a non-terminal publish topic
+  # with no publish call in the node. The read answer's topic is declared under topics and externally_consumed_topics.
   publish_topics:
     - onex.evt.omnimarket.tenant-provision-completed.v1
-    - onex.evt.omnimarket.tenant-read-completed.v1
 externally_consumed_topics:
   - onex.evt.omnimarket.tenant-provision-completed.v1
   - onex.evt.omnimarket.tenant-read-completed.v1
