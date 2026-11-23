@@ -38,6 +38,11 @@ from omnimarket.nodes.node_dev_roll_request_compute.handlers import decide_dev_r
 from omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.gate_context import (
     DevRollGateContext,
 )
+from omnimarket.nodes.node_dev_roll_window_gate_effect.handlers.held_age_rules import (
+    abandon_after_seconds,
+    bounded_last_roll,
+    held_age_alarm,
+)
 from omnimarket.nodes.node_dev_roll_window_gate_effect.models import (
     EnumDevRollGateAbandonReason,
     EnumDevRollGateRollOutcome,
@@ -52,7 +57,7 @@ from omnimarket.nodes.node_dev_roll_window_gate_effect.protocols import (
 )
 
 
-class HandlerDevRollWindowTick:
+class DevRollTickDecision:
     """``handle(ModelRuntimeTick) -> None | ModelDevRollGateDecision | the released commands and the decision``."""
 
     def __init__(
@@ -103,7 +108,7 @@ class HandlerDevRollWindowTick:
         ):
             return state, None
         deadline_at = last.runtime_started_at + timedelta(
-            seconds=policy.roll_completion_deadline_seconds
+            seconds=abandon_after_seconds(policy)
         )
         if last.finished_at is None and now < deadline_at:
             return state, None
@@ -139,9 +144,16 @@ class HandlerDevRollWindowTick:
         now = self._context.now()
         if policy.mode == "off":
             return self._flush(state, store)
+        blocking_roll = state.last_roll
         state, overdue = self._abandon_unfinished_roll(state, policy, now, store)
         if not state.held:
             return None if overdue is None else [overdue]
+        lead: list[BaseModel] = [] if overdue is None else [overdue]
+        alarm, alarmed_ids = held_age_alarm(state, blocking_roll, policy, now)
+        if alarm is not None:
+            state = state.model_copy(update={"alarmed_ids": alarmed_ids})
+            store.save(state)
+            lead.append(alarm)
         facts = ModelDevRollFacts(
             correlation_id=uuid4(),
             observed_at=now,
@@ -154,10 +166,9 @@ class HandlerDevRollWindowTick:
                 )
                 for held in state.held
             ),
-            last_roll=state.last_roll,
+            last_roll=bounded_last_roll(state.last_roll),
         )
         decided = decide_dev_roll(facts, policy.to_roll_policy())
-        lead: list[BaseModel] = [] if overdue is None else [overdue]
         if isinstance(decided, ModelDevRollRefused):
             return [
                 *lead,
@@ -206,6 +217,11 @@ class HandlerDevRollWindowTick:
                 update={
                     "held": remaining,
                     "released_ids": released_ids,
+                    "alarmed_ids": tuple(
+                        i
+                        for i in state.alarmed_ids
+                        if i in {str(h.command.correlation_id) for h in remaining}
+                    ),
                     "last_roll": ModelDevRollRecord(
                         job_id=str(newest.command.correlation_id),
                         git_ref=newest.sha,
@@ -237,3 +253,7 @@ class HandlerDevRollWindowTick:
             )
         )
         return commands
+
+
+# Public name the package exports and callers construct.
+HandlerDevRollWindowTick = DevRollTickDecision

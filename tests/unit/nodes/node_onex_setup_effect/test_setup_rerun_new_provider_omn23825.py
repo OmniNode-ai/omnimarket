@@ -49,6 +49,7 @@ from omnimarket.inference.local_byok_credential_adapter import (
 )
 from omnimarket.models.model_endpoint_models import ModelEndpointModelsResult
 from omnimarket.nodes.node_onex_setup_effect import cli as setup_cli
+from omnimarket.nodes.node_onex_setup_effect.handlers import handler_setup_workflow
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_journal import (
     ModelSetupJournal,
 )
@@ -122,7 +123,7 @@ def rerun(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
                 plan=plan,
             )
 
-    monkeypatch.setattr(setup_cli, "HandlerSetupWorkflow", Workflow)
+    monkeypatch.setattr(handler_setup_workflow, "HandlerSetupWorkflow", Workflow)
     monkeypatch.setattr(
         setup_cli,
         "user_config_path",
@@ -251,7 +252,9 @@ def test_a_server_provider_does_not_reuse_the_provider_wide_key(
         }
     )
     monkeypatch.setattr(
-        setup_cli.HandlerSetupWorkflow, "saved_plan", staticmethod(lambda _h: server)
+        handler_setup_workflow.HandlerSetupWorkflow,
+        "saved_plan",
+        staticmethod(lambda _h: server),
     )
     result, rec = rerun(input="openai_compatible\nhttp://127.0.0.1:9\nm1\n")
     assert "openai_compatible" in rec.keys, result.output
@@ -281,7 +284,7 @@ def _two_providers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         }
     )
     monkeypatch.setattr(
-        setup_cli.HandlerSetupWorkflow,
+        handler_setup_workflow.HandlerSetupWorkflow,
         "saved_plan",
         staticmethod(lambda _h: plan),
     )
@@ -364,7 +367,9 @@ def test_a_named_connection_is_replaced_not_duplicated(
         }
     )
     monkeypatch.setattr(
-        setup_cli.HandlerSetupWorkflow, "saved_plan", staticmethod(lambda _h: saved)
+        handler_setup_workflow.HandlerSetupWorkflow,
+        "saved_plan",
+        staticmethod(lambda _h: saved),
     )
     result, rec = rerun(
         "--connection", "lab", input="openai_compatible\nhttp://127.0.0.1:9\nm1\n"
@@ -393,10 +398,12 @@ def test_a_rerun_from_another_folder_keeps_every_saved_choice(
         }
     )
     monkeypatch.setattr(
-        setup_cli.HandlerSetupWorkflow, "saved_plan", staticmethod(lambda _h: saved)
+        handler_setup_workflow.HandlerSetupWorkflow,
+        "saved_plan",
+        staticmethod(lambda _h: saved),
     )
     monkeypatch.setattr(
-        setup_cli.HandlerSetupWorkflow,
+        handler_setup_workflow.HandlerSetupWorkflow,
         "supported_components",
         staticmethod(lambda: {"delegation", "local-stack"}),
     )
@@ -436,7 +443,9 @@ def test_a_named_workspace_keeps_the_other_saved_choices(
         }
     )
     monkeypatch.setattr(
-        setup_cli.HandlerSetupWorkflow, "saved_plan", staticmethod(lambda _h: saved)
+        handler_setup_workflow.HandlerSetupWorkflow,
+        "saved_plan",
+        staticmethod(lambda _h: saved),
     )
     elsewhere = tmp_path / "elsewhere"
     result, rec = rerun(
@@ -475,7 +484,9 @@ def test_a_saved_provider_on_its_own_endpoint_is_asked_for_its_key(
         }
     )
     monkeypatch.setattr(
-        setup_cli.HandlerSetupWorkflow, "saved_plan", staticmethod(lambda _h: saved)
+        handler_setup_workflow.HandlerSetupWorkflow,
+        "saved_plan",
+        staticmethod(lambda _h: saved),
     )
     result, rec = rerun(input="openai\ngpt-4.1-mini\n")
     assert rec.keys == ["openai"], result.output
@@ -508,7 +519,9 @@ def test_two_servers_in_one_credential_slot_name_the_slot(
         }
     )
     monkeypatch.setattr(
-        setup_cli.HandlerSetupWorkflow, "saved_plan", staticmethod(lambda _h: saved)
+        handler_setup_workflow.HandlerSetupWorkflow,
+        "saved_plan",
+        staticmethod(lambda _h: saved),
     )
     result, rec = rerun(input="openai_compatible\nhttp://127.0.0.1:8\nm2\n")
     assert result.exit_code != 0, result.output
@@ -542,7 +555,9 @@ def test_a_named_connection_gives_the_second_server_its_own_slot(
         }
     )
     monkeypatch.setattr(
-        setup_cli.HandlerSetupWorkflow, "saved_plan", staticmethod(lambda _h: saved)
+        handler_setup_workflow.HandlerSetupWorkflow,
+        "saved_plan",
+        staticmethod(lambda _h: saved),
     )
     result, rec = rerun(
         "--connection", "lab2", input="openai_compatible\nhttp://127.0.0.1:8\nm2\n"

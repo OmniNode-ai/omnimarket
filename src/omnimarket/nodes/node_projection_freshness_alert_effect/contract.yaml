@@ -11,6 +11,7 @@ description: >
   through the canonical Slack publisher. A zero demand minimum keeps the hook
   alarm active when the runtime hosting both hook and work projections is down.
   Unreadable sources produce UNKNOWN findings on the terminal event and ERROR logs.
+  OMN-26435 adds a done-items coverage check: done events older than its threshold with no done_items row alert; refused ledger rows make an otherwise covered result UNKNOWN, never hide an alarm.
 
 handler:
   module: omnimarket.nodes.node_projection_freshness_alert_effect.handlers.handler_projection_freshness_alert
@@ -33,6 +34,7 @@ golden_path:
   - "Pure classification derives IDLE, FRESH, STALE or UNKNOWN from the observations and contract thresholds"
   - "STALE publishes onex.cmd.omnimarket.slack-publish.v1 for node_slack_publish_effect with a renotify-bucketed key"
   - "Every verdict and publication attempt leaves on onex.evt.omnimarket.projection-freshness-alert-evaluated.v1"
+  - "The done_items_coverage check folds TERMINAL work-ledger rows with the shared done fold and alerts when a done event past its threshold has no done_items row"
 
 freshness_policy:
   check_interval_seconds: 300
@@ -57,6 +59,17 @@ freshness_checks:
       # work_events activity is context, never a prerequisite for this alarm.
       min_distinct: 0
 
+coverage_checks:
+  - check_id: done_items_coverage
+    demand_relation: omninode_internal.work_ledger_rows
+    supply_relation: omninode_internal.done_items
+    # A done event older than this with no done_items row means the writer
+    # stopped or refused it (OMN-26435). Thresholds live only here.
+    max_age_seconds: 1800
+    # A rolling window: for one lookback after the done-items writer first
+    # reaches a lane, done events from before it can alarm unless it backfills.
+    lookback_seconds: 86400
+
 db_io:
   db_tables:
     - name: claude_hook_events
@@ -71,6 +84,18 @@ db_io:
       migration: "0001_create_work_events.sql"
       access: read
       role: work_events
+    - name: work_ledger_rows
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_work_ledger.sql"
+      access: read
+      role: work_ledger_rows
+    - name: done_items
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_done_items.sql"
+      access: read
+      role: done_items
 
 secrets:
   SLACK_CHANNEL_ID:
@@ -116,6 +141,14 @@ dod_evidence:
     description: "Against real Postgres the reader's two aggregates return an aware datetime and an integer, and a 132-minute-old supply with active demand classifies STALE"
   - test: tests/test_golden_chain_projection_freshness_alert.py::test_golden_chain_rides_heartbeat_and_reaches_slack
     description: "Heartbeat and Slack hops meet shipped contracts and the terminal event is externally consumed"
+  - test: tests/test_omn26435_done_items_coverage_alarm.py::test_done_items_alarm_fires_on_unprojected_done_event
+    description: "An unprojected done event past the threshold publishes one Slack command keyed projection-freshness|done_items_coverage|STALE"
+  - test: tests/test_omn26435_done_items_coverage_alarm.py::test_done_items_alarm_quiet_without_done_events
+    description: "No done events is IDLE and publishes nothing"
+  - test: tests/test_omn26435_done_items_coverage_reader.py::test_reader_counts_an_older_supply_row_as_unprojected
+    description: "A done_items row older than the newest done event counts as unprojected"
+  - test: tests/test_omn26435_done_items_coverage_real_postgres.py::test_unprojected_old_done_event_reads_back_stale
+    description: "Against real Postgres the coverage reader counts an unprojected done event and classifies STALE"
 
 dependencies:
   packages:
@@ -129,4 +162,4 @@ metadata:
   description: "Demand-aware projection freshness alert effect"
   author: "OmniNode Platform Team"
   tags: [effect, observability, alerting, freshness]
-  related_tickets: ["OMN-19513"]
+  related_tickets: ["OMN-19513", "OMN-26435"]

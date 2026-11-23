@@ -333,6 +333,7 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     # out no onex_change_control; it keeps its context name.
     "ONEX Change Control Schema Compatibility",
     "PR Arch Review Gate",
+    "Node Trigger Declaration Check",
     "Precommit Fail-Loud Gate",
     "Projection Exposure Drift Gate",
     "Repository Structure Validation",
@@ -872,11 +873,7 @@ def evaluate(
     # Relaxed ⊆ strict_gates: a name that is not strict cannot be "relaxed" into
     # existence, so a tier entry dropped from STRICT_GATE_JOBS degrades to a
     # no-op here instead of silently becoming permanently skippable.
-    relaxed = (
-        frozenset(docs_only_gates) & frozenset(strict_gates)
-        if docs_only
-        else frozenset()
-    )
+    relaxed = frozenset(docs_only_gates if docs_only else ()) & frozenset(strict_gates)
     # A verified tree pass admits only the heavy tier NOT running on this dev
     # push: each strict heavy gate it relaxes must have concluded `skipped`.
     # Any other conclusion (success, failure, cancelled, neutral) means the gate

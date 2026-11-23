@@ -1,0 +1,85 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-26473"
+title: "omnimarket: node_tenant_provision_effect creates a tenant, its default plan and its outbox row from a bus command"
+summary: "A new effect node answers two bus commands: tenant-provision-requested inserts an ownerless active tenant row, its default plan row and one TENANT_CREATED outbox envelope in one transaction, and tenant-read-requested reads a tenant by id or slug. Every refusal is a typed outcome on the -completed topic. The contract declares its topics, broker grants, runtime placement and the four omninode_cloud identity tables; the DSN is a secret named in the node's overlay."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn26473-provision-tests"
+    statement: |-
+      The node's provision and read behaviour is proven by tests (a) to (e) against a scratch PostgreSQL.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: tests (a) to (e) pass on the lab: (a) the envelope round-trips through ModelTenantRegistryEvent.from_envelope with no extra or missing key, (b) a scratch-Postgres double run of one slug gives 1 tenant row, 1 plan row, 1 outbox row with the tenant and envelope status `active`, (c) a slug seeded with an owner_email gives refused_slug_taken and no write, (d) a command with owner fields gives refused_owner_not_supported and no write, (e) each refusal arrives on -completed through topic_match routing on an in-memory bus -- falsifier: `uv run pytest tests/nodes/node_tenant_provision_effect -q` fails on any of them, or any of them passes before the handler exists
+  - id: "req-omn26473-consumer"
+    statement: |-
+      The envelope the node builds parses through the registry projection's own parser.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: the envelope parses through the real consumer -- falsifier: `uv run pytest tests/nodes/node_projection_tenant_registry -q -k envelope_from_provision_node` fails
+  - id: "req-omn26473-acl"
+    statement: |-
+      Every topic use of the node's contract is covered by a declared broker grant.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: the coverage gate covers every topic use -- falsifier: the [OMN-24005](https://linear.app/omninode/issue/OMN-24005) coverage gate job on the PR reports an uncovered use, or the PR adds an exception row
+  - id: "req-omn26473-replay"
+    statement: |-
+      A command id replayed answers the original payload.
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: replay determinism: the same command id replayed gives a byte-identical completed payload except emitted_at -- falsifier: `uv run pytest tests/nodes/node_tenant_provision_effect -q -k replay_same_command` fails
+evidence_requirements:
+  - kind: "tests"
+    description: "The node's tests pass at the pushed head against a scratch PostgreSQL, and fail before the handler exists."
+    command: "uv run pytest tests/nodes/node_tenant_provision_effect tests/nodes/node_projection_tenant_registry -q -n 0 --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn26473-ac1-node-tests"
+    description: "Tests (a) to (e) and the refusal cases pass against a scratch PostgreSQL 16; every test fails with an import error before the node's models and handlers exist."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_tenant_provision_effect -q -n 0 --no-cov"
+        cwd: "."
+  - id: "dod-omn26473-ac2-consumer"
+    description: "The envelope built by the node parses through the registry projection's parser."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_projection_tenant_registry -q -n 0 --no-cov -k envelope_from_provision_node"
+        cwd: "."
+  - id: "dod-omn26473-ac3-coverage-gate"
+    description: "The contract declares a grant for every topic it subscribes to and publishes, and the broker ACL placeholder seam and coverage gate tests pass with no exception row."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_tenant_provision_effect/test_contract_shape.py tests/nodes/node_broker_acl_reconcile_effect/test_contract_placeholder_seam.py tests/nodes/node_broker_acl_overlay_render_compute/test_coverage_gate.py -q -n 0 --no-cov"
+        cwd: "."
+  - id: "dod-omn26473-ac4-replay"
+    description: "The same command replayed answers a payload equal to the first except emitted_at."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_tenant_provision_effect -q -n 0 --no-cov -k replay_same_command"
+        cwd: "."
+  - id: "dod-omn26473-integration-proof"
+    description: "Run the node's focused tests and the registry consumer test on a lab host at the pushed head; the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: local_done_gate
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-26473 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_tenant_provision_effect tests/nodes/node_projection_tenant_registry -q --no-cov"
+        cwd: "."
