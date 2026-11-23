@@ -34,8 +34,6 @@ import yaml
 
 from omnimarket.handlers.node_overlay_reader import (
     OVERLAY_FILE_NAME,
-    OVERLAY_ROOTS_ENV,
-    find_node_overlay,
 )
 from omnimarket.handlers.overlay_store.snapshot_root import (
     FileOverlaySnapshot,
@@ -93,10 +91,7 @@ def overlay_path(overlays_root: Path, overlay_id: str) -> Path:
 
 
 def _overlay_present(overlays_root: Path, overlay_id: str) -> bool:
-    return (
-        find_node_overlay(overlay_id, {OVERLAY_ROOTS_ENV: str(overlays_root)})
-        is not None
-    )
+    return overlay_path(overlays_root, overlay_id).is_file()
 
 
 def _store_holds(store_snapshot_root: Path | None, overlay_id: str) -> bool:
