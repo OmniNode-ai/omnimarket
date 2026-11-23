@@ -82,7 +82,8 @@ node_scoped_modules:
 # other unmatched file keeps the full escalation. The rule changes what a pull request runs, so it stays
 # off until its stage is entered: selection_stage in the selector's policy.yaml rises one stage at a time,
 # each on a receipt under config/test_selection_stage_receipts/ that
-# tests/ci/test_selection_stage_evidence.py recomputes from the published nightly records.
+# tests/ci/test_selection_stage_evidence.py recomputes (stage 1 from one comparison over the recorded set,
+# a later stage from the published nightly records).
 data_only_selection_enabled: false
 data_only_globs:
   - contracts/OMN-*.yaml

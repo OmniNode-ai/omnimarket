@@ -11,10 +11,12 @@ from omnimarket.nodes.node_dev_roll_window_gate_effect.handlers import (
     HandlerDevRollWindowCompleted,
     HandlerDevRollWindowHold,
     HandlerDevRollWindowTick,
+    HandlerDevRollWindowTickPublish,
 )
 
 __all__ = [
     "HandlerDevRollWindowCompleted",
     "HandlerDevRollWindowHold",
     "HandlerDevRollWindowTick",
+    "HandlerDevRollWindowTickPublish",
 ]
