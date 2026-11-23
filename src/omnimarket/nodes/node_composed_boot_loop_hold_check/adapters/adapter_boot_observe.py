@@ -23,9 +23,10 @@ from omnimarket.nodes.node_composed_boot_loop_hold_check.models.model_boot_obser
 
 
 class ProbeTransport(Protocol):
-    """One /health GET. Returns the response body, or None when nothing answered within ``timeout_seconds``."""
+    """One /health GET per call."""
 
-    def fetch(self, timeout_seconds: float) -> str | None: ...
+    def fetch(self, timeout_seconds: float) -> str | None:
+        """The response body, or None when nothing answered within ``timeout_seconds``."""
 
 
 class HttpProbe:

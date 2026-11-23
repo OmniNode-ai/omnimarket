@@ -46,10 +46,13 @@ def _start() -> None:
     sys.modules["loop_hold_sampler"] = module
     spec.loader.exec_module(module)
 
-    fd = os.open(out, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+    def _open_private(path: str, flags: int) -> int:
+        return os.open(path, flags, 0o600)
 
     def sink(record: dict[str, object]) -> None:
-        os.write(fd, (json.dumps(record) + "\n").encode("utf-8"))
+        # One short-lived handle per record: it closes on exit, and the file is created readable by its owner only.
+        with open(out, "a", encoding="utf-8", opener=_open_private) as handle:
+            handle.write(json.dumps(record) + "\n")
 
     bound_seconds = float(bound)
     module.LoopHoldSampler(

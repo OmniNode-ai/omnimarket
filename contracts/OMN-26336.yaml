@@ -67,7 +67,7 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: >-
-          test "$(grep -c 'node_composed_boot_loop_hold_check' .github/workflows/runtime-boot-composed.yml)" -ge 3
+          test "$(grep -c -e '- name: Boot check --' .github/workflows/runtime-boot-composed.yml)" -ge 3 && test "$(grep -c 'node_composed_boot_loop_hold_check' .github/workflows/runtime-boot-composed.yml)" -ge 2
         cwd: .
   - id: dod-omn26336-integration-proof
     description: "Local Done gate only, so it binds no criterion here: on a lab host the focused boot-check tests run at the pushed head through onex lab-work, the placement the lanes use for a run beyond one file."

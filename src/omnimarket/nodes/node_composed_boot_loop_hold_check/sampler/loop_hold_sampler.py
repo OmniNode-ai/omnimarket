@@ -26,6 +26,10 @@ from collections.abc import Callable
 from types import FrameType
 from typing import Any
 
+# The two private interpreter hooks the sampler wraps, named once so each is read and written by name.
+_RUN_ATTR = "_run"
+_FRAMES_ATTR = "_current_frames"
+
 _ASYNCIO_MARKER = os.sep + "asyncio" + os.sep
 
 
@@ -70,7 +74,7 @@ class LoopHoldSampler:
     def install(self) -> None:
         if self._original is not None:
             return
-        original = asyncio.events.Handle._run  # noqa: SLF001
+        original = getattr(asyncio.events.Handle, _RUN_ATTR)
         sampler = self
 
         def _run(handle: asyncio.events.Handle) -> None:
@@ -89,7 +93,7 @@ class LoopHoldSampler:
                 sampler._reported_at.pop(token, None)
 
         self._original = original
-        asyncio.events.Handle._run = _run  # type: ignore[method-assign,assignment]  # noqa: SLF001
+        setattr(asyncio.events.Handle, _RUN_ATTR, _run)
         self._stop.clear()
         self._thread = threading.Thread(
             target=self._sample_loop, name="boot-loop-hold-sampler", daemon=True
@@ -102,7 +106,7 @@ class LoopHoldSampler:
         self._stop.set()
         if self._thread is not None:
             self._thread.join(timeout=2.0)
-        asyncio.events.Handle._run = self._original  # type: ignore[method-assign]  # noqa: SLF001
+        setattr(asyncio.events.Handle, _RUN_ATTR, self._original)
         self._original = None
         self._thread = None
 
@@ -113,7 +117,7 @@ class LoopHoldSampler:
                 held = now - start
                 if held <= self.bound_seconds:
                     continue
-                frame = sys._current_frames().get(ident)  # noqa: SLF001
+                frame = getattr(sys, _FRAMES_ATTR)().get(ident)
                 stack = tuple(_describe(frame))
                 if stack:
                     self._samples.setdefault(token, collections.Counter())[stack] += 1

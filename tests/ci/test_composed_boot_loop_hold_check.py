@@ -22,20 +22,20 @@ from typing import Any
 import pytest
 import yaml
 
-from omnimarket.nodes.node_composed_boot_loop_hold_check.handlers.handler_boot_check import (
-    HandlerBootCheck,
-)
-from omnimarket.nodes.node_composed_boot_loop_hold_check.handlers.handler_boot_limits import (
+from omnimarket.nodes.node_composed_boot_loop_hold_check.adapters.adapter_boot_limits import (
     LimitSourceError,
     limits_applied_error,
     memory_bytes,
     render_override,
     resolve_bounds,
 )
-from omnimarket.nodes.node_composed_boot_loop_hold_check.handlers.handler_boot_observe import (
+from omnimarket.nodes.node_composed_boot_loop_hold_check.adapters.adapter_boot_observe import (
     HttpProbe,
     parse_hold_records,
     probe_until_ready,
+)
+from omnimarket.nodes.node_composed_boot_loop_hold_check.handlers.handler_boot_check import (
+    HandlerBootCheck,
 )
 from omnimarket.nodes.node_composed_boot_loop_hold_check.models.model_boot_bounds import (
     ModelBootBounds,
@@ -95,6 +95,10 @@ def _judge(
     )
 
 
+async def _as_coroutine(bootstrap: Callable[[], Awaitable[None]]) -> None:
+    await bootstrap()
+
+
 def _boot_under_sampler(
     bootstrap: Callable[[], Awaitable[None]],
 ) -> tuple[ModelLoopHold, ...]:
@@ -103,7 +107,7 @@ def _boot_under_sampler(
     sampler = LoopHoldSampler(LOOP_HOLD_BOUND, 0.02, records.append)
     sampler.install()
     try:
-        asyncio.run(bootstrap())  # type: ignore[arg-type]
+        asyncio.run(_as_coroutine(bootstrap))
     finally:
         sampler.uninstall()
     return parse_hold_records("\n".join(json.dumps(record) for record in records))
@@ -428,3 +432,11 @@ def test_applied_limits_are_read_back_against_the_declared_ones() -> None:
     assert "Memory=0" in str(limits_applied_error(bounds, 1_000_000_000, 0))
     with pytest.raises(LimitSourceError):
         memory_bytes("lots")
+
+
+def test_the_verdict_is_declared_on_the_terminal_topic_the_node_publishes() -> None:
+    contract = yaml.safe_load((NODE_DIR / "contract.yaml").read_text(encoding="utf-8"))
+    terminal = "onex.evt.omnimarket.composed-boot-check-completed.v1"
+    assert contract["terminal_event"] == terminal
+    assert contract["event_bus"]["publish_topics"] == [terminal]
+    assert contract["topics"]["composed_boot_check_completed"] == terminal

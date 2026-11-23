@@ -18,19 +18,19 @@ from pathlib import Path
 
 import yaml
 
-from omnimarket.nodes.node_composed_boot_loop_hold_check.handlers.handler_boot_check import (
-    HandlerBootCheck,
-)
-from omnimarket.nodes.node_composed_boot_loop_hold_check.handlers.handler_boot_limits import (
+from omnimarket.nodes.node_composed_boot_loop_hold_check.adapters.adapter_boot_limits import (
     limits_applied_error,
     read_node_declaration,
     render_override,
     resolve_bounds,
 )
-from omnimarket.nodes.node_composed_boot_loop_hold_check.handlers.handler_boot_observe import (
+from omnimarket.nodes.node_composed_boot_loop_hold_check.adapters.adapter_boot_observe import (
     DockerExecProbe,
     parse_hold_records,
     probe_until_ready,
+)
+from omnimarket.nodes.node_composed_boot_loop_hold_check.handlers.handler_boot_check import (
+    HandlerBootCheck,
 )
 from omnimarket.nodes.node_composed_boot_loop_hold_check.models.model_boot_check_request import (
     ModelBootCheckRequest,

@@ -851,7 +851,7 @@ jobs:
           BOOT_CHECK_OVERRIDE="${RUNNER_TEMP}/boot-check.override.yml"
           BOOT_CHECK_SAMPLER_OUT=/tmp/boot-check-loop-holds.jsonl
           PYTHONPATH=market/src uv run --no-project --python 3.12 --with 'pydantic>=2' --with 'pyyaml>=6.0.2' \
-            python -m omnimarket.nodes.node_composed_boot_loop_hold_check render-override \
+            python -m omnimarket.nodes.node_composed_boot_loop_hold_check.runtime_composed_boot_check render-override \
             --infra-root infra --out "$BOOT_CHECK_OVERRIDE" --service omninode-runtime \
             --sampler-out "$BOOT_CHECK_SAMPLER_OUT" --existing-pythonpath "$existing"
           echo "BOOT_CHECK_OVERRIDE=${BOOT_CHECK_OVERRIDE}" >> "${GITHUB_ENV:-/dev/null}"
@@ -872,7 +872,7 @@ jobs:
         run: |
           set -euo pipefail
           PYTHONPATH=market/src uv run --no-project --python 3.12 --with 'pydantic>=2' --with 'pyyaml>=6.0.2' \
-            python -m omnimarket.nodes.node_composed_boot_loop_hold_check check \
+            python -m omnimarket.nodes.node_composed_boot_loop_hold_check.runtime_composed_boot_check check \
             --infra-root infra --container "${LOCAL_PROJECT}-omninode-runtime" \
             --health-url http://localhost:8085/health --sampler-out "$BOOT_CHECK_SAMPLER_OUT"
 
