@@ -22,6 +22,9 @@ import asyncpg
 import pytest
 
 from omnimarket.adapters.asyncpg_adapter import _refuse_unbound_tenant_scoped_write
+from omnimarket.handlers.handler_savings_priced_models_fill import (
+    refresh_shared_priced_models,
+)
 from omnimarket.models.model_local_install_schema import local_priced_models_rows
 from omnimarket.models.model_metering_summary_refresh_requested import (
     EnumMeteringRefreshReason,
@@ -454,6 +457,60 @@ async def test_the_refresh_fills_the_priced_models_and_drops_a_stale_one() -> No
         assert "model-the-manifest-no-longer-names" not in {
             r["model_key"] for r in rows
         }
+    finally:
+        try:
+            await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        finally:
+            await conn.close()
+
+
+class _DeclaredTablesOnlyBindings:
+    """Standalone bindings that, like the runtime's, refuse a table the contract does not declare."""
+
+    def __init__(self, declared: set[str]) -> None:
+        self._declared = declared
+
+    def read_binding_for(self, table: str) -> str:
+        return self.write_binding_for(table)
+
+    def write_binding_for(self, table: str) -> str:
+        if table not in self._declared:
+            raise KeyError(table)
+        return "tenant_projection"
+
+
+@pytest.mark.integration
+async def test_the_fill_runs_on_a_declared_table_binding_in_standalone_mode() -> None:
+    """OMN-26444: savings_priced_models is not a db_io declaration of the metering contract, so in standalone mode the fill must resolve a binding through a declared table, not the undeclared name, and still replace the rows on a real Postgres."""
+    conn = await _connect_or_skip()
+    try:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.execute(f"CREATE SCHEMA {_SCHEMA}")
+        for migration in _MIGRATIONS:
+            await conn.execute(_scoped(migration.read_text(encoding="utf-8")))
+        await conn.execute(_DELEGATION_EVENTS)
+        await conn.execute(
+            f"INSERT INTO {_SCHEMA}.savings_priced_models (model_key, free) VALUES ('stale-model', FALSE)"
+        )
+        writer = MeteringSummaryProjectionWriter.__new__(
+            MeteringSummaryProjectionWriter
+        )
+        writer._standalone_bindings = _DeclaredTablesOnlyBindings(
+            {"metering_summary", "delegation_events"}
+        )
+        writer._db_by_binding = {
+            "tenant_projection": cast(Any, _ScopedConnectionAdapter(conn))
+        }
+        await refresh_shared_priced_models(writer.db_for("metering_summary"))
+        rows = await conn.fetch(
+            f"SELECT model_key FROM {_SCHEMA}.savings_priced_models"
+        )
+        assert "stale-model" not in {r["model_key"] for r in rows}
+        assert {r["model_key"] for r in rows} == {
+            key for key, _ in local_priced_models_rows()
+        }
+        with pytest.raises(KeyError):
+            writer.db_for("savings_priced_models")
     finally:
         try:
             await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")

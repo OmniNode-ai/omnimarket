@@ -10548,7 +10548,7 @@
     },
     {
       "accessor_nodes": [
-        "node_projection_metering_summary"
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_savings/migrations/102_delegation_savings_unpriced_matches_refresh.sql"
@@ -10558,7 +10558,7 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
-        "src/omnimarket/nodes/node_projection_metering_summary/contract.yaml"
+        "scripts/application-relation-ownership.yaml"
       ],
       "current_schema": [
         "public"
@@ -10590,11 +10590,11 @@
       "partitioning": [],
       "producer": "node_projection_savings",
       "readers": [
-        "node_projection_metering_summary"
+        "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "public",
       "writers": [
-        "node_projection_metering_summary"
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {

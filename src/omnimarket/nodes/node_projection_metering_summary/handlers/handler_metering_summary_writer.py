@@ -254,8 +254,13 @@ class MeteringSummaryProjectionWriter(BaseProjectionRunner):
             }
         try:
             # OMN-26444: the shared savings view prices runs from this table, so
-            # it is refilled from the manifest before any run is read.
-            await refresh_shared_priced_models(self.db_for("savings_priced_models"))
+            # it is refilled from the manifest before any run is read. The table
+            # is not a db_io declaration of this contract: the topology grants
+            # are derived from the contract set omnibase_infra pins, so a new
+            # declaration here fails auto-wiring until that pin carries it. The
+            # fill runs on the writer's own adapter, the same tenant_projection_writer
+            # principal migration 102 grants on the table.
+            await refresh_shared_priced_models(self.db_for("metering_summary"))
             result = await refresh_from_store(
                 decision.request,
                 reads_for=self._reads_for,
