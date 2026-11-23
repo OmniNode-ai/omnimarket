@@ -314,7 +314,14 @@ def test_the_check_node_declares_the_job_that_runs_it() -> None:
     assert result.passed, result.findings
 
 
-@pytest.mark.parametrize("node", [CENSUS, "node_lane_dispatch_intake_effect"])
+@pytest.mark.parametrize(
+    "node",
+    [
+        CENSUS,
+        "node_lane_dispatch_intake_effect",
+        "node_host_installer_overlay_env_probe",
+    ],
+)
 def test_the_nodes_that_declare_a_host_unit_pass_on_dev(node: str) -> None:
     result = _check(REPO_ROOT, _contract_path(node))
     assert result.passed, result.findings
