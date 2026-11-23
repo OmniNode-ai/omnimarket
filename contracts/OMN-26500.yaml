@@ -45,6 +45,9 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/ci/test_repository_prose_removed_omn17427.py -q -p no:randomly --no-cov
     cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/handlers/test_handler_release_cut_changelog.py -q -p no:randomly --no-cov
+    cwd: .
 - id: dod-omn26500-ac3
   description: 'AC3, before the merge: both release paths reach the bump that removes the cut''s CHANGELOG.md. The auto-tag workflow has a reopen-dev job that needs its tag job and runs the shared action, which runs scripts/ci/post_release_dev_bump.py and stages the removal.'
   source: manual
