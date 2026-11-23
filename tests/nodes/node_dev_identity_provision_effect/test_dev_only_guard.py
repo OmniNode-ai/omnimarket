@@ -25,7 +25,12 @@ from omnimarket.nodes.node_dev_identity_provision_effect.overlay import (
     ModelDevIdentityProvisionOverlay,
 )
 
-from .fakes import FakeKeycloakAndApi, FakeKeyGenerator, FakeSettingStore
+from .fakes import (
+    FakeKeycloakAndApi,
+    FakeKeyGenerator,
+    FakeSettingStore,
+    FakeTenantProvisioner,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -63,11 +68,6 @@ def _overlay(
             "password_folder": "/shared/env",
             "password_key": "DEV_PROBE_USER_PASSWORD",
         },
-        api={
-            "base_url": "https://api.example.invalid",
-            "provision_path": "/v1/auth/provision",
-            "timeout_seconds": 15.0,
-        },
         protected_usernames=[],
         secret_store=None,
     )
@@ -95,6 +95,7 @@ def _build(
         transport=transport,
         settings_store=store,
         key_generator=gen,
+        tenant_provisioner=FakeTenantProvisioner(),
         contract_path=contract_path or CONTRACT_PATH,
     )
     return _Rig(handler=handler, transport=transport, store=store, gen=gen)
@@ -173,7 +174,7 @@ def test_failing_control_a_contract_declaring_the_other_lane_runs_the_flow(
     )
     assert result.ok is True
     assert result.outcome.value == "provisioned"
-    assert len(rig.transport.call_log) == 5
+    assert len(rig.transport.call_log) == 4
 
 
 def test_the_declared_lane_and_realms_are_the_contract_file_s(tmp_path: Path) -> None:
