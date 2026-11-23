@@ -197,7 +197,6 @@ from omnimarket.handlers.tenant_mirror_requirement import require_tenant_mirrore
 from omnimarket.inference import provider_quota_state
 from omnimarket.inference.protocol_config import (
     apply_inference_protocol,
-    bound_thinking_budget_to_answer_room,
     resolve_inference_protocol_default_temperature,
 )
 from omnimarket.inference.provider_finish_reason import (
@@ -316,6 +315,9 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_named_te
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_shrink_retry import (
     HandlerShrinkRetry,
     unit_slice_text,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_thinking_budget import (
+    bound_thinking_budget_to_answer_room,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_dispatch_progress import (
     ModelDelegationDispatchProgress,

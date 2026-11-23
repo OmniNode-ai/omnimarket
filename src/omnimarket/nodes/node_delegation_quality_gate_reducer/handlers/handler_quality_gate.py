@@ -116,12 +116,9 @@ from omnimarket.delegation.response_contract_conformance import (
 )
 from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
 from omnimarket.inference.provider_finish_reason import (
-    EMPTY_AFTER_SPENT_OUTPUT_CHECK_NAME,
     TRUNCATED_RESPONSE_GATE_FAILURE_REASON,
     TRUNCATION_CHECK_NAME,
     EnumProviderFinishReason,
-    empty_after_spent_output_gate_failure_reason,
-    is_empty_answer_after_spent_output,
     is_truncated_by_output_budget,
 )
 from omnimarket.inference.task_class_authority import (
@@ -137,6 +134,15 @@ from omnimarket.models.delegation.wire.model_quality_gate import (
     SCORE_SOURCE_COMBINED,
     SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
     SHAPE_REFUSED_VERDICT_PREFIX,
+)
+from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_empty_after_spent_output import (
+    EMPTY_AFTER_SPENT_OUTPUT_CHECK_NAME,
+    empty_after_spent_output_gate_failure_reason,
+    is_empty_answer_after_spent_output,
+)
+from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_prompt_artifact_language import (
+    parse_as_requested_language,
+    prompt_requested_artifact_language,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.operator_voice_check import (
     check_operator_voice,
@@ -696,28 +702,6 @@ _PYTHON_FENCE_LANG_TAGS: frozenset[str] = frozenset(
 )
 _YAML_FENCE_LANG_TAGS: frozenset[str] = frozenset({"yaml", "yml"})
 _JSON_FENCE_LANG_TAGS: frozenset[str] = frozenset({"json"})
-_PROMPT_PYTHON_RE = re.compile(r"\bpython3?\b|\bpytest\b|\.py\b", re.IGNORECASE)
-_PROMPT_YAML_RE = re.compile(r"\bya?ml\b", re.IGNORECASE)
-_PROMPT_JSON_RE = re.compile(r"\bjson\b", re.IGNORECASE)
-
-
-def _prompt_requested_artifact_language(task_prompt: str | None) -> str | None:
-    """The artifact language the prompt asks for, when it names exactly one of YAML or JSON.
-
-    OMN-26588. An answer with no fence, or a fence with no language tag, has no
-    declared language of its own, so the prompt supplies it. A prompt that names
-    Python, names both YAML and JSON, or names neither returns ``None`` and the
-    answer keeps the Python parse it always had.
-    """
-    if not task_prompt or _PROMPT_PYTHON_RE.search(task_prompt):
-        return None
-    wants_yaml = _PROMPT_YAML_RE.search(task_prompt) is not None
-    wants_json = _PROMPT_JSON_RE.search(task_prompt) is not None
-    if wants_yaml == wants_json:
-        return None
-    return "yaml" if wants_yaml else "json"
-
-
 _SEARCH_REPLACE_BLOCK_RE = re.compile(
     r"^<<<<<<< SEARCH[ \t]*\r?\n.*?^=======[ \t]*\r?\n.*?^>>>>>>> REPLACE[ \t]*\r?$",
     re.MULTILINE | re.DOTALL,
@@ -904,7 +888,7 @@ def _check_code_artifact_present(
     if _is_json_edit_artifact(stripped) or _is_search_replace_artifact(stripped):
         return None
 
-    requested = _prompt_requested_artifact_language(task_prompt)
+    requested = prompt_requested_artifact_language(task_prompt)
     tagged_blocks = _extract_fenced_code_blocks_with_lang(stripped)
     if tagged_blocks and any(
         _block_is_code_artifact(
@@ -1279,21 +1263,6 @@ def _check_short_form_adequacy(
     return None
 
 
-def _parse_as_requested_language(body: str, language: str) -> str | None:
-    """Parse ``body`` as the prompt-requested YAML or JSON (OMN-26588)."""
-    if language == "yaml":
-        try:
-            yaml.safe_load(body)
-        except yaml.YAMLError as exc:
-            return f"MALFORMED: response does not compile as YAML: {exc}"
-        return None
-    try:
-        json.loads(body)
-    except json.JSONDecodeError as exc:
-        return f"MALFORMED: response does not compile as JSON: {exc.msg}"
-    return None
-
-
 def _check_compiles_without_errors(
     content: str, task_prompt: str | None = None
 ) -> str | None:
@@ -1310,18 +1279,18 @@ def _check_compiles_without_errors(
 
     OMN-26588: raw content and an untagged fence declare no language, so the
     prompt does when it names exactly one of YAML or JSON and no Python
-    (``_prompt_requested_artifact_language``); that parser then reads them.
+    (``prompt_requested_artifact_language``); that parser then reads them.
     """
     if _is_search_replace_artifact(content) or _is_json_edit_artifact(content):
         return None
 
     content = _remove_search_replace_blocks(content)
-    requested = _prompt_requested_artifact_language(task_prompt)
+    requested = prompt_requested_artifact_language(task_prompt)
     tagged_blocks = _extract_fenced_code_blocks_with_lang(content)
     if not tagged_blocks:
         candidate = _strip_markdown_code_fence(content)
         if requested is not None:
-            return _parse_as_requested_language(candidate, requested)
+            return parse_as_requested_language(candidate, requested)
         try:
             ast.parse(candidate)
         except SyntaxError as exc:
@@ -3456,6 +3425,8 @@ def _run_legacy_checks(
 
 def _truncated_by_output_budget_result(
     gate_input: ModelQualityGateInput,
+    reason: str = TRUNCATED_RESPONSE_GATE_FAILURE_REASON,
+    check_name: str = TRUNCATION_CHECK_NAME,
 ) -> ModelQualityGateResult:
     """The verdict for a response the provider said it cut off (OMN-18278).
 
@@ -3476,37 +3447,6 @@ def _truncated_by_output_budget_result(
     CLIMBS rather than terminalising, because the reason carries the
     ``WEAK_OUTPUT`` verdict prefix and the next rung brings its own budget.
     """
-    reasons = (TRUNCATED_RESPONSE_GATE_FAILURE_REASON,)
-    return ModelQualityGateResult(
-        correlation_id=gate_input.correlation_id,
-        passed=False,
-        fail_category="fail_deterministic",
-        quality_score=0.0,
-        failure_reasons=reasons,
-        fallback_recommended=_recommends_fallback(reasons),
-        rule_evaluations=(
-            ModelQualityRuleEvaluation(
-                rule=TRUNCATION_CHECK_NAME,
-                enforcement=EnumQualityRuleEnforcement.BLOCKING,
-                passed=False,
-                detail=TRUNCATED_RESPONSE_GATE_FAILURE_REASON,
-            ),
-        ),
-    )
-
-
-def _empty_after_spent_output_result(
-    gate_input: ModelQualityGateInput, output_tokens_spent: int
-) -> ModelQualityGateResult:
-    """The verdict for an empty answer the provider billed output tokens for (OMN-26588).
-
-    Same floor as ``_truncated_by_output_budget_result`` and for the same reason:
-    the output budget went to reasoning, the next rung brings its own, so the
-    reason carries ``WEAK_OUTPUT`` and climbs. ``MALFORMED`` never climbs, and an
-    empty answer that billed no output tokens still gets it from
-    ``output_parses``.
-    """
-    reason = empty_after_spent_output_gate_failure_reason(output_tokens_spent)
     reasons = (reason,)
     return ModelQualityGateResult(
         correlation_id=gate_input.correlation_id,
@@ -3517,7 +3457,7 @@ def _empty_after_spent_output_result(
         fallback_recommended=_recommends_fallback(reasons),
         rule_evaluations=(
             ModelQualityRuleEvaluation(
-                rule=EMPTY_AFTER_SPENT_OUTPUT_CHECK_NAME,
+                rule=check_name,
                 enforcement=EnumQualityRuleEnforcement.BLOCKING,
                 passed=False,
                 detail=reason,
@@ -3838,7 +3778,11 @@ def delta(
         # OMN-26588: an empty answer the provider billed output tokens for is a
         # spent budget, not a malformed artifact. Second, after the provider's own
         # ``length``, and ahead of every content heuristic, which only see "".
-        result = _empty_after_spent_output_result(gate_input, output_tokens_spent)
+        result = _truncated_by_output_budget_result(
+            gate_input,
+            empty_after_spent_output_gate_failure_reason(output_tokens_spent),
+            EMPTY_AFTER_SPENT_OUTPUT_CHECK_NAME,
+        )
     elif (
         segmentation.boundary_rule is EnumReasoningBoundaryRule.PREAMBLE_UNRESOLVED
         and not _deliverable_locatable_without_a_boundary(
