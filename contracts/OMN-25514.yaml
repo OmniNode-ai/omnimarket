@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-25514
-title: Delegation Health Check leaves the omnimarket required lists (plan step S1-A)
-summary: 'The context delegation-health-check / Delegation Health Check reads delegation verdicts from lab and stability runs, so a broken lab held dev merges. It leaves EXPECTED_EXTERNAL_CONTEXTS in scripts/ci/ci_summary_gate.py and scripts/ci/ci_summary_external_producers.json, and one dated entry in scripts/ci/ci_summary_sweep_exclusions.json (expires 2026-12-17) admits the red row its caller still produces. The caller keeps its pull_request and merge_group triggers in this step, so a head that predates it behaves as before; the trigger change is a later step that lands once no open head names the context.'
+title: Delegation Health Check leaves the omnimarket required lists and pull request heads (plan steps S1-A and S1-B)
+summary: 'The context delegation-health-check / Delegation Health Check reads delegation verdicts from lab and stability runs, so a broken lab held dev merges. It leaves EXPECTED_EXTERNAL_CONTEXTS in scripts/ci/ci_summary_gate.py and scripts/ci/ci_summary_external_producers.json, and one dated entry in scripts/ci/ci_summary_sweep_exclusions.json (expires 2026-12-17) admits the red row its caller still produces. Step S1-B moves the caller off pull_request and merge_group to a schedule and push to dev, at an omnibase_infra tag whose reusable serves those events, so no new head carries the row; a head that predates it keeps its row, which the exclusion admits until it expires. The cause of the red row was the newest m4-c17-customer-surface-verdict run reading red on every pull request head.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -39,6 +39,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/ci/test_delegation_health_check_caller_omn19451.py tests/unit/scripts/ci/test_l4_event_scope_omn18963.py -q -p no:cacheprovider --no-cov
+    cwd: .
+- id: dod-omn25514-s1b-caller-triggers
+  description: 'The caller runs on schedule and push to dev only, pins the omnibase_infra tag whose reusable reads every verdict on those events, and the check-run name is unchanged.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_delegation_health_check_caller_omn19451.py -q -p no:cacheprovider --no-cov
     cwd: .
 - id: dod-omn25514-safety-dated-exception
   description: 'The Dependency Security Scan policy file config/safety-policy.yml carries exactly one ignored advisory, SFTY-20261018-93041 (opentelemetry-exporter-otlp-proto-http 1.44.0), expiring 2026-11-25 and citing OMN-25587, and the enforcing safety command reads it. On the lab with the scan commands the policy gives rc 0, the same tree without the entry gives rc 64 on that id only, and an expiry in the past gives rc 64.'
