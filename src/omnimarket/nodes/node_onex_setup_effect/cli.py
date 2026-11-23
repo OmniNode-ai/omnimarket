@@ -9,6 +9,7 @@ input or stdin and are never included in a saved plan.
 
 from __future__ import annotations
 
+import platform
 import sys
 from collections.abc import Callable
 from functools import wraps
@@ -33,7 +34,6 @@ from omnimarket.nodes.node_onex_setup_effect.cli_choices import (
     ask_choices,
     stored_key_for_unchanged_provider,
 )
-from omnimarket.nodes.node_onex_setup_effect.cli_workflow import run_workflow_cli
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import (
     KEYLESS_PROVIDERS,
     discard_key,
@@ -45,9 +45,6 @@ from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_plugins impo
 )
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_preflight import (
     HandlerSetupPreflight,
-)
-from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_workflow import (
-    HandlerSetupWorkflow,
 )
 from omnimarket.nodes.node_onex_setup_effect.models import (
     ModelOnexSetupRequest,
@@ -99,9 +96,10 @@ def _json_failures(function: Callable[..., None]) -> Callable[..., None]:
 
 
 def _workflow_cli(ctx: click.Context, **kwargs: Any) -> None:
+    from omnimarket.nodes.node_onex_setup_effect.cli_workflow import run_workflow_cli
+
     run_workflow_cli(
         ctx,
-        workflow_factory=HandlerSetupWorkflow,
         onex_home=user_config_path().parent,
         read_key=_read_key,
         **kwargs,
@@ -338,7 +336,7 @@ def linked_workspace_notice(workspace: Path) -> str | None:
 @click.option(
     "--preflight-only",
     is_flag=True,
-    help="Read this Mac's requirements and exit without installing or changing files.",
+    help="Read this machine's requirements and exit without installing or changing files.",
 )
 @click.option(
     "--json", "json_output", is_flag=True, help="Emit only the typed result on stdout."
@@ -448,7 +446,7 @@ def setup_command(
         raise click.ClickException(
             "Run --preflight-only separately from a setup action, component plan, or developer selection."
         )
-    if preflight_only:
+    if preflight_only or platform.system() == "Windows":
         observation = HandlerSetupPreflight().handle(
             ModelSetupPlan(
                 workspace=workspace or Path.home() / "Code" / "omnibase",
@@ -467,6 +465,12 @@ def setup_command(
             if observation.fix:
                 click.echo(observation.fix, err=True)
         ctx.exit(0 if observation.status == "success" else 3)
+    # Provisioning takes POSIX file locks. A native Windows client must receive
+    # the platform remedy before any provisioning modules are imported.
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_workflow import (
+        HandlerSetupWorkflow,
+    )
+
     onex_home = user_config_path().parent
     try:
         saved = (
@@ -609,6 +613,7 @@ def setup_command(
         return
     _workflow_cli(
         ctx,
+        workflow_factory=HandlerSetupWorkflow,
         workspace=workspace,
         action=action,
         components=components,

@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_metering_tenant_records_effect
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: effect
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Reads one tenant's delegation records from the local evidence store, read
+  only, for the metering headline's refresh and onex metering's staleness
+  check. The tenant is matched as the projection writer records it: its
+  canonical UUID, a non-canonical UUID string, or a slug resolved through
+  tenant_registry_mirror or the closed legacy map. A row with no tenant is
+  nobody's. A store with no tenant_id column predates tenants and reads every
+  row. Called in process.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: read_tenant_metering_records
+    handler:
+      name: HandlerMeteringTenantRecords
+      module: omnimarket.nodes.node_metering_tenant_records_effect.handlers.handler_metering_tenant_records
+    input_model: omnimarket.nodes.node_metering_tenant_records_effect.models.model_metering_tenant_records_request.ModelMeteringTenantRecordsRequest
+    output_model: omnimarket.nodes.node_metering_summary_compute.models.model_metering_summary.ModelMeteringRecord
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  side_effects:
+  - read-only SQLite reads of delegation_events and tenant_registry_mirror (mode=ro); no writes
+metadata:
+  ticket: OMN-26449
+  origin_tickets:
+  - OMN-26413
+  transport_type: in_process
+lifecycle: experimental
