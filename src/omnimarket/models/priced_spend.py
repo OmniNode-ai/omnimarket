@@ -180,9 +180,8 @@ def _catalogue_declares_free(backend_id: str, model: str) -> bool:
 
     for row in load_byok_plan_catalog().values():
         if row.backend_id == backend_id:
-            price = byok_model_price_per_1m(
-                backend_id, row.endpoint_url, model, supplemental=False
-            )
+            # No models_dev_price lookup: the price stops before models.dev.
+            price = byok_model_price_per_1m(backend_id, row.endpoint_url, model)
             return price is not None and price[0] == 0 and price[1] == 0
     return False
 
