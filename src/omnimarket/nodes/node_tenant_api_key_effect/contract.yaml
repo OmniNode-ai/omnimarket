@@ -63,6 +63,10 @@ event_bus:
 externally_consumed_topics:
   - onex.evt.omnimarket.tenant-api-key-register-completed.v1
   - onex.evt.omnimarket.tenant-api-key-revoke-completed.v1
+# The revoke command is published by the operator's onex CLI; runtime_dispatch carries only the one register command topic.
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.tenant-api-key-revoke-requested.v1
+    producer: "the operator's onex CLI (`onex run-node`), which publishes this revoke command directly -- not a node contract"
 published_events:
   - event_type: ModelTenantApiKeyRegisterResult
     topic: onex.evt.omnimarket.tenant-api-key-register-completed.v1
@@ -97,24 +101,10 @@ broker_acl_grants:
 tenant_identity:
   database:
     dsn_env: TENANT_IDENTITY_DATABASE_DSN
-# The creating migrations are named by basename (omnibase_core's public migration inventory, omninode_cloud). The closed
-# declaration shape has no column key, so the expires_at column the register insert needs is declared by the deploy
-# preflight of plan task T6b, not here. database_ref omninode_cloud resolves only on an omnibase_infra pin that carries
-# the omninode_cloud topology entry.
-db_io:
-  db_tables:
-    - name: tenant_api_keys
-      database_ref: omninode_cloud
-      schema: public
-      migration: "20251211_m4_api_keys.sql"
-      access: read_write
-      role: tenant_api_keys
-    - name: tenants
-      database_ref: omninode_cloud
-      schema: public
-      migration: "20251207_tenants_uuid_pk.sql"
-      access: read
-      role: tenants
+# The identity tables live in the omninode_cloud database (omnibase_core's public migration inventory: tenant_api_keys from
+# 20251211_m4_api_keys.sql read_write, tenants from 20251207_tenants_uuid_pk.sql read). No db_io block is declared: the
+# omnibase_infra topology carries no omninode_cloud database entry, so a database_ref omninode_cloud resolves nowhere and
+# the event chain gate's tenant enumeration refuses the contract. Add the block once a pin carries that topology entry.
 overlay:
   node: node_tenant_api_key_effect
   roots_env: ONEX_SKILL_OVERLAY_ROOTS
