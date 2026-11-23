@@ -376,106 +376,14 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Decide and apply the dev version bump
-        id: bump
-        env:
-          RELEASED_VERSION: ${{ needs.release.outputs.version }}
-        run: |
-          set -euo pipefail
-          # Decide first WITHOUT writing, so the decision is recorded even when
-          # it is a no-op (dev already ahead => the gate is already disarmed).
-          DECISION="$(python3 scripts/ci/post_release_dev_bump.py --released "$RELEASED_VERSION")"
-          echo "$DECISION"
-          ACTION="$(printf '%s' "$DECISION" | python3 -c 'import json,sys; print(json.load(sys.stdin)["action"])')"
-          TARGET="$(printf '%s' "$DECISION" | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_version"])')"
-          echo "action=$ACTION" >> "$GITHUB_OUTPUT"
-          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
-          echo "branch=automation/omn-18010-post-release-dev-bump-${TARGET}" >> "$GITHUB_OUTPUT"
-          {
-            echo "### Post-release dev version bump"
-            echo ""
-            echo '```json'
-            echo "$DECISION"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-          if [ "$ACTION" = "bump" ]; then
-            python3 scripts/ci/post_release_dev_bump.py --released "$RELEASED_VERSION" --apply
-            uv lock
-          fi
-
-      - name: Push the reopen commit to dev, falling back to a PR
-        if: steps.bump.outputs.action == 'bump'
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          REPO: ${{ github.repository }}
-          RELEASED_VERSION: ${{ needs.release.outputs.version }}
-          TARGET: ${{ steps.bump.outputs.target }}
-          BRANCH: ${{ steps.bump.outputs.branch }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          git config user.name "onexbot-occ-writer[bot]"
-          git config user.email "onexbot-occ-writer[bot]@users.noreply.github.com"
-          git add pyproject.toml uv.lock
-          git commit -m "chore(release): open dev for v${TARGET}
-
-          Disarms the OMN-16344 release-identity gate that publishing
-          ${RELEASED_VERSION} armed against dev.
-
-          Triggered-by: ${RUN_URL}"
-
-          # Preferred: straight to dev. omnimarket's dev carries 32 required
-          # status checks with enforce_admins true, so this push is expected to
-          # be REFUSED here and the fallback is the live path; the attempt stays
-          # so this file is portable to a repo with a laxer dev.
-          if git push origin "HEAD:dev" 2>push.log; then
-            echo "dev reopened at ${TARGET} by direct push."
-            exit 0
-          fi
-          cat push.log >&2
-          echo "::warning::direct push to dev was refused (branch protection); falling back to a bump PR. dev stays ARMED until it merges."
-
-          # A cut re-dispatched after a prior run already opened this same bump
-          # PR must not open a duplicate of it.
-          if ! OPEN_HEADS="$(gh pr list --repo "$REPO" --base dev --state open \
-            --limit 100 --json headRefName --jq '.[].headRefName')"; then
-            # An unreadable PR list is not evidence that no bump is in flight.
-            echo "::error::could not list open PRs; refusing to open a bump PR that may duplicate one already in flight."
-            exit 1
-          fi
-          if printf '%s\n' "$OPEN_HEADS" | grep -qxF "$BRANCH"; then
-            echo "A bump PR to ${TARGET} is already open -- not opening another."
-            exit 0
-          fi
-          git branch -f "$BRANCH" HEAD
-          git push origin "refs/heads/${BRANCH}"
-          gh pr create --repo "$REPO" --base dev --head "$BRANCH" \
-            --title "chore(OMN-18010): post-release dev version bump to ${TARGET}" \
-            --body "$(printf '%s\n' \
-              "## Summary" \
-              "" \
-              "Automated post-release disarm step (OMN-18010, porting OMN-13912). Publishing \`${RELEASED_VERSION}\` left dev's \`[project].version\` equal to the highest published tag, which ARMS the OMN-16344 release-identity gate (omnibase_core's \`check-release-identity\` hook) against every subsequent dev PR that touches \`src/**\`." \
-              "" \
-              "This PR bumps \`[project].version\` to \`${TARGET}\` and re-locks \`uv.lock\`, so the gate is disarmed by the same flow that armed it rather than by whichever unrelated PR trips it first." \
-              "" \
-              "## Ticket" \
-              "" \
-              "OMN-18010 — releases are cut on an explicit trigger; this is the one bump PR that follows a cut, not a per-merge one." \
-              "" \
-              "## Triggered by" \
-              "" \
-              "${RUN_URL}" \
-              "" \
-              "## Test plan" \
-              "" \
-              "- [ ] the release-identity gate is green on this PR (that IS the behaviour under test)" \
-              "- [ ] CI passes (lockfile resolves)")"
-          gh pr merge --repo "$REPO" --squash --auto "$BRANCH"
-
-      - name: Report no-op
-        if: steps.bump.outputs.action == 'noop'
-        run: |
-          echo "dev is already ahead of ${{ needs.release.outputs.version }} -- release-identity is disarmed, no bump needed."
+      # The bump, the CHANGELOG.md removal and the push-or-PR fallback live in one
+      # composite action, shared with auto-tag-on-merge.yml (the merged release PR),
+      # so the two release paths cannot drift apart.
+      - name: Decide, apply and push the dev reopen
+        uses: ./.github/actions/reopen-dev
+        with:
+          released-version: ${{ needs.release.outputs.version }}
+          token: ${{ steps.app-token.outputs.token }}
 
   # ---------------------------------------------------------------------------
   # sync-main — OMN-16289: main IS the last release. Fast-forward it to the

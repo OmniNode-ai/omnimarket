@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """AC19 (ASGI side): declared header names pass at their maxima, undeclared names are 431 with `receive` never called.
 
-The real-client loopback test is test_header_budget_real_client.py, which needs unmerged code and is pending.
+The real-client loopback test is test_header_budget_real_client.py.
 """
 
 from __future__ import annotations
