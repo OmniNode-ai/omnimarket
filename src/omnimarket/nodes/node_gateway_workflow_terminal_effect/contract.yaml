@@ -58,6 +58,7 @@ handler_routing:
         name: HandlerGatewayWorkflowTerminalFailed
         module: omnimarket.nodes.node_gateway_workflow_terminal_effect.handlers.handler_gateway_workflow_terminal
       handler_module: omnimarket.nodes.node_gateway_workflow_terminal_effect.handlers.handler_gateway_workflow_terminal
+terminal_event: onex.evt.omnimarket.gateway-workflow-terminal-applied.v1
 descriptor:
   node_archetype: effect
   purity: effectful
@@ -93,18 +94,31 @@ broker_acl_grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnibase-infra.delegation-failed.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.dlq.omnimarket.gateway-workflow-terminal-malformed.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.dlq.omnimarket.gateway-workflow-terminal-malformed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.gateway-workflow-terminal-applied.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.gateway-workflow-terminal-applied.v1, operation: DESCRIBE}
 event_bus:
   subscribe_topics:
     - onex.evt.omnibase-infra.delegation-completed.v1
     - onex.evt.omnibase-infra.delegation-failed.v1
-  publish_topics: []
+  publish_topics:
+    - onex.evt.omnimarket.gateway-workflow-terminal-applied.v1
   dlq_topics:
     - onex.dlq.omnimarket.gateway-workflow-terminal-malformed.v1
-# The node is an event consumer: its trigger is the delegation terminal pair above and it publishes no topic of
-# its own. The runtime publishes the decision for each delivery (ModelGatewayTerminalApplied) on this terminal.
+# The node is an event consumer: its trigger is the delegation terminal pair above. The runtime publishes the
+# decision for each delivery (ModelGatewayTerminalApplied) on the terminal event below, through the result applier
+# the kernel registers for a contract that declares a publish topic and a published_events map.
 runtime_dispatch:
   terminal_events:
     success: onex.evt.omnimarket.gateway-workflow-terminal-applied.v1
+# The event type the returned model maps to, read by the runtime's result applier to route the model to its declared topic.
+published_events:
+  - event_type: ModelGatewayTerminalApplied
+    topic: onex.evt.omnimarket.gateway-workflow-terminal-applied.v1
+    description: >-
+      The writer's decision for one delivery: applied, already terminal, not a gateway workflow, or dead-lettered.
+# The decision record leaves the ONEX node graph here; no node contract subscribes to it, its first readers are humans on the bus.
+externally_consumed_topics:
+  - onex.evt.omnimarket.gateway-workflow-terminal-applied.v1
 capabilities:
   - name: "gateway_workflow_terminal_write"
     description: "Write the terminal outcome of a gateway workflow onto its row."
