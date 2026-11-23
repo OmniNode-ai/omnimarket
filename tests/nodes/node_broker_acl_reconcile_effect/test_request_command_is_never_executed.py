@@ -44,6 +44,8 @@ def test_model_fields_do_not_declare_reconcile_command():
         "mode",
         "node",
         "principal",
+        "remove_names",
+        "expected_removals",
     }
 
 

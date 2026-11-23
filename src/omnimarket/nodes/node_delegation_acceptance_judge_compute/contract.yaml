@@ -132,13 +132,13 @@ outputs:
   judged_events:
     type: tuple
 
-terminal_event: onex.evt.omnimarket.delegation-acceptance-judged.v1
+terminal_event: onex.evt.omnimarket.delegation-acceptance-judge-completed.v1
 
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.delegation-acceptance-judge-requested.v1
   publish_topics:
-    - onex.evt.omnimarket.delegation-acceptance-judged.v1
+    - onex.evt.omnimarket.delegation-acceptance-judge-completed.v1
 
 metadata:
   transport_type: kafka
@@ -147,4 +147,12 @@ runtime_dispatch:
   command_topic: onex.cmd.omnimarket.delegation-acceptance-judge-requested.v1
 
 externally_consumed_topics:
-  - onex.evt.omnimarket.delegation-acceptance-judged.v1
+  - onex.evt.omnimarket.delegation-acceptance-judge-completed.v1
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.delegation-acceptance-judge-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.delegation-acceptance-judge-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-acceptance-judge-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-acceptance-judge-completed.v1, operation: DESCRIBE}

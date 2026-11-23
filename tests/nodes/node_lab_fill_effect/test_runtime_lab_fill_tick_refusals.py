@@ -14,9 +14,20 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
+
+from omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_tick_overlay import (
+    ModelLabFillTickOverlay,
+)
 
 from .test_lab_fill_select import FakeLedgerRows
-from .test_runtime_lab_fill_tick import MAX_AGE_S, run, write_snapshot, write_unit
+from .test_runtime_lab_fill_tick import (
+    MAX_AGE_S,
+    run,
+    tick_overlay,
+    write_snapshot,
+    write_unit,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -66,14 +77,63 @@ def test_a_ledger_read_that_is_not_ok_launches_nothing(
     assert runner.calls == []
 
 
-def test_an_unreadable_approved_work_list_launches_nothing(tmp_path: Path) -> None:
+def test_an_unreadable_work_source_launches_nothing(tmp_path: Path) -> None:
+    """A declared source that cannot be read refuses the pass and is named; it is never an empty green pass."""
     env = write_unit(tmp_path)
     write_snapshot(tmp_path)
-    (tmp_path / "approved-work.json").write_text("{not json", encoding="utf-8")
+    (tmp_path / "watcher-state.json").write_text("{not json", encoding="utf-8")
     code, out, err, runner = run(env, tmp_path)
     assert code == 69
     assert out == ""
-    assert "REFUSED reason=approved-work" in err
+    assert "REFUSED reason=work-source:pr-watcher" in err
+    assert runner.calls == []
+
+
+def test_an_absent_work_source_launches_nothing(tmp_path: Path) -> None:
+    env = write_unit(tmp_path)
+    write_snapshot(tmp_path)
+    (tmp_path / "watcher-state.json").unlink()
+    code, out, err, runner = run(env, tmp_path)
+    assert code == 69
+    assert out == ""
+    assert "REFUSED reason=work-source:pr-watcher" in err
+    assert "approved-work" not in err
+    assert runner.calls == []
+
+
+def test_a_stale_work_source_launches_nothing(tmp_path: Path) -> None:
+    env = write_unit(tmp_path)
+    write_snapshot(tmp_path)
+    path = tmp_path / "watcher-state.json"
+    state = json.loads(path.read_text("utf-8"))
+    state["last_tick"] = "2000-01-01T00:00:00Z"
+    path.write_text(json.dumps(state), encoding="utf-8")
+    code, out, err, runner = run(env, tmp_path)
+    assert code == 69
+    assert out == ""
+    assert "REFUSED reason=work-source:pr-watcher" in err
+    assert runner.calls == []
+
+
+def test_an_overlay_written_before_work_sources_loads_and_refuses_naming_them(
+    tmp_path: Path,
+) -> None:
+    """The overlay on the overlays repository's main branch still names the retired list and no work_sources: it must load through
+    this model (the overlay main load check reads it), and the pass must refuse naming the missing key, never read a list."""
+    env = write_unit(tmp_path)
+    write_snapshot(tmp_path)
+    document = tick_overlay(tmp_path)
+    document.pop("work_sources")
+    document["approved_work_path"] = str(tmp_path / "retired-approved-work.json")
+    ModelLabFillTickOverlay.model_validate(document)
+    overlay_file = tmp_path / "overlays" / "node_lab_fill_effect" / "overlay.yaml"
+    overlay_file.write_text(yaml.safe_dump(document), encoding="utf-8")
+    code, out, err, runner = run(env, tmp_path)
+    assert code == 69
+    assert out == ""
+    assert (
+        "REFUSED reason=work-source detail=the overlay declares no work_sources" in err
+    )
     assert runner.calls == []
 
 

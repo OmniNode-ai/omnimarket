@@ -38,13 +38,22 @@ dod_evidence:
     check_value: uv run pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
     cwd: .
 - id: dod-omn24851-ac2-fails-on-base
-  description: 'The new test file is run against a copy of the head tree whose tests/delegation_golden/runner.py is the file at the pinned base 6efbe3ee5027. The check passes only when that run exits with exactly nine failures: the eight test_one_failure_names_the_null_terminal_ok ids (I1, I10, I3, I5, I6, I7, I8, I9) and test_it_does_not_report_telemetry_misses_it_cannot_judge. A bare failing run does not pass it. It needs the pinned base object in the clone, so only the local Done gate runs it.'
+  description: 'The new test file is run against a copy of the tree at the pinned commit e3818d33b0b3 (the merge of the review follow-up that added the tenth test) whose tests/delegation_golden/runner.py is the file at the pinned base 6efbe3ee5027. The tree is pinned, not read from HEAD, so the count does not move when dev does. The check passes only when that run exits with exactly ten failures: the eight test_one_failure_names_the_null_terminal_ok ids (I1, I10, I3, I5, I6, I7, I8, I9), test_an_absent_terminal_ok_key_is_reported_as_absent and test_it_does_not_report_telemetry_misses_it_cannot_judge. A bare failing run does not pass it. It needs both pinned objects in the clone, so only the local Done gate runs it.'
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
     check_value: |-
-      bash -c 'b=6efbe3ee5027f6efb67d0b81a1421f0dda32b4e5; t=tests/delegation_golden/test_runner_unterminalised_row_omn24831.py; d="$(mktemp -d)" && git archive HEAD | tar -x -C "$d" && git show "$b:tests/delegation_golden/runner.py" > "$d/tests/delegation_golden/runner.py" && cd "$d" && out="$(env -u PYTHONPATH uv run --frozen pytest $t -q --no-cov -n 0 -p no:randomly -p no:cacheprovider 2>&1)"; printf "%s\n" "$out" | tail -3; [ "$(printf "%s\n" "$out" | grep -cE "^FAILED .*test_one_failure_names_the_null_terminal_ok\[I(1|10|3|5|6|7|8|9)\]")" = 8 ] && printf "%s\n" "$out" | grep -q "^FAILED .*test_it_does_not_report_telemetry_misses_it_cannot_judge" && printf "%s\n" "$out" | grep -qE "(^| )9 failed"'
+      bash -c 'b=6efbe3ee5027f6efb67d0b81a1421f0dda32b4e5; h=e3818d33b0b31eb0c80d599a0f4c135cbd4a5a5d; t=tests/delegation_golden/test_runner_unterminalised_row_omn24831.py; d="$(mktemp -d)" && git archive "$h" | tar -x -C "$d" && git show "$b:tests/delegation_golden/runner.py" > "$d/tests/delegation_golden/runner.py" && cd "$d" && out="$(env -u PYTHONPATH uv run --frozen pytest $t -q --no-cov -n 0 -p no:randomly -p no:cacheprovider 2>&1)"; printf "%s\n" "$out" | tail -3; [ "$(printf "%s\n" "$out" | grep -cE "^FAILED .*test_one_failure_names_the_null_terminal_ok\[I(1|10|3|5|6|7|8|9)\]")" = 8 ] && printf "%s\n" "$out" | grep -q "^FAILED .*test_an_absent_terminal_ok_key_is_reported_as_absent" && printf "%s\n" "$out" | grep -q "^FAILED .*test_it_does_not_report_telemetry_misses_it_cannot_judge" && printf "%s\n" "$out" | grep -qE "(^| )10 failed"'
+    cwd: .
+- id: dod-omn24851-ac2-fails-on-base-check-text
+  description: The check text of the local Done gate item dod-omn24851-ac2-fails-on-base is run against a throwaway repo and a stub uv, so a wrong id list, count or tree pin fails here on the hosted runner too.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn24851_contract_checks.py -q --no-cov -n 0 -p no:randomly -p no:cacheprovider
     cwd: .
 - id: dod-omn24851-ac3-gate-and-message
   description: The gate reads terminal_ok NULL and the message says so; the row with terminal unknown and terminal_ok set keeps the old line.
@@ -90,4 +99,13 @@ dod_evidence:
   - check_type: command
     check_value: |-
       bash -c 'h="$(python3 "$OMNI_PLUGIN_ROOT/skills/merge-drain/scripts/pr_state_local.py" --pr OmniNode-ai/omnimarket#6326 --json | sed -n "/^{/,\$p" | jq -r .facts.head_sha)"; [ "${#h}" = 40 ] && gh pr view 6326 -R OmniNode-ai/omnimarket --json comments --jq ".comments[].body" | grep -E "^Lab: head=$h .*command=.*pytest tests/delegation_golden( |$).* exit=0 .*contexts=[^ =,]+=success(,[^ =,]+=success)*( |$)" | grep -q . && onex scm pr-checks OmniNode-ai/omnimarket#6326 | jq -e --arg h "$h" ".result.head_sha == \$h and (.result.red | arrays | length) == 0 and (.result.pending | arrays | length) == 0"'
+    cwd: .
+- id: dod-omn24851-integration-proof
+  description: Run the unterminalised-row tests on a lab host at the pushed revision. This local completion proof carries no hosted AC bindings.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git log -1 --format=%H)" --lane dod-integration-proof-24851 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/delegation_golden/test_runner_unterminalised_row_omn24831.py -q -n 0 --no-cov --refuse-skips
     cwd: .

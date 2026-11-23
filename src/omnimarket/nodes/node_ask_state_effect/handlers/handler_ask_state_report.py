@@ -1,15 +1,19 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""HandlerAskStateReport: read the operator capture store and the ledger, then fold them (OMN-21713).
+"""HandlerAskStateReport: read the operator capture store and the ledger rows, then fold them (OMN-21713).
 
-The file reading is this effect node's; the decision is node_ask_state_compute's, called in
-process, with the config block of that node's contract.
+The capture store is read from disk; the ledger rows come from the bus-fed projection through a
+ProtocolLedgerRowsReader (OMN-20547), and no ledger file is opened. The decision is
+node_ask_state_compute's, called in process, with the config block of that node's contract.
 """
 
 from __future__ import annotations
 
 import json
+import math
+import os
 import re
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -17,6 +21,9 @@ from typing import Any
 import yaml
 
 import omnimarket.nodes.node_ask_state_compute as compute_node
+from omnimarket.handlers.adapter_work_ledger_rows_reader import (
+    SubprocessLedgerRowsReader,
+)
 from omnimarket.models.model_ask_state import (
     ModelAskPrompt,
     ModelAskPromptItem,
@@ -30,11 +37,25 @@ from omnimarket.nodes.node_ask_state_compute.handlers.handler_ask_state import (
 from omnimarket.nodes.node_ask_state_effect.models.model_ask_state_read import (
     ModelAskStateReadRequest,
 )
+from omnimarket.protocols.protocol_ledger_rows_reader import (
+    LedgerReadError,
+    ProtocolLedgerRowsReader,
+)
 
 EFFECT_CONTRACT = Path(__file__).parent.parent / "contract.yaml"
 COMPUTE_CONTRACT = Path(compute_node.__file__).with_name("contract.yaml")
 _STAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
-_ARCHIVE_DAY = re.compile(r"(\d{4}-\d{2}-\d{2})")
+ASK_STATE_READER = "ask-state-rows"
+# The row types the fold reads: the lifecycle rows it ties to an ask, plus the friction kind and the
+# answer kinds named by the compute node's config block.
+_FOLD_ROW_KINDS = (
+    "CLAIM",
+    "TERMINAL",
+    "STATUS",
+    "HOLD",
+    "RULING",
+    "CORRECTION",
+)
 _ROW_START = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z \| ")
 
 
@@ -102,39 +123,47 @@ def read_prompts(captures: Path, since: datetime) -> tuple[ModelAskPrompt, ...]:
     return tuple(prompts.values())
 
 
+def fold_row_kinds(config: ModelAskStateConfig) -> tuple[str, ...]:
+    """The ledger row types the fold reads, the config's friction and answer kinds included."""
+    return tuple(
+        dict.fromkeys((*_FOLD_ROW_KINDS, config.friction_kind, *config.answer_kinds))
+    )
+
+
 def read_ledger_rows(
-    ledger: Path,
+    reader: ProtocolLedgerRowsReader,
     since: datetime,
+    now: datetime,
     *,
-    archive_glob: str,
-    archive_dir: str,
-    archives: bool,
+    kinds: tuple[str, ...] | None = None,
 ) -> tuple[str, ...]:
-    """Every ledger row stamped at or after ``since``, archive rolls first, live file last."""
-    if not ledger.is_file():
-        raise AskStateSourceError(f"ledger {ledger} is not readable")
+    """Every ledger row stamped at or after ``since``, from the bus reader; an unread ledger is an error."""
     floor = since.strftime(_STAMP_FORMAT)
-    paths: list[Path] = []
-    folder = ledger.parent / archive_dir
-    if archives and folder.is_dir():
-        for path in sorted(folder.glob(archive_glob)):
-            day = _ARCHIVE_DAY.search(path.name)
-            if day is None or day.group(1) >= floor[:10]:
-                paths.append(path)
-    paths.append(ledger)
-    rows: list[str] = []
-    for path in paths:
-        with path.open(encoding="utf-8", errors="replace") as handle:
-            rows.extend(
-                line.rstrip("\n")
-                for line in handle
-                if _ROW_START.match(line) and line[:20] >= floor
-            )
-    return tuple(rows)
+    asked = fold_row_kinds(load_config()) if kinds is None else kinds
+    window_hours = max(1, math.ceil((now - since).total_seconds() / 3600))
+    try:
+        lines = reader.rows(
+            reader=ASK_STATE_READER, window_hours=window_hours, kinds=asked
+        )
+    except LedgerReadError as error:
+        raise AskStateSourceError(f"ledger rows are not readable: {error}") from error
+    return tuple(
+        line.rstrip("\n")
+        for line in lines
+        if _ROW_START.match(line) and line[:20] >= floor
+    )
 
 
 class HandlerAskStateReport:
     """Read the sources named by the request and return the compute node's report."""
+
+    def __init__(
+        self,
+        ledger_reader: ProtocolLedgerRowsReader | None = None,
+        environ: Mapping[str, str] | None = None,
+    ) -> None:
+        self._ledger_reader = ledger_reader
+        self._environ = environ
 
     def handle(self, request: ModelAskStateReadRequest) -> ModelAskStateReport:
         runtime = load_contract()["runtime"]
@@ -142,17 +171,16 @@ class HandlerAskStateReport:
         # Restatements and dependency edges look back past the window; the compute node reports
         # only the asks stated at or after ``since``.
         floor = request.since - timedelta(days=config.restate_lookback_days)
+        reader = self._ledger_reader or SubprocessLedgerRowsReader(
+            os.environ if self._environ is None else self._environ
+        )
         return HandlerAskState().handle(
             ModelAskStateRequest(
                 prompts=read_prompts(
                     request.captures_dir / runtime["captures_file"], floor
                 ),
                 rows=read_ledger_rows(
-                    request.ledger_path,
-                    floor,
-                    archive_glob=runtime["archive_glob"],
-                    archive_dir=runtime["archive_dir"],
-                    archives=request.archives,
+                    reader, floor, request.now, kinds=fold_row_kinds(config)
                 ),
                 now=request.now,
                 since=request.since,
@@ -162,8 +190,10 @@ class HandlerAskStateReport:
 
 
 __all__ = [
+    "ASK_STATE_READER",
     "AskStateSourceError",
     "HandlerAskStateReport",
+    "fold_row_kinds",
     "load_config",
     "load_contract",
     "parse_time",

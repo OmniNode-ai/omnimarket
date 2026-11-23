@@ -333,6 +333,7 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     # out no onex_change_control; it keeps its context name.
     "ONEX Change Control Schema Compatibility",
     "PR Arch Review Gate",
+    "Node Trigger Declaration Check",
     "Precommit Fail-Loud Gate",
     "Projection Exposure Drift Gate",
     "Repository Structure Validation",
@@ -872,11 +873,7 @@ def evaluate(
     # Relaxed ⊆ strict_gates: a name that is not strict cannot be "relaxed" into
     # existence, so a tier entry dropped from STRICT_GATE_JOBS degrades to a
     # no-op here instead of silently becoming permanently skippable.
-    relaxed = (
-        frozenset(docs_only_gates) & frozenset(strict_gates)
-        if docs_only
-        else frozenset()
-    )
+    relaxed = frozenset(docs_only_gates if docs_only else ()) & frozenset(strict_gates)
     # A verified tree pass admits only the heavy tier NOT running on this dev
     # push: each strict heavy gate it relaxes must have concluded `skipped`.
     # Any other conclusion (success, failure, cancelled, neutral) means the gate
@@ -983,7 +980,9 @@ def evaluate(
     )
 
     # (3) Test-matrix completeness (dynamic split jobs).
-    matrix_state = _evaluate_test_matrix(latest, require_full_suite=queue_run)
+    # OMN-26446: a dev push whose Detect Changes succeeded ran the Tests shards itself (no queue
+    # run recorded its tree), so its matrix must be the whole full suite; a partial one waits.
+    matrix = _evaluate_test_matrix(latest, require_full_suite=queue_run or dev_push)
 
     # Completeness anchor: every named gate present AND completed.
     gate_missing_or_pending = [
@@ -1008,7 +1007,7 @@ def evaluate(
             skippable_failures,
             sweep_failures,
             gate_missing_or_pending,
-            matrix_state,
+            matrix,
             docs_only=docs_only,
             relaxed=relaxed,
             reuse_skips=reuse_skips,
@@ -1022,7 +1021,7 @@ def evaluate(
     if (
         gate_missing_or_pending
         or sweep_running
-        or matrix_state == "pending"
+        or matrix == "pending"
         or provisional_own_cancellations
     ):
         return EXIT_PENDING, _rep("PENDING")

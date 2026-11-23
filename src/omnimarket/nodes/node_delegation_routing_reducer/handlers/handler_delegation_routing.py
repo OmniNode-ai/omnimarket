@@ -187,7 +187,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_tier 
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_tier_model import (
     ModelTierModel,
 )
-from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
 from omnimarket.routing.roi_overlay import ModelRoutingRoiOverlay
 from omnimarket.routing.tenant_overlay_resolver import (
     HOUSE_OVERLAY_COST_TIER as HOUSE_OVERLAY_COST_TIER,
@@ -2969,7 +2968,13 @@ def delta(
             # case that could not arise; left unguarded it would now silently
             # drop every house registration back onto the platform ladder --
             # the registration would appear to succeed and change nothing.
-            if tenant_overlay.tenant_id != HOUSE_TENANT_SLUG:
+            #
+            # OMN-26365: "the house tenant" is both representations of one
+            # identity (ADR-0027). The slug alone left a house row read under
+            # the UUID a runtime carries on every request looking like a
+            # customer's keyless row, so it was nulled and the request went to
+            # the platform ladder.
+            if is_customer_attributed(tenant_overlay.tenant_id):
                 tenant_overlay = None
 
     if tenant_overlay is not None:

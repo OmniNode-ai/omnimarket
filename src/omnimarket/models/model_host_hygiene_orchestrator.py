@@ -86,6 +86,12 @@ class ModelHostHygieneOrchestratorOverlay(ModelScheduleDeclaration):
     file holds it, so this model must accept it: with ``extra="forbid"`` and
     no such field the file the bus reader needs made every on-demand run
     refuse.
+
+    With the ``lab_work`` backend the lab-work block sends units on the lane
+    it names, so a Kafka ``event_bus`` must dial that same lane: the on-demand
+    run and the cleanups it publishes ride one bus lane. An in-memory bus, an
+    in-memory backend, a raw ``kafka_bootstrap`` with no lane, and a missing
+    ``event_bus`` tie nothing and load exactly as before.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -120,6 +126,20 @@ class ModelHostHygieneOrchestratorOverlay(ModelScheduleDeclaration):
                     raise ValueError(
                         f"host {h.name!r} declares unknown cleanup id {cid!r}"
                     )
+        # an on-demand run's bus lane and the lane the lab-work block sends
+        # units on are one lane
+        if (
+            self.backend is EnumHostHygieneBackend.LAB_WORK
+            and self.event_bus is not None
+            and self.event_bus.type == "kafka"
+            and self.lab_work.bus_lane is not None
+            and self.event_bus.lane != self.lab_work.bus_lane
+        ):
+            raise ValueError(
+                f"event_bus lane {self.event_bus.lane!r} differs from lab_work "
+                f"bus_lane {self.lab_work.bus_lane!r}: an on-demand run and "
+                "the cleanups it sends must use one bus lane"
+            )
         return self
 
 
@@ -148,10 +168,23 @@ class EnumHostHygieneRunOutcome(StrEnum):
     PARTIAL = "partial"
     FAILED = "failed"
     NOTHING_DUE = "nothing_due"
+    REFUSED = "refused"
+
+
+class EnumHostHygieneRunTrigger(StrEnum):
+    """What started the run: the schedule or a caller's on-demand command."""
+
+    SCHEDULED = "scheduled"
+    ON_DEMAND = "on_demand"
 
 
 class ModelHostHygieneRunCompleted(_Frozen):
-    """The result of one orchestrator run."""
+    """The result of one orchestrator run.
+
+    ``tick_id`` is the runtime tick of a scheduled run and empty for an
+    on-demand run. ``job_id`` is empty and ``detail`` names the cause when the
+    overlay could not be read and the run was refused (outcome ``refused``).
+    """
 
     run_id: str
     job_id: str
@@ -161,6 +194,8 @@ class ModelHostHygieneRunCompleted(_Frozen):
     outcome: EnumHostHygieneRunOutcome
     decided: tuple[ModelHostHygieneDecisionItem, ...]
     units: tuple[ModelHostHygieneUnitResult, ...]
+    trigger: EnumHostHygieneRunTrigger = EnumHostHygieneRunTrigger.SCHEDULED
+    detail: str = Field(default="", max_length=2000)
 
 
 def run_outcome(
@@ -180,6 +215,7 @@ def run_outcome(
 __all__: list[str] = [
     "EnumHostHygieneBackend",
     "EnumHostHygieneRunOutcome",
+    "EnumHostHygieneRunTrigger",
     "EnumHostHygieneUnitOutcome",
     "ModelHostHygieneCleanupDeclaration",
     "ModelHostHygieneHostRow",

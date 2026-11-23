@@ -175,6 +175,7 @@ class HandlerScenarioR9(ReadinessScenarioBase):
         trigger: EnumScenarioTrigger = EnumScenarioTrigger.SCHEDULE,
         clock: Clock = lambda: datetime.now(UTC),
         inputs_path: Path | None = None,
+        check_dev_ready: bool = False,
     ) -> None:
         super().__init__(
             runtime,
@@ -187,6 +188,7 @@ class HandlerScenarioR9(ReadinessScenarioBase):
             transport_factory=lambda: ScriptedLegTransport(),
             trigger=trigger,
             clock=clock,
+            check_dev_ready=check_dev_ready,
         )
         self._inputs_path = inputs_path or NODE_DIR / runtime.inputs_relpath
         self._request = request
@@ -268,6 +270,7 @@ def build_runner(
     env: Mapping[str, str] | None = None,
     *,
     trigger: EnumScenarioTrigger = EnumScenarioTrigger.SCHEDULE,
+    check_dev_ready: bool = False,
 ) -> HandlerScenarioR9:
     """The production wiring: the registry home, the bus commands, R8's bus lane control and the corpus bus request.
 
@@ -325,4 +328,5 @@ def build_runner(
         request=request,
         control=control,
         trigger=trigger,
+        check_dev_ready=check_dev_ready,
     )
