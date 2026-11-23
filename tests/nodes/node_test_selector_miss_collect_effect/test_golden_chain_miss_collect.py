@@ -71,6 +71,7 @@ def test_contract_binds_each_operation_with_the_canonical_signature() -> None:
 def test_contract_publishes_the_collect_result_on_the_declared_terminal_event() -> None:
     contract = _contract()
     assert contract["terminal_event"] == TERMINAL_EVENT
+    # publish_attribution_record writes through the repository gateway and publishes no bus event of its own.
     assert contract["event_bus"]["publish_topics"] == [TERMINAL_EVENT]
     grants = {
         (grant["name"], grant["operation"])

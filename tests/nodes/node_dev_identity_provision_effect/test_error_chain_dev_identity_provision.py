@@ -23,7 +23,12 @@ from omnimarket.nodes.node_dev_identity_provision_effect.overlay import (
     ModelDevIdentityProvisionOverlay,
 )
 
-from .fakes import FakeKeycloakAndApi, FakeKeyGenerator, FakeSettingStore
+from .fakes import (
+    FakeKeycloakAndApi,
+    FakeKeyGenerator,
+    FakeSettingStore,
+    FakeTenantProvisioner,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -65,11 +70,6 @@ def _overlay() -> ModelDevIdentityProvisionOverlay:
             "password_folder": "/shared/env",
             "password_key": "DEV_PROBE_USER_PASSWORD",
         },
-        api={
-            "base_url": "https://api.example.invalid",
-            "provision_path": "/v1/auth/provision",
-            "timeout_seconds": 15.0,
-        },
         protected_usernames=[],
         secret_store=None,
     )
@@ -79,12 +79,14 @@ def _build(
     transport: FakeKeycloakAndApi,
     store: FakeSettingStore,
     gen: FakeKeyGenerator,
+    provisioner: FakeTenantProvisioner | None = None,
 ) -> HandlerDevIdentityProvision:
     return HandlerDevIdentityProvision(
         overlay=_overlay(),
         transport=transport,
         settings_store=store,
         key_generator=gen,
+        tenant_provisioner=provisioner or FakeTenantProvisioner(),
         contract_path=CONTRACT_PATH,
     )
 
@@ -239,11 +241,13 @@ def test_user_token_refused() -> None:
 
 
 def test_provision_refused() -> None:
-    transport = FakeKeycloakAndApi(fail_provision=True)
+    transport = FakeKeycloakAndApi()
     store = FakeSettingStore()
     _seed(store)
     gen = FakeKeyGenerator(outcome="created")
-    handler = _build(transport, store, gen)
+    handler = _build(
+        transport, store, gen, FakeTenantProvisioner(outcome="refused_slug_taken")
+    )
 
     result = asyncio.run(
         handler.handle(ModelDevIdentityProvisionCommand(lane="dev", write=True))
@@ -251,15 +255,16 @@ def test_provision_refused() -> None:
 
     assert result.ok is False
     assert result.outcome.value == "provision_refused"
+    assert "refused_slug_taken" in result.detail
     _assert_no_secret(result)
 
 
-def test_provision_body_missing_tenant_id_is_response_invalid() -> None:
-    transport = FakeKeycloakAndApi(provision_missing_tenant_id=True)
+def test_provision_answer_missing_tenant_id_is_response_invalid() -> None:
+    transport = FakeKeycloakAndApi()
     store = FakeSettingStore()
     _seed(store)
     gen = FakeKeyGenerator(outcome="created")
-    handler = _build(transport, store, gen)
+    handler = _build(transport, store, gen, FakeTenantProvisioner(tenant_id=None))
 
     result = asyncio.run(
         handler.handle(ModelDevIdentityProvisionCommand(lane="dev", write=True))
@@ -272,20 +277,25 @@ def test_provision_body_missing_tenant_id_is_response_invalid() -> None:
     _assert_no_secret(result)
 
 
-def test_api_unreachable() -> None:
-    transport = FakeKeycloakAndApi(
-        raise_connection_error=True, raise_connection_error_on="/provision"
-    )
+def test_runtime_unreachable() -> None:
+    transport = FakeKeycloakAndApi()
     store = FakeSettingStore()
     _seed(store)
     gen = FakeKeyGenerator(outcome="created")
-    handler = _build(transport, store, gen)
+    handler = _build(
+        transport,
+        store,
+        gen,
+        FakeTenantProvisioner(unavailable="no terminal within 30s"),
+    )
 
     result = asyncio.run(
         handler.handle(ModelDevIdentityProvisionCommand(lane="dev", write=True))
     )
 
     assert result.ok is False
-    assert result.outcome.value == "api_unreachable"
-    assert "ConnectionError" in result.detail
+    assert result.outcome.value == "runtime_unreachable"
+    assert "no terminal within 30s" in result.detail
+    # The user was created before the runtime was asked; the result names it so a rerun can reset it.
+    assert result.user_name == "dev-probe-user"
     _assert_no_secret(result)
