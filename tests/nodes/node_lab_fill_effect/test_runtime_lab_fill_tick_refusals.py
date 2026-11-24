@@ -137,6 +137,50 @@ def test_an_overlay_written_before_work_sources_loads_and_refuses_naming_them(
     assert runner.calls == []
 
 
+def test_a_missing_selection_overlay_names_its_id_and_the_roots_searched(
+    tmp_path: Path,
+) -> None:
+    """The select step's overlay is a second overlay: the refusal line must tell it from the unit's own."""
+    env = write_unit(tmp_path)
+    write_snapshot(tmp_path)
+    (
+        tmp_path / "overlays" / "node_lab_fill_selection_compute" / "overlay.yaml"
+    ).unlink()
+    code, out, err, runner = run(env, tmp_path)
+    assert code == 78
+    assert out == ""
+    assert "REFUSED reason=overlay detail=NodeOverlayNotFoundError" in err
+    assert "node_lab_fill_selection_compute" in err
+    assert str(tmp_path / "overlays") in err
+    assert runner.calls == []
+
+
+def test_a_missing_unit_overlay_names_its_id_and_the_roots_searched(
+    tmp_path: Path,
+) -> None:
+    env = write_unit(tmp_path)
+    write_snapshot(tmp_path)
+    (tmp_path / "overlays" / "node_lab_fill_effect" / "overlay.yaml").unlink()
+    code, _, err, runner = run(env, tmp_path)
+    assert code == 78
+    assert "REFUSED reason=overlay detail=NodeOverlayNotFoundError" in err
+    assert "node_lab_fill_effect" in err
+    assert str(tmp_path / "overlays") in err
+    assert runner.calls == []
+
+
+def test_an_invalid_overlay_names_only_its_error_type(tmp_path: Path) -> None:
+    """The control: an overlay that loads wrong may hold private values, so only the type is written."""
+    env = write_unit(tmp_path)
+    write_snapshot(tmp_path)
+    overlay_file = tmp_path / "overlays" / "node_lab_fill_effect" / "overlay.yaml"
+    overlay_file.write_text("parent: SECRET-VALUE-9\n", encoding="utf-8")
+    code, _, err, _ = run(env, tmp_path)
+    assert code == 78
+    assert "SECRET-VALUE-9" not in err
+    assert "REFUSED reason=overlay detail=NodeOverlayError\n" in err
+
+
 def test_an_overlay_that_does_not_load_is_exit_78(tmp_path: Path) -> None:
     env = write_unit(tmp_path)
     write_snapshot(tmp_path)
