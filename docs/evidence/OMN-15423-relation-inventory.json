@@ -8983,6 +8983,7 @@
         "node_host_introspection_announce_effect",
         "node_host_table_keys_ingest_effect",
         "node_lab_disk_watermark_effect",
+        "node_overlay_assertion_stale_compute",
         "node_overlay_main_load_check_effect",
         "node_overlay_setting_set_effect",
         "node_overlay_store_load_effect",
@@ -8990,7 +8991,8 @@
         "node_pr_landing_snapshot_effect",
         "node_pr_landing_tick_orchestrator",
         "node_remote_lane_start_orchestrator",
-        "node_stability_lane_refresh_effect"
+        "node_stability_lane_refresh_effect",
+        "node_test_selector_miss_collect_effect"
       ],
       "target_schema": "omninode_internal",
       "writers": [

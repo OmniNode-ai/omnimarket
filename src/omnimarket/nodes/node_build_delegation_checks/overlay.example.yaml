@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The tested defaults of node_build_delegation_checks (the settings store holds the live values; a change is made there).
+# Synthetic: the owner is a role lane and no credential appears.
+checks: [C11, C12, C13, C14, C15, C16, C17, C28, C29, C30]
+dev_runtime_lane: dev
+owner: delegation-owner
+alarm_lane: orchestrator-31d9-swarm
+alarm_condition: delegation_check_regression
+check_timeout_seconds: 1800
+max_alarm_latency_seconds: 900
+history_relpath: .onex_state/build-delegation-checks/builds.json
+history_keep: 200
+merge_clone_relpath: omnimarket
+merge_branch: dev
+repository: OmniNode-ai/omnimarket
+check_routes: {}
+bus_lane: dev
