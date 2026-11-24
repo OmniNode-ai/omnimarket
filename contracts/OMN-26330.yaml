@@ -148,13 +148,13 @@ dod_evidence:
         check_value: uv run --frozen pytest tests/nodes/node_lab_fill_effect/test_ledger_ports_bus_read.py tests/nodes/node_lab_fill_effect/test_local_adapters_lab_fill_effect.py tests/nodes/node_lab_fill_effect/test_merged_history_lab_fill.py tests/unit/nodes/node_lab_fill_effect/test_lab_fill_cloud_placement.py -q --no-cov -n 0 -p no:randomly
         cwd: .
   - id: dod-omn26330-ac8-ratchet
-    description: The census exits 0 and the omnimarket ratchet total reads at most 124, no row raised or added (at the merge base it reads 140, so this fails there).
+    description: The census exits 0 against the unchanged omnimarket ratchet row (106, none raised or added) and the lab fill adapters carry the shared rows reader (LAB_FILL_PORTS_READER), which the merge base lacks, so this fails there.
     source: manual
     binds_ac: [AC8]
     checks:
       - check_type: command
         check_value: >-
-          bash -o pipefail -c 'env ONEX_LEDGER_CENSUS_ROOT="$(dirname "$PWD")" uv run --frozen python -m omnimarket.nodes.node_work_ledger_file_census_effect --packaged-overlay --repos omnimarket --directory omnimarket="$PWD" --per-file && awk "/^  omnimarket: /{exit !(\$2<=124)}" src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml'
+          bash -o pipefail -c 'env ONEX_LEDGER_CENSUS_ROOT="$(dirname "$PWD")" uv run --frozen python -m omnimarket.nodes.node_work_ledger_file_census_effect --packaged-overlay --repos omnimarket --directory omnimarket="$PWD" --per-file && awk "/^  omnimarket: /{exit !(\$2<=106)}" src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml && grep -qF "LAB_FILL_PORTS_READER =" src/omnimarket/nodes/node_lab_fill_effect/protocols/local_lab_fill_adapters.py'
         cwd: .
   - id: dod-omn26330-deploy-lab-fill-ports
     description: 'Deploy probe the hosted runner can run: the lab fill ports reader name exists in the lab fill adapters at the checked-out commit on GitHub; it does not exist at the merge base.'
