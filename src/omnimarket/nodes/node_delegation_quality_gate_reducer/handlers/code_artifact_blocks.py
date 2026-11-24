@@ -78,6 +78,28 @@ def _extract_fenced_code_blocks_with_lang(content: str) -> list[tuple[str, str]]
     ]
 
 
+def _declared_artifact_blocks(
+    content: str, requested: str | None
+) -> list[tuple[str, str]]:
+    """The fenced blocks the compile check reads, as (lang_tag, body) pairs.
+
+    OMN-26588: an untagged fence declares no language. When the answer carries a
+    block tagged with a supported language (python, yaml or json) and the prompt
+    names no single language, the tagged block is the artifact and an untagged
+    fence (a shell command, a console listing) is prose around it, so it is not
+    parsed as Python. An answer whose fences are all untagged, and a prompt that
+    names YAML or JSON (which reads the untagged fence as that language), keep
+    every block.
+    """
+    blocks = _extract_fenced_code_blocks_with_lang(content)
+    supported = (
+        (_PYTHON_FENCE_LANG_TAGS - {""}) | _YAML_FENCE_LANG_TAGS | _JSON_FENCE_LANG_TAGS
+    )
+    if requested is None and any(lang in supported for lang, _ in blocks):
+        return [(lang, body) for lang, body in blocks if lang]
+    return blocks
+
+
 def _compiles_without_errors_is_evaluable(content: str) -> bool:
     """Whether the answer contains an artifact this check can parse."""
     content_without_edit_blocks = _remove_search_replace_blocks(content)

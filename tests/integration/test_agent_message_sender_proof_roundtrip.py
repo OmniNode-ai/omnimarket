@@ -13,11 +13,11 @@ from omnimarket.enums.enum_agent_message_operation import EnumAgentMessageOperat
 from omnimarket.enums.enum_agent_message_verification_reason import (
     EnumAgentMessageVerificationReason as Reason,
 )
+from omnimarket.models.agent_message.model_agent_message_request import (
+    ModelAgentMessageRequest,
+)
 from omnimarket.nodes.node_agent_message_effect.handlers.handler_agent_message import (
     HandlerAgentMessage,
-)
-from omnimarket.nodes.node_agent_message_effect.models.model_agent_message_request import (
-    ModelAgentMessageRequest,
 )
 from omnimarket.nodes.node_event_emit_effect.handlers.handler_event_emit_effect import (
     HandlerEventEmitEffect,

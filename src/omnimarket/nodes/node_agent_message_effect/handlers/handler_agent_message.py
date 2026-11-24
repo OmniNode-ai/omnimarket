@@ -34,17 +34,17 @@ from omnimarket.models.agent_message.model_agent_message import ModelAgentMessag
 from omnimarket.models.agent_message.model_agent_message_rejection import (
     ModelAgentMessageRejection,
 )
+from omnimarket.models.agent_message.model_agent_message_request import (
+    ModelAgentMessageRequest,
+)
+from omnimarket.models.agent_message.model_agent_message_result import (
+    ModelAgentMessageResult,
+)
 from omnimarket.nodes.node_agent_message_effect.handlers.agent_message_verifier import (
     AgentMessageVerificationError,
     AgentMessageVerifier,
     classify_validation_error,
     validation_detail,
-)
-from omnimarket.nodes.node_agent_message_effect.models.model_agent_message_request import (
-    ModelAgentMessageRequest,
-)
-from omnimarket.nodes.node_agent_message_effect.models.model_agent_message_result import (
-    ModelAgentMessageResult,
 )
 from omnimarket.nodes.node_agent_message_effect.protocols import (
     ProtocolAgentMessageBus,

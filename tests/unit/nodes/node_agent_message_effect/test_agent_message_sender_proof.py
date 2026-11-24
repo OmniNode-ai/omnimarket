@@ -25,6 +25,12 @@ from omnimarket.models.agent_message.model_agent_message import (
     MAX_TEXT_CHARS,
     ModelAgentMessage,
 )
+from omnimarket.models.agent_message.model_agent_message_request import (
+    ModelAgentMessageRequest,
+)
+from omnimarket.models.agent_message.model_agent_message_result import (
+    ModelAgentMessageResult,
+)
 from omnimarket.models.agent_message.model_agent_signing_key import (
     ModelAgentSigningKey,
 )
@@ -35,12 +41,6 @@ from omnimarket.nodes.node_agent_message_effect.handlers.agent_message_verifier 
 from omnimarket.nodes.node_agent_message_effect.handlers.handler_agent_message import (
     HandlerAgentMessage,
     message_event_id,
-)
-from omnimarket.nodes.node_agent_message_effect.models.model_agent_message_request import (
-    ModelAgentMessageRequest,
-)
-from omnimarket.nodes.node_agent_message_effect.models.model_agent_message_result import (
-    ModelAgentMessageResult,
 )
 from omnimarket.nodes.node_event_emit_effect.handlers.handler_event_emit_effect import (
     HandlerEventEmitEffect,
