@@ -443,4 +443,4 @@ def test_none_request_has_one_rule_at_every_routing_site() -> None:
         )
     source = inspect.getsource(workflow_mod)
     assert "workflow.request.prompt if workflow.request" not in source
-    assert source.count("_routing_prompt(workflow)") == 2
+    assert source.count("_routing_prompt(workflow)") == 3

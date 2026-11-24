@@ -8,6 +8,8 @@ absent, stale or empty pool snapshot is not zero free slots, and an unreadable s
 
 * pool: the lane host pool snapshot the snapshot writer keeps (``pool.json`` and its ``.read-at.json`` record), read
   through the stamped pool, which refuses a missing or stale record.
+* capacity brake: the same pool snapshot, read as the capacity verdicts of the hosts; fewer admitting hosts than the bound engages
+  the brake (landing only). An unread or empty snapshot is never a released brake.
 * brake and stop signal: the andon stop queue (stops opened by the detectors and by the ledger HOLD reader) through the
   andon stop gate (``stop_gate``). A stop of the class ``repository-without-lander`` that the gate refuses holds new lanes
   (landing only); a refusal by a stop of any other class is the stop signal.
@@ -105,6 +107,45 @@ class LiveFloorPool:
             for reading in snapshot.readings
             if reading.lane_admission_refusal is None
         )
+
+
+class LiveFloorCapacityBrake:
+    """The brake over the capacity the hosts advertise: engaged when fewer than ``min_admitting_hosts`` admit a further lane.
+
+    Each reading's ``lane_admission_refusal`` is that host's capacity verdict (``node_host_capacity_compute``). It reads the
+    pool the fill's own ``LiveFloorPool`` reads and refuses the same way: a snapshot that cannot be read, or holds no host
+    reading, raises ``FloorFillUnreadableError`` so the pass answers ``UNKNOWN brake-unread:<cause>``.
+    """
+
+    def __init__(
+        self, pool: ProtocolLaneHostPool, engine: str, min_admitting_hosts: int
+    ) -> None:
+        self._pool = pool
+        self._engine = engine
+        self._min_admitting_hosts = min_admitting_hosts
+
+    def __call__(self) -> bool:
+        try:
+            snapshot = self._pool.read_pool(
+                ModelLaneHostPoolRequest(engine=self._engine)
+            )
+        except Exception as error:
+            raise FloorFillUnreadableError(f"pool-snapshot:{error}") from error
+        if not snapshot.readings:
+            raise FloorFillUnreadableError("pool-snapshot:no-host-readings")
+        admitting = sum(
+            1 for reading in snapshot.readings if reading.lane_admission_refusal is None
+        )
+        return admitting < self._min_admitting_hosts
+
+
+def engaged_by_any(*brakes: Callable[[], bool]) -> Callable[[], bool]:
+    """A brake engaged when any of ``brakes`` is: read in order, an engaged one answers and an unread one raises."""
+
+    def engaged() -> bool:
+        return any(brake() for brake in brakes)
+
+    return engaged
 
 
 @dataclass(frozen=True)
@@ -329,9 +370,14 @@ class LiveSeamSources:
 
 
 def default_stop_facts(
-    state_dir: Path, now: Callable[[], datetime]
+    state_dir: Path,
+    now: Callable[[], datetime],
+    policy: ModelStopPolicy | None = None,
 ) -> Callable[[], LiveStopFacts]:
-    """The open stops of the exception queue under ``state_dir`` (ledger HOLDs reconciled), the overlay policy, the machine."""
+    """The open stops of the exception queue under ``state_dir`` (ledger HOLDs reconciled), the policy, the machine.
+
+    ``policy`` is the stop policy the live settings supply; left ``None`` it is the ``andon_stop`` overlay's.
+    """
 
     def read() -> LiveStopFacts:
         from omnimarket.handlers.rules_stop_gate import load_andon_stop_contract
@@ -347,7 +393,7 @@ def default_stop_facts(
         )
         return LiveStopFacts(
             stops=opened.stops,
-            policy=load_stop_policy(),
+            policy=policy if policy is not None else load_stop_policy(),
             fsm=load_andon_stop_contract()[0],
             now=moment,
         )
@@ -366,11 +412,13 @@ def unconfigured_stop_facts(key: str) -> Callable[[], LiveStopFacts]:
 
 __all__: list[str] = [
     "BRAKE_STOP_CLASS",
+    "LiveFloorCapacityBrake",
     "LiveFloorPool",
     "LiveFloorStopSignals",
     "LiveFloorTickets",
     "LiveSeamSources",
     "LiveStopFacts",
     "default_stop_facts",
+    "engaged_by_any",
     "unconfigured_stop_facts",
 ]

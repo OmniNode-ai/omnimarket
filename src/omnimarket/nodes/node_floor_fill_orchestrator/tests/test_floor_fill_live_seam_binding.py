@@ -183,6 +183,7 @@ def _live_tick(
     pool_age: timedelta = timedelta(seconds=30),
     write_pool: bool = True,
     omit: tuple[str, ...] = (),
+    live_changes: dict[str, Any] | None = None,
     **bindings: Any,
 ) -> tuple[str, int, ScriptedStarter]:
     """A live tick over the recorded floor record and pool reading; nothing is injected unless ``bindings`` or ``sources`` say."""
@@ -204,7 +205,7 @@ def _live_tick(
     settings = load_floor_fill_live_settings(
         {
             name: value
-            for name, value in live_section(tmp_path).items()
+            for name, value in live_section(tmp_path, **(live_changes or {})).items()
             if name not in omit
         }
     )
