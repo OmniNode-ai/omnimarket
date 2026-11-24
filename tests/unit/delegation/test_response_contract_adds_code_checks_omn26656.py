@@ -499,3 +499,61 @@ def test_checks_in_force_keep_the_executed_check_of_a_code_class_under_a_contrac
         )
         == ()
     )
+
+
+# -- the 7-day count (AC4) -----------------------------------------------------
+
+
+def _seven_day_count_command() -> str:
+    import yaml
+
+    contract = yaml.safe_load(
+        (
+            Path(__file__).resolve().parents[3] / "contracts" / "OMN-26656.yaml"
+        ).read_text()
+    )
+    item = next(
+        i
+        for i in contract["dod_evidence"]
+        if i["id"] == "dod-omn26656-seven-day-count-live"
+    )
+    return str(item["checks"][0]["check_value"])
+
+
+def _run_dir(
+    root: Path, name: str, task: str, status: str, evidence: bool, age_days: int
+) -> None:
+    import os
+    import time
+
+    d = root / ".onex_state" / "runs" / name
+    d.mkdir(parents=True)
+    (d / "run.json").write_text(json.dumps({"task_type": task}))
+    receipt: dict[str, Any] = {"status": status}
+    if evidence:
+        receipt["response_contract_evidence"] = {"schema": "x"}
+    (d / "receipt.json").write_text(json.dumps(receipt))
+    old = time.time() - age_days * 86400
+    os.utime(d / "receipt.json", (old, old))
+
+
+def test_seven_day_count_counts_only_recent_accepted_contract_governed_code(
+    tmp_path: Path,
+) -> None:
+    import os
+    import shlex
+    import subprocess
+
+    _run_dir(tmp_path, "a", "code_generation", "success", True, 1)
+    _run_dir(tmp_path, "b", "code_generation", "success", False, 1)
+    _run_dir(tmp_path, "c", "document", "success", True, 1)
+    _run_dir(tmp_path, "d", "code_generation", "failed", True, 1)
+    _run_dir(tmp_path, "e", "code_generation", "success", True, 30)
+    out = subprocess.run(
+        shlex.split(_seven_day_count_command()),
+        env={**os.environ, "OMNI_HOME": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert out.strip() == "accepted_code_governed_by_contract=1"
