@@ -12,7 +12,7 @@
 # morning workflow, a launchd tick, an operator). The ledger and git evidence are
 # host-local, so the command is dispatched on that process's in-memory bus and the
 # effect node is never attached to a shared runtime. The reconciler reads the
-# ledger from ONEX_LEDGER_PATH and the clone registry from OMNI_HOME, both required
+# ledger rows over the bus and the clone registry from OMNI_HOME (required)
 # with no default.
 name: "node_ledger_reconcile_orchestrator"
 lifecycle: experimental

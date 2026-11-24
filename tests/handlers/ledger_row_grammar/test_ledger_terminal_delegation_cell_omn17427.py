@@ -167,7 +167,7 @@ def test_lane_authored_without_pr_or_diff_is_refused() -> None:
 
 
 def test_payload_requires_accounting_and_leaves_historical_rows_untouched() -> None:
-    ledger = "ROLLING_WORK_LEDGER.md"
+    ledger = sorted(g.GOVERNED_LEDGER_NAMES)[0]
     historical = "2026-09-27T10:00:00Z | TERMINAL | lane=lane-b | friction=none"
     refused = g.refusal_for_payload(TERMINAL, ledger)
     assert refused is not None
@@ -185,7 +185,7 @@ def test_payload_requires_accounting_and_leaves_historical_rows_untouched() -> N
 def test_payload_requires_accounting_or_machine_identity(
     cells: tuple[str, str],
 ) -> None:
-    ledger = "ROLLING_WORK_LEDGER.md"
+    ledger = sorted(g.GOVERNED_LEDGER_NAMES)[0]
     assert g.refusal_for_payload(TERMINAL, ledger) is not None
     row = TERMINAL + " | " + " | ".join(cells)
     assert g.refusal_for_payload(row, ledger) is None
@@ -194,8 +194,11 @@ def test_payload_requires_accounting_or_machine_identity(
 def test_payload_refuses_empty_lane_authored_why() -> None:
     base = f"{TERMINAL} | pr=repo#1 | delegated=0 "
     refused = g.refusal_for_payload(
-        base + "delegation_reason=lane-authored:", "ROLLING_WORK_LEDGER.md"
+        base + "delegation_reason=lane-authored:", sorted(g.GOVERNED_LEDGER_NAMES)[0]
     )
     assert refused is not None
     assert "needs a why" in refused
-    assert g.refusal_for_payload(base + AUTHORED, "ROLLING_WORK_LEDGER.md") is None
+    assert (
+        g.refusal_for_payload(base + AUTHORED, sorted(g.GOVERNED_LEDGER_NAMES)[0])
+        is None
+    )
