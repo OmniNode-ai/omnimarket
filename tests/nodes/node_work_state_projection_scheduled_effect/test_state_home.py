@@ -29,6 +29,11 @@ from omnimarket.nodes.node_lab_fill_effect.protocols.local_lab_fill_adapters imp
 from omnimarket.nodes.node_work_state_projection_scheduled_effect.handlers.handler_work_state_projection_scheduled import (
     HandlerWorkStateProjectionScheduled,
 )
+from tests.nodes.node_work_state_projection_scheduled_effect.ledger_route_support import (
+    COMMAND_ENV,
+    FakeBusReadCommand,
+    install_fake,
+)
 from tests.nodes.node_work_state_projection_scheduled_effect.support import (
     RULES_EXAMPLE,
     SRC,
@@ -168,17 +173,17 @@ def test_seam_the_fill_and_the_floor_read_what_the_state_home_run_wrote(
         ),
         encoding="utf-8",
     )
-    ledger = tmp_path / "ledger.md"
     stamp = (now - timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    ledger.write_text(
-        f"{stamp} | CLAIM | lane=seam-lane | ticket=ZEP-7 | scope text\n",
-        encoding="utf-8",
+    install_fake(
+        monkeypatch,
+        FakeBusReadCommand(
+            [f"{stamp} | CLAIM | lane=seam-lane | ticket=ZEP-7 | scope text"]
+        ),
     )
-    ledger_env = _contract(EFFECT)["runtime"]["ledger"]["path_env"]
     env = {
         "OMNI_HOME": str(_unwritable_home(tmp_path)),
         "ONEX_WORK_STATE_OVERLAY": str(RULES_EXAMPLE),
-        ledger_env: str(ledger),
+        COMMAND_ENV: "fake-read --stdin",
     }
     handler = HandlerWorkStateProjectionScheduled(
         schedule=schedule(projector="file_sources", state_home=str(state_home)),

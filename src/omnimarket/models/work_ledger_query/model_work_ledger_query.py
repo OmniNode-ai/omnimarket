@@ -150,6 +150,12 @@ class ModelWorkLedgerQueryRequest(BaseModel):
     # (``since``) the entries are narrowed to.
     subject_kind: EnumWorkLedgerLatestSubject | None = None
     tickets: tuple[Annotated[str, Field(pattern=_TICKET)], ...] = ()
+    # Request expiry (OMN-26433): when the caller sent the request, and how long it waits for the
+    # answer. The node drops a request older than its bound and publishes no answer for it. A request
+    # with a send time and no bound takes the contract's work_ledger_query.request_expiry default; a
+    # request with no send time cannot be aged and is answered as before.
+    requested_at: AwareDatetime | None = None
+    max_age_seconds: float | None = Field(default=None, gt=0, allow_inf_nan=False)
 
     @model_validator(mode="after")
     def _history_boundary(self) -> ModelWorkLedgerQueryRequest:

@@ -15,7 +15,11 @@ reaches are selected. The closure covers:
   whose directory is the whole tree: ``root_conftest_edge`` keeps the edge (select the tree) or cuts it
   (select the closure's own tests and report ``collection_gate`` so the whole-tree collection job runs);
 - a changed file the closure cannot place in the import graph: a typed ``unresolved_source``
-  escalation, never a narrower guess.
+  escalation, never a narrower guess;
+- a declared project or lock file (``pyproject.toml``, ``uv.lock``) with the section rule on (OMN-26275):
+  the adjacency map's ``closure_stage_pyproject_rule`` rules it (OMN-26487). ``seeds`` adds the section
+  rule's tests to the closure's selection and takes its escalation as the full suite; ``full_suite`` (an
+  absent entry) escalates the change. Both answer an escalation as ``test_infrastructure``.
 
 The rule is active only at the policy's ``file_level_closure_stage``; below it
 ``legacy_module_escalation`` keeps the escalations the closure replaces.
@@ -42,7 +46,10 @@ from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test
     _is_test_file,
     _names_old_file,
     _package_seeds,
+    _pyproject_outcome,
+    _PyprojectOutcome,
     _vertex,
+    declared_data_file_changes,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_file_level_closure import (
     EnumClosureEscalation,
@@ -51,7 +58,9 @@ from omnimarket.nodes.node_test_selection_selector_compute.models.model_file_lev
     ModelFileLevelClosureResult,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
+    EnumClosurePyprojectRule,
     ModelAdjacencyMap,
+    ModelPathResolutionRequest,
     ModelPathResolutionResult,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_record import (
@@ -87,6 +96,30 @@ def legacy_module_escalation(
     if len(changed_modules) >= config.thresholds.modules_changed_for_full_suite:
         return EnumFullSuiteReason.THRESHOLD_MODULES
     return None
+
+
+def _project_file_outcome(
+    request: ModelFileLevelClosureRequest, source: ProtocolSourceText
+) -> _PyprojectOutcome | None:
+    """None when no declared project or lock file changed (or the section rule is off), else its outcome."""
+    config = request.adjacency
+    declared = {*config.pyproject_paths, *config.pyproject_lock_paths}
+    if not (
+        config.pyproject_section_selection_enabled
+        and declared & set(request.changed_files)
+    ):
+        return None
+    if config.closure_stage_pyproject_rule is EnumClosurePyprojectRule.FULL_SUITE:
+        return _PyprojectOutcome(EnumFullSuiteReason.TEST_INFRASTRUCTURE)
+    return _pyproject_outcome(
+        ModelPathResolutionRequest(
+            changed_files=request.changed_files,
+            adjacency=config,
+            repo_root=request.repo_root,
+            data_file_changes=request.data_file_changes,
+        ),
+        source,
+    )
 
 
 def resolve_source_module(repo_root: Path, path: str) -> str | None:
@@ -164,6 +197,15 @@ class HandlerFileLevelClosure:
         repo_root = Path(request.repo_root)
         config = request.adjacency
         node_scoped = _node_scoped_modules(repo_root)
+        project = _project_file_outcome(request, self._source)
+        if project is not None and project.reason is not None:
+            declared = {*config.pyproject_paths, *config.pyproject_lock_paths}
+            return ModelFileLevelClosureResult(
+                escalation=EnumClosureEscalation.TEST_INFRASTRUCTURE,
+                unresolved_files=tuple(
+                    p for p in request.changed_files if p in declared
+                ),
+            )
         graph = _import_graph(repo_root, node_scoped, self._source)
         selected: set[str] = set()
         seeds: set[str] = set()
@@ -228,6 +270,11 @@ class HandlerFileLevelClosure:
                 for p in _data_readers(data_files, config, repo_root, self._source)
                 if (repo_root / p).exists()
             }
+        decided = {*config.pyproject_paths, *config.pyproject_lock_paths}
+        if project is not None and (result or set(request.changed_files) <= decided):
+            # as below the closure stage: the section rule's tests join a selection the diff already
+            # has, or stand alone for a diff of only the project and lock files.
+            result |= project.paths
         return ModelFileLevelClosureResult(
             selected_paths=tuple(sorted(result)),
             data_only=data_only,
@@ -324,14 +371,21 @@ def closure_selection(
     config: ModelAdjacencyMap,
     repo_root: Path,
     root_conftest_edge: EnumRootConftestEdge,
+    base_ref: str | None = None,
 ) -> ModelPathResolutionResult | EnumFullSuiteReason:
-    """The closure's test paths in the shape the older resolver answers, or the full-suite reason."""
+    """The closure's test paths in the shape the older resolver answers, or the full-suite reason.
+
+    ``base_ref`` is the ref a declared project file's changed keys are read against (OMN-26275).
+    """
     outcome = HandlerFileLevelClosure().handle(
         ModelFileLevelClosureRequest(
             changed_files=tuple(changed_files),
             adjacency=config,
             repo_root=str(repo_root),
             root_conftest_edge=root_conftest_edge,
+            data_file_changes=declared_data_file_changes(
+                changed_files, config, str(repo_root), base_ref
+            ),
         )
     )
     if outcome.escalation is not None:

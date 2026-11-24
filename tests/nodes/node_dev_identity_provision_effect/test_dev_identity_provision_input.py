@@ -29,7 +29,12 @@ from omnimarket.nodes.node_dev_identity_provision_effect.overlay import (
     ModelDevIdentityProvisionOverlay,
 )
 
-from .fakes import FakeKeycloakAndApi, FakeKeyGenerator, FakeSettingStore
+from .fakes import (
+    FakeKeycloakAndApi,
+    FakeKeyGenerator,
+    FakeSettingStore,
+    FakeTenantProvisioner,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -76,11 +81,6 @@ def _overlay(*, protected: list[str] | None = None) -> ModelDevIdentityProvision
             "password_folder": "/shared/env",
             "password_key": "DEV_PROBE_USER_PASSWORD",
         },
-        api={
-            "base_url": "https://api.example.invalid",
-            "provision_path": "/v1/auth/provision",
-            "timeout_seconds": 15.0,
-        },
         protected_usernames=[_R8_USER] if protected is None else protected,
         secret_store=None,
     )
@@ -107,6 +107,7 @@ def _run(
         transport=transport,
         settings_store=store,
         key_generator=gen,
+        tenant_provisioner=FakeTenantProvisioner(),
         contract_path=CONTRACT_PATH,
     )
     return asyncio.run(handler.handle(command))
@@ -421,7 +422,6 @@ def test_dev_identity_provision_default_overlay_provisions_the_overlay_user() ->
         ("GET", "/users"),
         ("POST", "/users"),
         ("POST", "openid-connect/token"),
-        ("POST", "/provision"),
     ]
     assert len(transport.call_log) == len(expected)
     for call, (method, fragment) in zip(transport.call_log, expected, strict=True):
@@ -451,7 +451,7 @@ _LAN_PREFIX = ".".join(("192", "168", ""))
 def _lan_addresses(document: dict[str, object]) -> list[str]:
     """Every base_url in an overlay document that is a 192.168 LAN address (tailnet only, operator ruling 2026-11-11)."""
     found: list[str] = []
-    for block in ("keycloak", "api"):
+    for block in ("keycloak",):
         section = document.get(block)
         assert isinstance(section, dict)
         base_url = str(section["base_url"])
@@ -469,7 +469,7 @@ def test_dev_identity_provision_overlay_addresses_example_holds_no_lan_address()
     overlay = ModelDevIdentityProvisionOverlay.model_validate(document)
     assert overlay.protected_usernames
     assert overlay.keycloak.base_url == document["keycloak"]["base_url"]
-    assert overlay.api.base_url == document["api"]["base_url"]
+    assert overlay.api is None
 
 
 def test_dev_identity_provision_overlay_addresses_refuses_a_192_168_address() -> None:

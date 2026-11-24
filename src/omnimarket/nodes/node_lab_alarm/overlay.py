@@ -258,6 +258,20 @@ class ModelConditionPersistence(BaseModel):
     streak_path: str = Field(min_length=1)
 
 
+class ModelDeployAgentUnitSettings(BaseModel):
+    """The dev deploy agent's systemd USER unit the heartbeat condition also reads (OMN-26316)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The unit file name on the host, e.g. ``deploy-agent-dev.service``. The scope is not a
+    #: setting: the adapter always reads USER scope, where the agent lives.
+    name: str = Field(min_length=1)
+    #: The argv prefix that reaches a shell on the host the unit runs on, e.g. ``ssh -o BatchMode=yes <host>``.
+    host_command: tuple[str, ...] = Field(min_length=1)
+    #: The bound on one ``systemctl --user show``.
+    timeout_seconds: float = Field(gt=0)
+
+
 class ModelDevTagHeartbeatSettings(BaseModel):
     """The dev-tag heartbeat condition (OMN-24400): the agent to read, the repositories it must beat for, how old a beat may be."""
 
@@ -273,6 +287,10 @@ class ModelDevTagHeartbeatSettings(BaseModel):
     max_age_seconds: float = Field(gt=0)
     timeout_seconds: float = Field(gt=0)
     persistence: ModelConditionPersistence
+    #: The agent's systemd USER unit, read before the heartbeat so a stopped unit breaches on its
+    #: own streak instead of waiting out the beat-age bound. Absent, the condition reads the
+    #: heartbeat alone (the behaviour before OMN-26316), so every older overlay still loads.
+    unit: ModelDeployAgentUnitSettings | None = None
 
 
 class ModelDelegationChainCanarySettings(BaseModel):
@@ -469,6 +487,7 @@ __all__ = [
     "ModelContainerRestartsSettings",
     "ModelDeclaredNode",
     "ModelDelegationChainCanarySettings",
+    "ModelDeployAgentUnitSettings",
     "ModelDevTagHeartbeatSettings",
     "ModelEffectsHeldSettings",
     "ModelEscalationSettings",
