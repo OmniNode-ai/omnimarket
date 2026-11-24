@@ -320,6 +320,7 @@ def test_the_check_node_declares_the_job_that_runs_it() -> None:
         CENSUS,
         "node_lane_dispatch_intake_effect",
         "node_host_installer_overlay_env_probe",
+        "node_host_retention_effect",
     ],
 )
 def test_the_nodes_that_declare_a_host_unit_pass_on_dev(node: str) -> None:
