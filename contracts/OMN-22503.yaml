@@ -5,6 +5,14 @@ summary: The criteria of omnimarket#5087, moved unchanged from the shared contra
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn22503-ac13-accepted-20261124t0745z:
+    - label: AC13
+      criterion_hash: a6a0a79c356d26bedbc0111a6b200f56a52b9914e406ca8feab189e20331dca5
+      proposed_by: lane=dod-closeout-bind-2026-11-24T0745Z-c3
+      accepted_by: lane=dod-closeout-accept-2026-11-24T0745Z-c3
+      accepted_at: '2026-11-24T08:16:30Z'
 requirements:
 - id: req-omn19998-ended-lane-claims
   statement: Stopping an ended lane releases only that lane's exact PR claims.
@@ -36,4 +44,16 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22503 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen --python=3.12 pytest tests/nodes/node_remote_lane_stop_effect/test_ended_claim_release.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn22503-ac13-accepted-20261124t0745z
+  description: 'AC13 binding (accepted 2026-11-24T0745Z, proposed by lane=dod-closeout-bind-2026-11-24T0745Z-c3,
+    accepted by lane=dod-closeout-accept-2026-11-24T0745Z-c3). The stop adapter releases only the exact
+    lane/run/session PR claims across final receipts, no-tree closeout, dry run, missing identities, replacement
+    races and failed deletion. Re-run at omnimarket origin/dev a6606edaf6 passed (22 passed); with the product
+    paths of c3f3bd0786 reverted at 62d88e5bc0, 22 failed.'
+  source: manual
+  binds_ac: [AC13]
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen --python=3.12 pytest tests/nodes/node_remote_lane_stop_effect/test_ended_claim_release.py -q --no-cov -n 0 -p no:randomly
     cwd: .
