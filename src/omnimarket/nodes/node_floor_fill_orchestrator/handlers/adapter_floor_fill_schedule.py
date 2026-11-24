@@ -16,10 +16,14 @@ from __future__ import annotations
 import json
 import re
 import subprocess
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 
 from omnimarket.handlers.rules_unit_roots import refuse_worktree_roots
+from omnimarket.models.overlay_keys.model_overlay_documents import ModelLabHostRow
+from omnimarket.nodes.node_floor_fill_orchestrator.handlers.handler_floor_fill_unit_environment import (
+    HandlerFloorFillUnitEnvironment,
+)
 from omnimarket.nodes.node_floor_fill_orchestrator.models import (
     FloorFillConfigError,
     ModelFloorFillConfig,
@@ -29,6 +33,9 @@ from omnimarket.nodes.node_floor_fill_orchestrator.models import (
 from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_live_settings import (
     LIVE_OVERLAY_SECTION,
     ModelFloorFillLiveSettings,
+)
+from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_unit_environment import (
+    ModelFloorFillUnitEnvironmentRequest,
 )
 
 NODE_NAME = "node_floor_fill_orchestrator"
@@ -133,15 +140,38 @@ def render_systemd(
     home: Path,
     hosts: Iterable[tuple[str, bool]],
     live: ModelFloorFillLiveSettings | None = None,
+    host_rows: Iterable[ModelLabHostRow] = (),
+    environment: Mapping[str, str] | None = None,
 ) -> tuple[str, str]:
-    """The systemd user service and timer text."""
+    """The systemd user service and timer text.
+
+    The live unit also carries the ledger append command (built from the fill host's row in ``host_rows``), the
+    workspace config root and the overlay roots (both from ``environment``, the installing host's); a value that is not
+    declared refuses naming it.
+    """
     root = _safe(omni_root, "registry root")
     user_home = _safe(home, "home")
-    environment = {
+    unit_variables = {
         "HOME": user_home,
         "OMNI_HOME": root,
         "PATH": f"{user_home}/.local/bin:/usr/local/bin:/usr/bin:/bin",
     }
+    if live is not None:
+        unit_variables.update(
+            HandlerFloorFillUnitEnvironment()
+            .handle(
+                ModelFloorFillUnitEnvironmentRequest(
+                    schedule=schedule,
+                    host=config.host_id,
+                    host_row=next(
+                        (row for row in host_rows if row.name == config.host_id), None
+                    ),
+                    omni_root=root,
+                    installing_environment=dict(environment or {}),
+                )
+            )
+            .variables
+        )
     interval = f"{config.tick_interval_seconds}s"
     service = (
         "# Rendered by the floor fill node (schedule install); the node contract owns the unit's name and\n"
@@ -150,7 +180,7 @@ def render_systemd(
         "[Unit]\nDescription=ONEX floor fill tick (stopped-line fill)\n"
         "\n[Service]\nType=oneshot\n"
         f"TimeoutStartSec={schedule.timeout_seconds}\n"
-        + "".join(_assignment(name, value) for name, value in environment.items())
+        + "".join(_assignment(name, value) for name, value in unit_variables.items())
         + f"WorkingDirectory={root}\n"
         f"ExecStart={exec_start(schedule, config, omni_root, hosts, live)}\n"
         f"SyslogIdentifier={schedule.unit_name}\n"
@@ -177,6 +207,8 @@ class FloorFillScheduler:
         home: Path,
         run: Runner = run_command,
         live: ModelFloorFillLiveSettings | None = None,
+        host_rows: Iterable[ModelLabHostRow] = (),
+        environment: Mapping[str, str] | None = None,
     ) -> None:
         self.schedule = schedule
         self.config = config
@@ -184,6 +216,8 @@ class FloorFillScheduler:
         self.home = home
         self.run = run
         self.live = live
+        self.host_rows = tuple(host_rows)
+        self.environment = dict(environment or {})
         self.service_name = f"{schedule.unit_name}.service"
         self.timer_name = f"{schedule.unit_name}.timer"
         self.unit_dir = home / ".config/systemd/user"
@@ -230,6 +264,8 @@ class FloorFillScheduler:
                 home=self.home,
                 hosts=self.hosts,
                 live=self.live,
+                host_rows=self.host_rows,
+                environment=self.environment,
             )
             refuse_worktree_roots({self.service_name: service, self.timer_name: timer})
         except ValueError as exc:
