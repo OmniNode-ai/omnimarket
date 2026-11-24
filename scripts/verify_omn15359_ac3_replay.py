@@ -111,9 +111,7 @@ def _require_lane_identity(lane: str, environment: Mapping[str, str]) -> None:
     if environment.get("AC3_LANE_IDENTITY", "").strip() != lane:
         raise ReplayError("AC3 lane identity is absent or ambiguous")
     if environment.get("ONEX_ENVIRONMENT", "").strip() != expected_environment:
-        raise ReplayError(
-            f"ONEX_ENVIRONMENT does not identify the {lane} environment"
-        )
+        raise ReplayError(f"ONEX_ENVIRONMENT does not identify the {lane} environment")
     guarded_values = (
         environment.get("KAFKA_BOOTSTRAP_SERVERS", ""),
         environment.get("AC3_SOURCE_DSN", ""),
@@ -176,7 +174,9 @@ def _registry_relation(conn: Any) -> tuple[str, str]:
             "ORDER BY c.oid"
         )
         rows = cur.fetchall()
-    distinct = {(str(schema), str(relation), int(oid)) for schema, relation, oid in rows}
+    distinct = {
+        (str(schema), str(relation), int(oid)) for schema, relation, oid in rows
+    }
     if not distinct:
         raise ReplayError("tenant registry mapping relation is missing")
     if len(distinct) != 1:
@@ -354,31 +354,39 @@ def _provision_target(
             ):
                 cur.execute("SELECT to_regclass(%s)::oid", (f"{schema}.{relation}",))
                 if cur.fetchone()[0] is None:
-                    raise ReplayError("source relations are not visible to replay admin")
+                    raise ReplayError(
+                        "source relations are not visible to replay admin"
+                    )
 
         admin_conn.autocommit = False
         with admin_conn.cursor() as cur:
-            cur.execute(sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(replay_schema)))
             cur.execute(
-                sql.SQL("CREATE TABLE {}.delegation_events "
-                        "(LIKE {}.{} INCLUDING ALL)").format(
+                sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(replay_schema))
+            )
+            cur.execute(
+                sql.SQL(
+                    "CREATE TABLE {}.delegation_events (LIKE {}.{} INCLUDING ALL)"
+                ).format(
                     sql.Identifier(replay_schema),
                     sql.Identifier(source_schema),
                     sql.Identifier(source_relation),
                 )
             )
             cur.execute(
-                sql.SQL("CREATE TABLE {}.tenant_registry_mirror "
-                        "(LIKE {}.{} INCLUDING ALL)").format(
+                sql.SQL(
+                    "CREATE TABLE {}.tenant_registry_mirror (LIKE {}.{} INCLUDING ALL)"
+                ).format(
                     sql.Identifier(replay_schema),
                     sql.Identifier(registry_schema),
                     sql.Identifier(registry_relation),
                 )
             )
             cur.execute(
-                sql.SQL("INSERT INTO {}.tenant_registry_mirror "
-                        "SELECT * FROM {}.{} "
-                        "WHERE tenant_uuid = ANY(%s::uuid[])").format(
+                sql.SQL(
+                    "INSERT INTO {}.tenant_registry_mirror "
+                    "SELECT * FROM {}.{} "
+                    "WHERE tenant_uuid = ANY(%s::uuid[])"
+                ).format(
                     sql.Identifier(replay_schema),
                     sql.Identifier(registry_schema),
                     sql.Identifier(registry_relation),

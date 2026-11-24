@@ -49,7 +49,7 @@ dod_evidence:
     check_value: uv run pytest tests/e2e/test_setup_workflow_cli.py::test_shell_conflicts_print_one_plain_line_per_conflict tests/unit/nodes/node_onex_setup_effect/test_setup_cli_shell_conflict_lines.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26614-ac3
-  description: 'AC3: the machine-readable JSON output still carries the structured conflict list.'
+  description: 'AC3: the machine-readable JSON output still carries the structured conflict list. must-fail-control: impossible (pure-refactor): JSON output is unchanged by this PR, so the control cannot fail at the merge base by design.'
   source: manual
   binds_ac:
   - AC3

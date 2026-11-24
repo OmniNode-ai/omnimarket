@@ -12,7 +12,18 @@ import json
 
 import pytest
 
-from omnimarket.nodes.node_onex_setup_effect.cli_workflow import shell_conflict_lines
+from omnimarket.nodes.node_onex_setup_effect import cli_workflow
+
+
+def _render(value: object) -> object:
+    """Resolve the renderer at call time so collection works on older code.
+
+    A missing renderer is a behavioural failure of this test, not an import
+    error during collection.
+    """
+    renderer = getattr(cli_workflow, "shell_conflict_lines", None)
+    assert callable(renderer), "cli_workflow.shell_conflict_lines is missing"
+    return renderer(value)
 
 
 def _row(
@@ -32,7 +43,7 @@ def _row(
 
 
 def test_each_kind_renders_location_name_and_remedy() -> None:
-    lines = shell_conflict_lines(
+    lines = _render(
         json.dumps(
             [
                 _row("profile", ".bashrc", "KAFKA_BROKERS", 2, True),
@@ -53,9 +64,7 @@ def test_each_kind_renders_location_name_and_remedy() -> None:
 
 
 def test_non_recoverable_profile_line_says_by_hand() -> None:
-    lines = shell_conflict_lines(
-        json.dumps([_row("profile", ".bashrc", "KAFKA_BROKERS", 3, False)])
-    )
+    lines = _render(json.dumps([_row("profile", ".bashrc", "KAFKA_BROKERS", 3, False)]))
     assert lines == [
         ".bashrc line 3: KAFKA_BROKERS is set by this profile line; resolve it by hand."
     ]
@@ -71,4 +80,4 @@ def test_non_recoverable_profile_line_says_by_hand() -> None:
 )
 def test_undecodable_or_unknown_evidence_falls_back_to_verbatim(value: str) -> None:
     """EXTRA1: evidence that is not the structured conflict list renders as None."""
-    assert shell_conflict_lines(value) is None
+    assert _render(value) is None

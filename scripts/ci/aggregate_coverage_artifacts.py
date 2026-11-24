@@ -505,7 +505,10 @@ def main(argv: list[str] | None = None) -> int:
     target_dir = Path(args.target_dir).resolve()
     out_path = Path(args.out).resolve() if args.out else (target_dir / "coverage.json")
 
-    print("=== coverage census from shard artifacts (OMN-14680, OMN-18556) ===", flush=True)
+    print(
+        "=== coverage census from shard artifacts (OMN-14680, OMN-18556) ===",
+        flush=True,
+    )
     print(f"aggregate: expected_head={args.expected_head}", flush=True)
     print(f"aggregate: split_count={args.split_count}", flush=True)
     print(f"aggregate: artifacts_dir={artifacts_dir}", flush=True)
