@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_delegation_check_probe_effect/overlay.yaml under a root named
+# in ONEX_SKILL_OVERLAY_ROOTS, or the file ONEX_DELEGATION_CHECK_PROBE_OVERLAY names. No key has a default.
+# The responder chain is not here: it is the settings store's delegation_check_responders row, set with
+# python -m omnimarket.nodes.node_overlay_setting_set_effect --overlay delegation_check_responders --key responders --value-json <list> --actor <who>
+checks: [C13, C14, C17]
+history_file: delegation-check-runs.jsonl
+history_keep: 120
+result_topic: onex.evt.omnimarket.delegation-check-probe-completed.v1
+responder_timeout_s: 10
