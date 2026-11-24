@@ -14,10 +14,17 @@ history_keep: 200
 merge_clone_relpath: omnimarket
 merge_branch: dev
 repository: OmniNode-ai/omnimarket
-# C13, C14 and C17 run the delegation check probe node of this repository; the other seven checks have no node here and read
-# unavailable (no probe route is declared). No route is a cloud workflow dispatch.
+# Every check runs the delegation check probe node of this repository: C13, C14 and C17 on a customer machine through the responder
+# chain, the other seven through the dev gateway the settings store names. No route is a cloud workflow dispatch.
 check_routes:
+  C11: ['{python}', -m, omnimarket.nodes.node_delegation_check_probe_effect.runtime_delegation_check_probe_tick, --omni-home, '{registry_root}', --state-dir, '{registry_root}/.onex_state/delegation-check-probe', --trigger, manual, --check, C11]
+  C12: ['{python}', -m, omnimarket.nodes.node_delegation_check_probe_effect.runtime_delegation_check_probe_tick, --omni-home, '{registry_root}', --state-dir, '{registry_root}/.onex_state/delegation-check-probe', --trigger, manual, --check, C12]
   C13: ['{python}', -m, omnimarket.nodes.node_delegation_check_probe_effect.runtime_delegation_check_probe_tick, --omni-home, '{registry_root}', --state-dir, '{registry_root}/.onex_state/delegation-check-probe', --trigger, manual, --check, C13]
   C14: ['{python}', -m, omnimarket.nodes.node_delegation_check_probe_effect.runtime_delegation_check_probe_tick, --omni-home, '{registry_root}', --state-dir, '{registry_root}/.onex_state/delegation-check-probe', --trigger, manual, --check, C14]
+  C15: ['{python}', -m, omnimarket.nodes.node_delegation_check_probe_effect.runtime_delegation_check_probe_tick, --omni-home, '{registry_root}', --state-dir, '{registry_root}/.onex_state/delegation-check-probe', --trigger, manual, --check, C15]
+  C16: ['{python}', -m, omnimarket.nodes.node_delegation_check_probe_effect.runtime_delegation_check_probe_tick, --omni-home, '{registry_root}', --state-dir, '{registry_root}/.onex_state/delegation-check-probe', --trigger, manual, --check, C16]
   C17: ['{python}', -m, omnimarket.nodes.node_delegation_check_probe_effect.runtime_delegation_check_probe_tick, --omni-home, '{registry_root}', --state-dir, '{registry_root}/.onex_state/delegation-check-probe', --trigger, manual, --check, C17]
+  C28: ['{python}', -m, omnimarket.nodes.node_delegation_check_probe_effect.runtime_delegation_check_probe_tick, --omni-home, '{registry_root}', --state-dir, '{registry_root}/.onex_state/delegation-check-probe', --trigger, manual, --check, C28]
+  C29: ['{python}', -m, omnimarket.nodes.node_delegation_check_probe_effect.runtime_delegation_check_probe_tick, --omni-home, '{registry_root}', --state-dir, '{registry_root}/.onex_state/delegation-check-probe', --trigger, manual, --check, C29]
+  C30: ['{python}', -m, omnimarket.nodes.node_delegation_check_probe_effect.runtime_delegation_check_probe_tick, --omni-home, '{registry_root}', --state-dir, '{registry_root}/.onex_state/delegation-check-probe', --trigger, manual, --check, C30]
 bus_lane: dev
