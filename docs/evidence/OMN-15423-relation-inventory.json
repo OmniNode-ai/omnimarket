@@ -8978,6 +8978,7 @@
         "node_floor_owner_map_publish_effect",
         "node_floor_projection_read_effect",
         "node_floor_simple_effect",
+        "node_goal_scope_admission_compute",
         "node_gpu_power_caps_effect",
         "node_host_down_reading_effect",
         "node_host_introspection_announce_effect",

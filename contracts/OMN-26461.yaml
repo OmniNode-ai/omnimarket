@@ -51,6 +51,9 @@ dod_evidence:
   binds_ac:
   - AC6
   checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_goal_scope_admission_compute/tests/test_goal_scope_overlay_no_second_protocol.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
   - check_type: command
     check_value: grep -q 'from omnibase_spi.protocols.storage import ProtocolOverlayStore' src/omnimarket/handlers/goal_scope_overlay.py
     cwd: .
