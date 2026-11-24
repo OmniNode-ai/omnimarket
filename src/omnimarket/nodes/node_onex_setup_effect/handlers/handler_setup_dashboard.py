@@ -9,8 +9,10 @@ is consumed from a pipe and stored through the canonical credential API.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import fcntl
 import os
+import secrets
 import select
 import signal
 import stat
@@ -19,10 +21,11 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import urlsplit
 
 import httpx
 from omnibase_core.cli.cli_user_config import user_config_path
+from pydantic import SecretStr
 
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
 from omnimarket.local_deployment.tenant_identity import read_local_tenant_identity
@@ -51,6 +54,11 @@ def _stamp(pid: int) -> str | None:
     if result.returncode:
         return None
     return result.stdout.strip() or None
+
+
+def mint_dashboard_token() -> SecretStr:
+    """A fresh random token for one start of the dashboard (OMN-19916)."""
+    return SecretStr(secrets.token_urlsafe(32))
 
 
 class HandlerSetupDashboard:
@@ -178,6 +186,21 @@ class HandlerSetupDashboard:
             identity = read_local_tenant_identity(db_path=self._store.db_path)
             if identity is None:
                 raise ValueError("Run onex local init before starting this dashboard")
+            reference = "setup.dashboard.session"
+            token = mint_dashboard_token().get_secret_value()
+            asyncio.run(self._store.set_secret(reference, token))
+            token_path = self._home / "dashboard.token"
+            # A file already there (left by a killed start, or created wider)
+            # is removed, so the token only ever lands in a file this call
+            # created at 0o600.
+            token_path.unlink(missing_ok=True)
+            token_fd = os.open(
+                token_path,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                0o600,
+            )
+            with os.fdopen(token_fd, "w") as token_file:
+                token_file.write(token)
             environment = os.environ.copy()
             for name in tuple(environment):
                 if (
@@ -195,8 +218,14 @@ class HandlerSetupDashboard:
                     )
                 ):
                     environment.pop(name)
+            # Names this start's token file (a path, not the token); the server
+            # reads it once and deletes it.
+            environment["ONEX_DASHBOARD_TOKEN_FILE"] = str(token_path)
             process = subprocess.Popen(
-                [str(Path(sys.executable).parent / "onex"), "dashboard"],
+                [
+                    str(Path(sys.executable).parent / "onex"),
+                    "dashboard",
+                ],
                 cwd=Path.home(),
                 env=environment,
                 stdin=subprocess.DEVNULL,
@@ -224,18 +253,14 @@ class HandlerSetupDashboard:
                     start = urlsplit(
                         line[len(prefix) :].split(b" ", 1)[0].decode().strip()
                     )
-                    token = parse_qs(start.query).get("token", [""])[0]
                     stamp = _stamp(process.pid)
                     if (
                         start.scheme != "http"
                         or start.hostname != "127.0.0.1"
                         or not start.port
-                        or not token
                         or not stamp
                     ):
                         raise ValueError("Invalid dashboard startup binding")
-                    reference = "setup.dashboard.session"
-                    asyncio.run(self._store.set_secret(reference, token))
                     record = ModelSetupDashboardProcess(
                         pid=process.pid,
                         process_stamp=stamp,
@@ -268,5 +293,7 @@ class HandlerSetupDashboard:
             finally:
                 if process.stdout is not None:
                     process.stdout.close()
+                with contextlib.suppress(OSError):
+                    token_path.unlink(missing_ok=True)
         finally:
             os.close(fd)

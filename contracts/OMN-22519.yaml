@@ -7,6 +7,20 @@ interface_change: true
 interfaces_touched:
 - events
 - public_api
+context:
+  ac_binding_provenance:
+    dod-omn22519-ac14-accepted-20261124t1145z:
+    - label: AC14
+      criterion_hash: c16aa8fb840834db1adaffd1577ad5bf2fc00ccab69139464faf20af671f36b6
+      proposed_by: lane=dod-closeout-bind-2026-11-24T1145Z-c3
+      accepted_by: lane=dod-closeout-accept-2026-11-24T1145Z-c3
+      accepted_at: '2026-11-24T12:18:33Z'
+    dod-omn22519-ac15-accepted-20261124t1145z:
+    - label: AC15
+      criterion_hash: 58e73f6fe6f1bc248951a6b39653cb3e29cb65acad6e254388fc539916191d66
+      proposed_by: lane=dod-closeout-bind-2026-11-24T1145Z-c3
+      accepted_by: lane=dod-closeout-accept-2026-11-24T1145Z-c3
+      accepted_at: '2026-11-24T12:18:33Z'
 requirements:
 - id: req-omn19998-public-review-off-actions
   statement: The existing review nodes gain a receipt-only reader and a proactive PR-state command producer before the hosted workflow cutover.
@@ -58,4 +72,29 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22519 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect/test_public_review_receipt.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn22519-ac14-accepted-20261124t1145z
+  description: 'AC14 binding (accepted 2026-11-24T1145Z, proposed by lane=dod-closeout-bind-2026-11-24T1145Z-c3,
+    accepted by lane=dod-closeout-accept-2026-11-24T1145Z-c3). Receipt-only acceptance of a verified exact head,
+    verifier refusals kept red, other-login/head/dismissed and unreadable reviews refused, the proactive PR-state
+    route publishing once with the fallback identity, the closed current-head wait, and runtime discovery and
+    dispatch of both operations. Re-run at omnimarket origin/dev ff5532969f passed (30 passed); with the product
+    paths of 647641cf00 reverted at ff5532969f, 30 of 30 failed.'
+  source: manual
+  binds_ac: [AC14]
+  checks:
+  - check_type: command
+    check_value: uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect/test_public_review_receipt.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn22519-ac15-accepted-20261124t1145z
+  description: 'AC15 binding (accepted 2026-11-24T1145Z, proposed by lane=dod-closeout-bind-2026-11-24T1145Z-c3,
+    accepted by lane=dod-closeout-accept-2026-11-24T1145Z-c3). The hostile-review-gate job keeps the name Hostile
+    Review Gate, runs on ubuntu-latest and needs hostile-review. Re-run at omnimarket origin/dev ff5532969f passed
+    (1 passed); with the product paths of 647641cf00 reverted at ff5532969f, the lab runs-on expression
+    (self-hosted, omnibase-ci) fails the runs-on assertion.'
+  source: manual
+  binds_ac: [AC15]
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_public_runner_placement_omn19998.py::test_the_hostile_review_gate_job_is_github_hosted -q --no-cov -n 0 -p no:randomly
     cwd: .
