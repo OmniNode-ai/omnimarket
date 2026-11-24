@@ -273,14 +273,21 @@ class FakePreCommitStore:
 
 
 class FakeDisk:
-    def __init__(self) -> None:
+    """Used 80 on the first read and 50 after, of 100; ``free`` (bytes), when given, is every reading's free space."""
+
+    def __init__(self, free: int | None = None) -> None:
         self.reads = 0
+        self.free = free
 
     def reading(self, path: str) -> ModelDiskReading:
         self.reads += 1
         used = 80.0 if self.reads == 1 else 50.0
         return ModelDiskReading(
-            path=path, used_bytes=int(used), total_bytes=100, used_percent=used
+            path=path,
+            used_bytes=int(used),
+            total_bytes=100,
+            used_percent=used,
+            free_bytes=int(100 - used) if self.free is None else self.free,
         )
 
 
@@ -297,6 +304,7 @@ def make_ports(
     closure: Any = None,
     receipts: Any = None,
     archive: Any = None,
+    disk: Any = None,
 ) -> HostRetentionPorts:
     return HostRetentionPorts(
         runner_state=runner_state or FakeRunnerState(),
@@ -306,7 +314,7 @@ def make_ports(
         lane_liveness=lanes or FakeLanes(set()),
         container_mounts=mounts or FakeMounts(set()),
         unit_files=units or FakeUnits([]),
-        disk=FakeDisk(),
+        disk=disk or FakeDisk(),
         pre_commit_store=pre_commit or FakePreCommitStore(),
         # An explicit FakeClosure(None) (an unreadable ledger) must pass through.
         lane_closure=closure if closure is not None else FakeClosure({}),
