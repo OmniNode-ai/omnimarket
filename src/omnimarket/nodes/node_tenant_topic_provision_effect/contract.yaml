@@ -1,0 +1,98 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Tenant Topic Provision Effect (OMN-26669)
+#
+# On tenant-topic-provision-requested the node creates, for one tenant slug or for every tenant a backfill covers, each
+# topic of the forwarder contract's mirror set as tenant-<slug>.<name>, lists the broker again and answers on the completed
+# topic with one report per tenant. A tenant is provisioned only when every topic was read back; a topic that could not be
+# created is named and leaves the tenant unprovisioned, and a retry creates only what is still absent. The node never
+# deletes or recreates a topic. The mirror set is read from the forwarder's own contract on every run; no name is kept here.
+name: node_tenant_topic_provision_effect
+contract_name: node_tenant_topic_provision_effect
+node_name: node_tenant_topic_provision_effect
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+lifecycle: experimental
+runtime_profiles: [effects]
+description: >
+  Creates a tenant's wire topics on the broker from a bus command. The names are the forwarder contract's mirror_topics
+  (inbound and outbound, each once) under the template below; the broker lane, the partition count and the replication
+  factor are overlay values. Every create is read back from the broker, a second run creates none, and a failure names
+  the topic and leaves the tenant unprovisioned.
+handler:
+  module: omnimarket.nodes.node_tenant_topic_provision_effect.handlers.handler_tenant_topic_provision
+  class: HandlerTenantTopicProvision
+  input_model: omnimarket.nodes.node_tenant_topic_provision_effect.models.model_tenant_topic_provision.ModelTenantTopicProvisionCommand
+input_model:
+  name: ModelTenantTopicProvisionCommand
+  module: omnimarket.nodes.node_tenant_topic_provision_effect.models.model_tenant_topic_provision
+  description: The command id and exactly one of a tenant slug or backfill=true.
+output_model:
+  name: ModelTenantTopicProvisionResult
+  module: omnimarket.nodes.node_tenant_topic_provision_effect.models.model_tenant_topic_provision
+  description: The typed outcome, one line of detail and one report per tenant (created, existing, read back, failed topics).
+descriptor:
+  node_archetype: effect
+  purity: impure
+  runtime_profiles: [effects]
+  idempotent: true
+  side_effects: [broker-topic-list, broker-topic-create]
+  timeout_ms: 120000
+config:
+  tenant_topics:
+    # The installed package whose contract.yaml declares config.gateway_forwarder.mirror_topics.
+    forwarder_contract_module: omnibase_infra.nodes.node_bus_forwarder_effect
+    # How a bare mirror topic name becomes a tenant's wire topic.
+    topic_template: "tenant-{slug}.{topic}"
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - operation: tenant_topic_provision
+      topic: onex.cmd.omnimarket.tenant-topic-provision-requested.v1
+      message_category: command
+      event_model: omnimarket.nodes.node_tenant_topic_provision_effect.models.model_tenant_topic_provision.ModelTenantTopicProvisionCommand
+      handler_module: omnimarket.nodes.node_tenant_topic_provision_effect.handlers.handler_tenant_topic_provision
+      handler:
+        name: HandlerTenantTopicProvision
+        module: omnimarket.nodes.node_tenant_topic_provision_effect.handlers.handler_tenant_topic_provision
+topics:
+  tenant_topic_provision:
+    requested: onex.cmd.omnimarket.tenant-topic-provision-requested.v1
+    completed: onex.evt.omnimarket.tenant-topic-provision-completed.v1
+terminal_event: onex.evt.omnimarket.tenant-topic-provision-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.tenant-topic-provision-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.tenant-topic-provision-completed.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.tenant-topic-provision-requested.v1
+  # Only the terminal event is declared: the runtime publishes the handler's typed answer on the completed topic its
+  # topic_match route names, so a failure is an outcome on that topic and there is no failed topic.
+  publish_topics:
+    - onex.evt.omnimarket.tenant-topic-provision-completed.v1
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.tenant-topic-provision-requested.v1
+    producer: "the operator's CLI, the only principal holding WRITE on this topic (see broker_acl_grants) -- not a node contract"
+externally_consumed_topics:
+  - onex.evt.omnimarket.tenant-topic-provision-completed.v1
+broker_acl_grants:
+  - principal: "${ONEX_ACL_TENANT_OPERATOR_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-topic-provision-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-topic-provision-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-topic-provision-completed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-topic-provision-completed.v1, operation: DESCRIBE}
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-topic-provision-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-topic-provision-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-topic-provision-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-topic-provision-completed.v1, operation: DESCRIBE}
+overlay:
+  node: node_tenant_topic_provision_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+metadata:
+  ticket: OMN-26669
+  transport_type: kafka
