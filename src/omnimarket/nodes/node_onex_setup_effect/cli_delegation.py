@@ -124,9 +124,28 @@ def _report(
     """``cause`` is the step that stopped the command; its fix leads, so a refused
     off never leads with advice for on (review 2026-11-15)."""
     claude_code = _claude_code(observations[0])
-    fix = (cause.fix if cause is not None else None) or (
-        _USER_STEP.get(claude_code) or _advice(observations)
+    hooks_obs = next(
+        (o for o in observations if getattr(o, "step", None) == "claude-hooks"), None
     )
+    generic_unreadable_assets = (
+        hooks_obs is not None
+        and hooks_obs.status == "action_required"
+        and "Install or repair the packaged delegation hook assets"
+        in str(hooks_obs.fix or "")
+    )
+    healthy_off = (
+        status != "on"
+        and cause is None
+        and claude_code == "ready"
+        and not delegation_switch_enabled()
+        and generic_unreadable_assets
+    )
+    if healthy_off:
+        fix = "Run onex delegation on, or switch it on in onex under /delegation."
+    else:
+        fix = (cause.fix if cause is not None else None) or (
+            _USER_STEP.get(claude_code) or _advice(observations)
+        )
     switches = _switch_words()
     if json_output:
         click.echo(
