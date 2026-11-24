@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import AbstractAsyncContextManager, AbstractContextManager
 
 from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus
@@ -22,6 +22,10 @@ from omnimarket.delegated_test_loop.lane_bus import (
     BusKind,
     LabRunBusError,
     open_lab_run_bus,
+)
+from omnimarket.enums.enum_agent_message_operation import EnumAgentMessageOperation
+from omnimarket.enums.enum_agent_message_refusal import (
+    EnumAgentMessageRefusal as EnumNodeRefusal,
 )
 from omnimarket.handlers.bus_binding.select import positional_opener
 from omnimarket.nodes.node_agent_message_client_effect.models.model_agent_message import (
@@ -42,6 +46,19 @@ from omnimarket.nodes.node_agent_message_client_effect.runtime import (
     AgentMessageRuntime,
     BusSettings,
 )
+from omnimarket.nodes.node_agent_message_effect.handlers.handler_agent_message import (
+    HandlerAgentMessage,
+    message_event_id,
+)
+from omnimarket.nodes.node_agent_message_effect.models.model_agent_message_request import (
+    MAX_READ_LIMIT,
+)
+from omnimarket.nodes.node_agent_message_effect.models.model_agent_message_request import (
+    ModelAgentMessageRequest as ModelNodeRequest,
+)
+from omnimarket.nodes.node_agent_message_effect.models.model_agent_message_result import (
+    ModelAgentMessageResult as ModelNodeResult,
+)
 
 NodeFactory = Callable[
     [ProtocolLabRunBus], AbstractAsyncContextManager[ProtocolAgentMessageBusNode]
@@ -61,9 +78,9 @@ class _LoopThreadNode:
         self._loop = loop
         self._node = node
 
-    def send(self, message: ModelAgentMessage) -> None:
+    def send(self, message: ModelAgentMessage) -> str | None:
         future = asyncio.run_coroutine_threadsafe(self._node.send(message), self._loop)
-        future.result(timeout=_CALL_TIMEOUT_SECONDS)
+        return future.result(timeout=_CALL_TIMEOUT_SECONDS)
 
     def read(self, query: ModelAgentMessageQuery) -> tuple[ModelAgentMessage, ...]:
         future = asyncio.run_coroutine_threadsafe(self._node.read(query), self._loop)
@@ -137,17 +154,111 @@ def open_bus_node(
         thread.join(timeout=60)
 
 
-def agent_message_node_factory() -> NodeFactory:
+_REFUSAL_FOR_NODE_REFUSAL: dict[EnumNodeRefusal, EnumAgentMessageRefusal] = {
+    EnumNodeRefusal.BROKER_NOT_DECLARED: EnumAgentMessageRefusal.UNDECLARED_BROKER,
+    EnumNodeRefusal.INVALID_MESSAGE: EnumAgentMessageRefusal.BROKER_REFUSED,
+    EnumNodeRefusal.PUBLISH_FAILED: EnumAgentMessageRefusal.BROKER_REFUSED,
+    EnumNodeRefusal.READ_FAILED: EnumAgentMessageRefusal.BROKER_REFUSED,
+}
+
+
+def _raise_for_refusal(result: ModelNodeResult) -> None:
+    if result.accepted:
+        return
+    refusal = result.refusal
+    code = (
+        _REFUSAL_FOR_NODE_REFUSAL[refusal]
+        if refusal is not None
+        else EnumAgentMessageRefusal.BROKER_REFUSED
+    )
+    label = refusal.value if refusal is not None else "refused"
+    raise AgentMessageRefusalError(
+        code, f"the agent message node refused ({label}): {result.detail}"
+    )
+
+
+def _wire_message(message: ModelAgentMessage) -> dict[str, object]:
+    """The message in the node's wire spelling (the sender cell is ``from``)."""
+    return {
+        "from": message.sender,
+        "to": message.to,
+        "thread": message.thread,
+        "kind": message.kind.value,
+        "text": message.text,
+        "sent_at": message.sent_at.isoformat(),
+        "platform": message.platform.value,
+    }
+
+
+class _NodeBackedBusNode:
+    """The client's awaited port over the agent message node's handler.
+
+    The node owns the topic and its I/O: it spools and publishes a send, and scans the topic for a read, on the broker
+    its own contract overlay declares. The client adds nothing to the wire; the node's content-hash event id is the
+    message id on both sides, so a sent id is the id a read returns.
+    """
+
+    def __init__(self, handler: HandlerAgentMessage) -> None:
+        self._handler = handler
+
+    async def send(self, message: ModelAgentMessage) -> str | None:
+        result = await self._handler.handle(
+            ModelNodeRequest(
+                operation=EnumAgentMessageOperation.SEND, message=_wire_message(message)
+            )
+        )
+        _raise_for_refusal(result)
+        if not result.published:
+            raise AgentMessageRefusalError(
+                EnumAgentMessageRefusal.BROKER_REFUSED,
+                f"the message {result.event_id} reached the node's durable spool but was not published to the broker",
+            )
+        return result.event_id
+
+    async def read(
+        self, query: ModelAgentMessageQuery
+    ) -> tuple[ModelAgentMessage, ...]:
+        result = await self._handler.handle(
+            ModelNodeRequest(
+                operation=EnumAgentMessageOperation.READ,
+                to=query.to,
+                thread=query.thread,
+                since=query.since,
+                limit=min(query.limit, MAX_READ_LIMIT),
+            )
+        )
+        _raise_for_refusal(result)
+        return tuple(
+            ModelAgentMessage(
+                message_id=message_event_id(message),
+                sender=message.sender,
+                to=message.to,
+                thread=message.thread,
+                kind=message.kind,
+                platform=message.platform,
+                text=message.text,
+                sent_at=message.sent_at,
+            )
+            for message in result.messages
+        )
+
+
+def agent_message_node_factory(
+    handler_factory: Callable[[], HandlerAgentMessage] = HandlerAgentMessage,
+) -> NodeFactory:
     """The agent message node's factory: the one place this client meets that node.
 
-    The topic, the message model and the node that publishes and reads belong to the agent
-    message node, which is not in this runtime yet; until it is, the client refuses with a
-    typed error instead of writing to a topic itself.
+    The node dials the broker its own contract overlay declares; the bus the caller opened (``--bus-lane``) is the
+    caller's declaration of where the client runs and is not handed to the node.
     """
-    raise AgentMessageRefusalError(
-        EnumAgentMessageRefusal.NODE_UNAVAILABLE,
-        "the agent message node is not installed in this runtime",
-    )
+
+    @contextlib.asynccontextmanager
+    async def open_node(
+        _bus: ProtocolLabRunBus,
+    ) -> AsyncIterator[ProtocolAgentMessageBusNode]:
+        yield _NodeBackedBusNode(handler_factory())
+
+    return open_node
 
 
 def bus_runtime(
