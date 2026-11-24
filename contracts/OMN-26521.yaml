@@ -56,13 +56,13 @@ dod_evidence:
     check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests -q -n 0 --no-cov -p no:cacheprovider -k live_seam_read_failure
     cwd: .
 - id: dod-omn26521-ac4
-  description: 'AC4: hosted proxy for the integrated criterion: the install-time check refuses an overlay that lacks a binding key, the entry check prints the four bound seams, and the schedule install tests pass; the unit run on h051 (exit status of onex-floor-fill-tick on three consecutive runs and the floor-fill state row, or the named blocked cause) is taken on the lab host after the install and is not met by this change alone.'
+  description: 'AC4: hosted proxy for the integrated criterion: the install-time check refuses an overlay that lacks a required live key and accepts one that lacks an optional seam key, the entry check prints the four bound seams, and the schedule install tests pass; the unit run on h051 (exit status of onex-floor-fill-tick on three consecutive runs and the floor-fill state row, or the named blocked cause) is taken on the lab host after the install and is not met by this change alone.'
   source: manual
   binds_ac:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_schedule_live.py -q -n 0 --no-cov -p no:cacheprovider -k seam_key_refuses_when_missing
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_schedule_live.py -q -n 0 --no-cov -p no:cacheprovider -k live_profile_missing_key_refuses_naming_it
     cwd: .
 - id: dod-omn26521-ac5
   description: 'AC5: the node tests pass at the pushed head.'
