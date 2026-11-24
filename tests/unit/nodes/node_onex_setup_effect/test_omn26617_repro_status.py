@@ -83,17 +83,91 @@ def test_ac1_off_and_ready_names_onex_delegation_on_not_an_install(
     assert "onex install" not in str(document["fix"])
 
 
-def test_ac2_assets_really_broken_keeps_the_repair_command(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+def _break_the_hook_assets(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, how: str
 ) -> None:
-    # The boundary AC1 and AC2 share: the same unreadable assets read as a repair
-    # with the switch on, and as a plain "run onex delegation on" with it off.
-    text, document = _run_status(monkeypatch, tmp_path, switch=True)
-    assert "onex install" in text
-    assert "onex install" in str(document["fix"])
-    off_text, off_document = _run_status(monkeypatch, tmp_path, switch=False)
-    assert "onex delegation on" in off_text
-    assert "onex install" not in str(off_document["fix"])
+    """Make the real hooks step find really missing or broken hook assets.
+
+    The hooks step is the real handler, not a scripted observation: the customer
+    asset resolver names an installer, and the assets it names are then removed
+    ("installer": the installer file is gone) or broken ("bundle": the installer is
+    there but the hook bundle beside it is gone).
+    """
+    bundle = tmp_path / "customer-assets"
+    installer = bundle / "scripts" / "install.py"
+    installer.parent.mkdir(parents=True)
+    installer.write_text("# installer\n")
+    if how == "installer":
+        installer.unlink()
+    assert not (bundle / "plugins" / "onex").exists()
+    monkeypatch.setattr(
+        handler_setup_claude.HandlerSetupClaude,
+        "_customer_assets",
+        staticmethod(lambda: {"installer": str(installer)}),
+    )
+
+
+def _run_status_with_real_hooks_step(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, switch: bool
+):
+    plugin = _obs("claude-plugin", "success")
+    real = handler_setup_claude.HandlerSetupClaude
+    monkeypatch.setattr(
+        cli_delegation,
+        "HandlerSetupClaude",
+        lambda name, _replace=False: (
+            _Step(plugin) if name == "claude-plugin" else real(name="claude-hooks")
+        ),
+    )
+    monkeypatch.setattr(cli_delegation, "delegation_switch_enabled", lambda: switch)
+    monkeypatch.setattr(cli_delegation, "read_switches", _Switches)
+    monkeypatch.setattr(cli_delegation, "write_switches", lambda _switches: None)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("ONEX_HOOKS_MASK", raising=False)
+    (tmp_path / "home").mkdir(exist_ok=True)
+    text = CliRunner().invoke(cli_delegation.delegation_group, ["status"])
+    document = json.loads(
+        CliRunner()
+        .invoke(cli_delegation.delegation_group, ["status", "--json"])
+        .output.strip()
+        .splitlines()[-1]
+    )
+    return text.output, document
+
+
+@pytest.mark.parametrize("how", ["installer", "bundle"])
+def test_ac2_assets_really_removed_keeps_the_repair_command(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, how: str
+) -> None:
+    """AC2: with the hook assets really removed (or broken) and delegation wanted
+    (the switch on), status still names the repair command, not a plain on."""
+    _break_the_hook_assets(monkeypatch, tmp_path, how)
+    text, document = _run_status_with_real_hooks_step(
+        monkeypatch, tmp_path, switch=True
+    )
+    assert "onex install omninode-claude" in text
+    assert "onex install omninode-claude" in str(document["fix"])
+    assert "Run onex delegation on" not in text
+
+
+@pytest.mark.parametrize("how", ["installer", "bundle"])
+def test_assets_removed_with_delegation_off_leads_with_onex_delegation_on(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, how: str
+) -> None:
+    """The boundary the approved spec chose, kept visible: the reading the Mac showed
+    (the unreadable-assets text with the switch off) is told from a break by the
+    switch alone, so even really removed assets lead with `onex delegation on` while
+    delegation is off. `onex delegation on` then fails and names the repair (the next
+    test). Whether that is the wanted reading of AC2 is the ticket owner's decision;
+    if the answer is "repair first, always", delete this test and the switch term in
+    cli_delegation._report."""
+    _break_the_hook_assets(monkeypatch, tmp_path, how)
+    text, document = _run_status_with_real_hooks_step(
+        monkeypatch, tmp_path, switch=False
+    )
+    assert document["status"] == "off"
+    assert "onex delegation on" in text
+    assert "onex install" not in str(document["fix"])
 
 
 def test_on_that_fails_to_install_names_the_repair_not_healthy_off(
