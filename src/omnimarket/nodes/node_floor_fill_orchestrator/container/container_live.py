@@ -12,10 +12,15 @@ store), and the brake and stop signal (the andon stop gate over the stop queue).
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import datetime
 from pathlib import Path
+from typing import ClassVar
 
+from omnibase_spi.contracts.services import (
+    ModelLaneHostPoolRequest,
+    ModelLaneHostPoolSnapshot,
+)
 from omnibase_spi.protocols.lane import (
     ProtocolFloorTicketStore,
     ProtocolLaneProcessRunner,
@@ -39,6 +44,7 @@ from omnimarket.nodes.node_floor_fill_orchestrator.handlers.adapter_floor_seams_
     LiveFloorTickets,
     LiveSeamSources,
     default_stop_facts,
+    unconfigured_stop_facts,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.handlers.adapter_ledger_file import (
     FileWorkLedgerStore,
@@ -51,6 +57,7 @@ from omnimarket.nodes.node_floor_fill_orchestrator.models import (
     ModelFloorFillStoreSettings,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_live_settings import (
+    LIVE_OVERLAY_SECTION,
     ModelFloorFillLiveSettings,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.adapters import (
@@ -61,6 +68,7 @@ from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.core import (
     FloorFillOrchestrator,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
+    FloorFillUnreadableError,
     ProtocolFloorClock,
     ProtocolFloorPool,
     ProtocolFloorStateStore,
@@ -78,18 +86,41 @@ from omnimarket.nodes.node_lane_process_effect.handlers.handler_posix_process im
 )
 
 
+class _UnconfiguredLanePool:
+    """A lane host pool whose overlay keys are absent: every read fails naming them, so the pool seam is unread."""
+
+    synchronous_execution: ClassVar[bool] = True
+
+    def __init__(self, keys: Sequence[str]) -> None:
+        self._keys = ",".join(keys)
+
+    def read_pool(self, request: ModelLaneHostPoolRequest) -> ModelLaneHostPoolSnapshot:
+        raise FloorFillUnreadableError(f"unconfigured:{self._keys}")
+
+
 def _snapshot_pool(
     settings: ModelFloorFillLiveSettings, now: Callable[[], datetime]
 ) -> ProtocolFloorPool:
     """The pool seam over the stamped lane host pool snapshot: a missing, stale or empty snapshot is unread."""
+    path = settings.pool_snapshot_path
+    suffix = settings.pool_record_suffix
+    max_age = settings.pool_snapshot_max_age_seconds
+    engine = settings.pool_engine
+    if path is None or suffix is None or max_age is None or engine is None:
+        absent = [
+            f"{LIVE_OVERLAY_SECTION}.{name}"
+            for name in (
+                "pool_snapshot_path",
+                "pool_record_suffix",
+                "pool_snapshot_max_age_seconds",
+                "pool_engine",
+            )
+            if getattr(settings, name) is None
+        ]
+        return LiveFloorPool(_UnconfiguredLanePool(absent), engine or "")
     return LiveFloorPool(
-        StampedSnapshotFileLaneHostPool(
-            Path(settings.pool_snapshot_path),
-            settings.pool_record_suffix,
-            settings.pool_snapshot_max_age_seconds,
-            now,
-        ),
-        settings.pool_engine,
+        StampedSnapshotFileLaneHostPool(Path(path), suffix, max_age, now),
+        engine,
     )
 
 
@@ -103,7 +134,12 @@ def _linear_ticket_store(
             build_linear_store,
         )
 
-        return build_linear_store(lane, timeout_seconds=settings.mint_timeout_seconds)
+        timeout = settings.mint_timeout_seconds
+        if timeout is None:
+            raise FloorFillUnreadableError(
+                f"unconfigured:{LIVE_OVERLAY_SECTION}.mint_timeout_seconds"
+            )
+        return build_linear_store(lane, timeout_seconds=timeout)
 
     return build_store
 
@@ -161,7 +197,12 @@ def build_live_handler_factory(
             ticket_store = _linear_ticket_store(config.scope, settings)
         stop_facts = live_sources.stop_facts
         if stop_facts is None:
-            stop_facts = default_stop_facts(Path(settings.andon_state_dir), now_utc)
+            if settings.andon_state_dir is None:
+                stop_facts = unconfigured_stop_facts(
+                    f"{LIVE_OVERLAY_SECTION}.andon_state_dir"
+                )
+            else:
+                stop_facts = default_stop_facts(Path(settings.andon_state_dir), now_utc)
         signals = LiveFloorStopSignals(stop_facts)
         orchestrator = FloorFillOrchestrator(
             config=config,

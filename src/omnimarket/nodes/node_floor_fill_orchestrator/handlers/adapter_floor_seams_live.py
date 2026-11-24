@@ -201,14 +201,23 @@ class LiveFloorTickets:
         self,
         store: Callable[[], ProtocolFloorTicketStore],
         *,
-        mint_timeout_seconds: float,
+        mint_timeout_seconds: float | None,
     ) -> None:
         self._store_factory = store
         self._mint_timeout_seconds = mint_timeout_seconds
         self._store: ProtocolFloorTicketStore | None = None
         self._plans: dict[str, str | None] = {}
 
+    def _timeout(self) -> float:
+        """The ticket store's deadline; an overlay that does not carry it leaves the tickets source unread."""
+        if self._mint_timeout_seconds is None:
+            raise FloorFillUnreadableError(
+                "ticket-store:unconfigured:floor_fill_live.mint_timeout_seconds"
+            )
+        return self._mint_timeout_seconds
+
     def _ticket_store(self) -> ProtocolFloorTicketStore:
+        self._timeout()
         if self._store is None:
             try:
                 self._store = self._store_factory()
@@ -271,7 +280,7 @@ class LiveFloorTickets:
                     line_id=line_id,
                     task_id=task_id,
                     ticket=ticket,
-                    mint_timeout_seconds=self._mint_timeout_seconds,
+                    mint_timeout_seconds=self._timeout(),
                 )
             )
             verdicts.append(
@@ -303,7 +312,7 @@ class LiveFloorTickets:
                 title=built.payload.title,
                 description=built.payload.description,
                 parent=built.payload.parent,
-                mint_timeout_seconds=self._mint_timeout_seconds,
+                mint_timeout_seconds=self._timeout(),
             )
         )
         return ModelMintResult(
@@ -346,6 +355,15 @@ def default_stop_facts(
     return read
 
 
+def unconfigured_stop_facts(key: str) -> Callable[[], LiveStopFacts]:
+    """Stop facts for an overlay without the stop queue directory: every read is unread, naming the absent key."""
+
+    def read() -> LiveStopFacts:
+        raise FloorFillUnreadableError(f"unconfigured:{key}")
+
+    return read
+
+
 __all__: list[str] = [
     "BRAKE_STOP_CLASS",
     "LiveFloorPool",
@@ -354,4 +372,5 @@ __all__: list[str] = [
     "LiveSeamSources",
     "LiveStopFacts",
     "default_stop_facts",
+    "unconfigured_stop_facts",
 ]

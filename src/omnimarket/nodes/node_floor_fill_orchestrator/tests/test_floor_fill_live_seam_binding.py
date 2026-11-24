@@ -37,6 +37,7 @@ from omnimarket.nodes.node_floor_fill_orchestrator.models import (
     EnumFloorFillStatus,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_live_settings import (
+    SEAM_KEYS,
     load_floor_fill_live_settings,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.scripted_ports import (
@@ -181,6 +182,7 @@ def _live_tick(
     slots: dict[str, int] | None = None,
     pool_age: timedelta = timedelta(seconds=30),
     write_pool: bool = True,
+    omit: tuple[str, ...] = (),
     **bindings: Any,
 ) -> tuple[str, int, ScriptedStarter]:
     """A live tick over the recorded floor record and pool reading; nothing is injected unless ``bindings`` or ``sources`` say."""
@@ -199,7 +201,13 @@ def _live_tick(
 
     record_text = _record_text()
     plans = _plans(record_text)
-    settings = load_floor_fill_live_settings(live_section(tmp_path))
+    settings = load_floor_fill_live_settings(
+        {
+            name: value
+            for name, value in live_section(tmp_path).items()
+            if name not in omit
+        }
+    )
     (tmp_path / "ledger.md").write_text("", encoding="utf-8")
     (tmp_path / "out").mkdir(exist_ok=True)
     if write_pool:
@@ -399,6 +407,33 @@ def test_live_seam_read_failure_ticket_store_unreadable_names_the_store(
     )
     assert "ticket-store:KeyError" in out
     assert "LINEAR_API_KEY" not in out
+    assert starter.starts == []
+
+
+@pytest.mark.parametrize("key", SEAM_KEYS)
+def test_live_seam_read_failure_overlay_without_a_seam_key_names_it(
+    key: str, tmp_path: Path
+) -> None:
+    """Overlays main carries none of the seam keys yet: the seam whose key is absent is unread naming it, never unbound."""
+    from omnimarket.nodes.node_floor_fill_orchestrator.handlers.adapter_floor_seams_live import (
+        LiveSeamSources,
+    )
+    from omnimarket.nodes.node_floor_task_ticket_effect.adapters.adapter_inmemory_floor_ticket_store import (
+        InMemoryFloorTicketStore,
+    )
+
+    out, code, starter = _live_tick(
+        tmp_path,
+        omit=(key,),
+        sources=LiveSeamSources(
+            ticket_store=lambda: InMemoryFloorTicketStore(),
+            stop_facts=None if key == "andon_state_dir" else _stop_facts(),
+        ),
+    )
+    assert f"floor_fill_live.{key}" in out
+    assert "unbound" not in out
+    # An unread pool, brake or stop degrades the pass; an unconfigured ticket store is a refused mint (MISSING lines).
+    assert code == (OK if key == "mint_timeout_seconds" else DEGRADED)
     assert starter.starts == []
 
 
