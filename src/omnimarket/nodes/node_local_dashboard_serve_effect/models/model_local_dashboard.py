@@ -4,10 +4,13 @@
 
 from __future__ import annotations
 
+import contextlib
 import ipaddress
+import os
 import secrets
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from pathlib import Path
 
 from pydantic import (
     AwareDatetime,
@@ -31,9 +34,33 @@ class DashboardBindError(ValueError):
     """``dashboard.bind`` names a value the local dashboard must not bind."""
 
 
+DASHBOARD_TOKEN_FILE_ENV = "ONEX_DASHBOARD_TOKEN_FILE"
+
+
 def mint_dashboard_token() -> SecretStr:
     """A fresh random token for one start of the dashboard (OMN-19916, decision D2)."""
     return SecretStr(secrets.token_urlsafe(32))
+
+
+def mint_or_load_dashboard_token() -> SecretStr:
+    """Take the token the setup lifecycle named for this start, else mint one.
+
+    The setup lifecycle names a one-start token file in the environment; it is
+    read once and deleted, so a file left behind by a killed process is never
+    reused and a direct ``onex dashboard`` always mints its own.
+    """
+    named = os.environ.get(DASHBOARD_TOKEN_FILE_ENV)
+    if named:
+        token_path = Path(named)
+        try:
+            token_text = token_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            token_text = ""
+        with contextlib.suppress(OSError):
+            token_path.unlink()
+        if token_text:
+            return SecretStr(token_text)
+    return mint_dashboard_token()
 
 
 def is_loopback_host(host: str) -> bool:
@@ -57,7 +84,7 @@ class ModelLocalDashboardServeRequest(BaseModel):
         default=None, description="The identity `onex local init` minted, if any."
     )
     access_token: SecretStr = Field(
-        default_factory=mint_dashboard_token,
+        default_factory=mint_or_load_dashboard_token,
         description=(
             "Minted per start; every request must carry it (OMN-19916). Handed to "
             "the developer once, in the start URL, and never written to a page."
@@ -130,10 +157,12 @@ def resolve_dashboard_bind(overlay: Mapping[str, object] | None) -> tuple[str, i
 
 
 __all__ = [
+    "DASHBOARD_TOKEN_FILE_ENV",
     "DashboardBindError",
     "ModelLocalDashboardServeRequest",
     "ModelLocalDashboardServeResult",
     "is_loopback_host",
     "mint_dashboard_token",
+    "mint_or_load_dashboard_token",
     "resolve_dashboard_bind",
 ]
