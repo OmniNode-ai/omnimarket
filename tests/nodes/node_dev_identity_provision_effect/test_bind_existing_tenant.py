@@ -479,7 +479,9 @@ def test_a_realm_that_drops_the_attributes_fails_the_readback_naming_both_claims
     assert result.cleanup is EnumDevIdentityCleanup.DELETED
 
 
-def test_a_token_naming_another_tenant_fails_the_readback() -> None:
+def test_a_token_naming_another_tenant_fails_the_readback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     binding = _binding()
     transport = _keycloak()
     original = transport._signed_token
@@ -489,7 +491,7 @@ def test_a_token_naming_another_tenant_fails_the_readback() -> None:
         transport.attributes[user_id][binding.tenant_id_attribute] = [str(uuid4())]
         return original(form)
 
-    transport._signed_token = other_tenant  # type: ignore[method-assign]
+    monkeypatch.setattr(transport, "_signed_token", other_tenant)
     result = _bind(
         _rig(transport, FakeTenantReader(), FakeTenantProvisioner(), binding=binding)
     )
