@@ -4,13 +4,12 @@
 
 No topic string lives in a handler. The provision node declares a ``topics`` block (one requested and one completed topic
 per operation); the gateway key node declares each command as a ``handler_routing`` route and each answer as a
-``published_events`` entry. A package is located by its spec, never imported, so no private handler or model of the other
+``published_events`` entry. A contract is located beside this node under ``nodes/``, never imported, so no private handler or model of the other
 node is loaded. A contract that cannot be found or that lacks an operation is a typed refusal, never a guess.
 """
 
 from __future__ import annotations
 
-from importlib.util import find_spec
 from pathlib import Path
 from typing import Any, Final
 
@@ -19,7 +18,9 @@ from pydantic import BaseModel, ConfigDict
 
 PROVISION_NODE: Final[str] = "node_tenant_provision_effect"
 KEY_NODE: Final[str] = "node_tenant_api_key_effect"
-_PACKAGE_ROOT: Final[str] = "omnimarket.nodes"
+# The nodes directory this package installs beside this node: a contract is a sibling node's file, located by path and
+# never imported, so no private handler or model of the other node is loaded.
+_NODES_ROOT: Final[Path] = Path(__file__).resolve().parents[2]
 
 
 class ContractUnavailableError(RuntimeError):
@@ -35,13 +36,8 @@ class ModelOperationTopics(BaseModel):
 
 
 def _contract(node_id: str) -> dict[str, Any]:
-    try:
-        spec = find_spec(f"{_PACKAGE_ROOT}.{node_id}")
-    except ModuleNotFoundError:
-        spec = None
-    locations = list(spec.submodule_search_locations or []) if spec else []
-    path = Path(locations[0]) / "contract.yaml" if locations else None
-    if path is None or not path.is_file():
+    path = _NODES_ROOT / node_id / "contract.yaml"
+    if not path.is_file():
         raise ContractUnavailableError(
             f"{node_id} is not installed in this package: its contract declares the topics this command publishes on"
         )
