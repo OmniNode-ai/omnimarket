@@ -211,6 +211,115 @@ def test_daily_record_fails_and_names_the_repository_when_a_row_grows(
     assert evidence["exit_code"] == 1
 
 
+class _RecordingBus:
+    def __init__(self) -> None:
+        self.sent: list[dict[str, object]] = []
+
+    def publish(self, **event: object) -> bool:
+        self.sent.append(dict(event))
+        return True
+
+
+def _tick_recording(
+    root: Path, tmp_path: Path
+) -> tuple[int, list[str], dict[str, object], _RecordingBus]:
+    out = io.StringIO()
+    state = tmp_path / "state"
+    bus = _RecordingBus()
+    code = tick.main(
+        ["--omni-home", str(root), "--state-dir", str(state)],
+        environ={},
+        stdout=out,
+        publisher=bus,
+    )
+    evidence = json.loads((state / tick.EVIDENCE_FILE).read_text(encoding="utf-8"))
+    return code, out.getvalue().splitlines(), evidence, bus
+
+
+def test_absent_repository_daily_record_counts_the_present_ones_and_names_the_absent_one(
+    registry_root: Path, tmp_path: Path
+) -> None:
+    absent = "omnidash"
+    shutil.rmtree(registry_root / absent)
+    code, lines, evidence, bus = _tick_recording(registry_root, tmp_path)
+    assert code == 0, lines
+    tables = _tables()
+    overlay = _overlay()
+    present = [n for n in _REGISTRY if n != absent]
+    counted = [
+        line.split()[1]
+        for line in lines
+        if line.startswith("CENSUS ") and " state=" in line
+    ]
+    assert counted == list(_REGISTRY)
+    total = sum(len(tables[n]) for n in present)
+    runtime = sum(1 for n in present for p in tables[n] if is_runtime(p, overlay))
+    assert f"CENSUS total={total} runtime={runtime} passed=yes failure=none " in lines
+    assert f"CENSUS-ABSENT {absent}" in lines
+    record = evidence["record"]
+    assert isinstance(record, dict)
+    assert record["passed"] is True
+    assert record["absent_repositories"] == [absent]
+    assert (record["total_files"], record["runtime_files"]) == (total, runtime)
+    for row in record["repositories"]:
+        if row["repository"] != absent:
+            assert row["files"] == len(tables[row["repository"]])
+            assert row["state"] == "ok"
+    assert evidence["published"] is True
+    assert len(bus.sent) == 1
+    payload = bus.sent[0]["payload"]
+    assert isinstance(payload, dict)
+    assert payload["partial"] is True
+    assert payload["absent_repositories"] == [absent]
+    assert payload["record"]["absent_repositories"] == [absent]
+    assert payload["record"]["total_files"] == total
+
+
+def test_absent_repository_daily_record_names_every_absent_one(
+    registry_root: Path, tmp_path: Path
+) -> None:
+    gone = ["omnidash", "omnimemory"]
+    for name in gone:
+        shutil.rmtree(registry_root / name)
+    code, lines, evidence, _bus = _tick_recording(registry_root, tmp_path)
+    assert code == 0, lines
+    assert [line for line in lines if line.startswith("CENSUS-ABSENT ")] == [
+        f"CENSUS-ABSENT {name}" for name in gone
+    ]
+    record = evidence["record"]
+    assert isinstance(record, dict)
+    assert record["absent_repositories"] == gone
+
+
+def test_absent_repository_daily_record_a_present_repository_that_grew_still_fails_the_run(
+    registry_root: Path, tmp_path: Path
+) -> None:
+    shutil.rmtree(registry_root / "omnidash")
+    _write_tracked(registry_root / "omnimarket", "src/pkg/another_reader.py", 1)
+    code, lines, evidence, bus = _tick_recording(registry_root, tmp_path)
+    assert code == 1, lines
+    record = evidence["record"]
+    assert isinstance(record, dict)
+    assert record["passed"] is False
+    assert record["absent_repositories"] == ["omnidash"]
+    assert len(bus.sent) == 1, "a failed run still publishes its count"
+
+
+def test_absent_repository_daily_record_none_absent_carries_an_empty_list(
+    registry_root: Path, tmp_path: Path
+) -> None:
+    code, lines, evidence, bus = _tick_recording(registry_root, tmp_path)
+    assert code == 0, lines
+    assert not any(line.startswith("CENSUS-ABSENT") for line in lines)
+    record = evidence["record"]
+    assert isinstance(record, dict)
+    assert record["absent_repositories"] == []
+    payload = bus.sent[0]["payload"]
+    assert isinstance(payload, dict)
+    assert payload["partial"] is False
+    assert payload["absent_repositories"] == []
+
+
 def test_daily_record_a_missing_clone_is_a_typed_failure_not_a_pass(
     registry_root: Path, tmp_path: Path
 ) -> None:
