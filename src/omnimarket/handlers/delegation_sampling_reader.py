@@ -24,6 +24,7 @@ from omnimarket.handlers.node_overlay_reader import (
 from omnimarket.handlers.routing.measured_correct_ceiling import CODE_BUDGET_OVERLAY_ID
 from omnimarket.models.model_delegation_code_budget import (
     EnumCodeBudgetRefusal,
+    ModelBackendSampling,
     ModelClassSampling,
     ModelCodeBudgetOverlay,
     ModelCodeBudgetRequest,
@@ -62,4 +63,40 @@ def read_sampling_settings(
     return result.sampling
 
 
-__all__ = ["read_sampling_settings"]
+# The request model names a task class on every operation; a backend's settings hold for all of them.
+_BACKEND_SAMPLING_TASK_CLASS = "any"
+
+
+def read_backend_sampling(
+    backend_id: str, environ: Mapping[str, str] | None = None
+) -> ModelBackendSampling | None:
+    """The overlay's sampling settings for ``backend_id``, or ``None`` when it names none (OMN-26365).
+
+    The class table (``class_sampling``) is shared by every backend of a task class; this
+    table is keyed by backend, so a setting only one model understands, such as its
+    reasoning effort, reaches that backend's request and no other. Read through the
+    same node operation family as :func:`read_sampling_settings`: a backend the overlay
+    does not name, and an install no overlay root names the code budget overlay on, have
+    no settings; an overlay that is present but unreadable or invalid raises
+    :class:`~omnimarket.handlers.node_overlay_reader.NodeOverlayError`.
+    """
+    try:
+        overlay = load_structured_overlay(
+            CODE_BUDGET_OVERLAY_ID, ModelCodeBudgetOverlay, environ
+        )
+    except NodeOverlayNotFoundError:
+        return None
+    result = HandlerDelegationCodeBudget().handle(
+        ModelCodeBudgetRequest(
+            operation="backend_sampling",
+            task_class=_BACKEND_SAMPLING_TASK_CLASS,
+            backend=backend_id,
+            overlay=overlay,
+        )
+    )
+    if result.refusal is EnumCodeBudgetRefusal.UNNAMED_BACKEND_SAMPLING:
+        return None
+    return result.backend_sampling
+
+
+__all__ = ["read_backend_sampling", "read_sampling_settings"]

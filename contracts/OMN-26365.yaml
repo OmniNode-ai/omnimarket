@@ -25,10 +25,18 @@ requirements:
         statement: "AC4: a tenant_overlay decision stamped house_overlay with no credential reference classifies as no credential required, a house reference classifies as a house key, and a decision built by the reducer from a house row under either form of the house tenant id classifies the same -- falsifier: uv run pytest tests/unit/delegation/test_omn26365_house_route_needs_no_customer_key.py -k 'house' fails"
       - id: AC5
         statement: "AC5: a customer tenant's overlay decision with a minted reference, with no reference, or built by the reducer from a customer row still classifies as the customer's key, and the OMN-18201 boundary tests stay green -- falsifier: uv run pytest tests/unit/delegation/test_omn26365_house_route_needs_no_customer_key.py tests/unit/delegation/test_omn18201_effect_boundary_auth_header.py -k 'customer or tenant_overlay or minted' fails"
+  - id: req-omn26365-backend-effort
+    statement: "A backend's reasoning effort is declared per backend in the code budget overlay and rides that backend's request only."
+    acceptance:
+      - id: AC6
+        statement: "AC6: the code budget overlay accepts backend_sampling.<backend>.reasoning_effort, the dispatch port sends it in chat_template_kwargs of that backend only, and class_sampling still forbids reasoning_effort -- falsifier: uv run pytest tests/unit/nodes/test_delegation_backend_sampling.py fails"
 evidence_requirements:
   - kind: tests
     description: "The node's tests and the house tenant reader tests at the pushed head."
     command: "uv run --frozen pytest tests/nodes/node_house_routing_overlay_effect tests/nodes/node_delegation_routing_reducer/test_omn19186_house_tenant_overlay.py -q --no-cov -n 0 -p no:randomly -m 'not kafka'"
+  - kind: tests
+    description: "Backend sampling model, reader, handler operation and request options."
+    command: "uv run --frozen pytest tests/unit/nodes/test_delegation_backend_sampling.py tests/nodes/node_delegation_code_budget_compute -q --no-cov -n 0 -p no:randomly"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -87,3 +95,12 @@ dod_evidence:
       - check_type: command
         check_value: >-
           env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26365 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_house_routing_overlay_effect tests/nodes/node_delegation_routing_reducer/test_omn19186_house_tenant_overlay.py -q --no-cov -n 0 -p no:randomly
+  - id: dod-omn26365-ac6-backend-effort
+    description: "The backend sampling model refuses a value the chat template does not take, the reader returns the named backend and none for any other, the handler refuses an unnamed backend with a typed refusal, and the dispatch port puts the effort in chat_template_kwargs beside the keys already there without changing its input."
+    source: manual
+    binds_ac: [AC6]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run --frozen pytest tests/unit/nodes/test_delegation_backend_sampling.py tests/nodes/node_delegation_code_budget_compute -q --no-cov -n 0 -p no:randomly
+        cwd: .

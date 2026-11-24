@@ -11,7 +11,7 @@ it (``input_ceilings``) and a pair the overlay does not name has none.
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -26,6 +26,7 @@ class EnumCodeBudgetRefusal(StrEnum):
     OVER_CEILING = "over_ceiling"
     UNNAMED_INPUT_CEILING = "unnamed_input_ceiling"
     UNNAMED_SAMPLING_CLASS = "unnamed_sampling_class"
+    UNNAMED_BACKEND_SAMPLING = "unnamed_backend_sampling"
 
 
 # The overlay key under which a site declares the input ceiling of a backend and task class (OMN-23631).
@@ -72,6 +73,29 @@ class ModelClassSampling(BaseModel):
         return self
 
 
+# The effort names the Inkling chat template maps to a level (none 0.0 ... max 0.99); a number from 0.0 to 0.99 is taken as it is.
+EffortName = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
+
+
+class ModelBackendSampling(BaseModel):
+    """The sampling settings one backend is called with, whatever the task class.
+
+    ``ModelClassSampling`` is shared by every backend of a class, so a setting only one
+    model understands cannot live there. A value here rides the request of the backend
+    named by the overlay's ``backend_sampling`` key and no other; a None field is not sent.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    reasoning_effort: Annotated[float, Field(ge=0, le=0.99)] | EffortName | None = None
+
+    @model_validator(mode="after")
+    def validate_at_least_one_value(self) -> ModelBackendSampling:
+        if self.reasoning_effort is None:
+            raise ValueError("backend_sampling entry must name at least one value")
+        return self
+
+
 class ModelCodeBudgetOverlay(BaseModel):
     """The overlay of node_delegation_code_budget_compute. No key has a default."""
 
@@ -84,6 +108,8 @@ class ModelCodeBudgetOverlay(BaseModel):
     ceiling_s: float = Field(gt=0)
     input_ceilings: dict[str, dict[str, int]]
     class_sampling: dict[str, ModelClassSampling] | None = None
+    # Sampling settings per backend id (OMN-26365); a backend the table does not name is sent none.
+    backend_sampling: dict[str, ModelBackendSampling] | None = None
     # The bus `onex run-node` reads to reach this node (OMN-24265)
     event_bus: ModelNodeEventBus | None = None
 
@@ -95,6 +121,16 @@ class ModelCodeBudgetOverlay(BaseModel):
             for name in self.class_sampling:
                 if not name:
                     raise ValueError("class_sampling must name a class")
+        return self
+
+    @model_validator(mode="after")
+    def validate_backend_sampling(self) -> ModelCodeBudgetOverlay:
+        if self.backend_sampling is not None:
+            if not self.backend_sampling:
+                raise ValueError("backend_sampling must not be empty")
+            for name in self.backend_sampling:
+                if not name:
+                    raise ValueError("backend_sampling must name a backend")
         return self
 
     @model_validator(mode="after")
@@ -134,7 +170,9 @@ class ModelCodeBudgetRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    operation: Literal["resolve", "size", "input_ceiling", "sampling"]
+    operation: Literal[
+        "resolve", "size", "input_ceiling", "sampling", "backend_sampling"
+    ]
     task_class: str = Field(min_length=1)
     measurements: tuple[ModelDraftMeasurement, ...] = ()
     overlay: ModelCodeBudgetOverlay
@@ -142,8 +180,11 @@ class ModelCodeBudgetRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_backend_named_for_input_ceiling(self) -> ModelCodeBudgetRequest:
-        if self.operation == "input_ceiling" and self.backend is None:
-            raise ValueError("operation input_ceiling names a backend")
+        if (
+            self.operation in ("input_ceiling", "backend_sampling")
+            and self.backend is None
+        ):
+            raise ValueError(f"operation {self.operation} names a backend")
         return self
 
 
@@ -152,7 +193,9 @@ class ModelCodeBudgetResult(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    operation: Literal["resolve", "size", "input_ceiling", "sampling"]
+    operation: Literal[
+        "resolve", "size", "input_ceiling", "sampling", "backend_sampling"
+    ]
     task_class: str
     call_budget_s: float | None
     source: Literal["overlay", "measured"]
@@ -163,3 +206,4 @@ class ModelCodeBudgetResult(BaseModel):
     input_ceiling_tokens: int | None = None
     overlay_key: str | None = None
     sampling: ModelClassSampling | None = None
+    backend_sampling: ModelBackendSampling | None = None

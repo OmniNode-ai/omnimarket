@@ -22,7 +22,10 @@ description: >
   rounded up to the overlay's step, refusing with too few completed samples or over the overlay's ceiling. Operation input_ceiling
   (OMN-23631) returns the overlay's input ceiling, in grounding tokens, for a named backend and task class and refuses a pair the
   overlay does not name; the routing handler reads every input ceiling through it, from the overlay key
-  delegation.code_budget.input_ceilings.<backend>.<task_class>. No clock read, no state, no I/O.
+  delegation.code_budget.input_ceilings.<backend>.<task_class>. Operation backend_sampling
+  (OMN-26365) returns the sampling settings the overlay names for a backend whatever the task class (today its reasoning_effort, sent in
+  the request's chat_template_kwargs) and refuses a backend the overlay does not name; the class table class_sampling cannot hold it
+  because every backend of a class shares that table. No clock read, no state, no I/O.
 
 handler_routing:
   routing_strategy: operation_match
@@ -47,7 +50,7 @@ descriptor:
 input_model:
   name: ModelCodeBudgetRequest
   module: omnimarket.models.model_delegation_code_budget
-  description: The operation, the task class, the backend (input_ceiling only), the drafts measured and the overlay.
+  description: The operation, the task class, the backend (input_ceiling and backend_sampling only), the drafts measured and the overlay.
 output_model:
   name: ModelCodeBudgetResult
   module: omnimarket.models.model_delegation_code_budget

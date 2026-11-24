@@ -6,7 +6,8 @@
 drafts measured for a class, keeps the ones that completed, and returns the slowest completed duration times the overlay's margin,
 rounded up to the overlay's step; it refuses with too few completed samples and over the overlay's ceiling. A draft that timed out
 is never a sample: its duration is the budget that cut it off, not what the draft needed. ``input_ceiling`` returns the overlay's input
-ceiling for a backend and task class and refuses a pair the overlay does not name (OMN-23631). No clock, no I/O, no value of its own.
+ceiling for a backend and task class and refuses a pair the overlay does not name (OMN-23631). ``backend_sampling`` returns the
+sampling settings the overlay names for a backend, whatever the task class, and refuses a backend it does not name (OMN-26365). No clock, no I/O, no value of its own.
 """
 
 from __future__ import annotations
@@ -23,6 +24,36 @@ from omnimarket.models.model_delegation_code_budget import (
 
 class HandlerDelegationCodeBudget:
     def handle(self, request: ModelCodeBudgetRequest) -> ModelCodeBudgetResult:
+        if request.operation == "backend_sampling":
+            backend = request.backend or ""
+            backend_sampling = (
+                request.overlay.backend_sampling.get(backend)
+                if request.overlay.backend_sampling is not None
+                else None
+            )
+            if backend_sampling is None:
+                return ModelCodeBudgetResult(
+                    operation="backend_sampling",
+                    task_class=request.task_class,
+                    call_budget_s=None,
+                    source="overlay",
+                    refusal=EnumCodeBudgetRefusal.UNNAMED_BACKEND_SAMPLING,
+                    completed_samples=0,
+                    detail=f"No sampling named for backend: {backend}",
+                    backend=backend,
+                )
+            return ModelCodeBudgetResult(
+                operation="backend_sampling",
+                task_class=request.task_class,
+                call_budget_s=None,
+                source="overlay",
+                refusal=None,
+                completed_samples=0,
+                detail="",
+                backend=backend,
+                backend_sampling=backend_sampling,
+            )
+
         if request.operation == "sampling":
             sampling = (
                 request.overlay.class_sampling.get(request.task_class)

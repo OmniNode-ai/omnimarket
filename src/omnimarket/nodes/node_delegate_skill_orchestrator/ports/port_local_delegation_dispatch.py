@@ -141,7 +141,10 @@ from omnimarket.handlers.delegation_model_scope import (
     read_model_scope,
 )
 from omnimarket.handlers.delegation_paid_band import resolve_paid_from_size_band
-from omnimarket.handlers.delegation_sampling_reader import read_sampling_settings
+from omnimarket.handlers.delegation_sampling_reader import (
+    read_backend_sampling,
+    read_sampling_settings,
+)
 from omnimarket.handlers.handler_capability_start import (
     ProtocolCapabilityCellReader,
     read_capability_cells,
@@ -301,7 +304,10 @@ from omnimarket.models.delegation.wire.model_quality_gate import (
     ModelQualityGateResult,
     ModelQualityRuleEvaluation,
 )
-from omnimarket.models.model_delegation_code_budget import ModelClassSampling
+from omnimarket.models.model_delegation_code_budget import (
+    ModelBackendSampling,
+    ModelClassSampling,
+)
 from omnimarket.models.model_delegation_split_recombine import (
     EnumDelegationSizeBand,
     ModelDelegationSplitUnit,
@@ -1543,6 +1549,27 @@ def _apply_class_sampling(
     if sampling.enable_thinking is True:
         prompt = prompt.removeprefix("/no_think\n")
     return options, prompt
+
+
+def _apply_backend_sampling(
+    provider_request_options: dict[str, Any],
+    sampling: ModelBackendSampling | None,
+) -> dict[str, Any]:
+    """The request options with the backend's own sampling values over them (OMN-26365).
+
+    The reasoning effort goes in ``chat_template_kwargs`` beside whatever the profile and
+    the class table already put there, the way the Inkling chat template reads it. Returns
+    a new object; the options passed in are never changed. A backend the overlay names no
+    sampling for changes nothing.
+    """
+    if sampling is None or sampling.reasoning_effort is None:
+        return provider_request_options
+    options = dict(provider_request_options)
+    options["chat_template_kwargs"] = {
+        **options.get("chat_template_kwargs", {}),
+        "reasoning_effort": sampling.reasoning_effort,
+    }
+    return options
 
 
 def _attempt_configuration(
@@ -5409,6 +5436,10 @@ class LocalDelegationDispatchPort:
             provider_request_options, outbound_prompt = _apply_class_sampling(
                 provider_request_options, outbound_prompt, class_sampling
             )
+        # OMN-26365: the backend's own settings (its reasoning effort) ride this backend's request only.
+        provider_request_options = _apply_backend_sampling(
+            provider_request_options, read_backend_sampling(backend.backend_id)
+        )
         # OMN-26588: thinking tokens share the output cap with the answer, so
         # whichever of the profile and the overlay set a budget, it leaves the
         # answer room.
