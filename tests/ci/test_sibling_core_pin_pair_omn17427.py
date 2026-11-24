@@ -52,6 +52,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # 0f7f2b730399: omnibase_infra dev after #6129 (OMN-25103), which grants the runtime account the floor_integration_pass marker; core is unchanged.
 # 1e0559bbc392: omnibase_infra dev after #6138, #6145 and #6153 (OMN-26338, OMN-26359, OMN-26430), the loop-hold fixes the composed boot check reads; core is unchanged.
 # 878ab2e30086: omnibase_infra dev after #6192 (OMN-26336), the boot loop holds the composed boot check reads; core is unchanged.
+# f296bb88c63e: omnibase_infra dev after #6230 (OMN-26336), the linear dispatcher owner scope and the frozen GC heap at engine freeze; core is unchanged.
 INFRA_CORE_TAGS: tuple[tuple[str, str], ...] = (
     ("091013fd7adb", "dev-20261030152335-66d35d2283c3"),
     ("4284f5bf5587", "dev-20261031000524-fc6159b98026"),
@@ -77,6 +78,7 @@ INFRA_CORE_TAGS: tuple[tuple[str, str], ...] = (
     ("0f7f2b730399", "dev-20261120075721-2a9efbda3548"),
     ("1e0559bbc392", "dev-20261120075721-2a9efbda3548"),
     ("878ab2e30086", "dev-20261120075721-2a9efbda3548"),
+    ("f296bb88c63e", "dev-20261120075721-2a9efbda3548"),
 )
 
 _GIT_SOURCE = re.compile(
@@ -146,8 +148,8 @@ def test_the_core_pin_is_the_one_the_infra_pin_names() -> None:
 
 
 def test_omnimarket_pins_the_newest_recorded_infra_and_core_pair() -> None:
-    """The lock moves with the newest recorded row: infra 878ab2e30086 and core 2a9efbda3548."""
+    """The lock moves with the newest recorded row: infra f296bb88c63e and core 2a9efbda3548."""
     infra_tag, infra_sha = _locked_dev_tag("omnibase-infra")
     core_tag, _ = _locked_dev_tag("omnibase-core")
     assert (infra_sha[:12], core_tag) == INFRA_CORE_TAGS[-1]
-    assert infra_tag == "dev-20261123161237-878ab2e30086"
+    assert infra_tag == "dev-20261124051956-f296bb88c63e"

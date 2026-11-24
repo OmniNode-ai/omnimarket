@@ -6,14 +6,15 @@ The overlay is the source: a change to a value is an overlay pull request that l
 document is validated first by the model the home's ``.omnimarket-node-pins`` names for that id, and an id
 with no line there, or a document its model refuses, is refused here with nothing published, so readers
 keep the version they hold. The loader asserts an overlay on every run, changed or not: its time is what
-a reader's staleness is measured against.
+a reader's staleness is measured against. A run over a list of ids names each refused id and goes on to the
+ids after it, so one bad overlay never starves the rest.
 """
 
 from __future__ import annotations
 
 import importlib
 import subprocess
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -26,8 +27,10 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
 )
 from omnimarket.models.overlay_store import (
+    ModelOverlayStoreLoadBatch,
     ModelOverlayStoreLoadResult,
     ModelOverlayStoreRecord,
+    ModelOverlayStoreRefusal,
     document_digest,
 )
 
@@ -138,9 +141,17 @@ class HandlerOverlayStoreLoad:
         self._loaded_by = loaded_by
         self._clock = clock
 
-    async def handle(self, overlay_id: str) -> ModelOverlayStoreLoadResult:
-        document, source_ref = self._source.read(overlay_id)
-        model = self._source.model_of(overlay_id)
+    def _prepare(self, overlay_id: str) -> ModelOverlayStoreRecord:
+        """Read, validate and stamp one overlay; every way the source or its model can refuse is an OverlayLoadRefusedError."""
+        try:
+            document, source_ref = self._source.read(overlay_id)
+            model = self._source.model_of(overlay_id)
+        except OverlayLoadRefusedError:
+            raise
+        except (NodeOverlayError, ValueError, OSError, yaml.YAMLError) as exc:
+            raise OverlayLoadRefusedError(
+                f"overlay {overlay_id}: the source cannot be read ({type(exc).__name__})"
+            ) from None
         try:
             model.model_validate(document)
         except ValidationError as exc:
@@ -150,7 +161,7 @@ class HandlerOverlayStoreLoad:
             raise OverlayLoadRefusedError(
                 f"overlay {overlay_id}: {model.__name__} refuses fields {fields}"
             ) from None
-        record = ModelOverlayStoreRecord(
+        return ModelOverlayStoreRecord(
             overlay_id=overlay_id,
             digest=document_digest(document),
             document=document,
@@ -158,17 +169,47 @@ class HandlerOverlayStoreLoad:
             loaded_by=self._loaded_by,
             loaded_at=self._clock(),
         )
+
+    async def _publish(
+        self, record: ModelOverlayStoreRecord
+    ) -> ModelOverlayStoreLoadResult:
         await self._bus.publish(
             self._topic,
-            overlay_id.encode("utf-8"),
+            record.overlay_id.encode("utf-8"),
             record.model_dump_json().encode("utf-8"),
         )
         return ModelOverlayStoreLoadResult(
-            overlay_id=overlay_id,
+            overlay_id=record.overlay_id,
             digest=record.digest,
-            source_ref=source_ref,
+            source_ref=record.source_ref,
             topic=self._topic,
             loaded_at=record.loaded_at,
+        )
+
+    async def handle(self, overlay_id: str) -> ModelOverlayStoreLoadResult:
+        return await self._publish(self._prepare(overlay_id))
+
+    async def handle_many(
+        self, overlay_ids: Sequence[str]
+    ) -> ModelOverlayStoreLoadBatch:
+        """Load each id in order; a refused id is named and the ids after it still publish.
+
+        Only a refusal of the overlay itself is carried on: a broker that does not answer still raises, because
+        every id after it would fail the same way and the caller reports the bus, not the overlays.
+        """
+        results: list[ModelOverlayStoreLoadResult] = []
+        refused: list[ModelOverlayStoreRefusal] = []
+        for overlay_id in overlay_ids:
+            try:
+                record = self._prepare(overlay_id)
+            except OverlayLoadRefusedError as exc:
+                refused.append(
+                    ModelOverlayStoreRefusal(overlay_id=overlay_id, reason=str(exc))
+                )
+                continue
+            results.append(await self._publish(record))
+        return ModelOverlayStoreLoadBatch(
+            results=tuple(results), refused=tuple(refused)
         )
 
 

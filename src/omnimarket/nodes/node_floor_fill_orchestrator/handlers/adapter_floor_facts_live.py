@@ -3,9 +3,9 @@
 """The live fact source of the floor fill: the floor record by URL, a plan text by file, and the brake and stop reads.
 
 ``fetch_url_text`` and ``read_text_file`` are the two real reads (a network or file URL, a local file); every other
-behaviour takes them by constructor, so the golden tests run on scripted ones. The brake and the stop signal have no
-live source yet: they are injected callables, and an absent one raises ``unbound:<source>`` so the pass fails closed
-and names what is unbound.
+behaviour takes them by constructor, so the golden tests run on scripted ones. The brake and the stop signal are
+injected callables (the live binding site binds the andon stop gate readers): an absent one raises ``unbound:<source>``
+so the pass fails closed and names what is unbound.
 """
 
 from __future__ import annotations
@@ -60,6 +60,14 @@ class LiveFloorFacts:
         self._plan_file_pattern = plan_file_pattern
         self._brake = brake
         self._stop = stop
+
+    def unbound_seams(self) -> tuple[str, ...]:
+        """The names of the injected reads left ``None``: a live profile that can ship has none."""
+        return tuple(
+            name
+            for name, read in (("brake", self._brake), ("stop-signal", self._stop))
+            if read is None
+        )
 
     def read_floor(self, url: str) -> str:
         try:

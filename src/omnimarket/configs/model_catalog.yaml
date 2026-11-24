@@ -13,24 +13,18 @@
 models_dev:
   # Key in configs/service_endpoints.yaml; the URL is never a literal in source.
   endpoint: models_dev.api_url
-  # Cached under the ONEX home folder; older than this is refetched, and a
-  # failed refetch keeps the cache, shown as stale.
+  # Cached under the ONEX home folder; the explorer reads it again when it is
+  # older than this, and a failed refetch keeps the cache, shown as stale. A
+  # delegation call never reads models.dev: it prices from this copy whatever its
+  # age, and `onex setup` and `onex models refresh-prices` renew it.
   cache_file: cache/models_dev.json
   max_age_hours: 24
   timeout_seconds: 10
   # The whole catalogue is read at once (6.7 MB on 2026-11-17); larger is refused.
   max_bytes: 33554432
-  # Inside a delegation call (OMN-23413 AC35) the read has a total deadline:
-  # this share of the call's remaining time, never more than the cap. A read
-  # that fails or runs out of time is not tried again by a call for the retry
-  # interval, so a down models.dev costs each call nothing.
-  call_read_deadline_seconds: 3
-  call_read_budget_share: 0.1
-  call_retry_after_failure_seconds: 300
 
-# A price list shipped inside the install (omnimarket#6497). A delegation call
-# no longer prices from it: OMN-23413 AC35 prices a call from models.dev read
-# live, reusing the copy above only while it is younger than max_age_hours.
+# A price list shipped inside the install. A delegation call prices from it only
+# when no models.dev copy is kept under the ONEX home.
 shipped_price_list:
   file: model_price_list.v1.json
 

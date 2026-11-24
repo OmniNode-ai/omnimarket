@@ -30,7 +30,12 @@ description: >
   compare_selection operation (OMN-26273) asks REACH of the graph for a merged pull request's changed files and
   compares its test files with the parse selection, in a worker terminated at the overlay's lookup deadline, with
   a separate fallback deadline for the file store; selection_verdict writes the two-part verdict over the rows.
-  An unreadable repository, pull request source or an append that does not land are typed failures.
+  Its handlers
+  question answers one row per operation of each contract's handler_routing: the handler class and module, the
+  input and output model, the topics, the declared failure causes and examples, read through the contract graph
+  import and resolved against the version's definition index; a reference it cannot place is marked UNRESOLVED and
+  an operation with no command topic and no subscribed topic with an observable output is NO_ROUTE. An unreadable
+  repository, pull request source or an append that does not land are typed failures.
 
 handler:
   module: omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph_requested

@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: MIT
 """Starts the loop-hold sampler in a python process when the boot check asks for it.
 
-The boot check mounts this directory into the kernel container and puts it on PYTHONPATH. Nothing runs unless
-ONEX_BOOT_SAMPLER_OUT and ONEX_BOOT_SAMPLER_BOUND_SECONDS are set. A sitecustomize further down the path (the image may
-carry one) is still run.
+The boot check stages this directory with a ``sampler_config.json`` beside it (the output path and the bound), mounts it
+into the kernel container and puts it on PYTHONPATH. Nothing runs when the config file is absent. A sitecustomize further
+down the path (the image may carry one) is still run.
 """
 
 from __future__ import annotations
@@ -33,10 +33,13 @@ def _chain_next_sitecustomize() -> None:
 
 
 def _start() -> None:
-    out = os.environ.get("ONEX_BOOT_SAMPLER_OUT")
-    bound = os.environ.get("ONEX_BOOT_SAMPLER_BOUND_SECONDS")
-    if not out or not bound:
+    config_path = os.path.join(_HERE, "sampler_config.json")
+    if not os.path.isfile(config_path):
         return
+    with open(config_path, encoding="utf-8") as config_file:
+        config = json.load(config_file)
+    out = config["out"]
+    bound = config["bound_seconds"]
     spec = importlib.util.spec_from_file_location(
         "loop_hold_sampler", os.path.join(_HERE, "loop_hold_sampler.py")
     )

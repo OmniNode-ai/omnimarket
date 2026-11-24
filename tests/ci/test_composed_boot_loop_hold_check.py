@@ -11,6 +11,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import subprocess
+import sys
 import threading
 import time
 from collections.abc import Awaitable, Callable, Iterator
@@ -28,6 +31,7 @@ from omnimarket.nodes.node_composed_boot_loop_hold_check.adapters.adapter_boot_l
     memory_bytes,
     render_override,
     resolve_bounds,
+    stage_sampler,
 )
 from omnimarket.nodes.node_composed_boot_loop_hold_check.adapters.adapter_boot_observe import (
     HttpProbe,
@@ -403,7 +407,6 @@ def test_override_applies_the_limits_and_the_sampler_to_every_named_service() ->
         _bounds(),
         ("omninode-runtime", "runtime-effects"),
         "/sampler",
-        "/tmp/holds.jsonl",
         "/app/lib",
     )
     assert set(override["services"]) == {"omninode-runtime", "runtime-effects"}
@@ -412,9 +415,55 @@ def test_override_applies_the_limits_and_the_sampler_to_every_named_service() ->
             "cpus": "1.0",
             "memory": "3072M",
         }
-        assert service["environment"]["PYTHONPATH"] == "/sampler:/app/lib"
-        assert service["environment"]["ONEX_BOOT_SAMPLER_BOUND_SECONDS"] == "1.0"
+        assert service["environment"] == {"PYTHONPATH": "/sampler:/app/lib"}
         assert service["volumes"] == ["/sampler:/sampler:ro"]
+
+
+def test_staged_sampler_carries_its_settings_in_a_file_not_in_the_environment(
+    tmp_path: Path,
+) -> None:
+    """The sampler's output path and bound travel in a staged config file: no environment setting is read."""
+    staged = stage_sampler(
+        NODE_DIR / "sampler", tmp_path / "staged", _bounds(), "/tmp/holds.jsonl"
+    )
+    assert json.loads((staged / "sampler_config.json").read_text(encoding="utf-8")) == {
+        "out": "/tmp/holds.jsonl",
+        "bound_seconds": LOOP_HOLD_BOUND,
+    }
+    assert {path.name for path in staged.iterdir()} == {
+        "sitecustomize.py",
+        "loop_hold_sampler.py",
+        "sampler_config.json",
+    }
+    sources = "".join(
+        (NODE_DIR / "sampler" / name).read_text(encoding="utf-8")
+        for name in ("sitecustomize.py", "loop_hold_sampler.py")
+    )
+    assert "environ" not in sources
+    assert "getenv" not in sources
+
+
+def test_staged_sampler_names_a_hold_in_a_fresh_interpreter(tmp_path: Path) -> None:
+    """A python process started with the staged directory on its path records the call that held its loop."""
+    out = tmp_path / "holds.jsonl"
+    staged = stage_sampler(
+        NODE_DIR / "sampler", tmp_path / "staged", _bounds(), str(out)
+    )
+    program = (
+        "import asyncio, time\n"
+        "async def hold_the_loop_for_one_and_a_half_seconds():\n"
+        "    time.sleep(1.5)\n"
+        "asyncio.run(hold_the_loop_for_one_and_a_half_seconds())\n"
+    )
+    subprocess.run(
+        [sys.executable, "-c", program],
+        env={**os.environ, "PYTHONPATH": str(staged)},
+        check=True,
+        timeout=60,
+    )
+    holds = parse_hold_records(out.read_text(encoding="utf-8"))
+    assert holds, "the sampler recorded no hold"
+    assert any("hold_the_loop_for_one_and_a_half_seconds" in h.call for h in holds)
 
 
 def test_unreadable_sampler_record_is_an_error() -> None:

@@ -10,6 +10,8 @@ the file and the key, never a fallback.
 
 from __future__ import annotations
 
+import json
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -106,21 +108,42 @@ def limits_applied_error(
     return None
 
 
+SAMPLER_CONFIG_NAME = "sampler_config.json"
+SAMPLER_SOURCES = ("sitecustomize.py", "loop_hold_sampler.py")
+
+
+def stage_sampler(
+    source_dir: Path, target_dir: Path, bounds: ModelBootBounds, sampler_out: str
+) -> Path:
+    """Copy the sampler into ``target_dir`` with its settings written beside it, and return ``target_dir``.
+
+    The sampler runs inside the kernel container and reads its output path and bound from ``sampler_config.json`` in
+    its own directory, so it reads no environment setting. The bound is the node contract's loop-hold bound.
+    """
+    target_dir.mkdir(parents=True, exist_ok=True)
+    for name in SAMPLER_SOURCES:
+        shutil.copyfile(source_dir / name, target_dir / name)
+    (target_dir / SAMPLER_CONFIG_NAME).write_text(
+        json.dumps(
+            {"out": sampler_out, "bound_seconds": bounds.loop_hold_bound_seconds}
+        ),
+        encoding="utf-8",
+    )
+    return target_dir
+
+
 def render_override(
     bounds: ModelBootBounds,
     services: tuple[str, ...],
     sampler_dir: str,
-    sampler_out: str,
     existing_pythonpath: str = "",
 ) -> dict[str, Any]:
-    """Compose override that applies the limits to the kernel services and loads the stack sampler into them."""
+    """Compose override that applies the limits to the kernel services and loads the staged stack sampler into them."""
     body: dict[str, Any] = {
         "environment": {
             "PYTHONPATH": f"{sampler_dir}:{existing_pythonpath}"
             if existing_pythonpath
             else sampler_dir,
-            "ONEX_BOOT_SAMPLER_OUT": sampler_out,
-            "ONEX_BOOT_SAMPLER_BOUND_SECONDS": str(bounds.loop_hold_bound_seconds),
         },
         "volumes": [f"{sampler_dir}:{sampler_dir}:ro"],
         "deploy": {

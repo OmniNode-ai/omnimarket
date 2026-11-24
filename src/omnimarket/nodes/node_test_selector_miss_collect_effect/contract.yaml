@@ -83,9 +83,11 @@ input_subscriptions:
 terminal_event: onex.evt.omnimarket.test-selector-collect-completed.v1
 
 # Both handlers take their ports (gateway, alarm store, receiver) and the overlay's settings as constructor parameters,
-# which the runtime's auto-wiring cannot supply, so the runtime subscribes to nothing for this node: the lab host's
-# poller and the lab status tick run it as their own process (the way node_lab_alarm's CLI-built handlers run). Its
-# command topics are declared under externally_produced_topics below.
+# which the runtime's auto-wiring cannot supply, so the runtime subscribes to nothing for this node: its own serve
+# process (runtime_collect_serve, started by the registry unit test-selector-collect-serve-systemd on the host the overlay's
+# serve block names) reads the collect_nightly command topic, builds the handler with real ports and publishes the
+# terminal event. The slot check and the record publication are not served yet. Its command topics are declared under
+# externally_produced_topics below.
 event_bus:
   subscribe_topics: []
   publish_topics:

@@ -23,6 +23,7 @@ from omnimarket.nodes.node_composed_boot_loop_hold_check.adapters.adapter_boot_l
     read_node_declaration,
     render_override,
     resolve_bounds,
+    stage_sampler,
 )
 from omnimarket.nodes.node_composed_boot_loop_hold_check.adapters.adapter_boot_observe import (
     DockerExecProbe,
@@ -69,16 +70,17 @@ def _window_seconds(infra_root: Path) -> float:
 
 def _render(args: argparse.Namespace) -> int:
     bounds = resolve_bounds(_CONTRACT, Path(args.infra_root))
+    out = Path(args.out)
+    staged = stage_sampler(
+        _SAMPLER_DIR, out.parent / f"{out.stem}.sampler", bounds, args.sampler_out
+    )
     override = render_override(
         bounds,
         tuple(args.service),
-        sampler_dir=str(_SAMPLER_DIR.resolve()),
-        sampler_out=args.sampler_out,
+        sampler_dir=str(staged.resolve()),
         existing_pythonpath=args.existing_pythonpath,
     )
-    Path(args.out).write_text(
-        yaml.safe_dump(override, sort_keys=True), encoding="utf-8"
-    )
+    out.write_text(yaml.safe_dump(override, sort_keys=True), encoding="utf-8")
     sys.stdout.write(f"limits: cpus={bounds.cpus:g} memory={bounds.memory_limit}\n")
     return 0
 
