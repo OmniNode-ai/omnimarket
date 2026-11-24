@@ -91,6 +91,32 @@ settable_settings:
     key: max_alarm_latency_seconds
     path: max_alarm_latency_seconds
     document_model: "omnimarket.models.overlay_documents.model_build_delegation_checks_overlay:ModelBuildDelegationChecksOverlay"
+  # OMN-26521: the floor fill's live seam keys (the pool snapshot file and its read-at record, the ticket deadline, the andon stop queue
+  # directory). Each is optional in the overlay: a seam whose key is absent answers UNKNOWN naming it. A declared setting holds no secret.
+  - overlay_id: node_floor_fill_orchestrator
+    key: floor_fill_live.pool_snapshot_path
+    path: floor_fill_live/pool_snapshot_path
+    document_model: "omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_overlay_document:ModelFloorFillOverlayDocument"
+  - overlay_id: node_floor_fill_orchestrator
+    key: floor_fill_live.pool_record_suffix
+    path: floor_fill_live/pool_record_suffix
+    document_model: "omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_overlay_document:ModelFloorFillOverlayDocument"
+  - overlay_id: node_floor_fill_orchestrator
+    key: floor_fill_live.pool_snapshot_max_age_seconds
+    path: floor_fill_live/pool_snapshot_max_age_seconds
+    document_model: "omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_overlay_document:ModelFloorFillOverlayDocument"
+  - overlay_id: node_floor_fill_orchestrator
+    key: floor_fill_live.pool_engine
+    path: floor_fill_live/pool_engine
+    document_model: "omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_overlay_document:ModelFloorFillOverlayDocument"
+  - overlay_id: node_floor_fill_orchestrator
+    key: floor_fill_live.mint_timeout_seconds
+    path: floor_fill_live/mint_timeout_seconds
+    document_model: "omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_overlay_document:ModelFloorFillOverlayDocument"
+  - overlay_id: node_floor_fill_orchestrator
+    key: floor_fill_live.andon_state_dir
+    path: floor_fill_live/andon_state_dir
+    document_model: "omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_overlay_document:ModelFloorFillOverlayDocument"
 config:
   # The live record the set builds on must have been loaded within this many seconds: the loader asserts every overlay
   # each cycle, so an older record means the read did not reach the newest one, and a set built on it would replace newer settings.
