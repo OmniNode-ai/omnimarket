@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_undeclared_read_check_compute
+version: "1.0.0"
+description: Refuses a diff that adds a read of an environment variable, repository variable or image build argument that no overlay declares
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: pure
+dependencies:
+  - pydantic>=2.11.0
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, ci, overlays, settings]
+node_role: compute
+pack: "data"
+display_name: "Undeclared Read Check"
