@@ -4,8 +4,7 @@ title: A pull request that changes only a ticket contract or a changelog gets a 
 summary: 'The change-aware test selector took the full 20-shard suite for a diff of only a ticket contract or the changelog, because such a diff reaches no test directory and escalated as no_narrowable_selection.
   The adjacency configuration gains data_only_globs (contracts/OMN-*.yaml and *.md), data_reader_overrides (data glob to test files) and a data_only_selection_enabled switch. With the switch on, a diff whose files
   all match data_only_globs selects the always set plus the tests that read the files: a text index of the test files finds a test that spells the file or enumerates its directory, directly or through an imported
-  helper, and the overrides add readers no text shows. Any other unmatched file, alone or beside a data file, keeps the full escalation. The switch ships off, because the rule changes what a pull request runs;
-  the stage gate and the nightly miss check the plan places before narrowing are not in the tree. Not in this change: the stage gate, the replay receipt and the nightly check.'
+  helper, and the overrides add readers no text shows. Any other unmatched file, alone or beside a data file, keeps the full escalation. The switch shipped off; stage 1 is now entered (policy selection_stage 1 and the stage_1 receipt, omnimarket#6634), so this change turns it on in the shipped adjacency file, and the stage evidence test recomputes the stage 1 receipt with it on. Not in this change: the stage gate, the replay receipt and the nightly check.'
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -72,6 +71,13 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_data_only_selection.py -q --no-cov -n 0 -p no:randomly -k "enumerating or imported_helper or overrides"
+    cwd: .
+- id: dod-omn26270-rule-on
+  description: 'The shipped adjacency file turns the rule on at stage 1: each of the five merges is narrowed by the unmodified shipped file, and the stage 1 receipt still recomputes valid with the rule on.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_data_only_selection.py -q --no-cov -n 0 -p no:randomly -k "shipped_adjacency"
     cwd: .
 - id: dod-omn26270-integration-proof
   description: the selector tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
