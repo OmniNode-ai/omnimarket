@@ -94,7 +94,7 @@ def build_corpus_request(
                 answered=False,
                 failed=False,
                 payload={},
-                reason=f"no terminal: {exc or type(exc).__name__}",
+                reason=f"no terminal: {str(exc) or type(exc).__name__}",
             )
         return ModelCorpusAnswer(
             answered=True,
