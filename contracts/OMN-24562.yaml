@@ -11,6 +11,11 @@ requirements:
   acceptance:
   - id: AC1
     statement: 'AC1: a reading at 14 percent free inodes produces the alarm rows with owner= in both, and a reading at 16 percent produces none -- falsifier: uv run pytest tests/nodes/node_lab_disk_watermark_effect/test_inode_alarm_omn24562.py -q fails when the threshold or the owner cell is removed'
+- id: req-omn24562-thermal-guard-overlay-model
+  statement: The thermal guard node's overlay document has a typed model in omnimarket that the overlays repository can pin ahead of the node.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: ModelHostThermalGuardOverlay validates the overlay document of the thermal guard node and refuses a malformed one -- falsifier: tests/unit/models/test_host_thermal_guard_overlay_document_omn24562.py fails collection or any of its tests fails'
 evidence_requirements:
 - kind: tests
   description: The inode alarm tests pass at the pushed head.
@@ -36,3 +41,12 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24562 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lab_disk_watermark_effect -q --no-cov
+- id: dod-omn24562-thermal-guard-overlay-model-tests
+  description: The overlay document model for the thermal guard node accepts a valid document and refuses malformed ones; the test file fails at collection with ModuleNotFoundError before the model module exists and passes after.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_host_thermal_guard_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
