@@ -57,6 +57,11 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--host", required=True)
     run.add_argument("--overlay", default="")
     run.add_argument("--dry-run", action="store_true")
+    run.add_argument(
+        "--budget-seconds",
+        type=float,
+        help="class scan budget in seconds (default: the contract's share of the unit start timeout, 0 disables it)",
+    )
     verbs = commands.add_parser("schedule").add_subparsers(
         dest="verb", required=True, parser_class=_Parser
     )
@@ -93,9 +98,18 @@ def main(argv: Sequence[str]) -> int:
 
 
 def _run(args: argparse.Namespace) -> int:
+    budget_seconds: float | None = args.budget_seconds
+    if budget_seconds is None:
+        schedule = load_schedule()
+        budget_seconds = (
+            schedule.scan_budget_percent / 100 * schedule.timeout_start_seconds
+        )
     reading = HandlerLabDiskWatermark().handle(
         ModelLabDiskWatermarkRequest(
-            host_name=args.host, overlay_file=args.overlay, dry_run=args.dry_run
+            host_name=args.host,
+            overlay_file=args.overlay,
+            dry_run=args.dry_run,
+            budget_seconds=budget_seconds or None,
         )
     )
     sys.stdout.write(reading.model_dump_json() + "\n")
