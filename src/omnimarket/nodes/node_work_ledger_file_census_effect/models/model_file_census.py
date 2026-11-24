@@ -60,6 +60,15 @@ class ModelCensusOverlay(_Frozen):
         min_length=1,
         description="Path of the shrink-only ratchet file, relative to the working directory.",
     )
+    daily_history_file: str = Field(
+        min_length=1,
+        description="File name, in the daily unit's state directory, of the dated daily records the day-over-day change is "
+        "read from.",
+    )
+    daily_history_days: int = Field(
+        gt=0,
+        description="How many days of daily records are kept in that file.",
+    )
     runtime_include: tuple[str, ...] = Field(
         description="Regexes (searched in the path) that mark runtime code: the source tree and the runtime contracts "
         "that sit in it. A path no pattern marks is not runtime code.",

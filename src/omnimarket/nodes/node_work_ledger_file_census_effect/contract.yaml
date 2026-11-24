@@ -35,7 +35,7 @@ descriptor:
   runtime_profiles: [effects]
   purity: impure
   idempotent: true
-  side_effects: [file-read, event-journal]
+  side_effects: [file-read, file-write, event-journal, bus-publish]
   timeout_ms: 300000
 
 input_model:
@@ -50,13 +50,29 @@ output_model:
 runtime_dispatch:
   external_trigger: true
   # Once a day and at load, the host timer of node_host_installer_registry_units runs runtime_file_census_tick over every
-  # registered repository, which prints and keeps the daily record.
+  # registered repository, which prints and keeps the daily record and publishes it, with the change against the previous
+  # day, on the declared topic.
   host_unit:
     unit: ledger-file-census-systemd
 
+# The daily run puts its record on this topic as one typed event (ModelCensusDailyEvent): the per-repository counts, the
+# runtime-code count and the change against the previous day. The tick publishes through the shared declared-broker
+# publisher, on the broker this node's deployment overlay declares in its `event_bus` (never an environment variable).
 event_bus:
   subscribe_topics: []
-  publish_topics: []
+  publish_topics:
+    - onex.evt.omnimarket.ledger-file-census-daily-record.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.ledger-file-census-daily-record.v1
+
+# The host tick publishes as the host reconciler principal (the host's own machine identity, the one the host install
+# nodes use): it writes the daily-record topic and nothing else.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_HOST_RECONCILER_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ledger-file-census-daily-record.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ledger-file-census-daily-record.v1, operation: DESCRIBE}
 
 overlay:
   node: node_work_ledger_file_census_effect

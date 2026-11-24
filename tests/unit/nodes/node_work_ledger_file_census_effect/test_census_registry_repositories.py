@@ -113,11 +113,19 @@ def registry_root(committed_root: Path, tmp_path: Path) -> Path:
     return root
 
 
+class _AcceptingBus:
+    def publish(self, **event: object) -> bool:
+        return True
+
+
 def _tick(root: Path, tmp_path: Path) -> tuple[int, list[str], dict[str, object]]:
     out = io.StringIO()
     state = tmp_path / "state"
     code = tick.main(
-        ["--omni-home", str(root), "--state-dir", str(state)], environ={}, stdout=out
+        ["--omni-home", str(root), "--state-dir", str(state)],
+        environ={},
+        stdout=out,
+        publisher=_AcceptingBus(),
     )
     evidence = json.loads((state / tick.EVIDENCE_FILE).read_text(encoding="utf-8"))
     return code, out.getvalue().splitlines(), evidence

@@ -1116,6 +1116,15 @@ events:
     partition_key_field: host
     required_fields: [host, verdict, correlation_id]
 
+  ledger_file_census.daily_record:
+    node_owned: true
+    fan_out:
+      - topic: "onex.evt.omnimarket.ledger-file-census-daily-record.v1"
+        tier: telemetry
+        description: "Daily ledger-file census run: per-repository counts, the runtime-code count, whether the record is partial and the change against the previous day"
+    partition_key_field: host
+    required_fields: [host, record, partial, change]
+
   # Lab proof judge use (OMN-23642): one record each time the judge applies its declared not-applicable class to a change, or refuses
   # a change that qualifies but has no substitute proof. Carries the repository, pull request, head, class, outcome, node names and
   # substitute receipt ids; no code, no log text, no credential.
