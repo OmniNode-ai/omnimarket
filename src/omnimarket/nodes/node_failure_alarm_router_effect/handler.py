@@ -35,7 +35,11 @@ from typing import Protocol
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
 from omnimarket.handlers.ledger_row_grammar import Row, parse_row
-from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayNotFoundError,
+    load_structured_overlay,
+)
+from omnimarket.handlers.scheduled_overlay_refusal import ScheduledOverlayRefusalLatch
 from omnimarket.models.model_runtime_tick_schedule import (
     ModelRuntimeTickScheduleConfig,
     scheduled_fire,
@@ -491,6 +495,7 @@ class HandlerFailureAlarmRouterScheduled:
         self._router = router or HandlerFailureAlarmRouter()
         self._request = request
         self._config = config or load_rules().schedule
+        self._refusals = ScheduledOverlayRefusalLatch(NODE_NAME)
 
     async def handle(self, request: ModelRuntimeTick) -> ModelFailureAlarmResult | None:
         fire = scheduled_fire(
@@ -503,9 +508,14 @@ class HandlerFailureAlarmRouterScheduled:
         )
         if fire is None:
             return None
-        settings = self._request or load_structured_overlay(
-            NODE_NAME, ModelFailureAlarmRequest
-        )
+        try:
+            settings = self._request or load_structured_overlay(
+                NODE_NAME, ModelFailureAlarmRequest
+            )
+        except NodeOverlayNotFoundError as exc:
+            self._refusals.refuse(exc)
+            return None
+        self._refusals.recovered()
         return await asyncio.to_thread(
             self._router.handle, settings.model_copy(update={"now": request.now})
         )
