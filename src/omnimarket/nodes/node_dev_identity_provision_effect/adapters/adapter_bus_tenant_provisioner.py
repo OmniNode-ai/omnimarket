@@ -4,8 +4,8 @@
 
 The command goes out as an event envelope on the declared command topic; the answer is read from the declared completed
 topic, from the log end, with no consumer group: every client sees every answer and keeps the one whose ``command_id``
-is its own. The subscription is made before the publish, so an answer cannot land unheard. A bus that cannot be opened,
-or no answer inside the declared wait, is ``TenantProvisionUnavailableError``.
+is its own. The subscription is made before the publish, so an answer cannot land unheard. A bus that cannot be opened, a broker that
+refuses the read or the write, or no answer inside the declared wait, is ``TenantProvisionUnavailableError``.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from contextlib import AbstractAsyncContextManager
 from typing import Any, Protocol
 from uuid import uuid4
 
+from omnibase_infra.errors import InfraConnectionError
 from pydantic import ValidationError
 
 from omnimarket.delegated_test_loop.lab_run_bus import envelope_bytes_for
@@ -92,7 +93,7 @@ class BusTenantProvisioner:
                 f"no answer on {topics.completed_topic} within {topics.wait_seconds:g}s; "
                 f"is a runtime serving {topics.command_topic}?"
             ) from None
-        except (LabRunBusError, OSError) as exc:
+        except (LabRunBusError, InfraConnectionError, OSError) as exc:
             raise TenantProvisionUnavailableError(
                 f"the bus could not be opened: {type(exc).__name__}: {exc}"
             ) from None

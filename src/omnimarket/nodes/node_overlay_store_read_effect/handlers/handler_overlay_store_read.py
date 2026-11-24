@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Protocol
 from pydantic import JsonValue, ValidationError
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.handlers.overlay_store.kept_set import require_no_cut_over_overlay
 from omnimarket.handlers.overlay_store.snapshot_root import (
     FileOverlaySnapshot,
     OverlaySnapshotError,
@@ -77,6 +78,7 @@ class HandlerOverlayStoreRead:
         clock: Callable[[], datetime] = _utc_now,
         source_head: Callable[[], str | None] | None = None,
     ) -> None:
+        require_no_cut_over_overlay(policies)
         self._store = store
         self._snapshot = snapshot
         self._reporter = reporter
@@ -87,6 +89,7 @@ class HandlerOverlayStoreRead:
 
     async def handle(self, overlay_id: str) -> ModelOverlayStoreReading:
         """One refresh of one overlay: the store's version into the snapshot, or why it stayed."""
+        require_no_cut_over_overlay([overlay_id])
         main = self._source_head() if self._source_head is not None else None
         reading = await self._refresh(overlay_id, main)
         behind = self._behind(overlay_id, main)

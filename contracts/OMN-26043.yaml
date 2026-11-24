@@ -11,6 +11,16 @@ requirements:
   acceptance:
   - id: AC5
     statement: "AC5: each of the eight probes has one run read green after the change, or the lane names the real product defect it now shows with its ticket id and the run id -- falsifier: a probe's newest run reads red and neither a green run id nor a defect ticket id for it appears in the lane TERMINAL"
+- id: req-omn26043-probe-overlay-model
+  statement: The delegation check probe node's overlay document has a typed model in omnimarket that the overlays repository and the node pull request import.
+  acceptance:
+  - id: AC6
+    statement: "AC6: ModelDelegationCheckProbeOverlay validates the overlay document of the delegation check probe node and refuses a malformed one -- falsifier: tests/unit/models/test_delegation_check_probe_overlay_document_omn26043.py fails collection or any of its tests fails"
+- id: req-omn26043-probe-node-chain
+  statement: The delegation checks C13, C14 and C17 run as a node through the responder chain.
+  acceptance:
+  - id: AC7
+    statement: "AC7: the delegation checks C13, C14 and C17 run as node_delegation_check_probe_effect through the responder chain and publish each run on the declared result topic -- falsifier: the node's tests pass on the base commit, where neither the node nor the chain module exists"
 evidence_requirements:
 - kind: tests
   description: The call's pricing function with the real pricing index restored and every socket connect and fetch refused, on a cold ONEX home.
@@ -36,4 +46,78 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26043 --kind test -- uv run --frozen pytest tests/unit/delegation/test_shipped_price_list_no_fetch.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-probe-overlay-model-tests
+  description: The overlay document model for the delegation check probe node accepts a valid document and refuses malformed ones; the test file fails at collection with ModuleNotFoundError before the model module exists and passes after.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_delegation_check_probe_overlay_document_omn26043.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-delegation-check-chain-tests
+  description: The delegation checks C13, C14 and C17 run as node_delegation_check_probe_effect. Each check sends its task through the responder row of the settings store (local least busy, then openrouter, then claude_api; the window is max_model_len else meta.n_ctx and a windowless responder is skipped), a task that never reaches a local responder reads NOT_MEASURED, a pinned model, an unproven zero and a broken command hidden by the customer surface each read FAIL, and every run is published on the declared result topic. The tests fail on the base commit, where neither the node nor the chain module exists, and pass after the change. This binds AC7; the green runs of AC5 are read from the node once its collectors are wired.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect tests/handlers/routing/test_delegation_check_responder_chain.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-collectors-run-from-node
+  description: "The collectors of C13, C14 and C17 (fresh-container install, egress recorder, routing walk, clean-machine run) run from node_delegation_check_probe_effect on a lab host; the contract declares the result topic each reading is published on, and the tick no longer builds an absent machine by default. Failure cases come first in the tests (no container engine, clean record refused, install fails, egress recorder empty, responder chain exhausted, no collector record), then the green path. The tests fail on the base commit, where neither the container machine nor the collectors exist, and pass after the change. This binds AC7; the lab readings of AC5 are read after the unit is installed."
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+  - check_type: command
+    check_value: grep -q 'delegation-check-probe-completed' src/omnimarket/nodes/node_delegation_check_probe_effect/contract.yaml
+    cwd: .
+- id: dod-omn26043-responder-row-declared
+  description: "The responder list is a settings-store row, overlay delegation_check_responders key responders, declared in the settable settings of node_overlay_setting_set_effect, so it changes only through that command with its audit row. The list in the order Inkling 8111, Qwen 8000, OpenRouter, Claude API is the value set in the store and read back in the lane report; the repository holds no local address for it. This binds no criterion of this ticket."
+  source: manual
+  checks:
+  - check_type: command
+    check_value: "grep -q 'overlay_id: delegation_check_responders' src/omnimarket/nodes/node_overlay_setting_set_effect/contract.yaml"
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_no_check_pins_a_model.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-overlay-docs-and-trigger
+  description: "The node declares its trigger (the host unit delegation-check-probe) so the trigger declaration check passes, and the unit's overlay documents are in the overlays repository (a separate pull request), which Overlay Main Load reads. This binds no criterion of this ticket."
+  source: manual
+  checks:
+  - check_type: command
+    check_value: uv run python -m omnimarket.nodes.node_trigger_declaration_check_effect --root . --contract src/omnimarket/nodes/node_delegation_check_probe_effect/contract.yaml
+    cwd: .
+- id: dod-omn26043-c13-customer-install-entry
+  description: "C13 grades that the delegate ran through the customer install's own packaged onex, and it no longer carries any assertion that the runner has no onex (runner image v15 ships one on PATH). A run through the runner's onex reads FAIL on the install_entry clause; a run through the install's own entry passes with an onex on the runner. The tests fail on the base commit, where the observation has no entry field and no install_entry clause exists, and pass after the change. This binds AC7."
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_customer_install_entry.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-c14-llamacpp-listing-fixture
+  description: "The window of a responder is max_model_len else meta.n_ctx, read from the recorded llama.cpp listing of the second lab GPU host without a KeyError; with the n_ctx fallback removed the fixture tests read red. This binds AC7."
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/handlers/routing/test_delegation_check_llamacpp_listing_fixture.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-build-checks-run-our-nodes
+  description: "A rebuild-completed event runs the probe node of this repository for each check it owns (C13, C14, C17) and no cloud workflow dispatch, the tick runs one named check and exits 4 for a run it could not measure, and each of the ten checks publishes its own record on the per-check topic the contract declares; a check with no node of ours reads unavailable. The tests fail on the base commit, where the default routes are empty and no per-check topic exists, and pass after the change. This binds AC7."
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_build_delegation_checks tests/nodes/node_delegation_check_probe_effect/test_tick_single_check.py -q --no-cov -n 0 -p no:randomly
     cwd: .

@@ -213,6 +213,22 @@ class ModelLabHostRow(_ModelOverlayBase):
     parity_clones: tuple[NonEmptyStr, ...] = ()
     gh_absent: bool = False
     lab_work_root: str | None = None
+    # Where the registry root's ``omni_worktrees`` resolves to, on the host's data drive (OMN-26371): an absolute directory named omni_worktrees.
+    lab_worktree_root: (
+        Annotated[
+            str, StringConstraints(pattern=r"^/[A-Za-z0-9_./+-]+/omni_worktrees$")
+        ]
+        | None
+    ) = None
+    # Where a lane's temp directory (``TMPDIR``) and its tool caches (``XDG_CACHE_HOME``, with ``UV_CACHE_DIR`` under it)
+    # sit, on the host's data drive (OMN-26371): an absolute directory, never the filesystem root. The serve unit installer
+    # writes them into the serve environment and refuses one on a volume above the work-root bar.
+    lab_tmp_root: (
+        Annotated[str, StringConstraints(pattern=r"^/[A-Za-z0-9_./+-]+$")] | None
+    ) = None
+    lab_cache_root: (
+        Annotated[str, StringConstraints(pattern=r"^/[A-Za-z0-9_./+-]+$")] | None
+    ) = None
     report_retention_days: int | None = Field(default=None, ge=1)
     clones: tuple[ModelLabHostClone, ...] = ()
     # What the host can take, read by lab work placement (OMN-17232) next to ``available``. Flat

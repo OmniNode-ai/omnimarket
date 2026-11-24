@@ -135,9 +135,34 @@ from omnimarket.models.delegation.wire.model_quality_gate import (
     SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
     SHAPE_REFUSED_VERDICT_PREFIX,
 )
+from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.code_artifact_blocks import (
+    _JSON_FENCE_LANG_TAGS,
+    _MARKDOWN_FENCE_RE,
+    _PYTHON_FENCE_LANG_TAGS,
+    _YAML_FENCE_LANG_TAGS,
+    _block_is_code_artifact,
+    _compiles_without_errors_is_evaluable,
+    _declared_artifact_blocks,
+    _extract_fenced_code_blocks,
+    _extract_fenced_code_blocks_with_lang,
+    _is_json_edit_artifact,
+    _is_search_replace_artifact,
+    _python_tree_is_code_artifact,
+    _remove_search_replace_blocks,
+    _strip_markdown_code_fence,
+)
+from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.empty_after_spent_output import (
+    EMPTY_AFTER_SPENT_OUTPUT_CHECK_NAME,
+    empty_after_spent_output_gate_failure_reason,
+    is_empty_answer_after_spent_output,
+)
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.operator_voice_check import (
     check_operator_voice,
     operator_voice_check_name,
+)
+from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.prompt_artifact_language import (
+    parse_as_requested_language,
+    prompt_requested_artifact_language,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_identifier_grounding import (
     ModelIdentifierGroundingVerdict,
@@ -664,202 +689,6 @@ def _strip_thinking_traces(content: str) -> str:
     return _THINKING_TRACE_RE.sub("", content)
 
 
-# Closing fences occupy their own line; backticks inside code are body text.
-_MARKDOWN_FENCE_RE = re.compile(
-    r"```(?:[^\r\n]*)\r?\n(.*?)^[ ]{0,3}```[ \t]*\r?$",
-    re.DOTALL | re.MULTILINE,
-)
-_MARKDOWN_FENCE_WITH_LANG_RE = re.compile(
-    r"```([A-Za-z0-9_-]*)[^\r\n]*\r?\n(.*?)^[ ]{0,3}```[ \t]*\r?$",
-    re.DOTALL | re.MULTILINE,
-)
-
-_SEARCH_REPLACE_EDIT_RE = re.compile(
-    r"(?ms)^FILE:\s*(?P<file>[^\r\n]+)\r?\n"
-    r"<<<<<<< SEARCH\r?\n(?P<search>.*?)\r?\n"
-    r"=======\r?\n(?P<replace>.*?)\r?\n"
-    r">>>>>>> REPLACE(?:\r?\n|$)"
-)
-_REQUESTED_SYMBOL_RE = re.compile(
-    r"(?ix)\b(?:function|class|method|symbol|constant|variable)\s+"
-    r"(?:named\s+)?[`'\"]?(?P<name>[A-Za-z_][A-Za-z0-9_]*)"
-)
-
-# OMN-19734 (e18466cc, 1eaa0f6e): only declared Python, YAML, and JSON fences
-# have parsers here. Other language tags and SEARCH/REPLACE edit fragments are
-# unevaluated.
-_PYTHON_FENCE_LANG_TAGS: frozenset[str] = frozenset(
-    {"", "python", "py", "python3", "py3"}
-)
-_YAML_FENCE_LANG_TAGS: frozenset[str] = frozenset({"yaml", "yml"})
-_JSON_FENCE_LANG_TAGS: frozenset[str] = frozenset({"json"})
-_SEARCH_REPLACE_BLOCK_RE = re.compile(
-    r"^<<<<<<< SEARCH[ \t]*\r?\n.*?^=======[ \t]*\r?\n.*?^>>>>>>> REPLACE[ \t]*\r?$",
-    re.MULTILINE | re.DOTALL,
-)
-
-
-def _remove_search_replace_blocks(content: str) -> str:
-    """Remove SEARCH/REPLACE edit fragments before parsing an answer."""
-    return _SEARCH_REPLACE_BLOCK_RE.sub("", content)
-
-
-def _strip_markdown_code_fence(content: str) -> str:
-    """Return fenced code body when content is a single markdown code block."""
-    stripped = content.strip()
-    if not stripped.startswith("```"):
-        return content
-    lines = stripped.splitlines()
-    if len(lines) >= 2 and lines[-1].strip() == "```":
-        return "\n".join(lines[1:-1])
-    return content
-
-
-def _extract_fenced_code_blocks(content: str) -> list[str]:
-    """Return all fenced code block bodies from mixed content."""
-    return _MARKDOWN_FENCE_RE.findall(content)
-
-
-def _extract_fenced_code_blocks_with_lang(content: str) -> list[tuple[str, str]]:
-    """Return (lang_tag, body) pairs for all fenced code blocks in mixed content.
-
-    ``lang_tag`` is the lowercased fence-info-string token (e.g. ``"yaml"`` for
-    ` ```yaml`), or ``""`` when the fence carries no language tag.
-    """
-    return [
-        (lang.lower(), body)
-        for lang, body in _MARKDOWN_FENCE_WITH_LANG_RE.findall(content)
-    ]
-
-
-def _compiles_without_errors_is_evaluable(content: str) -> bool:
-    """Whether the answer contains an artifact this check can parse."""
-    content_without_edit_blocks = _remove_search_replace_blocks(content)
-    tagged_blocks = _extract_fenced_code_blocks_with_lang(content_without_edit_blocks)
-    if not tagged_blocks:
-        return content_without_edit_blocks == content
-    supported = _PYTHON_FENCE_LANG_TAGS | _YAML_FENCE_LANG_TAGS | _JSON_FENCE_LANG_TAGS
-    if content_without_edit_blocks == content:
-        return any(lang in supported for lang, _ in tagged_blocks)
-    return any(lang in supported and body.strip() for lang, body in tagged_blocks)
-
-
-def _remove_fenced_code_blocks(content: str) -> str:
-    """Return response text outside fenced code blocks."""
-    return _MARKDOWN_FENCE_RE.sub("", content).strip()
-
-
-def _is_search_replace_artifact(content: str) -> bool:
-    """Return whether content is one or more complete SEARCH/REPLACE edits."""
-    matches = tuple(_SEARCH_REPLACE_EDIT_RE.finditer(content.strip()))
-    if not matches:
-        return False
-    cursor = 0
-    for match in matches:
-        if content.strip()[cursor : match.start()].strip():
-            return False
-        if not match.group("file").strip():
-            return False
-        if not (match.group("search").strip() or match.group("replace").strip()):
-            return False
-        cursor = match.end()
-    return not content.strip()[cursor:].strip()
-
-
-def _is_json_edit_artifact(content: str) -> bool:
-    """Return whether content is a non-empty structured edit envelope."""
-    try:
-        loaded = json.loads(content)
-    except json.JSONDecodeError:
-        return False
-    if not isinstance(loaded, dict):
-        return False
-    edits = loaded.get("edits")
-    if not isinstance(edits, list) or not edits:
-        return False
-    for edit in edits:
-        if not isinstance(edit, dict):
-            return False
-        file_name = edit.get("file")
-        search = edit.get("search")
-        replacement = edit.get("replace")
-        if not isinstance(file_name, str) or not file_name.strip():
-            return False
-        if not isinstance(search, str) or not isinstance(replacement, str):
-            return False
-        if not (search.strip() or replacement.strip()):
-            return False
-    return True
-
-
-def _defined_python_symbols(tree: ast.AST) -> frozenset[str]:
-    """Return symbols explicitly defined by a parsed Python artifact."""
-    names: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-            names.add(node.name)
-        elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
-            names.add(node.id)
-        elif isinstance(node, ast.alias):
-            names.add(node.asname or node.name.partition(".")[0])
-    return frozenset(names)
-
-
-def _requested_symbols(task_prompt: str | None) -> frozenset[str]:
-    """Extract symbols a prompt explicitly asks to define or change."""
-    if task_prompt is None:
-        return frozenset()
-    return frozenset(
-        match.group("name") for match in _REQUESTED_SYMBOL_RE.finditer(task_prompt)
-    )
-
-
-def _python_tree_is_code_artifact(
-    tree: ast.Module,
-    *,
-    task_prompt: str | None,
-) -> bool:
-    """Reject bare literals/names while accepting executable code structure."""
-    requested = _requested_symbols(task_prompt)
-    if requested & _defined_python_symbols(tree):
-        return True
-
-    for statement in tree.body:
-        if isinstance(statement, ast.Expr):
-            if not isinstance(statement.value, ast.Name | ast.Constant):
-                return True
-            continue
-        if not isinstance(statement, ast.Pass):
-            return True
-    return False
-
-
-def _block_is_code_artifact(
-    body: str,
-    *,
-    language: str,
-    task_prompt: str | None,
-) -> bool:
-    """Evaluate a fenced block according to its declared artifact language."""
-    if language in _YAML_FENCE_LANG_TAGS:
-        try:
-            loaded = yaml.safe_load(body)
-        except yaml.YAMLError:
-            return False
-        return isinstance(loaded, dict | list) and bool(loaded)
-    if language in _JSON_FENCE_LANG_TAGS:
-        try:
-            loaded = json.loads(body)
-        except json.JSONDecodeError:
-            return False
-        return isinstance(loaded, dict | list) and bool(loaded)
-    try:
-        tree = ast.parse(body)
-    except SyntaxError:
-        return False
-    return _python_tree_is_code_artifact(tree, task_prompt=task_prompt)
-
-
 def _check_code_artifact_present(
     content: str,
     task_prompt: str | None = None,
@@ -879,16 +708,25 @@ def _check_code_artifact_present(
     if _is_json_edit_artifact(stripped) or _is_search_replace_artifact(stripped):
         return None
 
+    requested = prompt_requested_artifact_language(task_prompt)
     tagged_blocks = _extract_fenced_code_blocks_with_lang(stripped)
     if tagged_blocks and any(
         _block_is_code_artifact(
             body,
-            language=language,
+            language=language or requested or "",
             task_prompt=task_prompt,
         )
         for language, body in tagged_blocks
     ):
         return None
+
+    if requested is not None and not tagged_blocks:
+        # OMN-26588: no fence, so the prompt names the language.
+        if _block_is_code_artifact(
+            stripped, language=requested, task_prompt=task_prompt
+        ):
+            return None
+        return "TASK_MISMATCH: code_generation response contains no code artifact"
 
     try:
         tree = ast.parse(_strip_markdown_code_fence(stripped))
@@ -1245,7 +1083,9 @@ def _check_short_form_adequacy(
     return None
 
 
-def _check_compiles_without_errors(content: str) -> str | None:
+def _check_compiles_without_errors(
+    content: str, task_prompt: str | None = None
+) -> str | None:
     """Deterministic: delegated code must parse as its declared artifact language.
 
     OMN-14004: ``code_generation`` is not always a Python ask — a YAML
@@ -1256,14 +1096,20 @@ def _check_compiles_without_errors(content: str) -> str | None:
     common Python case is byte-for-byte the same check as before. Only a block
     that fails to parse under ITS OWN declared language fails the check — a
     correct YAML answer no longer gets rejected for not being valid Python.
+
+    OMN-26588: raw content and an untagged fence declare no language, so the
+    prompt does when it names exactly one of YAML or JSON and no Python
+    (``prompt_requested_artifact_language``); that parser then reads them.
     """
     if _is_search_replace_artifact(content) or _is_json_edit_artifact(content):
         return None
-
     content = _remove_search_replace_blocks(content)
-    tagged_blocks = _extract_fenced_code_blocks_with_lang(content)
+    requested = prompt_requested_artifact_language(task_prompt)
+    tagged_blocks = _declared_artifact_blocks(content, requested)
     if not tagged_blocks:
         candidate = _strip_markdown_code_fence(content)
+        if requested is not None:
+            return parse_as_requested_language(candidate, requested)
         try:
             ast.parse(candidate)
         except SyntaxError as exc:
@@ -1271,6 +1117,7 @@ def _check_compiles_without_errors(content: str) -> str | None:
         return None
 
     for lang, body in tagged_blocks:
+        lang = lang or requested or ""
         if lang in _YAML_FENCE_LANG_TAGS:
             try:
                 yaml.safe_load(body)
@@ -2272,7 +2119,7 @@ def _evaluate_deterministic_checks(
             if not _compiles_without_errors_is_evaluable(content):
                 skipped.append(check)
                 continue
-            reason = _check_compiles_without_errors(content)
+            reason = _check_compiles_without_errors(content, grounding_source)
         elif check == "code_artifact_present":
             reason = _check_code_artifact_present(content, grounding_source)
         elif check == "final_artifact_only":
@@ -3396,6 +3243,8 @@ def _run_legacy_checks(
 
 def _truncated_by_output_budget_result(
     gate_input: ModelQualityGateInput,
+    reason: str = TRUNCATED_RESPONSE_GATE_FAILURE_REASON,
+    check_name: str = TRUNCATION_CHECK_NAME,
 ) -> ModelQualityGateResult:
     """The verdict for a response the provider said it cut off (OMN-18278).
 
@@ -3416,7 +3265,7 @@ def _truncated_by_output_budget_result(
     CLIMBS rather than terminalising, because the reason carries the
     ``WEAK_OUTPUT`` verdict prefix and the next rung brings its own budget.
     """
-    reasons = (TRUNCATED_RESPONSE_GATE_FAILURE_REASON,)
+    reasons = (reason,)
     return ModelQualityGateResult(
         correlation_id=gate_input.correlation_id,
         passed=False,
@@ -3426,10 +3275,10 @@ def _truncated_by_output_budget_result(
         fallback_recommended=_recommends_fallback(reasons),
         rule_evaluations=(
             ModelQualityRuleEvaluation(
-                rule=TRUNCATION_CHECK_NAME,
+                rule=check_name,
                 enforcement=EnumQualityRuleEnforcement.BLOCKING,
                 passed=False,
-                detail=TRUNCATED_RESPONSE_GATE_FAILURE_REASON,
+                detail=reason,
             ),
         ),
     )
@@ -3669,6 +3518,7 @@ def delta(
     finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
     reasoning_stripped_chars: int = 0,
     named_tests_requested: bool = False,
+    output_tokens_spent: int = 0,
 ) -> ModelQualityGateResult:
     """Refuse leaked reasoning at the deterministic floor, then grade clean output.
 
@@ -3700,6 +3550,11 @@ def delta(
     ``ABSENT``, is the honest record that no signal reached this evaluation —
     the bus path carries none today — and never a claim that a response
     completed.
+
+    OMN-26588. ``output_tokens_spent`` is what the provider billed for the
+    response. An empty answer with tokens spent is a spent output budget (the
+    model reasoned and never answered) and climbs as ``WEAK_OUTPUT``; the default
+    ``0`` is the record that no figure reached this evaluation.
     """
     if grounding_source is None:
         # OMN-19529: the bus path's gate input may carry the delegated prompt
@@ -3735,6 +3590,17 @@ def delta(
     )
     if is_truncated_by_output_budget(finish_reason):
         result = _truncated_by_output_budget_result(gate_input)
+    elif is_empty_answer_after_spent_output(
+        gate_input.llm_response_content, output_tokens_spent
+    ):
+        # OMN-26588: an empty answer the provider billed output tokens for is a
+        # spent budget, not a malformed artifact. Second, after the provider's own
+        # ``length``, and ahead of every content heuristic, which only see "".
+        result = _truncated_by_output_budget_result(
+            gate_input,
+            empty_after_spent_output_gate_failure_reason(output_tokens_spent),
+            EMPTY_AFTER_SPENT_OUTPUT_CHECK_NAME,
+        )
     elif (
         segmentation.boundary_rule is EnumReasoningBoundaryRule.PREAMBLE_UNRESOLVED
         and not _deliverable_locatable_without_a_boundary(

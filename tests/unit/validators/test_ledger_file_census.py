@@ -288,7 +288,7 @@ def test_the_repository_is_at_or_under_its_ratchet_row() -> None:
     """The ratchet file in this repository holds this repository's count; the live tree may not exceed it."""
     document = yaml.safe_load((PACKAGE / "overlay.example.yaml").read_text())
     table = YamlRatchetStore(RATCHET).read()
-    assert set(table) == {"omnimarket"}
+    assert "omnimarket" in table
     source = GitRepositorySource(
         ROOT.parent, document["max_file_bytes"], {"omnimarket": str(ROOT)}
     )

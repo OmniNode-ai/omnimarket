@@ -68,6 +68,8 @@ runtime_dispatch:
   terminal_events:
     success: onex.evt.omnimarket.floor-task-ticket-mint-completed.v1
   external_trigger: The mint command on the command topic, sent by onex run-node or by a node that holds the produce grant; the floor-fill orchestrator also calls the mint handler in process with the payload of a task that has no usable ticket.
+  callers:
+    - path: src/omnimarket/nodes/node_floor_fill_orchestrator/handlers/adapter_floor_seams_live.py
 externally_consumed_topics:
 - onex.evt.omnimarket.floor-task-ticket-mint-completed.v1
 # Handlers the orchestrator calls in process with an injected store; boot does not route to them, so they sit outside handler_routing.

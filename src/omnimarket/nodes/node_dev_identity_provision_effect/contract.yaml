@@ -7,6 +7,10 @@
 # tenant_provision_runtime block below) to create one ownerless probe tenant named from the user. The result
 # carries names and ids only: never a token, a secret or a password, and never the response's bootstrap_token. Any lane
 # or realm the dev_only block does not declare is refused before any secret read or HTTP call.
+#
+# With a tenant id (OMN-26476) the run binds the named user to that EXISTING tenant and creates no probe tenant: it reads the
+# tenant over the bus (the tenant_read_runtime block), sets the user attributes the sign-in client's mappers turn into the tenant
+# claims, signs in and reads the audience and the two tenant claims back out of the token (the tenant_binding block).
 name: node_dev_identity_provision_effect
 contract_name: node_dev_identity_provision_effect
 node_name: node_dev_identity_provision_effect
@@ -21,8 +25,15 @@ description: >
   Keycloak realm the dev_only block does not declare. A run reads the Keycloak admin credential from the secret store,
   generates the declared user password key (an existing key is reused, never replaced), creates the one named dev user (an existing user is refused, and reset only when the command says so; a protected
   username is refused), signs in with the password grant and asks the runtime's tenant provision command for a probe
-  tenant (no separate HTTP API is called); a probe stops at the credential read and answers ready. Every failure is a
-  typed result.
+  tenant (no separate HTTP API is called); a probe stops at the credential read and answers ready. A run deletes the
+  user it created when it ends in any typed failure after the create, and after a success only when the command declares
+  the user disposable; a user that existed before the run and a protected username are never deleted by a run. The
+  lookup verb reads one named user and the delete verb removes one named user and reads it gone (the overlay user and
+  every protected username are refused). A run that carries a tenant id binds the named user to that existing tenant
+  instead: it reads the tenant through the runtime (an unknown or not active tenant is refused before any user write),
+  creates the user as above, sets the user's tenant attributes and signs in, then reads the audience and the tenant id and
+  slug claims out of the token and answers bound only when all three are the declared ones; it never asks the runtime
+  for a new tenant in that mode. Every failure is a typed result.
 
 handler:
   module: omnimarket.nodes.node_dev_identity_provision_effect.handlers.handler_dev_identity_provision
@@ -37,17 +48,17 @@ descriptor:
   runtime_profiles: [effects]
   purity: impure
   idempotent: true
-  side_effects: [keycloak-user-write, secret-store-write, tenant-provision-command]
+  side_effects: [keycloak-user-write, keycloak-user-delete, keycloak-user-attribute-write, secret-store-write, tenant-provision-command, tenant-read-command]
   timeout_ms: 120000
 
 input_model:
   name: ModelDevIdentityProvisionCommand
   module: omnimarket.nodes.node_dev_identity_provision_effect.models.model_dev_identity_provision
-  description: Which lane acts, whether to write anything, and optionally which user (username, email, password key id); an existing user is reset only with reset_existing and a protected username is touched only with allow_protected.
+  description: Which lane acts, whether to write anything, and optionally which user (username, email, password key id); an existing user is reset only with reset_existing and a protected username is touched only with allow_protected. disposable lets a successful run delete the user it created; lookup_user and delete_user read and delete one named user.
 output_model:
   name: ModelDevIdentityProvisionResult
   module: omnimarket.nodes.node_dev_identity_provision_effect.models.model_dev_identity_provision
-  description: The outcome, the realm and lane, the user and tenant ids; never a token or a secret.
+  description: The outcome, the realm and lane, the user and tenant ids, and what the run did about the user it created (cleanup); never a token or a secret.
 
 terminal_event: onex.evt.omnimarket.dev-identity-provision-completed.v1
 
@@ -78,6 +89,28 @@ tenant_provision_runtime:
   command_topic: onex.cmd.omnimarket.tenant-provision-requested.v1
   completed_topic: onex.evt.omnimarket.tenant-provision-completed.v1
   wait_seconds: 30
+
+# The runtime command an existing tenant is read through (bind mode): the topics are the tenant provision node's own tenant_read
+# topics (a seam test checks them). The operator principal holds WRITE on the command topic and READ on the completed topic
+# (that node's broker_acl_grants); the run reads the answer for its own command id, from the log end, with no group.
+tenant_read_runtime:
+  command_topic: onex.cmd.omnimarket.tenant-read-requested.v1
+  completed_topic: onex.evt.omnimarket.tenant-read-completed.v1
+  wait_seconds: 30
+
+# What bind mode sets and checks. audience, tenant_id_claim and tenant_slug_claim are what the runtime edge's identity resolver
+# (the inference-credentials route's overlay) checks on a bearer token; tenant_id_attribute and tenant_slug_attribute are the user
+# attributes the sign-in client's protocol mappers (node_dev_keycloak_client_effect) turn into those two claims. The audience is
+# stamped by the sign-in client's audience mapper, not by a user attribute, so the run only reads it back and refuses a token
+# without it. required_provisioning_state is the state a tenant must be in to be bound. Seam tests hold these names against the
+# sign-in client overlay and the edge resolver.
+tenant_binding:
+  audience: onex-api
+  tenant_id_attribute: tenant_id
+  tenant_slug_attribute: tenant_slug
+  tenant_id_claim: tenant_id
+  tenant_slug_claim: tenant_slug
+  required_provisioning_state: active
 
 overlay:
   node: node_dev_identity_provision_effect

@@ -140,6 +140,10 @@ from omnimarket.handlers.delegation_model_scope import (
     model_scope_skip_reason,
     read_model_scope,
 )
+from omnimarket.handlers.delegation_output_budget import (
+    read_output_budget_setting,
+    resolve_output_budget,
+)
 from omnimarket.handlers.delegation_paid_band import resolve_paid_from_size_band
 from omnimarket.handlers.delegation_sampling_reader import read_sampling_settings
 from omnimarket.handlers.handler_capability_start import (
@@ -151,7 +155,6 @@ from omnimarket.handlers.handler_size_band_measurement import measure_size_band
 from omnimarket.handlers.local_snapshot_publisher import (
     LocalEvidenceNoRepublishPublisher as _LocalEvidenceNoRepublishPublisher,
 )
-from omnimarket.handlers.model_catalog import call_read_deadline
 from omnimarket.handlers.routing.byok_provider_backends import (
     ModelByokProviderBackend,
     byok_backend_max_retries,
@@ -196,6 +199,7 @@ from omnimarket.handlers.routing.measured_correct_ceiling import (
 from omnimarket.handlers.routing.spread_load_snapshot import (
     read_spread_load_snapshot,
 )
+from omnimarket.handlers.routing.vllm_input_token_meter import VllmTokenizeMeter
 from omnimarket.handlers.tenant_mirror_requirement import require_tenant_mirrored
 from omnimarket.inference import provider_quota_state
 from omnimarket.inference.protocol_config import (
@@ -318,6 +322,9 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_named_te
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_shrink_retry import (
     HandlerShrinkRetry,
     unit_slice_text,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.thinking_budget import (
+    bound_thinking_budget_to_answer_room,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_dispatch_progress import (
     ModelDelegationDispatchProgress,
@@ -453,6 +460,7 @@ from omnimarket.projection.sqlite_metering_summary import (
 from omnimarket.projection.tenant_isolation import (
     TenantContextMissingError,
 )
+from omnimarket.protocols.protocol_input_token_meter import ProtocolInputTokenMeter
 from omnimarket.routing.roi_overlay import (
     ModelRoutingRoiOverlay,
     resolve_roi_overlay,
@@ -1179,29 +1187,14 @@ def _call_with_model_budget(
 ) -> ModelLlmDelegationCallResult:
     """Read the output ceiling and price entry inside the supervised effect.
 
-    models.dev is read here, inside the cancellable worker, and only when its
-    copy is older than the configured age, within a total deadline taken from
-    the call's remaining time (OMN-23413 AC35).
+    The entry comes from the models.dev copy kept under the ONEX home, else the
+    price list shipped in the install; nothing here reads the network.
     """
-    started = time.monotonic()
-    ceiling, entry = model_output_budget(
-        row,
-        request.model_id,
-        live=True,
-        deadline_seconds=call_read_deadline(request.timeout_seconds),
-    )
-    spent = time.monotonic() - started
+    ceiling, entry = model_output_budget(row, request.model_id)
     limit = resolve_effective_max_tokens(
         requested=requested, backend_max_tokens=ceiling
     )
-    # The read's time comes out of the provider call's own timeout, so optional
-    # price metadata never pushes the call past its deadline.
-    request = request.model_copy(
-        update={
-            "max_tokens": limit,
-            "timeout_seconds": max(request.timeout_seconds - spent, 0.001),
-        }
-    )
+    request = request.model_copy(update={"max_tokens": limit})
     entry_token = current_local_model_entry.set(entry)
     try:
         result = handler(request)
@@ -1558,6 +1551,15 @@ def _apply_class_sampling(
     return options, prompt
 
 
+def _chat_messages(system_prompt: str | None, prompt: str) -> list[dict[str, str]]:
+    """The chat messages one attempt sends: the system turn when there is one, then the user turn (OMN-26640)."""
+    messages: list[dict[str, str]] = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+    return messages
+
+
 def _attempt_configuration(
     backend: ModelResolvedDelegationBackend,
     *,
@@ -1804,7 +1806,13 @@ class LocalDelegationDispatchPort:
         clock: Callable[[], float] | None = None,
         capability_cell_reader: ProtocolCapabilityCellReader | None = None,
         sleep: Callable[[float], Awaitable[None]] | None = None,
+        input_token_meter: ProtocolInputTokenMeter | None = None,
     ) -> None:
+        # OMN-26640: counts a request's input in the served model's own tokens, so a backend the code budget
+        # overlay names in ``output_budgets`` is sent the window less that count less the declared margin.
+        self._input_token_meter: ProtocolInputTokenMeter = (
+            input_token_meter if input_token_meter is not None else VllmTokenizeMeter()
+        )
         # OMN-23176: waits between same-route re-issues of a customer route. Tests inject one so a wait costs no wall time.
         self._sleep = sleep or asyncio.sleep
         self._terminal_publisher = terminal_publisher or EmitEffectTopicPublisher()
@@ -5210,13 +5218,21 @@ class LocalDelegationDispatchPort:
         #    Unset request -> backend ceiling; explicit request -> capped at it.
         #    The local tier's output is then cut to what the resolved backend's
         #    window leaves after the prompt's token upper bound (the clamp).
-        effective_max_tokens = clamp_max_tokens(
-            prompt,
-            backend.tier,
-            backend.backend_id,
-            resolve_effective_max_tokens(
-                requested=max_tokens, backend_max_tokens=backend.max_tokens
-            ),
+        #    OMN-26640: a backend the code budget overlay names in ``output_budgets`` is sent the
+        #    window less the request's measured input less the declared margin instead (resolved
+        #    below, once the outbound messages exist); the fixed local-member tables do not apply.
+        output_budget_named = read_output_budget_setting(backend.backend_id) is not None
+        effective_max_tokens = (
+            backend.max_tokens
+            if output_budget_named
+            else clamp_max_tokens(
+                prompt,
+                backend.tier,
+                backend.backend_id,
+                resolve_effective_max_tokens(
+                    requested=max_tokens, backend_max_tokens=backend.max_tokens
+                ),
+            )
         )
 
         # 2b. RESOLVE the per-call HTTP timeout from the routing contract (÷1000),
@@ -5415,6 +5431,9 @@ class LocalDelegationDispatchPort:
         if reserved:
             keys = ", ".join(sorted(reserved))
             raise ValueError(f"provider request options cannot override: {keys}")
+        # OMN-26640: the output budget of a backend the overlay names is computed from what this
+        # attempt will send. The sampling values below can change the prompt text only by taking the
+        # ``/no_think`` switch off, so the messages are measured after they are applied.
         # OMN-24061: the overlay's sampling values for this task class go over the
         # profile's request options; a class the overlay does not name changes nothing.
         class_sampling = read_sampling_settings(task_type) if task_type else None
@@ -5422,6 +5441,37 @@ class LocalDelegationDispatchPort:
             provider_request_options, outbound_prompt = _apply_class_sampling(
                 provider_request_options, outbound_prompt, class_sampling
             )
+        output_budget = (
+            resolve_output_budget(
+                backend_id=backend.backend_id,
+                endpoint_ref=backend.endpoint_ref,
+                model_id=backend.model_id,
+                messages=_chat_messages(outbound_system_prompt, outbound_prompt),
+                requested=max_tokens,
+                meter=self._input_token_meter,
+            )
+            if output_budget_named
+            else None
+        )
+        if output_budget is not None:
+            effective_max_tokens = output_budget.tokens
+            logger.info(
+                "LocalDelegationDispatch: output budget backend=%s window=%d input=%d (%s) "
+                "margin=%d budget=%d correlation=%s",
+                backend.backend_id,
+                output_budget.window,
+                output_budget.input_tokens,
+                output_budget.input_source,
+                output_budget.margin,
+                output_budget.tokens,
+                correlation_id,
+            )
+        # OMN-26588: thinking tokens share the output cap with the answer, so
+        # whichever of the profile and the overlay set a budget, it leaves the
+        # answer room.
+        provider_request_options = bound_thinking_budget_to_answer_room(
+            provider_request_options, max_tokens=effective_max_tokens
+        )
         # OMN-19432: the profile's prescribed temperature is a default for a
         # caller that sent none, never a competing writer of the wire key.
         profile_default_temperature = resolve_inference_protocol_default_temperature(
@@ -5630,6 +5680,9 @@ class LocalDelegationDispatchPort:
         elapsed_ms = max(0, int((time.monotonic() - call_started) * 1000))
         if not result.latency_ms:
             result = result.model_copy(update={"latency_ms": elapsed_ms})
+        if output_budget is not None:
+            # OMN-26640: the receipt records the budget the call was sent with.
+            result.record_local_output_ceiling(output_budget.tokens)
         _record_run_step_calls(
             run_steps,
             backend,
@@ -5753,6 +5806,7 @@ class LocalDelegationDispatchPort:
                 # non-heuristic way to tell the two apart.
                 finish_reason=result.finish_reason,
                 reasoning_stripped_chars=result.reasoning_stripped_chars,
+                output_tokens_spent=result.tokens_out,
                 named_test_run=named_test_run,
                 named_tests_requested=named_tests_requested,
             )
@@ -5860,6 +5914,7 @@ class LocalDelegationDispatchPort:
         deliverable_evidence: ModelDelegationDeliverableEvidence | None = None,
         finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
         reasoning_stripped_chars: int = 0,
+        output_tokens_spent: int = 0,
         grounding_source: str | None = None,
         named_test_run: ModelNamedTestRun | None = None,
         named_tests_requested: bool = False,
@@ -5927,6 +5982,7 @@ class LocalDelegationDispatchPort:
             else prompt,
             finish_reason=finish_reason,
             reasoning_stripped_chars=reasoning_stripped_chars,
+            output_tokens_spent=output_tokens_spent,
             named_test_run=named_test_run,
             named_tests_requested=named_tests_requested,
         )

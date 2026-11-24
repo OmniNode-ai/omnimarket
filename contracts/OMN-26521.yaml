@@ -1,0 +1,107 @@
+schema_version: 1.0.0
+ticket_id: OMN-26521
+title: The floor fill binds its live pool, brake, stop and ticket seams so it places lanes into free slots
+summary: 'The live profile of node_floor_fill_orchestrator binds its pool (the lane host pool snapshot), tickets (the floor-task ticket nodes over the Linear ticket store), brake and stop signal (the andon stop gate over the stop queue) to their live readers in build_live_handler_factory, where they were left None and answered unbound. A source that cannot be read answers UNKNOWN <source>-unread:<cause> and starts nothing, never an empty pool or an open brake. The live entry takes --check-live-binding, and the schedule installer refuses a live overlay that lacks a binding key.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26521-live-seam-binding
+  statement: A live profile of the floor fill that leaves a seam unbound cannot ship, and the live-bound fill plans a lane when the pool has free slots and the floor record has ready goal tasks.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a test runs the live-profile fill over a recorded snapshot with free lab slots and open goal tickets and asserts it plans at least one lane, and it fails on the current code -- falsifier: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests -k live_binding_plans_lanes on the merge base exits 0'
+  - id: AC2
+    statement: 'AC2: a test builds the live factory with no injected seams and asserts none of pool, tickets, brake or stop is unbound, so a live profile with an unbound seam cannot ship -- falsifier: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests -k no_unbound_live_seam on the merge base exits 0'
+  - id: AC3
+    statement: 'AC3: each seam reads its live source and answers UNKNOWN naming that source when the read fails (never a silent empty pool or open brake) -- falsifier: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests -k live_seam_read_failure on the merge base exits 0'
+  - id: AC4
+    statement: 'AC4: integrated: after the change is installed on h051 through the declared install, onex-floor-fill-tick exits 0 for three consecutive runs and a floor-fill state row exists, or the unit is named blocked with one cause and one owner -- falsifier: ssh h051 systemctl --user show onex-floor-fill-tick -p ExecMainStatus reads a non-zero status with no blocked= STATUS row'
+  - id: AC5
+    statement: 'AC5: the pull request to omnimarket has its required checks green and is handed to the landing controller by one ledger MSG -- falsifier: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests on the pull request head exits non-zero'
+  - id: AC6
+    statement: 'AC6: the floor fill schedule reads its overlay from the settings store root before the declared overlay file, and node_overlay_setting_set declares the floor_fill_live keys settable -- falsifier: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_schedule_store_overlay.py on the merge base exits non-zero'
+  - id: AC7
+    statement: 'AC7: the overlay-store projection stores the record a setting set publishes, operator_paths included, so a set key can reach the store -- falsifier: uv run pytest tests/unit/nodes/node_overlay_store/test_projection_setter_record.py on the merge base exits non-zero'
+evidence_requirements:
+- kind: tests
+  description: The floor fill orchestrator tests pass at the pushed head.
+  command: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26521-ac1
+  description: 'AC1: the live factory with no injected seam reads the recorded floor record and the recorded pool reading and starts at least one lane, and exactly two when the snapshot holds two free slots (failing control: on the merge base the same tests fail, and a live tick there prints the three unbound UNKNOWN lines and exits 3).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests -q -n 0 --no-cov -p no:cacheprovider -k live_binding_plans_lanes
+    cwd: .
+- id: dod-omn26521-ac2
+  description: 'AC2: the live factory built with no injected seam names no unbound seam, the entry check prints the four bound seams, and the stand-ins are named as unbound by the same check (failing control).'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests -q -n 0 --no-cov -p no:cacheprovider -k no_unbound_live_seam
+    cwd: .
+- id: dod-omn26521-ac3
+  description: 'AC3: an absent, stale or host-less pool snapshot, an unreadable stop queue and a ticket store that cannot be built each name their source and start nothing, and an enforced stop is read as the stop signal or the brake (positive controls).'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests -q -n 0 --no-cov -p no:cacheprovider -k live_seam_read_failure
+    cwd: .
+- id: dod-omn26521-ac4
+  description: 'AC4: hosted proxy for the integrated criterion: the install-time check refuses an overlay that lacks a required live key and accepts one that lacks an optional seam key, the entry check prints the four bound seams, and the schedule install tests pass; the unit run on h051 (exit status of onex-floor-fill-tick on three consecutive runs and the floor-fill state row, or the named blocked cause) is taken on the lab host after the install and is not met by this change alone.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_schedule_live.py -q -n 0 --no-cov -p no:cacheprovider -k live_profile_missing_key_refuses_naming_it
+    cwd: .
+- id: dod-omn26521-ac5
+  description: 'AC5: the node tests pass at the pushed head.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_live_seam_binding.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26521-store-overlay
+  description: 'The floor fill schedule reads its overlay from the settings store root before the declared overlay file, and the node_overlay_setting_set contract declares the floor_fill_live keys settable (failing control: the store overlay test fails with ImportError on load_schedule_overlay before the change).'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_schedule_store_overlay.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_overlay_setting_set -q -n 0 --no-cov -p no:cacheprovider -k floor_fill_live
+    cwd: .
+- id: dod-omn26521-projection-setter-record
+  description: 'The overlay-store projection stores a setting-set record with operator_paths and still refuses any other extra field (failing control: on the merge base the projection refuses operator_paths as an extra input, the log line the dev runtime printed).'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_overlay_store/test_projection_setter_record.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26521-integration-proof
+  description: the live seam tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26521 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_live_seam_binding.py -q --no-cov

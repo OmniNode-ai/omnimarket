@@ -22,6 +22,7 @@ sinks and refuses if one alarm does not reach both destinations.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import shlex
 import socket
@@ -31,7 +32,18 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 
+from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
+
 from omnimarket.handlers.ledger_row_grammar import Row, parse_row
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayNotFoundError,
+    load_structured_overlay,
+)
+from omnimarket.handlers.scheduled_overlay_refusal import ScheduledOverlayRefusalLatch
+from omnimarket.models.model_runtime_tick_schedule import (
+    ModelRuntimeTickScheduleConfig,
+    scheduled_fire,
+)
 from omnimarket.nodes.node_failure_alarm_router_effect.causes import (
     ALARM_CELL,
     HELD_ROLL,
@@ -50,6 +62,12 @@ from omnimarket.nodes.node_failure_alarm_router_effect.causes import (
     row_causes,
     stamp_of,
 )
+from omnimarket.nodes.node_failure_alarm_router_effect.detectors import (
+    extra_causes,
+)
+from omnimarket.nodes.node_failure_alarm_router_effect.detectors import (
+    resolution as extra_resolution,
+)
 from omnimarket.nodes.node_failure_alarm_router_effect.models import (
     ModelAlarmGap,
     ModelCauseAlarm,
@@ -57,8 +75,13 @@ from omnimarket.nodes.node_failure_alarm_router_effect.models import (
     ModelFailureAlarmRequest,
     ModelFailureAlarmResult,
 )
+from omnimarket.nodes.node_failure_alarm_router_effect.rules import (
+    ModelFailureAlarmRules,
+    load_rules,
+)
 
 TICKET = "OMN-26483"
+NODE_NAME = "node_failure_alarm_router_effect"
 ACTOR = "node:node_failure_alarm_router_effect"
 COMMAND_TIMEOUT_S = 60
 _SELF_CHECK_NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
@@ -205,7 +228,7 @@ def _alarm_rows(
         f"{at} | STATUS | lane={ROUTER_LANE} | actor={ACTOR} | model=none | src=alarm"
         f" | alarm={ALARM_CELL} | cause={cause.key} | class={cause.failure_class}"
         f" | subject={cell(cause.subject, 120)} | kind={cell(cause.kind)} | first_at={cause.first_at}"
-        f" | to={orchestrator or 'none'} | req={request_id}"
+        f" | to={orchestrator or 'none'}{f' | owner={cause.owner}' if cause.owner else ''} | req={request_id}"
         f" | {cause.failure_class} {cell(cause.subject, 120)}: {cell(cause.kind)}, first seen {cause.first_at}"
     )
     rows = [status]
@@ -220,6 +243,8 @@ def _alarm_rows(
 
 def _push_text(cause: Cause, orchestrator: str | None) -> str:
     text = f"ALARM {cause.failure_class} {cell(cause.subject, 120)}: {cell(cause.kind)}; first {cause.first_at}"
+    if cause.owner:
+        text += f"; owner {cause.owner}"
     if orchestrator is None:
         return f"{text}; no live orchestrator lane, so no inbox message was written"
     return f"{text}; inbox message sent to {orchestrator}"
@@ -266,8 +291,14 @@ def _parse_rows(lines: list[str]) -> list[Row]:
 class HandlerFailureAlarmRouter:
     """Read the failure classes and deliver one alarm per cause to the orchestrator inbox and the push channel."""
 
-    def __init__(self, *, ports: FailureAlarmPorts | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        ports: FailureAlarmPorts | None = None,
+        rules: ModelFailureAlarmRules | None = None,
+    ) -> None:
         self._ports = ports
+        self._rules = rules or load_rules()
         self._refusals_pushed: set[str] = set()
 
     def self_check(self) -> None:
@@ -339,7 +370,10 @@ class HandlerFailureAlarmRouter:
 
         open_causes, resolved_at = open_and_resolved(rows)
         since = now - timedelta(hours=request.lookback_hours)
-        active = row_causes(rows, since)
+        active = [
+            *row_causes(rows, since),
+            *extra_causes(rows, since, now, self._rules),
+        ]
         controller = controller_cause(
             ticks, request.controller_subject, request.consecutive_refusals
         )
@@ -401,7 +435,9 @@ class HandlerFailureAlarmRouter:
 
         resolved: list[ModelCauseResolved] = []
         for key, opened in open_causes.items():
-            ended_at = resolution(opened, rows, ticks)
+            ended_at = resolution(opened, rows, ticks) or extra_resolution(
+                opened, rows, self._rules
+            )
             if ended_at is None:
                 continue
             row = _resolved_row(
@@ -442,4 +478,46 @@ class HandlerFailureAlarmRouter:
             failures=tuple(failures),
             rows_parsed=len(rows),
             ticks_parsed=len(ticks),
+        )
+
+
+class HandlerFailureAlarmRouterScheduled:
+    """The runtime tick opens one fire per schedule window (``config.failure_alarm_router.schedule``); other ticks answer nothing.
+
+    The sources and destinations of a fire are the deployment overlay's: the ledger rows command, the push command and the
+    ledger writer command, none of them in a bus request.
+    """
+
+    def __init__(
+        self,
+        router: HandlerFailureAlarmRouter | None = None,
+        request: ModelFailureAlarmRequest | None = None,
+        config: ModelRuntimeTickScheduleConfig | None = None,
+    ) -> None:
+        self._router = router or HandlerFailureAlarmRouter()
+        self._request = request
+        self._config = config or load_rules().schedule
+        self._refusals = ScheduledOverlayRefusalLatch(NODE_NAME)
+
+    async def handle(self, request: ModelRuntimeTick) -> ModelFailureAlarmResult | None:
+        fire = scheduled_fire(
+            self._config,
+            now=request.now,
+            scheduled_at=request.scheduled_at,
+            tick_interval_ms=request.tick_interval_ms,
+            tick_id=request.tick_id,
+            scheduler_id=request.scheduler_id,
+        )
+        if fire is None:
+            return None
+        try:
+            settings = self._request or load_structured_overlay(
+                NODE_NAME, ModelFailureAlarmRequest
+            )
+        except NodeOverlayNotFoundError as exc:
+            self._refusals.refuse(exc)
+            return None
+        self._refusals.recovered()
+        return await asyncio.to_thread(
+            self._router.handle, settings.model_copy(update={"now": request.now})
         )

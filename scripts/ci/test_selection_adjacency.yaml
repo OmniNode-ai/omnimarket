@@ -79,12 +79,12 @@ node_scoped_modules:
 # set plus the tests that read the files: a test whose text spells the file or enumerates its
 # directory (through an imported helper too), and the
 # readers data_reader_overrides names (data glob -> test files) for a reader the text cannot show. Any
-# other unmatched file keeps the full escalation. The rule changes what a pull request runs, so it stays
-# off until its stage is entered: selection_stage in the selector's policy.yaml rises one stage at a time,
+# other unmatched file keeps the full escalation. The rule changes what a pull request runs, so it is on
+# only once its stage is entered: selection_stage in the selector's policy.yaml rises one stage at a time,
 # each on a receipt under config/test_selection_stage_receipts/ that
 # tests/ci/test_selection_stage_evidence.py recomputes (stage 1 from one comparison over the recorded set,
-# a later stage from the published nightly records).
-data_only_selection_enabled: false
+# a later stage from the published nightly records). Stage 1 is entered, so this is on.
+data_only_selection_enabled: true
 data_only_globs:
   - contracts/OMN-*.yaml
   - "*.md"
@@ -117,9 +117,12 @@ data_reader_gated_infrastructure_paths:
 # project.version narrows beside a lock change only when the lock's sole change is the package's own
 # version line. pyproject_reader_globs are the source files indexed for a read of pyproject.toml (a file
 # that opens it or reads entry-point metadata); the tests that import one, transitively, are readers.
-# The rule is the stage 2 entry of the selection record; like the data-only rule it stays off until the
-# change that turns it on, and it needs the base ref (detect_test_paths --base-ref).
-pyproject_section_selection_enabled: false
+# The rule is the stage 2 entry of the selection record and is on; it needs the base ref
+# (detect_test_paths --base-ref), and a change with no base ref keeps the full suite. A replay of the 60
+# pinned merges (18 change pyproject.toml, 4 of them with a dependency or a lock change beyond the version
+# line) narrows one pyproject merge and no dependency or lock change; over the 83 merges since #6634 it
+# changes no pull request's selection, because the pyproject merges there also hit another escalation.
+pyproject_section_selection_enabled: true
 pyproject_paths:
   - pyproject.toml
 pyproject_lock_paths:
