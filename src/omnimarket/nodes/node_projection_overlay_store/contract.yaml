@@ -88,25 +88,25 @@ db_io:
       schema: omninode_internal
       migration: "0002_overlay_store_revision_provenance_audit.sql"
       access: write
-      role: overlay_store
+      role: overlay_store_revision
     - name: overlay_store_write
       database_ref: application
       schema: omninode_internal
       migration: "0002_overlay_store_revision_provenance_audit.sql"
       access: write
-      role: overlay_store
+      role: overlay_store_write
     - name: overlay_store_provenance
       database_ref: application
       schema: omninode_internal
       migration: "0002_overlay_store_revision_provenance_audit.sql"
       access: write
-      role: overlay_store
+      role: overlay_store_provenance
     - name: overlay_store_audit
       database_ref: application
       schema: omninode_internal
       migration: "0002_overlay_store_revision_provenance_audit.sql"
       access: write
-      role: overlay_store
+      role: overlay_store_audit
   idempotency_key: "overlay_id,digest,write_id"
 
 metadata:
