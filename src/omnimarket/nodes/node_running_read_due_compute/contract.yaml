@@ -64,9 +64,10 @@ event_bus:
   subscribe_topics: []
   publish_topics: []
 runtime_dispatch:
-  external_trigger: "Direct Python invocation of the handler: at a merge (write_due_row) and at each tick (read_due_rows); no topic is declared, so no broker permission row is owed."
+  external_trigger: "Direct Python invocation of the handler: at a merge (write_due_row) and at each tick (read_due_rows); no topic is declared, so no broker permission row is owed. The call line a schedule or a merge step runs is python -m omnimarket.nodes.node_running_read_due_compute <write-due|read-due> (runtime_running_read_due.py), which takes its input on stdin, prints the rows owed and appends nothing."
   callers:
     - path: "src/omnimarket/nodes/node_pr_landing_tick_orchestrator/handlers/tick_running_read.py"
+    - path: "src/omnimarket/nodes/node_running_read_due_compute/runtime_running_read_due.py"
 metadata:
   transport_type: local
   description: running-read due rows and their alarms
