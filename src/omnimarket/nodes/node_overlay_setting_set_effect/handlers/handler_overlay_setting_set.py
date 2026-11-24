@@ -22,12 +22,12 @@ from typing import Any, Protocol
 from pydantic import BaseModel, JsonValue, ValidationError
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
-from omnimarket.models.overlay_store import document_digest
+from omnimarket.models.overlay_store import (
+    ModelOverlaySettingRecord,
+    document_digest,
+)
 from omnimarket.nodes.node_overlay_setting_set_effect.models.model_overlay_setting_audit import (
     ModelOverlaySettingAudit,
-)
-from omnimarket.nodes.node_overlay_setting_set_effect.models.model_overlay_setting_record import (
-    ModelOverlaySettingRecord,
 )
 from omnimarket.nodes.node_overlay_setting_set_effect.models.model_overlay_setting_set_request import (
     ModelOverlaySettingSetRequest,
