@@ -1,0 +1,90 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-26617"
+title: "Delegation off with Claude Code ready names onex delegation on as the next step"
+summary: "With delegation off and Claude Code ready, onex delegation status names onex delegation on as the next step and does not suggest an install; hook assets that are really missing or broken still name the repair command; the TUI /delegation tab shows the same next step."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26617-off-ready-next-step
+  statement: "When delegation is off and Claude Code is ready, status names onex delegation on as the next step."
+  acceptance:
+  - id: AC1
+    statement: 'AC1: when delegation is off and Claude Code is ready, the status names `onex delegation on` as the next step and does not suggest an install; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_omn26617_repro_status.py::test_ac1_off_and_ready_names_onex_delegation_on_not_an_install'
+- id: req-omn26617-broken-assets-repair-command
+  statement: "When hook assets are really missing or broken, status still names the repair command."
+  acceptance:
+  - id: AC2
+    statement: 'AC2: when the hook assets are really missing or broken, the status still names the repair command (`onex install omninode-claude`); Falsifier: tests/unit/nodes/node_onex_setup_effect/test_omn26617_repro_status.py::test_ac2_assets_really_broken_keeps_the_repair_command'
+- id: req-omn26617-tui-same-next-step
+  statement: "The TUI /delegation tab shows the same next step as the CLI in the off-and-ready state."
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the TUI /delegation tab shows the same next step as the CLI; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_omn26617_repro_tui_tab.py::test_delegation_tab_shows_the_cli_next_step_when_off_and_ready'
+- id: req-omn26617-regression-control
+  statement: "The existing onex setup delegation unit tests still pass."
+  acceptance:
+  - id: AC4
+    statement: 'AC4: the existing delegation unit tests still pass; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_cli_delegation.py tests/unit/nodes/node_onex_setup_effect/test_omn26617_repro_status.py'
+evidence_requirements:
+- kind: tests
+  description: AC1 and AC2 status next-step behavior.
+  command: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_omn26617_repro_status.py -q -n 0 --no-cov -p no:cacheprovider
+- kind: tests
+  description: AC3 TUI next-step rendering.
+  command: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_omn26617_repro_tui_tab.py -q -n 0 --no-cov -p no:cacheprovider
+- kind: tests
+  description: Existing delegation tests remain green.
+  command: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_cli_delegation.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26617-ac1
+  description: 'AC1: when delegation is off and Claude Code is ready, the status names `onex delegation on` as the next step and does not suggest an install.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_omn26617_repro_status.py::test_ac1_off_and_ready_names_onex_delegation_on_not_an_install -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26617-ac2
+  description: 'AC2: when the hook assets are really missing or broken, the status still names the repair command (`onex install omninode-claude`).'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_omn26617_repro_status.py::test_ac2_assets_really_broken_keeps_the_repair_command -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26617-ac3
+  description: 'AC3: the TUI /delegation tab shows the same next step as the CLI.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_omn26617_repro_tui_tab.py::test_delegation_tab_shows_the_cli_next_step_when_off_and_ready -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26617-ac4
+  description: 'AC4: the existing delegation unit tests still pass, run together with the new status tests.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_cli_delegation.py tests/unit/nodes/node_onex_setup_effect/test_omn26617_repro_status.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26617-integration-proof
+  description: Run the OMN-26617 tests on a lab host at the pushed revision.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26617 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_onex_setup_effect/test_omn26617_repro_status.py tests/unit/nodes/node_onex_setup_effect/test_omn26617_repro_tui_tab.py tests/unit/nodes/node_onex_setup_effect/test_cli_delegation.py -m 'not e2e' -q -n 0 --no-cov --refuse-skips
+    cwd: .
