@@ -339,6 +339,7 @@ class HandlerServeUnits:
         kb_path = self._knowledge_base(request, row, declared)
         lane_values = self._lane_values(row, request.registry_root, declared)
         work_root = self._work_root(request, row)
+        lane_roots = self._lane_roots(row)
         try:
             worktrees = plan_worktree_root(
                 request.registry_root, row.lab_worktree_root, volume=self._volume
@@ -354,6 +355,7 @@ class HandlerServeUnits:
             kb_path,
             lane_values,
             work_root,
+            lane_roots,
         )
         if request.mode == "dry-run":
             return ModelServeUnitsResult(
@@ -387,6 +389,24 @@ class HandlerServeUnits:
             raise RefusalError(75, "work-root-volume-over-bar", str(exc)) from exc
         return root
 
+    def _lane_roots(self, row: ModelLabHostRow) -> list[str]:
+        """The serve environment lines for the row's declared temp and cache roots, each refused above the volume bar."""
+        lines: list[str] = []
+        for key, declared, reason in (
+            ("TMPDIR", row.lab_tmp_root, "tmp-root-volume-over-bar"),
+            ("XDG_CACHE_HOME", row.lab_cache_root, "cache-root-volume-over-bar"),
+        ):
+            if declared is None:
+                continue
+            try:
+                refuse_work_root_over_bar(Path(declared), reader=self._volume)
+            except WorkRootVolumeError as exc:
+                raise RefusalError(75, reason, str(exc)) from exc
+            lines.append(f"{key}={declared}")
+            if key == "XDG_CACHE_HOME":
+                lines.append(f"UV_CACHE_DIR={declared}/uv")
+        return lines
+
     def _render(
         self,
         request: ModelServeUnitsRequest,
@@ -397,6 +417,7 @@ class HandlerServeUnits:
         kb_path: str,
         lane_values: dict[str, str],
         work_root: Path,
+        lane_roots: list[str],
     ) -> dict[str, str]:
         unit = self._unit
         path = str(unit["path"]).format(home=request.home)
@@ -419,6 +440,7 @@ class HandlerServeUnits:
                 lines.extend(f"{key}={value}" for key, value in lane_values.items())
             lines.append(f"{SKILL_OVERLAY_ROOTS_ENV}={overlay_roots}")
             lines.append(f"LAB_WORK_ROOT={lane_work_root}")
+            lines.extend(lane_roots)
             lines.append(f"PATH={path}")
             return lines
 
