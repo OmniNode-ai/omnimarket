@@ -14,6 +14,7 @@ import json
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -260,7 +261,7 @@ def _responder(**over: object) -> ModelChainResolution:
         "served_model": MODEL,
         "window": WINDOW,
     }
-    return ModelChainResolution(**{**fields, **over})  # type: ignore[arg-type]
+    return ModelChainResolution.model_validate({**fields, **over})
 
 
 def _machine(
@@ -457,7 +458,10 @@ def test_an_external_connect_in_the_session_fails_row4_and_zero_provider_not_the
 
 def test_a_local_answer_that_escalated_fails_row1() -> None:
     receipt = _receipt()
-    receipt["receipt"]["result"]["escalation_count"] = 1  # type: ignore[index]
+    result = cast(
+        "dict[str, object]", cast("dict[str, object]", receipt["receipt"])["result"]
+    )
+    result["escalation_count"] = 1
     obs, routing = _c14(ScriptedHost(receipt=receipt))
     assert "row1_local_answer_ends_chain" in _c14_failed(obs, routing)
 
