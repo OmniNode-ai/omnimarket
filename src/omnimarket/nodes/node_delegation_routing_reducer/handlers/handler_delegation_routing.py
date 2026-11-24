@@ -2874,6 +2874,21 @@ def delta(
             if is_customer_attributed(tenant_overlay.tenant_id):
                 tenant_overlay = None
 
+    # OMN-25827: the house tenant's overlay row is the first rung of its chain, not
+    # the whole chain. Once the orchestrator re-routes past it (``min_tier_name`` set
+    # to a ladder tier) or has excluded its backend, the row is spent and the
+    # platform ladder resolves. A customer's row is never spent: it has no lawful
+    # successor (INV-068), so it keeps returning the customer's own route.
+    if (
+        tenant_overlay is not None
+        and not is_customer_attributed(tenant_overlay.tenant_id)
+        and (
+            tenant_overlay.backend_id in excluded_backend_refs
+            or (min_tier_name is not None and min_tier_name != TENANT_OVERLAY_TIER_NAME)
+        )
+    ):
+        tenant_overlay = None
+
     if tenant_overlay is not None:
         overlay_decision = _decision_from_tenant_overlay(
             request,

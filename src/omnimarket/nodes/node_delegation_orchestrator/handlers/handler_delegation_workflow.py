@@ -286,6 +286,7 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     NO_HIGHER_TIER_REASON_TOKEN,
     describe_no_higher_tier_available,
+    first_eligible_tier,
     is_free_tier,
     lead_backend_refs,
     next_eligible_tier,
@@ -2542,6 +2543,20 @@ class DelegationWorkflowState:
     tenant_id: str | None = None
 
 
+def _is_house_overlay_route(workflow: DelegationWorkflowState) -> bool:
+    """Whether the route the workflow is on is the house tenant's own overlay row.
+
+    OMN-25827. A customer's overlay route has no lawful successor (INV-068); the
+    house tenant's row is one rung of the platform chain and has one.
+    """
+    decision = workflow.routing_decision
+    return (
+        decision is not None
+        and (decision.tier_name or "").strip() == TENANT_OVERLAY_TIER_NAME
+        and decision.cost_tier == HOUSE_OVERLAY_COST_TIER
+    )
+
+
 def _routing_prompt(workflow: DelegationWorkflowState) -> str:
     """The prompt every tier and sibling resolution of ``workflow`` routes on.
 
@@ -2800,14 +2815,25 @@ class HandlerDelegationWorkflow:
             # OMN-20154: a backend whose provider quota key is blocked is
             # skipped exactly like one that already failed in this workflow.
             skip_refs = excluded_backend_refs | self._quota_blocked_refs(workflow)
-            next_tier = next_eligible_tier(
-                workflow.current_tier_name,
-                excluded_tiers,
-                task_type=task_type,
-                excluded_backend_refs=skip_refs,
-                correlation_id=workflow.correlation_id,
-                prompt=_routing_prompt(workflow),
-            )
+            if _is_house_overlay_route(workflow) and task_type is not None:
+                # OMN-25827: ``tenant_overlay`` is not a rung of the platform
+                # ladder, so walking on from it finds nothing and the run ended
+                # on the one house backend. A failed house route falls back to
+                # the ladder's first rung.
+                next_tier = first_eligible_tier(
+                    task_type,
+                    correlation_id=workflow.correlation_id,
+                    prompt=_routing_prompt(workflow),
+                )
+            else:
+                next_tier = next_eligible_tier(
+                    workflow.current_tier_name,
+                    excluded_tiers,
+                    task_type=task_type,
+                    excluded_backend_refs=skip_refs,
+                    correlation_id=workflow.correlation_id,
+                    prompt=_routing_prompt(workflow),
+                )
             if next_tier is None:
                 no_higher_tier_reason = (
                     describe_no_higher_tier_available(
