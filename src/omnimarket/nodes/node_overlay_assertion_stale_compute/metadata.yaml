@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_overlay_assertion_stale_compute
+version: 0.1.0
+description: Returns one alarm per listed overlay id whose newest loader assertion is older than the bound or missing.
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_overlay_assertion_stale_compute: omnimarket.nodes.node_overlay_assertion_stale_compute
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: none
+dependencies:
+  - pydantic>=2.11.0
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, overlay, alarm, pure]
+node_role: compute
+pack: data
+display_name: Overlay Assertion Stale Compute

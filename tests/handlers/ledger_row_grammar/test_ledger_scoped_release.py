@@ -192,7 +192,7 @@ def test_comma_list_hold_applies_to_each_named_pr() -> None:
 
 
 def test_scoped_release_payload_is_accepted_and_bad_scope_is_refused() -> None:
-    ledger = "ROLLING_WORK_LEDGER.md"
+    ledger = sorted(g.GOVERNED_LEDGER_NAMES)[0]
     valid = scoped(HOLD_ID, THREE)
     assert g.refusal_for_payload(valid, ledger) is None
     reason = g.refusal_for_payload(scoped(HOLD_ID, "372"), ledger)

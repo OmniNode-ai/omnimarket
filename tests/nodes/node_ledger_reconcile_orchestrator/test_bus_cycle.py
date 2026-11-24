@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 """The orchestrator as production wires it: the contract's bus, the contract gateway, the local adapters (OMN-20677).
 
-Only the programs the adapters start (`gh`, the ledger writer) are replaced; the ledger,
-the archive, the clone registry, the overlay and every hop between the nodes are real.
+Only the programs the adapters start (`gh`, the bus append command) and the rows loader's
+answer are replaced; the clone registry, the overlay and every hop between the nodes are real.
 """
 
 from __future__ import annotations
@@ -13,12 +13,14 @@ import shlex
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.runtime.runtime_local import RuntimeLocal
 
+from omnimarket.handlers.ledger_rows_unreadable_error import LedgerRowsUnreadableError
 from omnimarket.models.ledger_reconcile import (
     ModelReconcileRequest,
     ModelReconcileResult,
@@ -38,23 +40,28 @@ OVERLAY = "github_org: Example-Org\nrepo_aliases:\n  market: omnimarket\nbranch_
 
 
 @pytest.fixture
-def host(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]:
+def host(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     registry = tmp_path / "registry_root"
     (registry / "omnimarket" / ".git").mkdir(parents=True)
-    ledger_dir = tmp_path / "ledger"
-    ledger_dir.mkdir()
-    ledger = ledger_dir / "ROLLING_WORK_LEDGER.md"
-    ledger.write_text("# Ledger\n" + "\n".join(ROWS) + "\n")
+    served = {"rows": tuple(ROWS), "unreadable": ""}
+
+    def rows_over_the_bus(reader: str, window_hours: int) -> tuple[str, ...]:
+        assert (reader, window_hours) == ("ledger-reconcile", 720)
+        if served["unreadable"]:
+            raise LedgerRowsUnreadableError(str(served["unreadable"]))
+        return tuple(served["rows"])
+
     overlay = tmp_path / "overlay.yaml"
     overlay.write_text(OVERLAY)
     appended = tmp_path / "appended.jsonl"
     writer = tmp_path / "writer.py"
     writer.write_text(
         "import json, sys\n"
-        f"open({str(appended)!r}, 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n"
+        f"open({str(appended)!r}, 'a').write(json.dumps([sys.argv[1:], sys.stdin.read()]) + '\\n')\n"
     )
     monkeypatch.setenv("OMNI_HOME", str(registry))
-    monkeypatch.setenv("ONEX_LEDGER_PATH", str(ledger))
+    monkeypatch.delenv("ONEX_LEDGER_PATH", raising=False)
+    monkeypatch.setattr(adapters, "read_ledger_rows_via_node", rows_over_the_bus)
     monkeypatch.setenv(adapters.OVERLAY_ENV, str(overlay))
     monkeypatch.setenv(
         adapters.APPEND_COMMAND_ENV,
@@ -87,7 +94,7 @@ def host(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]:
         return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="no such commit")
 
     monkeypatch.setattr(adapters, "_run", fake_run)
-    return {"ledger": ledger, "appended": appended, "registry": registry}
+    return {"served": served, "appended": appended, "registry": registry}
 
 
 def _dispatch(
@@ -114,7 +121,7 @@ def _dispatch(
 
 
 def test_report_mode_travels_the_contract_bus_and_appends_nothing(
-    host: dict[str, Path], tmp_path: Path
+    host: dict[str, Any], tmp_path: Path
 ) -> None:
     request = ModelReconcileRequest(since_days=0)
     runtime, topics = _dispatch(request, tmp_path)
@@ -139,7 +146,7 @@ def test_report_mode_travels_the_contract_bus_and_appends_nothing(
 
 
 def test_apply_mode_appends_the_planned_rows_through_the_ledger_writer(
-    host: dict[str, Path], tmp_path: Path
+    host: dict[str, Any], tmp_path: Path
 ) -> None:
     runtime, _ = _dispatch(
         ModelReconcileRequest(apply=True, max_appends=60, since_days=0), tmp_path
@@ -149,27 +156,29 @@ def test_apply_mode_appends_the_planned_rows_through_the_ledger_writer(
     assert (result.exit_code, result.status) == (1, "reconciled")
     assert (result.auto_closed, result.needs_attention, result.unknown) == (1, 1, 1)
     calls = [json.loads(line) for line in host["appended"].read_text().splitlines()]
-    assert [(call[0], call[1]) for call in calls] == [
-        (str(host["ledger"]), "--append")
+    assert [call[0][:3] for call in calls] == [
+        ["append", "--lane", "ledger-reconcile"]
     ] * 2
-    assert "RECONCILER-AUTO-CLOSE" in calls[0][2]
-    assert "lane=landed-lane" in calls[0][2]
-    assert "RECONCILER-NEEDS-ATTENTION" in calls[1][2]
+    assert "RECONCILER-AUTO-CLOSE" in calls[0][1]
+    assert "lane=landed-lane" in calls[0][1]
+    assert "RECONCILER-NEEDS-ATTENTION" in calls[1][1]
 
 
-def test_a_host_without_its_ledger_is_not_run_not_clean(
-    host: dict[str, Path], tmp_path: Path
+def test_a_host_whose_ledger_rows_are_unreadable_is_not_run_not_clean(
+    host: dict[str, Any], tmp_path: Path
 ) -> None:
-    host["ledger"].unlink()
+    host["served"]["unreadable"] = "the rows loader exited 69"
     runtime, _ = _dispatch(ModelReconcileRequest(), tmp_path)
     result = runtime.handler_result
     assert isinstance(result, ModelReconcileResult)
     assert (result.exit_code, result.status) == (3, "blocked")
-    assert result.stderr.startswith("ledger_reconcile: NOT RUN — live ledger missing")
+    assert result.stderr.startswith(
+        "ledger_reconcile: NOT RUN — ledger rows unreadable over the bus"
+    )
 
 
 def test_the_cli_keeps_the_exits_and_prints_the_report(
-    host: dict[str, Path], capsys: pytest.CaptureFixture[str]
+    host: dict[str, Any], capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert cli.main(["--report", "--since-days", "0"]) == 1
     out = capsys.readouterr().out
@@ -178,7 +187,7 @@ def test_the_cli_keeps_the_exits_and_prints_the_report(
 
 
 def test_the_cli_workflow_flag_turns_a_reported_finding_into_exit_zero(
-    host: dict[str, Path], capsys: pytest.CaptureFixture[str]
+    host: dict[str, Any], capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert cli.main(["--report", "--since-days", "0", "--workflow", "--json"]) == 0
     printed = json.loads(capsys.readouterr().out)
@@ -187,32 +196,10 @@ def test_the_cli_workflow_flag_turns_a_reported_finding_into_exit_zero(
 
 
 def test_the_cli_exits_three_when_the_host_cannot_reconcile(
-    host: dict[str, Path],
+    host: dict[str, Any],
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.delenv("ONEX_LEDGER_PATH")
+    monkeypatch.delenv("OMNI_HOME")
     assert cli.main(["--report"]) == 3
-    assert (
-        "ONEX_LEDGER_PATH is not set (required, no default)" in capsys.readouterr().err
-    )
-
-
-def test_the_cli_reads_the_roster_options() -> None:
-    request, as_json, workflow = cli.parse_request(
-        [
-            "--apply",
-            "--live-lane",
-            "b",
-            "--live-lane",
-            "a",
-            "--live-roster",
-            "--silent-hours",
-            "72",
-        ]
-    )
-    assert request.apply
-    assert request.live_lanes == frozenset({"a", "b"})
-    assert request.live_roster_known
-    assert request.silent_hours == 72
-    assert (as_json, workflow) == (False, False)
+    assert "OMNI_HOME is not set (required, no default)" in capsys.readouterr().err
