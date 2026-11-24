@@ -2725,10 +2725,12 @@ class OnexTui(App[int]):
             if cost is not None
             else _say("run_cost_unmeasured")
         )
-        if metrics.get("cost_savings_usd"):
+        if cost is not None and metrics.get("cost_savings_usd"):
             facts.append(
                 _say("run_saved", saved=f"{float(metrics['cost_savings_usd']):.4f}")
             )
+        elif cost is None:
+            facts.append(_say("run_saved_unmeasured"))
         run_id = str(document.get("run_id") or "") if document else ""
         self._main().query_one("#output", RichLog).write(
             Markdown(str(result["response"]).strip())
