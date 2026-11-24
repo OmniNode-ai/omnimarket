@@ -377,21 +377,24 @@ class HandlerBrokerLag:
             for r in readings
             if r.state is EnumGroupState.NEVER_COMMITTED
         )
+        over = self._over_ceiling(readings)
         if previous is None:
             return self._result(
                 request,
                 groups,
                 readings,
-                (),
+                over,
                 ("no-previous-sample", *never),
-                EnumBrokerLagOutcome.INDETERMINATE,
+                EnumBrokerLagOutcome.ALARM
+                if over
+                else EnumBrokerLagOutcome.INDETERMINATE,
                 sample,
                 previous,
                 drill,
                 "no previous sample, so growth could not be evaluated; this run is the baseline",
                 notes,
             )
-        alarms: list[str] = []
+        alarms: list[str] = list(over)
         waiting: list[str] = []
         rule = self._overlay.lag.growth
         stored = self._streaks.load() if rule is not None and self._streaks else {}
@@ -440,6 +443,22 @@ class HandlerBrokerLag:
             else f"growth of {rule.min_growth} or more in {rule.persist_runs} consecutive samples, and only that; a high flat lag is not an alarm",
             notes,
             streaks,
+        )
+
+    def _over_ceiling(self, readings: Sequence[ModelGroupReading]) -> tuple[str, ...]:
+        """One alarm line per read group whose lag is above the overlay's declared ceiling (OMN-26609).
+
+        The bound and the owner are the overlay's data; with no ``lag.ceiling`` block nothing is over.
+        """
+        ceiling = self._overlay.lag.ceiling
+        if ceiling is None:
+            return ()
+        return tuple(
+            f"{r.group}: lag {r.lag} is over the declared ceiling {ceiling.max_lag} (owner {ceiling.owner})"
+            for r in readings
+            if r.state is EnumGroupState.READ
+            and r.lag is not None
+            and r.lag > ceiling.max_lag
         )
 
     def _indeterminate(

@@ -33,8 +33,6 @@ class ModelSilentFailureAlarmOptions(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     registry_root: Path
-    ledger: Path | None = None
-    ledger_lock: str | None = None
     # queue-status keeps its trend here, outside every repository.
     trend_file: Path = Field(
         default_factory=lambda: _state_home() / "omni/queue-status/last.json"
@@ -172,6 +170,11 @@ class ModelSilentFailureAlarmOptions(BaseModel):
         if config:
             path = Path(config)
             document = json.loads(path.read_text())
+            if isinstance(document, dict):
+                # A configuration written before the ledger moved to the bus still names a ledger file and its
+                # appender; neither is used, so they are dropped here rather than refused.
+                document.pop("ledger", None)
+                document.pop("ledger_lock", None)
             table = document.get("host_table") if isinstance(document, dict) else None
             if table and not Path(table).is_absolute():
                 # A relative table path is read from the configuration file's own directory.
