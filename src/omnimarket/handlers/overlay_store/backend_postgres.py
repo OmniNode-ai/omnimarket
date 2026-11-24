@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from types import TracebackType
 from typing import Any
 
@@ -20,11 +20,22 @@ LOGIN_INPUT = "ONEX_SETTINGS_STORE_LOGIN"
 PASSWORD_SECRET = "ONEX_SETTINGS_STORE_PASSWORD"
 
 
-class _LazyPool:
-    """Opens the asyncpg pool when the first query asks for a connection, so wiring itself opens nothing."""
+PoolFactory = Callable[..., Awaitable[Any]]
 
-    def __init__(self, dsn_parts: Mapping[str, Any]) -> None:
+
+async def _open_asyncpg_pool(**parts: Any) -> Any:
+    """The production connector; the wiring gives every value, a test injects its own in place of it."""
+    from asyncpg import create_pool
+
+    return await create_pool(**parts)
+
+
+class _LazyPool:
+    """Opens the pool when the first query asks for a connection, so wiring itself opens nothing."""
+
+    def __init__(self, dsn_parts: Mapping[str, Any], pool_factory: PoolFactory) -> None:
         self._parts = dsn_parts
+        self._pool_factory = pool_factory
         self._pool: Any = None
 
     def acquire(self) -> _Acquire:
@@ -32,9 +43,7 @@ class _LazyPool:
 
     async def open_pool(self) -> Any:
         if self._pool is None:
-            import asyncpg
-
-            self._pool = await asyncpg.create_pool(**self._parts)
+            self._pool = await self._pool_factory(**self._parts)
         return self._pool
 
 
@@ -64,6 +73,9 @@ class BackendPostgres:
         secrets=(PASSWORD_SECRET,),
     )
 
+    def __init__(self, pool_factory: PoolFactory = _open_asyncpg_pool) -> None:
+        self._pool_factory = pool_factory
+
     def build(
         self, inputs: Mapping[str, str], secrets: Mapping[str, str]
     ) -> ProtocolOverlayStore:
@@ -74,7 +86,8 @@ class BackendPostgres:
                 "database": inputs[DATABASE_INPUT],
                 "user": inputs[LOGIN_INPUT],
                 "password": secrets[PASSWORD_SECRET],
-            }
+            },
+            self._pool_factory,
         )
         return PostgresOverlayStore(pool)
 

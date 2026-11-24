@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from importlib.metadata import entry_points
 from typing import Protocol
 
@@ -33,7 +33,7 @@ class ProtocolStoreBackend(Protocol):
 class _EntryPoint(Protocol):
     name: str
 
-    def load(self) -> object: ...
+    def load(self) -> Callable[[], ProtocolStoreBackend]: ...
 
 
 def backends_from_entry_points(
@@ -43,7 +43,7 @@ def backends_from_entry_points(
     registry: dict[str, ProtocolStoreBackend] = {}
     for point in points:
         factory = point.load()
-        backend: ProtocolStoreBackend = factory()  # type: ignore[operator]
+        backend = factory()
         if backend.spec.kind != point.name:
             raise StoreWiringRefusedError(
                 f"the entry point {point.name} registers a backend of kind {backend.spec.kind}"

@@ -4,7 +4,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
+from typing import Any, cast
 
 import pytest
 from omnibase_core.models.container.model_onex_container import ModelONEXContainer
@@ -145,7 +146,10 @@ def test_store_wiring_refuses_an_unregistered_kind_naming_it() -> None:
 
 def test_store_wiring_refuses_a_secret_the_infisical_answer_lacks() -> None:
     backend = _network_backend()
-    fetch: Callable[[tuple[str, ...]], Mapping[str, str]] = lambda _names: {}  # noqa: E731
+
+    def fetch(_names: tuple[str, ...]) -> Mapping[str, str]:
+        return {}
+
     with pytest.raises(StoreWiringRefusedError, match="NET_PASSWORD"):
         build_overlay_store(
             {KIND_INPUT: "net_kind", "NET_ADDRESS": "a", "NET_PORT": "1"},
@@ -175,5 +179,6 @@ async def test_store_wiring_registers_the_store_in_the_container_under_the_proto
         backends=_registry(_memory_backend()),
         fetch_secrets=_no_secrets,
     )
-    resolved = await container.get_service_async(ProtocolOverlayStore)  # type: ignore[type-abstract]
+    # a Protocol is registered by its own class, which mypy cannot see as a concrete type
+    resolved = await container.get_service_async(cast("Any", ProtocolOverlayStore))
     assert resolved is store

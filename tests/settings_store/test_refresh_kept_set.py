@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from omnimarket.handlers.overlay_store import kept_set
@@ -43,7 +45,7 @@ def test_refresh_kept_set_positive_control_other_overlays_stay_kept(
 
 
 async def test_refresh_kept_set_the_refresh_handler_writes_no_snapshot_for_a_cut_over_overlay(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from datetime import UTC, datetime
 
@@ -74,7 +76,7 @@ async def test_refresh_kept_set_the_refresh_handler_writes_no_snapshot_for_a_cut
         async def report(self, reading: object) -> None:
             return None
 
-    root = tmp_path / "snap"  # type: ignore[operator]
+    root = tmp_path / "snap"
     handler = HandlerOverlayStoreRead(
         store=store,
         snapshot=FileOverlaySnapshot(root),

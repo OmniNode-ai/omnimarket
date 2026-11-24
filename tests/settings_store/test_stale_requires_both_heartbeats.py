@@ -21,14 +21,22 @@ def _ago(seconds: float) -> datetime:
     return NOW - timedelta(seconds=seconds)
 
 
-def _read(**kw: datetime | None) -> EnumStaleReading:
-    args: dict[str, datetime | None] = {
-        "overlay_heartbeat_at": _ago(10),
-        "projection_heartbeat_at": _ago(10),
-        "writer_heartbeat_at": _ago(10),
-    }
-    args.update(kw)
-    return read_stale_falsifier(now=NOW, bound_s=BOUND, **args)  # type: ignore[arg-type]
+ALIVE = _ago(10)
+
+
+def _read(
+    *,
+    overlay_heartbeat_at: datetime | None = ALIVE,
+    projection_heartbeat_at: datetime | None = ALIVE,
+    writer_heartbeat_at: datetime | None = ALIVE,
+) -> EnumStaleReading:
+    return read_stale_falsifier(
+        now=NOW,
+        bound_s=BOUND,
+        overlay_heartbeat_at=overlay_heartbeat_at,
+        projection_heartbeat_at=projection_heartbeat_at,
+        writer_heartbeat_at=writer_heartbeat_at,
+    )
 
 
 def test_stale_requires_both_heartbeats_positive_control_both_alive_reads_fresh() -> (

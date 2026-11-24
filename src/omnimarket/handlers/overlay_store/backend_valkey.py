@@ -4,7 +4,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from typing import Any
 
 from omnibase_spi.protocols.storage import ProtocolOverlayStore
 
@@ -17,6 +18,22 @@ DATABASE_INPUT = "ONEX_SETTINGS_STORE_DATABASE"
 KEY_PREFIX_INPUT = "ONEX_SETTINGS_STORE_KEY_PREFIX"
 LOGIN_INPUT = "ONEX_SETTINGS_STORE_LOGIN"
 PASSWORD_SECRET = "ONEX_SETTINGS_STORE_PASSWORD"
+
+
+def _redis_client(
+    *, host: str, port: int, database: int, username: str, password: str
+) -> Any:
+    """The production connector; the wiring gives every value, a test injects its own in place of it."""
+    from redis.asyncio import Redis
+
+    return Redis(
+        host=host,
+        port=port,
+        db=database,
+        username=username,
+        password=password,
+        decode_responses=True,
+    )
 
 
 class BackendValkey:
@@ -32,18 +49,18 @@ class BackendValkey:
         secrets=(PASSWORD_SECRET,),
     )
 
+    def __init__(self, client_factory: Callable[..., Any] = _redis_client) -> None:
+        self._client_factory = client_factory
+
     def build(
         self, inputs: Mapping[str, str], secrets: Mapping[str, str]
     ) -> ProtocolOverlayStore:
-        import redis.asyncio
-
-        client = redis.asyncio.Redis(
+        client = self._client_factory(
             host=inputs[ADDRESS_INPUT],
             port=int(inputs[PORT_INPUT]),
-            db=int(inputs[DATABASE_INPUT]),
+            database=int(inputs[DATABASE_INPUT]),
             username=inputs[LOGIN_INPUT],
             password=secrets[PASSWORD_SECRET],
-            decode_responses=True,
         )
         return ValkeyOverlayStore(client, key_prefix=inputs[KEY_PREFIX_INPUT])
 

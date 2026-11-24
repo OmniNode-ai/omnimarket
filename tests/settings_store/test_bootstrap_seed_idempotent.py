@@ -17,6 +17,7 @@ from omnimarket.handlers.overlay_store.bootstrap_file import (
     render_bootstrap_file,
 )
 from omnimarket.handlers.overlay_store.settings_seed import (
+    ModelSeedResult,
     SeedDisagreementError,
     seed_defaults,
 )
@@ -46,7 +47,7 @@ class _Pipeline:
             await self.valkey.write_version(record)
 
 
-async def _seed(pipe: _Pipeline, intake: Mapping[str, str] = INTAKE):  # type: ignore[no-untyped-def]
+async def _seed(pipe: _Pipeline, intake: Mapping[str, str] = INTAKE) -> ModelSeedResult:
     return await seed_defaults(
         intake,
         DEFAULTS,
