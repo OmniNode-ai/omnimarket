@@ -680,6 +680,29 @@ units:
   # node's own `schedule install --condition <verb>`, ran nowhere: no installer installed them. A node_schedule unit hands the
   # render, the load and the removal to that scheduler for the host the request names (--host-name), so the label, the interval and
   # the host environment stay the overlay's and no second plist is written here. launchd only (the host is the operator Mac).
+  # OMN-26553: the three condition schedules the overlay declares beside the two below (the deploy agent heartbeat, the chain canary and
+  # the work ledger projection), each a node_schedule unit of the same kind, so one host-install run loads every schedule the overlay lists.
+  lab-alarm-dev-tag-heartbeat:
+    platform: launchd
+    kind: node_schedule
+    label: ai.omninode.lab-alarm-dev-tag-heartbeat
+    schedule_node: node_lab_alarm
+    schedule_condition: dev-tag-heartbeat
+    state_directory: .onex_state/lab-alarm
+  lab-alarm-delegation-chain-canary:
+    platform: launchd
+    kind: node_schedule
+    label: ai.omninode.lab-alarm-delegation-chain-canary
+    schedule_node: node_lab_alarm
+    schedule_condition: delegation-chain-canary
+    state_directory: .onex_state/lab-alarm
+  lab-alarm-work-ledger-projection-stale:
+    platform: launchd
+    kind: node_schedule
+    label: ai.omninode.lab-alarm-work-ledger-projection-stale
+    schedule_node: node_lab_alarm
+    schedule_condition: work-ledger-projection-stale
+    state_directory: .onex_state/lab-alarm
   lab-alarm-container-restarts:
     platform: launchd
     kind: node_schedule
