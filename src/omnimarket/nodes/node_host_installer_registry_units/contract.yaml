@@ -575,8 +575,9 @@ units:
     evidence_file: .local/state/omni/lane-dispatch/last-run.json
     state_directory: .onex_state/lane-dispatch
   # The daily ledger-file census record (node_work_ledger_file_census_effect): once a day and at load one tick runs the
-  # census over the registry root's omnimarket clone with the overlay and ratchet file packaged with the node, prints the daily
-  # record as one typed JSON line and keeps it in the unit's evidence file. The run limit (300 s) is the node's timeout_ms and
+  # census over every registered repository's clone under the registry root, each against its own ratchet row and per-file
+  # table, with the overlay and ratchet file packaged with the node, prints the daily record (one row per repository and the
+  # runtime-code count) as one typed JSON line and keeps it in the unit's evidence file. The run limit (300 s) is the node's timeout_ms and
   # is under the 86400 s interval. The tick reads and writes no ledger file.
   ledger-file-census-systemd:
     platform: systemd
@@ -676,6 +677,24 @@ units:
     evidence_file: .local/state/omni/tailscale-key-expiry-alarm/last-run.json
     state_directory: .onex_state/tailscale-key-expiry-alarm
     log_directory: .local/state/omni/tailscale-key-expiry-alarm
+  # OMN-26553: the lab alarm's two condition schedules, declared in the lab alarm overlay (condition_schedules) and rendered by the
+  # node's own `schedule install --condition <verb>`, ran nowhere: no installer installed them. A node_schedule unit hands the
+  # render, the load and the removal to that scheduler for the host the request names (--host-name), so the label, the interval and
+  # the host environment stay the overlay's and no second plist is written here. launchd only (the host is the operator Mac).
+  lab-alarm-container-restarts:
+    platform: launchd
+    kind: node_schedule
+    label: ai.omninode.lab-alarm-container-restarts
+    schedule_node: node_lab_alarm
+    schedule_condition: container-restarts
+    state_directory: .onex_state/lab-alarm
+  lab-alarm-digest:
+    platform: launchd
+    kind: node_schedule
+    label: ai.omninode.lab-alarm-digest
+    schedule_node: node_lab_alarm
+    schedule_condition: alarm-digest
+    state_directory: .onex_state/lab-alarm
   capture-silence-watch:
     platform: systemd
     kind: registry_module_tick
@@ -2263,10 +2282,7 @@ units:
         - dispatch_command
       document:
         registry_root: "{registry_root}"
-        ledger: "{ledger_path}"
-        # The appender that serialises ledger writes, run by the interpreter of the checkout the request names
-        # (appender_root), because launchd's PATH has none.
-        ledger_lock: "{appender_root}/.venv/bin/onex-ledger"
+        # The interpreter of the checkout the request names (appender_root), because launchd's PATH has none.
         python: "{appender_root}/.venv/bin/python"
         # The runner the alarm starts, detached, for each episode it opens: the alarm adds --brief, --lane, --model and
         # --ticket. remote_lane_runner is the path of the remote-lane runner script of the installed omni plugin; unset,

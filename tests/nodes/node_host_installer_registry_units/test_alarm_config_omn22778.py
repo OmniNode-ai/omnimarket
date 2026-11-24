@@ -94,8 +94,8 @@ def test_alarm_config_dry_run_renders_the_declared_document(tmp_path: Path) -> N
     root = tmp_path / "omni"
     appender = tmp_path / "appender"
     assert document["registry_root"] == str(root)
-    assert document["ledger"] == str(root / "docs/tracking/ROLLING_WORK_LEDGER.md")
-    assert document["ledger_lock"] == str(appender / ".venv/bin/onex-ledger")
+    assert "ledger" not in document
+    assert "ledger_lock" not in document
     assert document["python"] == str(appender / ".venv/bin/python")
     assert document["host_table"] == str(tmp_path / "hosts.yaml")
     assert document["hook_events_command"][:6] == [
@@ -115,10 +115,15 @@ def test_alarm_config_dry_run_renders_the_declared_document(tmp_path: Path) -> N
     assert not re.search(r"\{[a-z_]+\}", result.config)
 
 
-def test_alarm_config_request_ledger_path_is_the_ledger(tmp_path: Path) -> None:
+def test_alarm_config_names_no_ledger_file_even_when_the_request_carries_a_path(
+    tmp_path: Path,
+) -> None:
     ledger = tmp_path / "state/ledger.md"
     result = _handler().handle(_request(tmp_path, ledger_path=str(ledger)))
-    assert json.loads(result.config)["ledger"] == str(ledger)
+    document = json.loads(result.config)
+    assert "ledger" not in document
+    assert "ledger_lock" not in document
+    assert str(ledger) not in result.config
 
 
 def test_alarm_config_control_declaration_without_a_document_renders_none(

@@ -11,6 +11,7 @@ temp directory, so no network and no real core install is involved.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import textwrap
@@ -67,6 +68,19 @@ def test_synthetic_removal_makes_the_import_step_fail(tmp_path: Path) -> None:
     assert result.returncode == 1, result.stdout + result.stderr
     assert "LATEST-CORE-SMOKE FAIL" in result.stdout
     assert f"module={PACKAGE}.cli" in result.stdout
+
+
+def test_failure_names_the_importing_file_and_line(tmp_path: Path) -> None:
+    """A downstream break names the file and line that holds the import, so the refusal points at the fix."""
+    core = _fake_core(tmp_path / "core", symbols=("some_other_helper",))
+    result = _run_smoke(core)
+    assert result.returncode == 1, result.stdout + result.stderr
+    fail = next(
+        line
+        for line in result.stdout.splitlines()
+        if line.startswith("LATEST-CORE-SMOKE FAIL")
+    )
+    assert re.search(r" at=\S*node_run_node_user/cli\.py:5 ", fail), fail
 
 
 def test_synthetic_removal_control_passes_when_symbol_is_present(

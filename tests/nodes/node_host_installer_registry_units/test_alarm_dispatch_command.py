@@ -33,6 +33,7 @@ from omnimarket.nodes.node_silent_failure_alarm_effect.models import (
     ModelSilentFailureAlarmOptions,
     ModelSilentFailureAlarmRequest,
 )
+from tests.helpers.fake_alarm_ledger import LEDGER_FIXTURE_NAME, FileBackedAlarmLedger
 from tests.nodes.node_silent_failure_alarm_compute.test_golden_chain_silent_failure_alarm_compute import (
     HOST_NOW,
     world,
@@ -151,9 +152,9 @@ def _alarm_rows(tmp_path: Path, command: tuple[str, ...] | None) -> tuple[str, .
             "brief_dir": tmp_path / "briefs",
         }
     )
-    result = HandlerSilentFailureAlarm(options).handle(
-        ModelSilentFailureAlarmRequest(now=HOST_NOW, apply=True)
-    )
+    result = HandlerSilentFailureAlarm(
+        options, ledger=FileBackedAlarmLedger(tmp_path / LEDGER_FIXTURE_NAME)
+    ).handle(ModelSilentFailureAlarmRequest(now=HOST_NOW, apply=True))
     return tuple(result.rows) + tuple(result.warnings)
 
 

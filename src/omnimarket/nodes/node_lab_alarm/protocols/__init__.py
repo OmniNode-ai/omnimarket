@@ -138,6 +138,16 @@ class ProtocolHeartbeatSource(Protocol):
         ...
 
 
+class UnitStateUnreadableError(Exception):
+    """The unit's USER-scope state could not be read; the message names what failed."""
+
+
+class ProtocolUnitStateSource(Protocol):
+    def read(self) -> tuple[str, str]:
+        """The unit's (LoadState, ActiveState) in USER scope; raises UnitStateUnreadableError."""
+        ...
+
+
 class CanaryRunsUnreadableError(Exception):
     """The canary workflow's runs could not be read: the gateway did not answer or answered something untyped."""
 
@@ -289,6 +299,7 @@ __all__ = [
     "ProtocolRunRecordReader",
     "ProtocolRunRecordStore",
     "ProtocolSampleStore",
+    "ProtocolUnitStateSource",
     "ReceiptAbsentError",
     "ReceiptMalformedError",
     "ReceiptSurfaceUnreadableError",
@@ -296,4 +307,5 @@ __all__ = [
     "RunRecordUnreadableError",
     "RunRecordUnwritableError",
     "ShaUnresolvedError",
+    "UnitStateUnreadableError",
 ]

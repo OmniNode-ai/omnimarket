@@ -1,9 +1,20 @@
-# The overlay CI runs: the repository's own row. The deployment overlay (every registered repository,
-# its own ratchet file) lives at <root>/node_work_ledger_file_census_effect/overlay.yaml under a root
-# named in ONEX_SKILL_OVERLAY_ROOTS, or at the file ONEX_LEDGER_CENSUS_OVERLAY names.
+# The packaged overlay: every public registry repository, each against its own row and per-file table in the
+# packaged ratchet file. The daily census unit counts all of them; a CI or hook run names its own repository with
+# --repos or --register. A private repository is not named here: the deployment overlay (its own repositories and
+# ratchet file) lives at <root>/node_work_ledger_file_census_effect/overlay.yaml under a root named in
+# ONEX_SKILL_OVERLAY_ROOTS, or at the file ONEX_LEDGER_CENSUS_OVERLAY names.
 registry_root_env: ONEX_LEDGER_CENSUS_ROOT
 repositories:
+  - {name: omnibase_compat, own_line: false}
+  - {name: omnibase_core, own_line: false}
+  - {name: omnibase_infra, own_line: false}
+  - {name: omnibase_spi, own_line: false}
+  - {name: omniclaude, own_line: false}
+  - {name: omnidash, own_line: false}
+  - {name: omniintelligence, own_line: false}
   - {name: omnimarket, own_line: false}
+  - {name: omnimemory, own_line: false}
+  - {name: knowledge_base, own_line: false}
 names: [ROLLING_WORK_LEDGER]
 path_variables: [ONEX_LEDGER_PATH]
 # A ruling's line citation: the name, an optional extension, then :<line>.
