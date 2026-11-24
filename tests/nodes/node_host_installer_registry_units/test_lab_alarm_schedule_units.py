@@ -1,10 +1,11 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""node_host_installer_registry_units: the lab alarm's two condition schedules are units an install loads.
+"""node_host_installer_registry_units: the lab alarm's condition schedules are units an install loads.
 
-The container-restarts and alarm-digest schedules are declared in the lab alarm overlay (a unit name, a launchd label,
-an interval and a host), and the lab alarm node renders and loads them with ``schedule install --condition``. Nothing
-ran that command, so neither unit was ever installed. Each is now a ``node_schedule`` unit of this installer: the
+The dev-tag-heartbeat, delegation-chain-canary, work-ledger-projection-stale, container-restarts and alarm-digest
+schedules are declared in the lab alarm overlay (a unit name, a launchd label, an interval and a host), and the lab alarm
+node renders and loads them with ``schedule install --condition``. Nothing ran that command, so none of them was ever
+installed. Each is now a ``node_schedule`` unit of this installer: the
 install hands the render, the load and the removal to the node's own scheduler, so the plist is written in one place
 and carries the overlay's declared cadence.
 """
@@ -40,6 +41,18 @@ pytestmark = pytest.mark.unit
 
 HOST = "example-mac"
 UNITS = {
+    "lab-alarm-dev-tag-heartbeat": (
+        "ai.omninode.lab-alarm-dev-tag-heartbeat",
+        "dev-tag-heartbeat",
+    ),
+    "lab-alarm-delegation-chain-canary": (
+        "ai.omninode.lab-alarm-delegation-chain-canary",
+        "delegation-chain-canary",
+    ),
+    "lab-alarm-work-ledger-projection-stale": (
+        "ai.omninode.lab-alarm-work-ledger-projection-stale",
+        "work-ledger-projection-stale",
+    ),
     "lab-alarm-container-restarts": (
         "ai.omninode.lab-alarm-container-restarts",
         "container-restarts",
