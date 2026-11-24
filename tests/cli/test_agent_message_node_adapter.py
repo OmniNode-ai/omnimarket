@@ -11,9 +11,11 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from pathlib import Path
+from typing import cast
 
 import pytest
 
+from omnimarket.delegated_test_loop.lab_run_bus import ProtocolLabRunBus
 from omnimarket.handlers.bus_binding.node_broker import NodeBrokerResolutionError
 from omnimarket.nodes.node_agent_message_client_effect.adapter_bus_node import (
     agent_message_node_factory,
@@ -30,9 +32,13 @@ from omnimarket.nodes.node_agent_message_client_effect.models.refusal import (
 from omnimarket.nodes.node_agent_message_client_effect.models.refusal import (
     EnumAgentMessageRefusal as EnumClientRefusal,
 )
+from omnimarket.nodes.node_agent_message_client_effect.ports.protocol_agent_message_bus_node import (
+    ProtocolAgentMessageBusNode,
+)
 from omnimarket.nodes.node_agent_message_effect.handlers.handler_agent_message import (
     HandlerAgentMessage,
 )
+from omnimarket.nodes.node_event_emit_effect import ModelEmitRequest, ModelEmitResult
 from omnimarket.nodes.node_event_emit_effect.handlers.handler_event_emit_effect import (
     HandlerEventEmitEffect,
 )
@@ -78,15 +84,16 @@ def _message(**updates: object) -> ModelAgentMessage:
 
 def _node(
     handler: HandlerAgentMessage,
-) -> contextlib.AbstractAsyncContextManager[object]:
+) -> contextlib.AbstractAsyncContextManager[ProtocolAgentMessageBusNode]:
     factory = agent_message_node_factory(handler_factory=lambda: handler)
-    return factory(object())  # type: ignore[arg-type]
+    # The node-backed factory dials the broker the node's contract declares and ignores the bus it is handed.
+    return factory(cast(ProtocolLabRunBus, object()))
 
 
 def _run_send(handler: HandlerAgentMessage, message: ModelAgentMessage) -> str | None:
     async def go() -> str | None:
         async with _node(handler) as node:
-            return await node.send(message)  # type: ignore[attr-defined, no-any-return]
+            return await node.send(message)
 
     return asyncio.run(go())
 
@@ -96,7 +103,7 @@ def _run_read(
 ) -> tuple[ModelAgentMessage, ...]:
     async def go() -> tuple[ModelAgentMessage, ...]:
         async with _node(handler) as node:
-            return await node.read(query)  # type: ignore[attr-defined, no-any-return]
+            return await node.read(query)
 
     return asyncio.run(go())
 
@@ -152,12 +159,12 @@ def test_a_node_with_no_declared_broker_is_undeclared_broker(
     tmp_path: Path,
 ) -> None:
     class Undeclared:
-        def handle(self, request: object) -> object:
+        def handle(self, request: ModelEmitRequest) -> ModelEmitResult:
             raise NodeBrokerResolutionError(
                 "node_agent_message_effect declares no event_bus"
             )
 
-    undeclared = HandlerAgentMessage(emitter=Undeclared(), bus=FakeBus())  # type: ignore[arg-type]
+    undeclared = HandlerAgentMessage(emitter=Undeclared(), bus=FakeBus())
     with pytest.raises(AgentMessageRefusalError) as caught:
         _run_send(undeclared, _message())
     assert caught.value.code is EnumClientRefusal.UNDECLARED_BROKER

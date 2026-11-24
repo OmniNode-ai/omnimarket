@@ -28,6 +28,15 @@ from omnimarket.enums.enum_agent_message_refusal import (
     EnumAgentMessageRefusal as EnumNodeRefusal,
 )
 from omnimarket.handlers.bus_binding.select import positional_opener
+from omnimarket.models.agent_message.model_agent_message_request import (
+    MAX_READ_LIMIT,
+)
+from omnimarket.models.agent_message.model_agent_message_request import (
+    ModelAgentMessageRequest as ModelNodeRequest,
+)
+from omnimarket.models.agent_message.model_agent_message_result import (
+    ModelAgentMessageResult as ModelNodeResult,
+)
 from omnimarket.nodes.node_agent_message_client_effect.models.model_agent_message import (
     ModelAgentMessage,
     ModelAgentMessageQuery,
@@ -49,15 +58,6 @@ from omnimarket.nodes.node_agent_message_client_effect.runtime import (
 from omnimarket.nodes.node_agent_message_effect.handlers.handler_agent_message import (
     HandlerAgentMessage,
     message_event_id,
-)
-from omnimarket.nodes.node_agent_message_effect.models.model_agent_message_request import (
-    MAX_READ_LIMIT,
-)
-from omnimarket.nodes.node_agent_message_effect.models.model_agent_message_request import (
-    ModelAgentMessageRequest as ModelNodeRequest,
-)
-from omnimarket.nodes.node_agent_message_effect.models.model_agent_message_result import (
-    ModelAgentMessageResult as ModelNodeResult,
 )
 
 NodeFactory = Callable[
