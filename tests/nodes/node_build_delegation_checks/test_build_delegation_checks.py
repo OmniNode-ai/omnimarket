@@ -17,8 +17,8 @@ from omnimarket.models.overlay_documents.model_build_delegation_checks_overlay i
     ModelBuildDelegationChecksOverlay,
 )
 from omnimarket.models.test_selector_reading import ModelAttributionCandidate
-from omnimarket.nodes.node_build_delegation_checks.adapters.command_check_runner import (
-    CommandCheckRunner,
+from omnimarket.nodes.node_build_delegation_checks.adapters.command_check_executor import (
+    CommandCheckExecutor,
 )
 from omnimarket.nodes.node_build_delegation_checks.adapters.file_build_store import (
     FileBuildStore,
@@ -29,7 +29,7 @@ from omnimarket.nodes.node_build_delegation_checks.adapters.git_merge_source imp
 from omnimarket.nodes.node_build_delegation_checks.adapters.inmemory_adapters import (
     InMemoryBuildStore,
     InMemoryMergeSource,
-    RecordedResultsRunner,
+    RecordedResultsExecutor,
     RecordingSink,
 )
 from omnimarket.nodes.node_build_delegation_checks.handlers.handler_build_delegation_checks import (
@@ -79,7 +79,7 @@ class _Rig:
         | None = None,
         settings: ModelBuildDelegationChecksOverlay | None = None,
     ) -> None:
-        self.runner = RecordedResultsRunner(recorded)
+        self.runner = RecordedResultsExecutor(recorded)
         self.store = InMemoryBuildStore()
         self.sink = RecordingSink()
         self.handler = HandlerBuildDelegationChecks(
@@ -289,7 +289,7 @@ def test_no_prod_target_and_no_pinned_model_in_the_node() -> None:
 
 
 def test_command_runner_reads_exit_codes_and_a_missing_route_is_unavailable() -> None:
-    runner = CommandCheckRunner(
+    runner = CommandCheckExecutor(
         {
             "C11": ("true",),
             "C12": ("false",),

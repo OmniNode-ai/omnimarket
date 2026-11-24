@@ -15,8 +15,13 @@ The suspect merges are first-parent commits read through ``ModelAttributionCandi
 
 from __future__ import annotations
 
+import json
+import os
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
+
+import yaml
 
 from omnimarket.models.delegation_check_regression import (
     EnumChangeKind,
@@ -36,6 +41,21 @@ from omnimarket.models.overlay_documents.model_build_delegation_checks_overlay i
     ModelBuildDelegationChecksOverlay,
 )
 from omnimarket.models.test_selector_reading import ModelAttributionCandidate
+from omnimarket.nodes.node_build_delegation_checks.adapters.bus_sink import (
+    BusRegressionSink,
+)
+from omnimarket.nodes.node_build_delegation_checks.adapters.command_check_executor import (
+    CommandCheckExecutor,
+)
+from omnimarket.nodes.node_build_delegation_checks.adapters.file_build_store import (
+    FileBuildStore,
+)
+from omnimarket.nodes.node_build_delegation_checks.adapters.git_merge_source import (
+    GitMergeSource,
+)
+from omnimarket.nodes.node_build_delegation_checks.adapters.inmemory_adapters import (
+    RecordedResultsExecutor,
+)
 from omnimarket.nodes.node_build_delegation_checks.models.model_build_delegation_checks import (
     EnumBuildChecksStatus,
     EnumCheckReading,
@@ -46,6 +66,7 @@ from omnimarket.nodes.node_build_delegation_checks.models.model_build_delegation
     ModelRebuildCompletedObserved,
     ModelRefusedAlarm,
 )
+from omnimarket.nodes.node_build_delegation_checks.overlay import load_overlay
 from omnimarket.nodes.node_build_delegation_checks.protocols.protocol_build_checks import (
     ProtocolBuildStore,
     ProtocolCheckRunner,
@@ -54,6 +75,9 @@ from omnimarket.nodes.node_build_delegation_checks.protocols.protocol_build_chec
 )
 
 WORKFLOW = "build-delegation-checks"
+CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
+REPLAY_ENV = "ONEX_BUILD_DELEGATION_CHECKS_REPLAY"
+OMNI_HOME_ENV = "OMNI_HOME"
 
 
 def _suspect(candidate: ModelAttributionCandidate) -> ModelSuspectMerge:
@@ -68,8 +92,8 @@ def _name(merge: ModelSuspectMerge) -> str:
     return f"#{merge.pr_number}" if merge.pr_number else merge.commit_sha[:12]
 
 
-class HandlerBuildDelegationChecks:
-    """EFFECT handler. Every port is a constructor parameter; the runtime module builds them from the overlay."""
+class _BuildChecksRun:
+    """One build's checks over the five ports, which the handler passes in whole."""
 
     def __init__(
         self,
@@ -298,4 +322,100 @@ class HandlerBuildDelegationChecks:
         )
 
 
-__all__ = ["WORKFLOW", "HandlerBuildDelegationChecks"]
+def recorded_results(path: Path) -> RecordedResultsExecutor:
+    """An executor over a recorded results file: ``{"builds": {build_id: {check_id: {reading, run_id, detail}}}}``."""
+    raw = json.loads(path.read_text(encoding="utf-8"))["builds"]
+    return RecordedResultsExecutor(
+        {
+            build: {
+                check: ModelCheckOutcome.model_validate(item)
+                for check, item in checks.items()
+            }
+            for build, checks in raw.items()
+        }
+    )
+
+
+class HandlerBuildDelegationChecks:
+    """EFFECT handler bound by the contract: the runtime builds it with no argument and its ports are made from the overlay on
+    the first request. A caller that passes every port (the tests, a replay) gets exactly those ports; a partial set is refused."""
+
+    def __init__(
+        self,
+        *,
+        settings: ModelBuildDelegationChecksOverlay | None = None,
+        runner: ProtocolCheckRunner | None = None,
+        store: ProtocolBuildStore | None = None,
+        merges: ProtocolMergeSource | None = None,
+        sink: ProtocolRegressionSink | None = None,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        ports = (settings, runner, store, merges, sink)
+        if any(p is not None for p in ports) and not all(p is not None for p in ports):
+            raise ValueError(
+                "pass every port (settings, runner, store, merges, sink) or none"
+            )
+        self._run: _BuildChecksRun | None = (
+            _BuildChecksRun(
+                settings=settings,
+                runner=runner,
+                store=store,
+                merges=merges,
+                sink=sink,
+                clock=clock,
+            )
+            if settings is not None
+            and runner is not None
+            and store is not None
+            and merges is not None
+            and sink is not None
+            else None
+        )
+        self._clock = clock
+
+    def handle(self, request: ModelRebuildCompletedObserved) -> ModelBuildChecksResult:
+        run = self._run if self._run is not None else self._from_overlay()
+        return run.handle(request)
+
+    def _from_overlay(self) -> _BuildChecksRun:
+        topics: dict[str, str] = yaml.safe_load(
+            CONTRACT_PATH.read_text(encoding="utf-8")
+        )["topics"]
+        settings = load_overlay()
+        home = os.environ.get(OMNI_HOME_ENV, "").strip()
+        if not home:
+            raise OSError(f"{OMNI_HOME_ENV} names no registry root")
+        root = Path(home)
+        replay = os.environ.get(REPLAY_ENV, "").strip()
+        runner: ProtocolCheckRunner = (
+            recorded_results(Path(replay))
+            if replay
+            else CommandCheckExecutor(settings.check_routes)
+        )
+        self._run = _BuildChecksRun(
+            settings=settings,
+            runner=runner,
+            store=FileBuildStore(
+                root / settings.history_relpath, settings.history_keep
+            ),
+            merges=GitMergeSource(root / settings.merge_clone_relpath),
+            sink=BusRegressionSink(
+                regression_topic=topics["regression_detected"],
+                alarm_topic=topics["alarm_delivery_requested"],
+                result_topic=topics["build_checks_recorded"],
+                bus="kafka",
+                lane=settings.bus_lane,
+                workspace=root,
+            ),
+            clock=self._clock,
+        )
+        return self._run
+
+
+__all__ = [
+    "OMNI_HOME_ENV",
+    "REPLAY_ENV",
+    "WORKFLOW",
+    "HandlerBuildDelegationChecks",
+    "recorded_results",
+]

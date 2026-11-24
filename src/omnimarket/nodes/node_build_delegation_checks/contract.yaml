@@ -25,13 +25,13 @@ description: >
   refuses the alarm. Every check goes through the probe's own responder chain, so no model or address is named here.
 
 handler:
-  module: omnimarket.nodes.node_build_delegation_checks.handlers.handler_build_delegation_checks_route
-  class: HandlerBuildDelegationChecksRoute
+  module: omnimarket.nodes.node_build_delegation_checks.handlers.handler_build_delegation_checks
+  class: HandlerBuildDelegationChecks
   input_model: omnimarket.nodes.node_build_delegation_checks.models.model_build_delegation_checks.ModelRebuildCompletedObserved
   output_model: omnimarket.nodes.node_build_delegation_checks.models.model_build_delegation_checks.ModelBuildChecksResult
 
-# HandlerBuildDelegationChecks takes its ports as constructor parameters; the route handler builds them from the overlay on the
-# first request, so the runtime builds the route with no argument.
+# The handler takes its ports as optional constructor parameters and builds them from the overlay on the first request, so the
+# runtime builds it with no argument.
 handler_routing:
   routing_strategy: operation_match
   handlers:
@@ -39,8 +39,8 @@ handler_routing:
       topic: onex.evt.deploy.rebuild-completed.v1
       message_category: event
       handler:
-        name: HandlerBuildDelegationChecksRoute
-        module: omnimarket.nodes.node_build_delegation_checks.handlers.handler_build_delegation_checks_route
+        name: HandlerBuildDelegationChecks
+        module: omnimarket.nodes.node_build_delegation_checks.handlers.handler_build_delegation_checks
       input_model: omnimarket.nodes.node_build_delegation_checks.models.model_build_delegation_checks.ModelRebuildCompletedObserved
       output_model: omnimarket.nodes.node_build_delegation_checks.models.model_build_delegation_checks.ModelBuildChecksResult
 

@@ -17,7 +17,7 @@ from omnimarket.nodes.node_build_delegation_checks.adapters.git_merge_source imp
 )
 from omnimarket.nodes.node_build_delegation_checks.adapters.inmemory_adapters import (
     InMemoryBuildStore,
-    RecordedResultsRunner,
+    RecordedResultsExecutor,
     RecordingSink,
 )
 from omnimarket.nodes.node_build_delegation_checks.handlers.handler_build_delegation_checks import (
@@ -74,7 +74,7 @@ def _replay() -> tuple[RecordingSink, dict[str, object]]:
     sink = RecordingSink()
     handler = HandlerBuildDelegationChecks(
         settings=ModelBuildDelegationChecksOverlay(owner="delegation-owner"),
-        runner=RecordedResultsRunner(recorded),
+        runner=RecordedResultsExecutor(recorded),
         store=InMemoryBuildStore(),
         merges=_HistoryMergeSource(history),
         sink=sink,

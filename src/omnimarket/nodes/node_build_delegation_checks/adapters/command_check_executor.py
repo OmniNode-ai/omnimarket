@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Runs a check's probe entry point as the overlay declares it: exit 0 is pass, 1 is fail, anything else reads unavailable.
 
-The probe sends its task through the delegation responder chain (local least busy, OpenRouter, Claude API); this runner names
+The probe sends its task through the delegation responder chain (local least busy, OpenRouter, Claude API); this executor names
 no model and no address. A host that is down, a timeout, a missing route or a command that cannot start is unavailable, never
 fail: a lab failure is not a regression (operator ruling 2026-11-23T16:21:00Z).
 """
@@ -18,7 +18,7 @@ from omnimarket.nodes.node_build_delegation_checks.models.model_build_delegation
 )
 
 
-class CommandCheckRunner:
+class CommandCheckExecutor:
     def __init__(self, routes: Mapping[str, tuple[str, ...]]) -> None:
         self._routes = routes
 
@@ -64,4 +64,4 @@ class CommandCheckRunner:
         )
 
 
-__all__ = ["CommandCheckRunner"]
+__all__ = ["CommandCheckExecutor"]

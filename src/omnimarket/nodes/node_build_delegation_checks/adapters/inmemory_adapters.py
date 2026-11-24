@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""In-memory ports of node_build_delegation_checks: the recorded-results runner, a store, a merge source and a recording sink."""
+"""In-memory ports of node_build_delegation_checks: the recorded-results executor, a store, a merge source and a recording sink."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from omnimarket.nodes.node_build_delegation_checks.models.model_build_delegation
 )
 
 
-class RecordedResultsRunner:
+class RecordedResultsExecutor:
     """Answers each check from results recorded earlier, per build id then check id. A check with no recorded result for
     the build is unavailable: replay never invents a reading."""
 
@@ -110,6 +110,6 @@ class RecordingSink:
 __all__ = [
     "InMemoryBuildStore",
     "InMemoryMergeSource",
-    "RecordedResultsRunner",
+    "RecordedResultsExecutor",
     "RecordingSink",
 ]

@@ -18,7 +18,7 @@ from omnimarket.models.test_selector_reading import ModelAttributionCandidate
 from omnimarket.nodes.node_build_delegation_checks.adapters.inmemory_adapters import (
     InMemoryBuildStore,
     InMemoryMergeSource,
-    RecordedResultsRunner,
+    RecordedResultsExecutor,
     RecordingSink,
 )
 from omnimarket.nodes.node_build_delegation_checks.handlers.handler_build_delegation_checks import (
@@ -66,7 +66,7 @@ def test_the_alarm_request_is_delivered_with_the_named_owner_and_no_prod_target(
     sink = RecordingSink()
     node = HandlerBuildDelegationChecks(
         settings=settings,
-        runner=RecordedResultsRunner(
+        runner=RecordedResultsExecutor(
             {
                 GREEN: {
                     "C29": ModelCheckOutcome(
