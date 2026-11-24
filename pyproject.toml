@@ -357,6 +357,7 @@ node_agent_coordinator_orchestrator = "omnimarket.nodes.node_agent_coordinator_o
 node_agent_inbox_spool = "omnimarket.nodes.node_agent_inbox_spool"
 node_agent_learning_retrieval_effect = "omnimarket.nodes.node_agent_learning_retrieval_effect"
 node_agent_message_client_effect = "omnimarket.nodes.node_agent_message_client_effect"
+node_agent_message_effect = "omnimarket.nodes.node_agent_message_effect"
 node_agent_review_cloud_rung_effect = "omnimarket.nodes.node_agent_review_cloud_rung_effect"
 node_agent_review_dispatch_orchestrator = "omnimarket.nodes.node_agent_review_dispatch_orchestrator"
 node_agent_review_gate_accept_effect = "omnimarket.nodes.node_agent_review_gate_accept_effect"
