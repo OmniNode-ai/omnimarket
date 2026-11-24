@@ -356,6 +356,7 @@ node_adversarial_pipeline_orchestrator = "omnimarket.nodes.node_adversarial_pipe
 node_agent_coordinator_orchestrator = "omnimarket.nodes.node_agent_coordinator_orchestrator"
 node_agent_inbox_spool = "omnimarket.nodes.node_agent_inbox_spool"
 node_agent_learning_retrieval_effect = "omnimarket.nodes.node_agent_learning_retrieval_effect"
+node_agent_message_client_effect = "omnimarket.nodes.node_agent_message_client_effect"
 node_agent_review_cloud_rung_effect = "omnimarket.nodes.node_agent_review_cloud_rung_effect"
 node_agent_review_dispatch_orchestrator = "omnimarket.nodes.node_agent_review_dispatch_orchestrator"
 node_agent_review_gate_accept_effect = "omnimarket.nodes.node_agent_review_gate_accept_effect"
@@ -1675,6 +1676,8 @@ test-loop = "omnimarket.cli.cli_test_loop:test_loop_group"
 # projection, refusing a stale row; registered here for the same reason as
 # "cloud" and "local".
 pr-state = "omnimarket.nodes.node_pr_state_read_effect.cli:pr_state_group"
+# `onex agent-message` -- send and read agent messages from any platform, and serve them as MCP tools.
+agent-message = "omnimarket.nodes.node_agent_message_client_effect.cli:agent_message_group"
 # OMN-19976: `onex dashboard` -- serve this install's projection exposures to the
 # local dashboard through the read node (plan T2.3). Registered here for the same
 # reason as "cloud" and "local".
@@ -1759,6 +1762,7 @@ select-connection = "omnimarket.nodes.node_model_setup_effect.cli_connections:se
 remove-connection = "omnimarket.nodes.node_model_setup_effect.cli_connections:remove_connection_command"
 test-connection = "omnimarket.nodes.node_model_setup_effect.cli_connections:test_connection_command"
 discover = "omnimarket.nodes.node_model_setup_effect.cli_catalog:discover_command"
+refresh-prices = "omnimarket.nodes.node_model_setup_effect.cli_catalog:refresh_prices_command"
 
 [project.entry-points."onex.contracts"]
 # OMN-19407: config contracts a consumer reads through the installed registry

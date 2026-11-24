@@ -151,7 +151,6 @@ from omnimarket.handlers.handler_size_band_measurement import measure_size_band
 from omnimarket.handlers.local_snapshot_publisher import (
     LocalEvidenceNoRepublishPublisher as _LocalEvidenceNoRepublishPublisher,
 )
-from omnimarket.handlers.model_catalog import call_read_deadline
 from omnimarket.handlers.routing.byok_provider_backends import (
     ModelByokProviderBackend,
     byok_backend_max_retries,
@@ -1182,29 +1181,14 @@ def _call_with_model_budget(
 ) -> ModelLlmDelegationCallResult:
     """Read the output ceiling and price entry inside the supervised effect.
 
-    models.dev is read here, inside the cancellable worker, and only when its
-    copy is older than the configured age, within a total deadline taken from
-    the call's remaining time (OMN-23413 AC35).
+    The entry comes from the models.dev copy kept under the ONEX home, else the
+    price list shipped in the install; nothing here reads the network.
     """
-    started = time.monotonic()
-    ceiling, entry = model_output_budget(
-        row,
-        request.model_id,
-        live=True,
-        deadline_seconds=call_read_deadline(request.timeout_seconds),
-    )
-    spent = time.monotonic() - started
+    ceiling, entry = model_output_budget(row, request.model_id)
     limit = resolve_effective_max_tokens(
         requested=requested, backend_max_tokens=ceiling
     )
-    # The read's time comes out of the provider call's own timeout, so optional
-    # price metadata never pushes the call past its deadline.
-    request = request.model_copy(
-        update={
-            "max_tokens": limit,
-            "timeout_seconds": max(request.timeout_seconds - spent, 0.001),
-        }
-    )
+    request = request.model_copy(update={"max_tokens": limit})
     entry_token = current_local_model_entry.set(entry)
     try:
         result = handler(request)
