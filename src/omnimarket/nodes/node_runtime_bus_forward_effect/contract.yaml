@@ -25,6 +25,7 @@ description: >
   receipt carries the detail.
   A machine whose operator declared no hosted bus (no overlay for this node) is not a failure: the events are kept in
   a local record file under the user's .onex directory and the receipt says they were kept locally (OMN-26451).
+  A dry run writes nothing, so the events of a dry run are not kept either and the receipt says so (OMN-26451).
 
 handler:
   module: omnimarket.nodes.node_runtime_bus_forward_effect.handlers.handler_runtime_bus_forward

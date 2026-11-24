@@ -100,7 +100,7 @@ class CoreRuntimeBusForwarder:
         record_dir = self._local_record_dir or Path.home() / ".onex"
         recorder = HandlerRuntimeBusLocalRecord(record_dir=record_dir)
         try:
-            kept = recorder.handle(
+            recorded = recorder.handle(
                 ModelRuntimeBusLocalRecordCommand(
                     events=tuple(
                         ModelForwardEvent(
@@ -112,17 +112,26 @@ class CoreRuntimeBusForwarder:
                         for event in events
                     )
                 )
-            ).kept
+            )
         except OSError as exc:
             raise RuntimeError(
                 f"no hosted bus is declared and the local event record {recorder.path} "
                 f"could not be written: {type(exc).__name__}"
             ) from exc
+        if recorded.dry_run:
+            return {
+                "forwarded": len(events),
+                "failed": 0,
+                "detail": (
+                    f"no hosted bus is declared ({NODE_NAME} has no overlay); this was a dry run, "
+                    f"so {len(events)} event(s) were not kept locally and none were sent to a hosted bus"
+                ),
+            }
         return {
-            "forwarded": kept,
+            "forwarded": recorded.kept,
             "failed": 0,
             "detail": (
-                f"no hosted bus is declared ({NODE_NAME} has no overlay); {kept} event(s) "
+                f"no hosted bus is declared ({NODE_NAME} has no overlay); {recorded.kept} event(s) "
                 f"kept locally at {recorder.path}, none sent to a hosted bus"
             ),
         }

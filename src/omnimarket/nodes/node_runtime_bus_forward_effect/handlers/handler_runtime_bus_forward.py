@@ -29,6 +29,7 @@ import os
 from pathlib import Path
 
 from omnimarket.nodes.node_runtime_bus_forward_effect.models import (
+    ModelForwardEvent,
     ModelForwardRefusal,
     ModelRuntimeBusForwardCommand,
     ModelRuntimeBusForwardResult,
@@ -120,8 +121,21 @@ class HandlerRuntimeBusForward:
 
 # A machine whose operator declared no hosted bus (no overlay for this node) keeps a run's recorded events on disk
 # (OMN-26451): the receipt says they were kept locally and not delivered to a hosted bus. A write that fails raises
-# ``OSError``, which the caller reports as a degraded reading, never as a delivery.
+# ``OSError``, which the caller reports as a degraded reading, never as a delivery. A dry run writes nothing, so a
+# recording of a dry run's events is not kept either.
 LOCAL_RECORD_FILE_NAME = "runtime_bus_events.jsonl"
+_DRY_RUN_MODES = frozenset({"dry-run", "dry_run"})
+
+
+def _event_records_a_dry_run(event: ModelForwardEvent) -> bool:
+    """True when the event's JSON object value declares a dry run: ``dry_run`` true, or ``mode`` ``dry-run``/``dry_run``."""
+    try:
+        value = json.loads(event.value_bytes())
+    except ValueError:
+        return False
+    if not isinstance(value, dict):
+        return False
+    return value.get("dry_run") is True or value.get("mode") in _DRY_RUN_MODES
 
 
 class HandlerRuntimeBusLocalRecord:
@@ -137,7 +151,12 @@ class HandlerRuntimeBusLocalRecord:
     def handle(
         self, request: ModelRuntimeBusLocalRecordCommand
     ) -> ModelRuntimeBusLocalRecordResult:
-        """Append the request's events in order and answer the count kept; ``OSError`` when the file cannot be written."""
+        """Append the request's events in order and answer the count kept; ``OSError`` when the file cannot be written.
+
+        A request that holds any event of a dry run keeps nothing and touches no file: a dry run writes no local record.
+        """
+        if any(_event_records_a_dry_run(event) for event in request.events):
+            return ModelRuntimeBusLocalRecordResult(kept=0, dry_run=True)
         self._record_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         lines = "".join(
             json.dumps(event.model_dump(mode="json"), sort_keys=True) + "\n"

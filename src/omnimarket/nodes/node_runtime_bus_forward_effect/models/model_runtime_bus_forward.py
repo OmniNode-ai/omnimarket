@@ -89,9 +89,14 @@ class ModelRuntimeBusLocalRecordCommand(BaseModel):
 
 
 class ModelRuntimeBusLocalRecordResult(BaseModel):
-    """How many recorded events were kept locally, and the file they were appended to."""
+    """How many recorded events were kept locally, and the file they were appended to.
+
+    A recording that holds a dry run's events keeps nothing: ``dry_run`` is true, ``kept`` is 0 and ``record_path`` is
+    ``None``, because a dry run writes nothing to the machine, a local record included.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     kept: int = Field(ge=0)
-    record_path: str = Field(min_length=1)
+    record_path: str | None = Field(default=None, min_length=1)
+    dry_run: bool = False

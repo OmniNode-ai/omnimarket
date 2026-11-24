@@ -70,14 +70,39 @@ def _events() -> tuple[ModelRuntimeBusEvent, ...]:
     )
 
 
+def _dry_run_events() -> tuple[ModelRuntimeBusEvent, ...]:
+    return tuple(
+        ModelRuntimeBusEvent(
+            topic=topic,
+            key_b64=None,
+            value_b64=base64.b64encode(json.dumps(value).encode("utf-8")).decode(
+                "ascii"
+            ),
+            headers={},
+        )
+        for topic, value in (
+            (
+                "onex.cmd.omnimarket.host-registry-unit-requested.v1",
+                {"mode": "dry-run"},
+            ),
+            (
+                "onex.evt.omnimarket.host-registry-unit-completed.v1",
+                {"mode": "dry-run"},
+            ),
+        )
+    )
+
+
 def _settle(
-    forwarder: CoreRuntimeBusForwarder, monkeypatch: pytest.MonkeyPatch
+    forwarder: CoreRuntimeBusForwarder,
+    monkeypatch: pytest.MonkeyPatch,
+    events: tuple[ModelRuntimeBusEvent, ...] | None = None,
 ) -> ModelRuntimeBusReading:
     binding = ModelRuntimeBusBinding(kind="inmemory_forwarded", forwarder=NODE_NAME)
     monkeypatch.setattr(
         ModelRuntimeBusBinding, "load_forward", lambda _self: forwarder.forward
     )
-    return ModelBusSettle.read(binding, _events())
+    return ModelBusSettle.read(binding, _events() if events is None else events)
 
 
 def _no_overlay_forwarder(tmp_path: Path) -> CoreRuntimeBusForwarder:
@@ -120,6 +145,50 @@ def test_no_hosted_bus_declared_is_not_a_failure_and_keeps_events_locally(
         "onex.evt.omnimarket.setup-completed.v1",
     ]
     assert record.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize(
+    "payload", [{"mode": "dry-run"}, {"mode": "dry_run"}, {"dry_run": True}]
+)
+def test_a_dry_run_with_no_hosted_bus_writes_no_local_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, payload: dict[str, object]
+) -> None:
+    """A dry run writes nothing, so its events are not kept locally; the reading is healthy and says so."""
+    events = tuple(
+        ModelRuntimeBusEvent(
+            topic=topic,
+            key_b64=None,
+            value_b64=base64.b64encode(json.dumps(payload).encode("utf-8")).decode(
+                "ascii"
+            ),
+            headers={},
+        )
+        for topic in (
+            "onex.cmd.omnimarket.host-registry-unit-requested.v1",
+            "onex.evt.omnimarket.host-registry-unit-completed.v1",
+        )
+    )
+
+    reading = _settle(_no_overlay_forwarder(tmp_path), monkeypatch, events)
+
+    assert not reading.degraded
+    assert reading.events_recorded == 2
+    assert reading.events_failed == 0
+    assert reading.reason is not None
+    assert "this was a dry run" in reading.reason
+    assert "not kept locally" in reading.reason
+    assert not (tmp_path / "home").exists()
+
+
+def test_a_dry_run_in_one_event_of_a_recording_keeps_none_of_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reading = _settle(
+        _no_overlay_forwarder(tmp_path), monkeypatch, _dry_run_events()[:1] + _events()
+    )
+
+    assert not reading.degraded
+    assert not (tmp_path / "home" / ".onex" / LOCAL_RECORD_FILE_NAME).exists()
 
 
 def test_declared_hosted_bus_that_is_unreachable_is_named_and_not_called_kept_locally(
