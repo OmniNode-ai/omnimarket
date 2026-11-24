@@ -156,6 +156,9 @@ dod_evidence:
         check_value: >-
           bash -o pipefail -c 'env ONEX_LEDGER_CENSUS_ROOT="$(dirname "$PWD")" uv run --frozen python -m omnimarket.nodes.node_work_ledger_file_census_effect --packaged-overlay --repos omnimarket --directory omnimarket="$PWD" --per-file && awk "/^  omnimarket: /{exit !(\$2<=106)}" src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml && grep -qF "LAB_FILL_PORTS_READER =" src/omnimarket/nodes/node_lab_fill_effect/protocols/local_lab_fill_adapters.py'
         cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_omn26330_cleared_files.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
   - id: dod-omn26330-deploy-lab-fill-ports
     description: 'Deploy probe the hosted runner can run: the lab fill ports reader name exists in the lab fill adapters at the checked-out commit on GitHub; it does not exist at the merge base.'
     source: manual

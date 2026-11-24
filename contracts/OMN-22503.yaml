@@ -55,5 +55,5 @@ dod_evidence:
   binds_ac: [AC13]
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen --python 3.12 pytest tests/nodes/node_remote_lane_stop_effect/test_ended_claim_release.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run --frozen --python=3.12 pytest tests/nodes/node_remote_lane_stop_effect/test_ended_claim_release.py -q --no-cov -n 0 -p no:randomly
     cwd: .
