@@ -5,12 +5,17 @@
 
 from __future__ import annotations
 
+import tempfile
+from pathlib import Path
+
 import pytest
 
 from omnimarket.handlers import ledger_row_grammar as g
 
 pytestmark = pytest.mark.unit
-LEDGER = "docs/tracking/ROLLING_WORK_LEDGER.md"
+LEDGER_NAME = sorted(g.GOVERNED_LEDGER_NAMES)[0]
+# A path built under the temp dir: the grammar judges the file name only and opens nothing.
+LEDGER = str(Path(tempfile.gettempdir()) / "tracking" / LEDGER_NAME)
 PROMPT = "6f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f"
 PROMPT_B = "7a1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f"
 CONFIRMER = "8b1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f"
