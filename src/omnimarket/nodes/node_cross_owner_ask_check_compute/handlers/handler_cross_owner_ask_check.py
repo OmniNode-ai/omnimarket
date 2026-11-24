@@ -48,6 +48,7 @@ def _refused(
         verdict=verdict,
         draft_allowed=False,
         verified_by=f"verified by: {command} => {observation}",
+        terminal_failure_cause=verdict.value,
     )
 
 
