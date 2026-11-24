@@ -1,11 +1,15 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-26226 AC1, AC3, AC4: the foreground ``onex dashboard`` prints no token and no tenant id.
+"""OMN-26226 AC3, AC4 and the "names ``onex dashboard open``" half of AC1: the foreground ``onex dashboard`` prints no token and no tenant id.
 
 ``cli_local.dashboard_command`` (the serve path, handler stubbed) is the command that
 used to print the start URL with its session token and the tenant id. The other
 dashboard tests drive ``dashboard status`` and ``start``, so nothing else read this
 output.
+
+Not covered: AC1's other clause, that the bare loopback address is never presented as
+the thing to open. The serve path still prints that address and nothing here asserts
+on it either way (the owner has not ruled).
 
 Failure modes covered:
 - the serve path prints the request's session token, in a start URL or otherwise
