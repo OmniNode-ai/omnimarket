@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -14,7 +15,9 @@ from omnimarket.handlers import ledger_row_grammar as g
 
 pytestmark = pytest.mark.unit
 TS = "2026-09-26T02:00:00Z"
-LEDGER = "docs/tracking/ROLLING_WORK_LEDGER.md"
+LEDGER_NAME = sorted(g.GOVERNED_LEDGER_NAMES)[0]
+# A path built under the temp dir: the grammar judges the file name only and opens nothing.
+LEDGER = str(Path(tempfile.gettempdir()) / "tracking" / LEDGER_NAME)
 FIXTURE = (
     Path(__file__).resolve().parents[2]
     / "fixtures"

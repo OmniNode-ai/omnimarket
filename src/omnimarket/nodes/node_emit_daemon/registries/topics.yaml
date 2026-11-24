@@ -1104,6 +1104,18 @@ events:
     partition_key_field: criterion
     required_fields: [run_id, verdict, conclusion, criterion]
 
+  # Delegation check probe run (OMN-26043): one record per check (C13, C14, C17) per run of node_delegation_check_probe_effect, the
+  # record the beta board reads each check from. Carries the run id, trigger, verdict, cause class, graded clause names and details,
+  # the responder chain tried and the responder chosen (private base URLs only; never a credential value), and package versions.
+  delegation_check.probe.completed:
+    node_owned: true
+    fan_out:
+      - topic: "onex.evt.omnimarket.delegation-check-probe-completed.v1"
+        tier: telemetry
+        description: "Delegation check run: verdict, conclusion, cause class, clauses, the responder chain and the responder chosen; no credential value"
+    partition_key_field: criterion
+    required_fields: [run_id, verdict, conclusion, criterion]
+
   # Host job claim run (OMN-25093): one record per run of node_host_job_claim_compute's host tick (hourly on each lab host). Carries
   # the host, its role, the verdict, each finding (kind, job id, extra unit, owner unit) and the correlation id; unit names only,
   # never a unit file's command text, an environment value or a credential.
@@ -1127,3 +1139,15 @@ events:
         description: "Lab proof judge use: repo, pr, head, class, outcome, node names and substitute receipt ids"
     partition_key_field: head
     required_fields: [repo, pr_number, head, class_id, outcome]
+
+  # Agent message (cross-platform agent message bus): one message from one agent to one recipient in one thread, from
+  # Claude, Codex, GLM, Hermes, Gemini or another platform. Carries the sender, recipient, thread, kind, text, send time
+  # and platform; never a credential. Duty-critical: a message accepted for sending is never dropped from the spool.
+  agent.message:
+    node_owned: true
+    fan_out:
+      - topic: "onex.evt.omnimarket.agent-message.v1"
+        tier: duty_critical
+        description: "An agent message: from, to, thread, kind, text, sent_at, platform"
+    partition_key_field: thread
+    required_fields: [from, to, thread, kind, text, sent_at, platform]

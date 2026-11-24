@@ -34,6 +34,7 @@ from textual import on
 from textual.app import App, ComposeResult, SuspendNotSupported
 from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.css.query import NoMatches
 from textual.screen import ModalScreen, Screen
 from textual.theme import Theme
 from textual.timer import Timer
@@ -958,6 +959,8 @@ class SetupScreen(_TabbedScreen[None]):
         self._loading = True
         try:
             await self._fetch(note, provider, wanted)
+        except NoMatches:  # the user left this tab while the list was loading
+            return
         finally:
             self._loading = False
 

@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# One pure operation: the loader tick supplies its assertions, the clock and the bound; the node returns one alarm per
+# listed overlay id whose newest assertion is past the bound or missing. The tick writes the alarms to the bus.
+name: node_overlay_assertion_stale_compute
+node_type: compute
+lifecycle: experimental
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: Returns one alarm per listed overlay id whose newest loader assertion is older than the bound or missing, naming the owner who acts on it.
+input_model:
+  name: ModelOverlayAssertionCheck
+  module: omnimarket.models.overlay_store
+output_model:
+  name: ModelOverlayAssertionCheckResult
+  module: omnimarket.models.overlay_store
+handler:
+  module: omnimarket.nodes.node_overlay_assertion_stale_compute.handlers.handler_overlay_assertion_stale
+  class: HandlerOverlayAssertionStale
+  input_model: omnimarket.models.overlay_store.ModelOverlayAssertionCheck
+  output_model: omnimarket.models.overlay_store.ModelOverlayAssertionCheckResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_overlay_assertion_stale_compute.handlers.handler_overlay_assertion_stale:HandlerOverlayAssertionStale
+  handlers:
+    - operation: overlay_assertion_stale
+      handler:
+        name: HandlerOverlayAssertionStale
+        module: omnimarket.nodes.node_overlay_assertion_stale_compute.handlers.handler_overlay_assertion_stale
+      input_model: omnimarket.models.overlay_store.ModelOverlayAssertionCheck
+      output_model: omnimarket.models.overlay_store.ModelOverlayAssertionCheckResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: []
+  timeout_ms: 2000
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the overlay store load tick with its assertions, the clock and the bound.
+  callers:
+    - path: src/omnimarket/nodes/node_overlay_store_load_effect/runtime_overlay_store_load_tick.py
+metadata:
+  transport_type: local
