@@ -10,6 +10,7 @@ document, refuse any key it does not declare, and find the document by reference
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -64,8 +65,9 @@ def test_overlay_model_is_frozen_and_refuses_a_key_it_does_not_declare() -> None
         ModelStabilityGatewayKeyProvisionOverlay.model_validate(
             {"lane": "example-lane", "database": DATABASE, "undeclared": "x"}
         )
+    mutate: Any = _model()
     with pytest.raises(ValidationError):
-        _model().lane = "other-lane"  # type: ignore[misc]
+        mutate.lane = "other-lane"
 
 
 @pytest.mark.unit
