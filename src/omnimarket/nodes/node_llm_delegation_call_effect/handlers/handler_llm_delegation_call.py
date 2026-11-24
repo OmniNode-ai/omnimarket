@@ -41,6 +41,7 @@ from omnibase_core.models.delegation.wire import ModelDelegationRawResponse
 
 from omnimarket.delegation.reasoning_preamble import strip_leading_inline_reasoning
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
+from omnimarket.enums.enum_cost_source import EnumCostSource
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_secret_source import EnumSecretSource
@@ -51,7 +52,7 @@ from omnimarket.events.provider_quota import (
 )
 from omnimarket.handlers import openai_compatible_endpoint as endpoints
 from omnimarket.handlers.model_catalog import (
-    call_read_deadline,
+    SHIPPED_PRICE_SOURCE,
     catalog_config,
     models_dev_price_with_read_time,
     runtime_catalog_entry,
@@ -392,19 +393,52 @@ class _PricedCost(NamedTuple):
     price_read_at: str | None
 
 
+def _booked_cost(
+    priced: _PricedCost, reported: Decimal | None
+) -> tuple[_PricedCost, EnumCostSource]:
+    """The charge the provider reported when its response stated one, else the estimate.
+
+    Costs are arithmetic over the response's ``usage`` object and the price, never
+    over generated text: ``reported`` is ``usage.cost`` and ``priced`` is the
+    provider's token counts times a published price. A reported charge replaces
+    the estimate and the savings follow it; an unpriced call has no Opus
+    equivalent, so its savings stay zero.
+    """
+    if reported is None:
+        return priced, EnumCostSource.ESTIMATED
+    savings = (
+        Decimal("0")
+        if priced.cost_basis is EnumCostBasis.UNKNOWN
+        else priced.opus_equivalent - reported
+    )
+    basis = (
+        EnumCostBasis.ZERO_MARGINAL_API_COST
+        if reported == 0
+        else EnumCostBasis.CLOUD_API_COST
+    )
+    return (
+        priced._replace(actual=reported, savings=savings, cost_basis=basis),
+        EnumCostSource.REPORTED,
+    )
+
+
 def _entry_price_read_at(
     model_entry: ModelCatalogEntry, source: str | None
 ) -> str | None:
     """The read time for the entry's price source: the older of
-    ``provider_listed_at`` (when the source is not exactly ``"models.dev"``)
-    and ``metadata_fetched_at`` (when ``"models.dev"`` is in the source),
-    ignoring ``None``."""
+    ``provider_listed_at`` (when the source is not exactly ``"models.dev"`` or
+    the shipped price list) and ``metadata_fetched_at`` (when either is in the
+    source), ignoring ``None``."""
     if source is None:
         return None
     candidates: list[str] = []
-    if source != "models.dev" and model_entry.provider_listed_at is not None:
+    from_catalogue = "models.dev" in source or SHIPPED_PRICE_SOURCE in source
+    if (
+        source not in ("models.dev", SHIPPED_PRICE_SOURCE)
+        and model_entry.provider_listed_at is not None
+    ):
         candidates.append(model_entry.provider_listed_at)
-    if "models.dev" in source and model_entry.metadata_fetched_at is not None:
+    if from_catalogue and model_entry.metadata_fetched_at is not None:
         candidates.append(model_entry.metadata_fetched_at)
     if not candidates:
         return None
@@ -419,7 +453,6 @@ def _priced_cost(
     endpoint_url: str | None = None,
     provider: str | None = None,
     model_entry: ModelCatalogEntry | None = None,
-    deadline_seconds: float | None = None,
 ) -> _PricedCost:
     """Return (actual_cost, opus_equivalent_cost, savings, cost_basis,
     price_source, price_read_at).
@@ -453,13 +486,7 @@ def _priced_cost(
             endpoint_url,
             model_id,
             models_dev_price=(
-                (
-                    lambda p, m: models_dev_price_with_read_time(
-                        p, m, deadline_seconds=deadline_seconds
-                    )
-                )
-                if model_entry is None
-                else None
+                models_dev_price_with_read_time if model_entry is None else None
             ),
         )
         if priced is not None:
@@ -1133,7 +1160,6 @@ class HandlerLlmDelegationCall:
 
         secret_source: EnumSecretSource | None = None
         model_entry: ModelCatalogEntry | None = None
-        metadata_seconds = 0.0
         request_left_at: float | None = None
         try:
             # OMN-13861: resolve the backend's API key from ``secret_ref`` and merge
@@ -1146,18 +1172,12 @@ class HandlerLlmDelegationCall:
             outbound_headers, secret_source = self._resolve_outbound_headers(request)
             provider = byok_backend_provider(request.provider)
             if provider is not None and provider in catalog_config()["provider_ids"]:
-                # What the explorer last read, never a live listing per call.
-                # OMN-23413 AC35: a live models.dev read here is bounded and its
-                # time comes out of the provider call's own timeout.
-                metadata_started = time.monotonic()
+                # What the explorer last read and the price list kept or shipped
+                # on this machine: never a live listing per call, and no read of
+                # models.dev from inside a session.
                 model_entry = bound_local_model_entry(
                     provider, request.model_id
-                ) or runtime_catalog_entry(
-                    provider,
-                    request.model_id,
-                    deadline_seconds=call_read_deadline(request.timeout_seconds),
-                )
-                metadata_seconds = time.monotonic() - metadata_started
+                ) or runtime_catalog_entry(provider, request.model_id)
                 if model_entry.max_output_tokens is not None:
                     token_field = (
                         "max_tokens"
@@ -1254,7 +1274,7 @@ class HandlerLlmDelegationCall:
             response = transport.post_chat_completion(
                 endpoint_url=endpoint_url,
                 payload=payload,
-                timeout_seconds=max(request.timeout_seconds - metadata_seconds, 0.001),
+                timeout_seconds=request.timeout_seconds,
                 extra_headers=outbound_headers,
             )
             latency_ms = response.latency_ms
@@ -1543,22 +1563,28 @@ class HandlerLlmDelegationCall:
         cache_read, cache_write_5m, cache_write_1h = cache_usage_figures(
             response_json.get("usage") or {}
         )
+        provider_reported_cost = _provider_reported_cost(response_json)
         (
-            actual_cost,
-            opus_cost,
-            savings,
-            cost_basis,
-            price_source,
-            price_read_at,
-        ) = _priced_cost(
-            request.model_id,
-            tokens_in,
-            tokens_out,
-            model_tier=request.model_tier,
-            endpoint_url=endpoint_url,
-            provider=request.provider,
-            model_entry=model_entry,
-            deadline_seconds=call_read_deadline(request.timeout_seconds),
+            (
+                actual_cost,
+                opus_cost,
+                savings,
+                cost_basis,
+                price_source,
+                price_read_at,
+            ),
+            cost_source,
+        ) = _booked_cost(
+            _priced_cost(
+                request.model_id,
+                tokens_in,
+                tokens_out,
+                model_tier=request.model_tier,
+                endpoint_url=endpoint_url,
+                provider=request.provider,
+                model_entry=model_entry,
+            ),
+            provider_reported_cost,
         )
 
         result = ModelLlmDelegationCallResult(
@@ -1585,9 +1611,10 @@ class HandlerLlmDelegationCall:
             savings_usd=savings,
             usage_source=_token_usage_source(response_json),
             cost_basis=cost_basis,
+            cost_source=cost_source,
             price_source=price_source,
             price_read_at=price_read_at,
-            provider_reported_cost_usd=_provider_reported_cost(response_json),
+            provider_reported_cost_usd=provider_reported_cost,
             quality_gate_passed=True,
             endpoint_healthy=True,
             served_model_id=served_model_id,
@@ -1656,7 +1683,6 @@ class HandlerLlmDelegationCall:
             endpoint_url=endpoint_url,
             provider=request.provider,
             model_entry=model_entry,
-            deadline_seconds=call_read_deadline(request.timeout_seconds),
         )
         cache_read, cache_write_5m, cache_write_1h = cache_usage_figures(
             response_json.get("usage") or {}
@@ -1742,6 +1768,7 @@ class HandlerLlmDelegationCall:
             provider_reported_cost_usd=result.provider_reported_cost_usd,
             usage_source=result.cost_usage_source,
             cost_basis=result.cost_basis,
+            cost_source=result.cost_source,
             pricing_manifest_version=request.pricing_manifest_version,
             pricing_manifest_hash=request.pricing_manifest_hash,
             output_hash=result.output_hash,
