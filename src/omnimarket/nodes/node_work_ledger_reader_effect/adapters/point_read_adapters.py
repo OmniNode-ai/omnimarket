@@ -10,7 +10,7 @@ import shlex
 import subprocess
 import uuid
 from collections.abc import Callable, Mapping, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -47,11 +47,23 @@ def open_claims_query() -> ModelPointQuery:
     return ModelPointQuery(query="open-claims")
 
 
-def _request(query: ModelPointQuery, correlation_id: str) -> dict[str, object]:
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _request(
+    query: ModelPointQuery,
+    correlation_id: str,
+    *,
+    deadline: datetime | None = None,
+) -> dict[str, object]:
+    """The wire request; ``deadline`` is the instant this caller stops waiting (OMN-26609)."""
     request: dict[str, object] = {
         "correlation_id": correlation_id,
         "query": query.query,
     }
+    if deadline is not None:
+        request["deadline"] = _stamp(deadline)
     if query.lanes:
         request["lanes"] = list(query.lanes)
     if query.lane:
@@ -126,17 +138,27 @@ class CommandPointRead:
         argv: Sequence[str],
         timeout_seconds: int,
         new_id: Callable[[], str] = lambda: str(uuid.uuid4()),
+        *,
+        stamp_deadline: bool = False,
+        clock: Callable[[], datetime] = _now,
     ) -> None:
         self._argv = list(argv)
         self._timeout = timeout_seconds
         self._new_id = new_id
+        self._stamp_deadline = stamp_deadline
+        self._clock = clock
 
     def read(self, query: ModelPointQuery) -> ModelPointAnswer:
         correlation_id = self._new_id()
+        deadline = (
+            self._clock() + timedelta(seconds=self._timeout)
+            if self._stamp_deadline
+            else None
+        )
         try:
             done = subprocess.run(
                 self._argv,
-                input=json.dumps(_request(query, correlation_id)),
+                input=json.dumps(_request(query, correlation_id, deadline=deadline)),
                 capture_output=True,
                 text=True,
                 timeout=self._timeout,
@@ -218,14 +240,18 @@ def build_point_read(
                 resolve_work_ledger_query_transport(route.bus_lane)
             )
 
-        return BusSessionPointRead(factory, route.timeout_seconds)
+        return BusSessionPointRead(
+            factory, route.timeout_seconds, stamp_deadline=route.stamp_deadline
+        )
     env = os.environ if environ is None else environ
     argv = shlex.split(env.get(route.command_env, ""))
     if not argv:
         raise ReaderRouteError(
             f"{route.command_env} is not set; the overlay names it as the bus read command"
         )
-    return CommandPointRead(argv, route.timeout_seconds)
+    return CommandPointRead(
+        argv, route.timeout_seconds, stamp_deadline=route.stamp_deadline
+    )
 
 
 __all__ = [

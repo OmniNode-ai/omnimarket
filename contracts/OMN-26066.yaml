@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-26066
+title: The review replay set node's two recall operations are requested on their own declared topics
+summary: node_review_replay_set_effect declared the freeze_recall_bar and score_recall operations in its handler routing but subscribed to one command topic and published one result topic, so no request could reach them and their results had no topic. Each operation now names its own command topic, its producer and its own result topic in the contract.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- topics
+requirements:
+- id: req-omn26066-replay-recall-routes
+  statement: Each recall operation of the review replay set node has a subscribed command topic with a named producer and a result topic the runtime router maps its result model to.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: each recall operation declares its own command topic in handler_routing, subscribe_topics and externally_produced_topics -- falsifier: the route tests in test_review_replay_set.py fail on the contract at the merge base'
+  - id: AC2
+    statement: 'AC2: at least one declared trigger fires and its run line is read on the dev runtime on h201 -- falsifier: dev runtime log grep for the node name after the install'
+evidence_requirements:
+- kind: tests
+  description: Contract route tests of the review replay set node
+  command: uv run pytest tests/unit/nodes/node_review_replay_set_effect -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26066-routes
+  description: AC1 for the recall bar line is proven by the contract route tests, which read the contract file src/omnimarket/nodes/node_review_replay_set_effect/contract.yaml.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_review_replay_set_effect -q
+    cwd: .
+- id: dod-omn26066-deploy-conditions
+  description: 'Deploy probe the hosted runner can run: gh api reads the node contract at the checked-out commit and it declares the score_recall command topic; the line does not exist at the merge base, so the probe fails there.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_review_replay_set_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "review-replay-recall-score-requested" > /dev/null'
+    cwd: .
+- id: dod-omn26066-integration-proof
+  description: Hosted CI cannot run this check, so only the local Done gate runs it and it binds no criterion here (the hosted base control refuses a bound item it cannot run); AC2 is bound by the route tests above, which read the runtime router. The branch revision is installed on the dev lane on h201 and the node's run line is read in the dev runtime log; the host, revision and line are named in the pull request.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane layer0-2140 -- uv run pytest tests/unit/nodes/node_review_replay_set_effect -q
+    cwd: .

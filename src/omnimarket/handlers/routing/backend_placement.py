@@ -46,12 +46,16 @@ from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     load_bifrost_backend_placements,
 )
 from omnimarket.enums.enum_backend_placement_mode import EnumBackendPlacementMode
+from omnimarket.handlers.routing.endpoint_load_pick import pick_least_busy_index
 from omnimarket.inference.delegation_config_provenance import (
     resolve_bifrost_path_binding,
 )
 from omnimarket.models.delegation.model_delegation_backend_placement import (
     ModelDelegationBackendPlacement,
     ModelPlacedDelegationBackend,
+)
+from omnimarket.models.delegation.model_endpoint_load_snapshot import (
+    ModelEndpointLoadSnapshot,
 )
 from omnimarket.models.delegation.wire import (
     ModelDelegationConfig,
@@ -232,6 +236,7 @@ def pick_spread_member(
     member_weights: dict[str, float],
     spread_key: str,
     routable: Callable[[str], bool],
+    load: ModelEndpointLoadSnapshot | None = None,
 ) -> ModelTierModel:
     """One member of ``selected``'s spread group, by stable hash of ``spread_key``.
 
@@ -239,6 +244,10 @@ def pick_spread_member(
     ``routable``, declares ``task_type`` and fits ``estimated_tokens``; each member
     takes the share its placement weight declares (``selected``'s is 1.0). A group
     of one returns ``selected`` (OMN-19215 AC4).
+
+    OMN-26534: when ``load`` is given, the member with the fewest waiting requests
+    is returned instead (ties in group order, an unreadable member skipped); the
+    hash pick above is the answer only when ``load`` is absent or reads no member.
     """
     group: list[ModelTierModel] = [selected]
     for peer_ref in spread_peers.get(selected.backend_ref, ()):
@@ -258,6 +267,9 @@ def pick_spread_member(
             group.append(member)
     if len(group) == 1:
         return selected
+    least_busy = pick_least_busy_index([m.backend_ref for m in group], load)
+    if least_busy is not None:
+        return group[least_busy]
     weights = [1.0, *(member_weights.get(m.backend_ref, 1.0) for m in group[1:])]
     return group[spread_pick(spread_key, weights)]
 
