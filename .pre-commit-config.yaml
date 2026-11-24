@@ -195,6 +195,19 @@ repos:
       - id: check-public-runner-placement
         args: [--repo, omnimarket, --visibility, public]
         require_serial: true
+  # OMN-26651: the hard-coded model guard (check-hardcoded-model-config-compute) over the
+  # staged lines, ratcheted against config/hardcoded_model_config_baseline.yaml, which only
+  # shrinks. The rev is the omnibase_core commit whose judged families are M, E, E-LAN, T, N
+  # (model ids, inference endpoints, lab-subnet and private addresses, tier aliases, engine
+  # names; D and R also read the private vocabulary); the next core commit that adds the
+  # operational-literal families O, G, F, P, S, H and B is not adopted until their findings
+  # are cleared. CI twin: job hardcoded-model-config in .github/workflows/ci.yml, whose
+  # core_ref is the commit this tag names; keep them equal (tests/ci/test_omn26651_hardcoded_model_config_wiring.py).
+  - repo: https://github.com/OmniNode-ai/omnibase_core
+    rev: dev-20261029152335-095ea7558cf0
+    hooks:
+      - id: check-hardcoded-model-config-compute
+        require_serial: true
   # Stub implementation detection + receipt-honesty gate + transport-mock lint
   # sourced from omnibase_core. Rev bumped to OMN-13026 (transport-mock-lint).
   - repo: https://github.com/OmniNode-ai/omnibase_core
