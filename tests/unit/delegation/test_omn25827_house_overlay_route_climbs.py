@@ -96,7 +96,8 @@ CUSTOMER_TENANT = "a0ea038d-8538-494c-b004-4ceaf9677fac"
 
 
 def _recorded() -> dict[str, Any]:
-    return json.loads(FIXTURE.read_text())  # type: ignore[no-any-return]
+    recorded: dict[str, Any] = json.loads(FIXTURE.read_text())
+    return recorded
 
 
 def _recorded_401() -> str:
