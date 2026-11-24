@@ -16,7 +16,6 @@ printed, which then answers 200 with the pages.
 from __future__ import annotations
 
 import hashlib
-import re
 import tarfile
 from pathlib import Path
 from typing import Any
@@ -172,9 +171,14 @@ def test_the_printed_root_serves_the_verified_pages(
 
     monkeypatch.setattr(click, "echo", recorder)
 
+    token = "test-token-for-bundle-proof"
+    token_file = dashboard_env["tmp_path"] / "dashboard-token.txt"
+    token_file.write_text(token, encoding="utf-8")
     runner = CliRunner()
     result = runner.invoke(
-        cli_local.dashboard_command, ["--overlay", str(dashboard_env["overlay"])]
+        cli_local.dashboard_command,
+        ["--overlay", str(dashboard_env["overlay"])],
+        env={"ONEX_DASHBOARD_TOKEN_FILE": str(token_file)},
     )
 
     assert result.exit_code == 0
@@ -182,11 +186,10 @@ def test_the_printed_root_serves_the_verified_pages(
     assert "echo" in events
     assert events.index("download") < events.index("echo")
 
-    # Parse printed URL
-    start_line = next(msg for _, msg in echo_records if "onex dashboard:" in msg)
-    match = re.search(r"http://127\.0\.0\.1:47231/\?token=(\S+)", start_line)
-    assert match is not None
-    token = match.group(1)
+    # The address is still printed only after the bundle verifies; the token is
+    # supplied out of band and never echoed (OMN-26226).
+    assert "onex dashboard open" in result.output
+    assert token not in result.output
 
     assert len(dashboard_env["serve_calls"]) == 1
     app = dashboard_env["serve_calls"][0]["app"]

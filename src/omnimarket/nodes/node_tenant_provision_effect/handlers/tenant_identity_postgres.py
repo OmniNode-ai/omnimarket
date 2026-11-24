@@ -67,6 +67,13 @@ ON CONFLICT (tenant_id) WHERE is_active = true DO NOTHING
 _INSERT_OUTBOX = (
     "INSERT INTO tenant_event_outbox (tenant_id, envelope) VALUES ($1, $2::jsonb)"
 )
+_INSERT_API_KEY = """
+INSERT INTO tenant_api_keys (tenant_id, name, key_hash)
+VALUES ($1, $2, $3)
+ON CONFLICT DO NOTHING
+RETURNING id
+"""
+_ACTIVE_KEY_HASH_BY_NAME = "SELECT key_hash FROM tenant_api_keys WHERE tenant_id = $1 AND name = $2 AND is_active"
 
 
 class TenantStoreUnavailableError(Exception):
@@ -86,6 +93,15 @@ class EnumProvisionKind(StrEnum):
     SLUG_TAKEN = "slug_taken"
     COMMAND_ID_REUSED = "command_id_reused"
     NO_DEFAULT_PLAN = "no_default_plan"
+
+
+class EnumApiKeyKind(StrEnum):
+    """What one key insert found and did."""
+
+    CREATED = "created"
+    EXISTS = "exists"
+    NAME_CONFLICT = "name_conflict"
+    HASH_TAKEN = "hash_taken"
 
 
 @dataclass(frozen=True)
@@ -227,6 +243,35 @@ class TenantIdentityPostgres:
         envelope: dict[str, Any] = json.loads(found["envelope"])
         return ProvisionRecord(kind=EnumProvisionKind.REPLAY, envelope=envelope)
 
+    async def ensure_api_key(
+        self, *, tenant_id: UUID, name: str, key_hash: str
+    ) -> EnumApiKeyKind:
+        """Insert one active key row for the tenant, or report what already holds the name or the hash (OMN-26586).
+
+        ``ON CONFLICT DO NOTHING`` covers both unique constraints (``key_hash`` and the active ``(tenant_id, name)`` index);
+        a conflict is then told apart by reading the active row under the name. Nothing is replaced or revoked.
+        """
+        try:
+            pool = await self._get_pool()
+            async with pool.acquire() as connection, connection.transaction():
+                inserted = await connection.fetchrow(
+                    _INSERT_API_KEY, tenant_id, name, key_hash
+                )
+                if inserted is not None:
+                    return EnumApiKeyKind.CREATED
+                held = await connection.fetchrow(
+                    _ACTIVE_KEY_HASH_BY_NAME, tenant_id, name
+                )
+        except TenantStoreUnavailableError:
+            raise
+        except _DRIVER_ERRORS as exc:
+            raise _unavailable(exc) from None
+        if held is None:
+            return EnumApiKeyKind.HASH_TAKEN
+        if held["key_hash"] == key_hash:
+            return EnumApiKeyKind.EXISTS
+        return EnumApiKeyKind.NAME_CONFLICT
+
     async def read(
         self, *, tenant_id: UUID | None, tenant_slug: str | None
     ) -> TenantRow | None:
@@ -245,6 +290,7 @@ class TenantIdentityPostgres:
 
 
 __all__ = [
+    "EnumApiKeyKind",
     "EnumProvisionKind",
     "ProvisionRecord",
     "TenantIdentityPostgres",

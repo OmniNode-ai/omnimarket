@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_stability_gateway_key_provision_effect
+version: 1.0.0
+description: Creates the stability tenant and one active gateway API key from a generated key held only in the secret store; stability lane only, refused elsewhere.
+pack: operator_tooling
+node_role: effect
+display_name: Stability Gateway Key Provision Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_stability_gateway_key_provision_effect: omnimarket.nodes.node_stability_gateway_key_provision_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- asyncpg>=0.30.0
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- stability
+- identity
