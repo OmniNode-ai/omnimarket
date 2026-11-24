@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import yaml
 
 from omnimarket.nodes.node_reading_writer_effect.overlay import (
     ModelCommandLedgerReadRoute,
@@ -27,10 +26,8 @@ CONTRACT = (
     Path(__file__).resolve().parents[3]
     / "src/omnimarket/nodes/node_work_state_projection_effect/contract.yaml"
 )
-#: The variable the effect's contract names as the ledger file's path: the old route the bus read command replaces.
-FILE_ROUTE_ENV: str = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))["runtime"][
-    "ledger"
-]["path_env"]
+#: A variable that points at a ledger file fixture: the projection names no file route, so setting it must change nothing.
+FILE_ROUTE_ENV: str = "ONEX_LEDGER_FIXTURE_FILE"
 COMMAND_ENV = "ONEX_LEDGER_BUS_READ_COMMAND"
 ROUTE_DOCUMENT: dict[str, Any] = {
     "route": "command",

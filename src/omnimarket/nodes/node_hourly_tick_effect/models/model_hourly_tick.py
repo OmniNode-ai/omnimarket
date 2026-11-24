@@ -76,9 +76,6 @@ class ModelHourlyTickRequest(BaseModel):
         default=".claude_scratch/checkpoints/linear-sweep-last.txt",
         validation_alias="sweepStateFile",
     )
-    ledger_file: str = Field(
-        default="docs/tracking/ROLLING_WORK_LEDGER.md", validation_alias="ledgerFile"
-    )
     now: Timestamp | None = Field(
         default=None, pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$"
     )
@@ -107,7 +104,7 @@ class ModelHourlyTickRequest(BaseModel):
             raise ValueError(
                 "hourly-tick: record requires the prepared state and sweep result"
             )
-        for path in (self.checkpoint_file, self.sweep_state_file, self.ledger_file):
+        for path in (self.checkpoint_file, self.sweep_state_file):
             if Path(path).is_absolute() or ".." in Path(path).parts:
                 raise ValueError(
                     "hourly-tick: file paths must be relative to OMNI_HOME"
