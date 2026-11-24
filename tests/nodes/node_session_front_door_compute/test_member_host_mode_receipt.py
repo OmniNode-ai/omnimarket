@@ -60,7 +60,6 @@ BROKEN_BUS = {
     "transport-not-bus": ("ONEX_LEDGER_WRITE_VIA", "file"),
     "transport-unset": ("ONEX_LEDGER_WRITE_VIA", None),
     "principal-is-someone-else": ("ONEX_WORK_LEDGER_PRINCIPAL", "fixture-member-b-dev"),
-    "no-ledger-path": ("ONEX_LEDGER_PATH", None),
 }
 
 
@@ -97,11 +96,20 @@ def test_a_bound_login_of_another_entry_is_never_bus_member(machine: Machine) ->
     "overrides",
     [
         {"failed": ("ledger_is_registry_ledger",)},
+        {"failed": ("ledger_path",)},
+        {"failed": ("ledger_basename",)},
         {"dropped": ("ledger_grammar",)},
         {"verdict": "BLOCKED"},
         {"profile": "operator"},
     ],
-    ids=["failed-check", "stale-overlay", "verdict-blocked", "operator-receipt"],
+    ids=[
+        "failed-check",
+        "failed-ledger-path",
+        "failed-ledger-basename",
+        "stale-overlay",
+        "verdict-blocked",
+        "operator-receipt",
+    ],
 )
 def test_a_failing_team_receipt_is_never_bus_member(
     machine: Machine, overrides: dict[str, object]
@@ -152,12 +160,41 @@ def test_member_mirror_with_a_bad_transport_fails(machine: Machine) -> None:
     assert run.rule == "ledger_is_registry_ledger"
 
 
-def test_member_mirror_without_its_archive_fails(machine: Machine) -> None:
+def test_member_mirror_without_its_archive_blocks_at_the_receipt_not_the_host_mode(
+    machine: Machine,
+) -> None:
     (machine.mirror.parent / "archive").rmdir()
-    mode, reasons = _host_mode(machine, MEMBER_A, machine.receipt("team"))
-    assert mode != "bus-member"
-    assert any("archive" in r for r in reasons)
+    # The ledger copy is the preflight's business: the live run blocks on its ledger check.
     assert machine.start(MEMBER_A).status == "blocked"
+    # And a receipt whose ledger check failed is never bus-member.
+    receipt = machine.receipt("team", failed=("ledger_is_registry_ledger",))
+    mode, reasons = _host_mode(machine, MEMBER_A, receipt)
+    assert mode != "bus-member"
+    assert reasons
+
+
+@pytest.mark.parametrize("copy", ["", "nowhere"], ids=["unset", "missing-file"])
+def test_the_ledger_copy_is_the_preflights_to_check_omn26332(
+    machine: Machine, copy: str
+) -> None:
+    """Neither the host mode nor the entry opens or names the member's ledger copy.
+
+    With a current passing team receipt and the bus configuration, the host mode is bus-member
+    whatever the copy's path variable holds, and a live start with it unset or naming no file stops
+    on the preflight's own ledger_path blocker before any ledger call. Fails on the merge base,
+    where the host mode refuses such a machine and the entry refuses with rule ``env`` before the
+    preflight runs.
+    """
+    receipt = machine.receipt("team")
+    machine.environment["ONEX_LEDGER_PATH"] = copy and str(machine.root / copy / "x.md")
+    mode, reasons = _host_mode(machine, MEMBER_A, receipt)
+    assert mode == "bus-member", reasons
+    assert reasons == ()
+    result = machine.start(MEMBER_A)
+    assert result.status == "blocked"
+    assert result.rule == "ledger_path"
+    assert len(machine.preflight_calls()) == 1
+    assert machine.ledger_calls() == []
 
 
 # --------------------------------------------------------------------------- (c) the assertion

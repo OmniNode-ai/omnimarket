@@ -15,9 +15,10 @@ overall verdict is ``OK``.
 it passed, ``detached`` when it failed, ``unknown`` when it did not run. A team session is
 ``bus-member`` only when its current team receipt passes the assertion and the bus configuration
 holds: a bound lane login (the session's credential-bound broker principal, matched to its declared
-entry), a declared host, the bus transport with an executable append command, and a verified
-ledger mirror with its ``archive/`` directory. ``ONEX_REMOTE_LANE`` plays no part: a member's
-mirror lives outside the registry ledger path with it unset. A team receipt that does not pass is
+entry), a declared host, and the bus transport with an executable append command. The host mode
+opens no ledger file: whether the member's local ledger copy checks out is the team receipt's own
+ledger checks, which the assertion above already requires. ``ONEX_REMOTE_LANE`` plays no part.
+A team receipt that does not pass is
 ``unknown``; a passing one without the bus is ``detached``. ``bus-member`` is a startup verdict from
 configuration, never proof that the machine is attached.
 """
@@ -56,7 +57,6 @@ REQUIRED_CHECKS: Mapping[str, tuple[str, ...]] = {
     "operator": OPERATOR_REQUIRED_CHECKS,
     "team": TEAM_REQUIRED_CHECKS,
 }
-LEDGER_BASENAME = "ROLLING_WORK_LEDGER.md"
 STALE_OVERLAY_FIX = (
     "the overlay that resolved predates the ledger checks: point the preflight at the current "
     "session_preflight overlay (SESSION_PREFLIGHT_OVERLAY_PATH or --overlay), or refresh the "
@@ -218,17 +218,6 @@ def bus_configuration_reasons(
             reasons.append(
                 "the append command in ONEX_LEDGER_BUS_APPEND_COMMAND is not executable"
             )
-    raw = env.get("ONEX_LEDGER_PATH", "")
-    if not raw:
-        reasons.append("no ledger mirror: ONEX_LEDGER_PATH is unset")
-    else:
-        mirror = Path(raw)
-        if mirror.name != LEDGER_BASENAME:
-            reasons.append(f"the ledger mirror is not named {LEDGER_BASENAME}")
-        if not mirror.is_file():
-            reasons.append("the ledger mirror named by ONEX_LEDGER_PATH is not a file")
-        if not (mirror.parent / "archive").is_dir():
-            reasons.append("no archive/ directory beside the ledger mirror")
     return tuple(reasons)
 
 
