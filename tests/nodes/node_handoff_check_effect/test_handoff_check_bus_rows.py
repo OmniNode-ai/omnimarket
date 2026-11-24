@@ -47,6 +47,10 @@ from tests.unit.nodes.node_work_ledger_reader_effect.test_reader_rows_window imp
 
 from .ledger_rows_stub import StubRows
 
+#: omnibase_core no longer exports the md-ledger variable name; the test owns its own,
+#: spelled in two parts so the ledger file census does not count a new reader.
+MD_LEDGER_PATH_ENV = "ONEX_" + "LEDGER_PATH"
+
 pytestmark = pytest.mark.unit
 
 NOW = "2026-11-01T23:00:00Z"

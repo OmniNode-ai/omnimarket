@@ -228,3 +228,24 @@ def test_alarm_config_install_refused_for_a_hole_writes_nothing(tmp_path: Path) 
     assert result.exit_code == 1
     target = tmp_path / "home/.local/state/omni/silent-failure-alarm/config.json"
     assert not target.exists()
+
+
+def test_config_ledger_path_placeholder_is_not_a_built_in_and_is_refused(
+    tmp_path: Path,
+) -> None:
+    """The installer fills no configuration placeholder with the ledger file's path.
+
+    The default the installer once built for ``{ledger_path}`` (the registry's own ledger file) had no
+    declaration that used it. A configuration that names it now meets the same refusal as any placeholder
+    nothing fills, and the file's path never reaches a written document.
+    """
+    units = copy.deepcopy(load_units())
+    units[UNIT]["config_file"]["document"] = {
+        **units[UNIT]["config_file"]["document"],
+        "ledger": "{ledger_path}",
+    }
+    handler = HandlerRegistryUnits(run=_run, units=units)
+    result = handler.handle(_request(tmp_path))
+    assert result.exit_code == 1
+    assert "{ledger_path}" in result.stderr
+    assert result.config == ""

@@ -395,6 +395,44 @@ units:
       LAB_WORK_HOST_NAME: "{host_name}"
     evidence_file: .local/state/omni/lane-closeout-sweep/last-run.json
     state_directory: .onex_state/lane-closeout-sweep
+  # The overlay environment probe on a lab host (node_host_installer_overlay_env_probe, OMN-26549): its contract declares direct
+  # invocation by the host installer as its only trigger, and until this unit nothing called it. Every 900 s and at load one tick
+  # reads the overlays under ONEX_SKILL_OVERLAY_ROOTS for this host (LAB_WORK_HOST_NAME), probes each node that has an overlay,
+  # prints one line per declared name as set or unset (names and states, never a value) and keeps the same rows in the unit's
+  # evidence file. A name reads set when the unit's own environment (the environment below and any environment file) carries it.
+  # The 60 s limit is far under the 900 s interval; the probe reads files only.
+  overlay-env-probe-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-overlay-env-probe
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 900
+      run_timeout_s: 60
+      run_at_load: true
+      description: every 900 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_host_installer_overlay_env_probe.runtime_overlay_env_probe_tick
+    entry_file: src/omnimarket/nodes/node_host_installer_overlay_env_probe/runtime_overlay_env_probe_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+      - LAB_WORK_HOST_NAME
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      LAB_WORK_HOST_NAME: "{host_name}"
+    evidence_file: .local/state/omni/overlay-env-probe/last-run.json
+    state_directory: .onex_state/overlay-env-probe
   # The host drift owner step (node_host_drift_owner_dispatch_effect, OMN-24239): every 900 s on a Linux lab host it reads the
   # host drift checker's open items and starts one fix lane per cause no live lane covers. The bounds, the actor, the paths and
   # the runner's settings are the node's overlay in the overlays repository, found under ONEX_SKILL_OVERLAY_ROOTS; this unit
@@ -575,8 +613,9 @@ units:
     evidence_file: .local/state/omni/lane-dispatch/last-run.json
     state_directory: .onex_state/lane-dispatch
   # The daily ledger-file census record (node_work_ledger_file_census_effect): once a day and at load one tick runs the
-  # census over the registry root's omnimarket clone with the overlay and ratchet file packaged with the node, prints the daily
-  # record as one typed JSON line and keeps it in the unit's evidence file. The run limit (300 s) is the node's timeout_ms and
+  # census over every registered repository's clone under the registry root, each against its own ratchet row and per-file
+  # table, with the overlay and ratchet file packaged with the node, prints the daily record (one row per repository and the
+  # runtime-code count) as one typed JSON line and keeps it in the unit's evidence file. The run limit (300 s) is the node's timeout_ms and
   # is under the 86400 s interval. The tick reads and writes no ledger file.
   ledger-file-census-systemd:
     platform: systemd
@@ -680,6 +719,29 @@ units:
   # node's own `schedule install --condition <verb>`, ran nowhere: no installer installed them. A node_schedule unit hands the
   # render, the load and the removal to that scheduler for the host the request names (--host-name), so the label, the interval and
   # the host environment stay the overlay's and no second plist is written here. launchd only (the host is the operator Mac).
+  # OMN-26553: the three condition schedules the overlay declares beside the two below (the deploy agent heartbeat, the chain canary and
+  # the work ledger projection), each a node_schedule unit of the same kind, so one host-install run loads every schedule the overlay lists.
+  lab-alarm-dev-tag-heartbeat:
+    platform: launchd
+    kind: node_schedule
+    label: ai.omninode.lab-alarm-dev-tag-heartbeat
+    schedule_node: node_lab_alarm
+    schedule_condition: dev-tag-heartbeat
+    state_directory: .onex_state/lab-alarm
+  lab-alarm-delegation-chain-canary:
+    platform: launchd
+    kind: node_schedule
+    label: ai.omninode.lab-alarm-delegation-chain-canary
+    schedule_node: node_lab_alarm
+    schedule_condition: delegation-chain-canary
+    state_directory: .onex_state/lab-alarm
+  lab-alarm-work-ledger-projection-stale:
+    platform: launchd
+    kind: node_schedule
+    label: ai.omninode.lab-alarm-work-ledger-projection-stale
+    schedule_node: node_lab_alarm
+    schedule_condition: work-ledger-projection-stale
+    state_directory: .onex_state/lab-alarm
   lab-alarm-container-restarts:
     platform: launchd
     kind: node_schedule
@@ -2258,8 +2320,8 @@ units:
       # owner's copy is no longer a source (OMN-23950), so the unit names the overlays clone first, then the plugin copy.
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
     # The configuration the alarm reads from ONEX_SILENT_FAILURE_ALARM_CONFIG (OMN-22778), written by the installer so a
-    # reinstall reproduces it and nobody writes it by hand. Built-in placeholders: {home}, {registry_root} and {ledger_path}
-    # (the request's, else the registry's own ledger file). Each input is a request field, else the installing shell's
+    # reinstall reproduces it and nobody writes it by hand. Built-in placeholders: {home} and {registry_root}.
+    # Each input is a request field, else the installing shell's
     # environment variable, else the value the last install recorded. The hosts' event names are not here: the alarm
     # derives them from host_table (OMN-22755).
     config_file:

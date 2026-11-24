@@ -67,6 +67,12 @@ settable_settings:
     key: responders
     path: responders
     document_model: "omnimarket.models.overlay_documents.model_delegation_check_responders_overlay:ModelDelegationCheckRespondersOverlay"
+  # OMN-26484: the age past which a held dev deploy command raises its alarm. The dev roll window gate reads its policy from this
+  # overlay on every tick, so a value set here moves the alarm on the next tick; an unset value (null) switches the alarm off.
+  - overlay_id: node_dev_roll_window_gate_effect
+    key: held_age_alarm_after_seconds
+    path: held_age_alarm_after_seconds
+    document_model: "omnimarket.nodes.node_dev_roll_window_gate_effect.models.model_dev_roll_window_gate_policy:ModelDevRollWindowGatePolicy"
 config:
   # The live record the set builds on must have been loaded within this many seconds: the loader asserts every overlay
   # each cycle, so an older record means the read did not reach the newest one, and a set built on it would replace newer settings.

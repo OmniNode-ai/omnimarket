@@ -138,6 +138,11 @@ class ModelWorkLedgerQueryRequest(BaseModel):
     history: ModelWorkLedgerHistoryRange | None = None
     cursor: str | None = Field(default=None, min_length=1, max_length=4096)
     page_size: int | None = Field(default=None, ge=1, le=MAX_POINT_PAGE_SIZE)
+    # The instant the caller stops waiting (OMN-26609). A request read at or after it is not worked:
+    # the answerer returns a typed ``deadline_expired`` error answer and touches no store, so a burst
+    # of requests whose callers timed out cannot become a backlog that every new read waits behind.
+    # Absent means no deadline, and the request is worked whatever its age.
+    deadline: AwareDatetime | None = None
     # A paged rows answer carries lines and no typed rows; the reader prints lines only.
     lines_only: bool = False
     # latest-state (OMN-23606): which kind of subject to read (a lane or a ticket), the tickets to read

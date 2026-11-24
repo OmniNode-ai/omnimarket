@@ -180,6 +180,8 @@ runtime_dispatch:
   terminal_events:
     success: "onex.evt.omnimarket.lab-fill-effect-completed.v1"
     failure: "onex.evt.omnimarket.lab-fill-effect-failed.v1"
+  host_unit:
+    unit: lab-fill-tick-systemd
 published_events:
   - event_type: ModelLabFillStatusWriteResult
     topic: onex.evt.omnimarket.lab-fill-effect-completed.v1

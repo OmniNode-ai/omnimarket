@@ -356,6 +356,7 @@ node_adversarial_pipeline_orchestrator = "omnimarket.nodes.node_adversarial_pipe
 node_agent_coordinator_orchestrator = "omnimarket.nodes.node_agent_coordinator_orchestrator"
 node_agent_inbox_spool = "omnimarket.nodes.node_agent_inbox_spool"
 node_agent_learning_retrieval_effect = "omnimarket.nodes.node_agent_learning_retrieval_effect"
+node_agent_message_client_effect = "omnimarket.nodes.node_agent_message_client_effect"
 node_agent_review_cloud_rung_effect = "omnimarket.nodes.node_agent_review_cloud_rung_effect"
 node_agent_review_dispatch_orchestrator = "omnimarket.nodes.node_agent_review_dispatch_orchestrator"
 node_agent_review_gate_accept_effect = "omnimarket.nodes.node_agent_review_gate_accept_effect"
@@ -847,6 +848,7 @@ node_host_installer_serve_units = "omnimarket.nodes.node_host_installer_serve_un
 node_host_introspection_announce_effect = "omnimarket.nodes.node_host_introspection_announce_effect"
 node_host_introspection_compute = "omnimarket.nodes.node_host_introspection_compute"
 node_host_job_claim_compute = "omnimarket.nodes.node_host_job_claim_compute"
+node_host_lane_path_share_compute = "omnimarket.nodes.node_host_lane_path_share_compute"
 node_host_local_config_drift_compute = "omnimarket.nodes.node_host_local_config_drift_compute"
 node_host_memory_admission_compute = "omnimarket.nodes.node_host_memory_admission_compute"
 node_host_pool_alarm_effect = "omnimarket.nodes.node_host_pool_alarm_effect"
@@ -954,6 +956,7 @@ node_lab_work_unit_effect = "omnimarket.nodes.node_lab_work_unit_effect"
 node_landing_canary_effect = "omnimarket.nodes.node_landing_canary_effect"
 node_landing_canary_scheduled_effect = "omnimarket.nodes.node_landing_canary_scheduled_effect"
 node_landing_decision_venv_effect = "omnimarket.nodes.node_landing_decision_venv_effect"
+node_landing_downstream_check_effect = "omnimarket.nodes.node_landing_downstream_check_effect"
 node_landing_not_started_effect = "omnimarket.nodes.node_landing_not_started_effect"
 node_landing_placement_wait_effect = "omnimarket.nodes.node_landing_placement_wait_effect"
 node_landing_policy_compute = "omnimarket.nodes.node_landing_policy_compute"
@@ -1105,6 +1108,7 @@ node_operator_capture_effect = "omnimarket.nodes.node_operator_capture_effect"
 node_operator_waiting_tick_effect = "omnimarket.nodes.node_operator_waiting_tick_effect"
 node_order_advance_effect = "omnimarket.nodes.node_order_advance_effect"
 node_output_schema_registry_compute = "omnimarket.nodes.node_output_schema_registry_compute"
+node_overlay_assertion_stale_compute = "omnimarket.nodes.node_overlay_assertion_stale_compute"
 node_overlay_drift_compute = "omnimarket.nodes.node_overlay_drift_compute"
 node_overlay_drift_compute_scheduled_effect = "omnimarket.nodes.node_overlay_drift_compute_scheduled_effect"
 node_overlay_drift_effect = "omnimarket.nodes.node_overlay_drift_effect"
@@ -1674,6 +1678,8 @@ test-loop = "omnimarket.cli.cli_test_loop:test_loop_group"
 # projection, refusing a stale row; registered here for the same reason as
 # "cloud" and "local".
 pr-state = "omnimarket.nodes.node_pr_state_read_effect.cli:pr_state_group"
+# `onex agent-message` -- send and read agent messages from any platform, and serve them as MCP tools.
+agent-message = "omnimarket.nodes.node_agent_message_client_effect.cli:agent_message_group"
 # OMN-19976: `onex dashboard` -- serve this install's projection exposures to the
 # local dashboard through the read node (plan T2.3). Registered here for the same
 # reason as "cloud" and "local".
@@ -1758,6 +1764,7 @@ select-connection = "omnimarket.nodes.node_model_setup_effect.cli_connections:se
 remove-connection = "omnimarket.nodes.node_model_setup_effect.cli_connections:remove_connection_command"
 test-connection = "omnimarket.nodes.node_model_setup_effect.cli_connections:test_connection_command"
 discover = "omnimarket.nodes.node_model_setup_effect.cli_catalog:discover_command"
+refresh-prices = "omnimarket.nodes.node_model_setup_effect.cli_catalog:refresh_prices_command"
 
 [project.entry-points."onex.contracts"]
 # OMN-19407: config contracts a consumer reads through the installed registry
