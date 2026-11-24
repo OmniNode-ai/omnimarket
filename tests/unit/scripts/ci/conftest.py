@@ -20,4 +20,6 @@ def resolved_registry(
         tmp_path_factory.mktemp("registry") / "resolved.json", shipped_request()
     )
     monkeypatch.setattr(gate, "REGISTRY_FILE", path)
+    # OMN-16084: main() assigns this; monkeypatch restores it, so no test sees another's.
+    monkeypatch.setattr(gate, "OWN_JOBS_PENDING", False)
     return path
