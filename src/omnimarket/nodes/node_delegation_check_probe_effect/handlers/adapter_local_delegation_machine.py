@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT
 """The C13 collector: one real customer-local delegation on a clean tool environment, traced for egress (OMN-26043).
 
-``LocalDelegationCustomerMachine`` is a customer machine whose ``run_delegation`` is real for C13 and whose routing walk and
-surface collectors are still absent (C14 and C17 keep reading PRECONDITION-ABSENT until theirs land). The machine is a
+``LocalDelegationCustomerMachine`` is a customer machine whose ``run_delegation`` is real for C13 and C14 and whose routing walk
+is real for C14 (the walk runs under the installed tool's own interpreter, after the delegation, on the same machine). Its
+surface collector is still absent (C17 keeps reading PRECONDITION-ABSENT until its collector lands). The machine is a
 temporary directory: its own home, uv tool directory and tool bin directory, a PATH holding only ``uv`` and the system
 directories, and none of the registry-root variables, so the install lands where a customer's would and nothing the host
 carries stands in for it. The customer configures the one documented way, a machine-local overlay file under their home
@@ -23,7 +24,7 @@ import urllib.request
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, Protocol
+from typing import Any, Final, Protocol
 from urllib.parse import urlsplit
 
 from omnimarket.handlers.routing.delegation_check_responder_chain import (
@@ -73,15 +74,17 @@ OVERLAY_RELATIVE_PATH: Final = ".omninode/delegation/bifrost_overrides.yaml"
 #: The shipped local backends the customer overlay points at their own model.
 LOCAL_BACKEND_IDS: Final = ("local-coder", "local-heavy-reasoning")
 PROMPT: Final = "explain what a calendar app needs"
-#: A literal address, so the deliberate outbound connect of the positive control needs no name lookup.
-OUTBOUND_CONTROL_HOST: Final = "1.1.1.1"
-OUTBOUND_CONTROL_PORT: Final = 443
 INSTALL_TIMEOUT_S: Final = 900
 STEP_TIMEOUT_S: Final = 600
 SHORT_TIMEOUT_S: Final = 120
 METRICS_TIMEOUT_S: Final = 10
 MAX_TOKENS: Final = 8192
-ROUTING_ABSENT: Final = "the routing walk of C14 and the clean-machine run of C17 are not wired to this node yet; only the C13 delegation is"
+SURFACE_ABSENT: Final = "the clean-machine run of C17 is not wired to this node yet; the C13 delegation and the C14 routing walk are"
+UNSUPPORTED_CHECK: Final = "this machine runs the delegation of C13 and C14 only"
+#: The classes the routing walk driver reports for its two negative controls, and for an endpoint that serves its model.
+CLASS_DELETED_BACKEND: Final = "deleted_backend"
+CLASS_UNREACHABLE: Final = "unreachable"
+CLASS_BINDABLE: Final = "bindable"
 
 #: Runs inside the installed tool's own interpreter: the overlay places each shipped local backend at the customer's model, with
 #: the classes the shipped routing_tiers.yaml names for it (an install no overlay root names a code budget on is not offered the
@@ -130,10 +133,201 @@ DIRECT_URL_DRIVER: Final = (
     "        out[d] = 'NOT INSTALLED'\n"
     "print(json.dumps(out))\n"
 )
-OUTBOUND_DRIVER: Final = (
-    "import socket; s = socket.socket(); s.settimeout(5); "
-    f"s.connect_ex(({OUTBOUND_CONTROL_HOST!r}, {OUTBOUND_CONTROL_PORT}))"
-)
+OUTBOUND_DRIVER: Final = "import socket, sys; s = socket.socket(); s.settimeout(5); s.connect_ex((sys.argv[1], int(sys.argv[2])))"
+
+#: Runs inside the installed tool's own interpreter: the first endpoint the installed routing contract declares that is not on a
+#: private network, resolved to an address. The deliberate outbound connect of the positive control goes there, so no address
+#: lives in this node: it is the one the product itself would call for a cloud rung.
+TARGET_DRIVER: Final = """\
+import ipaddress
+import json
+import socket
+from urllib.parse import urlsplit
+
+from omnimarket.nodes.node_delegation_routing_reducer.handlers import handler_delegation_routing as reducer
+
+
+def is_private(raw):
+    try:
+        address = ipaddress.ip_address(raw.split("%", 1)[0])
+    except ValueError:
+        return False
+    return address.is_private or address.is_loopback
+
+
+out = {"target": None, "error": None}
+try:
+    for backend_id, ref in sorted(reducer._load_bifrost_endpoints().items()):
+        parts = urlsplit(str(ref.endpoint_url))
+        if not parts.hostname:
+            continue
+        try:
+            port = parts.port or socket.getservbyname(parts.scheme)
+            infos = socket.getaddrinfo(parts.hostname, port, socket.AF_INET, socket.SOCK_STREAM)
+        except OSError:
+            continue
+        public = [info[4][0] for info in infos if not is_private(info[4][0])]
+        if public:
+            out["target"] = {"host": public[0], "port": port, "backend_id": backend_id}
+            break
+except Exception as exc:
+    out["error"] = type(exc).__name__ + ": " + str(exc)[:400]
+print(json.dumps(out))
+"""
+
+#: Runs inside the installed tool's own interpreter (``-I``): the routing walk of C14. Every customer-visible task class is
+#: walked tier by tier through the installed reducer's own helpers, every backend a tier could hand the class is classified on
+#: this machine (declared, complete endpoint after the machine's overlay, and for a private endpoint actually serving its
+#: model), and the reviewer leg is resolved through the judge adapter's own resolver. Two negative controls go through the same
+#: classifier: a backend declared nowhere, and a loopback endpoint on a port that was just closed. It prints one JSON document.
+ROUTING_DRIVER: Final = """\
+import ipaddress
+import json
+import os
+import socket
+import sys
+from pathlib import Path
+from urllib.parse import urlsplit
+
+import yaml
+from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import load_bifrost_delegation_config
+from omnimarket.handlers.routing.routing_tiers_path import ROUTING_TIERS_PACKAGED_DEFAULT_PATH, ROUTING_TIERS_PATH_ENV_KEY
+from omnimarket.inference.delegation_config_provenance import resolve_bifrost_path_binding
+from omnimarket.inference.task_class_authority import load_task_class_authority
+from omnimarket.nodes.node_delegation_quality_gate_reducer.judge import adapter_routing_resolved_judge as judge_module
+from omnimarket.nodes.node_delegation_routing_reducer.handlers import handler_delegation_routing as reducer
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.transport import probe_served_models
+
+DELETED = "deleted_backend"
+UNREACHABLE = "unreachable"
+BINDABLE = "bindable"
+
+
+def is_private(url):
+    host = urlsplit(url).hostname or ""
+    if not host:
+        return False
+    try:
+        addresses = {str(ipaddress.ip_address(host))}
+    except ValueError:
+        try:
+            addresses = {info[4][0] for info in socket.getaddrinfo(host, None)}
+        except OSError:
+            return False
+    if not addresses:
+        return False
+    for raw in addresses:
+        try:
+            address = ipaddress.ip_address(raw.split("%", 1)[0])
+        except ValueError:
+            return False
+        if not (address.is_private or address.is_loopback):
+            return False
+    return True
+
+
+served_cache = {}
+
+
+def classify_private(endpoint, model_name):
+    if endpoint not in served_cache:
+        served_cache[endpoint] = probe_served_models(endpoint, timeout_seconds=10.0)
+    served = served_cache[endpoint]
+    if not served:
+        return UNREACHABLE
+    if model_name not in served and model_name.lower() not in {name.lower() for name in served}:
+        return "model_not_served"
+    return BINDABLE
+
+
+def classify_backend(backend_id, declarations, loaded):
+    if backend_id not in declarations:
+        return DELETED
+    ref = loaded.get(backend_id)
+    if ref is None:
+        return "no_endpoint_on_this_machine"
+    endpoint = str(ref.endpoint_url)
+    if not is_private(endpoint):
+        return BINDABLE
+    return classify_private(endpoint, ref.model_name)
+
+
+out = {"unbindable": [], "deleted_control": None, "unreachable_control": None, "judge": None, "collect_error": None}
+try:
+    shipped = ROUTING_TIERS_PACKAGED_DEFAULT_PATH.resolve()
+    if not os.environ.get(ROUTING_TIERS_PATH_ENV_KEY, "").strip():
+        os.environ[ROUTING_TIERS_PATH_ENV_KEY] = str(shipped)
+    authority = load_task_class_authority()
+    public = sorted(authority.public_task_classes)
+    contract_yaml = yaml.safe_load(
+        (ROUTING_TIERS_PACKAGED_DEFAULT_PATH.parent / "task_class_contracts.v1.yaml").read_text(encoding="utf-8")
+    )
+    raw_classes = (contract_yaml or {}).get("task_classes") or {}
+    contract_public = sorted(
+        name for name, entry in raw_classes.items() if isinstance(entry, dict) and entry.get("gateway_exposure") == "public"
+    )
+    if not public:
+        out["unbindable"].append("the task-class authority yielded no customer-visible class")
+    if contract_public != public:
+        out["unbindable"].append("the authority's public classes " + str(public) + " differ from the shipped contract's " + str(contract_public))
+    binding = resolve_bifrost_path_binding()
+    merged = load_bifrost_delegation_config(config_path=binding.contract_path, overlay_path=binding.overlay_path)
+    declarations = {b.backend_id: b for b in merged.backends if b.backend_id}
+    loaded = reducer._load_bifrost_endpoints()
+    config = reducer._get_config()
+    contract = reducer._get_task_class_contract()
+    tier_by_name = {tier.name: tier for tier in config.tiers}
+    classified = {}
+    for task_class in public:
+        entry = reducer._task_class_entry(contract, task_class)
+        policy = (entry or {}).get("escalation_policy")
+        declared_order = policy.get("tier_order") if isinstance(policy, dict) else None
+        names = list(declared_order) if isinstance(declared_order, list) and declared_order else [t.name for t in reducer._tier_order_from_contract(config, entry)]
+        override = reducer._get_contract_model_ref(task_class, contract=contract)
+        explicit = reducer._is_explicit_task_model_override(task_class, contract)
+        if not names:
+            out["unbindable"].append(task_class + ": an empty tier order")
+            continue
+        if names[0] != "local":
+            out["unbindable"].append(task_class + ": no_local_first_rung, the tier order starts at " + str(names[0]))
+        for name in names:
+            tier = tier_by_name.get(name)
+            if tier is None:
+                out["unbindable"].append(task_class + "/" + str(name) + ": tier_undeclared")
+                continue
+            candidates = [m.backend_ref for m in tier.models if task_class in m.use_for]
+            if explicit and override is not None:
+                candidates += [m.backend_ref for m in tier.models if m.id == override]
+            if not candidates:
+                out["unbindable"].append(task_class + "/" + str(name) + ": tier_serves_class_with_no_backend")
+                continue
+            for backend_id in sorted(set(candidates)):
+                if backend_id not in classified:
+                    classified[backend_id] = classify_backend(backend_id, declarations, loaded)
+                if classified[backend_id] != BINDABLE:
+                    out["unbindable"].append(task_class + "/" + str(name) + ": backend " + backend_id + " is " + classified[backend_id])
+    out["deleted_control"] = classify_backend("a-backend-declared-nowhere", declarations, loaded)
+    held = socket.socket()
+    held.bind((str(ipaddress.IPv4Address(socket.INADDR_LOOPBACK)), 0))
+    closed_endpoint = "http://" + held.getsockname()[0] + ":" + str(held.getsockname()[1]) + "/v1/chat/completions"
+    held.close()
+    out["unreachable_control"] = classify_private(closed_endpoint, "a-model-served-nowhere")
+    try:
+        resolved = judge_module.RoutingResolvedJudgeInferenceAdapter()._resolve_backend()
+        endpoint = str(resolved.endpoint_ref)
+        private = is_private(endpoint)
+        out["judge"] = {
+            "endpoint_private": private,
+            "requires_credential": bool(getattr(resolved, "secret_ref", None)),
+            "serves_model": private and classify_private(endpoint, str(resolved.model_id)) == BINDABLE,
+        }
+    except Exception as exc:
+        out["judge"] = {"error": type(exc).__name__ + ": " + str(exc)[:400]}
+except Exception as exc:
+    out["collect_error"] = type(exc).__name__ + ": " + str(exc)[:600]
+print(json.dumps(out))
+"""
+
 _SKIP_DIRS: Final = frozenset(
     {
         "site-packages",
@@ -279,6 +473,7 @@ class LocalDelegationCustomerMachine:
             else (Path(tempfile.gettempdir()), Path("/tmp"), Path("/var/tmp"))
         )
         self._versions: dict[str, str] = {}
+        self._routing: ModelRoutingCollection | None = None
 
     def versions(self) -> dict[str, str]:
         return dict(self._versions)
@@ -286,10 +481,15 @@ class LocalDelegationCustomerMachine:
     def collect_routing(
         self, responder: ModelChainResolution
     ) -> ModelRoutingCollection:
-        raise CollectorAbsentError("routing_walk", ROUTING_ABSENT)
+        """The routing walk the delegation run of this same tick took on the machine, before it was removed."""
+        if self._routing is None:
+            raise CollectorAbsentError(
+                "routing_walk", "no routing walk was taken on the machine"
+            )
+        return self._routing
 
     def collect_surface(self) -> ModelSurfaceObservation:
-        raise CollectorAbsentError("clean_machine", ROUTING_ABSENT)
+        raise CollectorAbsentError("clean_machine", SURFACE_ABSENT)
 
     def _tool(self, given: str | None, name: str) -> str:
         found = given or shutil.which(name, path=self._host_path)
@@ -381,8 +581,9 @@ class LocalDelegationCustomerMachine:
     def run_delegation(
         self, check_id: CheckId, responder: ModelChainResolution
     ) -> ModelDelegateObservation:
-        if check_id != "C13":
-            raise CollectorAbsentError("routing_walk", ROUTING_ABSENT)
+        if check_id not in ("C13", "C14"):
+            raise CollectorAbsentError("delegation", UNSUPPORTED_CHECK)
+        self._routing = None
         model_host, model_port = _responder_address(responder.base_url)
         base_url = str(responder.base_url)
         if not responder.served_model or not responder.window:
@@ -393,9 +594,10 @@ class LocalDelegationCustomerMachine:
         uv = self._tool(self._uv, "uv")
         strace = self._tool(self._strace, "strace")
         with tempfile.TemporaryDirectory(
-            prefix="c13-customer-", dir=self._clean_base()
+            prefix=f"{check_id.lower()}-customer-", dir=self._clean_base()
         ) as tmp:
             return self._observe(
+                check_id,
                 Path(tmp),
                 uv=uv,
                 strace=strace,
@@ -406,8 +608,60 @@ class LocalDelegationCustomerMachine:
                 window=responder.window,
             )
 
+    def _driver(
+        self,
+        python: Path,
+        source: str,
+        *,
+        env: Mapping[str, str],
+        cwd: Path,
+        name: str,
+    ) -> dict[str, Any]:
+        """Run a driver under the installed tool's isolated interpreter and read the one JSON document it prints."""
+        done = self._runner.run(
+            [str(python), "-I", "-c", source],
+            env=env,
+            cwd=cwd,
+            timeout_s=STEP_TIMEOUT_S,
+        )
+        doc = (
+            load_json(done.stdout.strip().splitlines()[-1])
+            if done.stdout.strip()
+            else None
+        )
+        if not isinstance(doc, dict):
+            raise CollectorAbsentError(
+                name,
+                f"the driver printed no document (rc {done.rc}): {done.stderr.strip()[-300:]}",
+            )
+        return doc
+
+    def _routing_walk(
+        self, python: Path, *, env: Mapping[str, str], cwd: Path
+    ) -> ModelRoutingCollection:
+        doc = self._driver(
+            python, ROUTING_DRIVER, env=env, cwd=cwd, name="routing_walk"
+        )
+        if doc.get("collect_error"):
+            raise CollectorAbsentError(
+                "routing_walk", f"the walk could not run: {doc['collect_error']}"
+            )
+        judge = doc.get("judge")
+        judge = judge if isinstance(judge, dict) and not judge.get("error") else {}
+        return ModelRoutingCollection(
+            unbindable=tuple(str(f) for f in doc.get("unbindable") or ()),
+            undeclared_control_classified_deleted=doc.get("deleted_control")
+            == CLASS_DELETED_BACKEND,
+            closed_port_control_classified_unreachable=doc.get("unreachable_control")
+            == CLASS_UNREACHABLE,
+            judge_endpoint_private=bool(judge.get("endpoint_private")),
+            judge_needs_credential=bool(judge.get("requires_credential", True)),
+            judge_serves_model=bool(judge.get("serves_model")),
+        )
+
     def _observe(
         self,
+        check_id: CheckId,
         root: Path,
         *,
         uv: str,
@@ -506,9 +760,28 @@ class LocalDelegationCustomerMachine:
             STEP_TIMEOUT_S,
         )
         tokens_after = self._tokens(base_url)
+        target = self._driver(
+            python,
+            TARGET_DRIVER,
+            env=customer_env,
+            cwd=workdir,
+            name="outbound_control",
+        )
+        control = target.get("target")
+        if not isinstance(control, dict):
+            raise CollectorAbsentError(
+                "outbound_control",
+                f"the installed routing contract names no endpoint off the private network to aim the positive control at: {target.get('error')}",
+            )
         step(
             "outbound_control",
-            ["/usr/bin/python3", "-c", OUTBOUND_DRIVER],
+            [
+                "/usr/bin/python3",
+                "-c",
+                OUTBOUND_DRIVER,
+                str(control["host"]),
+                str(control["port"]),
+            ],
             SHORT_TIMEOUT_S,
         )
 
@@ -550,6 +823,8 @@ class LocalDelegationCustomerMachine:
         ]
         configured_connects = connects("configured")
         unconfigured = steps["unconfigured"][0]
+        if check_id == "C14":
+            self._routing = self._routing_walk(python, env=customer_env, cwd=workdir)
         entry = shutil.which("onex", path=customer_env["PATH"])
         runner_entry = shutil.which(
             "onex", path=self._host_path or self._host_env.get("PATH")

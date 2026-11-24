@@ -31,12 +31,15 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_local_
     DIRECT_URL_DRIVER,
     OVERLAY_DRIVER,
     OVERLAY_RELATIVE_PATH,
+    ROUTING_DRIVER,
+    TARGET_DRIVER,
     CommandResult,
     LocalDelegationCustomerMachine,
     find_source_trees,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.grade_delegation_checks import (
     grade_c13,
+    grade_c14,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.handler_delegation_check_probe import (
     HandlerDelegationCheckProbe,
@@ -50,6 +53,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation
     EnumCheckVerdict,
     ModelDelegateObservation,
     ModelDelegationCheckRequest,
+    ModelRoutingCollection,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.protocols.protocol_delegation_check import (
     CollectorAbsentError,
@@ -67,6 +71,18 @@ MODEL_CONNECT = (
 )
 EXTERNAL_CONNECT = '4243 connect(5, {sa_family=AF_INET, sin_port=htons(443), sin_addr=inet_addr("104.18.2.2")}, 16) = -1 EINPROGRESS (Operation now in progress)\n'
 CONTROL_CONNECT = '4244 connect(3, {sa_family=AF_INET, sin_port=htons(443), sin_addr=inet_addr("1.1.1.1")}, 16) = -1 ENETUNREACH (Network is unreachable)\n'
+TARGET = {"host": "198.51.100.7", "port": 4443, "backend_id": "a-cloud-rung"}
+WALK_GREEN: dict[str, object] = {
+    "unbindable": [],
+    "deleted_control": "deleted_backend",
+    "unreachable_control": "unreachable",
+    "judge": {
+        "endpoint_private": True,
+        "requires_credential": False,
+        "serves_model": True,
+    },
+    "collect_error": None,
+}
 UNIX_ONLY = '4245 connect(3, {sa_family=AF_UNIX, sun_path="/run/customer/emit.sock"}, 52) = -1 ENOENT (No such file or directory)\n'
 
 
@@ -123,7 +139,16 @@ class ScriptedHost:
         receipt: Mapping[str, object] | None = None,
         direct_urls: Mapping[str, object] | None = None,
         plant_checkout: bool = False,
+        target: Mapping[str, object] | None = None,
+        walk: Mapping[str, object] | None = None,
+        walk_stdout: str | None = None,
     ) -> None:
+        self.target = {
+            "target": TARGET if target is None else dict(target),
+            "error": None,
+        }
+        self.walk = dict(WALK_GREEN if walk is None else walk)
+        self.walk_stdout = walk_stdout
         self.install_rc = install_rc
         self.unconfigured_rc = unconfigured_rc
         self.configured_trace = configured_trace
@@ -137,6 +162,7 @@ class ScriptedHost:
         )
         self.plant_checkout = plant_checkout
         self.argvs: list[list[str]] = []
+        self.walked = False
         self.overlay_text: str | None = None
 
     def run(
@@ -170,6 +196,16 @@ class ScriptedHost:
             self.overlay_text = f"endpoint={endpoint} served={served} window={window} backends={backends}"
             Path(target).write_text(self.overlay_text)
             return CommandResult(0, "", "")
+        if argv[1:3] == ["-I", "-c"] and argv[3] == TARGET_DRIVER:
+            return CommandResult(0, json.dumps(self.target) + "\n", "")
+        if argv[1:3] == ["-I", "-c"] and argv[3] == ROUTING_DRIVER:
+            self.walked = True
+            out = (
+                self.walk_stdout
+                if self.walk_stdout is not None
+                else json.dumps(self.walk)
+            )
+            return CommandResult(0, out + "\n", "")
         if argv[1:2] == ["-c"] and argv[2] == DIRECT_URL_DRIVER % (ONEX_DISTRIBUTIONS,):
             return CommandResult(0, json.dumps(self.direct_urls), "")
         raise AssertionError(f"unscripted command {argv}")
@@ -281,12 +317,173 @@ def test_a_responder_that_is_not_a_private_ip_literal_is_refused(base: str) -> N
     assert host.argvs == []
 
 
-def test_the_routing_walk_of_c14_is_still_absent_and_runs_nothing() -> None:
+def test_a_check_the_machine_has_no_delegation_for_is_absent_and_runs_nothing() -> None:
     host = ScriptedHost()
     with pytest.raises(CollectorAbsentError) as raised:
-        _machine(host).run_delegation("C14", _responder())
-    assert raised.value.name == "routing_walk"
+        _machine(host).run_delegation("C17", _responder())
+    assert raised.value.name == "delegation"
     assert host.argvs == []
+
+
+def test_the_surface_of_c17_is_still_absent() -> None:
+    with pytest.raises(CollectorAbsentError) as raised:
+        _machine(ScriptedHost()).collect_surface()
+    assert raised.value.name == "clean_machine"
+
+
+def test_the_routing_walk_is_absent_until_a_c14_delegation_took_it() -> None:
+    with pytest.raises(CollectorAbsentError) as raised:
+        _machine(ScriptedHost()).collect_routing(_responder())
+    assert raised.value.name == "routing_walk"
+
+
+def test_a_c13_run_takes_no_routing_walk() -> None:
+    host = ScriptedHost()
+    machine = _machine(host)
+    machine.run_delegation("C13", _responder())
+    assert host.walked is False
+    with pytest.raises(CollectorAbsentError):
+        machine.collect_routing(_responder())
+
+
+def test_a_product_that_declares_no_endpoint_off_the_private_network_leaves_the_control_absent() -> (
+    None
+):
+    host = ScriptedHost(target={})
+    machine = _machine(host)
+    host.target = {"target": None, "error": "KeyError: backends"}
+    with pytest.raises(CollectorAbsentError) as raised:
+        machine.run_delegation("C13", _responder())
+    assert raised.value.name == "outbound_control"
+    assert "KeyError: backends" in raised.value.detail
+
+
+def test_the_outbound_control_aims_at_the_endpoint_the_installed_contract_declared() -> (
+    None
+):
+    host = ScriptedHost()
+    _machine(host).run_delegation("C13", _responder())
+    control = [
+        a
+        for a in host.argvs
+        if a[0].endswith("strace") and a[-1] == str(TARGET["port"])
+    ]
+    assert len(control) == 1
+    assert control[0][-2] == TARGET["host"]
+
+
+# -- the C14 routing walk -------------------------------------------------------------------------------------------------
+
+
+def _c14(host: ScriptedHost) -> tuple[ModelDelegateObservation, ModelRoutingCollection]:
+    machine = _machine(host)
+    obs = machine.run_delegation("C14", _responder())
+    return obs, machine.collect_routing(_responder())
+
+
+def _c14_failed(
+    obs: ModelDelegateObservation, routing: ModelRoutingCollection
+) -> list[str]:
+    return [c.name for c in grade_c14(obs, routing) if not c.ok]
+
+
+def test_a_clean_c14_delegation_and_walk_pass_every_clause() -> None:
+    host = ScriptedHost()
+    obs, routing = _c14(host)
+    assert host.walked is True
+    assert _c14_failed(obs, routing) == []
+    assert routing.judge_serves_model is True
+
+
+def test_the_walk_runs_under_the_installed_isolated_interpreter_with_the_customer_environment() -> (
+    None
+):
+    host = ScriptedHost()
+    _c14(host)
+    walk = [a for a in host.argvs if a[1:3] == ["-I", "-c"] and a[3] == ROUTING_DRIVER]
+    assert len(walk) == 1
+    assert walk[0][0].endswith("/tool/omnibase-core/bin/python")
+
+
+def test_an_unbindable_tier_the_walk_found_fails_row2_with_the_finding_named() -> None:
+    finding = "a-class/a-tier: backend a-backend is unreachable"
+    obs, routing = _c14(ScriptedHost(walk={**WALK_GREEN, "unbindable": [finding]}))
+    assert routing.unbindable == (finding,)
+    assert _c14_failed(obs, routing) == ["row2_no_unbindable_tier"]
+
+
+def test_a_deleted_backend_control_that_was_not_classified_deleted_fails_row2() -> None:
+    obs, routing = _c14(
+        ScriptedHost(walk={**WALK_GREEN, "deleted_control": "bindable"})
+    )
+    assert routing.undeclared_control_classified_deleted is False
+    assert _c14_failed(obs, routing) == ["row2_no_unbindable_tier"]
+
+
+def test_a_closed_port_control_that_was_not_classified_unreachable_fails_row2() -> None:
+    obs, routing = _c14(
+        ScriptedHost(walk={**WALK_GREEN, "unreachable_control": "bindable"})
+    )
+    assert routing.closed_port_control_classified_unreachable is False
+    assert _c14_failed(obs, routing) == ["row2_no_unbindable_tier"]
+
+
+@pytest.mark.parametrize(
+    "judge",
+    [
+        {
+            "endpoint_private": False,
+            "requires_credential": False,
+            "serves_model": False,
+        },
+        {"endpoint_private": True, "requires_credential": True, "serves_model": True},
+        {"endpoint_private": True, "requires_credential": False, "serves_model": False},
+        {"error": "RuntimeError: no judge"},
+    ],
+)
+def test_a_reviewer_that_is_metered_or_unserved_or_unresolved_fails_row4(
+    judge: dict[str, object],
+) -> None:
+    obs, routing = _c14(ScriptedHost(walk={**WALK_GREEN, "judge": judge}))
+    assert _c14_failed(obs, routing) == ["row4_reviewer_unmetered"]
+
+
+def test_an_external_connect_in_the_session_fails_row4_and_zero_provider_not_the_walk() -> (
+    None
+):
+    obs, routing = _c14(ScriptedHost(configured_trace=MODEL_CONNECT + EXTERNAL_CONNECT))
+    assert _c14_failed(obs, routing) == ["row4_reviewer_unmetered"]
+
+
+def test_a_local_answer_that_escalated_fails_row1() -> None:
+    receipt = _receipt()
+    receipt["receipt"]["result"]["escalation_count"] = 1  # type: ignore[index]
+    obs, routing = _c14(ScriptedHost(receipt=receipt))
+    assert "row1_local_answer_ends_chain" in _c14_failed(obs, routing)
+
+
+def test_a_walk_that_could_not_run_is_an_absent_collector_never_a_fail() -> None:
+    walk = {**WALK_GREEN, "collect_error": "ImportError: no module named a_module"}
+    machine = _machine(ScriptedHost(walk=walk))
+    with pytest.raises(CollectorAbsentError) as raised:
+        machine.run_delegation("C14", _responder())
+    assert raised.value.name == "routing_walk"
+    assert "ImportError" in raised.value.detail
+
+
+def test_a_walk_that_printed_no_document_is_an_absent_collector() -> None:
+    machine = _machine(ScriptedHost(walk_stdout="Traceback (most recent call last)"))
+    with pytest.raises(CollectorAbsentError) as raised:
+        machine.run_delegation("C14", _responder())
+    assert raised.value.name == "routing_walk"
+
+
+def test_the_drivers_name_no_address_port_or_model() -> None:
+    import re
+
+    for source in (TARGET_DRIVER, ROUTING_DRIVER):
+        assert re.search(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", source) is None
+        assert re.search(r"[\w\]]:\d{2,5}\b", source) is None
 
 
 def test_a_metrics_endpoint_with_no_token_counter_is_an_absent_instrument() -> None:
@@ -507,7 +704,7 @@ def test_every_step_runs_under_the_connect_tracer_with_a_clean_environment() -> 
         assert argv[:6] == ["/usr/bin/strace", "-f", "-qq", "-e", "trace=connect", "-o"]
 
 
-def test_the_handler_reads_a_clean_c13_run_as_pass_and_c14_as_absent() -> None:
+def test_the_handler_reads_a_clean_c13_and_c14_run_as_pass() -> None:
     reader = InMemoryResponderReader({})
     publisher = InMemoryCheckPublisher()
     from omnimarket.handlers.routing.delegation_check_responder_chain import (
@@ -543,7 +740,13 @@ def test_the_handler_reads_a_clean_c13_run_as_pass_and_c14_as_absent() -> None:
     c14 = handler.handle(
         ModelDelegationCheckRequest(correlation_id="c14", check_id="C14")
     )
-    assert c14.verdict is EnumCheckVerdict.PRECONDITION_ABSENT
+    assert c14.verdict is EnumCheckVerdict.PASS
+    assert [c.name for c in c14.clauses] == [
+        "no_checkout",
+        "row1_local_answer_ends_chain",
+        "row2_no_unbindable_tier",
+        "row4_reviewer_unmetered",
+    ]
     assert len(publisher.events) == 2
 
 
