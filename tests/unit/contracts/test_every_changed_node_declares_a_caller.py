@@ -325,6 +325,13 @@ def test_the_dev_identity_provisioner_passes_on_its_on_demand_command() -> None:
     assert _check(REPO_ROOT, _contract_path(node)).passed
 
 
+def test_the_model_setup_node_passes_on_its_on_demand_command() -> None:
+    """A change to node_model_setup_effect makes the check judge its real contract: it names the ``onex models`` command."""
+    result = _check(REPO_ROOT, _contract_path("node_model_setup_effect"))
+    assert result.needing_trigger == 1
+    assert result.passed, result.findings
+
+
 @pytest.mark.all_nodes_run
 def test_every_node_of_the_repository_declares_a_trigger() -> None:
     """``--all-nodes``: the AC3 falsifier. Red on dev until each node of the list declares a trigger."""

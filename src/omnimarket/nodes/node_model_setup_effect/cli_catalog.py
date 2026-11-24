@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: MIT
 """Explicit endpoint discovery, shared by model management and onboarding."""
 
+import json
 import sys
 from getpass import getpass
 
 import click
 from pydantic import SecretStr, ValidationError
 
+from omnimarket.handlers import model_catalog
 from omnimarket.models.model_endpoint_models import (
     ModelEndpointModelsRequest,
 )
@@ -55,4 +57,36 @@ def discover_command(url: str, api_key: bool, as_json: bool) -> None:
     else:
         click.echo(result.message, err=True)
     if result.status != "ready":
+        raise click.exceptions.Exit(1)
+
+
+@click.command("refresh-prices")
+@click.option("--json", "as_json", is_flag=True)
+def refresh_prices_command(as_json: bool) -> None:
+    """Read the model price list from models.dev and keep it for delegation calls.
+
+    A delegation call never reads models.dev: it prices from the copy this
+    command (and onex setup) keeps, else from the price list shipped in the
+    install. A failed read leaves the earlier copy in place.
+    """
+    index = model_catalog.refresh_models_dev()
+    if as_json:
+        click.echo(
+            json.dumps(
+                {
+                    "models": len(index.models),
+                    "read_at": index.fetched_at,
+                    "error": index.error,
+                }
+            )
+        )
+    elif index.error is None:
+        click.echo(f"Kept {len(index.models)} model prices read at {index.fetched_at}.")
+    else:
+        click.echo(
+            f"{index.error}; delegation calls keep pricing from the earlier copy"
+            " or the price list shipped with this install.",
+            err=True,
+        )
+    if index.error is not None:
         raise click.exceptions.Exit(1)

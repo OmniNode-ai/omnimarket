@@ -44,12 +44,14 @@ config:
   - package-lock.json
   - CHANGELOG*
   - contracts/OMN-*.yaml
-  - '*ROLLING_WORK_LEDGER*'
 event_bus:
   subscribe_topics: []
   publish_topics: []
 runtime_dispatch:
   external_trigger: Direct Python invocation by onex scm pr-create and onex scm pr-duplicate-check, which read the watcher state, the ledger and the diffs.
+  on_demand:
+    command: uv run onex node node_pr_duplicate_guard_compute --input <request.json>
+    owner: OmniNode Platform Team
 descriptor:
   node_archetype: compute
   purity: pure
