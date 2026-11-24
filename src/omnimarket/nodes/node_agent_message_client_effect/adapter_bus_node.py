@@ -48,7 +48,6 @@ NodeFactory = Callable[
 ]
 
 open_bus = positional_opener(open_lab_run_bus)
-open_bus = positional_opener(open_lab_run_bus)
 _READY_TIMEOUT_SECONDS = 120
 _CALL_TIMEOUT_SECONDS = 120
 

@@ -30,23 +30,18 @@ handler:
   input_model: omnimarket.nodes.node_agent_message_client_effect.models.model_agent_message_request.ModelAgentMessageSendRequest
   output_model: omnimarket.nodes.node_agent_message_client_effect.models.model_agent_message_request.ModelAgentMessageSendResult
 
-handler_routing:
-  routing_strategy: operation_match
-  handlers:
-    - operation: agent_message_send
-      handler:
-        name: HandlerAgentMessageSend
-        module: omnimarket.nodes.node_agent_message_client_effect.handlers.handler_agent_message_send
-      event_model:
-        name: ModelAgentMessageSendRequest
-        module: omnimarket.nodes.node_agent_message_client_effect.models.model_agent_message_request
-    - operation: agent_message_read
-      handler:
-        name: HandlerAgentMessageRead
-        module: omnimarket.nodes.node_agent_message_client_effect.handlers.handler_agent_message_read
-      event_model:
-        name: ModelAgentMessageReadRequest
-        module: omnimarket.nodes.node_agent_message_client_effect.models.model_agent_message_request
+dependencies:
+  - name: ProtocolAgentMessageNode
+    dependency_type: protocol
+    description: The agent message node the handlers send to and read from, built in process by the command line and the MCP server over the broker the caller declares
+    required: true
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: false
+  timeout_ms: 120000
 
 # Run from the `onex agent-message` command or its MCP server, not by a bus
 # command: the topic belongs to the agent message node this client calls.
@@ -54,7 +49,7 @@ event_bus:
   subscribe_topics: []
   publish_topics: []
 runtime_dispatch:
-  external_trigger: true
+  external_trigger: An agent runs onex agent-message send, read or serve-mcp by hand or through its MCP client; nothing on the bus starts this node.
   # An agent runs it by hand or through its MCP client; it never runs on a timer.
   on_demand:
     command: onex agent-message send | read | serve-mcp, which build the handlers in process and print their typed results

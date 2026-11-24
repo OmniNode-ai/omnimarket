@@ -28,3 +28,5 @@ tags:
 - cli
 - mcp
 pack: data
+display_name: Agent Message Client
+node_role: effect
