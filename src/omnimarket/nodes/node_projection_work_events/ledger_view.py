@@ -99,10 +99,9 @@ def render_ledger_view(
         "`node_projection_work_events` (OMN-16180). Do not hand-edit: "
         "regenerate it.",
         ">",
-        "> The authoritative L0 record remains "
-        "`docs/tracking/ROLLING_WORK_LEDGER.md`, still appended under "
-        "`scripts/ledger_lock.py`. L0 and L1 dual-write during the OMN-16176 "
-        "transition; retiring L0 is OMN-16183 (C7).",
+        "> The authoritative L0 record remains the rolling work ledger, "
+        "still appended under `scripts/ledger_lock.py`. L0 and L1 dual-write "
+        "during the OMN-16176 transition; retiring L0 is OMN-16183 (C7).",
         ">",
         "> Rows are sorted by `emitted_at` descending. That is a DISPLAY SORT "
         "ONLY -- it is not a claimed global ordering of work.",
