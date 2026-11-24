@@ -1,0 +1,262 @@
+# Build the omnimarket runtime image FROM infra's clean-main base image (OMN-23563).
+#
+# Ruling 2026-10-15: the downstream image is built FROM infra's base image; nothing
+# in omnibase_infra changes. The only composed image that exists today comes from
+# infra's candidate workflow, and it is stamped stability-candidate, which the prod
+# promotion gate refuses. This workflow is the clean-main image built downstream.
+#
+# Manual dispatch only until the cloud owner answers. There is no push, schedule or
+# pull_request trigger.
+#
+# Lineage guard: Docker inherits the base image's com.omninode.promotion_class label,
+# so a layer built from a dev-only omnimarket commit would read clean-main without a
+# guard of its own. The lineage-guard job refuses unless the omnimarket commit is an
+# ancestor of origin/main, and the build sets both lineage labels from that job's
+# output, never from a literal.
+#
+# What this workflow never does: write a pinned tag. The cloud owner pins one digest
+# per runtime overlay and creates the pinned tag in ECR; the one tag pushed here is
+# omninode-runtime:market-<sha12>-infra-<digest12>, and only when the push input is
+# true. The AWS account id is the repo-scoped Actions variable AWS_ACCOUNT_ID, never
+# written out in this public repository.
+
+name: Build omnimarket runtime image from the infra base (OMN-23563)
+
+on:
+  workflow_dispatch:
+    inputs:
+      omnimarket_sha:
+        description: "Full 40-hex omnimarket commit to build. Must be an ancestor of origin/main."
+        required: true
+        type: string
+      infra_base_digest:
+        description: "Digest of the infra runtime base image, sha256:<64 hex>, whose labels read clean-main."
+        required: true
+        type: string
+      expected_core_version:
+        description: "omnibase-core version the base image must carry."
+        required: true
+        type: string
+      expected_infra_version:
+        description: "omnibase-infra version the base image must carry."
+        required: true
+        type: string
+      push:
+        description: "Push the one market-<sha12>-infra-<digest12> tag to ECR. Default false builds and scans only."
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-omnimarket-runtime-${{ inputs.omnimarket_sha }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: ${{ vars.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+  ECR_REPOSITORY: omninode-runtime
+
+jobs:
+  lineage-guard:
+    name: Refuse a commit that is not on origin/main
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      promotion_class: ${{ steps.lineage.outputs.promotion_class }}
+      non_main_lineage: ${{ steps.lineage.outputs.non_main_lineage }}
+    steps:
+      - name: Checkout the full history
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Fetch origin/main
+        run: git fetch --no-tags origin main:refs/remotes/origin/main
+
+      # The only step that can emit promotion_class. A commit that is not an ancestor of
+      # origin/main, a malformed sha and any git error all exit non-zero with no output,
+      # so the build job never runs and no clean-main label is ever stamped.
+      - name: Lineage guard (ancestor of origin/main)
+        id: lineage
+        env:
+          OMNIMARKET_SHA: ${{ inputs.omnimarket_sha }}
+        run: |
+          set -euo pipefail
+          if ! [[ "${OMNIMARKET_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::omnimarket_sha must be a full 40-hex commit"
+            exit 1
+          fi
+          if ! git rev-parse --verify --quiet "${OMNIMARKET_SHA}^{commit}" >/dev/null; then
+            echo "::error::${OMNIMARKET_SHA} is not a commit in this repository"
+            exit 1
+          fi
+          if ! git rev-parse --verify --quiet "origin/main^{commit}" >/dev/null; then
+            echo "::error::origin/main is not available, so lineage cannot be proven"
+            exit 1
+          fi
+          if git merge-base --is-ancestor "${OMNIMARKET_SHA}" "origin/main"; then
+            echo "${OMNIMARKET_SHA} is an ancestor of origin/main"
+            echo "promotion_class=clean-main" >> "${GITHUB_OUTPUT}"
+            echo "non_main_lineage=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "::error::${OMNIMARKET_SHA} is not an ancestor of origin/main; refusing to label or push it as clean-main"
+            exit 1
+          fi
+
+  build:
+    name: Build, check and scan the omnimarket runtime image
+    needs: lineage-guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      OMNIMARKET_SHA: ${{ inputs.omnimarket_sha }}
+      INFRA_BASE_DIGEST: ${{ inputs.infra_base_digest }}
+      EXPECTED_CORE_VERSION: ${{ inputs.expected_core_version }}
+      EXPECTED_INFRA_VERSION: ${{ inputs.expected_infra_version }}
+    steps:
+      - name: Checkout the omnimarket commit
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ inputs.omnimarket_sha }}
+
+      - name: Validate the digest and derive the tag parts
+        id: parts
+        run: |
+          set -euo pipefail
+          if ! [[ "${INFRA_BASE_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::infra_base_digest must be sha256:<64 hex>"
+            exit 1
+          fi
+          SHA12="${OMNIMARKET_SHA:0:12}"
+          DIGEST12="${INFRA_BASE_DIGEST:7:12}"
+          echo "sha12=${SHA12}" >> "${GITHUB_OUTPUT}"
+          echo "digest12=${DIGEST12}" >> "${GITHUB_OUTPUT}"
+          echo "tag=market-${SHA12}-infra-${DIGEST12}" >> "${GITHUB_OUTPUT}"
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@d45db47bd94e3a7d50b9c36da4cfe07ceca89d74 # v6
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/omninode-github-actions-role
+          role-session-name: gha-build-omnimarket-runtime
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2
+
+      - name: Pull the infra base image by digest
+        run: |
+          set -euo pipefail
+          docker pull "${ECR_REGISTRY}/${ECR_REPOSITORY}@${INFRA_BASE_DIGEST}"
+
+      - name: Require clean-main labels on the infra base image
+        run: |
+          set -euo pipefail
+          BASE="${ECR_REGISTRY}/${ECR_REPOSITORY}@${INFRA_BASE_DIGEST}"
+          PC="$(docker inspect "${BASE}" --format '{{ index .Config.Labels "com.omninode.promotion_class" }}')"
+          NL="$(docker inspect "${BASE}" --format '{{ index .Config.Labels "com.omninode.non_main_lineage" }}')"
+          echo "base promotion_class=${PC} non_main_lineage=${NL}"
+          [ "${PC}" = "clean-main" ] || { echo "::error::base image promotion_class is '${PC}', not clean-main"; exit 1; }
+          [ "${NL}" = "false" ] || { echo "::error::base image non_main_lineage is '${NL}', not false"; exit 1; }
+
+      - name: Check the core and infra versions inside the base image
+        run: |
+          set -euo pipefail
+          BASE="${ECR_REGISTRY}/${ECR_REPOSITORY}@${INFRA_BASE_DIGEST}"
+          read -r CORE INFRA < <(docker run --rm --entrypoint /app/.venv/bin/python "${BASE}" \
+            -c "import importlib.metadata as m; print(m.version('omnibase-core'), m.version('omnibase-infra'))")
+          echo "omnibase-core=${CORE} omnibase-infra=${INFRA}"
+          [ "${CORE}" = "${EXPECTED_CORE_VERSION}" ] || { echo "::error::omnibase-core is ${CORE}, expected ${EXPECTED_CORE_VERSION}"; exit 1; }
+          [ "${INFRA}" = "${EXPECTED_INFRA_VERSION}" ] || { echo "::error::omnibase-infra is ${INFRA}, expected ${EXPECTED_INFRA_VERSION}"; exit 1; }
+
+      # Both lineage labels come from the lineage-guard job's output. The base image's
+      # own clean-main label is inherited by Docker, so it is never relied on here.
+      - name: Build the omnimarket layer on the infra base
+        id: build
+        env:
+          IMAGE_TAG: ${{ steps.parts.outputs.tag }}
+        run: |
+          set -euo pipefail
+          docker buildx build --load --platform linux/amd64 \
+            --file Dockerfile.runtime \
+            --build-arg "INFRA_RUNTIME_IMAGE=${ECR_REGISTRY}/${ECR_REPOSITORY}@${INFRA_BASE_DIGEST}" \
+            --build-arg "OMNIMARKET_VCS_REF=${OMNIMARKET_SHA}" \
+            --label com.omninode.promotion_class=${{ needs.lineage-guard.outputs.promotion_class }} \
+            --label com.omninode.non_main_lineage=${{ needs.lineage-guard.outputs.non_main_lineage }} \
+            --tag "${ECR_REPOSITORY}:${IMAGE_TAG}" .
+
+      - name: Assert the built image labels and the omnimarket import
+        env:
+          IMAGE_TAG: ${{ steps.parts.outputs.tag }}
+        run: |
+          set -euo pipefail
+          IMG="${ECR_REPOSITORY}:${IMAGE_TAG}"
+          PC="$(docker inspect "${IMG}" --format '{{ index .Config.Labels "com.omninode.promotion_class" }}')"
+          NL="$(docker inspect "${IMG}" --format '{{ index .Config.Labels "com.omninode.non_main_lineage" }}')"
+          REF="$(docker inspect "${IMG}" --format '{{ index .Config.Labels "com.omninode.omnimarket_vcs_ref" }}')"
+          echo "promotion_class=${PC} non_main_lineage=${NL} omnimarket_vcs_ref=${REF}"
+          [ "${PC}" = "clean-main" ] || { echo "::error::built image promotion_class is '${PC}'"; exit 1; }
+          [ "${NL}" = "false" ] || { echo "::error::built image non_main_lineage is '${NL}'"; exit 1; }
+          [ "${REF}" = "${OMNIMARKET_SHA}" ] || { echo "::error::omnimarket_vcs_ref label is '${REF}'"; exit 1; }
+          docker run --rm --entrypoint /app/.venv/bin/python "${IMG}" \
+            -c "import omnimarket, importlib.metadata as m; print('omnimarket', m.version('omnimarket'))"
+
+      - name: Trivy scan of the built image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.34.2
+        with:
+          image-ref: ${{ env.ECR_REPOSITORY }}:${{ steps.parts.outputs.tag }}
+          format: table
+          exit-code: '1'
+          ignore-unfixed: false
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+          version: 'v0.69.3'
+
+      - name: Write the build manifest
+        env:
+          IMAGE_TAG: ${{ steps.parts.outputs.tag }}
+          PUSH_REQUESTED: ${{ inputs.push }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p ops/digests
+          jq -n \
+            --arg market_sha "${OMNIMARKET_SHA}" \
+            --arg infra_base_digest "${INFRA_BASE_DIGEST}" \
+            --arg core_version "${EXPECTED_CORE_VERSION}" \
+            --arg infra_version "${EXPECTED_INFRA_VERSION}" \
+            --arg tag "${ECR_REPOSITORY}:${IMAGE_TAG}" \
+            --arg promotion_class "${{ needs.lineage-guard.outputs.promotion_class }}" \
+            --arg non_main_lineage "${{ needs.lineage-guard.outputs.non_main_lineage }}" \
+            --arg push_requested "${PUSH_REQUESTED}" \
+            --arg run_id "${RUN_ID}" \
+            '{market_sha: $market_sha, infra_base_digest: $infra_base_digest,
+              omnibase_core_version: $core_version, omnibase_infra_version: $infra_version,
+              image_tag: $tag, promotion_class: $promotion_class,
+              non_main_lineage: $non_main_lineage, push_requested: $push_requested,
+              workflow_run_id: $run_id}' > ops/digests/build-manifest.json
+          cat ops/digests/build-manifest.json
+
+      - name: Upload the build manifest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: omnimarket-runtime-build-manifest-${{ steps.parts.outputs.sha12 }}
+          path: ops/digests/build-manifest.json
+          retention-days: 90
+
+      # The one registry write: the single market-<sha12>-infra-<digest12> tag, after the
+      # lineage guard, the label, version and Trivy checks have all passed.
+      - name: Push the image tag to ECR
+        if: success() && inputs.push == true
+        env:
+          IMAGE_TAG: ${{ steps.parts.outputs.tag }}
+        run: |
+          set -euo pipefail
+          REMOTE="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+          docker tag "${ECR_REPOSITORY}:${IMAGE_TAG}" "${REMOTE}"
+          docker push "${REMOTE}"
