@@ -18,7 +18,7 @@ import json
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import httpx
@@ -501,7 +501,7 @@ def test_the_good_answer_through_the_handler_reads_pass(check: str) -> None:
         delegation=_delegation(), routing=_routing(), surface=_surface()
     )
     result = _handler(machine).handle(
-        ModelDelegationCheckRequest(correlation_id="g-1", check_id=check)  # type: ignore[arg-type]
+        ModelDelegationCheckRequest(correlation_id="g-1", check_id=cast(CheckId, check))
     )
     assert result.verdict is EnumCheckVerdict.PASS, result.error
     assert result.conclusion == "success"
@@ -515,7 +515,7 @@ def test_an_empty_answer_through_the_handler_never_reads_pass(check: str) -> Non
         surface=ModelSurfaceObservation(),
     )
     result = _handler(machine).handle(
-        ModelDelegationCheckRequest(correlation_id="g-2", check_id=check)  # type: ignore[arg-type]
+        ModelDelegationCheckRequest(correlation_id="g-2", check_id=cast(CheckId, check))
     )
     assert result.verdict is EnumCheckVerdict.FAIL
     assert result.conclusion == "failure"
@@ -524,7 +524,7 @@ def test_an_empty_answer_through_the_handler_never_reads_pass(check: str) -> Non
 @pytest.mark.parametrize("check", ["C13", "C14", "C17"])
 def test_a_timeout_through_the_handler_reads_error_never_pass(check: str) -> None:
     result = _handler(_Timeout()).handle(
-        ModelDelegationCheckRequest(correlation_id="g-3", check_id=check)  # type: ignore[arg-type]
+        ModelDelegationCheckRequest(correlation_id="g-3", check_id=cast(CheckId, check))
     )
     assert result.verdict is EnumCheckVerdict.ERROR
     assert result.conclusion == "failure"
@@ -541,7 +541,7 @@ def test_a_missing_credential_or_collector_reads_precondition_absent(
             super().__init__("the tenant credential is not in the store")
 
     result = _handler(_NoCredential()).handle(
-        ModelDelegationCheckRequest(correlation_id="g-4", check_id=check)  # type: ignore[arg-type]
+        ModelDelegationCheckRequest(correlation_id="g-4", check_id=cast(CheckId, check))
     )
     assert result.verdict is EnumCheckVerdict.PRECONDITION_ABSENT
     assert result.conclusion == "failure"
@@ -574,8 +574,8 @@ def _contracts_status(api_key: str | None) -> tuple[int, Any]:
     gateway = build_gateway()
     identity = CompositeCallerIdentity(
         bearer=None,
-        api_key=PostgresApiKeyTenantIdentity(  # type: ignore[arg-type]
-            pool=_KeyTable({_ONXK: (TENANT_A, "tenant-a")}),
+        api_key=PostgresApiKeyTenantIdentity(
+            pool=cast(Any, _KeyTable({_ONXK: (TENANT_A, "tenant-a")})),
             header="x-api-key",
             prefix="onxk_",
         ),
