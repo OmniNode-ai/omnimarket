@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: agent_message_client_effect
+contract_name: node_agent_message_client_effect
+node_name: node_agent_message_client_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  The client of the agent message topic. HandlerAgentMessageSend checks a send
+  request (recipient, thread, kind, platform, text), stamps the sender and the
+  UTC send time, and hands the message to the agent message node;
+  HandlerAgentMessageRead checks a read request and asks that node for the
+  messages addressed to one recipient. Provides `onex agent-message send|read`
+  and the stdio MCP server `onex agent-message serve-mcp`, which expose the same
+  two handlers. The topic is declared by the agent message node, not here.
+node_type: effect
+lifecycle: experimental
+input_model:
+  name: ModelAgentMessageSendRequest
+  module: omnimarket.nodes.node_agent_message_client_effect.models.model_agent_message_request
+output_model:
+  name: ModelAgentMessageSendResult
+  module: omnimarket.nodes.node_agent_message_client_effect.models.model_agent_message_request
+
+handler:
+  name: HandlerAgentMessageSend
+  module: omnimarket.nodes.node_agent_message_client_effect.handlers.handler_agent_message_send
+  class: HandlerAgentMessageSend
+  input_model: omnimarket.nodes.node_agent_message_client_effect.models.model_agent_message_request.ModelAgentMessageSendRequest
+  output_model: omnimarket.nodes.node_agent_message_client_effect.models.model_agent_message_request.ModelAgentMessageSendResult
+
+dependencies:
+  - name: ProtocolAgentMessageNode
+    dependency_type: protocol
+    description: The agent message node the handlers send to and read from, built in process by the command line and the MCP server over the broker the caller declares
+    required: true
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: false
+  timeout_ms: 120000
+
+# The command line and the MCP server build both handlers in process, so none is dispatched by the runtime and no
+# operation is routed; default_handler binds the read handler to this contract, as `handler` binds the send handler.
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_agent_message_client_effect.handlers.handler_agent_message_read:HandlerAgentMessageRead
+  handlers: []
+
+# Run from the `onex agent-message` command or its MCP server, not by a bus
+# command: the topic belongs to the agent message node this client calls.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: An agent runs onex agent-message send, read or serve-mcp by hand or through its MCP client; nothing on the bus starts this node.
+  # An agent runs it by hand or through its MCP client; it never runs on a timer.
+  on_demand:
+    command: onex agent-message send | read | serve-mcp, which build the handlers in process and print their typed results
+    owner: OmniNode Platform Team
+metadata:
+  transport_type: local

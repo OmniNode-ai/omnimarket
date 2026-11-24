@@ -7,7 +7,8 @@ Definitions are the module-level classes and functions of each Python file. A sh
 models of different names and the same fields share a signature. Imports are the graph's own edges
 inside the repository, test files included (a change reaches the tests that import it). Exemplars
 are the nodes whose contract names an archetype. Node files are the directory, contract, metadata,
-overlay and workflow paths of each node (OMN-26202). It reads no clock, file, network or environment.
+overlay and workflow paths of each node (OMN-26202). Handler rows are one per operation of each
+contract's handler routing (OMN-26337). It reads no clock, file, network or environment.
 """
 
 from __future__ import annotations
@@ -25,6 +26,9 @@ from omnimarket.models.model_code_graph_lookup import (
     ModelImportRelation,
     ModelShapeEntry,
     ModelSymbolDefinition,
+)
+from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_handlers import (
+    handler_rows_of,
 )
 from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_locate import (
     node_files_of,
@@ -162,4 +166,7 @@ def build_version(
             )
         ),
         node_files=node_files_of(snapshot.files, rules),
+        handler_rows=handler_rows_of(
+            snapshot.files, rules, tuple(definitions), snapshot.head
+        ),
     )

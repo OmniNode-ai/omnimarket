@@ -8,6 +8,10 @@ seam; no separate HTTP API is called. The tenant is ownerless: the runtime's own
 The password value moves only between the key generator and the Keycloak calls; it is never printed, logged, serialized
 or returned. The result carries names and ids only. The dev-only guard refuses, before any secret read or HTTP call,
 when the lane or realm is not the one the contract declares.
+
+A run deletes the user it created when it ends: after every typed failure past the create (and after an exception), and
+after a success only when the command declares the user disposable. A user that existed before the run and a protected
+username are never deleted by a run. The ``lookup`` and ``delete`` verbs (OMN-23563) read and remove one named user.
 """
 
 from __future__ import annotations
@@ -30,6 +34,7 @@ from omnimarket.models.secret_store.model_secret_store_result import (
     EnumSecretStoreOutcome,
 )
 from omnimarket.nodes.node_dev_identity_provision_effect.models.model_dev_identity_provision import (
+    EnumDevIdentityCleanup,
     EnumDevIdentityOutcome,
     ModelDevIdentityProvisionCommand,
     ModelDevIdentityProvisionResult,
@@ -55,6 +60,15 @@ _CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
 _TENANT_COMMAND_NAMESPACE = uuid.UUID("5c0b1e7e-2f0a-4c6e-9a53-0d1e6f6b3a10")
 _SLUG_UNSAFE = re.compile(r"[^a-z0-9]+")
 _CREATED_OUTCOMES = frozenset({"created", "already_exists"})
+_OK_OUTCOMES = frozenset(
+    {
+        EnumDevIdentityOutcome.PROVISIONED,
+        EnumDevIdentityOutcome.READY,
+        EnumDevIdentityOutcome.USER_FOUND,
+        EnumDevIdentityOutcome.USER_ABSENT,
+        EnumDevIdentityOutcome.USER_DELETED,
+    }
+)
 
 
 def _tenant_slug(username: str) -> str:
@@ -120,12 +134,11 @@ class HandlerDevIdentityProvision:
         user_name: str | None = None,
         tenant_id: str | None = None,
         tenant_slug: str | None = None,
+        user_id: str | None = None,
+        cleanup: EnumDevIdentityCleanup | None = None,
         expected_secret: str | None = None,
     ) -> ModelDevIdentityProvisionResult:
-        ok = outcome in (
-            EnumDevIdentityOutcome.PROVISIONED,
-            EnumDevIdentityOutcome.READY,
-        )
+        ok = outcome in _OK_OUTCOMES
         logger.info(
             "dev identity provision outcome=%s realm=%s lane=%s user=%s",
             outcome.value,
@@ -142,6 +155,8 @@ class HandlerDevIdentityProvision:
             user_name=user_name,
             tenant_id=tenant_id,
             tenant_slug=tenant_slug,
+            user_id=user_id,
+            cleanup=cleanup,
             expected_secret=expected_secret,
         )
 
@@ -181,6 +196,9 @@ class HandlerDevIdentityProvision:
         if guard is not None:
             return guard
 
+        if command.lookup_user or command.delete_user:
+            return await self._user_verb(command)
+
         user = self._identity(command)
         if isinstance(user, ModelDevIdentityProvisionResult):
             return user
@@ -212,17 +230,9 @@ class HandlerDevIdentityProvision:
             )
 
         token_url = f"{kc.base_url}{kc.token_path_template.format(realm=kc.realm)}"
-        admin_token = await self._admin_token(token_url, admin, admin_secret)
-        if admin_token is None:
-            return self._result(
-                EnumDevIdentityOutcome.ADMIN_TOKEN_REFUSED,
-                detail="the Keycloak admin token endpoint refused the client credentials",
-            )
-        if isinstance(admin_token, str):
-            return self._result(
-                EnumDevIdentityOutcome.KEYCLOAK_UNREACHABLE,
-                detail=admin_token,
-            )
+        admin_token = await self._admin_bearer(token_url, admin_secret)
+        if isinstance(admin_token, ModelDevIdentityProvisionResult):
+            return admin_token
 
         gen = await self._key_generator.generate(user.password_key_id)
         if gen.outcome not in (
@@ -275,8 +285,29 @@ class HandlerDevIdentityProvision:
                 EnumDevIdentityOutcome.USER_CREATE_FAILED,
                 detail="Keycloak refused to create or reset the dev user",
                 user_name=user.username,
+                cleanup=EnumDevIdentityCleanup.NOT_CREATED,
             )
 
+        # Only a user this run created is this run's to delete; an existing user (reset_existing) never is.
+        created_id = user_id if found is None else None
+        try:
+            result = await self._sign_in_and_provision(token_url, user, password)
+        except BaseException:
+            if created_id is not None and not self._is_protected(user.username):
+                await self._delete_after_exception(
+                    admin_token, created_id, user.username
+                )
+            raise
+        cleanup = await self._cleanup(command, admin_token, user, created_id, result)
+        return result.model_copy(update={"cleanup": cleanup})
+
+    async def _sign_in_and_provision(
+        self,
+        token_url: str,
+        user: _Identity,
+        password: SecretStr,
+    ) -> ModelDevIdentityProvisionResult:
+        """Sign in as the user and ask the runtime for the probe tenant; every failure is a typed result."""
         user_token = await self._user_token(token_url, user, password)
         if user_token is None:
             return self._result(
@@ -323,6 +354,154 @@ class HandlerDevIdentityProvision:
             tenant_id=answer.tenant_id,
             tenant_slug=answer.tenant_slug,
         )
+
+    async def _admin_bearer(
+        self, token_url: str, admin_secret: SecretStr
+    ) -> SecretStr | ModelDevIdentityProvisionResult:
+        """The Keycloak admin token, or the typed result that says why there is none."""
+        admin_token = await self._admin_token(
+            token_url, self._overlay.admin, admin_secret
+        )
+        if admin_token is None:
+            return self._result(
+                EnumDevIdentityOutcome.ADMIN_TOKEN_REFUSED,
+                detail="the Keycloak admin token endpoint refused the client credentials",
+            )
+        if isinstance(admin_token, str):
+            return self._result(
+                EnumDevIdentityOutcome.KEYCLOAK_UNREACHABLE,
+                detail=admin_token,
+            )
+        return SecretStr(admin_token.get_secret_value())
+
+    def _is_protected(self, username: str) -> bool:
+        return username.lower() in {
+            name.lower() for name in self._overlay.protected_usernames
+        }
+
+    async def _user_verb(
+        self, command: ModelDevIdentityProvisionCommand
+    ) -> ModelDevIdentityProvisionResult:
+        """``lookup`` reads one named user; ``delete`` removes one and reads it gone. The dev guard has already passed."""
+        overlay = self._overlay
+        kc = overlay.keycloak
+        admin = overlay.admin
+        username = command.username or ""
+        if command.delete_user and (
+            username.lower() == overlay.user.username.lower()
+            or self._is_protected(username)
+        ):
+            return self._result(
+                EnumDevIdentityOutcome.USER_PROTECTED,
+                detail=(
+                    f"user {username!r} is the overlay user or in the overlay's protected_usernames; "
+                    "nothing was read or sent, and a delete never touches it"
+                ),
+                user_name=username,
+            )
+        admin_secret = await self._settings_store.read(
+            admin.secret_folder, admin.secret_key
+        )
+        if admin_secret is None:
+            return self._result(
+                EnumDevIdentityOutcome.ADMIN_CREDENTIAL_MISSING,
+                detail=f"the admin credential {admin.secret_folder}/{admin.secret_key} is not in the store",
+                expected_secret=f"{admin.secret_folder}/{admin.secret_key}",
+            )
+        token_url = f"{kc.base_url}{kc.token_path_template.format(realm=kc.realm)}"
+        admin_token = await self._admin_bearer(token_url, admin_secret)
+        if isinstance(admin_token, ModelDevIdentityProvisionResult):
+            return admin_token
+        try:
+            user_id = await self._find_user(admin_token, username)
+        except _UserLookupFailedError:
+            return self._result(
+                EnumDevIdentityOutcome.KEYCLOAK_UNREACHABLE,
+                detail="Keycloak did not answer the user lookup with a usable body",
+                user_name=username,
+            )
+        if user_id is None:
+            return self._result(
+                EnumDevIdentityOutcome.USER_ABSENT,
+                detail=f"user {username!r} is not in realm {kc.realm!r} (never existed or already deleted)",
+                user_name=username,
+            )
+        if command.lookup_user:
+            return self._result(
+                EnumDevIdentityOutcome.USER_FOUND,
+                detail=f"user {username!r} exists in realm {kc.realm!r}",
+                user_name=username,
+                user_id=user_id,
+            )
+        if not await self._delete_user(admin_token, username, user_id):
+            return self._result(
+                EnumDevIdentityOutcome.USER_DELETE_FAILED,
+                detail=f"user {username!r} was not removed from realm {kc.realm!r}",
+                user_name=username,
+                user_id=user_id,
+            )
+        return self._result(
+            EnumDevIdentityOutcome.USER_DELETED,
+            detail=f"user {username!r} was deleted from realm {kc.realm!r} and read back gone",
+            user_name=username,
+            user_id=user_id,
+        )
+
+    async def _delete_user(
+        self, admin_token: SecretStr, username: str, user_id: str
+    ) -> bool:
+        """Delete the user by id, then read it back: True only when the realm no longer holds the username."""
+        kc = self._overlay.keycloak
+        users_url = (
+            f"{kc.base_url}{kc.admin_users_path_template.format(realm=kc.realm)}"
+        )
+        response = await self._send(
+            ModelIdentityHttpRequest(
+                method="DELETE",
+                url=f"{users_url}/{user_id}",
+                bearer=admin_token,
+                timeout_seconds=kc.timeout_seconds,
+            )
+        )
+        if isinstance(response, str) or response.status not in (204, 404):
+            return False
+        try:
+            return await self._find_user(admin_token, username) is None
+        except _UserLookupFailedError:
+            return False
+
+    async def _delete_after_exception(
+        self, admin_token: SecretStr, user_id: str, username: str
+    ) -> None:
+        """Best effort while an exception is already on its way out; it never replaces that exception."""
+        try:
+            deleted = await self._delete_user(admin_token, username, user_id)
+        except Exception:
+            logger.warning("cleanup of dev user %s raised", username)
+            return
+        logger.info("cleanup after an exception: user=%s deleted=%s", username, deleted)
+
+    async def _cleanup(
+        self,
+        command: ModelDevIdentityProvisionCommand,
+        admin_token: SecretStr,
+        user: _Identity,
+        created_id: str | None,
+        result: ModelDevIdentityProvisionResult,
+    ) -> EnumDevIdentityCleanup:
+        """Delete the user this run created after a failure, or after a success the command declared disposable."""
+        if created_id is None:
+            return EnumDevIdentityCleanup.NOT_CREATED
+        if self._is_protected(user.username):
+            return EnumDevIdentityCleanup.KEPT_PROTECTED
+        if result.ok and not command.disposable:
+            return EnumDevIdentityCleanup.KEPT
+        if await self._delete_user(admin_token, user.username, created_id):
+            return EnumDevIdentityCleanup.DELETED
+        logger.warning(
+            "dev user %s was created by this run and not deleted", user.username
+        )
+        return EnumDevIdentityCleanup.DELETE_FAILED
 
     async def _send(self, request: ModelIdentityHttpRequest) -> Any:
         try:
@@ -403,18 +582,18 @@ class HandlerDevIdentityProvision:
                 timeout_seconds=kc.timeout_seconds,
             )
         )
-        if isinstance(found, str):
-            raise _UserLookupFailedError
         if (
-            found.status == 200
-            and isinstance(found.json_body, list)
-            and found.json_body
+            isinstance(found, str)
+            or found.status != 200
+            or not isinstance(found.json_body, list)
         ):
-            user_id = found.json_body[0].get("id")
-            if not isinstance(user_id, str):
-                raise _UserLookupFailedError
-            return user_id
-        return None
+            raise _UserLookupFailedError
+        if not found.json_body:
+            return None
+        user_id = found.json_body[0].get("id")
+        if not isinstance(user_id, str):
+            raise _UserLookupFailedError
+        return user_id
 
     async def _ensure_user(
         self,
