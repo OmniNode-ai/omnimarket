@@ -22,8 +22,6 @@ from omnimarket.handlers.node_overlay_reader import NodeOverlayNotFoundError
 from omnimarket.models.bus_binding.model_node_broker import ModelNodeBroker
 from omnimarket.nodes.node_runtime_bus_forward_effect.handlers.handler_runtime_bus_forward import (
     HandlerRuntimeBusForward,
-)
-from omnimarket.nodes.node_runtime_bus_forward_effect.handlers.handler_runtime_bus_local_record import (
     HandlerRuntimeBusLocalRecord,
 )
 from omnimarket.nodes.node_runtime_bus_forward_effect.models.model_https_event_bus import (

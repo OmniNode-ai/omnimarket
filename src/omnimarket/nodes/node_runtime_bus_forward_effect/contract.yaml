@@ -33,22 +33,7 @@ handler:
 
 # HandlerRuntimeBusForward takes the overlay and the publisher as constructor parameters, so it is called by the
 # omnibase_core runtime through the entry point adapter. The same adapter calls HandlerRuntimeBusLocalRecord when the
-# machine declares no hosted bus (OMN-26451); both handlers are bound here.
-handler_routing:
-  routing_strategy: operation_match
-  handlers:
-    - operation: runtime_bus_forward
-      handler:
-        name: HandlerRuntimeBusForward
-        module: omnimarket.nodes.node_runtime_bus_forward_effect.handlers.handler_runtime_bus_forward
-      input_model: omnimarket.nodes.node_runtime_bus_forward_effect.models.model_runtime_bus_forward.ModelRuntimeBusForwardCommand
-      output_model: omnimarket.nodes.node_runtime_bus_forward_effect.models.model_runtime_bus_forward.ModelRuntimeBusForwardResult
-    - operation: runtime_bus_local_record
-      handler:
-        name: HandlerRuntimeBusLocalRecord
-        module: omnimarket.nodes.node_runtime_bus_forward_effect.handlers.handler_runtime_bus_local_record
-      input_model: omnimarket.nodes.node_runtime_bus_forward_effect.models.model_runtime_bus_forward.ModelRuntimeBusLocalRecordCommand
-      output_model: omnimarket.nodes.node_runtime_bus_forward_effect.models.model_runtime_bus_forward.ModelRuntimeBusLocalRecordResult
+# machine declares no hosted bus (OMN-26451); it is a helper of the bound handler module, not a dispatched handler.
 
 descriptor:
   node_archetype: effect

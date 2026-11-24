@@ -38,7 +38,7 @@ from omnimarket.nodes.node_runtime_bus_forward_effect import (
 from omnimarket.nodes.node_runtime_bus_forward_effect.adapter_core_forwarder import (
     CoreRuntimeBusForwarder,
 )
-from omnimarket.nodes.node_runtime_bus_forward_effect.handlers.handler_runtime_bus_local_record import (
+from omnimarket.nodes.node_runtime_bus_forward_effect.handlers.handler_runtime_bus_forward import (
     LOCAL_RECORD_FILE_NAME,
 )
 from omnimarket.nodes.node_runtime_bus_forward_effect.overlay import NODE_NAME

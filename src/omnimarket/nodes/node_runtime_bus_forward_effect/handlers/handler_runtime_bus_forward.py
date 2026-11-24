@@ -24,10 +24,16 @@ Canonical effect shape: ``handle(ModelRuntimeBusForwardCommand) -> ModelRuntimeB
 
 from __future__ import annotations
 
+import json
+import os
+from pathlib import Path
+
 from omnimarket.nodes.node_runtime_bus_forward_effect.models import (
     ModelForwardRefusal,
     ModelRuntimeBusForwardCommand,
     ModelRuntimeBusForwardResult,
+    ModelRuntimeBusLocalRecordCommand,
+    ModelRuntimeBusLocalRecordResult,
 )
 from omnimarket.nodes.node_runtime_bus_forward_effect.overlay import (
     ModelRuntimeBusForwardOverlay,
@@ -109,4 +115,37 @@ class HandlerRuntimeBusForward:
             failed=len(refusals) + undelivered,
             refusals=tuple(refusals),
             detail=detail,
+        )
+
+
+# A machine whose operator declared no hosted bus (no overlay for this node) keeps a run's recorded events on disk
+# (OMN-26451): the receipt says they were kept locally and not delivered to a hosted bus. A write that fails raises
+# ``OSError``, which the caller reports as a degraded reading, never as a delivery.
+LOCAL_RECORD_FILE_NAME = "runtime_bus_events.jsonl"
+
+
+class HandlerRuntimeBusLocalRecord:
+    """Appends recorded events to the local record file and answers how many it kept."""
+
+    def __init__(self, *, record_dir: Path) -> None:
+        self._record_dir = record_dir
+
+    @property
+    def path(self) -> Path:
+        return self._record_dir / LOCAL_RECORD_FILE_NAME
+
+    def handle(
+        self, request: ModelRuntimeBusLocalRecordCommand
+    ) -> ModelRuntimeBusLocalRecordResult:
+        """Append the request's events in order and answer the count kept; ``OSError`` when the file cannot be written."""
+        self._record_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        lines = "".join(
+            json.dumps(event.model_dump(mode="json"), sort_keys=True) + "\n"
+            for event in request.events
+        )
+        descriptor = os.open(self.path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        with os.fdopen(descriptor, "a", encoding="utf-8") as record:
+            record.write(lines)
+        return ModelRuntimeBusLocalRecordResult(
+            kept=len(request.events), record_path=str(self.path)
         )
