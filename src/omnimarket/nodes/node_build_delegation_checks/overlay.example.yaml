@@ -14,5 +14,10 @@ history_keep: 200
 merge_clone_relpath: omnimarket
 merge_branch: dev
 repository: OmniNode-ai/omnimarket
-check_routes: {}
+# C13, C14 and C17 run the delegation check probe node of this repository; the other seven checks have no node here and read
+# unavailable (no probe route is declared). No route is a cloud workflow dispatch.
+check_routes:
+  C13: ['{python}', -m, omnimarket.nodes.node_delegation_check_probe_effect.runtime_delegation_check_probe_tick, --omni-home, '{registry_root}', --state-dir, '{registry_root}/.onex_state/delegation-check-probe', --trigger, manual, --check, C13]
+  C14: ['{python}', -m, omnimarket.nodes.node_delegation_check_probe_effect.runtime_delegation_check_probe_tick, --omni-home, '{registry_root}', --state-dir, '{registry_root}/.onex_state/delegation-check-probe', --trigger, manual, --check, C14]
+  C17: ['{python}', -m, omnimarket.nodes.node_delegation_check_probe_effect.runtime_delegation_check_probe_tick, --omni-home, '{registry_root}', --state-dir, '{registry_root}/.onex_state/delegation-check-probe', --trigger, manual, --check, C17]
 bus_lane: dev

@@ -44,6 +44,9 @@ event_bus:
   publish_topics: []
 runtime_dispatch:
   external_trigger: Direct Python invocation by the caller that reads the lane rows of one window.
+  on_demand:
+    command: uv run onex node node_pr_create_refusal_alert_compute --input <request.json>
+    owner: OmniNode Platform Team
 metadata:
   transport_type: local
 inputs:
