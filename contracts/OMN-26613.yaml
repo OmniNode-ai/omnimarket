@@ -15,7 +15,7 @@ requirements:
   - id: AC1
     statement: 'AC1: typing into the key and URL fields does not raise and the model search still starts; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_typing_with_no_palette_on_the_main_screen_keeps_the_tui_running; the search starts: tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_typing_in_key_and_url_starts_the_model_search'
   - id: AC2
-    statement: 'AC2: the / palette still opens and filters from the main prompt; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py::test_shortcuts_lead_the_palette_like_coding_agent_tuis'
+    statement: 'AC2: the / palette still opens and filters from the main prompt; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_the_palette_still_opens_from_the_main_prompt_after_a_raced_swap'
   - id: AC3
     statement: 'AC3: the app input handler acts only on the main prompt input (input id prompt); Falsifier: tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_typing_with_no_palette_on_the_main_screen_keeps_the_tui_running'
 evidence_requirements:
@@ -23,8 +23,8 @@ evidence_requirements:
   description: Typing in the key and URL fields keeps the TUI running, with and without a tab swap raced by Esc, and the model search still starts.
   command: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py -q -n 0 --no-cov -p no:cacheprovider
 - kind: tests
-  description: The existing TUI and palette tests pass unchanged.
-  command: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py -q -n 0 --no-cov -p no:cacheprovider
+  description: The existing TUI and palette tests pass unchanged, run together with the palette-after-a-raced-swap test.
+  command: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_the_palette_still_opens_from_the_main_prompt_after_a_raced_swap -q -n 0 --no-cov -p no:cacheprovider
 emergency_bypass:
   enabled: false
   justification: ''
@@ -37,19 +37,16 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_typing_with_no_palette_on_the_main_screen_keeps_the_tui_running tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_typing_after_a_tab_swap_raced_esc_keeps_the_tui_running -q -n 0 --no-cov -p no:cacheprovider
-    cwd: .
-  - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_typing_in_key_and_url_starts_the_model_search -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_typing_with_no_palette_on_the_main_screen_keeps_the_tui_running tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_typing_after_a_tab_swap_raced_esc_keeps_the_tui_running tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_typing_in_key_and_url_starts_the_model_search -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26613-ac2
-  description: 'AC2: the / palette still opens and filters from the main prompt.'
+  description: 'AC2: the / palette still opens and filters from the main prompt, including after a tab swap raced by Esc; the existing palette tests run together with that new test.'
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_the_palette_still_opens_from_the_main_prompt_after_a_raced_swap -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26613-ac3
   description: 'AC3: the app input handler acts only on the main prompt input.'

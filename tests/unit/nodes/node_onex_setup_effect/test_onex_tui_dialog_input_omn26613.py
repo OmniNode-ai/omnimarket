@@ -137,3 +137,27 @@ async def test_typing_in_key_and_url_starts_the_model_search(
         await pilot.press("a")
         await pilot.pause(1.5)  # auto_find_seconds is 0.8
         assert runs == [field]
+
+
+async def test_the_palette_still_opens_from_the_main_prompt_after_a_raced_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """P1 (AC2): after a tab swap raced by Esc, closing the tab leaves the main
+    prompt, and `/` there still opens and filters the palette."""
+    app = _app(_Runner([]))
+    async with app.run_test(size=(140, 44)) as pilot:
+        await _open_config(pilot, app)
+        await _swap_closed_by_esc(app, pilot, monkeypatch)
+        while len(app.screen_stack) > 1:  # close whatever tab the swap opened
+            await pilot.press("escape")
+            await pilot.pause()
+        app.query_one("#prompt", Input).focus()
+        await pilot.press("slash")
+        await pilot.pause()
+        palette = app.query_one("#palette")
+        assert palette.display
+        await pilot.press("m", "o", "d")
+        await pilot.pause()
+        shown = [str(option.prompt) for option in palette.options]
+        assert shown
+        assert all("mod" in text for text in shown)
