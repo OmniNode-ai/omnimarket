@@ -41,6 +41,10 @@ from uuid import UUID
 
 import yaml
 
+from omnimarket.enums.enum_projection_noop_reason import (
+    NOOP_REASON_KEY,
+    EnumProjectionNoopReason,
+)
 from omnimarket.handlers.writer_pool_host import (
     WriterPoolHost,
     build_pool_adapter,
@@ -387,6 +391,7 @@ class GoalTraceProjectionWriter(BaseProjectionRunner):
                 "event_inserted": False,
                 "skipped": "not goal-scoped",
                 "topic": topic,
+                NOOP_REASON_KEY: EnumProjectionNoopReason.SKIPPED.value,
             }
 
         parent_key = await self._parent_agent_key(db, event)

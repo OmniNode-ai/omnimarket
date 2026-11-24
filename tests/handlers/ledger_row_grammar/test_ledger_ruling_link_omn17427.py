@@ -88,7 +88,7 @@ def test_ruling_row_kind_decision_passes() -> None:
 
 
 def test_payload_refuses_a_test_mechanism_and_accepts_its_workflow() -> None:
-    ledger = "ROLLING_WORK_LEDGER.md"
+    ledger = sorted(g.GOVERNED_LEDGER_NAMES)[0]
     bad = f"{HEAD} | mechanism=repo/tests/test_x.py | why"
     refused = g.refusal_for_payload(bad, ledger)
     assert refused is not None

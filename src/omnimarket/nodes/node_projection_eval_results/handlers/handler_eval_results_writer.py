@@ -26,6 +26,10 @@ from uuid import UUID
 import yaml
 
 from omnimarket.enums.enum_eval_lane import EnumEvalLane
+from omnimarket.enums.enum_projection_noop_reason import (
+    NOOP_REASON_KEY,
+    EnumProjectionNoopReason,
+)
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_eval_results.handlers.eval_results_deadline import (
@@ -462,11 +466,18 @@ class EvalResultsProjectionWriter(BaseProjectionRunner):
             return {
                 "rows_upserted": 0,
                 "snapshot": {"published": False, "reason": "interval"},
+                NOOP_REASON_KEY: EnumProjectionNoopReason.TICK.value,
             }
         snapshot = await self._publish(
             self._store_factory(self.db), self._default_tenant(data), published_at=now
         )
-        return {"rows_upserted": 0, "snapshot": snapshot}
+        outcome: dict[str, Any] = {"rows_upserted": 0, "snapshot": snapshot}
+        # A tick owes no row, so a republish that went out is a designed no-op. One that
+        # was refused or had no transport is a snapshot the reader is missing: it stays
+        # unattested and the runtime keeps logging it as a zero-row ERROR.
+        if snapshot.get("published") is True:
+            outcome[NOOP_REASON_KEY] = EnumProjectionNoopReason.TICK.value
+        return outcome
 
     async def _publish(
         self, store: Any, tenant: str, *, published_at: datetime
