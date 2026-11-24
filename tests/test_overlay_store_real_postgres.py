@@ -250,3 +250,25 @@ async def test_a_set_is_answered_and_its_audit_row_is_published_from_the_table_o
         )
         assert row is not None
         assert (row["rows"], row["published"]) == (1, 1)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_record_naming_operator_paths_without_its_audit_row_is_refused_and_stores_nothing() -> (
+    None
+):
+    """OMN-26521 stored such a record and dropped its paths; the store now holds the paths with their audit row, or refuses the record."""
+    async with _migrated() as (runner, connection, published):
+        payload = {
+            **record().model_dump(mode="json"),
+            "operator_paths": ["floor_fill_live/pool_engine"],
+        }
+        with pytest.raises(ValidationError, match="without an audit row"):
+            await runner.project_event("t", payload, META)
+        assert (
+            await connection.fetchval(
+                "SELECT count(*) FROM omninode_internal.overlay_store"
+            )
+            == 0
+        )
+        assert published == []

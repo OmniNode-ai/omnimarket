@@ -15,6 +15,11 @@ requirements:
     statement: "AC3: an install is refused when the live volume under the work root is above 85 percent used and admitted at or below it -- falsifier: uv run pytest tests -q -k work_root_volume_bar, failing with the bar removed"
   - id: AC7
     statement: "AC7: the serve unit installer links the registry root's omni_worktrees to the host row's lab_worktree_root, never over a directory that holds entries or a link to another place -- falsifier: uv run pytest tests/nodes/node_host_installer_serve_units -q -k worktree_root"
+- id: req-omn26371-temp-cache-roots
+  statement: The serve unit reads the host row's declared temp and cache roots into the serve environment, and an install whose temp or cache root sits on a volume above 85 percent used is refused.
+  acceptance:
+  - id: AC8
+    statement: "AC8: the serve environment names the row's lab_tmp_root as TMPDIR and lab_cache_root as XDG_CACHE_HOME with UV_CACHE_DIR under it, and a row declaring neither writes none of them -- falsifier: uv run pytest tests/nodes/node_host_installer_serve_units -q -k temp_cache_roots_declared"
 evidence_requirements:
 - kind: tests
   description: The serve unit and volume bar tests at the pushed head.
@@ -57,6 +62,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_host_installer_serve_units -q --no-cov -n 0 -p no:randomly -k worktree_root
+    cwd: .
+- id: dod-omn26371-temp-cache-roots
+  description: The serve unit installer writes TMPDIR, UV_CACHE_DIR and XDG_CACHE_HOME from the host row's lab_tmp_root and lab_cache_root, writes none for a row that declares neither, and refuses a root on a volume above 85 percent used. The test written first failed on dev with extra_forbidden for hosts.0.lab_tmp_root.
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_serve_units -q --no-cov -n 0 -p no:randomly -k temp_cache_roots
     cwd: .
 - id: dod-omn26371-ac4
   description: "AC4: moving existing lane run dirs and caches needs the live CLAIMs and the process table read on each host before each move. This pull request moves nothing. A disposition is required at the local Done gate."
