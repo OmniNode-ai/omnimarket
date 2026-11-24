@@ -64,6 +64,22 @@ http_mount:
   factory: "omnimarket.nodes.node_projection_query_api_effect.ports.asgi_app:create_app"
   path_prefix: "/projection-api"
 
+# The page cache (OMN-24458): a served projection page is held in the shared
+# Valkey for ttl_seconds; a read past that recomputes the page from the windowed
+# store read. The Valkey address and password are read from the environment
+# variables named here, never written here. A Valkey that does not answer makes
+# the page come from the store with cache.fallback set in the answer.
+page_cache:
+  ttl_seconds: 30
+  key_prefix: "projection-page:v1"
+  valkey:
+    host_env: VALKEY_HOST
+    port_env: VALKEY_PORT
+    password_env: VALKEY_PASSWORD
+    database: 5
+    connect_timeout_seconds: 2
+    operation_timeout_seconds: 2
+
 # The routes of the mounted app, in serving order. Paths are the service's own;
 # the mount prefix is prepended. A route with no default on a query parameter
 # leaves the parameter optional.
@@ -100,10 +116,11 @@ query_routes:
     kind: projection_page
     methods: [GET]
     paths: ["/projection/{topic:path}"]
-    dependencies: [topic_map, row_source]
+    dependencies: [topic_map, row_source, page_cache]
     query:
       - {name: correlation_id, type: str}
       - {name: since, type: str}
+      - {name: window, type: str, pattern: "^[0-9]+[hHdD]$"}
       - {name: limit, type: int, ge: 1}
       - {name: order, type: str, pattern: "^(?i:asc|desc)$"}
       - {name: order_by, type: str}

@@ -82,6 +82,17 @@ dev_tag_heartbeat:
   persistence:
     persist_runs: 3
     streak_path: .onex_state/lab-alarm/dev-tag-heartbeat-streaks.json
+  # Optional. Declared, the agent's systemd USER unit is read first (OMN-26316), so a stopped unit
+  # breaches on its own persist_runs streak instead of waiting out the 30 minute beat-age bound.
+  # The scope is NOT a setting: the adapter always runs systemctl --user, because the agent is a
+  # USER unit and a system-scope read of its name prints "inactive" while the unit is running. A
+  # unit that is not found in that scope (a wrong name or host; is-active prints "inactive" for a
+  # missing unit too) reads INDETERMINATE, never an alarm: only a loaded unit's state can alarm.
+  # host_command is the argv prefix that reaches a shell on the host the unit runs on.
+  unit:
+    name: deploy-agent-dev.service
+    host_command: [ssh, -o, BatchMode=yes, example-host]
+    timeout_seconds: 10
 # The delegation chain canary condition (OMN-24400). Needed by the delegation-chain-canary verbs only. The newest completed run of
 # the workflow decides, in both directions; the alarm script's 180 minute bound (one two-hour period plus slack) is held here as data.
 delegation_chain_canary:

@@ -1,0 +1,24 @@
+name: node_topic_reaper_scheduled_effect
+version: "0.1.0"
+description: "Calls the topic reaper on the runtime tick as a dry run and logs one line per run"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_topic_reaper_scheduled_effect: "omnimarket.nodes.node_topic_reaper_scheduled_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.38.3"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "schedule", "broker-topics", "OMN-26438"]
+pack: "topics"
+display_name: "Topic Reaper Scheduled"
+node_role: "effect"
