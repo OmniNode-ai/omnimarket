@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Landing Proof Gate Compute
+# Direct invocation only: no event bus or terminal event.
+name: "node_landing_proof_gate_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: []
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: >-
+  Decide whether a pull request may merge or be armed. It answers PROVEN only when the lab proof it carries is for
+  the change that merges: a Lab line naming a commit that is the head or has the head's patch id (base...sha), so only a
+  base merge may differ. A change to a grader, check, gate or judge also names a known good answer that passed and a
+  known bad one that failed. An open HOLD row or do-not-land message naming the pull request answers DRAFT whatever is
+  green, until a RELEASE lifts it. A documentation-only or test-duration-only change needs no Lab line. A proof, a patch
+  id or a ledger that cannot be read answers DRAFT with the reason "proof unreadable". The pull request reader, the
+  ledger reader and the patch-id reader are injected through protocols; the patterns and word lists are policy.json.
+  One command (python -m omnimarket.nodes.node_landing_proof_gate_compute) prints the answer as one typed JSON line.
+input_model:
+  name: "ModelProofGateRequest"
+  module: "omnimarket.nodes.node_landing_proof_gate_compute.models.model_proof_gate"
+  description: "Typed inputs: repository, number, base, head."
+output_model:
+  name: "ModelProofGateResult"
+  module: "omnimarket.nodes.node_landing_proof_gate_compute.models.model_proof_gate"
+  description: "Typed result: PROVEN or DRAFT with the reasons named."
+handler:
+  module: "omnimarket.nodes.node_landing_proof_gate_compute.handlers.handler_landing_proof_gate"
+  class: "HandlerLandingProofGate"
+  input_model: "omnimarket.nodes.node_landing_proof_gate_compute.models.model_proof_gate.ModelProofGateRequest"
+  output_model: "omnimarket.nodes.node_landing_proof_gate_compute.models.model_proof_gate.ModelProofGateResult"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_landing_proof_gate_compute.handlers.handler_landing_proof_gate:HandlerLandingProofGate"
+  handlers:
+    - operation: "decide"
+      handler:
+        name: "HandlerLandingProofGate"
+        module: "omnimarket.nodes.node_landing_proof_gate_compute.handlers.handler_landing_proof_gate"
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: "The command python -m omnimarket.nodes.node_landing_proof_gate_compute, or direct invocation of the handler with injected readers."
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+metadata:
+  transport_type: local
+  description: "Landing Proof Gate Compute — one pure decision over injected readers."
+  author: "OmniNode Team"
+  created: "2026-11-24"
+  tags: ['compute', 'landing-proof-gate']

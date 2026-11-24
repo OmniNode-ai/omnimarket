@@ -54,10 +54,48 @@ def test_a_proof_gate_step_exists_and_runs_before_arming() -> None:
     assert gate < arm
 
 
-def test_arming_and_enqueueing_need_the_gate_to_answer_proven() -> None:
+def test_arming_needs_the_gate_to_answer_proven() -> None:
     assert PROVEN in str(_named("Enable auto-merge")["if"])
+    assert PROVEN in str(_named("Refuse feature-base auto-merge")["if"])
+
+
+def test_enqueueing_needs_the_gate_to_answer_proven() -> None:
     enqueue = next(s for s in _steps() if "Enqueue armed PR" in str(s.get("name")))
-    assert PROVEN in str(enqueue["if"])
+    assert enqueue["env"]["PROVEN"] == "${{ steps.proof_gate.outputs.proven }}"
+    run = str(enqueue["run"])
+    assert run.index('if [ "$PROVEN" != "true" ]') < run.index("OWNER=")
+
+
+@pytest.mark.parametrize("proven", ["false", ""])
+def test_the_enqueue_step_does_nothing_unless_proven(
+    tmp_path: Path, proven: str
+) -> None:
+    stub_dir = tmp_path / "stub"
+    stub_dir.mkdir()
+    gh = stub_dir / "gh"
+    gh.write_text(STUB)
+    gh.chmod(gh.stat().st_mode | stat.S_IXUSR)
+    enqueue = next(s for s in _steps() if "Enqueue armed PR" in str(s.get("name")))
+    script = tmp_path / "enqueue.sh"
+    script.write_text(str(enqueue["run"]))
+    env = {
+        **os.environ,
+        "PATH": f"{stub_dir}{os.pathsep}{os.environ['PATH']}",
+        "STUB_DIR": str(stub_dir),
+        "GH_REPO": "OmniNode-ai/omnimarket",
+        "PR": "6765",
+        "PROVEN": proven,
+    }
+    done = subprocess.run(
+        ["bash", str(script)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=ROOT,
+    )
+    assert done.returncode == 0, done.stderr  # the stub gh exits 9 on any call
+    assert "not enqueued" in done.stdout
 
 
 def test_the_gate_step_asks_the_node_at_the_live_head() -> None:
