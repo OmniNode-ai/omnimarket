@@ -1,0 +1,49 @@
+schema_version: 1.0.0
+ticket_id: OMN-26508
+title: The work-ledger reader's bus-session route reads replies through a consumer that joins no group, so a read does not pay a group join
+summary: A lane-liveness read through the work-ledger reader took 7.4 s on a lab host while the query node answered in 0.26 s; KafkaTransport.start() in the infra query client took 4.07 s joining a fresh uuid consumer group and priming the first fetch. The reader's route factory now builds GrouplessLedgerQueryClient, the infra handler over a transport that assigns the reply partitions by hand and seeks to the end, with no group and no committed offset.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26508-groupless-reply
+  statement: The reader's bus-session route reads replies from the end of the completed topic through hand-assigned partitions and joins no consumer group.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: a test that drives the reader route over a fake aiokafka fails at the merge base (a consumer is built with a uuid group id) and passes on the branch (no consumer carries a group id) -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_no_group_join_omn26508.py -q -n 0 --no-cov passes on origin/dev'
+  - id: AC6
+    statement: 'AC6: the reader node tests stay green -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect -q -n 0 --no-cov fails on the branch'
+evidence_requirements:
+- kind: tests
+  description: The groupless reply tests pass at the pushed head, the no-group-join test fails at the merge base, and the reader node tests stay green.
+  command: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_no_group_join_omn26508.py tests/unit/nodes/node_work_ledger_reader_effect/test_groupless_reply_omn26508.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26508-ac5-no-group-join
+  description: 'AC5: the reader route built by build_point_read over a bus-session route builds only consumers with no group id, assigns the reply partitions and seeks to the end; a reply topic the broker does not list is refused. Fails at the merge base, where the consumer carries a uuid group id.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_no_group_join_omn26508.py tests/unit/nodes/node_work_ledger_reader_effect/test_groupless_reply_omn26508.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26508-ac6-reader-tests-green
+  description: 'AC6: the reader node test directory passes with the groupless client wired.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26508-integration-proof
+  description: the groupless reply tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26508 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_no_group_join_omn26508.py tests/unit/nodes/node_work_ledger_reader_effect/test_groupless_reply_omn26508.py -q --no-cov

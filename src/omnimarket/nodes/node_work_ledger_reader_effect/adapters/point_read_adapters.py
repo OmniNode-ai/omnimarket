@@ -232,11 +232,12 @@ def build_point_read(
             from omnibase_infra.cli.cli_ledger import (
                 resolve_work_ledger_query_transport,
             )
-            from omnibase_infra.handlers.handler_work_ledger_query import (
-                HandlerWorkLedgerQuery,
+
+            from omnimarket.nodes.node_work_ledger_reader_effect.adapters.groupless_ledger_query_client import (
+                GrouplessLedgerQueryClient,
             )
 
-            return HandlerWorkLedgerQuery(
+            return GrouplessLedgerQueryClient(
                 resolve_work_ledger_query_transport(route.bus_lane)
             )
 
