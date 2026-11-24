@@ -42,10 +42,15 @@ from tests.unit.nodes.node_overlay_store.support import (
 
 pytestmark = pytest.mark.integration
 
-MIGRATION = (
+MIGRATIONS = (
     Path(__file__).resolve().parents[1]
     / "src/omnimarket/nodes/node_projection_overlay_store/migrations"
-    / "0000_create_overlay_store.sql"
+)
+MIGRATION = MIGRATIONS / "0000_create_overlay_store.sql"
+# The grant files need the runtime role, which a throwaway database does not have.
+MIGRATION_FILES = (
+    "0000_create_overlay_store.sql",
+    "0002_overlay_store_revision_provenance_audit.sql",
 )
 META = MessageMeta(topic="t", partition=0, offset=1, fallback_id="f")
 
@@ -119,7 +124,8 @@ async def _migrated() -> AsyncIterator[
     connection = await asyncpg.connect(_dsn(database))
     try:
         await connection.execute("CREATE SCHEMA IF NOT EXISTS omninode_internal")
-        await connection.execute(MIGRATION.read_text(encoding="utf-8"))
+        for name in MIGRATION_FILES:
+            await connection.execute((MIGRATIONS / name).read_text(encoding="utf-8"))
         published: list[tuple[str, bytes | None, bytes]] = []
 
         async def publish(topic: str, key: bytes | None, value: bytes) -> None:
@@ -159,7 +165,10 @@ async def test_a_load_is_stored_equal_with_its_key_order_and_published_as_stored
         topic, key, value = published[-1]
         assert topic == SNAPSHOT_TOPIC
         assert key == loaded.overlay_id.encode("utf-8")
-        assert ModelOverlayStoreRecord.model_validate_json(value) == loaded
+        # The snapshot carries the revision the store numbered the load with.
+        assert ModelOverlayStoreRecord.model_validate_json(value) == loaded.model_copy(
+            update={"revision": 1}
+        )
 
 
 @pytest.mark.integration
@@ -173,7 +182,9 @@ async def test_an_older_load_changes_nothing_and_the_newer_is_republished() -> N
         await runner.project_event("t", newer.model_dump(mode="json"), META)
         await runner.project_event("t", older.model_dump(mode="json"), META)
         assert (await _stored(connection))["bus_lane"] == TABLE["bus_lane"]
-        assert ModelOverlayStoreRecord.model_validate_json(published[-1][2]) == newer
+        assert ModelOverlayStoreRecord.model_validate_json(
+            published[-1][2]
+        ) == newer.model_copy(update={"revision": 1})
 
 
 @pytest.mark.integration
