@@ -44,7 +44,6 @@ config:
   - package-lock.json
   - CHANGELOG*
   - contracts/OMN-*.yaml
-  - '*ROLLING_WORK_LEDGER*'
 event_bus:
   subscribe_topics: []
   publish_topics: []
