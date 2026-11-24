@@ -26,6 +26,7 @@ from omnimarket.nodes.node_hook_delegate_effect.handlers.handler_hook_delegate i
     write_switches,
 )
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_claude import (
+    HOOK_ASSETS_UNREADABLE_FIX,
     SWITCH_OVERRIDE_FIX,
     HandlerSetupClaude,
 )
@@ -124,9 +125,29 @@ def _report(
     """``cause`` is the step that stopped the command; its fix leads, so a refused
     off never leads with advice for on (review 2026-11-15)."""
     claude_code = _claude_code(observations[0])
-    fix = (cause.fix if cause is not None else None) or (
-        _USER_STEP.get(claude_code) or _advice(observations)
+    hooks_obs = next(
+        (o for o in observations if getattr(o, "step", None) == "claude-hooks"), None
     )
+    generic_unreadable_assets = (
+        hooks_obs is not None
+        and hooks_obs.status == "action_required"
+        and hooks_obs.fix == HOOK_ASSETS_UNREADABLE_FIX
+    )
+    # Only `status` reports "off"; `on` that failed reports "not_ready" and keeps its repair.
+    healthy_off = (
+        status == "off"
+        and cause is None
+        and claude_code == "ready"
+        and not delegation_switch_enabled()
+        and generic_unreadable_assets
+    )
+    fix: str | None
+    if healthy_off:
+        fix = "Run onex delegation on, or switch it on in onex under /delegation."
+    else:
+        fix = (cause.fix if cause is not None else None) or (
+            _USER_STEP.get(claude_code) or _advice(observations)
+        )
     switches = _switch_words()
     if json_output:
         click.echo(
