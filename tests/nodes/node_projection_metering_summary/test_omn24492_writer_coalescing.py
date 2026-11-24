@@ -25,10 +25,6 @@ from omnimarket.models.model_metering_summary_refresh_requested import (
     ModelMeteringSummaryRefreshRequested,
 )
 from omnimarket.nodes.node_metering_summary_compute import METERING_COLUMNS
-from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_incremental_refresh import (
-    INCREMENTAL_RECORDS_SQL,
-    STORED_DAYS_SQL,
-)
 from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_summary_store_refresh import (
     RECORDS_SQL,
     VISIBLE_TENANTS_SQL,
@@ -36,6 +32,10 @@ from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering
 from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_summary_writer import (
     MeteringSummaryProjectionWriter,
     coalesce_default_seconds,
+)
+from omnimarket.nodes.node_projection_metering_summary.metering_incremental_refresh import (
+    INCREMENTAL_RECORDS_SQL,
+    STORED_DAYS_SQL,
 )
 from omnimarket.nodes.node_projection_metering_summary.metering_refresh_coalescer import (
     MeteringRefreshCoalescer,

@@ -24,14 +24,14 @@ from omnimarket.nodes.node_projection_metering_summary import (
     ModelMeteringSummaryFoldRequest,
     ModelMeteringSummaryRow,
 )
-from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_incremental_refresh import (
-    refresh_incrementally,
-)
 from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_summary_store_refresh import (
     ProtocolMeteringStoreReads,
 )
 from omnimarket.nodes.node_projection_metering_summary.handlers.handler_projection_metering_summary import (
     HandlerProjectionMeteringSummary,
+)
+from omnimarket.nodes.node_projection_metering_summary.metering_incremental_refresh import (
+    refresh_incrementally,
 )
 from omnimarket.nodes.node_projection_metering_summary.metering_refresh_coalescer import (
     MeteringRefreshCoalescer,

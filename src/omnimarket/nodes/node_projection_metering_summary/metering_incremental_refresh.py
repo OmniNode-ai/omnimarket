@@ -39,19 +39,19 @@ from omnimarket.nodes.node_metering_summary_compute import (
     metering_record_from_row,
 )
 from omnimarket.nodes.node_projection_metering_summary.baseline import resolve_baseline
-from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_incremental_fold import (
+from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_summary_store_refresh import (
+    RECORDS_SQL,
+    STORED_ALL_SQL,
+    VISIBLE_TENANTS_SQL,
+    ProtocolMeteringStoreReads,
+)
+from omnimarket.nodes.node_projection_metering_summary.metering_incremental_fold import (
     ModelMeteringFoldState,
     add_records,
     merge_stored_days,
     state_from_continuation,
     state_rows,
     stored_continuation,
-)
-from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_summary_store_refresh import (
-    RECORDS_SQL,
-    STORED_ALL_SQL,
-    VISIBLE_TENANTS_SQL,
-    ProtocolMeteringStoreReads,
 )
 from omnimarket.nodes.node_projection_metering_summary.models import (
     ModelMeteringSummaryRow,

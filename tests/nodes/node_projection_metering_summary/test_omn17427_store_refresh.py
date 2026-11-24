@@ -29,10 +29,6 @@ from omnimarket.nodes.node_metering_summary_compute import (
     ModelMeteringRecord,
     metering_record_from_row,
 )
-from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_incremental_refresh import (
-    INCREMENTAL_RECORDS_SQL,
-    STORED_DAYS_SQL,
-)
 from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_summary_store_refresh import (
     RECORDS_SQL,
     VISIBLE_TENANTS_SQL,
@@ -40,6 +36,10 @@ from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering
 )
 from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_summary_writer import (
     MeteringSummaryProjectionWriter,
+)
+from omnimarket.nodes.node_projection_metering_summary.metering_incremental_refresh import (
+    INCREMENTAL_RECORDS_SQL,
+    STORED_DAYS_SQL,
 )
 from omnimarket.projection.sqlite_metering_summary import (
     refresh_metering_summary_topic,
