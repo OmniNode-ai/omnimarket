@@ -60,8 +60,12 @@ from omnimarket.models.work_state_projection import (
     ModelWorkStateRules,
 )
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
-    FileLedgerRowSource,
+    LedgerRouteError,
+    build_row_source,
     read_queries,
+)
+from omnimarket.nodes.node_reading_writer_effect.overlay import (
+    ModelCommandLedgerReadRoute,
 )
 from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ModelLedgerQuery,
@@ -98,6 +102,12 @@ def _runtime() -> dict[str, Any]:
     return dict(data["runtime"])
 
 
+def _unrouted_cause(rt: Mapping[str, Any]) -> str:
+    return (
+        f"ledger-route-unconfigured: {rt['ledger']['read_route']['command_env']} unset"
+    )
+
+
 def _env_path(env: Mapping[str, str], name: str) -> Path | None:
     value = env.get(name, "").strip()
     return Path(value) if value else None
@@ -126,7 +136,7 @@ def source_readers(
 
     def read_ledger() -> SourceRead:
         if ledger is None:
-            raise SourceUnreadableError(f"{rt['ledger']['path_env']} unset")
+            raise SourceUnreadableError(_unrouted_cause(rt))
         rows: list[Any] = []
         since = now - timedelta(hours=float(rt["ledger"]["lookback_hours"]))
         row_types = tuple(rt["ledger"]["row_types"])
@@ -241,7 +251,7 @@ def source_readers(
         """Every operator ask recorded as a commitment, read over its own window: an ask outlives the lane rows' window."""
         cfg = rt["commitments"]
         if ledger is None:
-            raise SourceUnreadableError(f"{rt['ledger']['path_env']} unset")
+            raise SourceUnreadableError(_unrouted_cause(rt))
         try:
             commitment_rules = load_structured_overlay(
                 cfg["overlay_id"],
@@ -375,12 +385,17 @@ def run(
     rules = load_structured_overlay(
         NODE, ModelWorkStateRules, env, file_env=rt["overlay_file_env"]
     )
-    # A ledger source the caller built (the overlay's bus read route) is the only ledger read: the file route below is
-    # consulted only when none was given, never as a fallback after one failed.
+    # The ledger is read only over the bus: a source the caller built (the overlay's read route) or else the contract's own
+    # command route, never a file. A route whose command is not configured leaves the ledger source unread.
     ledger: ProtocolLedgerRowSource | None = ledger_source
-    live = _env_path(env, rt["ledger"]["path_env"])
-    if ledger is None and live is not None:
-        ledger = FileLedgerRowSource(live, live.parent / rt["ledger"]["archive_subdir"])
+    if ledger is None:
+        try:
+            ledger = build_row_source(
+                ModelCommandLedgerReadRoute.model_validate(rt["ledger"]["read_route"]),
+                env,
+            )
+        except LedgerRouteError:
+            ledger = None
     snapshots = (
         _env_path(env, rt["snapshots"]["dir_env"]) or home / rt["snapshots"]["relpath"]
     )

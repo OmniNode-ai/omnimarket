@@ -49,6 +49,8 @@ description: >
   source snapshot hash. Missing sequence/time authority, gaps, duplicates,
   missing sources or a truncated page report incomplete. It never certifies
   archive extents the caller has not supplied from a sealed source manifest.
+# The node's answering handler. The bus route below goes through the expiry handler, which drops a
+# request whose caller has left (OMN-26433) and answers every other one with this handler.
 handler:
   module: omnimarket.nodes.node_work_ledger_query_effect.handlers.handler_work_ledger_query
   class: HandlerWorkLedgerQuery
@@ -59,10 +61,10 @@ handler_routing:
       topic: onex.cmd.omnimarket.work-ledger-query-requested.v1
       message_category: command
       event_model: omnimarket.models.work_ledger_query.model_work_ledger_query.ModelWorkLedgerQueryRequest
-      handler_module: omnimarket.nodes.node_work_ledger_query_effect.handlers.handler_work_ledger_query
+      handler_module: omnimarket.nodes.node_work_ledger_query_effect.handlers.handler_work_ledger_query_expiry
       handler:
-        name: HandlerWorkLedgerQuery
-        module: omnimarket.nodes.node_work_ledger_query_effect.handlers.handler_work_ledger_query
+        name: HandlerWorkLedgerQueryExpiry
+        module: omnimarket.nodes.node_work_ledger_query_effect.handlers.handler_work_ledger_query_expiry
 terminal_event: onex.evt.omnimarket.work-ledger-query-completed.v1
 event_bus:
   subscribe_topics: [onex.cmd.omnimarket.work-ledger-query-requested.v1]
@@ -104,6 +106,15 @@ work_ledger_query:
   # A latest-state query with no page_size reads this many entries (OMN-23606): entries are small, so the
   # default page is larger than a point query's, and the answer bound below still refuses an answer over it.
   latest_default_page_size: 1000
+  # A request whose caller left is dropped, not answered (OMN-26433): the node is the one consumer of
+  # its topic, and a request whose caller stopped waiting hours ago was answered like a live one while
+  # live callers queued behind it (consumer lag 4253 on 2026-11-23). A request carrying requested_at
+  # older than its own max_age_seconds, or older than this declared default when it names none, gets
+  # no answer; each drop is counted and logged once with its age. A request with no requested_at
+  # cannot be aged and is answered. The default is the longest wait a caller declares today (the
+  # duplicate guard's LEDGER_READ_TIMEOUT_S, 600 s).
+  request_expiry:
+    default_max_age_seconds: 600
   # Every answer travels as one record on the completed topic. The producer
   # refuses a record over its max_request_size (1,048,588 on the dev bus), and
   # an unbounded newest-per-lane answer measured 73 MB there (OMN-22478). An
@@ -138,6 +149,8 @@ golden_path:
   - "Replay the rows with the markdown read rules"
   - "Return the typed answer on terminal_event"
 dod_evidence:
+  - test: tests/unit/nodes/node_work_ledger_query_effect/test_request_expiry_omn26433.py::test_a_stale_request_gets_no_answer_and_a_live_request_does
+    description: "A request older than its caller's bound gets no answer on the bus; a live request does"
   - test: tests/test_work_ledger_history_query.py::test_history_returns_both_rolls_in_canonical_order_with_authoritative_time
     description: "History preserves sequence order, raw sources and database ingest authority"
   - test: tests/test_work_ledger_history_postgres.py::test_postgres_history_returns_both_sources_and_rejects_truncation_and_gaps
@@ -170,4 +183,4 @@ dod_evidence:
     description: "The reader node paging the query node by next_cursor reads the store once for the window"
 metadata:
   transport_type: kafka
-  related_tickets: [OMN-20738, OMN-19513, OMN-21948, OMN-23541, OMN-23694, OMN-24031]
+  related_tickets: [OMN-20738, OMN-19513, OMN-21948, OMN-23541, OMN-23694, OMN-24031, OMN-26433]

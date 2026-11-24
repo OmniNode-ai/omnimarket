@@ -61,6 +61,9 @@ externally_consumed_topics:
   - onex.snapshot.projection.floor-work-state.v1
 runtime_dispatch:
   external_trigger: "python -m omnimarket.nodes.node_work_state_projection_effect, by the floor publish tick and the fill orchestrator's pass."
+  # The scheduled projection node's file_sources projector imports this node's run() and calls it once per tick.
+  callers:
+    - path: src/omnimarket/nodes/node_work_state_projection_scheduled_effect/protocols/adapter_file_sources_projector.py
 descriptor:
   node_archetype: effect
   purity: effectful
@@ -68,7 +71,7 @@ descriptor:
   idempotent: true
   timeout_ms: 600000
   side_effects:
-    - reads ledger rows through the reading writer's file ledger row source
+    - reads ledger rows through the work ledger bus read command
     - reads the PR watcher state, plan files under the plans root, the newest Linear snapshot, lane receipts and reading rows
     - writes each source's last good read as a snapshot file, served stale when that source is over its overlay budget
     - writes the projection JSON atomically to the output path
@@ -91,8 +94,8 @@ runtime:
   # The shared ticket_scope overlay: its project_ids and project_names join the scope's in-scope projects. Absent changes nothing.
   ticket_scope_overlay: {overlay_id: ticket_scope, file_env: ONEX_TICKET_SCOPE_OVERLAY}
   ledger:
-    path_env: ONEX_LEDGER_PATH
-    archive_subdir: archive
+    # The work ledger is read only through the bus read command this route names; no ledger file is opened.
+    read_route: {route: command, command_env: ONEX_LEDGER_BUS_READ_COMMAND, timeout_seconds: 20, row_limit: 500}
     lookback_hours: 72
     row_types: [CLAIM, TERMINAL, STATUS]
   # Operator asks recorded as ledger commitments (node_commitment_ledger_compute): read over their own window, because an

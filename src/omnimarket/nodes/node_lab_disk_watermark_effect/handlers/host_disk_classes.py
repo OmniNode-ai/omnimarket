@@ -15,6 +15,7 @@ import pwd
 import re
 import stat
 import subprocess
+import tempfile
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -136,15 +137,58 @@ def _dist_info_key(entry: Path) -> tuple[str, str]:
     return ("unclassified", "")
 
 
-def _owner_name(path: Path) -> str:
+def _owner_name(uid: int) -> str:
     try:
-        return pwd.getpwuid(path.lstat().st_uid).pw_name
-    except (KeyError, OSError):
-        return str(path.lstat().st_uid)
+        return pwd.getpwuid(uid).pw_name
+    except KeyError:
+        return str(uid)
+
+
+class _CachedEntry(NamedTuple):
+    """What one walk of a uv-cache entry found, keyed by the entry's inode and change time."""
+
+    ino: int
+    ctime_ns: int
+    size: int
+    newest: float
+    package: str
+    revision: str
+
+
+def _load_entry_cache(path: Path | None) -> dict[str, _CachedEntry]:
+    """The sizes the earlier runs walked; a missing, unreadable or malformed file is an empty cache, never a raise."""
+    if path is None:
+        return {}
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+        return {name: _CachedEntry(*fields) for name, fields in document.items()}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def _store_entry_cache(path: Path, entries: dict[str, _CachedEntry]) -> None:
+    """Write the cache next to the reading file, atomically; a failed write loses only the saving, so it is not raised."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, name = tempfile.mkstemp(dir=path.parent, prefix=".uv-entries-")
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                json.dump({key: list(value) for key, value in entries.items()}, handle)
+            os.replace(name, path)
+        except BaseException:
+            Path(name).unlink(missing_ok=True)
+            raise
+    except OSError:
+        return
 
 
 class HostDiskClassReader:
-    """Read the consumers of a host's disk by class; ``now``, ``process_references`` and ``run_docker`` are injected."""
+    """Read the consumers of a host's disk by class; ``now``, ``process_references`` and ``run_docker`` are injected.
+
+    ``monotonic`` is the clock of the scan budget. The uv cache is content addressed: an ``archive-v0`` entry is written
+    once and never changed, so a walk of it stays true while its inode and change time are the same, and the walks of
+    earlier runs are kept in ``entry_cache_file`` (OMN-26097: the full walk took 527 s of the unit's 600 s start timeout).
+    """
 
     def __init__(
         self,
@@ -154,24 +198,57 @@ class HostDiskClassReader:
             [], ProcessReferences | None
         ] = read_process_references,
         run_docker: Callable[[Sequence[str], int], str] | None = None,
+        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self.now = now
         self.process_references = process_references
         self.run_docker = run_docker if run_docker is not None else _default_run_docker
-        self._docker_output: dict[tuple[str, ...], str] = {}
+        self.monotonic = monotonic
+        self._docker_output: dict[tuple[str, ...], str | BaseException] = {}
+        self._skipped: dict[str, int] = {}
+        self._deadline: float | None = None
+        self._entry_cache_file: Path | None = None
+        self._persist_entry_cache = True
+
+    def skipped_by_class(self) -> tuple[tuple[str, int], ...]:
+        """The entries the last reading listed and then could not read (gone before the scan reached them), per class."""
+        return tuple(sorted(self._skipped.items()))
 
     def _docker_text(self, command: Sequence[str], timeout: int) -> str:
-        """One docker command is run once per reading, however many classes read its output."""
+        """One docker command is run once per reading, however many classes read its output, and so is its failure.
+
+        A command that timed out was run again by each class that reads it (three for ``docker system df``), so a
+        daemon that answers in more than the command's timeout cost that timeout three times in one reading.
+        """
         key = tuple(command)
         if key not in self._docker_output:
-            self._docker_output[key] = self.run_docker(command, timeout)
-        return self._docker_output[key]
+            try:
+                self._docker_output[key] = self.run_docker(command, timeout)
+            except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
+                self._docker_output[key] = exc
+        outcome = self._docker_output[key]
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
 
     def read_classes(
-        self, row: ModelWatermarkHost, settings: ModelHostDiskReadingSettings
+        self,
+        row: ModelWatermarkHost,
+        settings: ModelHostDiskReadingSettings,
+        *,
+        budget_seconds: float | None = None,
+        entry_cache_file: Path | None = None,
+        persist_entry_cache: bool = True,
     ) -> tuple[ModelDiskClassReading, ...]:
+        """One reading per class. A filesystem scan that spends ``budget_seconds`` stops and reads as unread with the reason."""
         refs = self.process_references()
         self._docker_output = {}
+        self._skipped = {}
+        self._deadline = (
+            None if budget_seconds is None else self.monotonic() + budget_seconds
+        )
+        self._entry_cache_file = entry_cache_file
+        self._persist_entry_cache = persist_entry_cache
         return tuple(self._class(name, row, settings, refs) for name in ALL_CLASSES)
 
     def _class(
@@ -219,19 +296,54 @@ class HostDiskClassReader:
         held = _held_names(entries_dir, refs) if refs is not None else set()
         groups: dict[tuple[str, str], list[_Item]] = {}
         total = 0
-        for child in entries:
-            walked = walk_entry(child)
-            size = walked.size
-            age = (
-                0
-                if walked.newest == float("inf")
-                else max(0, int(self.now() - walked.newest))
-            )
-            key = _dist_info_key(child) if name == "uv_cache" else (child.name, "")
+        cached = _load_entry_cache(self._entry_cache_file) if name == "uv_cache" else {}
+        kept_cache: dict[str, _CachedEntry] = {}
+        for index, child in enumerate(entries):
+            # The cache and the worktrees are rewritten by other lanes while this walks them: an entry listed above can be
+            # gone by now, and a vanished entry is skipped and counted, never raised (the unit exited 3 on one).
+            try:
+                info = child.lstat()
+            except OSError:
+                self._skipped[name] = self._skipped.get(name, 0) + 1
+                continue
+            hit = cached.get(child.name)
+            if hit is not None and (hit.ino, hit.ctime_ns) == (
+                info.st_ino,
+                info.st_ctime_ns,
+            ):
+                size, newest, key = hit.size, hit.newest, (hit.package, hit.revision)
+                kept_cache[child.name] = hit
+            else:
+                if self._deadline is not None and self.monotonic() >= self._deadline:
+                    self._save_entry_cache(name, kept_cache)
+                    return ModelDiskClassReading(
+                        class_name=name,
+                        status="unread",
+                        unread_reason=(
+                            f"scan budget spent after {index} of {len(entries)} entries"
+                            + (
+                                "; the walks are kept for the next run"
+                                if name == "uv_cache"
+                                else ""
+                            )
+                        ),
+                    )
+                walked = walk_entry(child)
+                if walked.newest == float("inf") and not os.path.lexists(child):
+                    self._skipped[name] = self._skipped.get(name, 0) + 1
+                    continue
+                size, newest = walked.size, walked.newest
+                key = _dist_info_key(child) if name == "uv_cache" else (child.name, "")
+                if name == "uv_cache" and newest != float("inf"):
+                    kept_cache[child.name] = _CachedEntry(
+                        info.st_ino, info.st_ctime_ns, size, newest, key[0], key[1]
+                    )
+            age = 0 if newest == float("inf") else max(0, int(self.now() - newest))
             groups.setdefault(key, []).append(
-                _Item(size, age, _owner_name(child), child.name in held)
+                _Item(size, age, _owner_name(info.st_uid), child.name in held)
             )
             total += size
+        self._save_entry_cache(name, kept_cache)
         built = [
             ModelDiskGroup(
                 package=key[0],
@@ -254,12 +366,20 @@ class HostDiskClassReader:
             class_name=name,
             status="read",
             total_bytes=total,
-            entry_count=len(entries),
+            entry_count=len(entries) - self._skipped.get(name, 0),
             revision_count=len(groups),
             groups=tuple(kept),
             groups_omitted=max(0, omitted),
             unreadable_process_count=len(refs.unreadable) if refs is not None else 0,
         )
+
+    def _save_entry_cache(self, name: str, kept: dict[str, _CachedEntry]) -> None:
+        if (
+            name == "uv_cache"
+            and self._entry_cache_file is not None
+            and self._persist_entry_cache
+        ):
+            _store_entry_cache(self._entry_cache_file, kept)
 
     def _docker(
         self,

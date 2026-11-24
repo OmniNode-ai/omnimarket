@@ -25,8 +25,6 @@ files:
     src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml: 5
     src/omnimarket/nodes/node_host_installer_registry_units/handlers/handler_registry_units.py: 3
     src/omnimarket/nodes/node_host_reading_effect/overlay.example.yaml: 4
-    src/omnimarket/nodes/node_host_reconcile_effect/__main__.py: 1
-    src/omnimarket/nodes/node_hourly_tick_effect/models/model_hourly_tick.py: 1
     src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_launch.py: 1
     src/omnimarket/nodes/node_lab_fill_plan_compute/handlers/handler_lab_fill_lane_render.py: 1
     src/omnimarket/nodes/node_lab_history_archive_effect/handlers/handler_lab_history_archive.py: 1
@@ -41,10 +39,8 @@ files:
     src/omnimarket/nodes/node_session_front_door_compute/handlers/entry.py: 1
     src/omnimarket/nodes/node_session_front_door_compute/handlers/receipt.py: 4
     src/omnimarket/nodes/node_session_resume_compute/handlers/dangling.py: 1
-    src/omnimarket/nodes/node_silent_failure_alarm_effect/handlers/handler_silent_failure_alarm.py: 1
     src/omnimarket/nodes/node_work_ledger_copy_effect/overlay.example.yaml: 2
     src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml: 3
-    src/omnimarket/nodes/node_work_state_projection_effect/contract.yaml: 1
     tests/fixtures/context_compaction/manifest.yaml: 8
     tests/fixtures/ledger_row_grammar_parity.json: 13
     tests/fixtures/occ/omn_18667_omn_18620_document_content_history.json: 6
@@ -76,7 +72,6 @@ files:
     tests/nodes/node_factory_floor_compute/fixtures/line_board_2026_11_03/s7_all_sources_unread/repaired/fixture.yaml: 3
     tests/nodes/node_factory_floor_compute/test_line_board_fixtures.py: 1
     tests/nodes/node_factory_floor_effect/test_merged_running_wiring.py: 1
-    tests/nodes/node_host_installer_registry_units/test_alarm_config_omn22778.py: 1
     tests/nodes/node_host_installer_registry_units/test_copied_units.py: 1
     tests/nodes/node_host_installer_registry_units/test_registry_units.py: 1
     tests/nodes/node_host_reading_effect/host_reading_support.py: 1
@@ -139,4 +134,4 @@ files:
     tests/unit/validators/test_ledger_file_census.py: 27
     tests/unit/work_ledger_bus/test_work_ledger_append_cli.py: 1
 ratchet:
-  omnimarket: 133
+  omnimarket: 128

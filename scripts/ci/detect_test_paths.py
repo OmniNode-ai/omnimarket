@@ -18,15 +18,10 @@ from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_file
     legacy_module_escalation,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_path_resolution import (
-    HandlerTestPathResolution,
+    resolve_changed_files,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_selection_selector import (
     HandlerTestSelectionSelector,
-)
-from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
-    ModelAdjacencyMap,
-    ModelPathResolutionRequest,
-    ModelPathResolutionResult,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_record import (
     EnumFullSuiteReason,
@@ -58,20 +53,8 @@ def resolve_test_paths(
       - Files outside src/ and tests/ contribute nothing; paths not on disk are dropped.
     """
     config = load_adjacency_map(adjacency_path)
-    result = _resolve_result(changed_files, config, repo_root or REPO_ROOT)
+    result = resolve_changed_files(changed_files, config, repo_root or REPO_ROOT)
     return list(result.selected_paths)
-
-
-def _resolve_result(
-    changed_files: list[str], config: ModelAdjacencyMap, repo_root: Path
-) -> ModelPathResolutionResult:
-    return HandlerTestPathResolution().handle(
-        ModelPathResolutionRequest(
-            changed_files=tuple(changed_files),
-            adjacency=config,
-            repo_root=str(repo_root),
-        )
-    )
 
 
 def compute_selection(
@@ -81,11 +64,12 @@ def compute_selection(
     event_name: str = "pull_request",
     feature_flag_enabled: bool = True,
     repo_root: Path | None = None,
+    base_ref: str | None = None,
     stage: int | None = None,
 ) -> ModelTestSelection:
     config = load_adjacency_map(adjacency_path)
     policy = load_policy()
-    closure_stage, root_conftest_edge = policy.closure_settings()
+    closure_stage, edge = policy.closure_settings()
     closure = (stage if stage is not None else policy.selection_stage) >= closure_stage
     root = repo_root or REPO_ROOT
 
@@ -112,14 +96,18 @@ def compute_selection(
         return _full_suite(EnumFullSuiteReason.PROTECTED_SURFACE)
 
     # OMN-26277: at the closure's stage the file-level closure replaces the module-level escalations.
+    # Below it, the module-level escalations run, then the diff resolves with a declared data file's
+    # changed keys read against base_ref (OMN-26275).
     if closure:
-        resolved = closure_selection(changed_files, config, root, root_conftest_edge)
+        resolved = closure_selection(changed_files, config, root, edge, base_ref)
         if isinstance(resolved, EnumFullSuiteReason):
             return _full_suite(resolved)
     elif reason := legacy_module_escalation(changed_files, config):
         return _full_suite(reason)
     else:
-        resolved = _resolve_result(changed_files, config, repo_root=root)
+        resolved = resolve_changed_files(changed_files, config, root, base_ref)
+        if resolved.full_suite_reason is not None:
+            return _full_suite(resolved.full_suite_reason)
     if not (selected := list(resolved.selected_paths)) and not resolved.data_only:
         # OMN-20305: nothing narrowed, so the whole tests/ tree runs. Take the
         # full-suite shard matrix; an is_full_suite=False selection of tests/
@@ -169,6 +157,7 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=Path(__file__).parent / "test_selection_adjacency.yaml",
     )
+    parser.add_argument("--base-ref", default=None)
     parser.add_argument(
         "--feature-flag",
         choices=("on", "off"),
@@ -187,6 +176,7 @@ def main(argv: list[str] | None = None) -> int:
         ref_name=args.ref_name,
         event_name=args.event_name,
         feature_flag_enabled=(args.feature_flag == "on"),
+        base_ref=args.base_ref,
         stage=args.stage,
     )
     sys.stdout.write(selection.model_dump_json())
