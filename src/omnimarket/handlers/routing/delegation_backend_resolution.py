@@ -206,6 +206,15 @@ class ModelResolvedDelegationBackend(BaseModel):
     )
     extra_headers: dict[str, str] = Field(default_factory=dict)
     inline_reasoning_terminator: str | None = Field(default=None, min_length=1)
+    reasoning_effort: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "OMN-26365: the backend row's own ``reasoning_effort``, sent as a "
+            "request option to this backend only. None: the row declares none "
+            "and the request carries none."
+        ),
+    )
     secret_ref: str | None = Field(
         default=None,
         description=(
@@ -840,6 +849,7 @@ def resolve_delegation_backend(
         timeout_ms=raw_timeout_ms,
         extra_headers=extra_headers,
         inline_reasoning_terminator=backend.get("inline_reasoning_terminator"),
+        reasoning_effort=backend.get("reasoning_effort"),
         secret_ref=secret_ref,
         api_key_env=api_key_env,
         supports_response_format_json_schema=bool(

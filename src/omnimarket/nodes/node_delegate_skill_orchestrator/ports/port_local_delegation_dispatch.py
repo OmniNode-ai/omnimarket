@@ -200,6 +200,7 @@ from omnimarket.inference import provider_quota_state
 from omnimarket.inference.protocol_config import (
     apply_inference_protocol,
     resolve_inference_protocol_default_temperature,
+    with_backend_reasoning_effort,
 )
 from omnimarket.inference.provider_finish_reason import (
     EnumProviderFinishReason,
@@ -5414,6 +5415,11 @@ class LocalDelegationDispatchPort:
         # answer room.
         provider_request_options = bound_thinking_budget_to_answer_room(
             provider_request_options, max_tokens=effective_max_tokens
+        )
+        # OMN-26365: the backend row's own reasoning effort goes to this backend
+        # only; a row that declares none sends none.
+        provider_request_options = with_backend_reasoning_effort(
+            provider_request_options, backend.reasoning_effort
         )
         # OMN-19432: the profile's prescribed temperature is a default for a
         # caller that sent none, never a competing writer of the wire key.
