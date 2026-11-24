@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_observability_install_effect
+version: 0.1.0
+description: >
+  Installs Prometheus, Grafana and the host exporter on declared lab hosts from settings, through the container unit
+  installer node, and reads back every lab_hosts row's reading from Prometheus.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_host_observability_install_effect: omnimarket.nodes.node_host_observability_install_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: true
+  side_effect_class: write
+dependencies:
+- PyYAML>=6.0.3
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- effect
+- lab
+- observability
+- in_process
+pack: operator_tooling
+display_name: Host Observability Install
+node_role: effect

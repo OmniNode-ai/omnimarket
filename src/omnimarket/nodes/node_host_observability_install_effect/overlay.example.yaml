@@ -1,0 +1,71 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# A synthetic copy of the node overlay: every host, address, path and number is made up. The real overlay is found under
+# ONEX_SKILL_OVERLAY_ROOTS as node_host_observability_install_effect/overlay.yaml, or at the file
+# ONEX_HOST_OBSERVABILITY_OVERLAY names. Every target is a row of the lab_hosts table.
+ticket: OMN-26657
+observer_host: host-a
+config_root: /var/lib/example/observability
+docker_binary: /usr/bin/docker
+restart_policy: unless-stopped
+restart_seconds: 10
+stop_timeout_seconds: 30
+probe_wait_seconds: 90
+# AC1: a host reads at most this many seconds old.
+max_reading_age_seconds: 60
+targets:
+  host-a:
+    address: host-a.example.test
+    exporter: install      # this installer keeps the exporter container running there
+    port: 9100
+  host-b:
+    address: host-b.example.test
+    exporter: existing     # an exporter already answers there; the installer only scrapes it
+    port: 9100
+exporter:
+  image: example/node-exporter:1.0
+  container: example-node-exporter
+  unit: example-node-exporter
+  network: host
+  rootfs_mount: /
+  textfile_directory: /var/lib/example/textfile
+  enable_collectors: [systemd]
+  memory_gib: 1
+  memory_swap_gib: 1
+prometheus:
+  image: example/prometheus:1.0
+  container: example-prometheus
+  unit: example-prometheus
+  address: host-a.example.test
+  port: 9090
+  network: bridge
+  data_volume: example-prometheus-data
+  job_name: lab_hosts
+  scrape_interval_seconds: 15
+  retention_time: 15d
+  retention_size: 20GB
+  memory_gib: 4
+  memory_swap_gib: 4
+grafana:
+  image: example/grafana:1.0
+  container: example-grafana
+  unit: example-grafana
+  address: host-a.example.test
+  port: 3000
+  network: bridge
+  data_volume: example-grafana-data
+  dashboard_title: Lab hosts
+  refresh_seconds: 15
+  reading_window_minutes: 30
+  memory_gib: 1
+  memory_swap_gib: 1
+  environment:
+    GF_AUTH_ANONYMOUS_ENABLED: "true"
+    GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION: "true"
+alerts:
+  host_down_minutes: 2
+  disk_percent: 85
+  inode_percent: 85
+  load_minutes: 10
+  failed_service_minutes: 1

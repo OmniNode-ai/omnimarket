@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.326"
+version = "0.4.327"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -853,6 +853,7 @@ node_host_job_claim_compute = "omnimarket.nodes.node_host_job_claim_compute"
 node_host_lane_path_share_compute = "omnimarket.nodes.node_host_lane_path_share_compute"
 node_host_local_config_drift_compute = "omnimarket.nodes.node_host_local_config_drift_compute"
 node_host_memory_admission_compute = "omnimarket.nodes.node_host_memory_admission_compute"
+node_host_observability_install_effect = "omnimarket.nodes.node_host_observability_install_effect"
 node_host_pool_alarm_effect = "omnimarket.nodes.node_host_pool_alarm_effect"
 node_host_power_effect = "omnimarket.nodes.node_host_power_effect"
 node_host_profile_compute = "omnimarket.nodes.node_host_profile_compute"
