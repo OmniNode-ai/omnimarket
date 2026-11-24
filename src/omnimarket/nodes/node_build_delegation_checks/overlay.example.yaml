@@ -9,7 +9,7 @@ alarm_lane: orchestrator-31d9-swarm
 alarm_condition: delegation_check_regression
 check_timeout_seconds: 1800
 max_alarm_latency_seconds: 900
-history_relpath: .onex_state/build-delegation-checks/builds.json
+history_relpath: build-delegation-checks/builds.json
 history_keep: 200
 merge_clone_relpath: omnimarket
 merge_branch: dev

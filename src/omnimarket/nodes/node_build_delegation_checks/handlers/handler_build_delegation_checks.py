@@ -23,6 +23,7 @@ from pathlib import Path
 
 import yaml
 
+from omnimarket.config.state_root import resolve_onex_state_root
 from omnimarket.models.delegation_check_regression import (
     EnumChangeKind,
     EnumRegressionSource,
@@ -398,6 +399,10 @@ class HandlerBuildDelegationChecks:
         if not home:
             raise OSError(f"{OMNI_HOME_ENV} names no registry root")
         root = Path(home)
+        # The registry root is a read-only mount in the runtime; the build history belongs under the declared writable state root.
+        state_root = resolve_onex_state_root(
+            purpose="node_build_delegation_checks build history"
+        )
         replay = os.environ.get(REPLAY_ENV, "").strip()
         runner: ProtocolCheckRunner = (
             recorded_results(Path(replay))
@@ -408,7 +413,7 @@ class HandlerBuildDelegationChecks:
             settings=settings,
             runner=runner,
             store=FileBuildStore(
-                root / settings.history_relpath, settings.history_keep
+                state_root / settings.history_relpath, settings.history_keep
             ),
             merges=GitMergeSource(root / settings.merge_clone_relpath),
             sink=BusRegressionSink(
