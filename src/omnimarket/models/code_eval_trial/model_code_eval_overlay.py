@@ -4,7 +4,7 @@
 
 Every value the runner's try leg takes, declared by the deployment: the
 attempt ladder, the try wall-clock bound (the score's own bound is the score node's contract timeout), the receipt slack and
-the nudge cadence, the agent's turn and diff ceilings, the draft checks, the
+the nudge cadence, the agent's turn, wall-budget and diff ceilings, the draft checks, the
 tools the runner needs, the source surface, the unit lane prefix, the onex
 executable and the caller's ticket. No key has a default but the two retry and
 void keys of OMN-24173 (0 retries and a tenth, so an overlay written before them
@@ -47,6 +47,11 @@ class ModelCodeEvalRunnerOverlay(BaseModel):
     unit_lane_prefix: str
     onex_executable: str = Field(min_length=1)
     caller_ticket: str | None = Field(pattern=r"^OMN-[0-9]+$")
+    #: The loop's own wall budget (OMN-26661): less than the try timeout, so the loop stops itself and reports
+    #: what it has instead of being killed with no result. None leaves the loop request's own value.
+    wall_budget_seconds: int | None = Field(default=None, ge=1, le=7200)
+    #: Empty finish calls that end the loop as no_change (OMN-26661); None leaves the loop request's own value.
+    max_no_change_finishes: int | None = Field(default=None, ge=1, le=10)
     #: Times an infrastructure-unscorable try is scored again or regenerated (OMN-24173); 0 retries none.
     infra_retries: int = Field(default=0, ge=0)
     #: A run closes void when more than this percent of its first tries were infrastructure-unscorable.
@@ -66,6 +71,16 @@ class ModelCodeEvalRunnerOverlay(BaseModel):
                 )
                 raise ValueError(msg)
         return value
+
+    @model_validator(mode="after")
+    def _wall_budget_fits_under_the_try_timeout(self) -> ModelCodeEvalRunnerOverlay:
+        if (
+            self.wall_budget_seconds is not None
+            and self.wall_budget_seconds >= self.try_timeout_seconds
+        ):
+            msg = "wall_budget_seconds must be less than try_timeout_seconds"
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def _attempt_budgets_are_strictly_increasing(

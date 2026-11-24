@@ -99,6 +99,10 @@ class ModelLabCodeDraft(BaseModel):
     source_surface: str | None = Field(default=None, min_length=1)
     backend_id: str = Field(..., min_length=1, pattern=r"^\S+$")
     max_diff_bytes: int = Field(..., ge=1, le=MAX_DRAFT_DIFF_BYTES)
+    #: The loop's own wall budget and empty-finish limit (OMN-26661). None leaves the loop request's own
+    #: value; the caller's overlay names both so no limit of the harness comes from a file on the host.
+    wall_budget_seconds: int | None = Field(default=None, ge=1, le=7200)
+    max_no_change_finishes: int | None = Field(default=None, ge=1, le=10)
 
 
 class ModelLabWorkUnitRequest(BaseModel):

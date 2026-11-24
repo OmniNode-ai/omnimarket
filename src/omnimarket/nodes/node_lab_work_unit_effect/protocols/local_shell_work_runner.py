@@ -159,6 +159,12 @@ class LocalShellLabWorkExecutor:
             checks=draft.checks,
             formatter=draft.formatter,
             max_turns=draft.max_turns,
+            wall_budget_seconds=draft.wall_budget_seconds,
+            **(
+                {}
+                if draft.max_no_change_finishes is None
+                else {"max_no_change_finishes": draft.max_no_change_finishes}
+            ),
             caller_lane=draft.caller_lane,
             ticket=draft.ticket,
             traffic_class=(

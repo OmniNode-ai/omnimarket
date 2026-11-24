@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-26661
+title: The coding test harness is committed and proven on a strong model before any local model is scored; no limit of the harness decides a run
+summary: A try that ran into a limit of the harness (the unit's wall clock, the code edit loop's turn cap or wall budget) is recorded by the code eval trial reducer as not_finished, never as a failed answer, and it leaves n like an unscorable try. The code edit loop result names a limit stop with a typed field, the overlay of the trial orchestrator names the loop's own wall budget and empty-finish limit so no limit of the harness comes from a file on the lab host, and one test runs the trial with the model endpoint, tools, limits and repository supplied by the test. The strong control model reading and the replay of the known good fixes are a lab run recorded in the lane report, not part of this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26661-limit-stop-not-finished
+  statement: A try ended by a harness limit is reported not finished, never counted as a failed answer, and the trial runs with its endpoint, tools, limits and repository supplied.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the harness is committed as the existing code eval trial nodes, not a script, with the model endpoint, tools, limits and repository injected -- falsifier: a run needs a file outside the repository'
+  - id: AC3
+    statement: 'AC3: limits come from settings, are derived from AC1, and a run ended by a limit is reported as "not finished" and never as a failed answer -- falsifier: a limit stop counted as wrong'
+evidence_requirements:
+- kind: tests
+  description: The reducer reads a limit stop as not_finished, the budget count keeps it out of n, the projection keeps it out of the pass rate, and the trial runs with endpoint, tools, limits and repository supplied by the test.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_code_eval_trial_orchestrator/test_limit_stop_not_finished.py tests/nodes/node_code_eval_trial_orchestrator/test_injected_trial.py tests/nodes/node_code_eval_trial_orchestrator/test_unit_end_classification.py tests/nodes/node_code_eval_trial_orchestrator/test_orchestrator_unit_end_classification.py tests/nodes/node_delegated_code_edit_orchestrator/test_wall_budget.py tests/nodes/node_delegated_code_edit_orchestrator/test_no_change.py -q --no-cov -n 0 -p no:randomly
+- kind: manual
+  description: 'Deploy validation command for the caller-contract deploy gate: the typed limit field of the code edit loop result at the checkout commit. It starts nothing and touches no running lane.'
+  command: 'deploy: git grep -n limit_reached -- src/omnimarket/models/model_delegated_code_edit.py'
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26661-ac3-limit-stop-not-finished
+  description: A unit killed at its wall clock with no draft, a loop that hit its turn cap and a partial draft that fails its checks under a limit are each recorded not_finished; a try that finished and failed its checks stays a failed answer; not_finished leaves n.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_code_eval_trial_orchestrator/test_limit_stop_not_finished.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26661-ac2-injected-trial
+  description: The trial runs with the endpoint, tools, limits (the loop's wall budget and empty-finish limit included) and repository supplied by the test, with no overlay root in the environment and no file written under the working directory.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_code_eval_trial_orchestrator/test_injected_trial.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26661-integration-proof
+  description: Hosted CI cannot reach a lab host, so only the local Done gate runs this unbound check, the focused tests of the change at the sha on a lab host.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26661 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_code_eval_trial_orchestrator tests/nodes/node_delegated_code_edit_orchestrator -q --no-cov -n 0 -p no:randomly
+    cwd: .

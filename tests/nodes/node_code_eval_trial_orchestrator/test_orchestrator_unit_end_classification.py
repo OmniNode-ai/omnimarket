@@ -71,7 +71,7 @@ CASES = [
     (
         "timed_out",
         {"status": "timed_out", "exit_code": None, "code_edit_result": None},
-        "fail_check",
+        "not_finished",
         True,
     ),
 ]
@@ -106,7 +106,8 @@ def test_a_timed_out_unit_with_a_diff_is_scored_with_timed_out_with_diff_set() -
     assert all(s.try_identity.timed_out_with_diff for s in tries)
 
 
-def test_a_timed_out_unit_with_no_diff_is_scored_as_an_empty_draft() -> None:
+def test_a_timed_out_unit_with_no_diff_is_not_finished_and_is_not_scored() -> None:
+    """OMN-26661: a unit killed at its wall clock with no draft in hand is not a failed answer."""
     bus = make_bus(
         host=lambda unit: completed_host(
             unit, status="timed_out", exit_code=None, code_edit_result=None, diff=""
@@ -114,11 +115,8 @@ def test_a_timed_out_unit_with_no_diff_is_scored_as_an_empty_draft() -> None:
     )
     bus.send(run_request(1, 1))
     bus.drain()
-    tries = [s for s in bus.scores if s.try_identity.model_arm]
-    assert tries
-    assert all(
-        s.draft_diff == "" and not s.try_identity.timed_out_with_diff for s in tries
-    )
+    assert not [s for s in bus.scores if s.try_identity.model_arm]
+    assert bus.closes[0].sequences[0].verdicts == ("not_finished",) * 3
 
 
 def test_a_failure_terminal_matched_by_the_runs_correlation_id_is_unscorable_harness() -> (

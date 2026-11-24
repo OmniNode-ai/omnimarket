@@ -164,6 +164,7 @@ def to_message(
             diff=request.diff,
             diff_truncated=request.diff_truncated,
             loop_status=result.status.value if result is not None else None,
+            limit_stopped=result.limit_reached if result is not None else False,
             duration_s=request.duration_seconds,
             model_revision=result.model_revision if result is not None else "",
         )
