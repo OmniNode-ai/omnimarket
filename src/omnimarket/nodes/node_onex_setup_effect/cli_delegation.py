@@ -140,6 +140,7 @@ def _report(
         and not delegation_switch_enabled()
         and generic_unreadable_assets
     )
+    fix: str | None
     if healthy_off:
         fix = "Run onex delegation on, or switch it on in onex under /delegation."
     else:
