@@ -19,6 +19,7 @@ The check stays red until such a receipt exists; the controls below prove each r
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -170,3 +171,120 @@ def test_the_check_refuses_a_later_row_that_does_not_record_the_attempt(
     later = _later_receipt()
     spoil(later)
     assert _later_row_problems([_first_day(), later]), label
+
+
+# --- The 2026-11-24 receipt's own values, pinned --------------------------------------------
+# The structural rules above accept any well-formed row. These pin what the kept run records
+# (the results.json of the five 2026-11-24 runs, kept outside the repository) actually hold, so
+# changing a time, a try count or the plain-words outcome fails here. Free text is pinned by
+# SHA-256; change the receipt and its digest together, on purpose.
+RECEIPT_DAY = "2026-11-24"
+GEMMA, LING = UNMEASURED_ON_FIRST_DAY
+GEMMA_WALL_SECONDS = [
+    124.637,
+    73.056,
+    73.438,
+    74.221,
+    72.875,
+    73.45,
+    83.054,
+    62.537,
+    54.291,
+    72.845,
+]
+GEMMA_OUTCOME_SHA = "d53802a58d36af5eba4db9ae6f17b18fa1ac13428cf15e979b0a561a65448d22"
+GEMMA_THEN_SHA = "d88b6829f6142d0632b8852b97f8b2f5405f4daed8283c0d5357457e6687dc61"
+LING_REASON_SHA = "3244ccd4e5cbbcb7cfcfdae2b78f28c8f8c7e0a10f7f8031c506d6d5b6fa0fa9"
+
+
+def _sha(text: Any) -> str:
+    return hashlib.sha256(str(text).encode()).hexdigest()
+
+
+def _pinned_problems(receipt: dict[str, Any]) -> list[str]:
+    """One problem per pinned value of the 2026-11-24 receipt that differs from the kept runs."""
+    problems: list[str] = []
+    rows = [r for r in receipt.get("smokes") or [] if r.get("model") == GEMMA]
+    entries = [e for e in receipt.get("not_measured") or [] if e.get("model") == LING]
+    if len(rows) != 1 or len(entries) != 1:
+        return ["the gemma row or the ling entry is missing or repeated"]
+    gemma, ling = rows[0], entries[0]
+    expected: list[tuple[str, Any, Any]] = [
+        ("gemma accepted", gemma.get("accepted"), 0),
+        ("gemma tasks", gemma.get("tasks"), 10),
+        ("gemma tries_per_task", gemma.get("tries_per_task"), 1),
+        (
+            "gemma wall_seconds_per_task",
+            gemma.get("wall_seconds_per_task"),
+            GEMMA_WALL_SECONDS,
+        ),
+        ("gemma exit_code_per_task", gemma.get("exit_code_per_task"), [1] * 10),
+        ("gemma outcome", _sha(gemma.get("outcome")), GEMMA_OUTCOME_SHA),
+        ("gemma second pass", _sha(gemma.get("then")), GEMMA_THEN_SHA),
+        ("ling tries", ling.get("tries"), 4),
+        ("ling reason", _sha(ling.get("reason")), LING_REASON_SHA),
+        (
+            "ling first-pass partial accepted",
+            (ling.get("first_pass_partial") or {}).get("tasks_accepted"),
+            [8, 9],
+        ),
+        (
+            "ling first-pass partial times",
+            (ling.get("first_pass_partial") or {}).get("wall_seconds"),
+            {"8": 62.343, "9": 11.84},
+        ),
+    ]
+    problems.extend(
+        f"{name}: {got!r} is not {want!r}"
+        for name, got, want in expected
+        if got != want
+    )
+    if "p50_seconds" in gemma or "p50_seconds" in ling:
+        problems.append("a p50 is recorded where nothing was accepted")
+    return problems
+
+
+def _recorded() -> dict[str, Any]:
+    return next(r for r in _dated_receipts() if r.get("measured_on") == RECEIPT_DAY)
+
+
+def test_the_2026_11_24_receipt_holds_the_values_the_kept_runs_recorded() -> None:
+    assert _pinned_problems(_recorded()) == []
+
+
+@pytest.mark.parametrize(
+    ("label", "spoil"),
+    [
+        (
+            "a wall time changed",
+            lambda r: r["smokes"][0]["wall_seconds_per_task"].__setitem__(3, 9.9),
+        ),
+        ("tries_per_task changed", lambda r: r["smokes"][0].update(tries_per_task=9)),
+        ("gemma accepted changed", lambda r: r["smokes"][0].update(accepted=3)),
+        (
+            "exit codes changed",
+            lambda r: r["smokes"][0].update(exit_code_per_task=[0] * 10),
+        ),
+        ("gemma outcome changed", lambda r: r["smokes"][0].update(outcome="ok")),
+        ("gemma second pass changed", lambda r: r["smokes"][0].update(then="fine")),
+        ("ling tries changed", lambda r: r["not_measured"][0].update(tries=2)),
+        (
+            "ling reason changed",
+            lambda r: r["not_measured"][0].update(reason="429 became 200 at 12:00:00Z"),
+        ),
+        (
+            "ling partial changed",
+            lambda r: r["not_measured"][0]["first_pass_partial"].update(
+                tasks_accepted=[8]
+            ),
+        ),
+        ("a p50 added", lambda r: r["smokes"][0].update(p50_seconds=3.0)),
+        ("the ling entry removed", lambda r: r["not_measured"].clear()),
+    ],
+)
+def test_the_pinning_refuses_a_receipt_that_drifts_from_the_kept_runs(
+    label: str, spoil: Any
+) -> None:
+    receipt = copy.deepcopy(_recorded())
+    spoil(receipt)
+    assert _pinned_problems(receipt), label

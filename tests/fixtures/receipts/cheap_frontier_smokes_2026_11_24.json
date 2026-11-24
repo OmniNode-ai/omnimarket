@@ -76,8 +76,8 @@
         54.291,
         72.845
       ],
-      "outcome": "None of the ten tasks was accepted and none returned a graded answer. Each task was one delegate call of 54 to 125 seconds that ended without an answer: the stored task receipts showed Google AI Studio provider errors (seven 504 operation aborted, three 503 high demand) after the shared free pool's own 429, and task 1 also had an empty first response. The zero counts tasks accepted; it is not a quality result.",
-      "then": "A second pass from 12:43:09Z to 12:53:38Z ran task 1 again on 4 tries, 120 seconds apart, with no answer (429 or 5xx; the exact code was not kept), so it stopped there. Not measured beyond this.",
+      "outcome": "None of the ten tasks was accepted and none returned an answer. Each task was one delegate call of 54 to 125 seconds (wall_seconds_per_task) that exited 1 without a parsed answer. The kept run record holds no error text for these tasks. While the run was live, the stored task receipts showed provider errors from Google AI Studio (503 and 504) after the shared free pool's own 429; those receipts were removed with the scratch home, so no count of codes is kept and none is claimed. The zero counts tasks accepted; it is not a quality result.",
+      "then": "A second pass from 12:43:09Z to 12:53:38Z ran task 1 again on 4 tries, 120 seconds apart, with no answer; the run script flagged it as a provider no-answer (429 or 5xx) and kept no error text or code. Not measured beyond this.",
       "earlier_attempts": [
         {
           "key": "first OpenRouter key",
@@ -91,14 +91,39 @@
           "to": "2026-11-24T12:13:08Z",
           "result": "429 Too Many Requests at key registration on 4 tries, 120 seconds apart; no task ran"
         }
+      ],
+      "exit_code_per_task": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
       ]
     }
   ],
   "not_measured": [
     {
       "model": "inclusionai/ling-3.2-flash:free",
-      "reason": "OpenRouter's upstream provider rate-limited it (429, temporarily rate-limited upstream) on every attempt today, so the ten tasks could not be run to completion: first key, first pass 11:46:35Z to 11:53:33Z, registered on try 3 and then 2 of 10 tasks answered and accepted (tasks 8 and 9) with the other 8 refused with 429; first key, second pass 11:54:33Z to 12:01:08Z, task 1 refused with 429 on 4 tries 120 seconds apart; second key, 12:13:08Z to 12:20:00Z, 429 at key registration on 4 tries. No accepted count or p50 is recorded.",
-      "tries": 4
+      "reason": "OpenRouter's upstream provider rate-limited it on every attempt today, so the ten tasks could not be run to completion. First key, first pass 11:46:35Z to 11:53:33Z: registered on try 3; tasks 8 and 9 were accepted and tasks 1 to 7 and 10 exited 1 without an answer after about 8 seconds each, with no error text kept in the run record (the stored task receipts read at the time named a 429, an upstream rate limit, and were removed with the scratch home). First key, second pass 11:54:33Z to 12:01:08Z: task 1 flagged rate limited on 4 tries, 120 seconds apart. Second key, 12:13:08Z to 12:20:00Z: 429 Too Many Requests at key registration on 4 tries (kept in the run output). No ten-task accepted count or p50 is recorded.",
+      "tries": 4,
+      "first_pass_partial": {
+        "tasks_run": 10,
+        "tasks_accepted": [
+          8,
+          9
+        ],
+        "wall_seconds": {
+          "8": 62.343,
+          "9": 11.84
+        },
+        "left_out_because": "only 2 of 10 tasks were answered, so it is not a ten-task accepted count or p50; the ruling records today's result as not measured"
+      }
     }
-  ]
+  ],
+  "evidence_note": "Every figure below is from the kept run records (the results.json of five runs, kept outside this repository). Where the live run showed more than those records hold, the text says so and keeps no count."
 }
