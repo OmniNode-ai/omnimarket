@@ -118,8 +118,6 @@ files:
     src/omnimarket/nodes/node_projection_work_ledger/parity.py: 2
     src/omnimarket/nodes/node_retention_cleanup/contract.yaml: 1
     src/omnimarket/nodes/node_retention_cleanup/handlers/handler_file_retention.py: 1
-    src/omnimarket/nodes/node_session_front_door_compute/handlers/entry.py: 1
-    src/omnimarket/nodes/node_session_front_door_compute/handlers/receipt.py: 4
     src/omnimarket/nodes/node_session_resume_compute/handlers/dangling.py: 1
     src/omnimarket/nodes/node_work_ledger_copy_effect/overlay.example.yaml: 2
     src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml: 3
@@ -226,5 +224,5 @@ ratchet:
   omniclaude: 45
   omnidash: 0
   omniintelligence: 0
-  omnimarket: 128
+  omnimarket: 126
   omnimemory: 1

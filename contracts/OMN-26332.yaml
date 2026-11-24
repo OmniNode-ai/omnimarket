@@ -78,6 +78,24 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest tests/nodes/node_silent_failure_alarm_effect tests/nodes/node_silent_failure_alarm_compute tests/nodes/node_work_state_projection_effect tests/nodes/node_work_state_projection_scheduled_effect tests/nodes/node_host_installer_registry_units/test_alarm_config_omn22778.py -q --no-cov --tb=line
         cwd: .
+  - id: dod-omn26332-ac1-front-door
+    description: The session front door entry no longer refuses on the ledger copy's path variable and the host mode opens no ledger copy; a start with the copy unset or naming no file stops on the preflight's ledger_path blocker before any ledger call, and the host mode stays bus-member on a current passing team receipt. The new cases fail on the merge base, where the entry refuses with rule env and the host mode refuses such a machine.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_session_front_door_compute -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn26332-ac2-census-third-part
+    description: The census holds no hit in the front door entry and receipt handlers, their per-file rows are dropped and the repository row is 126; the cases fail on the merge base.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_group4_third_part_omn26332.py -q --no-cov --tb=line
+        cwd: .
   - id: dod-omn26332-integration-proof
     description: "Run the probe and the two node suites on a lab host at the pushed head; the local Done gate runs this unbound check."
     source: manual

@@ -170,9 +170,8 @@ def run_entry(
     expected_overlay_sha256: str | None,
 ) -> EntryOutcome:
     out = EntryOutcome()
-    for name in ("OMNI_HOME", "ONEX_LEDGER_PATH"):
-        if not env.get(name):
-            return out.stop("refused", 2, "env", f"{name} is required", f"set {name}")
+    if not env.get("OMNI_HOME"):
+        return out.stop("refused", 2, "env", "OMNI_HOME is required", "set OMNI_HOME")
     try:
         sf.ticket(spec.ticket)
         lane = sf.token("lane", spec.lane) if spec.lane else sf.lane_name(spec.purpose)
