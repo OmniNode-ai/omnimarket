@@ -45,9 +45,9 @@ runtime_dispatch:
     command: uv run python -m omnimarket.nodes.node_overlay_setting_set_effect --overlay <id> --key <declared key> --value-json <json> --actor <who>
     owner: OmniNode Platform Team
 event_bus:
-  # The store's answer to the write, committed or conflict, under the write id.
-  subscribe_topics:
-    - onex.evt.omnimarket.overlay-store-write-reply.v1
+  # The store's answer to the write, committed or conflict, under the write id, is read by the command itself on its own
+  # consumer (the READ grants below), as it reads the snapshot topic; no dispatcher handles it, so it is not subscribed here.
+  subscribe_topics: []
   publish_topics:
     # The write: node_projection_overlay_store stores it as the overlay's current version, with its audit row, when the
     # revision it names is the current one.
@@ -151,6 +151,9 @@ config:
 snapshot_read:
   # onex-topic-allow: a projection snapshot topic has the projection's own name form.
   topic: onex.snapshot.projection.overlay-store.v1
+# The store's answer to a write, read by the command's own consumer under the READ grants above.
+reply_read:
+  topic: onex.evt.omnimarket.overlay-store-write-reply.v1
 overlay:
   node: node_overlay_store_load_effect
   roots_env: ONEX_SKILL_OVERLAY_ROOTS

@@ -178,7 +178,7 @@ async def _run(
                 open_bus,
                 stack,
                 replies,
-                contract["event_bus"]["subscribe_topics"][0],
+                contract["reply_read"]["topic"],
                 config["reply_group_prefix"],
             ),
             replies=replies,

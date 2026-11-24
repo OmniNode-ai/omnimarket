@@ -138,7 +138,9 @@ def test_the_contract_publishes_the_write_and_the_projection_publishes_the_audit
     None
 ):
     assert contract()["event_bus"]["publish_topics"] == [LOADED_TOPIC]
-    assert contract()["event_bus"]["subscribe_topics"] == [REPLY_TOPIC]
+    # The command reads the reply on its own consumer, so no dispatcher subscription is declared for it.
+    assert contract()["event_bus"]["subscribe_topics"] == []
+    assert contract()["reply_read"]["topic"] == REPLY_TOPIC
     assert contract()["externally_consumed_topics"] == [AUDIT_TOPIC]
     assert LOADED_TOPIC == "onex.evt.omnimarket.overlay-store-loaded.v1"
     assert AUDIT_TOPIC == "onex.evt.omnimarket.overlay-setting-set.v1"
