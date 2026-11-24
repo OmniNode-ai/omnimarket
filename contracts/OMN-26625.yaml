@@ -35,7 +35,7 @@ dod_evidence:
   - AC4
   checks:
   - check_type: command
-    check_value: ONEX_LEDGER_CENSUS_ROOT="$(dirname "$PWD")" uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --packaged-overlay --repos omnimarket --directory "omnimarket=$PWD" --per-file | grep -q 'CENSUS omnimarket counted state=ok files=105 '
+    check_value: ONEX_LEDGER_CENSUS_ROOT="$(dirname "$PWD")" uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --packaged-overlay --repos omnimarket --directory "omnimarket=$PWD" --per-file | grep -q 'CENSUS omnimarket counted state=ok files=105 ' && uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_all_repositories_census.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn26625-moved-tests-green
   description: The moved test file passes on the in-memory reader.
