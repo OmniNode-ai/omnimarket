@@ -436,13 +436,17 @@ def test_seam_real_archive_scan_past_its_deadline_is_an_error_not_a_partial_list
         FilesystemUvArchive().scan(str(bucket), 1, -1.0)
 
 
-def test_seam_real_uv_layout_names_two_buckets_and_the_overlay_example_loads() -> None:
-    """The contract names uv's two growing folders with their depths; the overlay example's cap buckets are all among them."""
+def test_seam_real_uv_layout_names_its_buckets_and_the_overlay_example_loads() -> None:
+    """The contract names uv's growing folders with their depths; the overlay example's cap buckets are all among them."""
     bounds = load_bounds()
     assert {
         name: (bound.depth, bound.keep_linked)
         for name, bound in bounds.uv_evictable_buckets.items()
-    } == {"archive-v0": (1, True), "git-v0/checkouts": (2, False)}
+    } == {
+        "archive-v0": (1, True),
+        "git-v0/checkouts": (2, False),
+        "git-v1/checkouts": (2, False),
+    }
     overlay = yaml.safe_load(
         (CONTRACT_PATH.parent / "overlay.example.yaml").read_text(encoding="utf-8")
     )

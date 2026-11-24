@@ -38,13 +38,13 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_host_retention_effect/test_runtime_host_retention_tick.py tests/nodes/node_host_installer_registry_units/test_host_retention_uv_cache_unit.py tests/nodes/node_host_installer_registry_units/test_host_retention_uv_cache_launchd_unit.py -q -p no:randomly --no-cov
     cwd: .
 - id: dod-omn26109-ac2
-  description: 'hosted proxy for AC2: the unit tests pass here; the h053 unit status read and its run line after the re-install are posted as a pull request comment naming the head.'
+  description: 'hosted proxy for AC2: the unit tests and the host row tests (a uv cache pass is not refused by the symlinked runner roots of a pool host, and the contract names the git-v1 uv cache bucket with its marker) pass here; the h053 unit status read and its run line after the re-install are posted as a pull request comment naming the head.'
   source: manual
   binds_ac:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_host_retention_uv_cache_unit.py -q -p no:randomly --no-cov
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_host_retention_uv_cache_unit.py tests/nodes/node_host_retention_effect/test_host_retention_uv_unit_row.py -q -p no:randomly --no-cov
     cwd: .
 - id: dod-omn26109-ac3
   description: 'hosted proxy for AC3: the render tests pass here; the installer receipts of the six hosts are in the ledger STATUS rows of the lane and in the pull request comment naming the head.'

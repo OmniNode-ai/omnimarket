@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from typing import Annotated, Literal, Self
 
 from pydantic import (
@@ -316,14 +316,19 @@ class ModelHostRetention(_Frozen):
         True  # keep any entry a running container bind-mounts (or holds a mount inside)
     )
 
-    def consent_refusals(self, consent_roots: Mapping[str, str]) -> list[str]:
+    def consent_refusals(
+        self, consent_roots: Mapping[str, str], classes: Collection[str] = ()
+    ) -> list[str]:
         """Refusal texts for a lane_results class rooted at a root the operator's archive consent names.
 
         ``consent_roots`` maps an absolute real path to the label of the policy entry that names it. A class
         whose real root is one of them and whose ``archive`` is false would delete what the consent says is
-        archived, so it is refused.
+        archived, so it is refused. ``classes`` is the classes the pass runs (empty: every class); a lane_results
+        class the pass does not run is not judged.
         """
         refusals: list[str] = []
+        if classes and "lane_results" not in classes:
+            return refusals
         for age in self.age_classes:
             label = consent_roots.get(os.path.realpath(age.root))
             if age.kind == "lane_results" and label is not None and not age.archive:
@@ -354,10 +359,16 @@ class ModelUvBucketBound(_Frozen):
     ``depth`` is how many levels under the folder a whole entry sits. ``keep_linked`` keeps an entry in which any file has
     more than one hard link: in ``archive-v0`` that is a virtual environment sharing the unpacked wheel, but a git checkout is
     hard-linked to uv's own git database (never to a virtual environment), so there the link says nothing and is not a guard.
+    ``marker_suffix`` is the suffix of the zero-byte marker file uv writes beside each entry of the bucket (uv 0.13 writes a
+    ``<revision>.ok`` beside every git checkout): a marker belongs to its checkout, so the scan skips one whose checkout
+    folder is present and a removal unlinks the marker before the folder.
     """
 
     depth: int = Field(ge=1, le=3)
     keep_linked: bool
+    marker_suffix: str | None = Field(
+        default=None, min_length=1, pattern=r"^[A-Za-z0-9._-]+$"
+    )
 
 
 class ModelTerminalLoaderBound(_Frozen):

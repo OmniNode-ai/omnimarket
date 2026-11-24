@@ -113,12 +113,26 @@ class UvArchivePort(Protocol):
     """Scan and remove whole entries of a uv cache bucket."""
 
     def scan(
-        self, bucket_dir: str, depth: int, timeout_s: float
+        self,
+        bucket_dir: str,
+        depth: int,
+        timeout_s: float,
+        marker_suffix: str | None = None,
     ) -> list[ModelUvArchiveEntry]:
-        """List entries; raises OSError on failure or past the deadline."""
+        """List entries; raises OSError on failure or past the deadline.
 
-    def remove(self, bucket_dir: str, name: str) -> None:
-        """Remove one entry; raises OSError on failure."""
+        When ``marker_suffix`` is given, a non-directory named ``<entry><suffix>`` beside the folder
+        ``<entry>`` belongs to that entry and is not listed; every other non-directory is listed special.
+        """
+
+    def remove(
+        self, bucket_dir: str, name: str, marker_suffix: str | None = None
+    ) -> None:
+        """Remove one entry; raises OSError on failure.
+
+        When ``marker_suffix`` is given, the marker beside the entry (``<entry><suffix>``) is unlinked
+        before the folder, so a half-removed entry never keeps a marker that says it is complete.
+        """
 
 
 class LaneLivenessPort(Protocol):
@@ -306,11 +320,17 @@ class FilesystemUvArchive:
     """Scan and remove whole entries of a uv cache bucket on the filesystem.
 
     An entry is a folder ``depth`` levels under the bucket (1: ``archive-v0/<id>``; 2: ``git-v0/checkouts/<repo>/<rev>``),
-    named by its path relative to the bucket. Nothing is followed through a symlink.
+    named by its path relative to the bucket. When ``marker_suffix`` is given (uv 0.13 writes a ``.ok`` marker beside every
+    git checkout), a marker whose stem is a sibling folder belongs to that entry: the scan does not report it and a removal
+    unlinks it before the folder. Any other non-directory is reported special. Nothing is followed through a symlink.
     """
 
     def scan(
-        self, bucket_dir: str, depth: int, timeout_s: float
+        self,
+        bucket_dir: str,
+        depth: int,
+        timeout_s: float,
+        marker_suffix: str | None = None,
     ) -> list[ModelUvArchiveEntry]:
         """Every entry of the bucket; an unreadable bucket or a scan past the deadline raises OSError, nothing is partial."""
         deadline = time.monotonic() + timeout_s
@@ -324,6 +344,14 @@ class FilesystemUvArchive:
             return ModelUvArchiveEntry(
                 name=name, bytes=0, newest_mtime=0.0, linked=False, special=True
             )
+
+        def paired_marker(path: str, entry_name: str, suffix: str) -> bool:
+            """The marker ``<stem><suffix>`` of a folder ``<stem>`` beside it (never a symlink)."""
+            stem = entry_name[: -len(suffix)]
+            if not stem:
+                return False
+            sibling = os.path.join(path, stem)
+            return not os.path.islink(sibling) and os.path.isdir(sibling)
 
         def measure(path: str, name: str) -> ModelUvArchiveEntry:
             total = 0
@@ -350,6 +378,13 @@ class FilesystemUvArchive:
                 check_time()
                 name = f"{relative}/{child.name}" if relative else child.name
                 if not child.is_dir(follow_symlinks=False):
+                    if (
+                        level >= depth
+                        and marker_suffix is not None
+                        and child.name.endswith(marker_suffix)
+                        and paired_marker(path, child.name, marker_suffix)
+                    ):
+                        continue  # the marker of the folder beside it: not an entry of its own
                     entries.append(special(name))
                 elif level >= depth:
                     entries.append(measure(child.path, name))
@@ -359,7 +394,9 @@ class FilesystemUvArchive:
         visit(bucket_dir, "", 1)
         return entries
 
-    def remove(self, bucket_dir: str, name: str) -> None:
+    def remove(
+        self, bucket_dir: str, name: str, marker_suffix: str | None = None
+    ) -> None:
         parts = name.split("/")
         if len(parts) > 3 or any(part in ("", ".", "..") for part in parts):
             raise OSError(f"{name!r} is not an entry path inside the bucket")
@@ -369,6 +406,17 @@ class FilesystemUvArchive:
                 raise OSError(f"{name!r} is or sits under a symlink")
         if not os.path.isdir(target):
             raise OSError(f"{name!r} is not a directory")
+        if marker_suffix is not None:
+            # The marker goes first: a marker beside a half-removed folder makes uv trust the half.
+            marker = target + marker_suffix
+            try:
+                info = os.lstat(marker)
+            except FileNotFoundError:
+                info = None
+            if info is not None:
+                if not stat.S_ISREG(info.st_mode):
+                    raise OSError(f"{marker!r} is not a regular file")
+                os.unlink(marker)
         shutil.rmtree(target)
 
 
