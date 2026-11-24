@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: MIT
 """The local adapters of the ledger-reconcile effect ports (OMN-20677).
 
-They reach what the reconciler always reached, the same way: the ledger file named
-by ``ONEX_LEDGER_PATH`` and the archive directory beside it, the clone registry
-named by ``OMNI_HOME``, ``gh pr view`` for pull requests, ``git`` in the clones for
-commits, and the ledger writer's ``--append`` for rows. The deployment's repository
+They reach what the reconciler reaches: the ledger's rows over the bus (the rows
+loader node answers a window of the work ledger reader node's rows; no ledger file is
+named or opened), the clone registry named by ``OMNI_HOME``, ``gh pr view`` for pull
+requests, ``git`` in the clones for commits, and the work ledger append node (``onex
+work-ledger append``) for rows. The deployment's repository
 aliases, branch prefixes and GitHub organisation come from an overlay, never from
 this module: ``ONEX_LEDGER_RECONCILE_OVERLAY`` names the file, otherwise the first
 ``node_ledger_reconcile_effect/overlay.yaml`` under a root of
@@ -17,15 +18,23 @@ from __future__ import annotations
 import json
 import os
 import re
-import shlex
 import shutil
 import subprocess
-import time
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
 
+from omnimarket.handlers.ledger_append_via_node import (
+    append_row_via_bus,
+    request_id_for,
+)
+from omnimarket.handlers.ledger_rows_unreadable_error import LedgerRowsUnreadableError
+from omnimarket.handlers.ledger_rows_via_node import (
+    MAX_WINDOW_HOURS,
+    read_ledger_rows_via_node,
+)
 from omnimarket.models.ledger_reconcile import (
     ModelPrFact,
     ModelPushFact,
@@ -37,14 +46,16 @@ from omnimarket.models.ledger_reconcile import (
 
 from .protocol_ledger_reconcile_effect import ReconcilePortError
 
-ARCHIVE_GLOB = "ROLLING_WORK_LEDGER_*.md"
+#: The reader name the rows loader answers this reconciler's window under (the reader overlay lists it).
+READER = "ledger-reconcile"
+#: The name the bus rows carry as the one source the decision reads (there is no ledger file).
+SOURCE_NAME = "work-ledger-rows"
+APPEND_LANE = "ledger-reconcile"
+APPEND_NAMESPACE = uuid.UUID("6d1c3a52-7b0e-4f4e-9a52-2f3c1d7e8b60")
 OVERLAY_ENV = "ONEX_LEDGER_RECONCILE_OVERLAY"
 OVERLAY_ROOTS_ENV = "ONEX_SKILL_OVERLAY_ROOTS"
 OVERLAY_NODE = "node_ledger_reconcile_effect"
-APPEND_COMMAND_ENV = "ONEX_LEDGER_COMMAND"
-DEFAULT_APPEND_COMMAND = "onex-ledger"
-LOCK_RETRIES = 5
-LOCK_RETRY_BASE_SECONDS = 2.0
+APPEND_COMMAND_ENV = "ONEX_WORK_LEDGER_COMMAND"
 _TICKET_RE = re.compile(r"\bOMN-\d+\b")
 
 
@@ -62,42 +73,31 @@ class SystemClock:
 
 
 class LocalReconcileHost:
-    """The operator's ledger, archives, clone registry, roster and overlay."""
+    """The operator's ledger rows (over the bus), clone registry, roster and overlay."""
 
     def prerequisites(self) -> str:
-        for name in ("OMNI_HOME", "ONEX_LEDGER_PATH"):
-            if not os.environ.get(name):
-                return f"{name} is not set (required, no default)"
+        if not os.environ.get("OMNI_HOME"):
+            return "OMNI_HOME is not set (required, no default)"
         if shutil.which("gh") is None:
             return "gh CLI not on PATH — live PR verification is impossible"
         if shutil.which("git") is None:
             return "git not on PATH"
         return ""
 
-    def ledger_path(self) -> Path:
-        return Path(os.environ["ONEX_LEDGER_PATH"])
-
     def registry_root(self) -> Path:
         return Path(os.environ["OMNI_HOME"])
 
     def read_ledger(
-        self, ledger: Path
+        self,
     ) -> tuple[ModelReconcileSource, tuple[ModelReconcileSource, ...]]:
-        if not ledger.is_file():
-            raise ReconcilePortError(f"live ledger missing: {ledger}")
-        live = ModelReconcileSource(
-            name=ledger.name, text=ledger.read_text(encoding="utf-8")
-        )
-        archive_dir = ledger.parent / "archive"
-        archives = (
-            tuple(
-                ModelReconcileSource(name=p.name, text=p.read_text(encoding="utf-8"))
-                for p in sorted(archive_dir.glob(ARCHIVE_GLOB))
-            )
-            if archive_dir.is_dir()
-            else ()
-        )
-        return live, archives
+        """The ledger's last 30 days of rows over the bus; an unread window is an error, never an empty one."""
+        try:
+            rows = read_ledger_rows_via_node(READER, MAX_WINDOW_HOURS)
+        except LedgerRowsUnreadableError as exc:
+            raise ReconcilePortError(
+                f"ledger rows unreadable over the bus: {exc}"
+            ) from exc
+        return ModelReconcileSource(name=SOURCE_NAME, text="\n".join(rows) + "\n"), ()
 
     def clone_names(self, root: Path) -> tuple[str, ...]:
         return tuple(
@@ -281,24 +281,18 @@ class GitCommits:
         )
 
 
-class LedgerWriterAppender:
-    """Appends one row through the ledger writer, retrying its exit-75 contention code."""
+class BusLedgerAppender:
+    """Appends one row through the work ledger append node, under a request id derived from the row.
 
-    def append(self, ledger: Path, row: str) -> str:
-        command = shlex.split(
-            os.environ.get(APPEND_COMMAND_ENV, DEFAULT_APPEND_COMMAND)
+    A row whose first attempt got no answer is sent again under the same id, so the ledger host
+    answers a duplicate and the row lands once.
+    """
+
+    def append(self, row: str) -> str:
+        ok, detail = append_row_via_bus(
+            row,
+            lane=APPEND_LANE,
+            request_id=request_id_for(APPEND_NAMESPACE, row),
+            command_env=APPEND_COMMAND_ENV,
         )
-        for attempt in range(1, LOCK_RETRIES + 1):
-            try:
-                proc = _run([*command, str(ledger), "--append", row], timeout=360)
-            except (subprocess.TimeoutExpired, OSError) as exc:
-                return f"ledger writer did not run: {type(exc).__name__}: {exc}"
-            if proc.returncode == 0:
-                return ""
-            if proc.returncode == 75:
-                if attempt == LOCK_RETRIES:
-                    return f"exit 75 (contention) after {LOCK_RETRIES} attempts"
-                time.sleep(LOCK_RETRY_BASE_SECONDS * attempt)
-                continue
-            return f"ledger_lock exit {proc.returncode}: {proc.stderr.strip()[:300]}"
-        return "unreachable"
+        return "" if ok else detail
