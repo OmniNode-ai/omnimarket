@@ -1104,6 +1104,18 @@ events:
     partition_key_field: criterion
     required_fields: [run_id, verdict, conclusion, criterion]
 
+  # Delegation check probe run (OMN-26043): one record per check (C13, C14, C17) per run of node_delegation_check_probe_effect, the
+  # record the beta board reads each check from. Carries the run id, trigger, verdict, cause class, graded clause names and details,
+  # the responder chain tried and the responder chosen (private base URLs only; never a credential value), and package versions.
+  delegation_check.probe.completed:
+    node_owned: true
+    fan_out:
+      - topic: "onex.evt.omnimarket.delegation-check-probe-completed.v1"
+        tier: telemetry
+        description: "Delegation check run: verdict, conclusion, cause class, clauses, the responder chain and the responder chosen; no credential value"
+    partition_key_field: criterion
+    required_fields: [run_id, verdict, conclusion, criterion]
+
   # Host job claim run (OMN-25093): one record per run of node_host_job_claim_compute's host tick (hourly on each lab host). Carries
   # the host, its role, the verdict, each finding (kind, job id, extra unit, owner unit) and the correlation id; unit names only,
   # never a unit file's command text, an environment value or a credential.

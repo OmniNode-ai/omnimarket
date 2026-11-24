@@ -466,6 +466,9 @@ class HandlerRegistryUnits:
             raise ValueError(
                 f"project_path {request.project_path!r} is not an absolute path"
             )
+        # OMN-26549: a unit that runs a worktree dies when the worktree is removed (uv exits 2 on every fire).
+        if under_worktrees(str(project)):
+            raise UnitRootRefusedError(request.unit, [str(project)])
         return project, project.resolve() == canonical.resolve()
 
     def checkout_revision(

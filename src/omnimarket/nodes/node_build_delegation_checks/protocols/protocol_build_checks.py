@@ -60,6 +60,8 @@ class ProtocolRegressionSink(Protocol):
 
     def publish_result(self, result: ModelBuildChecksResult) -> None: ...
 
+    def publish_check_record(self, record: ModelCheckRecord) -> None: ...
+
 
 __all__ = [
     "ProtocolBuildStore",
