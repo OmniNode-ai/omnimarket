@@ -19,8 +19,13 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from omnimarket.handlers.routing.delegation_check_responder_chain import (
     ModelResponderAttempt,
 )
+from omnimarket.models.overlay_documents.model_delegation_check_probe_overlay import (
+    CheckId,
+    ModelDelegationCheckProbeOverlay,
+)
 
-CheckId = Literal["C13", "C14", "C17"]
+__all__ = ["CheckId", "ModelDelegationCheckProbeOverlay"]
+
 CAUSE_PRODUCT = "product"
 CAUSE_LAB_MODEL = "lab-model"
 
@@ -190,15 +195,3 @@ class ModelDelegationCheckResult(_Frozen):
             "conclusion": self.conclusion,
             "versions": dict(self.versions),
         }
-
-
-class ModelDelegationCheckProbeOverlay(_Frozen):
-    """Every setting of the node; no key has a default. The responder row is the settings store's, not this overlay's."""
-
-    # The checks one tick runs, in order.
-    checks: tuple[CheckId, ...] = Field(min_length=1)
-    history_file: str = Field(min_length=1)
-    history_keep: int = Field(gt=0)
-    result_topic: str = Field(min_length=1)
-    # How long one responder has to answer ``/v1/models``.
-    responder_timeout_s: float = Field(gt=0)

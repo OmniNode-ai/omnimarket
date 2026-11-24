@@ -7,13 +7,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-import httpx
-
 from omnimarket.handlers.routing.delegation_check_responder_chain import (
     ModelChainResolution,
     ModelResponderReading,
     reading_from_models_body,
 )
+from omnimarket.handlers.routing.responder_json_read import read_responder_json
 from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe import (
     CheckId,
     ModelDelegateObservation,
@@ -24,20 +23,8 @@ from omnimarket.nodes.node_delegation_check_probe_effect.protocols.protocol_dele
     CollectorAbsentError,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.transport import (
-    get_provider_json,
     served_models_url,
 )
-
-
-def _read_json(url: str, timeout_s: float) -> object | None:
-    """GET a declared responder's JSON through the delegation transport; None when it did not answer."""
-    try:
-        body: object = get_provider_json(
-            url=url, timeout_seconds=timeout_s, trust_env=False
-        )
-    except (OSError, ValueError, httpx.HTTPError):
-        return None
-    return body
 
 
 class HttpResponderReader:
@@ -47,9 +34,9 @@ class HttpResponderReader:
         self._timeout_s = timeout_s
 
     def read(self, base_url: str) -> ModelResponderReading:
-        body = _read_json(served_models_url(base_url), self._timeout_s)
+        body = read_responder_json(served_models_url(base_url), self._timeout_s)
         parsed = body if isinstance(body, dict) else None
-        slots = _read_json(f"{base_url}/slots", self._timeout_s)
+        slots = read_responder_json(f"{base_url}/slots", self._timeout_s)
         busy = (
             sum(1 for s in slots if isinstance(s, dict) and s.get("is_processing"))
             if isinstance(slots, list)

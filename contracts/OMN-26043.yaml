@@ -69,5 +69,5 @@ dod_evidence:
   source: manual
   checks:
   - check_type: command
-    check_value: uv run python -m omnimarket.nodes.node_trigger_declaration_check_effect --root . --changed-since HEAD^1
+    check_value: uv run python -m omnimarket.nodes.node_trigger_declaration_check_effect --root . --contract src/omnimarket/nodes/node_delegation_check_probe_effect/contract.yaml
     cwd: .
