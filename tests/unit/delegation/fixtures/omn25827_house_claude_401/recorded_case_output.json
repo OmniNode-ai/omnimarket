@@ -1,0 +1,23 @@
+{
+  "source": {
+    "workflow": "delegation-regression-nightly.yml",
+    "run_id": 45237936306,
+    "job_id": 137914560148,
+    "head_sha": "e2bd081d5c0cc474abe32200546e927faafb15b2",
+    "lane": "dev",
+    "tenant_id": "820272f9-4aaf-5add-a2df-0af942852ab2",
+    "note": "case failures copied from the job log of the newest failing nightly (steps 11 and 12); attempts copied from the receipt of a probe delegation (task type document) on the dev lane at 2026-11-24T00:39Z"
+  },
+  "cases": {
+    "I1": {"terminal": "failed", "model": "claude-sonnet-5-5", "failures": ["terminal: expected 'completed', got 'failed'", "quality_gate: expected passes, got quality_gate_passed=False", "tokens: expected positive, got input=0 output=0", "tier_behavior: expected free_local_first, delegated_to='claude-sonnet-5-5'"]},
+    "I3": {"terminal": "failed", "model": "claude-sonnet-5-5", "failures": ["terminal: expected 'completed', got 'failed'", "tokens: expected positive, got input=0 output=0", "tier_behavior: expected free_local_first, delegated_to='claude-sonnet-5-5'"]},
+    "I5": {"terminal": "failed", "model": "claude-sonnet-5-5", "failures": ["terminal: expected 'completed', got 'failed'", "tokens: expected positive, got input=0 output=0", "tier_behavior: expected free_local_first, delegated_to='claude-sonnet-5-5'"]},
+    "I7": {"terminal": "failed", "model": "claude-sonnet-5-5", "failures": ["terminal: expected 'completed', got 'failed'", "tokens: expected positive, got input=0 output=0", "tier_behavior: expected free_local_first, delegated_to='claude-sonnet-5-5'"]}
+  },
+  "probe_attempts": [
+    {"tier": "tenant_overlay", "backend_id": "byok-anthropic", "model_id": "claude-sonnet-5-5", "acceptance_decision": "climb", "failure_class": "provider_auth_failed", "error_message": "provider HTTP 401 Unauthorized for https://api.anthropic.com/v1/chat/completions; response_body={\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}"},
+    {"tier": "tenant_overlay", "backend_id": "byok-anthropic", "model_id": "claude-sonnet-5-5", "acceptance_decision": "climb", "failure_class": "provider_auth_failed", "error_message": "provider HTTP 401 Unauthorized for https://api.anthropic.com/v1/chat/completions; response_body={\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}"},
+    {"tier": "tenant_overlay", "backend_id": "byok-anthropic", "model_id": "claude-sonnet-5-5", "acceptance_decision": "terminate", "failure_class": "provider_auth_failed", "error_message": "provider HTTP 401 Unauthorized for https://api.anthropic.com/v1/chat/completions; response_body={\"error\":{\"code\":\"authentication_error\",\"message\":\"Invalid Anthropic API Key\",\"type\":\"invalid_request_error\",\"param\":null}}"}
+  ],
+  "probe_terminal": {"status": "failed", "terminal_failure_reason": "every_rung_failed", "escalation_count": 0}
+}

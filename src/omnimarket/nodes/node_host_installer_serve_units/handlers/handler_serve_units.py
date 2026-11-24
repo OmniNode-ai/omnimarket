@@ -28,6 +28,12 @@ from omnimarket.handlers.work_root_volume_bar import (
     read_live_volume,
     refuse_work_root_over_bar,
 )
+from omnimarket.handlers.worktree_root_link import (
+    WorktreeRootPlan,
+    WorktreeRootRefusalError,
+    apply_worktree_root,
+    plan_worktree_root,
+)
 from omnimarket.models.overlay_keys import ModelLabHostRow, ModelLabHostsTable
 from omnimarket.nodes.node_host_installer_serve_units.models.model_serve_units import (
     ModelServeUnitsOverlay,
@@ -333,6 +339,12 @@ class HandlerServeUnits:
         kb_path = self._knowledge_base(request, row, declared)
         lane_values = self._lane_values(row, request.registry_root, declared)
         work_root = self._work_root(request, row)
+        try:
+            worktrees = plan_worktree_root(
+                request.registry_root, row.lab_worktree_root, volume=self._volume
+            )
+        except WorktreeRootRefusalError as exc:
+            raise RefusalError(exc.code, exc.reason, str(exc)) from exc
         texts = self._render(
             request,
             declared,
@@ -350,6 +362,7 @@ class HandlerServeUnits:
                 status="success",
                 stdout="".join(texts.values()),
                 environments=texts,
+                worktree_root=worktrees.state(dry_run=True),
             )
         user = self._user()
         linger = self._run(["loginctl", "show-user", user, "-p", "Linger", "--value"])
@@ -359,7 +372,7 @@ class HandlerServeUnits:
                 "linger-off",
                 f"linger is off; run: sudo loginctl enable-linger {user}",
             )
-        return self._write(request, declared, texts, work_root)
+        return self._write(request, declared, texts, work_root, worktrees)
 
     def _work_root(self, request: ModelServeUnitsRequest, row: ModelLabHostRow) -> Path:
         """The serve unit's lane work root: the host row's declared root, else the home directory's, refused above the volume bar."""
@@ -451,12 +464,14 @@ class HandlerServeUnits:
         declared: ModelServeUnitsOverlay,
         texts: dict[str, str],
         work_root: Path,
+        worktrees: WorktreeRootPlan,
     ) -> ModelServeUnitsResult:
         unit = self._unit
         home = Path(request.home)
         unit_dir = home / str(unit["unit_directory"])
         unit_dir.mkdir(parents=True, exist_ok=True)
         work_root.mkdir(parents=True, exist_ok=True)
+        linked = apply_worktree_root(worktrees)
         for lane_serve in declared.lane_serves:
             (home / lane_serve.work_directory).mkdir(parents=True, exist_ok=True)
         changed = False
@@ -493,8 +508,9 @@ class HandlerServeUnits:
             mode=request.mode,
             status="success",
             stdout=out,
-            changed=changed,
+            changed=changed or linked,
             environments=texts,
+            worktree_root=worktrees.state(dry_run=False),
         )
 
     # -- status and uninstall -----------------------------------------------------------------

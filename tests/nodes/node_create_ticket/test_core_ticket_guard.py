@@ -8,6 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_create_ticket.handlers.core_ticket_guard import (
     CORE_GUARD_ID,
@@ -76,8 +77,33 @@ def test_handler_default_guard_is_the_core_validator(
     assert guard.lane == "floor-lane"
 
 
+_CENSUS_OVERLAY = (
+    Path(__file__).resolve().parents[3]
+    / "src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml"
+)
+
+
+def _ledger_path_variables() -> list[str]:
+    """The ledger path variable names, read from the census overlay that declares them."""
+    raw = yaml.safe_load(_CENSUS_OVERLAY.read_text(encoding="utf-8"))
+    names = [str(name) for name in raw["path_variables"]]
+    assert names
+    return names
+
+
 @pytest.mark.unit
-def test_core_guard_takes_the_ledger_only_by_injection(tmp_path: Path) -> None:
+def test_core_guard_reads_no_ledger_file_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     ledger = tmp_path / "ledger.md"
+    ledger.write_text("row\n", encoding="utf-8")
+    for name in _ledger_path_variables():
+        monkeypatch.setenv(name, str(ledger))
     assert CoreTicketGuard(lane=None).ledger_path is None
+
+
+@pytest.mark.unit
+def test_core_guard_reads_the_ledger_it_is_given(tmp_path: Path) -> None:
+    ledger = tmp_path / "ledger.md"
+    ledger.write_text("row\n", encoding="utf-8")
     assert CoreTicketGuard(lane=None, ledger_path=ledger).ledger_path == ledger
