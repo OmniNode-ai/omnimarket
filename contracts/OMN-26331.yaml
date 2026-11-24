@@ -17,6 +17,11 @@ requirements:
         statement: 'AC3: patch-apply-dispatch reads its window through the rows loader, appends over the bus append path and starts its runner with no ledger path; the minutes watch appends its row over the bus append path with a day-stable request id and takes no ledger path -- falsifier: uv run pytest tests/test_golden_chain_patch_apply_dispatch_effect.py tests/test_golden_chain_private_hosted_minutes_watch_effect.py tests/unit/nodes/node_private_hosted_minutes_watch_effect tests/unit/handlers/test_ledger_append_via_node.py -q --no-cov'
       - id: AC4
         statement: 'AC4: the census exits 0 at count 179 with no hit in the owner-summary entrypoint, the plans-today handler, the patch-apply CLI and the minutes-watch handler, and the ratchet file lowers rows only -- falsifier: env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --ratchet-file src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml --repos omnimarket --directory omnimarket=. --per-file exits non-zero or prints a hit for any of the four files'
+  - id: req-omn26331-part2-names-no-ledger-file
+    statement: The generated work-events view, the work-ledger parity check and the duplicate-pull-request guard's generic paths stop naming the ledger file or its path variable; the parity check compares the file its caller names.
+    acceptance:
+      - id: AC5
+        statement: 'AC5: the generated view banner, the parity check and the guard contract hold no counted ledger-file hit, the parity check takes its file only from --ledger and finds archive splits by that file''s stem, and the census row count drops by three -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_group3_part2_omn26331.py tests/unit/nodes/node_projection_work_events/test_ledger_view_banner_omn26331.py tests/unit/nodes/node_projection_work_ledger/test_parity_ledger_argument_omn26331.py tests/nodes/node_pr_duplicate_guard_compute/test_generic_paths_name_no_ledger_file_omn26331.py -q --no-cov'
 evidence_requirements:
   - kind: tests
     description: The four nodes' tests and the two shared helpers' tests at the pushed head.
@@ -76,4 +81,17 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26331 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_plans_today_effect tests/nodes/node_owner_summary_effect tests/unit/handlers/test_ledger_rows_via_node.py tests/unit/handlers/test_ledger_append_via_node.py tests/test_golden_chain_patch_apply_dispatch_effect.py tests/test_golden_chain_private_hosted_minutes_watch_effect.py tests/unit/nodes/node_private_hosted_minutes_watch_effect -q --no-cov
+        cwd: .
+
+  - id: dod-omn26331-ac5
+    description: The view banner, the parity check and the guard contract stop naming the ledger file; at the merge base the banner names its path, the parity check reads a path variable and a fixed archive name, and the guard contract lists the file as a generic path, so these fail.
+    source: manual
+    binds_ac:
+      - AC5
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_group3_part2_omn26331.py tests/unit/nodes/node_projection_work_events/test_ledger_view_banner_omn26331.py tests/unit/nodes/node_projection_work_ledger/test_parity_ledger_argument_omn26331.py tests/nodes/node_pr_duplicate_guard_compute/test_generic_paths_name_no_ledger_file_omn26331.py -q --no-cov --tb=line
+        cwd: .
+      - check_type: command
+        check_value: env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --ratchet-file src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml --repos omnimarket --directory omnimarket=. --per-file
         cwd: .

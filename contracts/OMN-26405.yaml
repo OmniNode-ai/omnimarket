@@ -1,0 +1,69 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-26405"
+title: "The runtime image's prebuilt manifest passes its boot stamp check on the image it was built in, so boot step 0 loads it and runs no contract discovery"
+summary: "The omnimarket layer of the dev runtime image uninstalls and reinstalls omnimarket and strips the entry points after the infra image stamped its prebuilt node manifest, so the manifest's distribution listing never matches the installed one and boot reads it stale. Dockerfile.runtime now rebuilds the manifest as its last stamp-changing step, with the active package set and workload read from the base image's own stamp (a build argument wins) and a fail-closed check. This contract covers the omnimarket side; the manifest builder and its boot test live in omnibase_infra, and AC4 is read from a dev build after merge."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn26405-manifest-after-install"
+    statement: |-
+      Dockerfile.runtime builds the prebuilt node manifest after the last step that changes any stamp input, with the active package set and workload the base image stamped, and stops the build when either is missing.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2 (omnimarket side): a regression test over Dockerfile.runtime asserts the manifest build step exists, comes after the entry point strip and every later install or copy, takes its set and workload from the base image's stamp and fails closed; it fails on the merge base and passes on the branch -- falsifier: uv run pytest tests/unit/docker -q -k omnimarket_manifest_after_install exits non-zero on the branch
+  - id: "req-omn26405-gates-unchanged"
+    statement: |-
+      The health gate, the boot guard, the compose wait and the compose start period are unchanged.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: Dockerfile.runtime still declares no ENTRYPOINT, CMD or HEALTHCHECK, and this change edits no compose file, health gate, boot guard or runtime policy file -- falsifier: uv run pytest tests/unit/docker/test_composed_runtime_image_omn21279.py -k inherits_unpinned_argument exits non-zero
+evidence_requirements:
+  - kind: "tests"
+    description: "AC2: the focused tests named *omnimarket_manifest_after_install*."
+    command: "uv run pytest tests/unit/docker -q -k omnimarket_manifest_after_install -n 0 --no-cov"
+  - kind: "tests"
+    description: "AC3: the Dockerfile with the manifest step still inherits the base unchanged and declares no entry point, command or health check."
+    command: "uv run pytest tests/unit/docker -q -k omnimarket_manifest_after_install_adds_no_entry_point_command_or_health_check -n 0 --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn26405-ac2-manifest-after-install"
+    description: "AC2 (omnimarket side): the omnimarket_manifest_after_install tests pass on the branch and fail against the base commit's Dockerfile.runtime."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/docker -q -k omnimarket_manifest_after_install -n 0 --no-cov"
+        cwd: "."
+  - id: "dod-omn26405-ac3-gates-unchanged"
+    description: "AC3: Dockerfile.runtime with the manifest step declares no ENTRYPOINT, CMD or HEALTHCHECK and keeps its unpinned base argument; the test needs the manifest step, so it fails against the base commit's Dockerfile.runtime."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/docker -q -k omnimarket_manifest_after_install_adds_no_entry_point_command_or_health_check -n 0 --no-cov"
+        cwd: "."
+  - id: "dod-omn26405-integration-proof"
+    description: >-
+      Run the Dockerfile.runtime manifest-after-install tests and the sibling runtime image tests on a lab host
+      at the pushed revision. This local completion proof carries no hosted AC bindings; the dev image build
+      that reads AC4 runs after merge.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run
+          --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+          --lane dod-integration-proof-26405 --kind test --
+          uv run --frozen pytest
+          tests/unit/docker/test_runtime_image_manifest_after_install_omn26405.py
+          tests/unit/docker/test_composed_runtime_image_omn21279.py
+          tests/unit/docker/test_runtime_image_github_nodes_omn21422.py
+          -q -n 0 --no-cov --refuse-skips
+        cwd: "."
