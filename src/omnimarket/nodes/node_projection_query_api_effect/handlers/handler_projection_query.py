@@ -31,6 +31,11 @@ from omnimarket.nodes.node_projection_query_api_effect.models import (
 from omnimarket.nodes.node_projection_query_api_effect.ports.contract_routes import (
     contract_route,
 )
+from omnimarket.nodes.node_projection_query_api_effect.ports.page_cache import (
+    PageCacheUnavailableError,
+    ProtocolPageCache,
+    page_cache_key,
+)
 from omnimarket.projection.discovery import build_projection_topic_map
 from omnimarket.projection.generation_publisher import publish_generation_request
 from omnimarket.projection.models import (
@@ -74,6 +79,14 @@ def _column_value(row: dict[str, Any], column: str | None) -> Any:
     return row.get(column)
 
 
+def _unavailable_cache_state() -> dict[str, Any]:
+    return {
+        "state": "unavailable",
+        "fallback": True,
+        "detail": "the Valkey page cache did not answer; this page was read from the store",
+    }
+
+
 class HandlerProjectionQuery:
     """Answers one contract-declared route of the projection query surface.
 
@@ -88,9 +101,13 @@ class HandlerProjectionQuery:
         *,
         topic_map: dict[str, ProjectionTableConfig] | None = None,
         row_source: ProtocolProjectionRowSource | None = None,
+        page_cache: ProtocolPageCache | None = None,
+        page_cache_key_prefix: str = "",
     ) -> None:
         self._topic_map = topic_map
         self._row_source = row_source
+        self._page_cache = page_cache
+        self._page_cache_key_prefix = page_cache_key_prefix
         self._owned_source: TableRowSource | None = None
 
     def _topics(self) -> dict[str, ProjectionTableConfig]:
@@ -232,7 +249,7 @@ class HandlerProjectionQuery:
             text=render_morning_page(page),
         )
 
-    async def _projection_page(
+    async def _read_page(
         self, request: ModelProjectionQueryRequest
     ) -> ModelProjectionQueryResponse:
         # The page is read by the same function the runtime-resident
@@ -247,8 +264,43 @@ class HandlerProjectionQuery:
             order=request.order,
             order_by=request.order_by,
             tenant=request.tenant,
+            window=request.window,
         )
         return _json(page.status_code, page.body)
+
+    async def _projection_page(
+        self, request: ModelProjectionQueryRequest
+    ) -> ModelProjectionQueryResponse:
+        """One page, from the cache inside its declared expiry, else from the windowed store read.
+
+        A miss recomputes the page from the store and holds it. A cache that
+        does not answer serves the store read and says so in the answer
+        (``cache.fallback``); a failed or refused read is never held.
+        """
+        cache = self._page_cache
+        if cache is None or request.correlation_id is not None:
+            return await self._read_page(request)
+        key = page_cache_key(self._page_cache_key_prefix, request)
+        state: dict[str, Any] = {"state": "miss", "ttl_seconds": cache.ttl_seconds}
+        try:
+            held = await cache.get(key)
+        except PageCacheUnavailableError:
+            held = None
+            state = _unavailable_cache_state()
+        if held is not None:
+            return _json(
+                200,
+                {**held, "cache": {"state": "hit", "ttl_seconds": cache.ttl_seconds}},
+            )
+        answer = await self._read_page(request)
+        if answer.status_code != 200 or not isinstance(answer.body, dict):
+            return answer
+        if state["state"] == "miss":
+            try:
+                await cache.put(key, answer.body)
+            except PageCacheUnavailableError:
+                state = _unavailable_cache_state()
+        return _json(200, {**answer.body, "cache": state})
 
     async def _evidence_page(
         self, route: ModelQueryRoute, request: ModelProjectionQueryRequest

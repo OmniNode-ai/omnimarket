@@ -547,12 +547,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_llm_call_metrics_input_hash
 # created by the first step that writes, never on a plain connect, so a
 # read-only store that predates it can still be opened.
 _STORE_STEPS_TABLE = "omnimarket_sqlite_store_steps"
-_STORE_STEPS_DDL = f"""
-CREATE TABLE IF NOT EXISTS {_STORE_STEPS_TABLE} (
-    step       TEXT PRIMARY KEY,
-    applied_at TEXT NOT NULL
+_STORE_STEPS_DDL = (
+    f"CREATE TABLE IF NOT EXISTS {_STORE_STEPS_TABLE} "
+    "(step TEXT PRIMARY KEY, applied_at TEXT NOT NULL)"
 )
-"""
 _USAGE_SOURCE_VOCABULARY_STEP = "omn19968_usage_source_shared_vocabulary"
 # The SQLite counterpart of usage_by_model_day migration 0002.
 _USAGE_BY_MODEL_DAY_STEP = "omn20006_usage_by_model_day_measured_cost"
@@ -691,6 +689,9 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
             conn.execute(_DELEGATION_EVENTS_DDL)
             self._reconcile_delegation_events(conn)
             self._reconcile_legacy_llm_call_metrics(conn)
+            # No newest table: a fresh store makes its tables in one commit.
+            if not self._existing_columns(conn, "automation_alarm_episodes"):
+                conn.execute("BEGIN IMMEDIATE")
             conn.execute(_LLM_CALL_METRICS_DDL)
             conn.execute(_DELEGATE_SKILL_CLAIMS_DDL)
             conn.execute(_USAGE_BY_MODEL_DAY_CALLS_DDL)
@@ -698,7 +699,6 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
             conn.execute(_RUN_TRACE_DDL)
             conn.execute(_METERING_SUMMARY_DDL)
             conn.execute(_METERING_SUMMARY_INDEX_DDL)
-            conn.execute(_LLM_CALL_METRICS_DDL)
             conn.execute(_LLM_CALL_METRICS_INPUT_HASH_INDEX)
             conn.execute(_TENANT_INFERENCE_CREDENTIALS_DDL)
             conn.execute(_DELEGATION_ROUTING_TENANT_OVERLAY_DDL)
@@ -789,11 +789,11 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
         """Run each one-time store step this store has not recorded, in order.
 
         Every connection goes through here, reads included, and a step's write
-        takes the write lock even when it changes nothing. So each step runs in
-        its own write transaction that commits it together with its row in the
-        store-steps table, and a store that has recorded every step opens with
-        reads only. The decision reads the step record, never table rows: this
-        module is shared by nodes that do not own those tables.
+        takes the write lock even when it changes nothing. So the pending steps
+        run in one write transaction, one commit however many there are, each
+        with its row in the store-steps table, and a store that has recorded
+        every step opens with reads only. The decision reads the step record,
+        never table rows: this module is shared by nodes that do not own them.
 
         A store this process cannot write is read as it is, with one warning
         naming every step it still lacks. Anything else, a busy store included,
@@ -897,14 +897,15 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
             )
         pending.extend(pending_local_run_steps(conn, cls._store_step_recorded))
         pending.extend(cls._credential_store_steps(conn))
-        for index, (step, apply, _) in enumerate(pending):
-            try:
-                conn.execute("BEGIN IMMEDIATE")
-                conn.execute(_STORE_STEPS_DDL)
+        if not pending:
+            return
+        try:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(_STORE_STEPS_DDL)
+            for step, apply, _ in pending:
                 # OMN-21970: another process may have applied it since the list
                 # was read; a step such as ADD COLUMN is not safe to run twice.
                 if cls._store_step_recorded(conn, step):
-                    conn.rollback()
                     continue
                 apply(conn)
                 conn.execute(
@@ -912,20 +913,19 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
                     "VALUES (?, ?)",
                     (step, datetime.now(UTC).isoformat()),
                 )
-                conn.commit()
-            except sqlite3.OperationalError as exc:
-                conn.rollback()
-                if (exc.sqlite_errorcode & 0xFF) != sqlite3.SQLITE_READONLY:
-                    raise
-                logger.warning(
-                    "%s is read-only and has not %s; reading it as it is",
-                    db_path,
-                    ", nor ".join(lacking for _, _, lacking in pending[index:]),
-                )
-                return
-            except BaseException:
-                conn.rollback()
+            conn.commit()
+        except sqlite3.OperationalError as exc:
+            conn.rollback()
+            if (exc.sqlite_errorcode & 0xFF) != sqlite3.SQLITE_READONLY:
                 raise
+            logger.warning(
+                "%s is read-only and has not %s; reading it as it is",
+                db_path,
+                ", nor ".join(lacking for _, _, lacking in pending),
+            )
+        except BaseException:
+            conn.rollback()
+            raise
 
     @classmethod
     def _add_usage_by_model_day_columns(cls, conn: sqlite3.Connection) -> None:

@@ -291,6 +291,8 @@ def run_snapshots(
                 recorded_decision=snapshot.decision,
                 fair_share=snapshot.fair_share,
                 controller=snapshot.controller,
+                merged_prs=snapshot.merged_prs,
+                running_read_ledger_text=snapshot.running_read_ledger_text,
                 rerun_requests=requests if position == len(snapshots) - 1 else (),
             )
         )
