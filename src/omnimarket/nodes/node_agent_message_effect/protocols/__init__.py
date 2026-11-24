@@ -7,12 +7,7 @@ from typing import Protocol
 
 from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
 
-from omnimarket.nodes.node_event_emit_effect.models.model_emit_request import (
-    ModelEmitRequest,
-)
-from omnimarket.nodes.node_event_emit_effect.models.model_emit_result import (
-    ModelEmitResult,
-)
+from omnimarket.nodes.node_event_emit_effect import ModelEmitRequest, ModelEmitResult
 
 
 class ProtocolAgentMessageEmitter(Protocol):

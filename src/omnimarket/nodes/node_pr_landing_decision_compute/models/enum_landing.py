@@ -142,7 +142,9 @@ class EnumLandingLandSkipReason(StrEnum):
     a superseded attempt, failing or still running on the exact head. A new-work
     PR with no clean review verdict on its exact head is held by name too:
     ``review_missing``, ``review_changes_needed``, ``review_superseded`` and
-    ``review_unread``.
+    ``review_unread``. A PR into a repository other repositories install (omnibase_core, omnibase_spi, OMN-26513)
+    is held by name while its downstream check is a break (``downstream_break``), unread (``downstream_unread``) or
+    of another head (``downstream_other_head``).
     """
 
     HOLD = "hold"
@@ -168,6 +170,9 @@ class EnumLandingLandSkipReason(StrEnum):
     REVIEW_STATUS_FAILING = "review_status_failing"
     REVIEW_STATUS_OTHER_HEAD = "review_status_other_head"
     REVIEW_STATUS_UNREAD = "review_status_unread"
+    DOWNSTREAM_BREAK = "downstream_break"
+    DOWNSTREAM_UNREAD = "downstream_unread"
+    DOWNSTREAM_OTHER_HEAD = "downstream_other_head"
 
 
 # A person's hold, a draft and do-not-land keep a PR out of every shared cause;

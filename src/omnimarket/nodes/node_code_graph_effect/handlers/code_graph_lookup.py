@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The lookup: six questions answered from one stored version of a repository's graph (OMN-23648).
+"""The lookup: the questions answered from one stored version of a repository's graph (OMN-23648).
 
 Asked at the head, a lookup reads the newest stored version. Asked as of a commit, it reads the
 version stored for exactly that commit; a commit with no stored version is a typed not-found that
@@ -72,6 +72,8 @@ class CodeGraphLookup:
                 answered_from=version.commit,
                 reason=f"{LOCATE_NOT_INDEXED}: the stored version of {command.repo} holds no node files",
             )
+        if command.question is EnumCodeGraphQuestion.HANDLERS:
+            return _handlers(version, command)
         matches = _answer(version, command)
         return ModelCodeGraphLookupResult(
             correlation_id=command.correlation_id,
@@ -125,6 +127,30 @@ class CodeGraphLookup:
             committed_at=newest.committed_at,
             ordering="unresolved",
         )
+
+
+def _handlers(
+    version: ModelCodeGraphVersion, command: ModelCodeGraphLookupCommand
+) -> ModelCodeGraphLookupResult:
+    """Every operation row of the version; one match per row keeps the match listing readable."""
+    rows = version.handler_rows
+    return ModelCodeGraphLookupResult(
+        correlation_id=command.correlation_id,
+        question=command.question,
+        repo=command.repo,
+        status="found" if rows else "not-found",
+        answered_from=version.commit,
+        handler_rows=rows,
+        matches=tuple(
+            ModelLookupMatch(
+                path=row.contract,
+                name=row.operation,
+                detail=f"{row.resolution.value} {row.route.value}",
+            )
+            for row in rows
+        ),
+        reason=None if rows else "the version holds no handler routing",
+    )
 
 
 def _gap(stored: datetime | None, asked: datetime) -> tuple[float, float]:

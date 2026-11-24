@@ -37,9 +37,7 @@ from omnimarket.nodes.node_agent_message_effect.protocols import (
     ProtocolAgentMessageBus,
     ProtocolAgentMessageEmitter,
 )
-from omnimarket.nodes.node_event_emit_effect.models.model_emit_request import (
-    ModelEmitRequest,
-)
+from omnimarket.nodes.node_event_emit_effect import ModelEmitRequest
 
 EVENT_TYPE = "agent.message"
 _WIRE_FIELDS = ("from", "to", "thread", "kind", "text", "sent_at", "platform")
