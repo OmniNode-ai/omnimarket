@@ -1,0 +1,142 @@
+schema_version: 1.0.0
+ticket_id: OMN-26638
+title: The floor fill tick on h051 reads settings through an injected store wired to the central Valkey, and a changed value reaches it with no release
+summary: An injected overlay-store protocol with a wiring function per process kind, a Valkey implementation registered as its own kind, a bootstrap seed and the floor fill tick reading the central store.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26638-injected-store
+  statement: The floor fill tick reads settings through an injected store wired from bootstrap inputs.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the floor fill tick handler and its overlay reader take the settings store only through a constructor argument and no handler or reader module imports a store implementation -- falsifier: uv run pytest tests/ -k store_injection in omnimarket, plus the import test that fails on a planted import'
+  - id: AC2
+    statement: 'AC2: a wiring function builds each registered store kind from bootstrap inputs that name it, builds the in-memory kind with no other input and no Infisical call, and refuses with the missing input''s name and builds nothing when the kind or a declared input is missing -- falsifier: uv run pytest tests/ -k store_wiring'
+  - id: AC3
+    statement: 'AC3: a Valkey implementation of the store protocol is registered as its own kind, takes every connection value from the wiring, and a replay into an empty key prefix with pre-revision records still on the topic ends at the backfilled revisions and counts the skipped records -- falsifier: uv run pytest tests/ -k valkey_replay_backfill'
+  - id: AC4
+    statement: 'AC4: a read of a populated settings key with the existing cache login is refused, and a write with the reader login and a write with the cache login to the store prefix are refused -- falsifier: uv run pytest tests/ -k valkey_acl_refusals against the dev Valkey on the lab'
+  - id: AC5
+    statement: 'AC5: no reader chooses its store backend or names a broker from its own overlay, and the store check fails on a planted address, port, prefix or kind in omnimarket source or contracts -- falsifier: uv run pytest tests/ -k no_reader_backend_choice'
+  - id: AC6
+    statement: 'AC6: the bootstrap command seeds node_floor_fill_orchestrator and lab_hosts, a second run writes nothing, the table and Valkey agree on each revision, and a missing store, broker or Infisical input refuses with its name -- falsifier: uv run pytest tests/ -k bootstrap_seed_idempotent'
+  - id: AC7
+    statement: 'AC7: after the floor fill cutover no host refresh tick writes a copy of the floor fill overlay and none is added to the kept set -- falsifier: uv run pytest tests/ -k refresh_kept_set'
+  - id: AC8
+    statement: 'AC8: the stale falsifier is read only while the projection and the Valkey writer both deliver heartbeats within the bound -- falsifier: uv run pytest tests/ -k stale_requires_both_heartbeats'
+  - id: AC9
+    statement: 'AC9: integrated: on h051 the running tick reads both overlay documents from Valkey with no host copy, a set of floor_fill.sent_window_minutes on dev is the value the next tick reports with the unit file digest unchanged, and a closed store port exits 75 with a degraded reading -- falsifier: run onex-floor-fill-tick on the lab host h051 and read back its exit code, its reported sent_window_minutes and the unit file digest before and after a set on the dev lane'
+evidence_requirements:
+- kind: tests
+  description: The focused settings-store tests, each written failing first.
+  command: uv run pytest tests/settings_store -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26638-store-injection
+  description: The floor fill tick handler and its reader take the store by constructor; the import check fails on a planted implementation import.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/settings_store -q --no-cov -n 0 -p no:randomly -k store_injection
+    cwd: .
+- id: dod-omn26638-store-wiring
+  description: The wiring builds each kind from the inputs that name it, builds the in-memory kind with no Infisical call, and refuses naming the missing input.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/settings_store -q --no-cov -n 0 -p no:randomly -k store_wiring
+    cwd: .
+- id: dod-omn26638-valkey-replay-backfill
+  description: A replay into an empty prefix with pre-revision records ends at the backfilled revisions and counts the skipped records.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/settings_store -q --no-cov -n 0 -p no:randomly -k valkey_replay_backfill
+    cwd: .
+- id: dod-omn26638-valkey-acl-rules
+  description: 'The three logins'' access-list rules: the reader reads the store prefix only, the writer reads and writes it, the cache login names no store key pattern. The live refusals (valkey_acl_refusals) run on the lab.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/settings_store -q --no-cov -n 0 -p no:randomly -k valkey_acl_rules
+    cwd: .
+- id: dod-omn26638-no-reader-backend-choice
+  description: The store check fails on a planted address, port, database, prefix or kind and passes the tree.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/settings_store -q --no-cov -n 0 -p no:randomly -k no_reader_backend_choice
+    cwd: .
+- id: dod-omn26638-bootstrap-seed-idempotent
+  description: A second seed run writes nothing, the table and the settings store agree, a missing binding input refuses by name, the host file holds binding names only.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/settings_store -q --no-cov -n 0 -p no:randomly -k bootstrap_seed_idempotent
+    cwd: .
+- id: dod-omn26638-refresh-kept-set
+  description: A cut-over overlay in a host refresh's kept set refuses and writes no snapshot copy.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/settings_store -q --no-cov -n 0 -p no:randomly -k refresh_kept_set
+    cwd: .
+- id: dod-omn26638-stale-requires-both-heartbeats
+  description: The stale falsifier reads unreadable, never stale, while the projection or the Valkey writer is quiet.
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/settings_store -q --no-cov -n 0 -p no:randomly -k stale_requires_both_heartbeats
+    cwd: .
+- id: dod-omn26638-tick-from-store
+  description: 'The in-process half of AC9: the floor fill tick reads both overlay documents through the injected store with no host copy, a changed value is the one the next tick reports, and a closed store reads degraded with exit 75. The run on h051 is the unbound item below.'
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/settings_store -q --no-cov -n 0 -p no:randomly -k tick_from_store
+    cwd: .
+- id: dod-omn26638-live-valkey-acl
+  description: 'On the lab, against the dev Valkey: the cache login cannot read a populated settings key, the reader and cache logins cannot write the store prefix. Hosted CI holds no lab Valkey, so only the local Done gate runs this unbound check; AC4 stays bound to the access-list rules item above, which the hosted check runs.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-valkey-acl-26638 --kind test -- env ONEX_VALKEY_ACL_PROBE=1 uv run --frozen pytest tests/settings_store/live -q --no-cov -n 0 -p no:randomly -k valkey_acl_refusals
+    cwd: .
+- id: dod-omn26638-integration-proof-h051
+  description: 'On h051: the tick reads both overlay documents from Valkey with no host copy, a set of floor_fill.sent_window_minutes on dev is the value the next tick reports with the unit digest unchanged, a closed store port exits 75. Hosted CI holds no lab host, so only the local Done gate runs this unbound check; AC9 stays bound to the in-process tick item above, which the hosted check runs.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-h051-tick-26638 --kind test -- uv run --frozen pytest tests/settings_store -q --no-cov -n 0 -p no:randomly -k tick_from_store
+    cwd: .
+- id: dod-omn26638-hosted-deploy-check
+  description: 'Deploy check the hosted runner can run: the three store kinds are registered under onex.backends. This binds no criterion by itself.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: grep -q 'store_valkey = ' pyproject.toml
+    cwd: .

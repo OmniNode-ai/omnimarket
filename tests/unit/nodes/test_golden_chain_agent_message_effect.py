@@ -22,11 +22,11 @@ from omnibase_infra.event_bus.models.model_event_message import ModelEventMessag
 
 from omnimarket.enums.enum_agent_message_operation import EnumAgentMessageOperation
 from omnimarket.enums.enum_agent_message_refusal import EnumAgentMessageRefusal
+from omnimarket.models.agent_message.model_agent_message_request import (
+    ModelAgentMessageRequest,
+)
 from omnimarket.nodes.node_agent_message_effect.container.container_agent_message_effect import (
     create_emitter,
-)
-from omnimarket.nodes.node_agent_message_effect.models.model_agent_message_request import (
-    ModelAgentMessageRequest,
 )
 from omnimarket.nodes.node_agent_message_effect.node import NodeAgentMessageEffect
 from omnimarket.nodes.node_event_emit_effect.handlers.handler_event_emit_effect import (
