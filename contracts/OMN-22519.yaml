@@ -83,7 +83,7 @@ dod_evidence:
   source: manual
   binds_ac: [AC14]
   checks:
-  - check_type: test_passes
+  - check_type: command
     check_value: uv run --frozen pytest tests/unit/nodes/node_agent_review_gate_accept_effect/test_public_review_receipt.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn22519-ac15-accepted-20261124t1145z
