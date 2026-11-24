@@ -14,7 +14,7 @@ import json
 import stat
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -438,4 +438,4 @@ def test_c13_and_c14_keep_reading_precondition_absent_on_this_machine(
 ) -> None:
     machine = _machine(tmp_path, _Runner(_document()))
     with pytest.raises(CollectorAbsentError):
-        machine.collect_routing(None)  # type: ignore[arg-type]
+        machine.collect_routing(cast("Any", None))

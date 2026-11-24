@@ -94,7 +94,7 @@ class ProtocolCommandRunner(Protocol):
     ) -> CommandResult: ...
 
 
-class SubprocessCommandRunner:
+class SubprocessCommandHandler:
     def run(
         self,
         argv: Sequence[str],
@@ -238,7 +238,7 @@ class CleanInstallCustomerMachine:
         host_env: Mapping[str, str] | None = None,
     ) -> None:
         self._sources = sources
-        self._runner = runner or SubprocessCommandRunner()
+        self._runner = runner or SubprocessCommandHandler()
         self._uv = uv
         self._host_path = host_path
         process_env = os.environ  # ONEX_FLAG_EXEMPT: host environment of the run
