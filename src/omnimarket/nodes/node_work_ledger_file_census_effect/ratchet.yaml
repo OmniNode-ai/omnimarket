@@ -159,9 +159,6 @@ files:
     tests/nodes/node_ledger_reconcile_orchestrator/test_flows.py: 1
     tests/nodes/node_merge_sweep_reading_compute/sweep_scenarios.py: 1
     tests/nodes/node_morning_friction_sweep_orchestrator/test_overlay.py: 1
-    tests/nodes/node_operator_access_mode_effect/test_foreground_wait_guard.py: 2
-    tests/nodes/node_operator_access_mode_effect/test_operator_access_mode.py: 2
-    tests/nodes/node_operator_access_mode_effect/test_operator_hooks_refusal_row_omn21020.py: 1
     tests/nodes/node_plans_today_effect/test_plans_today_operator.py: 1
     tests/nodes/node_remote_lane_stop_effect/conftest.py: 1
     tests/nodes/node_session_checkpoint_compute/test_golden_chain_session_checkpoint_compute.py: 1
@@ -185,11 +182,6 @@ files:
     tests/unit/nodes/node_context_source_ledger_effect/test_ledger_fold_memo_omn21099.py: 1
     tests/unit/nodes/node_context_source_work_state_effect/test_context_source_work_state.py: 1
     tests/unit/nodes/node_dropped_work_audit_scheduled_effect/test_dropped_work_audit_scheduled.py: 1
-    tests/unit/nodes/node_operator_capture_compute/test_golden_chain_operator_capture.py: 1
-    tests/unit/nodes/node_operator_capture_effect/test_capture_accepted_append.py: 1
-    tests/unit/nodes/node_operator_capture_effect/test_operator_capture_effect.py: 1
-    tests/unit/nodes/node_operator_capture_effect/test_operator_capture_serve.py: 3
-    tests/unit/nodes/node_operator_capture_effect/test_words_promotion_effect.py: 1
     tests/unit/nodes/node_projection_work_ledger/test_parity_by_kind.py: 1
     tests/unit/nodes/node_projection_work_ledger/test_parity_verb_diff.py: 2
     tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity.py: 2
@@ -212,5 +204,5 @@ ratchet:
   omniclaude: 45
   omnidash: 0
   omniintelligence: 0
-  omnimarket: 121
+  omnimarket: 106
   omnimemory: 1

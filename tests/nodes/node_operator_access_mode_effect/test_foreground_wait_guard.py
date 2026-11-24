@@ -177,8 +177,8 @@ REPLACEMENTS = [
         id="heredoc-to-quoted-message",
     ),
     pytest.param(
-        'L="$ONEX_LEDGER_PATH"\npython3 onex_ledger.py "$L" --append "row"',
-        'python3 onex_ledger.py "$ONEX_LEDGER_PATH" --append "$(date -u +%FT%TZ) | CLAIM | row"',
+        'L="$ONEX_LEDGER_FILE_LOCATION"\npython3 onex_ledger.py "$L" --append "row"',
+        'python3 onex_ledger.py "$ONEX_LEDGER_FILE_LOCATION" --append "$(date -u +%FT%TZ) | CLAIM | row"',
         "chained commands",
         id="ledger-template-variable",
     ),
