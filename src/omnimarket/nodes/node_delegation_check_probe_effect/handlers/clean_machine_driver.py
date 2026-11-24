@@ -15,7 +15,6 @@ case with it on, and records both the name and that it was on.
 
 from __future__ import annotations
 
-import argparse
 import importlib
 import importlib.metadata as md
 import json
@@ -188,29 +187,44 @@ def plant_broken(
     return record
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--onex", required=True, help="path to the installed onex executable"
-    )
-    parser.add_argument("--packages", nargs="*", default=[])
-    args = parser.parse_args()
+def read_arguments(argv: list[str]) -> tuple[str, list[str]]:
+    """The ``--onex <path>`` and ``--packages <names...>`` the collector passes; read by hand, stdlib only."""
+    onex: str | None = None
+    packages: list[str] = []
+    current: str | None = None
+    for token in argv:
+        if token in ("--onex", "--packages"):
+            current = token
+        elif current == "--onex":
+            onex, current = token, None
+        elif current == "--packages":
+            packages.append(token)
+        else:
+            raise SystemExit(f"unexpected argument: {token}")
+    if onex is None:
+        raise SystemExit("--onex is required")
+    return onex, packages
+
+
+def drive() -> int:
+    onex_path, packages = read_arguments(sys.argv[1:])
     # Importing the CLI to walk it may print; the record must be the only thing on stdout.
     record_stream, sys.stdout = sys.stdout, sys.stderr
-    env = dict(os.environ)
+    machine_env = os.environ  # ONEX_FLAG_EXEMPT: the clean machine's own environment
+    env = dict(machine_env)
     document = {
         "interpreter": interpreter(),
-        "versions": installed_versions(tuple(args.packages)),
+        "versions": installed_versions(tuple(packages)),
         "commands": {
-            "version": run([args.onex, "--version"], env),
+            "version": run([onex_path, "--version"], env),
             **{
-                f"{name}_help": run([args.onex, name, "--help"], env)
+                f"{name}_help": run([onex_path, name, "--help"], env)
                 for name in CUSTOMER_COMMANDS
             },
         },
         "cli_surface": cli_surface(),
         "broken": plant_broken(
-            args.onex,
+            onex_path,
             Path(sysconfig.get_paths()["purelib"]),
             env,
             operator_switch_env(),
@@ -222,4 +236,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(drive())

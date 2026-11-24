@@ -241,7 +241,8 @@ class CleanInstallCustomerMachine:
         self._runner = runner or SubprocessCommandRunner()
         self._uv = uv
         self._host_path = host_path
-        self._host_env = os.environ if host_env is None else host_env
+        process_env = os.environ  # ONEX_FLAG_EXEMPT: host environment of the run
+        self._host_env = process_env if host_env is None else host_env
         self._versions: dict[str, str] = {}
 
     def run_delegation(
