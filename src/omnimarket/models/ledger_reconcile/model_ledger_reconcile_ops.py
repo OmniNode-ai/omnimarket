@@ -48,12 +48,11 @@ class ModelReconcileRenderRequest(BaseModel):
 
 
 class ModelReadSourcesRequest(BaseModel):
-    """Read the ledger host. Unset paths come from OMNI_HOME and ONEX_LEDGER_PATH."""
+    """Read the ledger host. An unset registry root comes from OMNI_HOME; the ledger rows come over the bus."""
 
     model_config = _FROZEN
 
     correlation_id: UUID = Field(default_factory=uuid4)
-    ledger_path: str | None = None
     registry_root: str | None = None
     live_lanes: tuple[str, ...] = ()
     live_lanes_file: str | None = None
@@ -90,7 +89,6 @@ class ModelAppendRowsRequest(BaseModel):
 
     correlation_id: UUID = Field(default_factory=uuid4)
     rows: tuple[ModelPlannedAppend, ...]
-    ledger_path: str | None = None
 
 
 class ModelAppendRowsResult(BaseModel):

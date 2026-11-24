@@ -251,10 +251,10 @@ dashboard:
   start: [dashboard, start, --json]
   open: [dashboard, open, --json]
   stop: [dashboard, stop, --json]
-  running: "Running at {url} (process {pid})"
+  running: "Running (process {pid}). Press Enter, use the Open button, or run onex dashboard open to open it."
   not_running: "Not running. {fix}"
-  started: "Dashboard running at {url}"
-  opened: "Opened {url} in your browser"
+  started: "Dashboard running. Press Enter, use the Open button, or run onex dashboard open to open it."
+  opened: "Opened in your browser. Press Enter, use the Open button, or run onex dashboard open to open it again."
   stopped: "Dashboard stopped"
   failed: "Dashboard {action} did not work: {reason}"
 
@@ -382,6 +382,7 @@ words:
   # A zero cost with cost_measured false is unknown, not free (audit S9-1, OMN-24224).
   run_cost_unmeasured: "cost not measured"
   run_saved: "saved ${saved}"
+  run_saved_unmeasured: "savings not measured"
   run_id: "run {run}"
   last_run: "last run {model} ${cost}"
   last_run_unmeasured: "last run {model} · cost not measured"

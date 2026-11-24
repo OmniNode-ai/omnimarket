@@ -24,6 +24,13 @@ requirements:
   acceptance:
   - id: AC5
     statement: 'AC5: a set run holds at most one lane bus open at once and still reads the live record then publishes the record and its audit row -- falsifier: uv run pytest tests/unit/nodes/node_overlay_setting_set/test_setting_set_one_bus.py -q --no-cov -n 0 -p no:randomly'
+- id: req-omn23563-probe-user-cleanup
+  statement: A dev identity run deletes the Keycloak user it created when it ends, and the node reads and deletes one named dev user, so a probe that creates no tenant leaves no user behind.
+  acceptance:
+  - id: AC7
+    statement: 'AC7: a run deletes the user it created after every typed failure past the create and after an exception, and after a success only when the command declares the user disposable; a user that existed before the run and a protected username are never deleted -- falsifier: uv run pytest tests/nodes/node_dev_identity_provision_effect/test_user_cleanup.py -q -k "leaves_no_user or keeps_the_user or never_deleted or cleanup_that_fails or nothing_to_clean_up or exception_after_the_create"'
+  - id: AC8
+    statement: 'AC8: the lookup verb reads one named dev user and the delete verb removes only that user and reads it gone, refusing the overlay user, a protected username and any lane or realm the dev_only block does not declare -- falsifier: uv run pytest tests/nodes/node_dev_identity_provision_effect/test_user_cleanup.py -q -k "lookup or delete"'
 evidence_requirements:
 - kind: tests
   description: 'The node''s focused tests at the pushed head.'
@@ -86,6 +93,24 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_dev_identity_provision_effect/test_tenant_provisioner_bus_refusal.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23563-ac7-cleanup-on-exit
+  description: 'AC7: against the pre-change handler the four failure-path tests (runtime_unreachable, refused provision, invalid runtime answer, refused sign-in) failed with the created user still in the fake realm; with the change they pass, together with the kept, never-deleted and failed-cleanup cases.'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_identity_provision_effect/test_user_cleanup.py -k "leaves_no_user or keeps_the_user or never_deleted or cleanup_that_fails or nothing_to_clean_up or exception_after_the_create" -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23563-ac8-lookup-delete
+  description: 'AC8: lookup reads a present and an absent user and writes nothing; delete removes only the named user and the read after it answers absent; the overlay user, a protected username and a non-dev lane are refused before any call.'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_identity_provision_effect/test_user_cleanup.py -k "lookup or delete" -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23563-integration-proof
   description: 'The pushed head ran the node''s tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The node is not run against the live dev runtime in this change: the tenant operator login and the dev roll are the next reading.'
