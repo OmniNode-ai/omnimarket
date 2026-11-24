@@ -161,3 +161,24 @@ async def test_the_palette_still_opens_from_the_main_prompt_after_a_raced_swap(
         shown = [str(option.prompt) for option in palette.options]
         assert shown
         assert all("mod" in text for text in shown)
+
+
+@pytest.mark.parametrize("field", _FIELDS)
+async def test_enter_in_key_or_url_never_reaches_the_prompt_handler(
+    field: str,
+) -> None:
+    """E1/E2 (AC3): Enter in #key or #url must not be taken as a prompt: no
+    delegation call and nothing added to the prompt history, so a pasted key is
+    never sent or remembered."""
+    runner = _Runner([])
+    app = _app(runner)
+    async with app.run_test(size=(140, 44)) as pilot:
+        await _open_config(pilot, app)
+        await _focus_field(app, pilot, field)
+        history = list(app._history)  # the /config that opened this tab
+        calls = len(runner.calls)
+        await pilot.press("h", "e", "l", "p", "enter")
+        await pilot.pause(1.0)
+        assert app._history == history
+        assert not [c for c in runner.calls[calls:] if c[:1] == ("delegate",)]
+        assert app.is_running

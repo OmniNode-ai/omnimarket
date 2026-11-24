@@ -2238,6 +2238,8 @@ class OnexTui(App[int]):
         return None
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id != "prompt":  # #key and #url bubble up from a tab
+            return
         text = self._palette_choice(event.value.strip())
         prompt = self.query_one("#prompt", Input)
         prompt.value = ""
