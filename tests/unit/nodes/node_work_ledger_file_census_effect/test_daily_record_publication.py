@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import io
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 import pytest
@@ -88,7 +88,7 @@ def _record(
     }
 
 
-def _census_printing(record: dict[str, object], code: int):  # type: ignore[no-untyped-def]
+def _census_printing(record: dict[str, object], code: int) -> Callable[..., int]:
     def run(argv: Sequence[str], *, environ: Mapping[str, str] | None = None) -> int:
         print("CENSUS-RECORD " + json.dumps(record))
         return code
