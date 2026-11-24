@@ -133,7 +133,6 @@ from omnimarket.models.delegation.wire.model_quality_gate import (
     NO_NAMED_TESTS_UNTESTED_REASON,
     SCORE_SOURCE_COMBINED,
     SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
-    SCORE_VERIFYING_CHECKS,
     SHAPE_REFUSED_VERDICT_PREFIX,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.code_artifact_blocks import (
@@ -163,6 +162,12 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.operator_voi
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.prompt_artifact_language import (
     parse_as_requested_language,
     prompt_requested_artifact_language,
+)
+from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.prose_sentence_count import (
+    count_prose_sentences as _count_prose_sentences,
+)
+from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.response_contract_class_checks import (
+    with_executed_class_checks,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_identifier_grounding import (
     ModelIdentifierGroundingVerdict,
@@ -1497,15 +1502,6 @@ _SENTENCE_LIMIT_RE = re.compile(
     r"\s+sentences?\b",
     re.IGNORECASE,
 )
-_CODE_SPAN_RE = re.compile(r"`[^`\n]*`")
-_LIST_ITEM_RE = re.compile(r"^\s*(?:[-*+•]|\d+[.)])\s+")
-# A sentence ends at . ! or ? (plus closing quotes or brackets), then whitespace,
-# then the start of another sentence. A dot inside a version, a file name or a
-# number is not followed by whitespace, and "e.g. foo" continues in lower case.
-_SENTENCE_BOUNDARY_RE = re.compile(
-    r"""(?<=[.!?])["')\]*_]*\s+(?=["'(\[`*_]*[A-Z0-9])"""
-)
-_SENTENCE_ABBREVIATION_RE = re.compile(r"(?:\be\.g|\bi\.e|\bvs|\bcf|\betc)\.$", re.I)
 
 
 def _sentence_limit(prompt: str | None) -> int | None:
@@ -1517,43 +1513,6 @@ def _sentence_limit(prompt: str | None) -> int | None:
         return None
     raw = match.group(1).lower()
     return int(raw) if raw.isdigit() else _SENTENCE_LIMIT_WORDS[raw]
-
-
-def _count_prose_sentences(content: str) -> int:
-    """Count sentences the way the limit is read: a list item is one sentence.
-
-    A semicolon run-on is one sentence, a soft-wrapped line continues its
-    paragraph, and code spans never end one. This is a count for a ceiling, not
-    a parser: the 120-answer calibration set agrees with a careful reading on
-    every answer's side of its limit.
-    """
-    text = _CODE_SPAN_RE.sub("X", content)
-    items: list[str] = []
-    for block in re.split(r"\n\s*\n", text):
-        current: str | None = None
-        for line in block.splitlines():
-            if not line.strip():
-                continue
-            if _LIST_ITEM_RE.match(line) or line.lstrip().startswith("#"):
-                if current is not None:
-                    items.append(current)
-                current = _LIST_ITEM_RE.sub("", line).strip().lstrip("#").strip()
-            else:
-                current = (
-                    line.strip() if current is None else f"{current} {line.strip()}"
-                )
-        if current is not None:
-            items.append(current)
-    count = 0
-    for item in items:
-        if not item:
-            continue
-        count += 1 + sum(
-            1
-            for match in _SENTENCE_BOUNDARY_RE.finditer(item)
-            if not _SENTENCE_ABBREVIATION_RE.search(item[: match.start()])
-        )
-    return count
 
 
 def _check_within_sentence_limit(
@@ -2897,70 +2856,6 @@ def _evaluate_response_contract(
     )
 
 
-# OMN-26656: the rule name a code answer's contract verdict is recorded under.
-_RESPONSE_CONTRACT_RULE = "response_contract"
-
-
-def _with_executed_class_checks(
-    result: ModelQualityGateResult,
-    gate_input: ModelQualityGateInput,
-    *,
-    named_test_run: ModelNamedTestRun | None,
-    named_tests_requested: bool,
-) -> ModelQualityGateResult:
-    """Add a code class's executed checks to a response contract verdict (OMN-26656).
-
-    A response contract decides the SHAPE of an answer. For a class accepted by
-    executed tests it does not decide whether the code works, so the class's
-    score-verifying checks (``passes_existing_tests``) are evaluated beside the
-    schema, on the same terms as the class path: a failing named run refuses,
-    named tests that never ran are INSUFFICIENT, and a request naming no tests
-    is recorded UNTESTED and does not block (OMN-17427).
-
-    The result then names the contract check and each class check with its own
-    verdict. A class not accepted by executed tests is returned unchanged: its
-    contract verdict stands alone, as before.
-    """
-    if not resolve_task_class_execution_required(gate_input.task_type):
-        return result
-    class_checks = tuple(
-        check
-        for check in gate_input.dod_deterministic
-        if check in SCORE_VERIFYING_CHECKS
-    )
-    failures, skipped, evaluations = _evaluate_deterministic_checks(
-        gate_input.llm_response_content,
-        class_checks,
-        named_test_run=named_test_run,
-        require_executed_tests=named_tests_requested,
-        untested_code_class=not named_tests_requested,
-    )
-    contract_evaluation = ModelQualityRuleEvaluation(
-        rule=_RESPONSE_CONTRACT_RULE,
-        enforcement="blocking",
-        passed=result.passed,
-        detail=None if result.passed else "; ".join(result.failure_reasons),
-    )
-    refused_by_class_check = result.passed and bool(failures)
-    return result.model_copy(
-        update={
-            "passed": result.passed and not failures,
-            "fail_category": "fail_deterministic"
-            if refused_by_class_check
-            else result.fail_category,
-            "quality_score": 0.0 if refused_by_class_check else result.quality_score,
-            "failure_reasons": result.failure_reasons + tuple(failures),
-            "fallback_recommended": result.fallback_recommended or bool(failures),
-            "skipped_checks": result.skipped_checks + tuple(skipped),
-            "rule_evaluations": (
-                *result.rule_evaluations,
-                contract_evaluation,
-                *evaluations,
-            ),
-        }
-    )
-
-
 def _stable_hash(value: object) -> str:
     """Return a stable sha256 hash for acceptance replay identity."""
     encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
@@ -3804,11 +3699,11 @@ def _delta_over_answer_segment(
         A quality gate result with pass/fail, fail_category, score, and reasons.
     """
     if response_contract is not None:
-        result = _with_executed_class_checks(
+        result = with_executed_class_checks(
             _evaluate_response_contract(gate_input, response_contract),
             gate_input,
-            named_test_run=named_test_run,
-            named_tests_requested=named_tests_requested,
+            named_test_run,
+            named_tests_requested,
         )
         if (
             not result.passed

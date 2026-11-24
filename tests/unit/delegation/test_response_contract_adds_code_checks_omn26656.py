@@ -20,6 +20,7 @@ import json
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -359,7 +360,7 @@ async def _bus_terminal(
     _no_escalation(monkeypatch)
     handler = hw.HandlerDelegationWorkflow(
         workflows={},
-        named_test_runner=_bus_runner(run),  # type: ignore[arg-type]
+        named_test_runner=cast(Any, _bus_runner(run)),
     )
     cid = uuid4()
     handler.handle_delegation_request(
@@ -467,9 +468,9 @@ async def test_bus_site_refuses_a_code_pass_that_never_evaluated_its_tests_under
     )
     assert not any(isinstance(e, ModelDelegationCompleted) for e in terminal)
     assert handler.workflows[cid].gate_result is not None
-    assert (
-        NO_NAMED_TEST_RUN_REASON in handler.workflows[cid].gate_result.failure_reasons
-    )  # type: ignore[union-attr]
+    gate_result = handler.workflows[cid].gate_result
+    assert gate_result is not None
+    assert NO_NAMED_TEST_RUN_REASON in gate_result.failure_reasons
 
 
 def test_checks_in_force_keep_the_executed_check_of_a_code_class_under_a_contract() -> (
