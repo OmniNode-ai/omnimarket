@@ -17,6 +17,9 @@ from omnimarket.nodes.node_hook_install_emission_compute.models import (
     ModelHookInstallObservedEvent,
     ModelHookInstallRequiredKind,
 )
+from omnimarket.nodes.node_hook_install_emission_compute.models.model_hook_install_emission import (
+    Actor,
+)
 
 NAME = "node_hook_install_emission_compute"
 T0 = datetime(2026, 11, 24, 17, 0, tzinfo=UTC)
@@ -45,11 +48,11 @@ def _handler() -> Any:
 
 
 def _event(
-    host: str, actor: str, name: str, minutes: int
+    host: str, actor: Actor, name: str, minutes: int
 ) -> ModelHookInstallObservedEvent:
     return ModelHookInstallObservedEvent(
         host=host,
-        actor=actor,  # type: ignore[arg-type]
+        actor=actor,
         hook_event_name=name,
         emitted_at=T0 + timedelta(minutes=minutes),
     )
