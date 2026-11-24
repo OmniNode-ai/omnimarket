@@ -9,6 +9,8 @@ import asyncio
 import json
 import os
 import sys
+from collections.abc import Callable
+from contextlib import AsyncExitStack
 from importlib import resources
 from pathlib import Path
 from typing import Any
@@ -50,6 +52,29 @@ def _contract() -> dict[str, Any]:
     return loaded
 
 
+class _WriteBus:
+    """The bus the set publishes on, opened at the first publish.
+
+    The handler reads the live record before it writes. A bus held open for the whole run made that read open a second
+    lane bus beside it; opening at the first publish means the read has closed its own bus by then, so the command
+    holds one lane bus at a time.
+    """
+
+    def __init__(self, open_bus: Callable[[], Any], stack: AsyncExitStack) -> None:
+        self._open_bus = open_bus
+        self._stack = stack
+        self._bus: Any = None
+
+    async def publish(
+        self, topic: str, key: bytes | None, value: bytes, headers: Any = None
+    ) -> object:
+        if self._bus is None:
+            self._bus = await self._stack.enter_async_context(self._open_bus())
+        if headers is None:
+            return await self._bus.publish(topic, key, value)
+        return await self._bus.publish(topic, key, value, headers)
+
+
 async def _run(
     request: ModelOverlaySettingSetRequest,
     overlay: ModelOverlayStoreLoadOverlay,
@@ -74,10 +99,10 @@ async def _run(
         window_s=read_window_s or float(contract["config"]["read_window_s"]),
     )
     topics = contract["event_bus"]["publish_topics"]
-    async with open_bus() as bus:
+    async with AsyncExitStack() as stack:
         handler = HandlerOverlaySettingSet(
             reader=reader,
-            bus=bus,
+            bus=_WriteBus(open_bus, stack),
             settings=load_settable_settings(contract),
             loaded_topic=topics[0],
             audit_topic=topics[1],

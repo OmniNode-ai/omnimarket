@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
     ModelAdjacencyMap,
+    ModelDataFileChange,
 )
 
 
@@ -24,6 +25,9 @@ class EnumRootConftestEdge(StrEnum):
 class EnumClosureEscalation(StrEnum):
     #: A changed source file the closure cannot place in the import graph.
     UNRESOLVED_SOURCE = "unresolved_source"
+    #: A declared project or lock file change the section rule cannot narrow (or the closure rule
+    #: sends to the full suite): the same answer the section rule gives below the closure stage.
+    TEST_INFRASTRUCTURE = "test_infrastructure"
 
 
 class ModelFileLevelClosureRequest(BaseModel):
@@ -35,6 +39,8 @@ class ModelFileLevelClosureRequest(BaseModel):
     adjacency: ModelAdjacencyMap
     repo_root: str = Field(min_length=1)
     root_conftest_edge: EnumRootConftestEdge
+    #: The changed keys of each declared project or lock file, read against the base ref (empty: not read).
+    data_file_changes: tuple[ModelDataFileChange, ...] = ()
 
 
 class ModelFileLevelClosureResult(BaseModel):
