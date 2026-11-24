@@ -1,0 +1,112 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# The shape of the lab alerts read, written for the dashboard owner.
+#
+# The data is one row per alert, open or cleared, held in the shared store and served over the
+# bus-backed projection route, the same route the dashboard's other panels read. A panel never queries
+# the table directly and never keeps its own per-host cache. Drawing the alerts is the dashboard's.
+name: lab-alerts-projection-read
+writer: node_projection_lab_alerts
+
+read:
+  snapshot_topic: onex.snapshot.projection.lab.alerts.v1
+  route: >-
+    The projection API's GET /projection/{topic} page read, or the projection-read node on the bus
+    (ModelProjectionReadRequest with topic set to the snapshot topic).
+  row_key: alert_id
+  one_row_per: source and subject
+  order: newest raise first (raised_at descending, then alert_id)
+  page_size: 500 rows at most; a longer list sets truncated and a next_cursor
+  page_answer: >-
+    A page answers with ok, rows, row_count, next_cursor and truncated. A refusal is ok false with a named
+    error and no rows; it is never an empty list standing in for a failed read.
+  fed_from: onex.evt.omnimarket.lab-alert-transitioned.v1
+
+# Every field below is a column of the row. All times are ISO 8601 with a zone, in UTC.
+fields:
+  alert_id:
+    type: string (uuid)
+    meaning: >-
+      The row's key, derived from source and subject. A condition that fires again after it cleared reuses
+      the same alert_id, so a panel keeps one line per condition, not one per episode.
+  source:
+    type: string
+    meaning: >-
+      What raised the alert: an alarm condition, a service-level indicator or a scheduled job, named as that
+      source names itself.
+  subject:
+    type: string
+    meaning: >-
+      What the alert is about: a host, a lane, a unit or a container. Together with source it identifies the
+      alert.
+  state:
+    type: string
+    meaning: >-
+      open while the condition holds, cleared once the source that raised it reported it over. Only the
+      source clears an alert; nothing a browser sends changes it.
+  severity:
+    type: string
+    meaning: >-
+      How bad the alert is, on the lab's four levels. SEV1 the lab cannot land or place anything, SEV2
+      throughput degraded, SEV3 drift, SEV4 informational.
+  owner:
+    type: string
+    meaning: >-
+      Who must act: the lane, team or person the source names. Never empty; a transition with no owner is
+      refused and never reaches the table.
+  detail:
+    type: string
+    meaning: >-
+      The source's own sentence on what is wrong, as a reader can act on it. Never empty.
+  raised_at:
+    type: string (time)
+    meaning: >-
+      When the current episode of the alert opened. After a clear and a new raise it is the new raise's time.
+  cleared_at:
+    type: string (time) or null
+    meaning: >-
+      When the alert cleared. Null exactly while state is open.
+  last_transition_id:
+    type: string (uuid)
+    meaning: >-
+      The id of the newest transition folded into the row. It is derived from the transition's own fields,
+      so a replayed event carries the same id and changes nothing.
+  last_transition_at:
+    type: string (time)
+    meaning: >-
+      When the newest transition happened, as the source stamped it. Rows are ordered by this and
+      last_transition_id, never by arrival.
+  projected_at:
+    type: string (time)
+    meaning: >-
+      When the projection last wrote the row. This is the row's freshness: a panel that finds it old says
+      the data is old rather than showing it as current.
+
+# One alert that was raised at 09:00 and cleared at 09:05. Its columns are the fields above.
+example:
+  alert_id: 9f76b6f4-da46-5258-9cbb-0153c101d476
+  source: dev_tag_heartbeat
+  subject: lane-dev
+  state: cleared
+  severity: SEV2
+  owner: lab-floor
+  detail: dev tag has not moved for 2 hours
+  raised_at: "2026-11-24T09:00:00+00:00"
+  cleared_at: "2026-11-24T09:05:00+00:00"
+  last_transition_id: 02852e03-0030-5bbe-bcb1-7980a8fa471f
+  last_transition_at: "2026-11-24T09:05:00+00:00"
+  projected_at: "2026-11-24T09:05:00.412000+00:00"
+
+# How a source raises or clears an alert.
+publishing:
+  event: onex.evt.omnimarket.lab-alert-transitioned.v1
+  fields: [source, subject, transition, severity, owner, detail, raised_at, occurred_at]
+  transition: raised or cleared
+  raise: occurred_at equals raised_at
+  clear: carries the raised_at of the alert it ends and an occurred_at that is not earlier
+  times: carry a zone
+  refused_to_dead_letter: >-
+    A blank owner or detail, a severity outside the four levels, or a clear before its raise is refused to
+    the dead-letter topic and appears nowhere in the read.
+  replay: Replaying events, in any order, leaves the same rows.

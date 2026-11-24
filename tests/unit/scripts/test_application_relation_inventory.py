@@ -675,7 +675,8 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +1 for OMN-25104's done_items, declared and created by node_projection_done_items = 140.
     # +1 for OMN-25103's floor_integration_rows, declared and created by node_projection_floor_integration = 141.
     # +1 for OMN-25103's floor_integration_pass, the held-pass marker, declared and created in the same PR = 142.
-    assert census["source_created_tables"] == 142
+    # +1 for lab_alerts, declared and created by node_projection_lab_alerts = 143.
+    assert census["source_created_tables"] == 143
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -873,7 +874,8 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +1 for OMN-25104's done_items, declared with its CREATE in the same change = 153.
     # +1 for OMN-25103's floor_integration_rows, declared with its CREATE in the same change = 154.
     # +1 for OMN-25103's floor_integration_pass, declared with its CREATE in the same change = 155.
-    assert census["source_declared_tables"] == 155
+    # +1 for lab_alerts, declared with its CREATE in the same change = 156.
+    assert census["source_declared_tables"] == 156
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then

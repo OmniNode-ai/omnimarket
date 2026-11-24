@@ -163,6 +163,17 @@ db_io:
     # needs no entry in INTERNAL_TABLES_PHYSICALLY_IN_PUBLIC_UNTIL_OMN15359 and
     # no _LEGACY_DEFAULT_SCHEMA_SQL_EXACT_PATHS exemption, now or at the
     # governed OMN-15359 cutover.
+    # The lab alerts read model: one row per alert source and subject, open or
+    # cleared, with severity, owner and times, created by
+    # node_projection_lab_alerts' own node-owned migration directly in
+    # omninode_internal. Like lab_lane_health this entry is the catalog
+    # declaration; omnibase_infra vendors the migration after it.
+    - name: lab_alerts
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_lab_alerts/migrations/0000_create_lab_alerts.sql
+      access: read_write
+      role: lab_alerts_projection_table
     - name: lab_lane_health
       database_ref: application
       schema: omninode_internal
