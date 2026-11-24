@@ -23,6 +23,7 @@ import pytest
 from pydantic import ValidationError
 
 from omnimarket.models.model_code_graph import (
+    EnumCodeGraphVerdict,
     ModelCodeGraphCommand,
     ModelCodeGraphResult,
 )
@@ -218,14 +219,14 @@ def test_the_nightly_row_carries_the_frozen_hash_and_the_bar() -> None:
 
 def test_the_graph_agrees_with_every_label_and_the_reading_is_working() -> None:
     result, ledger = _run(_frozen())
-    assert result.verdict is EnumReadingVerdict.WORKING
+    assert result.verdict is EnumCodeGraphVerdict.WORKING
     assert _reading(ledger, hours_after_run=2) is EnumReadingVerdict.WORKING
 
 
 def test_one_flipped_label_stays_at_the_bar() -> None:
     """The positive control of the two-flip test: 29 of 30 meets a bar of 29."""
     result, _ = _run(_frozen(flip=[FIRST_FLIPPABLE]))
-    assert result.verdict is EnumReadingVerdict.WORKING
+    assert result.verdict is EnumCodeGraphVerdict.WORKING
 
 
 def test_two_flipped_labels_fall_under_the_bar_and_the_reading_reads_not_working() -> (
@@ -233,7 +234,7 @@ def test_two_flipped_labels_fall_under_the_bar_and_the_reading_reads_not_working
 ):
     """Named mutation: two labels flipped, and the sample frozen again under the same bar."""
     result, ledger = _run(_frozen(flip=[FIRST_FLIPPABLE, USED]))
-    assert result.verdict is EnumReadingVerdict.NOT_WORKING
+    assert result.verdict is EnumCodeGraphVerdict.NOT_WORKING
     assert result.reasons[0] == "below-bar:28-of-30-bar-29"
     row = evidence_row_from_text(ledger.lines[0])
     assert row is not None
@@ -245,12 +246,12 @@ def test_two_flipped_labels_fall_under_the_bar_and_the_reading_reads_not_working
 @pytest.mark.parametrize(
     ("flips", "verdict"),
     [
-        (3, EnumReadingVerdict.WORKING),
-        (4, EnumReadingVerdict.NOT_WORKING),
+        (3, EnumCodeGraphVerdict.WORKING),
+        (4, EnumCodeGraphVerdict.NOT_WORKING),
     ],
 )
 def test_the_deployed_bar_of_twenty_seven_tolerates_three_flips_and_not_four(
-    flips: int, verdict: EnumReadingVerdict
+    flips: int, verdict: EnumCodeGraphVerdict
 ) -> None:
     result, _ = _run(
         _frozen(flip=range(FIRST_FLIPPABLE, FIRST_FLIPPABLE + flips), bar=BAR_DEPLOYED)
@@ -260,7 +261,7 @@ def test_the_deployed_bar_of_twenty_seven_tolerates_three_flips_and_not_four(
 
 def test_an_unreached_control_fails_the_reading_with_every_label_agreeing() -> None:
     result, ledger = _run(_frozen(unreached=True))
-    assert result.verdict is EnumReadingVerdict.NOT_WORKING
+    assert result.verdict is EnumCodeGraphVerdict.NOT_WORKING
     assert result.reasons[0] == "controls-unreached:1"
     assert _reading(ledger, hours_after_run=2) is EnumReadingVerdict.NOT_WORKING
 
@@ -275,7 +276,7 @@ def test_a_label_naming_a_module_the_graph_cannot_find_is_a_disagreement() -> No
         controls=sample.controls,
     )
     result, _ = _run(moved)
-    assert result.verdict is EnumReadingVerdict.WORKING
+    assert result.verdict is EnumCodeGraphVerdict.WORKING
     twice = ModelGraphSample.freeze(
         entries=(
             gone,
@@ -286,5 +287,5 @@ def test_a_label_naming_a_module_the_graph_cannot_find_is_a_disagreement() -> No
         controls=sample.controls,
     )
     result, _ = _run(twice)
-    assert result.verdict is EnumReadingVerdict.NOT_WORKING
+    assert result.verdict is EnumCodeGraphVerdict.NOT_WORKING
     assert any("sample-missing" in reason for reason in result.reasons)

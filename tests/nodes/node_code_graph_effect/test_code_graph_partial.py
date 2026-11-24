@@ -18,7 +18,11 @@ from pathlib import Path
 import pytest
 import yaml
 
-from omnimarket.models.model_code_graph import EnumGraphFault, ModelCodeGraphCommand
+from omnimarket.models.model_code_graph import (
+    EnumCodeGraphVerdict,
+    EnumGraphFault,
+    ModelCodeGraphCommand,
+)
 from omnimarket.models.model_code_graph_lookup import ModelCodeGraphVersion
 from omnimarket.models.model_reading import (
     EnumReadingOutcome,
@@ -176,7 +180,7 @@ def test_with_one_clone_missing_the_others_are_stored_and_one_alert_names_it() -
     )
     assert result.status == "completed"
     assert result.outcome is EnumReadingOutcome.READ
-    assert result.verdict is EnumReadingVerdict.PARTIAL
+    assert result.verdict is EnumCodeGraphVerdict.PARTIAL
     assert [repo.repo for repo in result.repos] == ["example_core"]
     assert [(m.repo, m.reason) for m in result.missing] == [
         ("example_app", MEMORY_REASON)
@@ -200,14 +204,14 @@ def test_a_second_run_with_the_same_repository_missing_raises_no_second_alert() 
     second = _run(source, ledger=InMemoryLedger(), alerts=alerts)
     assert alerts.sent == [("example_app", MEMORY_REASON)]
     assert second.alerts == ("already-alerted:example_app",)
-    assert second.verdict is EnumReadingVerdict.PARTIAL
+    assert second.verdict is EnumCodeGraphVerdict.PARTIAL
 
 
 def test_a_repository_that_returns_and_goes_missing_again_is_alerted_again() -> None:
     alerts = RecordingAlerts()
     _run(_source(without="example_app"), ledger=InMemoryLedger(), alerts=alerts)
     whole = _run(_source(), ledger=InMemoryLedger(), alerts=alerts)
-    assert whole.verdict is EnumReadingVerdict.WORKING
+    assert whole.verdict is EnumCodeGraphVerdict.WORKING
     assert whole.alerts == ()
     _run(_source(without="example_app"), ledger=InMemoryLedger(), alerts=alerts)
     assert alerts.sent == [
@@ -219,7 +223,7 @@ def test_a_repository_that_returns_and_goes_missing_again_is_alerted_again() -> 
 def test_every_repository_present_is_working_and_alerts_nothing() -> None:
     alerts = RecordingAlerts()
     result = _run(_source(), ledger=InMemoryLedger(), alerts=alerts)
-    assert result.verdict is EnumReadingVerdict.WORKING
+    assert result.verdict is EnumCodeGraphVerdict.WORKING
     assert result.missing == ()
     assert alerts.sent == []
 
@@ -230,7 +234,7 @@ def test_every_repository_missing_still_fails_the_run() -> None:
     result = _run(InMemoryRepoSource({}), ledger=ledger, alerts=alerts)
     assert result.status == "failed"
     assert result.outcome is EnumReadingOutcome.SOURCE_UNREADABLE
-    assert result.verdict is EnumReadingVerdict.NOT_WORKING
+    assert result.verdict is EnumCodeGraphVerdict.NOT_WORKING
     assert {m.repo for m in result.missing} == {"example_core", "example_app"}
     assert {repo for repo, _ in alerts.sent} == {"example_core", "example_app"}
 
@@ -244,7 +248,7 @@ def test_an_injected_unreadable_repository_is_a_drill_and_still_fails_the_run() 
         fault=EnumGraphFault.UNREADABLE_REPO,
     )
     assert result.status == "failed"
-    assert result.verdict is EnumReadingVerdict.NOT_WORKING
+    assert result.verdict is EnumCodeGraphVerdict.NOT_WORKING
     assert alerts.sent == []
 
 
@@ -256,7 +260,7 @@ def test_a_missing_repository_the_sample_names_is_not_working_and_named() -> Non
         alerts=alerts,
         sample_overlay=overlay(),
     )
-    assert result.verdict is EnumReadingVerdict.NOT_WORKING
+    assert result.verdict is EnumCodeGraphVerdict.NOT_WORKING
     assert any(reason.startswith("missing:example_app") for reason in result.reasons)
     assert alerts.sent == [("example_app", MEMORY_REASON)]
 
@@ -282,7 +286,7 @@ def test_a_partial_row_does_not_read_as_a_working_graph() -> None:
 
 def test_no_alerts_port_names_the_gap_on_the_result() -> None:
     result = _run(_source(without="example_app"), ledger=InMemoryLedger(), alerts=None)
-    assert result.verdict is EnumReadingVerdict.PARTIAL
+    assert result.verdict is EnumCodeGraphVerdict.PARTIAL
     assert result.alerts == ("not-configured:example_app",)
 
 
@@ -395,7 +399,7 @@ def test_real_git_clone_removed_is_partial(tmp_path: Path) -> None:
         missing_alerts=alerts,
     )
     result = handler.handle(ModelCodeGraphCommand(correlation_id="git"))
-    assert result.verdict is EnumReadingVerdict.PARTIAL
+    assert result.verdict is EnumCodeGraphVerdict.PARTIAL
     assert alerts.sent == [("example_app", "no-clone:example_app")]
     newest: ModelCodeGraphVersion | None = store.newest("example_core")
     assert newest is not None

@@ -14,7 +14,22 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdict
+from omnimarket.models.model_reading import EnumReadingOutcome
+
+
+class EnumCodeGraphVerdict(StrEnum):
+    """What a code graph run says of itself.
+
+    The reading verdicts, and PARTIAL: the graph agrees with its sample over the repositories that were present
+    while one or more declared repositories could not be read (OMN-26104). PARTIAL is not WORKING, so the piece 1
+    reading, which passes only on WORKING, reads a partial row as not working. It lives here and not in the shared
+    reading verdict, whose members other nodes' seams pin.
+    """
+
+    WORKING = "WORKING"
+    NOT_WORKING = "NOT_WORKING"
+    UNKNOWN = "UNKNOWN"
+    PARTIAL = "PARTIAL"
 
 
 class EnumGraphFault(StrEnum):
@@ -165,7 +180,7 @@ class ModelCodeGraphResult(BaseModel):
 
     correlation_id: str
     status: Literal["completed", "failed"]
-    verdict: EnumReadingVerdict
+    verdict: EnumCodeGraphVerdict
     outcome: EnumReadingOutcome
     reasons: tuple[str, ...] = Field(min_length=1)
     fault: EnumGraphFault = EnumGraphFault.NONE

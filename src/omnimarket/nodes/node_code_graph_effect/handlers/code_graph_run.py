@@ -25,6 +25,7 @@ import yaml
 from pydantic import ValidationError
 
 from omnimarket.models.model_code_graph import (
+    EnumCodeGraphVerdict,
     EnumGraphFault,
     ModelCodeGraphCommand,
     ModelCodeGraphResult,
@@ -32,7 +33,7 @@ from omnimarket.models.model_code_graph import (
     ModelRepoSnapshot,
     ModelSampleOutcome,
 )
-from omnimarket.models.model_reading import EnumReadingOutcome, EnumReadingVerdict
+from omnimarket.models.model_reading import EnumReadingOutcome
 from omnimarket.nodes.node_code_graph_effect.adapters.memgraph_version_store import (
     MemgraphQueryError,
     MemgraphUnreachableError,
@@ -91,11 +92,11 @@ def _repo(missing: ModelMissingRepo) -> str:
 
 def _verdict(
     reasons: tuple[str, ...], missing: list[ModelMissingRepo]
-) -> EnumReadingVerdict:
+) -> EnumCodeGraphVerdict:
     """WORKING when whole and agreed, PARTIAL when agreed over what was present, else NOT_WORKING."""
     if reasons != ("ok",):
-        return EnumReadingVerdict.NOT_WORKING
-    return EnumReadingVerdict.PARTIAL if missing else EnumReadingVerdict.WORKING
+        return EnumCodeGraphVerdict.NOT_WORKING
+    return EnumCodeGraphVerdict.PARTIAL if missing else EnumCodeGraphVerdict.WORKING
 
 
 class CodeGraphRun:
@@ -166,7 +167,7 @@ class CodeGraphRun:
             return ModelCodeGraphResult(
                 correlation_id=command.correlation_id,
                 status="failed",
-                verdict=EnumReadingVerdict.UNKNOWN,
+                verdict=EnumCodeGraphVerdict.UNKNOWN,
                 outcome=EnumReadingOutcome.SOURCE_UNREADABLE,
                 reasons=("no-appender-for-a-writing-run",),
                 fault=command.fault,
@@ -183,7 +184,7 @@ class CodeGraphRun:
                 ModelCodeGraphResult(
                     correlation_id=command.correlation_id,
                     status="failed",
-                    verdict=EnumReadingVerdict.NOT_WORKING,
+                    verdict=EnumCodeGraphVerdict.NOT_WORKING,
                     outcome=EnumReadingOutcome.SOURCE_UNREADABLE,
                     reasons=(why,),
                     fault=command.fault,
@@ -199,7 +200,7 @@ class CodeGraphRun:
                 ModelCodeGraphResult(
                     correlation_id=command.correlation_id,
                     status="failed",
-                    verdict=EnumReadingVerdict.NOT_WORKING,
+                    verdict=EnumCodeGraphVerdict.NOT_WORKING,
                     outcome=EnumReadingOutcome.SOURCE_UNREADABLE,
                     reasons=(why,),
                     fault=command.fault,

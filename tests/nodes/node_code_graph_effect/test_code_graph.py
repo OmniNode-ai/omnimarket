@@ -15,7 +15,11 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from omnimarket.models.model_code_graph import EnumGraphFault, ModelCodeGraphCommand
+from omnimarket.models.model_code_graph import (
+    EnumCodeGraphVerdict,
+    EnumGraphFault,
+    ModelCodeGraphCommand,
+)
 from omnimarket.models.model_reading import (
     EnumReadingVerdict,
     ModelPieceReadingSpec,
@@ -144,7 +148,7 @@ def test_nightly_writes_one_working_row(repos: ProtocolRepoSource) -> None:
     ledger = InMemoryLedger()
     result = _handler(repos, ledger).handle(ModelCodeGraphCommand(correlation_id="n1"))
     assert result.status == "completed"
-    assert result.verdict is EnumReadingVerdict.WORKING, result.reasons
+    assert result.verdict is EnumCodeGraphVerdict.WORKING, result.reasons
     assert result.ledger == "written"
     assert len(ledger.lines) == 1
     row = evidence_row_from_text(ledger.lines[0])
@@ -163,7 +167,7 @@ def test_probe_appends_nothing(repos: ProtocolRepoSource) -> None:
         ModelCodeGraphCommand(correlation_id="p", write=False)
     )
     assert result.ledger == "not-written"
-    assert result.verdict is EnumReadingVerdict.WORKING
+    assert result.verdict is EnumCodeGraphVerdict.WORKING
 
 
 def test_unreadable_repository_fails_the_run_with_a_not_working_row(
@@ -174,7 +178,7 @@ def test_unreadable_repository_fails_the_run_with_a_not_working_row(
         ModelCodeGraphCommand(correlation_id="u", fault=EnumGraphFault.UNREADABLE_REPO)
     )
     assert result.status == "failed"
-    assert result.verdict is EnumReadingVerdict.NOT_WORKING
+    assert result.verdict is EnumCodeGraphVerdict.NOT_WORKING
     assert result.outcome.value == "source-unreadable"
     row = evidence_row_from_text(ledger.lines[0])
     assert row is not None
@@ -221,7 +225,7 @@ def test_failing_control_drop_the_contract_links(repos: ProtocolRepoSource) -> N
             correlation_id="d", fault=EnumGraphFault.DROP_CONTRACT_LINKS
         )
     )
-    assert result.verdict is EnumReadingVerdict.NOT_WORKING
+    assert result.verdict is EnumCodeGraphVerdict.NOT_WORKING
     assert any(reason.startswith("control-unreached") for reason in result.reasons)
     # the operational reading reads no drill row, so with only this row it is stale
     assert _reading(ledger, hours_after_run=2) is EnumReadingVerdict.NOT_WORKING
@@ -238,7 +242,7 @@ def test_failing_control_drop_the_entry_points_fails_the_reading(
             correlation_id="e", fault=EnumGraphFault.DROP_ENTRY_POINTS
         )
     )
-    assert result.verdict is EnumReadingVerdict.NOT_WORKING
+    assert result.verdict is EnumCodeGraphVerdict.NOT_WORKING
     assert result.reasons[0].startswith("below-bar")
     assert result.sample is not None
     assert result.sample.agree < overlay().sample.min_agree
@@ -246,7 +250,7 @@ def test_failing_control_drop_the_entry_points_fails_the_reading(
     clean = _handler(repos, InMemoryLedger()).handle(
         ModelCodeGraphCommand(correlation_id="c")
     )
-    assert clean.verdict is EnumReadingVerdict.WORKING
+    assert clean.verdict is EnumCodeGraphVerdict.WORKING
     # a drill row is not read by the operational reading
     assert _reading(ledger, hours_after_run=2) is EnumReadingVerdict.NOT_WORKING
 
@@ -260,5 +264,5 @@ def test_an_orphan_handler_breaks_the_sample(tmp_path: Path) -> None:
     result = _handler(source("memory", tmp_path, app), ledger).handle(
         ModelCodeGraphCommand(correlation_id="o")
     )
-    assert result.verdict is EnumReadingVerdict.NOT_WORKING
+    assert result.verdict is EnumCodeGraphVerdict.NOT_WORKING
     assert result.reasons[0].startswith("below-bar")
