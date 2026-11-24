@@ -52,24 +52,12 @@ descriptor:
   # The wait for one node answer, in milliseconds; `onex tenant --wait-seconds` overrides it.
   timeout_ms: 30000
 
-# The command line builds the handlers in process, so the runtime dispatches none; the entries below bind each handler to
-# this contract by its operation.
+# The command line builds the handlers in process, so the runtime dispatches none; the default handler binds the node to
+# its contract. The other handlers take required ports at construction and are not envelope-shaped, so they are not routed.
 handler_routing:
   routing_strategy: operation_match
   default_handler: omnimarket.nodes.node_tenant_cli_effect.handlers.handler_tenant_create:HandlerTenantCreate
-  handlers:
-    - operation: tenant_key_mint
-      handler:
-        name: HandlerTenantKeyMint
-        module: omnimarket.nodes.node_tenant_cli_effect.handlers.handler_tenant_key_mint
-    - operation: tenant_show
-      handler:
-        name: HandlerTenantShow
-        module: omnimarket.nodes.node_tenant_cli_effect.handlers.handler_tenant_show
-    - operation: tenant_key_revoke
-      handler:
-        name: HandlerTenantKeyRevoke
-        module: omnimarket.nodes.node_tenant_cli_effect.handlers.handler_tenant_key_revoke
+  handlers: []
 
 # The command topics belong to the nodes that serve them (node_tenant_provision_effect, node_tenant_api_key_effect); this
 # node declares none of its own, and its handlers read each pair from the serving node's contract.
