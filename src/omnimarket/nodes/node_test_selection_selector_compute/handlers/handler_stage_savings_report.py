@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# unimported-handler-allow: HandlerStageSavingsReport is resolved at boot from handler_routing in contract.yaml, by module path, not by a Python import
 """Reports what test selection saved against the full suite, per merged pull request (operation ``report_stage_savings``).
 
 Every read goes through the repository gateway node: the merged pull requests (``pr_heads``), the CI runs of each
