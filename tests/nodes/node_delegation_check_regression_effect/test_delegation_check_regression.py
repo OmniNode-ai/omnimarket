@@ -49,6 +49,17 @@ from omnimarket.nodes.node_delegation_check_regression_effect.overlay import (
     ModelCheckRegressionSettings,
     load_settings,
 )
+from omnimarket.nodes.node_delegation_check_regression_effect.runtime_check_regression import (
+    main as replay_main,
+)
+
+ALARM_DELIVER_NODE = (
+    Path(__file__).resolve().parents[3]
+    / "src"
+    / "omnimarket"
+    / "nodes"
+    / "node_lab_alarm_deliver_effect"
+)
 
 FIXTURE = (
     Path(__file__).resolve().parents[2]
@@ -306,6 +317,34 @@ def test_delegation_check_regression_replays_the_recorded_transition_into_alarm_
     assert by_check["C29"].run_ref == "45189064181"
     within = timedelta(seconds=_settings().alarm_deadline_seconds)
     assert all(a.raised_after <= within for a in result.alarms)
+
+
+def test_delegation_check_regression_the_replay_command_lists_the_alarm_rows_for_c14_and_c29(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The replay command the integration proof runs, with the delivery overlay the node ships as its example."""
+    roots = tmp_path / "roots"
+    (roots / "node_lab_alarm_deliver_effect").mkdir(parents=True)
+    example = yaml.safe_load(
+        (ALARM_DELIVER_NODE / "overlay.example.yaml").read_text(encoding="utf-8")
+    )
+    example["state_path"] = str(tmp_path / "delivery-state.json")
+    (roots / "node_lab_alarm_deliver_effect" / "overlay.yaml").write_text(
+        yaml.safe_dump(example), encoding="utf-8"
+    )
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(roots))
+    code = replay_main(["--replay-fixture", str(FIXTURE), "--change", "host_model"])
+    lines = capsys.readouterr().out.splitlines()
+    assert code == 0
+    alarms = [line.split()[1] for line in lines if line.startswith("alarm ")]
+    assert sorted(alarms) == ["check=C14", "check=C29"]
+    rows = [line for line in lines if line.startswith("ledger-row ")]
+    assert rows, "the replay wrote no alarm row"
+    assert any("| subject=C14:" in row for row in rows)
+    assert any("| subject=C29:" in row for row in rows)
+    assert not any("| subject=C13:" in row for row in rows)
 
 
 def test_delegation_check_regression_a_reading_past_the_deadline_still_alarms_and_says_so() -> (
