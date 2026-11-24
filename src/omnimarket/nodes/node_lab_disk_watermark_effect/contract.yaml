@@ -46,6 +46,8 @@ schedule:
     interval_seconds: 300
     accuracy: 30s
     timeout_start_seconds: 600
+    # OMN-26097: 70 percent is 420 s of class scan; the two docker reads (60 s each in the overlay) and the publish follow it.
+    scan_budget_percent: 70
     description: a first reading at install, then every 300 s
 # OMN-24562: a volume below this free share of inodes alarms (the byte share alone never saw h053 at 95% of its inodes).
 # The alarm is the lab stack reaper's route: a FRICTION row and a STATUS row with `alarms=<n>`, appended through the bus

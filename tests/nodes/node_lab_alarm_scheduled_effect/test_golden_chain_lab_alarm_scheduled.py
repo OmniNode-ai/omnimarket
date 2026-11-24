@@ -4,7 +4,9 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import sys
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -13,6 +15,12 @@ from uuid import uuid4
 
 import pytest
 import yaml
+from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
+from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_infra.runtime.auto_wiring import discover_contracts_from_paths
+from omnibase_infra.runtime.auto_wiring.handler_wiring import wire_from_manifest
+from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
 from omnimarket.handlers.lab_alarm_scheduled_tick import (
@@ -21,6 +29,9 @@ from omnimarket.handlers.lab_alarm_scheduled_tick import (
 )
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.schedule_run_store import InMemoryScheduleRunStore
+from omnimarket.models.schedule_trigger.model_schedule_trigger import (
+    ModelScheduleRunEvent,
+)
 from omnimarket.nodes.node_lab_alarm.adapters.inmemory_adapters import (
     InMemoryLag,
     InMemoryManifest,
@@ -137,6 +148,126 @@ def test_golden_a_tick_inside_the_interval_returns_none(tmp_path: Path) -> None:
     h = HandlerLabAlarmScheduled(environ=environ(tmp_path), tick=_RecordingTick(DONE))
     assert h.handle(tick(T0)) is not None
     assert h.handle(tick(T0 + timedelta(seconds=299))) is None
+
+
+def _add_restart_schedule(tmp_path: Path) -> dict[str, str]:
+    env = environ(tmp_path)
+    path = tmp_path / NODE / "overlay.yaml"
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    raw["container_restarts_probe"] = {
+        "job_id": "lab_alarm_container_restarts",
+        "run_interval_seconds": 60,
+        "grace_seconds": 30,
+    }
+    path.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    return env
+
+
+def test_container_restarts_probe_uses_its_own_runtime_schedule(tmp_path: Path) -> None:
+    env = _add_restart_schedule(tmp_path)
+    lag = _RecordingTick(DONE)
+    restarts = _RecordingTick(
+        ModelLabAlarmTickOutcome(False, "container_restarts outcome=OK")
+    )
+    handler = HandlerLabAlarmScheduled(environ=env, tick=lag, restarts_tick=restarts)
+
+    initial = handler.handle(tick(T0))
+    assert isinstance(initial, ModelHandlerOutput)
+    assert [event.job_id for event in initial.events] == [
+        "lab_alarm",
+        "lab_alarm_container_restarts",
+    ]
+    assert handler.handle(tick(T0 + timedelta(seconds=59))) is None
+    restart_event = handler.handle(tick(T0 + timedelta(seconds=60)))
+    assert isinstance(restart_event, ModelScheduleRunEvent)
+    assert restart_event.job_id == "lab_alarm_container_restarts"
+    assert restart_event.outcome == "completed"
+    assert restart_event.detail == "container_restarts outcome=OK"
+    assert handler.handle(tick(T0 + timedelta(seconds=61))) is None
+    assert lag.calls == [ALARM_NODE]
+    assert restarts.calls == [ALARM_NODE, ALARM_NODE]
+
+
+@pytest.mark.asyncio
+async def test_runtime_tick_publishes_lag_and_restart_probe_events(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for key, value in _add_restart_schedule(tmp_path).items():
+        monkeypatch.setenv(key, value)
+    alarm_environ(tmp_path)
+    alarm_path = tmp_path / ALARM_NODE / "overlay.yaml"
+    alarm = yaml.safe_load(alarm_path.read_text(encoding="utf-8"))
+    alarm["bus"]["backend"] = "runtime"
+    manifest_path = tmp_path / "lane-manifest.yaml"
+    manifest_path.write_text(
+        "lanes: {dev: {services: [{name: runtime, restart_bound: 1}]}}\n",
+        encoding="utf-8",
+    )
+    alarm["container_restarts"] = {
+        "census_lane": "dev",
+        "lane_manifest": str(manifest_path),
+        "docker_command": [sys.executable, "-c", "print('1 running')"],
+        "timeout_seconds": 5,
+    }
+    alarm_path.write_text(yaml.safe_dump(alarm), encoding="utf-8")
+
+    # The probe's builder uses the runtime adapters and the fake Docker response.
+    # Keep the broker-lag port on its fixture instead of connecting to a live broker.
+    def build_lag(_: ModelLabAlarmOverlay) -> HandlerBrokerLag:
+        fixture = ModelLabAlarmOverlay.model_validate(
+            yaml.safe_load(ALARM_EXAMPLE.read_text(encoding="utf-8"))
+        )
+        from omnimarket.nodes.node_lab_alarm.runtime_lab_alarm import build_handler
+
+        return build_handler(fixture)
+
+    class FixtureScheduled(HandlerLabAlarmScheduled):
+        def __init__(self) -> None:
+            super().__init__(build_handler=build_lag)
+
+    monkeypatch.setattr(
+        f"omnimarket.nodes.{NODE}.handlers.handler_lab_alarm_scheduled.HandlerLabAlarmScheduled",
+        FixtureScheduled,
+    )
+    contract = REPO / f"src/omnimarket/nodes/{NODE}/contract.yaml"
+    manifest = discover_contracts_from_paths([contract])
+    assert manifest.total_errors == 0
+    bus = EventBusInmemory(environment="test", group="lab-alarm-probe")
+    await bus.start()
+    try:
+        engine = MessageDispatchEngine()
+        report = await wire_from_manifest(
+            manifest, engine, event_bus=bus, environment="test"
+        )
+        assert report.total_wired == 1
+        engine.freeze()
+        request = tick(T0)
+        envelope = ModelEventEnvelope[ModelRuntimeTick](
+            payload=request,
+            correlation_id=request.correlation_id,
+            source_tool="alarm-test",
+        )
+        await bus.publish(
+            "onex.intent.platform.runtime-tick.v1",
+            None,
+            envelope.model_dump_json().encode(),
+            None,
+        )
+        messages = await bus.get_event_history(
+            topic="onex.evt.omnimarket.schedule-run.v1"
+        )
+        events = [
+            ModelScheduleRunEvent.model_validate(json.loads(message.value)["payload"])
+            for message in messages
+        ]
+        assert [event.job_id for event in events] == [
+            "lab_alarm",
+            "lab_alarm_container_restarts",
+        ]
+        assert events[1].outcome == "completed"
+        assert "container_restarts outcome=OK lane=dev readings=1" in events[1].detail
+    finally:
+        await bus.close()
 
 
 def test_error_an_unreadable_alarm_overlay_is_a_failed_run(tmp_path: Path) -> None:

@@ -17,6 +17,7 @@ import os
 import subprocess
 import textwrap
 from collections.abc import Mapping
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 import pytest
@@ -31,8 +32,16 @@ from omnimarket.nodes.node_test_selection_selector_compute.adapters.source_file_
 from omnimarket.nodes.node_test_selection_selector_compute.adapters.source_file_diff_in_memory import (
     SourceFileDiffInMemory,
 )
+from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_file_level_closure import (
+    HandlerFileLevelClosure,
+)
 from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_path_resolution import (
     HandlerTestPathResolution,
+)
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_file_level_closure import (
+    EnumRootConftestEdge,
+    ModelFileLevelClosureRequest,
+    ModelFileLevelClosureResult,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
     ModelAdjacencyEntry,
@@ -591,16 +600,24 @@ def _git(root: Path, *args: str) -> None:
     )
 
 
-def _git_repo(root: Path, base: str, head: str) -> None:
+def _git_repo(
+    root: Path, base: str, head: str, lock: tuple[str, str] | None = None
+) -> None:
     root.mkdir(parents=True, exist_ok=True)
     _git(root, "init", "-q")
     _git(root, "config", "user.email", "t@example.invalid")
     _git(root, "config", "user.name", "t")
     (root / "pyproject.toml").write_text(base)
-    _git(root, "add", "pyproject.toml")
+    tracked = ["pyproject.toml"]
+    if lock:
+        (root / "uv.lock").write_text(lock[0])
+        tracked.append("uv.lock")
+    _git(root, "add", *tracked)
     _git(root, "commit", "-q", "-m", "base")
     (root / "pyproject.toml").write_text(head)
-    _git(root, "commit", "-q", "-am", "head")
+    if lock:
+        (root / "uv.lock").write_text(lock[1])
+    _git(root, "commit", "-q", "--allow-empty", "-am", "head")
 
 
 def test_pyproject_sections_git_adapter_matches_the_in_memory_twin(
@@ -653,17 +670,25 @@ def test_pyproject_sections_a_pyproject_change_stays_full_while_the_rule_is_off(
     assert selection.full_suite_reason is EnumFullSuiteReason.TEST_INFRASTRUCTURE
 
 
-def _selector_fixture(root: Path, head: str) -> Path:
+def _selector_fixture(
+    root: Path,
+    head: str,
+    *,
+    closure_rule: str | None = None,
+    narrowable: list[str] | None = None,
+    lock: tuple[str, str] | None = None,
+) -> Path:
     _write_tree(root, BASE_PYPROJECT)
-    _git_repo(root, BASE_PYPROJECT, head)
+    _git_repo(root, BASE_PYPROJECT, head, lock)
     (root / "config").mkdir(exist_ok=True)
     (root / "config" / "test_file_durations.json").write_text(
         json.dumps({rel: 1.0 for rel in TREE if rel.startswith("tests/")})
     )
     adjacency = root / "adjacency.yaml"
-    adjacency.write_text(
-        yaml.safe_dump(json.loads(_config().model_dump_json(exclude_defaults=False)))
-    )
+    data = json.loads(_config(narrowable=narrowable).model_dump_json())
+    if closure_rule is not None:
+        data["closure_stage_pyproject_rule"] = closure_rule
+    adjacency.write_text(yaml.safe_dump(data))
     return adjacency
 
 
@@ -803,3 +828,285 @@ def test_pyproject_sections_replay_merges_with_a_ci_or_script_change_stay_full_b
             for f in files
             for infra in config.effective_test_infrastructure_paths()
         ), sha
+
+
+# --- the closure stage: the same section rule, read from the adjacency file's closure entry ----------
+#
+# At or above the policy's file_level_closure_stage the file-level closure replaces the module-level
+# path, and it reads no pyproject.toml. The adjacency map's ``closure_stage_pyproject_rule`` rules how a
+# declared project file's change combines with it: ``seeds`` runs the closure and adds the section
+# rule's tests to its selection (an escalation of the section rule still wins), ``full_suite`` (the
+# default, an absent entry) takes the full suite for any pyproject.toml or uv.lock change.
+
+CLOSURE_STAGE = 3
+SRC_CHANGE = "src/omnimarket/nodes/node_a/handler.py"
+UNKNOWN_KEY_HEAD = BASE_PYPROJECT + '\n[tool.example]\nsetting = "on"\n'
+
+
+def _shipped_closure_rule() -> str:
+    """The rule the shipped adjacency file declares: a KeyError when the entry is removed."""
+    shipped = yaml.safe_load(SHIPPED_ADJACENCY.read_text(encoding="utf-8"))
+    return str(shipped["closure_stage_pyproject_rule"])
+
+
+def _closure_stage_selection(
+    root: Path,
+    changed: list[str],
+    head: str,
+    *,
+    rule: str | None,
+    narrowable: list[str] | None = None,
+    base_ref: str | None = "HEAD~1",
+) -> tuple[bool, str | None, tuple[str, ...]]:
+    """compute_selection at the closure stage, twice: the two answers must be the same."""
+    adjacency = _selector_fixture(root, head, closure_rule=rule, narrowable=narrowable)
+    answers = [
+        compute_selection(
+            changed,
+            adjacency,
+            "feature",
+            repo_root=root,
+            base_ref=base_ref,
+            stage=CLOSURE_STAGE,
+        )
+        for _ in range(2)
+    ]
+    assert answers[0] == answers[1]
+    selection = answers[0]
+    reason = selection.full_suite_reason
+    return (
+        selection.is_full_suite,
+        reason.value if reason is not None else None,
+        tuple(selection.selected_paths),
+    )
+
+
+def test_closure_stage_pyproject_rule_shipped_adjacency_declares_seeds() -> None:
+    config = load_adjacency_map(SHIPPED_ADJACENCY)
+    assert _shipped_closure_rule() == "seeds"
+    assert config.closure_stage_pyproject_rule.value == "seeds"
+    # the rule reuses the OMN-26275 allowlist and lock rule, it declares no key list of its own
+    assert config.pyproject_narrowable_keys == NARROWABLE
+    assert config.pyproject_lock_paths == ["uv.lock"]
+
+
+def test_closure_stage_pyproject_rule_seeds_select_the_readers_at_the_closure_stage(
+    tmp_path: Path,
+) -> None:
+    full, reason, selected = _closure_stage_selection(
+        tmp_path, ["pyproject.toml"], ADD_NODE_B, rule=_shipped_closure_rule()
+    )
+    assert not full, reason
+    assert set(selected) >= READERS
+    assert "tests/nodes/node_b/" in selected
+    assert ALWAYS in selected
+    assert "tests/test_unrelated.py" not in selected
+    assert "tests/" not in selected
+
+
+def test_closure_stage_pyproject_rule_removed_entry_takes_the_full_suite(
+    tmp_path: Path,
+) -> None:
+    # the control of the test above: the same change with the entry removed is not narrowed
+    full, reason, _ = _closure_stage_selection(
+        tmp_path, ["pyproject.toml"], ADD_NODE_B, rule=None
+    )
+    assert full
+    assert reason == "test_infrastructure"
+
+
+def test_closure_stage_pyproject_rule_full_suite_entry_escalates_beside_a_source_change(
+    tmp_path: Path,
+) -> None:
+    # with the switch on and no seeds entry, the closure of the source file must not narrow the diff
+    full, reason, _ = _closure_stage_selection(
+        tmp_path, ["pyproject.toml", SRC_CHANGE], ADD_NODE_B, rule=None
+    )
+    assert full
+    assert reason == "test_infrastructure"
+
+
+def test_closure_stage_pyproject_rule_seeds_join_the_closure_of_a_source_change(
+    tmp_path: Path,
+) -> None:
+    full, reason, selected = _closure_stage_selection(
+        tmp_path,
+        ["pyproject.toml", SRC_CHANGE],
+        ADD_NODE_B,
+        rule=_shipped_closure_rule(),
+    )
+    assert not full, reason
+    assert set(selected) >= READERS
+    assert "tests/nodes/node_a/" in selected
+    assert "tests/nodes/node_b/" in selected
+
+
+def _locked_selector_fixture(root: Path, head: str, lock: tuple[str, str]) -> Path:
+    """A git fixture whose base commit holds ``lock[0]`` and whose head commit holds ``lock[1]``."""
+    return _selector_fixture(
+        root, head, closure_rule=_shipped_closure_rule(), lock=lock
+    )
+
+
+def test_closure_stage_pyproject_rule_version_bump_with_the_own_lock_line_narrows(
+    tmp_path: Path,
+) -> None:
+    adjacency = _locked_selector_fixture(
+        tmp_path, BUMPED, (_lock("0.4.1"), _lock("0.4.2"))
+    )
+    selection = compute_selection(
+        ["pyproject.toml", "uv.lock"],
+        adjacency,
+        "feature",
+        repo_root=tmp_path,
+        base_ref="HEAD~1",
+        stage=CLOSURE_STAGE,
+    )
+    assert not selection.is_full_suite
+    assert set(selection.selected_paths) >= READERS
+
+
+def test_closure_stage_pyproject_rule_a_lock_change_beyond_the_version_line_escalates(
+    tmp_path: Path,
+) -> None:
+    adjacency = _locked_selector_fixture(
+        tmp_path, BUMPED, (_lock("0.4.1"), _lock("0.4.2", other="2.12.0"))
+    )
+    selection = compute_selection(
+        ["pyproject.toml", "uv.lock"],
+        adjacency,
+        "feature",
+        repo_root=tmp_path,
+        base_ref="HEAD~1",
+        stage=CLOSURE_STAGE,
+    )
+    assert selection.is_full_suite
+    assert selection.full_suite_reason is EnumFullSuiteReason.TEST_INFRASTRUCTURE
+
+
+def test_closure_stage_pyproject_rule_a_lock_change_alone_escalates(
+    tmp_path: Path,
+) -> None:
+    adjacency = _locked_selector_fixture(
+        tmp_path, BASE_PYPROJECT, (_lock("0.4.1"), _lock("0.4.2"))
+    )
+    selection = compute_selection(
+        ["uv.lock"],
+        adjacency,
+        "feature",
+        repo_root=tmp_path,
+        base_ref="HEAD~1",
+        stage=CLOSURE_STAGE,
+    )
+    assert selection.is_full_suite
+    assert selection.full_suite_reason is EnumFullSuiteReason.TEST_INFRASTRUCTURE
+
+
+def test_closure_stage_pyproject_unknown_key_escalates(tmp_path: Path) -> None:
+    # the fixture key is tool.example.setting: it is on no allowlist, so it takes the full suite
+    shipped = load_adjacency_map(SHIPPED_ADJACENCY)
+    assert not any(
+        fnmatchcase("tool.example.setting", pattern)
+        for pattern in shipped.pyproject_narrowable_keys
+    )
+    full, reason, _ = _closure_stage_selection(
+        tmp_path / "alone",
+        ["pyproject.toml"],
+        UNKNOWN_KEY_HEAD,
+        rule=_shipped_closure_rule(),
+    )
+    assert full
+    assert reason == "test_infrastructure"
+    # an unknown key beside a source file is not narrowed away by the source file's closure
+    full, reason, _ = _closure_stage_selection(
+        tmp_path / "beside_source",
+        ["pyproject.toml", SRC_CHANGE],
+        UNKNOWN_KEY_HEAD,
+        rule=_shipped_closure_rule(),
+    )
+    assert full
+    assert reason == "test_infrastructure"
+    # Falsifier: with tool.example.setting on the allowlist the same change narrows
+    full, reason, selected = _closure_stage_selection(
+        tmp_path / "control",
+        ["pyproject.toml"],
+        UNKNOWN_KEY_HEAD,
+        rule=_shipped_closure_rule(),
+        narrowable=[*NARROWABLE, "tool.example.setting"],
+    )
+    assert not full, reason
+    assert set(selected) >= READERS
+
+
+def test_closure_stage_pyproject_unknown_key_escalates_without_a_base_ref(
+    tmp_path: Path,
+) -> None:
+    full, reason, _ = _closure_stage_selection(
+        tmp_path,
+        ["pyproject.toml"],
+        ADD_NODE_B,
+        rule=_shipped_closure_rule(),
+        base_ref=None,
+    )
+    assert full
+    assert reason == "test_infrastructure"
+
+
+def _closure_resolve(
+    root: Path,
+    changed: list[str],
+    *,
+    base: str,
+    head: str,
+    lock: tuple[str, str] | None,
+) -> ModelFileLevelClosureResult:
+    """The closure handler over a fixture tree whose diff is in memory, with the shipped rule."""
+    _write_tree(root, head, lock[1] if lock else None)
+    texts: dict[str, tuple[str | None, str | None]] = {"pyproject.toml": (base, head)}
+    if lock:
+        texts["uv.lock"] = lock
+    config = _config().model_copy(
+        update={"closure_stage_pyproject_rule": _shipped_closure_rule()}
+    )
+    changes = SourceFileDiffInMemory(texts).changes(
+        "", "base", "head", [*config.pyproject_paths, *config.pyproject_lock_paths]
+    )
+    return HandlerFileLevelClosure().handle(
+        ModelFileLevelClosureRequest(
+            changed_files=tuple(changed),
+            adjacency=config,
+            repo_root=str(root),
+            root_conftest_edge=EnumRootConftestEdge.CUT,
+            data_file_changes=changes,
+        )
+    )
+
+
+def test_closure_stage_pyproject_sections_replay_splits_three_dependency_one_lock_fourteen_narrow(
+    tmp_path: Path,
+) -> None:
+    narrowed: set[str] = set()
+    full: set[str] = set()
+    for index, row in enumerate(MERGES):
+        lock = row["lock"]
+        changed = ["pyproject.toml", *(["uv.lock"] if lock else [])]
+        kwargs = {
+            "base": str(row["base"]),
+            "head": str(row["head"]),
+            "lock": (str(lock["base"]), str(lock["head"])) if lock else None,
+        }
+        result = _closure_resolve(tmp_path / str(index), changed, **kwargs)
+        again = _closure_resolve(tmp_path / f"{index}_again", changed, **kwargs)
+        assert result == again
+        sha = str(row["sha"])[:10]
+        if result.escalation is None:
+            narrowed.add(sha)
+            assert set(result.selected_paths) >= READERS, sha
+            assert "tests/" not in result.selected_paths, sha
+        else:
+            full.add(sha)
+            assert result.selected_paths == (), sha
+            assert result.escalation.value == "test_infrastructure", sha
+    assert full == DEPENDENCY_MERGES | LOCK_BEYOND_VERSION_MERGES
+    assert full >= DEPENDENCY_MERGES
+    assert len(narrowed) == 14
