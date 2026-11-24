@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from _gateway_fake import FakeGateway
 
 from omnimarket.nodes.node_delegation_check_probe_effect import (
     runtime_delegation_check_probe_tick as tick,
@@ -61,6 +62,7 @@ def _run(
             *extra,
         ],
         publisher=pub,
+        gateway=FakeGateway(),
     )
     return code, pub
 

@@ -63,6 +63,6 @@ dod_evidence:
   source: manual
   binds_ac: [AC10]
   checks:
-  - check_type: command
+  - check_type: test_passes
     check_value: uv run --frozen pytest 'tests/unit/nodes/node_work_ledger_bus_mirror/test_delegation_terminal.py::test_recorded_budget_timeout_keeps_its_reason' 'tests/unit/nodes/node_work_ledger_bus_mirror/test_delegation_terminal.py::test_reason_names_its_evidence' 'tests/unit/nodes/node_work_ledger_bus_mirror/test_delegation_terminal.py::test_completed_escalation_does_not_inherit_an_abandoned_rung_error' 'tests/unit/nodes/node_work_ledger_bus_mirror/test_delegation_terminal.py::test_reason_cells_escape_delimiters_and_keep_returned_attempt_evidence' 'tests/unit/work_ledger_bus/test_delegation_terminal.py::test_recorded_timeout_reason_survives_the_serve_subscription' 'tests/unit/work_ledger_bus/test_delegation_terminal.py::test_delegation_terminal_redelivery_appends_once' -q --no-cov -n 0 -p no:randomly
     cwd: .

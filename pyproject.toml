@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.326"
+version = "0.4.327"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -340,6 +340,12 @@ Repository = "https://github.com/OmniNode-ai/omnimarket"
 # (node_pr_arm_gate_compute + node_pr_lifecycle_merge_effect). Handler source
 # remains, hard-gated fail-closed (contract.yaml lifecycle: deprecated).
 # Weekly retrospective chain, scaffolded from its design (contracts and seams first).
+# OMN-26638: the overlay-store kinds, selected by one wiring function from the bootstrap inputs.
+[project.entry-points."onex.backends"]
+store_in_memory = "omnimarket.handlers.overlay_store.backend_in_memory:BackendInMemory"
+store_postgres = "omnimarket.handlers.overlay_store.backend_postgres:BackendPostgres"
+store_valkey = "omnimarket.handlers.overlay_store.backend_valkey:BackendValkey"
+
 [project.entry-points."onex.nodes"]
 node_ab_compare_orchestrator = "omnimarket.nodes.node_ab_compare_orchestrator"
 node_ab_compare_reducer = "omnimarket.nodes.node_ab_compare_reducer"
@@ -1462,6 +1468,7 @@ node_skill_tree_read_effect = "omnimarket.nodes.node_skill_tree_read_effect"
 node_slack_publish_effect = "omnimarket.nodes.node_slack_publish_effect"
 node_source_read_cache_effect = "omnimarket.nodes.node_source_read_cache_effect"
 node_sprint_closer_effect = "omnimarket.nodes.node_sprint_closer_effect"
+node_stability_gateway_key_provision_effect = "omnimarket.nodes.node_stability_gateway_key_provision_effect"
 node_stability_lane_refresh_effect = "omnimarket.nodes.node_stability_lane_refresh_effect"
 node_stability_stack_compose_effect = "omnimarket.nodes.node_stability_stack_compose_effect"
 node_stability_stack_plan_compute = "omnimarket.nodes.node_stability_stack_plan_compute"
