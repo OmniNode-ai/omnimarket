@@ -122,6 +122,7 @@ class DevRollTickDecision:
         ended = state.model_copy(
             update={
                 "last_roll": None,
+                "last_roll_command_ids": (),
                 "abandoned": (*state.abandoned, abandoned)[-policy.held_kept :],
             }
         )
@@ -229,6 +230,9 @@ class DevRollTickDecision:
                         finished_at=None,
                         health=EnumDevRollHealth.UNKNOWN,
                         healthy_since=None,
+                    ),
+                    "last_roll_command_ids": tuple(
+                        str(h.command.correlation_id) for h in released
                     ),
                 }
             )

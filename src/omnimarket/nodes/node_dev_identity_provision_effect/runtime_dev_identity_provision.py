@@ -5,11 +5,15 @@
 ``run``    create the dev user if needed, store its generated password, sign in, then ask the runtime (over the ``--lane``
            bus) to create the probe tenant.
 ``probe``  read only: the admin credential present is the ready answer; nothing is written and nothing is called.
+``lookup`` read one named dev user (``--username`` required) by an exact username read; the answer is user_found or user_absent.
+``delete`` delete one named dev user (``--username`` required) and read it back gone; the overlay user and every protected
+           username are refused, and a user that is not in the realm answers user_absent.
 
 With no identity flag the overlay's user is provisioned. ``--username`` names another user, which then needs its own
 ``--email`` and ``--password-key-id`` (a key id the secret store node declares in its ``generated_keys``). An existing user is
 refused unless ``--reset-existing`` is given, and a user in the overlay's ``protected_usernames`` is refused unless
-``--allow-protected`` is given.
+``--allow-protected`` is given. A ``run`` deletes the user it created when it ends in any typed failure, and after a success
+only with ``--disposable``; a user that existed before the run and a protected username are never deleted by a run.
 
 Exit codes: 0 the run provisioned or the probe was ready; 1 a typed failure; 3 a deployment fact is
 missing (INDETERMINATE).
@@ -86,18 +90,22 @@ def _run(args: argparse.Namespace) -> int:
         handler.handle(
             ModelDevIdentityProvisionCommand(
                 lane=args.lane,
-                write=args.verb == "run",
+                write=args.verb in ("run", "delete"),
                 username=args.username,
                 email=args.email,
                 password_key_id=args.password_key_id,
                 reset_existing=args.reset_existing,
                 allow_protected=args.allow_protected,
+                disposable=args.disposable,
+                lookup_user=args.verb == "lookup",
+                delete_user=args.verb == "delete",
             )
         )
     )
     sys.stdout.write(
         f"outcome={result.outcome.value} ok={result.ok} realm={result.realm} "
-        f"lane={result.lane} user={result.user_name or ''} "
+        f"lane={result.lane} user={result.user_name or ''} user_id={result.user_id or ''} "
+        f"cleanup={result.cleanup.value if result.cleanup else ''} "
         f"tenant_id={result.tenant_id or ''} tenant_slug={result.tenant_slug or ''} "
         f"detail={result.detail}\n"
     )
@@ -106,13 +114,14 @@ def _run(args: argparse.Namespace) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog=NODE_NAME, description=__doc__)
-    parser.add_argument("verb", choices=("run", "probe"))
+    parser.add_argument("verb", choices=("run", "probe", "lookup", "delete"))
     parser.add_argument("--lane", required=True)
     parser.add_argument("--username")
     parser.add_argument("--email")
     parser.add_argument("--password-key-id")
     parser.add_argument("--reset-existing", action="store_true")
     parser.add_argument("--allow-protected", action="store_true")
+    parser.add_argument("--disposable", action="store_true")
     try:
         return _run(parser.parse_args(list(sys.argv[1:] if argv is None else argv)))
     except (NodeOverlayError, ValidationError, ValueError, OSError) as exc:

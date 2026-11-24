@@ -666,6 +666,25 @@ def _generated_fleet(rng: random.Random) -> dict[str, Any]:
                 ],
             ]
         )
+    # Downstream gate (OMN-26513): in some fleets every repository is a gated one and some PRs carry a downstream check.
+    # A stream of its own, seeded from the fleet, so the streams above are unchanged.
+    downstream_rng = random.Random("downstream" + repr(prs))
+    if downstream_rng.random() < 0.25:
+        facts["policy"] = {
+            **facts.get("policy", {}),
+            "downstream_gate_repos": sorted(
+                {str(pr["pr"]).split("#")[0].split("/")[1] for pr in prs}
+            ),
+            "downstream_read_expected": downstream_rng.random() < 0.5,
+        }
+        for pr in prs:
+            if downstream_rng.random() < 0.3:
+                continue
+            pr["downstream"] = {
+                "repo": str(pr["pr"]).split("#")[0].split("/")[1],
+                "head_sha": downstream_rng.choice([pr["head_sha"], f"{96:040x}"]),
+                "verdict": downstream_rng.choice(["pass", "pass", "break", "unread"]),
+            }
     return facts
 
 

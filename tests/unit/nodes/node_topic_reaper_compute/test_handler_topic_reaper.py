@@ -9,10 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.nodes.node_topic_reaper_compute.handlers.handler_topic_reaper import (
-    HandlerTopicReaper,
-)
-from omnimarket.nodes.node_topic_reaper_compute.models.model_topic_reaper import (
+from omnimarket.models.model_topic_reaper import (
     REAPER_POLICY_MISSING,
     EnumReaperState,
     ModelReaperObservation,
@@ -20,6 +17,9 @@ from omnimarket.nodes.node_topic_reaper_compute.models.model_topic_reaper import
     ModelTopicReaperPolicy,
     ModelTopicReaperRequest,
     ModelTopicReaperResult,
+)
+from omnimarket.nodes.node_topic_reaper_compute.handlers.handler_topic_reaper import (
+    HandlerTopicReaper,
 )
 from omnimarket.nodes.node_topic_reaper_compute.overlay import load_reaper_policy
 

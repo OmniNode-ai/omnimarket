@@ -228,7 +228,7 @@ def _alarm_rows(
         f"{at} | STATUS | lane={ROUTER_LANE} | actor={ACTOR} | model=none | src=alarm"
         f" | alarm={ALARM_CELL} | cause={cause.key} | class={cause.failure_class}"
         f" | subject={cell(cause.subject, 120)} | kind={cell(cause.kind)} | first_at={cause.first_at}"
-        f" | to={orchestrator or 'none'} | req={request_id}"
+        f" | to={orchestrator or 'none'}{f' | owner={cause.owner}' if cause.owner else ''} | req={request_id}"
         f" | {cause.failure_class} {cell(cause.subject, 120)}: {cell(cause.kind)}, first seen {cause.first_at}"
     )
     rows = [status]
@@ -243,6 +243,8 @@ def _alarm_rows(
 
 def _push_text(cause: Cause, orchestrator: str | None) -> str:
     text = f"ALARM {cause.failure_class} {cell(cause.subject, 120)}: {cell(cause.kind)}; first {cause.first_at}"
+    if cause.owner:
+        text += f"; owner {cause.owner}"
     if orchestrator is None:
         return f"{text}; no live orchestrator lane, so no inbox message was written"
     return f"{text}; inbox message sent to {orchestrator}"

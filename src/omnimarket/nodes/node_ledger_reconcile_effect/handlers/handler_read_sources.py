@@ -42,11 +42,6 @@ class HandlerReadSources:
                 correlation_id=request.correlation_id, error=blocked
             )
         try:
-            ledger = (
-                Path(request.ledger_path)
-                if request.ledger_path
-                else self._host.ledger_path()
-            )
             root = (
                 Path(request.registry_root)
                 if request.registry_root
@@ -55,7 +50,7 @@ class HandlerReadSources:
             roster = set(request.live_lanes)
             if request.live_lanes_file is not None:
                 roster |= self._host.read_roster(Path(request.live_lanes_file))
-            live, archives = self._host.read_ledger(ledger)
+            live, archives = self._host.read_ledger()
             sources = ModelReconcileSources(
                 live=live,
                 archives=archives,

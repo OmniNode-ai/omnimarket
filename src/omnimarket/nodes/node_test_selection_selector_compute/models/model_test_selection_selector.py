@@ -76,6 +76,33 @@ class ModelSelectorPolicy(BaseModel):
     record_check_name_prefix: str = Field(
         default="nightly-attribution", pattern=r"^[a-z0-9][a-z0-9-]*$"
     )
+    #: The stage-savings report's first pull request: the one that took the stage live. None only in a frozen
+    #: replay snapshot made before the report existed; ``policy.yaml`` always sets it.
+    savings_report_first_pr: int | None = Field(default=None, ge=1)
+    #: The workflow file whose run carries a pull request's selection record artifact (same default rule).
+    savings_report_workflow: str | None = Field(
+        default=None, pattern=r"^[A-Za-z0-9_.-]+$"
+    )
+    #: Most pull requests the report lists from the repository gateway in one read (same default rule).
+    savings_report_pr_limit: int | None = Field(default=None, ge=1, le=300)
+    #: Largest selection record archive the report fetches, in bytes (same default rule).
+    savings_report_artifact_max_bytes: int | None = Field(default=None, ge=1, le=524288)
+
+    def savings_report_settings(self) -> tuple[int, str, int, int]:
+        """The report's first pull request, workflow, list limit and archive cap; a policy that sets none cannot report."""
+        if (
+            self.savings_report_first_pr is None
+            or self.savings_report_workflow is None
+            or self.savings_report_pr_limit is None
+            or self.savings_report_artifact_max_bytes is None
+        ):
+            raise ValueError("the policy sets no savings_report_* keys")
+        return (
+            self.savings_report_first_pr,
+            self.savings_report_workflow,
+            self.savings_report_pr_limit,
+            self.savings_report_artifact_max_bytes,
+        )
 
     def closure_settings(self) -> tuple[int, EnumRootConftestEdge]:
         """The closure's stage and root conftest edge; a policy that sets neither cannot select by closure."""

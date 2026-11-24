@@ -1,6 +1,12 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The live overlay keys (``floor_fill_live.*``). No default: a missing key refuses naming it."""
+"""The live overlay keys (``floor_fill_live.*``). No default: a missing key refuses naming it.
+
+The six seam keys (``SEAM_KEYS``) are the one exception while the overlays repository catches up: the overlays main
+document carries none of them yet, and the overlay main-load check loads that document through this model. Each is
+optional here and the seam it feeds answers ``UNKNOWN`` naming the absent key until the overlay supplies it; the keys
+become required again once the overlays main document carries them.
+"""
 
 from __future__ import annotations
 
@@ -18,9 +24,19 @@ LINE_ID_PLACEHOLDER = "{line_id}"
 
 _PREFIX = f"{LIVE_OVERLAY_SECTION}."
 
+#: The keys the pool, tickets, brake and stop seams read; absent keys leave their seam unread, never unbound.
+SEAM_KEYS: tuple[str, ...] = (
+    "pool_snapshot_path",
+    "pool_record_suffix",
+    "pool_snapshot_max_age_seconds",
+    "pool_engine",
+    "mint_timeout_seconds",
+    "andon_state_dir",
+)
+
 
 class ModelFloorFillLiveSettings(BaseModel):
-    """The live bindings' overlay keys. Every one is required.
+    """The live bindings' overlay keys. Every one is required except the six ``SEAM_KEYS``.
 
     ``store_dsn_env`` is the NAME of the environment variable that holds the store DSN, never the DSN
     itself; the binding site reads it, so the secret never lands in the overlay.
@@ -36,6 +52,16 @@ class ModelFloorFillLiveSettings(BaseModel):
     plan_file_pattern: str = Field(min_length=1)
     ledger_path: str = Field(min_length=1)
     process_output_dir: str = Field(min_length=1)
+    # The pool seam: the lane host pool snapshot file the snapshot writer keeps, the suffix of the read-at record
+    # beside it, how old that record may be, and the engine the pool is read for.
+    pool_snapshot_path: str | None = Field(default=None, min_length=1)
+    pool_record_suffix: str | None = Field(default=None, min_length=1)
+    pool_snapshot_max_age_seconds: int | None = Field(default=None, gt=0)
+    pool_engine: str | None = Field(default=None, min_length=1)
+    # The tickets seam: the deadline of each call of the ticket store (search, create, read).
+    mint_timeout_seconds: float | None = Field(default=None, gt=0)
+    # The brake and stop-signal seams: the directory of the andon stop queue (the exception queue's state directory).
+    andon_state_dir: str | None = Field(default=None, min_length=1)
     # The env file the secret store writes the DSN variable into; optional, because the unit's own
     # EnvironmentFile may already carry the variable.
     store_dsn_env_file: str | None = None
@@ -47,7 +73,9 @@ class ModelFloorFillLiveSettings(BaseModel):
             missing = [
                 name
                 for name in cls.model_fields
-                if name != "store_dsn_env_file" and data.get(name) is None
+                if name != "store_dsn_env_file"
+                and name not in SEAM_KEYS
+                and data.get(name) is None
             ]
             if missing:
                 keys = tuple(f"{_PREFIX}{name}" for name in missing)
@@ -95,6 +123,7 @@ def load_floor_fill_live_settings(
 __all__: list[str] = [
     "LINE_ID_PLACEHOLDER",
     "LIVE_OVERLAY_SECTION",
+    "SEAM_KEYS",
     "ModelFloorFillLiveSettings",
     "load_floor_fill_live_settings",
 ]
