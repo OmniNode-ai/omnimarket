@@ -81,3 +81,42 @@ def test_core_guard_takes_the_ledger_only_by_injection(tmp_path: Path) -> None:
     ledger = tmp_path / "ledger.md"
     assert CoreTicketGuard(lane=None).ledger_path is None
     assert CoreTicketGuard(lane=None, ledger_path=ledger).ledger_path == ledger
+
+
+@pytest.mark.unit
+def test_core_guard_module_names_no_removed_ledger_setting() -> None:
+    """OMN-26612: the guard names neither the removed module nor the env var."""
+    from omnimarket.nodes.node_create_ticket.handlers import (
+        core_ticket_guard as core_ticket_guard_module,
+    )
+
+    src = Path(core_ticket_guard_module.__file__).read_text(encoding="utf-8")
+    assert "cli_work_ledger_render" not in src
+    assert "ONEX_LEDGER_PATH" not in src
+
+
+@pytest.mark.unit
+def test_core_guard_resolves_a_citation_only_through_an_injected_ledger(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """OMN-26612: a citation resolves only through an injected ledger path."""
+    ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
+    ledger.write_text("row one\n\nrow three\n", encoding="utf-8")
+    monkeypatch.setenv("ONEX_LEDGER_PATH", str(ledger))
+
+    def cite(line: int) -> dict[str, object]:
+        payload = _payload(title="Fix the crash")
+        payload["description"] = (
+            f"{payload['description']}\n\nDiagnosis: ROLLING_WORK_LEDGER.md:{line}\n"
+        )
+        return payload
+
+    guard = CoreTicketGuard(lane=None, ledger_path=ledger)
+    assert guard.check(cite(1)).admitted is True
+    for line in (2, 99):
+        decision = guard.check(cite(line))
+        assert decision.admitted is False
+        assert "unresolvable_diagnosis" in decision.finding_codes
+    decision = CoreTicketGuard(lane=None).check(cite(1))
+    assert decision.admitted is False
+    assert "unresolvable_diagnosis" in decision.finding_codes

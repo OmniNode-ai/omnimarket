@@ -10,6 +10,7 @@ files:
     contracts/OMN-21147.yaml: 1
     tests/conftest.py: 1
     tests/fixtures/andon_replay/snapshots/job_fin_claude3019_0035.json: 1
+    tests/nodes/node_create_ticket/test_core_ticket_guard.py: 2
     tests/unit/models/events/work/test_model_work_kinds_v2.py: 1
     tests/unit/models/events/work/test_model_work_question.py: 3
     tests/unit/models/events/work/test_work_ledger_line.py: 1
@@ -144,6 +145,7 @@ files:
     tests/nodes/node_compaction_cost_compute/test_golden_chain_compaction_cost.py: 2
     tests/nodes/node_context_compaction_manifest_compute/test_transcript_jsonl_manifest.py: 3
     tests/nodes/node_context_pack_orchestrator/test_session_source_projection_pack.py: 1
+    tests/nodes/node_create_ticket/test_core_ticket_guard.py: 4
     tests/nodes/node_factory_floor_compute/fixtures/line_board_2026_11_03/s2_lab_fill_did_nothing/fixture.yaml: 8
     tests/nodes/node_factory_floor_compute/fixtures/line_board_2026_11_03/s2_lab_fill_did_nothing/repaired/fixture.yaml: 13
     tests/nodes/node_factory_floor_compute/fixtures/line_board_2026_11_03/s3_person_blocker_unverified/fixture.yaml: 5
@@ -226,5 +228,5 @@ ratchet:
   omniclaude: 45
   omnidash: 0
   omniintelligence: 0
-  omnimarket: 128
+  omnimarket: 129
   omnimemory: 1
