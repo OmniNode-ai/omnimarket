@@ -161,14 +161,12 @@ def _main_worktree(cwd: Path) -> Path:
 
 
 def _replaceable(path: Path, root: Path) -> bool:
-    if not path.exists() and not path.is_symlink():
-        return True
     if path.is_symlink():
         return path.resolve() in {
             (root / LEGACY_HOOK_RELATIVE_PATH).resolve(),
             (_main_worktree(root) / LEGACY_HOOK_RELATIVE_PATH).resolve(),
         }
-    return BOOTSTRAP_MARKER in path.read_text(encoding="utf-8")
+    return not path.exists() or BOOTSTRAP_MARKER in path.read_text(encoding="utf-8")
 
 
 def _atomic_write(path: Path, content: bytes, mode: int) -> None:
@@ -183,9 +181,8 @@ def _adapter_source() -> Path:
 
 
 def _replaceable_adapter(path: Path) -> bool:
-    source = _adapter_source()
     return not path.exists() or (
-        not path.is_symlink() and path.read_bytes() == source.read_bytes()
+        not path.is_symlink() and path.read_bytes() == _adapter_source().read_bytes()
     )
 
 
@@ -208,12 +205,9 @@ def install(*, cwd: Path) -> Path:
 def check_installation(*, cwd: Path) -> tuple[bool, str]:
     root = Path(_git(["rev-parse", "--show-toplevel"], cwd)).resolve()
     path = common_hook_path(cwd=root)
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError as exc:
-        return False, str(exc)
     adapter_path = path.with_name(ADAPTER_NAME)
     try:
+        text = path.read_text(encoding="utf-8")
         adapter_matches = adapter_path.read_bytes() == _adapter_source().read_bytes()
     except OSError as exc:
         return False, str(exc)

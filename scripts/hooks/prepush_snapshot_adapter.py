@@ -101,34 +101,7 @@ def check_marker(snapshot: Path, repo_root: Path) -> int:
             text=True,
         ).stdout.strip()
         _marker(snapshot, head)
-        listed = subprocess.run(
-            ["git", "-C", str(repo_root), "worktree", "list", "--porcelain"],
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout
-        if f"worktree {snapshot}\n" not in listed:
-            raise ValueError("snapshot marker is not a registered worktree")
-        common = subprocess.run(
-            ["git", "-C", str(repo_root), "rev-parse", "--git-common-dir"],
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-        snapshot_common = subprocess.run(
-            ["git", "-C", str(snapshot), "rev-parse", "--git-common-dir"],
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout.strip()
-        common_path = Path(common)
-        snapshot_common_path = Path(snapshot_common)
-        if not common_path.is_absolute():
-            common_path = repo_root / common_path
-        if not snapshot_common_path.is_absolute():
-            snapshot_common_path = snapshot / snapshot_common_path
-        if common_path.resolve() != snapshot_common_path.resolve():
-            raise ValueError("snapshot marker has different common Git metadata")
+        _registered_with_common_git(repo_root, snapshot)
     except (OSError, ValueError, subprocess.CalledProcessError) as exc:
         print(f"invalid pre-push snapshot marker: {exc}", file=sys.stderr)
         return 1
