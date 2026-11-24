@@ -144,6 +144,9 @@ class ModelDelegationCheckReading(_Frozen):
     # NOT_MEASURED: the task never reached a local responder that answered.
     not_measured: str | None = None
     versions: dict[str, str] = Field(default_factory=dict)
+    # A gateway-graded check names the gateway address it talked to and the tenant it acted as (OMN-26642).
+    endpoint: str | None = None
+    tenant_slug: str | None = None
 
     def verdict(self) -> EnumCheckVerdict:
         if any(not p.present for p in self.preconditions):
@@ -182,6 +185,10 @@ class ModelDelegationCheckResult(_Frozen):
     versions: dict[str, str] = Field(default_factory=dict)
     error: str | None = None
     emitted: bool = False
+    # The gateway address and test tenant of a gateway-graded check; the runner is always this node, never a workflow.
+    gateway_url: str | None = None
+    tenant_slug: str | None = None
+    runner: str = "omnimarket-node"
 
     @model_validator(mode="after")
     def _aware_and_consistent(self) -> ModelDelegationCheckResult:
