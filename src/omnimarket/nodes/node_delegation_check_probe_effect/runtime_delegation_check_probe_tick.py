@@ -37,12 +37,11 @@ from omnimarket.handlers.node_overlay_reader import (
 from omnimarket.models.overlay_documents.model_delegation_check_responders_overlay import (
     ModelDelegationCheckRespondersOverlay,
 )
-from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_clean_install_machine import (
-    CleanInstallCustomerMachine,
-    GitCloneSurfaceSources,
-)
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_delegation_check import (
     HttpResponderReader,
+)
+from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_local_delegation_machine import (
+    LocalDelegationCustomerMachine,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.handler_delegation_check_probe import (
     NODE,
@@ -165,10 +164,7 @@ def main(
     handler = HandlerDelegationCheckProbe(
         responders=row.responders,
         reader=HttpResponderReader(overlay.responder_timeout_s),
-        machine=machine
-        or CleanInstallCustomerMachine(
-            sources=GitCloneSurfaceSources(args.registry_root)
-        ),
+        machine=machine or LocalDelegationCustomerMachine(),
         publisher=publisher or EmitEffectTopicPublisher(),
         topic=overlay.result_topic,
     )

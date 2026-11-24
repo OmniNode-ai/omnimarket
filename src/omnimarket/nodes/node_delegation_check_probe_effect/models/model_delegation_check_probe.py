@@ -79,6 +79,9 @@ class ModelDelegateObservation(_Frozen):
     token_counter_moved: bool = False
     # A deliberate outbound connect, through the same wrapper and parser, was classified external.
     control_external_classified: bool = False
+    # The negative control: a run before the customer's overlay file exists was refused and never reached the model server, so
+    # the configured model is proven to come from the configuration. None means the collector did not run it.
+    negative_control_refused: bool | None = None
     # Where the customer machine resolves ``onex`` after the install, and whether that is the install's own packaged entry. A
     # customer install ships ``onex`` on PATH; a runner that carries its own ``onex`` (runner image v15) must not stand in for
     # it, so what is graded is that the delegate ran through the install's entry, never that the runner has no ``onex``.
