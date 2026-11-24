@@ -319,6 +319,9 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_shrink_r
     HandlerShrinkRetry,
     unit_slice_text,
 )
+from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.thinking_budget import (
+    bound_thinking_budget_to_answer_room,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_dispatch_progress import (
     ModelDelegationDispatchProgress,
 )
@@ -5422,6 +5425,12 @@ class LocalDelegationDispatchPort:
             provider_request_options, outbound_prompt = _apply_class_sampling(
                 provider_request_options, outbound_prompt, class_sampling
             )
+        # OMN-26588: thinking tokens share the output cap with the answer, so
+        # whichever of the profile and the overlay set a budget, it leaves the
+        # answer room.
+        provider_request_options = bound_thinking_budget_to_answer_room(
+            provider_request_options, max_tokens=effective_max_tokens
+        )
         # OMN-19432: the profile's prescribed temperature is a default for a
         # caller that sent none, never a competing writer of the wire key.
         profile_default_temperature = resolve_inference_protocol_default_temperature(
@@ -5753,6 +5762,7 @@ class LocalDelegationDispatchPort:
                 # non-heuristic way to tell the two apart.
                 finish_reason=result.finish_reason,
                 reasoning_stripped_chars=result.reasoning_stripped_chars,
+                output_tokens_spent=result.tokens_out,
                 named_test_run=named_test_run,
                 named_tests_requested=named_tests_requested,
             )
@@ -5860,6 +5870,7 @@ class LocalDelegationDispatchPort:
         deliverable_evidence: ModelDelegationDeliverableEvidence | None = None,
         finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
         reasoning_stripped_chars: int = 0,
+        output_tokens_spent: int = 0,
         grounding_source: str | None = None,
         named_test_run: ModelNamedTestRun | None = None,
         named_tests_requested: bool = False,
@@ -5927,6 +5938,7 @@ class LocalDelegationDispatchPort:
             else prompt,
             finish_reason=finish_reason,
             reasoning_stripped_chars=reasoning_stripped_chars,
+            output_tokens_spent=output_tokens_spent,
             named_test_run=named_test_run,
             named_tests_requested=named_tests_requested,
         )
