@@ -213,12 +213,7 @@ def dashboard_command(ctx: click.Context, overlay_path: Path | None) -> None:
     # OMN-26226: the canonical setup lifecycle may mint a start token into
     # an owner-only file; a direct run mints its own. The token is never
     # announced here; `onex dashboard open` builds the authenticated URL.
-    request_kwargs: dict[str, object] = {
-        "host": host,
-        "port": port,
-        "tenant_id": tenant,
-    }
-    request = ModelLocalDashboardServeRequest(**request_kwargs)
+    request = ModelLocalDashboardServeRequest(host=host, port=port, tenant_id=tenant)
     click.echo(
         f"onex dashboard: http://{host}:{port}/\nPress Enter in the TUI, use the Open button, or run `onex dashboard open` to open it."
     )

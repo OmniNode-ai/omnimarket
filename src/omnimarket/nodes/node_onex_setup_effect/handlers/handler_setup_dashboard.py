@@ -190,13 +190,17 @@ class HandlerSetupDashboard:
             token = mint_dashboard_token().get_secret_value()
             asyncio.run(self._store.set_secret(reference, token))
             token_path = self._home / "dashboard.token"
+            # A file already there (left by a killed start, or created wider)
+            # is removed, so the token only ever lands in a file this call
+            # created at 0o600.
+            token_path.unlink(missing_ok=True)
             token_fd = os.open(
-                token_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600
+                token_path,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                0o600,
             )
             with os.fdopen(token_fd, "w") as token_file:
                 token_file.write(token)
-                token_file.flush()
-                os.fchmod(token_file.fileno(), 0o600)
             environment = os.environ.copy()
             for name in tuple(environment):
                 if (
@@ -214,6 +218,9 @@ class HandlerSetupDashboard:
                     )
                 ):
                     environment.pop(name)
+            # Names this start's token file (a path, not the token); the server
+            # reads it once and deletes it.
+            environment["ONEX_DASHBOARD_TOKEN_FILE"] = str(token_path)
             process = subprocess.Popen(
                 [
                     str(Path(sys.executable).parent / "onex"),

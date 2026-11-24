@@ -575,7 +575,8 @@ def require_local_access(app: FastAPI, *, token: str, port: int) -> None:
                 for key, value in request.query_params.multi_items()
                 if key != DASHBOARD_TOKEN_PARAM
             ]
-            location = request.url.path
+            # One leading slash only: "//host" would redirect off this origin.
+            location = "/" + request.url.path.lstrip("/")
             if remaining:
                 location = location + "?" + urllib.parse.urlencode(remaining)
             redirect = RedirectResponse(url=location, status_code=303)

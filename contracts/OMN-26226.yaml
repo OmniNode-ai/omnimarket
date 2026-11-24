@@ -80,6 +80,11 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest -q tests/unit/nodes/node_local_dashboard_serve_effect/test_start_url_redirect_strips_token.py
         cwd: .
+  # Not bound as a check: tests/unit/nodes/node_onex_setup_effect/test_dashboard_token_not_in_argv.py
+  # guards a regression made and fixed inside this branch (a token on the child's
+  # command line). Dev never put the token in argv, so on the merge base it can
+  # only fail on a name this branch adds, not on behaviour, and dod-verify needs
+  # a bound check to fail there. It still runs in the test suite.
   - id: dod-omn26226-integration-proof
     description: Run the five OMN-26226 test files and the changed dashboard tests on a lab host at the pushed revision. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
     source: manual

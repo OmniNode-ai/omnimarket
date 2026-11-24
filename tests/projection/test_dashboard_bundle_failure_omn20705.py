@@ -172,14 +172,13 @@ def test_the_printed_root_serves_the_verified_pages(
     monkeypatch.setattr(click, "echo", recorder)
 
     token = "test-token-for-bundle-proof"
-    home = dashboard_env["tmp_path"] / "home"
-    (home / ".onex").mkdir(parents=True, exist_ok=True)
-    (home / ".onex" / "dashboard.token").write_text(token, encoding="utf-8")
+    token_file = dashboard_env["tmp_path"] / "dashboard-token.txt"
+    token_file.write_text(token, encoding="utf-8")
     runner = CliRunner()
     result = runner.invoke(
         cli_local.dashboard_command,
         ["--overlay", str(dashboard_env["overlay"])],
-        env={"HOME": str(home)},
+        env={"ONEX_DASHBOARD_TOKEN_FILE": str(token_file)},
     )
 
     assert result.exit_code == 0
