@@ -20,6 +20,8 @@ CONTROLLER_REFUSAL = "controller-refusal"
 LEDGER_REFUSED = "ledger-refused"
 MAIN_RED = "main-red"
 HELD_ROLL = "held-roll-command"
+LANE_PATH_SHARE = "lane-path-share"
+LANE_PATH_SHARE_OK = "lane-path-share-ok"
 ALARM_CELL = "failure-cause"
 RESOLVED_CELL = "failure-cause-resolved"
 
@@ -43,6 +45,7 @@ class Cause:
     subject: str
     first_at: str
     kind: str
+    owner: str = ""
 
     @property
     def key(self) -> str:
@@ -145,6 +148,20 @@ def row_causes(rows: list[Row], since: datetime) -> list[Cause]:
             )
             cause = Cause(MAIN_RED, f"{repo}:{branch}:{head}", row.stamp, cell(kind))
             found.setdefault(cause.key, cause)
+        elif row.row_type == "STATUS" and row.value("alarm") == LANE_PATH_SHARE:
+            host = row.value("host") or "unknown-host"
+            kind = (
+                f"{row.value('share_pct') or '?'} percent of lane path bytes sit on a mounted data drive, "
+                f"under the {row.value('bar_pct') or '10'} percent bar"
+            )
+            cause = Cause(
+                LANE_PATH_SHARE,
+                host,
+                row.stamp,
+                cell(kind),
+                owner=cell(row.value("owner") or "none", 80),
+            )
+            found.setdefault(cause.key, cause)
     return list(found.values())
 
 
@@ -189,6 +206,15 @@ def resolution(
             if (
                 row.row_type == "CLAIM"
                 and row.token("lane") == open_cause.subject
+                and parse_stamp(row.stamp) > first
+            ):
+                return parse_stamp(row.stamp)
+    if open_cause.failure_class == LANE_PATH_SHARE:
+        for row in rows:
+            if (
+                row.row_type == "STATUS"
+                and row.value("alarm") == LANE_PATH_SHARE_OK
+                and row.value("host") == open_cause.subject
                 and parse_stamp(row.stamp) > first
             ):
                 return parse_stamp(row.stamp)
