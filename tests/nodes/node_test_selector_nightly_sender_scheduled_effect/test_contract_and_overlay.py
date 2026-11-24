@@ -111,7 +111,10 @@ def test_contract_and_overlay_the_example_overlay_holds_exactly_the_models_keys(
     assert set(example) == set(ModelNightlySenderScheduleOverlay.model_fields)
     parsed = ModelNightlySenderScheduleOverlay.model_validate(example)
     assert parsed.nightly_slot_time_utc.isoformat(timespec="minutes") == "02:30"
-    assert set(OVERLAY) == set(ModelNightlySenderScheduleOverlay.model_fields)
+    # the one optional key, the mounted config root, is exercised in test_config_root_bus_open
+    assert set(OVERLAY) == set(ModelNightlySenderScheduleOverlay.model_fields) - {
+        "workspace_config_root"
+    }
 
 
 @pytest.mark.parametrize("key", sorted(OVERLAY))

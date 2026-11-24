@@ -14,6 +14,7 @@ import http.client
 import json
 import os
 import re
+import shlex
 import socket
 import struct
 import subprocess
@@ -42,6 +43,7 @@ from omnimarket.nodes.node_lab_alarm.protocols import (
     ManifestUnreachableError,
     ManifestUnreadableError,
     RunRecordUnwritableError,
+    UnitStateUnreadableError,
 )
 
 
@@ -128,6 +130,66 @@ class HttpHeartbeatSource:
         if not isinstance(payload, dict):
             raise HeartbeatUnreadableError("the agent's answer is not a JSON object")
         return payload
+
+
+class SshUserUnitStateSource:
+    """``systemctl --user show`` of one unit, through the overlay's argv prefix: its LoadState and ActiveState.
+
+    The dev deploy agent is a USER unit, so the scope is fixed to ``--user`` here and is never a
+    setting: a system-scope read of the unit's name answers "inactive" while the unit is running.
+    Behind a non-empty prefix the remote words are shell-quoted, because ssh hands the joined text
+    to a remote shell (as SshDockerRestartReader does); the command is a fixed argv run without a
+    shell, read only. ``show`` is read rather than ``is-active`` because ``is-active`` prints
+    "inactive" for a unit that does not exist too, and the handler must tell that (INDETERMINATE,
+    through the LoadState) apart from a loaded unit that reads anything but ``active``. A timeout,
+    an OSError, a non-zero exit, or an answer lacking either key raises ``UnitStateUnreadableError``
+    naming what failed; nothing here prints a credential or the value of an env var.
+    """
+
+    def __init__(self, host_command: Sequence[str], unit: str, timeout: float) -> None:
+        self._prefix = list(host_command)
+        self._unit = unit
+        self._timeout = timeout
+
+    def read(self) -> tuple[str, str]:
+        show = [
+            "systemctl",
+            "--user",
+            "show",
+            self._unit,
+            "-p",
+            "LoadState",
+            "-p",
+            "ActiveState",
+        ]
+        if self._prefix:
+            argv = [*self._prefix, *(shlex.quote(part) for part in show)]
+        else:
+            argv = list(show)
+        try:
+            result = subprocess.run(
+                argv, capture_output=True, text=True, check=False, timeout=self._timeout
+            )
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            raise UnitStateUnreadableError(
+                f"systemctl --user show {self._unit} failed ({type(exc).__name__})"
+            ) from None
+        if result.returncode != 0:
+            raise UnitStateUnreadableError(
+                f"systemctl --user show {self._unit} exited {result.returncode}: "
+                f"{(result.stderr or '').strip()[:200]}"
+            )
+        fields: dict[str, str] = {}
+        for line in (result.stdout or "").splitlines():
+            key, separator, value = line.partition("=")
+            if separator:
+                fields[key] = value
+        missing = [key for key in ("LoadState", "ActiveState") if key not in fields]
+        if missing:
+            raise UnitStateUnreadableError(
+                f"systemctl --user show {self._unit} printed no {missing[0]}"
+            )
+        return fields["LoadState"], fields["ActiveState"]
 
 
 class HttpManifest:
@@ -658,6 +720,7 @@ __all__ = [
     "HttpManifest",
     "KafkaEffectsGroups",
     "KafkaLag",
+    "SshUserUnitStateSource",
     "TcpApiVersionsProbe",
     "lane_client_kwargs",
 ]
