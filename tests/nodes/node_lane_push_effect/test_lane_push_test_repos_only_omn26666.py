@@ -22,7 +22,7 @@ NODE_DIR = (
 )
 MODELS = "omnimarket.nodes.node_lane_push_effect.models.model_lane_push"
 HANDLER = "omnimarket.nodes.node_lane_push_effect.handlers.handler_lane_push"
-CHECKS = "omnimarket.nodes.node_lane_push_effect.handlers.handler_lane_push_checks"
+CHECKS = "omnimarket.nodes.node_lane_push_effect.handlers.lane_push_checks"
 HEAD = "a" * 40
 COMMIT = "c" * 40
 CONTRACT = yaml.safe_load((NODE_DIR / "contract.yaml").read_text(encoding="utf-8"))

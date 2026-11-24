@@ -14,7 +14,7 @@ import pytest
 MODELS = "omnimarket.nodes.node_lane_push_effect.models"
 PROTOCOLS = "omnimarket.nodes.node_lane_push_effect.protocols"
 HANDLER = "omnimarket.nodes.node_lane_push_effect.handlers.handler_lane_push"
-CHECKS = "omnimarket.nodes.node_lane_push_effect.handlers.handler_lane_push_checks"
+CHECKS = "omnimarket.nodes.node_lane_push_effect.handlers.lane_push_checks"
 HEAD = "a" * 40
 COMMIT = "c" * 40
 
