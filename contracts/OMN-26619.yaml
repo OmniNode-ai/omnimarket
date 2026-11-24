@@ -1,0 +1,31 @@
+schema_version: 1.0.0
+ticket_id: OMN-26619
+title: A delegation check that goes green to red in the probes' own results raises one regression event and an alarm to the orchestrator within 15 minutes
+summary: The build delegation checks node (node_build_delegation_checks) keeps its per-build history under the runtime's declared writable state root instead of under the registry root, which the dev runtime mounts read-only, so the ten delegation checks run after every dev build.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26619-build-checks-state-root
+  statement: The node that runs the ten delegation checks after each dev build writes its readings under the runtime's declared state root, so a read-only registry root cannot stop it.
+  acceptance:
+  - id: AC7
+    statement: 'AC7: the build history of node_build_delegation_checks is written under ONEX_STATE_DIR (then ONEX_STATE_ROOT) with the registry root read-only, and no declared state root refuses instead of choosing a path -- falsifier: uv run pytest tests/nodes/node_build_delegation_checks/test_state_root.py -q fails on a handler that writes under the registry root'
+evidence_requirements:
+- kind: tests
+  description: The node's focused tests, the new state root test failing against the registry-root path first.
+  command: uv run pytest tests/nodes/node_build_delegation_checks -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26619-state-root
+  description: With the registry root closed to writes and ONEX_STATE_DIR naming a writable directory, two builds are recorded in the history file under the state root and nothing is created under the registry root; with no state root declared the handler raises OnexStateRootUnconfiguredError. The test fails on a handler that derives the history path from the registry root.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_build_delegation_checks/test_state_root.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
