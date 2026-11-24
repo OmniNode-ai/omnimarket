@@ -72,7 +72,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from fastapi import FastAPI, Query, Request, Response
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 
 from omnimarket.handlers import handler_model_keys as model_keys
 from omnimarket.handlers.handler_local_environment_judgement import (
@@ -542,7 +542,21 @@ def require_local_access(app: FastAPI, *, token: str, port: int) -> None:
                 "this dashboard answers only its own pages",
             )
         presented = _presented_tokens(request, cookie)
+        accept = request.headers.get("accept", "")
         if not any(_matches(p, expected) for p in presented):
+            if request.url.path == "/" and "text/html" in accept:
+                return HTMLResponse(
+                    status_code=200,
+                    content=(
+                        '<!doctype html><html><head><meta charset="utf-8">'
+                        "<title>ONEX dashboard</title></head><body>"
+                        "<h1>ONEX local dashboard</h1>"
+                        "<p>This address needs this start's token. "
+                        "Press Enter in the TUI, use the Open button, or run "
+                        "<code>onex dashboard open</code> to open it.</p>"
+                        "</body></html>"
+                    ),
+                )
             return JSONResponse(
                 status_code=401,
                 headers={"WWW-Authenticate": "Bearer"},
@@ -554,8 +568,23 @@ def require_local_access(app: FastAPI, *, token: str, port: int) -> None:
                     ),
                 },
             )
-        response = await call_next(request)
         query_token = request.query_params.get(DASHBOARD_TOKEN_PARAM)
+        if query_token and _matches(query_token, expected) and "text/html" in accept:
+            remaining = [
+                (key, value)
+                for key, value in request.query_params.multi_items()
+                if key != DASHBOARD_TOKEN_PARAM
+            ]
+            # One leading slash only: "//host" would redirect off this origin.
+            location = "/" + request.url.path.lstrip("/")
+            if remaining:
+                location = location + "?" + urllib.parse.urlencode(remaining)
+            redirect = RedirectResponse(url=location, status_code=303)
+            redirect.set_cookie(
+                cookie, token, httponly=True, samesite="strict", path="/"
+            )
+            return redirect
+        response = await call_next(request)
         if query_token and _matches(query_token, expected):
             response.set_cookie(
                 cookie, token, httponly=True, samesite="strict", path="/"
