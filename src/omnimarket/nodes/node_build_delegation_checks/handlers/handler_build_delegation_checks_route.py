@@ -80,24 +80,24 @@ class HandlerBuildDelegationChecksRoute:
             if replay
             else CommandCheckRunner(settings.check_routes)
         )
-        with BusRegressionSink(
+        sink = BusRegressionSink(
             regression_topic=REGRESSION_TOPIC,
             alarm_topic=ALARM_TOPIC,
             result_topic=RESULT_TOPIC,
             bus="kafka",
             lane=settings.bus_lane,
             workspace=root,
-        ) as sink:
-            handler = HandlerBuildDelegationChecks(
-                settings=settings,
-                runner=runner,
-                store=FileBuildStore(
-                    root / settings.history_relpath, settings.history_keep
-                ),
-                merges=GitMergeSource(root / settings.merge_clone_relpath),
-                sink=sink,
-            )
-            return handler.handle(request)
+        )
+        handler = HandlerBuildDelegationChecks(
+            settings=settings,
+            runner=runner,
+            store=FileBuildStore(
+                root / settings.history_relpath, settings.history_keep
+            ),
+            merges=GitMergeSource(root / settings.merge_clone_relpath),
+            sink=sink,
+        )
+        return handler.handle(request)
 
 
 __all__ = [

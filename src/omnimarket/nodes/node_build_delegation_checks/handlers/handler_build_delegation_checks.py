@@ -172,22 +172,45 @@ class HandlerBuildDelegationChecks:
         )
         failed: list[ModelRefusedAlarm] = []
         for event, alarm in zip(events, alarms, strict=True):
-            try:
-                self._sink.publish_regression(event)
-                self._sink.request_alarm(alarm)
-            except OSError as exc:
-                failed.append(
-                    ModelRefusedAlarm(
-                        check_id=event.check_id,
-                        reason=f"publish-failed: {type(exc).__name__}",
-                    )
+            # The alarm is attempted even when the event cannot be published: a refused topic must not silence the alarm.
+            failed.extend(
+                refusal
+                for refusal in (
+                    self._attempt(
+                        event.check_id, "event", self._sink.publish_regression, event
+                    ),
+                    self._attempt(
+                        event.check_id, "alarm", self._sink.request_alarm, alarm
+                    ),
                 )
+                if refusal is not None
+            )
+        try:
+            self._sink.publish_result(result)
+        except OSError as exc:
+            failed.append(
+                ModelRefusedAlarm(
+                    check_id="*", reason=f"publish-failed: {type(exc).__name__}"
+                )
+            )
         if failed:
             result = result.model_copy(
                 update={"refused": result.refused + tuple(failed)}
             )
-        self._sink.publish_result(result)
         return result
+
+    @staticmethod
+    def _attempt[T](
+        check_id: str, what: str, send: Callable[[T], None], payload: T
+    ) -> ModelRefusedAlarm | None:
+        try:
+            send(payload)
+        except OSError as exc:
+            return ModelRefusedAlarm(
+                check_id=check_id,
+                reason=f"publish-failed ({what}): {type(exc).__name__}",
+            )
+        return None
 
     def _skipped(self, build_id: str, reason: str) -> ModelBuildChecksResult:
         return ModelBuildChecksResult(

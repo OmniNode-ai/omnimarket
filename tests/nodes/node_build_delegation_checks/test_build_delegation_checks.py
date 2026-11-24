@@ -240,6 +240,27 @@ def test_the_overlay_example_holds_the_tested_defaults() -> None:
     assert pinned == loaded
 
 
+class _EventTopicRefused(RecordingSink):
+    def publish_regression(self, event: ModelRegressionEvent) -> None:
+        raise OSError("topic not authorized")
+
+
+def test_a_refused_event_publish_does_not_silence_the_alarm() -> None:
+    rig = _Rig({B1: {"C14": PASS}, B2: {"C14": FAIL}})
+    rig.sink = _EventTopicRefused()
+    rig.handler = HandlerBuildDelegationChecks(
+        settings=_settings(checks=("C14",)),
+        runner=rig.runner,
+        store=rig.store,
+        merges=InMemoryMergeSource({}),
+        sink=rig.sink,
+    )
+    rig.handler.handle(_event(B1))
+    result = rig.handler.handle(_event(B2))
+    assert len(rig.sink.alarms) == 1
+    assert [r.reason for r in result.refused] == ["publish-failed (event): OSError"]
+
+
 def test_a_store_serving_no_overlay_loads_the_defaults_with_no_owner(
     tmp_path: Path,
 ) -> None:
