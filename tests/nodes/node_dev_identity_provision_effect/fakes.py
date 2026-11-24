@@ -92,6 +92,7 @@ class FakeKeycloakAndApi:
         fail_admin_token: bool = False,
         fail_user_token: bool = False,
         fail_user_create: bool = False,
+        fail_user_delete: bool = False,
         raise_connection_error: bool = False,
         raise_connection_error_on: str | None = None,
     ) -> None:
@@ -105,6 +106,7 @@ class FakeKeycloakAndApi:
         self.fail_admin_token = fail_admin_token
         self.fail_user_token = fail_user_token
         self.fail_user_create = fail_user_create
+        self.fail_user_delete = fail_user_delete
         self.raise_connection_error = raise_connection_error
         self.raise_connection_error_on = raise_connection_error_on
         self.users: dict[str, dict[str, Any]] = {}
@@ -113,6 +115,7 @@ class FakeKeycloakAndApi:
         self.sent: list[ModelIdentityHttpRequest] = []
         self.create_bodies: list[dict[str, Any]] = []
         self.reset_bodies: list[dict[str, Any]] = []
+        self.deleted_ids: list[str] = []
         self.grant_forms: list[dict[str, str]] = []
 
     def _answer(self, status: int, body: Any = None) -> ModelIdentityHttpResponse:
@@ -173,6 +176,20 @@ class FakeKeycloakAndApi:
             if user is not None:
                 return self._answer(200, [user])
             return self._answer(200, [])
+
+        # Admin user delete: the user's id is the last path segment; an unknown id is a 404.
+        if request.method == "DELETE" and "/admin/realms/" in request.url:
+            if not self._is_admin(request):
+                return self._answer(403)
+            if self.fail_user_delete:
+                return self._answer(500)
+            user_id = request.url.rstrip("/").rsplit("/", 1)[-1]
+            for name, user in list(self.users.items()):
+                if user["id"] == user_id:
+                    del self.users[name]
+                    self.deleted_ids.append(user_id)
+                    return self._answer(204)
+            return self._answer(404)
 
         # Admin user create.
         if "/admin/realms/" in request.url and request.method == "POST":
