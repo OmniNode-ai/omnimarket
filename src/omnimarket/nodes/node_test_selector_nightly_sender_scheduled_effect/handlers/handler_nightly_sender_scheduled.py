@@ -231,7 +231,9 @@ class HandlerNightlySenderScheduled:
         except ValueError as exc:
             return self._unresolved(request, overlay, state, slot, str(exc))
         sender = self._sender or BusNightlyCommandSender(
-            bus_lane=overlay.bus_lane, timeout_s=overlay.command_timeout_seconds
+            bus_lane=overlay.bus_lane,
+            timeout_s=overlay.command_timeout_seconds,
+            workspace_config_root=overlay.workspace_config_root,
         )
         try:
             collected = sender.collect_nightly(

@@ -609,6 +609,7 @@ node_delegation_readiness_verdict_compute = "omnimarket.nodes.node_delegation_re
 node_delegation_readiness_verdict_effect = "omnimarket.nodes.node_delegation_readiness_verdict_effect"
 node_delegation_receipt_verdict_compute = "omnimarket.nodes.node_delegation_receipt_verdict_compute"
 node_delegation_recombine_compute = "omnimarket.nodes.node_delegation_recombine_compute"
+node_delegation_replay_route_compute = "omnimarket.nodes.node_delegation_replay_route_compute"
 node_delegation_routing_feedback_reducer = "omnimarket.nodes.node_delegation_routing_feedback_reducer"
 node_delegation_routing_order_compute = "omnimarket.nodes.node_delegation_routing_order_compute"
 node_delegation_routing_overlay_check_compute = "omnimarket.nodes.node_delegation_routing_overlay_check_compute"
@@ -845,6 +846,7 @@ node_host_installer_serve_units = "omnimarket.nodes.node_host_installer_serve_un
 node_host_introspection_announce_effect = "omnimarket.nodes.node_host_introspection_announce_effect"
 node_host_introspection_compute = "omnimarket.nodes.node_host_introspection_compute"
 node_host_job_claim_compute = "omnimarket.nodes.node_host_job_claim_compute"
+node_host_lane_path_share_compute = "omnimarket.nodes.node_host_lane_path_share_compute"
 node_host_local_config_drift_compute = "omnimarket.nodes.node_host_local_config_drift_compute"
 node_host_memory_admission_compute = "omnimarket.nodes.node_host_memory_admission_compute"
 node_host_pool_alarm_effect = "omnimarket.nodes.node_host_pool_alarm_effect"
@@ -952,6 +954,7 @@ node_lab_work_unit_effect = "omnimarket.nodes.node_lab_work_unit_effect"
 node_landing_canary_effect = "omnimarket.nodes.node_landing_canary_effect"
 node_landing_canary_scheduled_effect = "omnimarket.nodes.node_landing_canary_scheduled_effect"
 node_landing_decision_venv_effect = "omnimarket.nodes.node_landing_decision_venv_effect"
+node_landing_downstream_check_effect = "omnimarket.nodes.node_landing_downstream_check_effect"
 node_landing_not_started_effect = "omnimarket.nodes.node_landing_not_started_effect"
 node_landing_placement_wait_effect = "omnimarket.nodes.node_landing_placement_wait_effect"
 node_landing_policy_compute = "omnimarket.nodes.node_landing_policy_compute"
@@ -1531,6 +1534,7 @@ node_topic_never_produced_compute = "omnimarket.nodes.node_topic_never_produced_
 node_topic_provision_dry_run_effect = "omnimarket.nodes.node_topic_provision_dry_run_effect"
 node_topic_provision_plan_compute = "omnimarket.nodes.node_topic_provision_plan_compute"
 node_topic_reaper_compute = "omnimarket.nodes.node_topic_reaper_compute"
+node_topic_reaper_scheduled_effect = "omnimarket.nodes.node_topic_reaper_scheduled_effect"
 node_trajectory_evaluation_effect = "omnimarket.nodes.node_trajectory_evaluation_effect"
 node_transcript_manifest_effect = "omnimarket.nodes.node_transcript_manifest_effect"
 node_transcript_parse_compute = "omnimarket.nodes.node_transcript_parse_compute"
@@ -2113,9 +2117,9 @@ force-include = { "config/ci_bus_lanes.yaml" = "omnimarket/config/ci_bus_lanes.y
 # the pin means replacing those parts too: delete the old ones, then run
 # `split -b 720000 -d <asset> <asset>.part-` in that directory. A test names the
 # pin and the parts that disagree.
-version = "v1.1.14"
-sha256 = "f3718ee217f739ab7a0a00c01d07d887fba1ff01ad3b6663ceb6773e4c2441c5"
-asset = "omnidash-bundle-v1.1.14.tar.gz"
+version = "v1.1.15"
+sha256 = "023f70942857c2494f7799557ebe41b437879567af0fad30be3df9c29e0a4b3b"
+asset = "omnidash-bundle-v1.1.15.tar.gz"
 repository = "OmniNode-ai/omnidash"
 
 [tool.hatch.build]

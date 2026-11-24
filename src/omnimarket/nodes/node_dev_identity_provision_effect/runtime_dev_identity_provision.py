@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT
 """``python -m omnimarket.nodes.node_dev_identity_provision_effect <verb> --lane <lane>``.
 
-``run``    create the dev user if needed, store its generated password, sign in, provision the probe tenant.
+``run``    create the dev user if needed, store its generated password, sign in, then ask the runtime (over the ``--lane``
+           bus) to create the probe tenant.
 ``probe``  read only: the admin credential present is the ready answer; nothing is written and nothing is called.
 
 With no identity flag the overlay's user is provisioned. ``--username`` names another user, which then needs its own
@@ -18,15 +19,20 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
+import yaml
 from pydantic import ValidationError
 
 from omnimarket.handlers.delegation_scenario_settings import SecretStoreSettingsReader
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.handlers.overlay_store.bus_opener import open_lane_bus, workspace_root
 from omnimarket.nodes.node_dev_identity_provision_effect.adapters import (
+    BusTenantProvisioner,
     StoreKeyGenerator,
     UrllibIdentityTransport,
 )
@@ -36,12 +42,31 @@ from omnimarket.nodes.node_dev_identity_provision_effect.handlers.handler_dev_id
 from omnimarket.nodes.node_dev_identity_provision_effect.models.model_dev_identity_provision import (
     ModelDevIdentityProvisionCommand,
 )
+from omnimarket.nodes.node_dev_identity_provision_effect.models.model_tenant_provision_wire import (
+    ModelTenantProvisionTopics,
+)
 from omnimarket.nodes.node_dev_identity_provision_effect.overlay import (
     NODE_NAME,
     load_overlay,
 )
 
 _CONTRACT_PATH = Path(__file__).resolve().parent / "contract.yaml"
+
+
+def load_tenant_provision_topics(
+    contract_path: Path = _CONTRACT_PATH,
+) -> ModelTenantProvisionTopics:
+    """The runtime command's topics and wait, as the contract's ``tenant_provision_runtime`` block declares them."""
+    document = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    return ModelTenantProvisionTopics.model_validate(
+        document["tenant_provision_runtime"]
+    )
+
+
+def _open_lane_bus(lane: str) -> Any:
+    return open_lane_bus(
+        bus="kafka", lane=lane, kafka_bootstrap=None, root=workspace_root(os.environ)
+    )
 
 
 def _run(args: argparse.Namespace) -> int:
@@ -51,6 +76,10 @@ def _run(args: argparse.Namespace) -> int:
         transport=UrllibIdentityTransport(),
         settings_store=SecretStoreSettingsReader(overlay=overlay.secret_store),
         key_generator=StoreKeyGenerator(overlay=overlay.secret_store),
+        tenant_provisioner=BusTenantProvisioner(
+            open_bus=lambda: _open_lane_bus(args.lane),
+            topics=load_tenant_provision_topics(),
+        ),
         contract_path=_CONTRACT_PATH,
     )
     result = asyncio.run(

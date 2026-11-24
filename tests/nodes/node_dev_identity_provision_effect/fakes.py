@@ -2,11 +2,12 @@
 # SPDX-License-Identifier: MIT
 """In-memory fakes for the dev identity provision node tests (OMN-24115).
 
-``FakeKeycloakAndApi`` is a stateful fake that enforces the real wire rules: an unknown path 404s, the token endpoint
-requires the right form fields and answers only for the right client, secret or password, the admin endpoints require
-the admin bearer and reject a user body without username, enabled or credentials, and the provision endpoint requires
-the user's bearer and answers idempotently per user. It records every request it accepted or refused, so a test can
-prove which values moved on the wire. ``FakeSettingStore`` and ``FakeKeyGenerator`` are the store and generator seams;
+``FakeKeycloakAndApi`` is a stateful Keycloak fake that enforces the real wire rules: an unknown path 404s (the provision
+route of the retired onex-api is one: a handler that calls it fails), the token endpoint requires the right form fields
+and answers only for the right client, secret or password, and the admin endpoints require the admin bearer and reject a
+user body without username, enabled or credentials. It records every request it accepted or refused, so a test can
+prove which values moved on the wire. ``FakeTenantProvisioner`` is the runtime's tenant provision command in memory: it
+records each request it was given and answers as a test says. ``FakeSettingStore`` and ``FakeKeyGenerator`` are the store and generator seams;
 the generator holds the value it generated in memory so a test can prove it never appears in a result, a repr or a log.
 """
 
@@ -25,6 +26,13 @@ from omnimarket.models.secret_store.model_generate_key_result import (
 )
 from omnimarket.models.secret_store.model_secret_store_result import (
     EnumSecretStoreOutcome,
+)
+from omnimarket.nodes.node_dev_identity_provision_effect.models.model_tenant_provision_wire import (
+    ModelTenantProvisionAnswer,
+    ModelTenantProvisionRequest,
+)
+from omnimarket.nodes.node_dev_identity_provision_effect.protocols import (
+    TenantProvisionUnavailableError,
 )
 
 
@@ -69,7 +77,7 @@ class FakeKeyGenerator:
 
 
 class FakeKeycloakAndApi:
-    """A stateful Keycloak and onex-api that speaks the real wire rules and records every request."""
+    """A stateful Keycloak that speaks the real wire rules and records every request."""
 
     def __init__(
         self,
@@ -79,16 +87,11 @@ class FakeKeycloakAndApi:
         user_client_id: str = "public-client",
         username: str = "dev-probe-user",
         password: str = "Dp1!generated",
-        tenant_id: str = "tenant-abc-123",
-        tenant_slug: str = "probe-tenant",
-        bootstrap_token: str = "bootstrap-token-xyz",
         admin_token: str = "admin-access-token",
         user_token: str = "user-access-token",
         fail_admin_token: bool = False,
         fail_user_token: bool = False,
         fail_user_create: bool = False,
-        fail_provision: bool = False,
-        provision_missing_tenant_id: bool = False,
         raise_connection_error: bool = False,
         raise_connection_error_on: str | None = None,
     ) -> None:
@@ -97,16 +100,11 @@ class FakeKeycloakAndApi:
         self.user_client_id = user_client_id
         self.username = username
         self.password = password
-        self.tenant_id = tenant_id
-        self.tenant_slug = tenant_slug
-        self.bootstrap_token = bootstrap_token
         self.admin_token = admin_token
         self.user_token = user_token
         self.fail_admin_token = fail_admin_token
         self.fail_user_token = fail_user_token
         self.fail_user_create = fail_user_create
-        self.fail_provision = fail_provision
-        self.provision_missing_tenant_id = provision_missing_tenant_id
         self.raise_connection_error = raise_connection_error
         self.raise_connection_error_on = raise_connection_error_on
         self.users: dict[str, dict[str, Any]] = {}
@@ -116,7 +114,6 @@ class FakeKeycloakAndApi:
         self.create_bodies: list[dict[str, Any]] = []
         self.reset_bodies: list[dict[str, Any]] = []
         self.grant_forms: list[dict[str, str]] = []
-        self._provisioned: dict[str, dict[str, str]] = {}
 
     def _answer(self, status: int, body: Any = None) -> ModelIdentityHttpResponse:
         return ModelIdentityHttpResponse(status=status, headers={}, json_body=body)
@@ -213,33 +210,42 @@ class FakeKeycloakAndApi:
                 return self._answer(400)
             return self._answer(204)
 
-        # Provision endpoint: the user's bearer, idempotent per user.
-        if "/provision" in request.url:
-            if (
-                request.bearer is None
-                or request.bearer.get_secret_value() != self.user_token
-            ):
-                return self._answer(403)
-            if self.fail_provision:
-                return self._answer(500)
-            key = request.bearer.get_secret_value()
-            if key in self._provisioned:
-                return self._answer(200, self._provisioned[key])
-            body: dict[str, str] = {
-                "tenant_id": self.tenant_id,
-                "tenant_slug": self.tenant_slug,
-                "bootstrap_token": self.bootstrap_token,
-                "bootstrap_token_expires_at": "2026-12-31T00:00:00Z",
-            }
-            if self.provision_missing_tenant_id:
-                del body["tenant_id"]
-            self._provisioned[key] = body
-            return self._answer(201, body)
-
         return self._answer(404)
 
     def _is_admin(self, request: ModelIdentityHttpRequest) -> bool:
         return (
             request.bearer is not None
             and request.bearer.get_secret_value() == self.admin_token
+        )
+
+
+class FakeTenantProvisioner:
+    """The runtime's tenant provision command in memory: it records each request and answers as a test says."""
+
+    def __init__(
+        self,
+        *,
+        outcome: str = "created",
+        tenant_id: str | None = "tenant-abc-123",
+        tenant_slug: str | None = "probe-tenant",
+        unavailable: str | None = None,
+    ) -> None:
+        self.outcome = outcome
+        self.tenant_id = tenant_id
+        self.tenant_slug = tenant_slug
+        self.unavailable = unavailable
+        self.requests: list[ModelTenantProvisionRequest] = []
+
+    async def provision(
+        self, request: ModelTenantProvisionRequest
+    ) -> ModelTenantProvisionAnswer:
+        self.requests.append(request)
+        if self.unavailable is not None:
+            raise TenantProvisionUnavailableError(self.unavailable)
+        return ModelTenantProvisionAnswer(
+            command_id=request.command_id,
+            outcome=self.outcome,
+            detail="fake runtime answer",
+            tenant_id=self.tenant_id,
+            tenant_slug=self.tenant_slug,
         )
