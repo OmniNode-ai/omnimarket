@@ -38,6 +38,7 @@ from uuid import uuid4
 import pytest
 import yaml
 
+from omnimarket.handlers import model_catalog
 from omnimarket.handlers.routing.byok_provider_backends import (
     customer_provider_catalogue,
     resolve_byok_provider_backend,
@@ -45,6 +46,9 @@ from omnimarket.handlers.routing.byok_provider_backends import (
 )
 
 pytestmark = pytest.mark.unit
+
+#: The production pricing read; the suite's autouse fixture empties it per test.
+_PRODUCTION_PRICING_INDEX = model_catalog.pricing_models_dev_index
 
 _SETUP = (
     Path(__file__).resolve().parents[3] / "src/omnimarket/nodes/node_onex_setup_effect"
@@ -104,7 +108,12 @@ def test_the_default_model_is_ranked_by_its_own_pattern() -> None:
         (131072, 80000, False, 131072),  # provider wins, even above the old cap
         (110000, 90000, False, 110000),  # changed provider value follows
         (None, 90000, False, 90000),  # a dated supplement fills a missing value
-        (None, 110000, True, 65536),  # expired data may not set today's budget
+        (
+            None,
+            110000,
+            True,
+            110000,
+        ),  # a session cannot renew a kept copy, so age never refuses it
         (None, None, False, 65536),  # keep the established fallback for reasoning
     ],
 )
@@ -134,6 +143,9 @@ def test_registered_model_budget_follows_the_known_limit(
 
     monkeypatch.setattr(catalog, "_onex_home", lambda: tmp_path)
     monkeypatch.setattr(catalog, "_fetch", unexpected_request)
+    # The suite empties the pricing index for every test; resolving a route reads
+    # the kept copy through the production function.
+    monkeypatch.setattr(catalog, "pricing_models_dev_index", _PRODUCTION_PRICING_INDEX)
     monkeypatch.setattr(byok_model_discovery, "get_models_json", unexpected_request)
     listing = list_byok_models(
         "reflection", "unused-fixture", get=lambda **_: {"data": [model]}
@@ -278,15 +290,14 @@ def test_invalid_provider_limit_preserves_the_next_valid_source(stated: object) 
         (100000, 131072, 100000),
         (4096, 131072, 4096),
         (100000, None, 65536),
-        pytest.param(100000, 131072, None, id="cancel-before-effect"),
     ],
 )
-def test_first_dispatch_and_receipt_use_the_freshly_read_output_budget(
+def test_first_dispatch_and_receipt_use_the_kept_output_budget(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     requested: int,
     supplement: int | None,
-    expected: int | None,
+    expected: int,
 ) -> None:
     from pydantic import SecretStr
 
@@ -339,11 +350,12 @@ def test_first_dispatch_and_receipt_use_the_freshly_read_output_budget(
 
     monkeypatch.setattr(catalog, "_onex_home", lambda: tmp_path)
     monkeypatch.setattr(catalog, "_fetch", read_catalog)
-    # The suite disables live pricing for every test. Restore the production
-    # loader here with the recorded byte transport above.
-    monkeypatch.setattr(
-        catalog, "pricing_models_dev_index", lambda: catalog.load_models_dev(tmp_path)
-    )
+    # The suite empties the pricing index for every test; the call reads the kept
+    # copy through the production function.
+    monkeypatch.setattr(catalog, "pricing_models_dev_index", _PRODUCTION_PRICING_INDEX)
+    # Setup is where models.dev is read: the one read, before any call.
+    catalog.load_models_dev(tmp_path, force=True)
+    setup_reads = list(reads)
     monkeypatch.setattr(call, "_is_endpoint_healthy", lambda *_a, **_k: True)
     monkeypatch.setattr(transport, "get_served_model_ids", lambda *_a, **_k: None)
     monkeypatch.setattr(transport, "post_chat_completion", post)
@@ -358,22 +370,10 @@ def test_first_dispatch_and_receipt_use_the_freshly_read_output_budget(
             force=True,
         )
     )
-    if expected is None:
-
-        async def cancel_before_worker(*_args, **_kwargs):
-            assert reads == [], (
-                "catalogue network I/O escaped the cancellable effect worker"
-            )
-            raise asyncio.CancelledError
-
-        monkeypatch.setattr(
-            "omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegation_dispatch._run_effect_handler_with_killable_timeout",
-            cancel_before_worker,
-        )
     port = LocalDelegationDispatchPort(
         effect_handler=call.HandlerLlmDelegationCall(),
         evidence_db_path=db,
-        effect_process_boundary=expected is None,
+        effect_process_boundary=False,
     )
     dispatch = port.dispatch(
         prompt="Explain how a hash map finds a value.",
@@ -390,15 +390,10 @@ def test_first_dispatch_and_receipt_use_the_freshly_read_output_budget(
         tenant_id="acme",
         backend_id="byok-reflection",
     )
-    if expected is None:
-        with pytest.raises(asyncio.CancelledError):
-            asyncio.run(dispatch)
-        assert not posted
-        return
     result = asyncio.run(dispatch)
     assert result["status"] == "completed", result
     assert len(result["attempts"]) == 1
-    assert reads == ["models.dev"]
+    assert reads == setup_reads, "the call read models.dev"
     assert posted == [expected]
     assert result["attempts"][0]["configuration"]["max_tokens"] == expected
 

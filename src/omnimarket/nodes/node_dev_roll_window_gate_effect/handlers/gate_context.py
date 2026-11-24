@@ -23,7 +23,10 @@ from omnimarket.nodes.node_dev_roll_window_gate_effect.protocols import (
 class DevRollGateContext:
     """The runtime builds each handler with no arguments; the overlay then supplies policy and store.
 
-    A test passes a policy, a store and a fixed clock in.
+    The policy is read from the overlay on every call, never kept: a value of the gate's overlay that the settings
+    store holds (``held_age_alarm_after_seconds`` is set through ``node_overlay_setting_set_effect``) takes effect on
+    the next tick without a restart. The store is built once, from the policy of the first call that needs it.
+    A test passes a policy, a store and a fixed clock in; a policy passed in is the one every call returns.
     """
 
     def __init__(
@@ -43,10 +46,10 @@ class DevRollGateContext:
         return self._clock()
 
     def policy(self) -> ModelDevRollWindowGatePolicy:
-        if self._policy is None:
-            environ = os.environ if self._environ is None else self._environ
-            self._policy = load_gate_policy(environ)
-        return self._policy
+        if self._policy is not None:
+            return self._policy
+        environ = os.environ if self._environ is None else self._environ
+        return load_gate_policy(environ)
 
     def store(self) -> ProtocolDevRollGateStore:
         if self._store is None:

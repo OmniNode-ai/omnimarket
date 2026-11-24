@@ -343,7 +343,7 @@ externally_produced_topics:
   - topic: "onex.cmd.omnimarket.delegation-target-execute.v1"
     producer: "Typed runtime ingress callers carrying ModelDelegationTargetRequest in ModelEventEnvelope v1."
   - topic: "onex.cmd.omnimarket.delegation-harness-execute.v1"
-    producer: "Typed runtime ingress callers carrying ModelHarnessBackendCallRequest in ModelEventEnvelope v1; the handler refuses a non-house tenant or a non-internal surface."
+    producer: "node_delegate_skill_orchestrator (RuntimeDelegationDispatchPort, ports/port_harness_delegation_dispatch.py) for a delegation pinned to a kind: harness backend, carrying ModelHarnessBackendCallRequest in ModelEventEnvelope v1; the handler refuses a non-house tenant or a non-internal surface."
 
 handler_routing:
   routing_strategy: "payload_type_match"

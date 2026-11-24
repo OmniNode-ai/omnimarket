@@ -25,10 +25,23 @@ descriptor:
   runtime_profiles: [effects]
 runtime_dispatch:
   external_trigger: true
+  host_unit:
+    unit: overlay-store-load-systemd
 event_bus:
   subscribe_topics: []
   publish_topics:
     - onex.evt.omnimarket.overlay-store-loaded.v1
+    # One alarm per overlay whose newest loader assertion is older than the overlay's bound, keyed by the id, naming its owner.
+    - onex.evt.omnimarket.overlay-store-assertion-stale.v1
+# The alarm topic is read by the overlay owner's tooling and the operator's alarm view, outside this repository's contracts.
+externally_consumed_topics:
+  - onex.evt.omnimarket.overlay-store-assertion-stale.v1
+# The loader runs under the host login (the overlay scope broker_acl_principals): it writes the alarm topic beside the loaded topic.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_HOST_RECONCILER_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-store-assertion-stale.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-store-assertion-stale.v1, operation: DESCRIBE}
 overlay:
   node: node_overlay_store_load_effect
   roots_env: ONEX_SKILL_OVERLAY_ROOTS
