@@ -8,7 +8,8 @@ no operator set and replaces the live value of those, and a live record the load
 replaces nothing. A document is validated first by the model the home's ``.omnimarket-node-pins`` names for that id, and an id
 with no line there, or a document its model refuses, is refused here with nothing published, so readers
 keep the version they hold. The loader asserts an overlay on every run, changed or not: its time is what
-a reader's staleness is measured against.
+a reader's staleness is measured against. A run over a list of ids names each refused id and goes on to the
+ids after it, so one bad overlay never starves the rest.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from __future__ import annotations
 import importlib
 import subprocess
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -34,9 +35,11 @@ from omnimarket.handlers.overlay_store.setting_paths import (
 )
 from omnimarket.models.overlay_store import (
     ModelOverlayStoreDrift,
+    ModelOverlayStoreLoadBatch,
     ModelOverlayStoreLoadRefusal,
     ModelOverlayStoreLoadResult,
     ModelOverlayStoreRecord,
+    ModelOverlayStoreRefusal,
     document_digest,
 )
 
@@ -163,12 +166,20 @@ class HandlerOverlayStoreLoad:
         self._drift_topic = drift_topic
         self._refusal_topic = refusal_topic
 
-    async def handle(
-        self, overlay_id: str, *, correlation_id: str | None = None
-    ) -> ModelOverlayStoreLoadResult:
-        run = correlation_id or str(uuid.uuid4())
-        document, source_ref = self._source.read(overlay_id)
-        model = self._source.model_of(overlay_id)
+    async def _prepare(
+        self, overlay_id: str, run: str
+    ) -> tuple[ModelOverlayStoreRecord, tuple[ModelOverlayStoreDrift, ...]]:
+        """Read, validate and stamp one overlay with the settings an operator set kept; every way the source, its
+        model or the live record can refuse is an OverlayLoadRefusedError."""
+        try:
+            document, source_ref = self._source.read(overlay_id)
+            model = self._source.model_of(overlay_id)
+        except OverlayLoadRefusedError:
+            raise
+        except (NodeOverlayError, ValueError, OSError, yaml.YAMLError) as exc:
+            raise OverlayLoadRefusedError(
+                f"overlay {overlay_id}: the source cannot be read ({type(exc).__name__})"
+            ) from None
         self._validate(overlay_id, model, document)
         operator_paths: tuple[str, ...] = ()
         drift: tuple[ModelOverlayStoreDrift, ...] = ()
@@ -209,29 +220,7 @@ class HandlerOverlayStoreLoad:
             loaded_at=self._clock(),
             operator_paths=operator_paths,
         )
-        await self._bus.publish(
-            self._topic,
-            overlay_id.encode("utf-8"),
-            record.model_dump_json(exclude_defaults=True).encode("utf-8"),
-        )
-        if drift:
-            assert self._drift_topic is not None
-            for report in drift:
-                await self._bus.publish(
-                    self._drift_topic,
-                    overlay_id.encode("utf-8"),
-                    report.model_dump_json().encode("utf-8"),
-                )
-        return ModelOverlayStoreLoadResult(
-            overlay_id=overlay_id,
-            digest=record.digest,
-            source_ref=source_ref,
-            topic=self._topic,
-            loaded_at=record.loaded_at,
-            correlation_id=run,
-            operator_paths=operator_paths,
-            drifted_paths=tuple(report.setting_path for report in drift),
-        )
+        return record, drift
 
     @staticmethod
     def _validate(
@@ -287,6 +276,68 @@ class HandlerOverlayStoreLoad:
             report.model_dump_json().encode("utf-8"),
         )
         return OverlayLoadRefusedError(f"overlay {overlay_id}: {reason}")
+
+    async def _publish(
+        self,
+        record: ModelOverlayStoreRecord,
+        drift: tuple[ModelOverlayStoreDrift, ...],
+        run: str,
+    ) -> ModelOverlayStoreLoadResult:
+        await self._bus.publish(
+            self._topic,
+            record.overlay_id.encode("utf-8"),
+            record.model_dump_json(exclude_defaults=True).encode("utf-8"),
+        )
+        if drift:
+            assert self._drift_topic is not None
+            for report in drift:
+                await self._bus.publish(
+                    self._drift_topic,
+                    record.overlay_id.encode("utf-8"),
+                    report.model_dump_json().encode("utf-8"),
+                )
+        return ModelOverlayStoreLoadResult(
+            overlay_id=record.overlay_id,
+            digest=record.digest,
+            source_ref=record.source_ref,
+            topic=self._topic,
+            loaded_at=record.loaded_at,
+            correlation_id=run,
+            operator_paths=record.operator_paths,
+            drifted_paths=tuple(report.setting_path for report in drift),
+        )
+
+    async def handle(
+        self, overlay_id: str, *, correlation_id: str | None = None
+    ) -> ModelOverlayStoreLoadResult:
+        run = correlation_id or str(uuid.uuid4())
+        record, drift = await self._prepare(overlay_id, run)
+        return await self._publish(record, drift, run)
+
+    async def handle_many(
+        self, overlay_ids: Sequence[str], *, correlation_id: str | None = None
+    ) -> ModelOverlayStoreLoadBatch:
+        """Load each id in order; a refused id is named and the ids after it still publish.
+
+        Only a refusal of the overlay itself is carried on: a broker that does not answer still raises, because
+        every id after it would fail the same way and the caller reports the bus, not the overlays. One id for
+        the whole run, so every load, drift report and refusal of it reads as one chain.
+        """
+        run = correlation_id or str(uuid.uuid4())
+        results: list[ModelOverlayStoreLoadResult] = []
+        refused: list[ModelOverlayStoreRefusal] = []
+        for overlay_id in overlay_ids:
+            try:
+                record, drift = await self._prepare(overlay_id, run)
+            except OverlayLoadRefusedError as exc:
+                refused.append(
+                    ModelOverlayStoreRefusal(overlay_id=overlay_id, reason=str(exc))
+                )
+                continue
+            results.append(await self._publish(record, drift, run))
+        return ModelOverlayStoreLoadBatch(
+            results=tuple(results), refused=tuple(refused)
+        )
 
 
 __all__ = [

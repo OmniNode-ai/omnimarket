@@ -149,6 +149,7 @@ def test_seam_the_topics_of_loader_projection_and_reader_are_the_same_names() ->
         LOADED_TOPIC,
         "onex.evt.omnimarket.overlay-store-drift.v1",
         "onex.evt.omnimarket.overlay-store-refused.v1",
+        "onex.evt.omnimarket.overlay-store-assertion-stale.v1",
     ]
 
 

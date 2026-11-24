@@ -193,7 +193,9 @@ async def test_runtime_run_names_one_correlation_id_and_reads_live_only_where_to
         bus="inmemory", loaded_by="test", live_read_window_s=window
     )
     clone = overlay_home(tmp_path, table_with(ssh_user=REPO_USER))
-    results = await _run(overlay, clone, ["lab_hosts"], None)
+    batch = await _run(overlay, clone, ["lab_hosts"], None)
+    assert batch.refused == ()
+    results = batch.results
     assert len(results) == 1
     assert results[0].correlation_id
     assert results[0].operator_paths == ()

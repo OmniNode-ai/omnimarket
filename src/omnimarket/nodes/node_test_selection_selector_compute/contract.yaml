@@ -54,6 +54,14 @@ description: >-
   unparseable summary, two records for one night, a record that names another commit, repository, slot or run). It
   makes no other read and no call of its own to GitHub; the adapter SourceAttributionRecordsGateway hands its answer to
   the stage gate, and a gateway that gives no answer is an unreadable source, which the gate refuses.
+  HandlerStageSavingsReport (operation report_stage_savings) reports what the selection saved against the full suite,
+  per merged pull request since the stage went live (policy savings_report_first_pr) and in total: the selected test
+  seconds of the executed selection against the full-suite seconds, the CI minutes of the run (creation to last update)
+  and the share of pull requests narrowed, which are the three stage targets. It reads the merged pull requests, their
+  CI runs and each pull request's selection record artifact through the repository gateway node (pr_heads, workflow_runs,
+  artifacts) and makes no call of its own to GitHub. A pull request whose record is absent, expired, unparseable or bound
+  to another head, run or attempt, has no selected seconds, or whose selected seconds exceed the full-suite seconds is a
+  row with its reason and is in no total; nothing is estimated for it.
   Rollback is an owner change that lowers selection_stage, or the owner setting the ENABLE_SMART_TESTS repository
   variable false; no job writes the variable. A narrowing rule changes what a pull request runs only at or above its
   stage, so data files and entry points narrow only once their stage is entered.
@@ -122,6 +130,12 @@ handler_routing:
       handler:
         name: HandlerFileLevelClosure
         module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_file_level_closure
+    - operation: report_stage_savings
+      input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_stage_savings_report.ModelStageSavingsReportRequest
+      output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_stage_savings_report.ModelStageSavingsReport
+      handler:
+        name: HandlerStageSavingsReport
+        module: omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_stage_savings_report
     - operation: calculate_policy_bound
       input_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_policy_bound.ModelPolicyBoundRequest
       output_model: omnimarket.nodes.node_test_selection_selector_compute.models.model_policy_bound.ModelPolicyBoundResult

@@ -96,6 +96,22 @@ def load_policy(path: Path = POLICY_PATH) -> ModelMissCollectPolicy:
     )
 
 
+class ModelCollectServeOverlay(_Frozen):
+    """The serve tick's own settings: the bus lane and consumer group it reads the command topic under, the clone
+    its first-parent commit range reads, and the directory its durable alarm rows live in. No value is set in code."""
+
+    bus_lane: str = Field(min_length=1)
+    workspace_root: str = Field(min_length=1)
+    consumer_group: str = Field(min_length=1)
+    max_records: int = Field(ge=1)
+    read_timeout_s: float = Field(gt=0)
+    join_timeout_s: float = Field(gt=0)
+    #: The clone ``git log --first-parent`` reads the commit range in; never fetched or written.
+    commit_clone: str = Field(min_length=1)
+    #: Where the alarm rows and collector results are kept between passes (each pass is a new process).
+    state_dir: str = Field(min_length=1)
+
+
 class ModelMissCollectSettings(_Frozen):
     """The deployment overlay. ``owner_role`` has no default."""
 
@@ -109,6 +125,8 @@ class ModelMissCollectSettings(_Frozen):
     public_repositories: tuple[str, ...] = ()
     #: Names of private repositories, hosts or people the deployment refuses in a record; case-insensitive substrings.
     private_terms: tuple[str, ...] = ()
+    #: The serve tick's settings; absent on an overlay that does not run the tick.
+    serve: ModelCollectServeOverlay | None = None
 
     @classmethod
     def load(cls, document: dict[str, Any]) -> Self:
