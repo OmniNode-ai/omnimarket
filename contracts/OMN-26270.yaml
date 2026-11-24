@@ -75,6 +75,8 @@ dod_evidence:
 - id: dod-omn26270-rule-on
   description: 'The shipped adjacency file turns the rule on at stage 1: each of the five merges is narrowed by the unmodified shipped file, and the stage 1 receipt still recomputes valid with the rule on.'
   source: manual
+  binds_ac:
+  - AC1
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_data_only_selection.py -q --no-cov -n 0 -p no:randomly -k "shipped_adjacency"
