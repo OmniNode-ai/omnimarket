@@ -11,7 +11,7 @@ import time
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import Any, cast
 from uuid import UUID
 
 import yaml
@@ -51,6 +51,9 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models import (
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_harness_delegation_dispatch import (
     HarnessDelegationDispatch,
 )
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports.protocol_delegation_event_bus import (
+    ProtocolDelegationEventBus,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.run_step_recorder import (
     RunStepRecorder,
 )
@@ -69,26 +72,6 @@ _V2_TERMINAL_ADAPTER: TypeAdapter[
     | ModelDelegationTerminalFailedRoutedV2
     | ModelDelegationTerminalFailedUnroutedV2
 )
-
-
-class ProtocolDelegationEventBus(Protocol):
-    """Event bus surface required by the runtime delegation dispatch port."""
-
-    async def publish(
-        self,
-        topic: str,
-        key: bytes | None,
-        value: bytes,
-        headers: object = None,
-    ) -> None: ...
-
-    async def subscribe(
-        self,
-        topic: str,
-        node_identity: object | None = None,
-        on_message: Callable[[object], Awaitable[None]] | None = None,
-        **kwargs: object,
-    ) -> Callable[[], Awaitable[None]]: ...
 
 
 class RuntimeDelegationDispatchPort:

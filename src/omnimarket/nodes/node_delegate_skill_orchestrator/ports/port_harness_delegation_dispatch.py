@@ -16,11 +16,15 @@ import asyncio
 import json
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
 from uuid import UUID
 
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
+from omnimarket.events.harness_backend_call import (
+    ModelHarnessAttemptRecord,
+    ModelHarnessBackendCallRequest,
+    ModelHarnessBackendCallResult,
+)
 from omnimarket.models.delegation.delegation_caller_lane import (
     DELEGATION_CALLER_LANE_METADATA_KEY,
 )
@@ -37,17 +41,10 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import 
 from omnimarket.nodes.node_delegate_skill_orchestrator.models import (
     ModelRuntimeDelegationDispatchConfig,
 )
-from omnimarket.nodes.node_llm_delegation_call_effect.models.model_harness_backend_call import (
-    ModelHarnessAttemptRecord,
-    ModelHarnessBackendCallRequest,
-    ModelHarnessBackendCallResult,
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports.protocol_delegation_event_bus import (
+    ProtocolDelegationEventBus,
 )
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
-
-if TYPE_CHECKING:
-    from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import (
-        ProtocolDelegationEventBus,
-    )
 
 _REQUEST_MESSAGE_TYPE = "omnimarket.delegation-harness-execute"
 
