@@ -12,7 +12,7 @@ from omnimarket.models.overlay_store import (
     ModelOverlayAssertion,
     ModelOverlayAssertionCheck,
 )
-from omnimarket.nodes.node_overlay_store_load_effect.handlers import (
+from omnimarket.nodes.node_overlay_assertion_stale_compute.handlers import (
     HandlerOverlayAssertionStale,
 )
 

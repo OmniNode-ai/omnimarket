@@ -2,9 +2,6 @@
 # SPDX-License-Identifier: MIT
 """Handlers of the overlay store loader."""
 
-from omnimarket.nodes.node_overlay_store_load_effect.handlers.handler_overlay_assertion_stale import (
-    HandlerOverlayAssertionStale,
-)
 from omnimarket.nodes.node_overlay_store_load_effect.handlers.handler_overlay_store_load import (
     HandlerOverlayStoreLoad,
     OverlayHomeSource,
@@ -13,7 +10,6 @@ from omnimarket.nodes.node_overlay_store_load_effect.handlers.handler_overlay_st
 )
 
 __all__ = [
-    "HandlerOverlayAssertionStale",
     "HandlerOverlayStoreLoad",
     "OverlayHomeSource",
     "OverlayLoadRefusedError",

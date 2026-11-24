@@ -43,7 +43,7 @@ from omnimarket.models.overlay_store import (
     ModelOverlayAssertionStaleAlarm,
     ModelOverlayStoreLoadOverlay,
 )
-from omnimarket.nodes.node_overlay_store_load_effect.handlers import (
+from omnimarket.nodes.node_overlay_assertion_stale_compute.handlers import (
     HandlerOverlayAssertionStale,
 )
 from omnimarket.nodes.node_overlay_store_load_effect.runtime_overlay_store_load import (
