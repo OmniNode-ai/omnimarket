@@ -27,7 +27,6 @@ import pytest
 from click.testing import CliRunner
 
 import omnimarket.cli.cli_local as cli_local
-from omnimarket.cli.cli_local import dashboard_command
 
 pytestmark = pytest.mark.unit
 
@@ -62,7 +61,7 @@ def served(monkeypatch: pytest.MonkeyPatch, tmp_path: object) -> list[Any]:
 def test_the_serve_output_shows_no_token_and_no_tenant_id(
     served: list[Any],
 ) -> None:
-    result = CliRunner().invoke(dashboard_command, [])
+    result = CliRunner().invoke(cli_local.dashboard_command, [])
     assert result.exit_code == 0, result.output
     assert len(served) == 1, "the serve path did not hand a request to the handler"
     token = served[0].access_token.get_secret_value()
@@ -79,6 +78,6 @@ def test_the_serve_output_shows_no_token_and_no_tenant_id(
 def test_the_serve_output_tells_the_user_to_open_with_the_command(
     served: list[Any],
 ) -> None:
-    result = CliRunner().invoke(dashboard_command, [])
+    result = CliRunner().invoke(cli_local.dashboard_command, [])
     assert result.exit_code == 0, result.output
     assert "onex dashboard open" in result.output
