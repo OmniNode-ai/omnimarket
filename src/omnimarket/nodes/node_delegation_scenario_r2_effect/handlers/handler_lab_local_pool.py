@@ -23,8 +23,10 @@ from omnimarket.handlers.routing.spread_load_snapshot import spread_load_targets
 from omnimarket.models.delegation.model_endpoint_load_snapshot import (
     ModelEndpointLoadSnapshot,
 )
+from omnimarket.models.model_delegation_scenario import ModelScenarioR2RunCommand
 from omnimarket.nodes.node_delegation_scenario_r2_effect.handlers.handler_scenario_r2 import (
     ModelLocalServer,
+    ModelLocalServerPool,
 )
 
 #: A server that does not list its models inside this budget does not answer.
@@ -73,6 +75,9 @@ class HandlerLabLocalPool:
         self._targets = targets
         self._load = load
         self._lister = lister
+
+    def handle(self, request: ModelScenarioR2RunCommand) -> ModelLocalServerPool:
+        return ModelLocalServerPool(servers=self.live_servers())
 
     def live_servers(self) -> tuple[ModelLocalServer, ...]:
         targets = self._targets()

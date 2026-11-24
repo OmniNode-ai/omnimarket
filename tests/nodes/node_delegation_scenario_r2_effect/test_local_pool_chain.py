@@ -32,6 +32,7 @@ from omnimarket.nodes.node_delegation_scenario_r2_effect.handlers.handler_scenar
     HandlerScenarioR2,
     ModelCommandOutcome,
     ModelLocalServer,
+    ModelLocalServerPool,
 )
 from tests.nodes.node_delegation_scenario_r2_effect.test_golden_chain_scenario_r2_effect import (
     NOW,
@@ -223,3 +224,19 @@ def test_pool_names_one_server_once_when_two_rungs_share_it() -> None:
 
 def test_pool_with_no_spread_group_is_empty() -> None:
     assert _pool({}, {}, {}).live_servers() == ()
+
+
+def test_pool_dispatch_entrypoint_returns_the_live_servers() -> None:
+    """The contract binds the pool to the runtime; the runtime dispatches through ``handle``."""
+    refs = {"rung-a": "http://a.invalid:8000/v1/chat/completions"}
+    pool = _pool(
+        refs,
+        waiting={"rung-a": 0},
+        lists={"http://a.invalid:8000": ("model-a",)},
+    )
+    result = pool.handle(ModelScenarioR2RunCommand())
+    assert result == ModelLocalServerPool(
+        servers=(
+            ModelLocalServer(base_url="http://a.invalid:8000", model_id="model-a"),
+        )
+    )

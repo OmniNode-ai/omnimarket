@@ -259,6 +259,14 @@ class ModelLocalServer(BaseModel):
     model_id: str = Field(min_length=1)
 
 
+class ModelLocalServerPool(BaseModel):
+    """The local servers that answered, least busy first: the pool handler's dispatch response."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    servers: tuple[ModelLocalServer, ...]
+
+
 class ProtocolLocalServerPool(Protocol):
     """The lab's local servers that answer now, least busy first (the product's local tier)."""
 
