@@ -52,7 +52,7 @@ def _run_status(
     *,
     switch: bool,
     hooks_fix: str = INSTALL_HINT,
-):
+) -> tuple[str, dict[str, object]]:
     plugin = _obs("claude-plugin", "success")
     hooks = _obs("claude-hooks", "action_required", hooks_fix)
     monkeypatch.setattr(
@@ -115,7 +115,7 @@ def _break_the_hook_assets(
 
 def _run_status_with_real_hooks_step(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, switch: bool
-):
+) -> tuple[str, dict[str, object]]:
     plugin = _obs("claude-plugin", "success")
     real = handler_setup_claude.HandlerSetupClaude
     monkeypatch.setattr(
