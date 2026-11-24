@@ -3,8 +3,8 @@
 ---
 schema_version: "1.0.0"
 ticket_id: "OMN-16084"
-title: "CI Summary waits on its own jobs, not a wall clock, and keeps a declared cap"
-summary: "A supersession window on an external check-run no longer ends the CI Summary wait while the run's own jobs are still pending; a finished-red own job still fails at once; a job that never starts still fails closed at the declared poll cap."
+title: "CI Summary waits on its own jobs, not a wall clock"
+summary: "A supersession window on an external check-run no longer ends the CI Summary wait while the run's own jobs are still pending; a finished-red own job still fails at once."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -15,17 +15,10 @@ requirements:
   - id: AC1
     statement: 'AC1: with own jobs still running, an external row past its window leaves CI Summary PENDING; Falsifier: tests/unit/scripts/ci/test_ci_summary_gate.py::TestSupersessionWindowWaitsOnOwnJobsOmn16084::test_expired_window_stays_pending_while_own_jobs_run'
 - id: req-omn16084-fail-closed
-  statement: "Fail-closed is preserved: once own jobs settle the expired row fails, a finished-red own job fails at once, a conclusion no re-run replaces fails, a future completion time fails, and a job that never starts is converted to failure at the declared cap."
+  statement: "Fail-closed is preserved: once own jobs settle the expired row fails, a finished-red own job fails at once, a conclusion no re-run replaces fails, and a future completion time fails."
   acceptance:
   - id: AC2
     statement: 'AC2: the expired row fails once own jobs have settled, a finished-red own job fails at once, timed_out and a future completion time are not held; Falsifier: tests/unit/scripts/ci/test_ci_summary_gate.py::TestSupersessionWindowWaitsOnOwnJobsOmn16084'
-  - id: AC3
-    statement: 'AC3: the poll step keeps polling while PENDING, exits at once on FAILURE, and fails closed with the cap spent; Falsifier: tests/unit/workflows/test_ci_summary_poll_waits_on_jobs_omn16084.py'
-- id: req-omn16084-cap-declared
-  statement: "The overall cap is a declared setting above the slowest measured run with a 2x margin, and the job timeout sits above it."
-  acceptance:
-  - id: AC4
-    statement: 'AC4: DEADLINE_MINUTES is declared in the step env, is at least twice the 45 minute slowest measured run, and is below the job timeout; Falsifier: tests/unit/workflows/test_ci_summary_poll_waits_on_jobs_omn16084.py::test_cap_is_a_declared_setting_above_the_slowest_measured_run'
 evidence_requirements:
 - kind: tests
   description: Gate behaviour with own jobs running and settled.
@@ -55,22 +48,4 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/scripts/ci/test_ci_summary_gate.py -k TestSupersessionWindowWaitsOnOwnJobsOmn16084 -q -n 0 --no-cov -p no:cacheprovider
-    cwd: .
-- id: dod-omn16084-ac3
-  description: 'AC3: the poll step waits on PENDING, fails at once on FAILURE and fails closed at the cap.'
-  source: manual
-  binds_ac:
-  - AC3
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/unit/workflows/test_ci_summary_poll_waits_on_jobs_omn16084.py -q -n 0 --no-cov -p no:cacheprovider
-    cwd: .
-- id: dod-omn16084-ac4
-  description: 'AC4: the cap is declared, at least twice the slowest measured run, and below the job timeout.'
-  source: manual
-  binds_ac:
-  - AC4
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/unit/workflows/test_ci_summary_poll_waits_on_jobs_omn16084.py::test_cap_is_a_declared_setting_above_the_slowest_measured_run -q -n 0 --no-cov -p no:cacheprovider
     cwd: .

@@ -1456,10 +1456,8 @@ def _within(state: CheckRunState, now: datetime | None, grace_s: int) -> bool:
     waiting forever on it.
     """
 
-    if now is None:
-        return False
     completed = _parse_timestamp(state.completed_at)
-    if completed is None:
+    if now is None or completed is None:
         return False
     delta = (now - completed).total_seconds()
     return -grace_s <= delta and (OWN_JOBS_PENDING or delta <= grace_s)
@@ -1963,8 +1961,7 @@ def _load_check_runs(path: str | None) -> list[dict[str, object]] | None:
     if path is None:
         return None
     try:
-        with open(path, encoding="utf-8") as handle:
-            raw = handle.read()
+        raw = Path(path).read_text(encoding="utf-8")
     except OSError:
         return None
     if not raw.strip():
@@ -1984,8 +1981,7 @@ def _load_workflow_runs(path: str | None) -> list[dict[str, object]] | None:
     if path is None:
         return None
     try:
-        with open(path, encoding="utf-8") as handle:
-            data = json.load(handle)
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     workflow_runs = data.get("workflow_runs", []) if isinstance(data, dict) else data

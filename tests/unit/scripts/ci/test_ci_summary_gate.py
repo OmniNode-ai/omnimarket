@@ -2952,7 +2952,7 @@ class TestSupersessionWindowWaitsOnOwnJobsOmn16084:
             conclusion="skipped",
             started_at="",
             id=1,
-            completed_at=self._stale_row()["completed_at"],  # type: ignore[arg-type]
+            completed_at=str(self._stale_row()["completed_at"]),
             workflow_run_id=None,
         )
         assert gate.verdict_is_provisional(state, self.OBSERVED) is False
