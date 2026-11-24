@@ -210,22 +210,14 @@ def _keep_eval_arm_model(
 
 
 def model_output_budget(
-    row: ModelByokProviderBackend,
-    model_id: str,
-    *,
-    live: bool = False,
-    deadline_seconds: float | None = None,
+    row: ModelByokProviderBackend, model_id: str
 ) -> tuple[int, ModelCatalogEntry]:
     """The request ceiling and the same entry used to price the call.
 
-    Route resolution reads only copies still within their configured age and
-    never fetches; the supervised call passes ``live=True`` so models.dev is
-    read again there when its copy is older than that age, within
-    ``deadline_seconds`` (OMN-23413 AC35).
+    Route resolution and the call both read only the models.dev copy kept under
+    the ONEX home, else the price list shipped in the install, never the network.
     """
-    entry = runtime_catalog_entry(
-        row.provider, model_id, live=live, deadline_seconds=deadline_seconds
-    )
+    entry = runtime_catalog_entry(row.provider, model_id)
     limit = entry.max_output_tokens
     if limit is None:
         limit = row.max_tokens or int(

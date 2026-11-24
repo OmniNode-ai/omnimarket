@@ -5,6 +5,7 @@
 from omnimarket.enums.enum_backend_placement_mode import EnumBackendPlacementMode
 from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
+from omnimarket.enums.enum_cost_source import EnumCostSource
 from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
     EnumDelegationAcceptanceReason,
@@ -57,6 +58,7 @@ __all__ = [
     "EnumBackendPlacementMode",
     "EnumCheckProofClass",
     "EnumCostBasis",
+    "EnumCostSource",
     "EnumDelegationAcceptanceDecision",
     "EnumDelegationAcceptanceReason",
     "EnumDelegationArtifactKind",

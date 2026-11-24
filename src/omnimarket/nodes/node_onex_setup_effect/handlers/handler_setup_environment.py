@@ -10,6 +10,7 @@ model-PR implementation with its legacy state writer explicitly disabled.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import stat
 from pathlib import Path
@@ -19,7 +20,7 @@ from omnibase_core.cli.cli_user_config import read_user_config, user_config_path
 from pydantic import SecretStr
 
 from omnimarket.handlers import handler_model_keys as model_keys
-from omnimarket.handlers import setup_model_connections
+from omnimarket.handlers import model_catalog, setup_model_connections
 from omnimarket.handlers.delegation_first_choice import read_first_choice
 from omnimarket.handlers.handler_endpoint_connections import (
     HandlerModelConnections,
@@ -372,6 +373,11 @@ class HandlerSetupEnvironment:
         elif self.name == "identity":
             mint_local_tenant_identity(db_path=LocalByokCredentialStore().db_path)
         else:
+            # The one place setup reads the model price list, so a session never
+            # does: delegation calls price from the copy kept here. A failed read
+            # leaves the earlier copy, or the list shipped in the install.
+            with contextlib.suppress(Exception):
+                model_catalog.refresh_models_dev(self._home)
             for desired in plan.providers:
                 try:
                     self._apply_provider(plan, desired)

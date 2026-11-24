@@ -1762,6 +1762,7 @@ select-connection = "omnimarket.nodes.node_model_setup_effect.cli_connections:se
 remove-connection = "omnimarket.nodes.node_model_setup_effect.cli_connections:remove_connection_command"
 test-connection = "omnimarket.nodes.node_model_setup_effect.cli_connections:test_connection_command"
 discover = "omnimarket.nodes.node_model_setup_effect.cli_catalog:discover_command"
+refresh-prices = "omnimarket.nodes.node_model_setup_effect.cli_catalog:refresh_prices_command"
 
 [project.entry-points."onex.contracts"]
 # OMN-19407: config contracts a consumer reads through the installed registry
