@@ -19,16 +19,16 @@ description: >
 handler:
   module: omnimarket.nodes.node_agent_message_effect.handlers.handler_agent_message
   class: HandlerAgentMessage
-  input_model: omnimarket.nodes.node_agent_message_effect.models.model_agent_message_request.ModelAgentMessageRequest
-  output_model: omnimarket.nodes.node_agent_message_effect.models.model_agent_message_result.ModelAgentMessageResult
+  input_model: omnimarket.models.agent_message.model_agent_message_request.ModelAgentMessageRequest
+  output_model: omnimarket.models.agent_message.model_agent_message_result.ModelAgentMessageResult
 
 input_model:
   name: ModelAgentMessageRequest
-  module: omnimarket.nodes.node_agent_message_effect.models.model_agent_message_request
+  module: omnimarket.models.agent_message.model_agent_message_request
   description: "One operation: send (a message) or read (a recipient, optional thread, count and since-time)."
 output_model:
   name: ModelAgentMessageResult
-  module: omnimarket.nodes.node_agent_message_effect.models.model_agent_message_result
+  module: omnimarket.models.agent_message.model_agent_message_result
   description: "Whether the operation was taken, the typed messages a read returned, or the typed refusal."
 
 descriptor:

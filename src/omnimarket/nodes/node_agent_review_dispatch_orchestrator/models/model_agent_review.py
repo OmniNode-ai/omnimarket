@@ -102,7 +102,8 @@ class ModelAgentHarnessRung(BaseModel):
     task_class: str = Field(min_length=1)
     effort: str = Field(min_length=1)
     call_budget_seconds: float = Field(gt=0)
-    harness_script: str = Field(min_length=1)
+    backend_id: str = Field(min_length=1)
+    delegate_lane: str = Field(min_length=1)
     run_dir_leaf: str = Field(min_length=1, pattern=r"^[A-Za-z0-9_-]+$")
 
 
