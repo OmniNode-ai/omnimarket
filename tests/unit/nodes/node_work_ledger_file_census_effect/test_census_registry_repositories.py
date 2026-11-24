@@ -24,6 +24,9 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
 )
 
 from omnimarket.nodes.node_work_ledger_file_census_effect import (
+    runtime_file_census,
+)
+from omnimarket.nodes.node_work_ledger_file_census_effect import (
     runtime_file_census_tick as tick,
 )
 from omnimarket.nodes.node_work_ledger_file_census_effect.handlers.classify import (
@@ -38,7 +41,6 @@ from .support import PACKAGE
 pytestmark = pytest.mark.unit
 
 _REGISTRY = (
-    "omnibase_compat",
     "omnibase_core",
     "omnibase_infra",
     "omnibase_spi",
@@ -251,3 +253,49 @@ def test_new_reader_any_repository_a_replaced_reader_under_the_row_is_still_red(
     code, lines, _evidence = _tick(registry_root, tmp_path)
     assert code == 1, lines
     assert "  NEW-READER src/pkg/replacement.py (1>0)" in lines
+
+
+def _deployment_overlay(tmp_path: Path, names: list[str]) -> dict[str, str]:
+    document = yaml.safe_load(
+        (PACKAGE / "overlay.example.yaml").read_text(encoding="utf-8")
+    )
+    document["repositories"] = [{"name": n, "own_line": False} for n in names]
+    overlay = tmp_path / "overlay.yaml"
+    overlay.write_text(yaml.safe_dump(document), encoding="utf-8")
+    ratchet = tmp_path / "ratchet.yaml"
+    ratchet.write_text(
+        yaml.safe_dump({"files": {}, "ratchet": dict.fromkeys(names, 0)}),
+        encoding="utf-8",
+    )
+    document["ratchet_file"] = str(ratchet)
+    overlay.write_text(yaml.safe_dump(document), encoding="utf-8")
+    root = tmp_path / "registry"
+    repo = root / "omnidash"
+    repo.mkdir(parents=True)
+    _git(repo, "init", "-q")
+    (repo / "README.md").write_text("a repository\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    return {
+        "ONEX_LEDGER_CENSUS_ROOT": str(root),
+        "ONEX_LEDGER_CENSUS_OVERLAY": str(overlay),
+    }
+
+
+def test_retired_repository_a_deployment_overlay_naming_one_is_neither_required_nor_counted(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    env = _deployment_overlay(tmp_path, ["omnibase_compat", "omnidash"])
+    assert runtime_file_census.main([], environ=env) == 0
+    out = capsys.readouterr().out
+    assert "CENSUS omnidash counted state=ok" in out
+    assert "omnibase_compat" not in out
+    assert "failure=none" in out
+
+
+def test_retired_repository_an_absent_repository_that_is_not_retired_is_still_a_failure(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    env = _deployment_overlay(tmp_path, ["omnimemory", "omnidash"])
+    assert runtime_file_census.main([], environ=env) == 69
+    out = capsys.readouterr().out
+    assert "failure=repo-absent" in out

@@ -5,7 +5,6 @@
 # census (new code opening the ledger file). `--lower` drops a cleared file and never adds one.
 files:
   knowledge_base: {}
-  omnibase_compat: {}
   omnibase_core:
     contracts/OMN-21147.yaml: 1
     tests/conftest.py: 1
@@ -205,7 +204,6 @@ files:
     contracts/OMN-25400.yaml: 1
 ratchet:
   knowledge_base: 0
-  omnibase_compat: 0
   omnibase_core: 8
   omnibase_infra: 21
   omnibase_spi: 0

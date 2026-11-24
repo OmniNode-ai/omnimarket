@@ -5,7 +5,6 @@
 # ONEX_SKILL_OVERLAY_ROOTS, or at the file ONEX_LEDGER_CENSUS_OVERLAY names.
 registry_root_env: ONEX_LEDGER_CENSUS_ROOT
 repositories:
-  - {name: omnibase_compat, own_line: false}
   - {name: omnibase_core, own_line: false}
   - {name: omnibase_infra, own_line: false}
   - {name: omnibase_spi, own_line: false}

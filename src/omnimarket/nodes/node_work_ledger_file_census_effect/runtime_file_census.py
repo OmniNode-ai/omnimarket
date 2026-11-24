@@ -24,6 +24,7 @@ from omnimarket.handlers.emission_sink import (
     JsonlEmissionSink,
     ProtocolEmissionSink,
 )
+from omnimarket.handlers.repository_retirement_policy import load_retirement_policy
 from omnimarket.nodes.node_work_ledger_file_census_effect.adapters import (
     GitRepositorySource,
     YamlFileBaselineStore,
@@ -118,6 +119,16 @@ def main(
                 )
             }
         )
+    # A repository the host reconcile policy declares retired is no longer a registry repository, so the census
+    # neither requires its checkout nor counts it.
+    retired = frozenset(load_retirement_policy().retired_repositories)
+    overlay = overlay.model_copy(
+        update={
+            "repositories": tuple(
+                r for r in overlay.repositories if r.name not in retired
+            )
+        }
+    )
     root_text = env.get(overlay.registry_root_env, "").strip()
     if not root_text:
         sys.stderr.write(f"CENSUS unreadable: {overlay.registry_root_env} is not set\n")
