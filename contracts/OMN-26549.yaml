@@ -25,6 +25,15 @@ requirements:
     statement: 'AC1: the probe contract declares the unit that runs it as its host_unit, and the unit registry holds that unit -- falsifier: the unit test and the trigger declaration check refuse the merge base, where no unit invokes the probe'
   - id: AC2
     statement: 'AC2: one tick prints one line per declared name as set or unset and keeps the rows in the unit evidence file, and neither carries a value -- falsifier: the tick test fails when a sentinel value set in the environment appears in the output or the record'
+- id: req-omn26549-probe-project-never-a-worktree
+  statement: The overlay env probe unit on h053 exited 2 on every 900 s fire from 2026-11-23T14:24:31Z because uv was told to run a project (a lane worktree) that had been removed; the registry unit installer no longer writes a unit whose project sits under omni_worktrees.
+  acceptance:
+  - id: AC7
+    statement: 'AC7: the refused argument is named with the journal line quoted -- falsifier: the lane report has no quoted journal line (journalctl --user -u onex-overlay-env-probe: status=2/INVALIDARGUMENT; the err log: error: Project directory `omni_worktrees/fix2-2-1305/omnimarket` does not exist)'
+  - id: AC8
+    statement: 'AC8: after the fix the h053 service exits 0 on a timer fire, read with its time -- falsifier: the newest onex-overlay-env-probe journal fire exits nonzero or is older than the install'
+  - id: AC9
+    statement: 'AC9: a failure-first test fails before the change and passes after -- falsifier: tests/nodes/node_host_installer_registry_units/test_project_never_a_worktree.py passes at origin/dev'
 evidence_requirements:
 - kind: tests
   description: The tick's running-read tests pass at the pushed head.
@@ -107,3 +116,22 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26549 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_overlay_env_probe_unit.py tests/nodes/node_host_installer_overlay_env_probe -q --no-cov
+- id: probe-project-never-a-worktree
+  description: 'AC9: the installer refuses a project override under omni_worktrees for every unit that declares the override and writes no unit file; at origin/dev three of the four tests fail (the unit installs from the worktree), the positive control passes in both.'
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_project_never_a_worktree.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: probe-journal-refusal-named
+  description: 'AC7 and AC8 live readings on h053 (journal line, fire time) are recorded in the pull request Lab line and the lane report; no hosted check can read that journal. The hosted check here is the failure-first installer test: it fails at the merge base, where the unit installs from a worktree project, and passes at the head.'
+  source: manual
+  binds_ac:
+  - AC7
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_project_never_a_worktree.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
