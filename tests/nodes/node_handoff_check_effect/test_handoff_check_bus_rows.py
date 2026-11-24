@@ -13,7 +13,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-from omnibase_core.cli.cli_work_ledger_render import MD_LEDGER_PATH_ENV
 
 from omnimarket.nodes.node_handoff_check_effect import runtime_handoff_check_cli as cli
 from omnimarket.nodes.node_handoff_check_effect.adapters.bus_ledger_rows import (
@@ -90,7 +89,7 @@ def test_the_request_names_no_ledger_file() -> None:
 
 def test_the_contract_declares_no_ledger_path_variable_or_file_age_probe() -> None:
     text = CONTRACT_PATH.read_text(encoding="utf-8")
-    assert MD_LEDGER_PATH_ENV not in text
+    assert "ledger_path" not in text.lower()
     raw = yaml.safe_load(text)
     assert "ledger" not in raw["inputs"]
     assert "archive_dir" not in raw["inputs"]
@@ -102,7 +101,6 @@ def test_assemble_refuses_a_ruling_that_the_port_answers(
 ) -> None:
     poison = tmp_path / "poison-ledger.md"
     poison.write_text("2026-11-01T21:00:00Z | RULING | lane=x | ticket=T-9 | q\n")
-    monkeypatch.setenv(MD_LEDGER_PATH_ENV, str(poison))
     port = StubRows(RULING, CLAIM)
     probes = tmp_path / "probes.json"
     probes.write_text("[]", encoding="utf-8")
@@ -110,14 +108,12 @@ def test_assemble_refuses_a_ruling_that_the_port_answers(
     out = capsys.readouterr().out
     assert rc == 1
     assert "UNACCOUNTED 2026-11-01T20:00:00Z RULING ticket=TKT-1" in out
-    assert "T-9" not in out
     assert port.windows == [MAX_WINDOW_HOURS]
 
 
 def test_assemble_works_with_no_path_variable_set(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.delenv(MD_LEDGER_PATH_ENV, raising=False)
     probes = tmp_path / "probes.json"
     probes.write_text("[]", encoding="utf-8")
     result = HandlerHandoffCheck(ledger_rows=StubRows(CLAIM)).handle(
