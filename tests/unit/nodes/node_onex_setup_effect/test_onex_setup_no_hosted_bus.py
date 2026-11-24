@@ -31,6 +31,7 @@ from omnibase_core.models.event_bus.model_runtime_bus_reading import (
     ModelRuntimeBusReading,
 )
 
+from omnimarket.models.bus_binding.model_node_broker import ModelNodeBroker
 from omnimarket.nodes.node_runtime_bus_forward_effect import (
     adapter_core_forwarder as forwarder_module,
 )
@@ -41,6 +42,9 @@ from omnimarket.nodes.node_runtime_bus_forward_effect.handlers.handler_runtime_b
     LOCAL_RECORD_FILE_NAME,
 )
 from omnimarket.nodes.node_runtime_bus_forward_effect.overlay import NODE_NAME
+from omnimarket.nodes.node_runtime_bus_forward_effect.protocols.protocol_runtime_bus_publisher import (
+    ProtocolRuntimeBusPublisher,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -82,7 +86,7 @@ def _no_overlay_forwarder(tmp_path: Path) -> CoreRuntimeBusForwarder:
     )
 
 
-def _unreachable_publisher(_broker: object) -> object:
+def _unreachable_publisher(_broker: ModelNodeBroker) -> ProtocolRuntimeBusPublisher:
     raise OSError(UNREACHABLE)
 
 
@@ -93,7 +97,7 @@ def _declared_forwarder(tmp_path: Path) -> CoreRuntimeBusForwarder:
     (root / NODE_NAME / "overlay.yaml").write_text(yaml.safe_dump(document))
     return CoreRuntimeBusForwarder(
         environ={"ONEX_SKILL_OVERLAY_ROOTS": str(root)},
-        publisher_for_broker=_unreachable_publisher,  # type: ignore[arg-type]
+        publisher_for_broker=_unreachable_publisher,
         local_record_dir=tmp_path / "home" / ".onex",
     )
 
