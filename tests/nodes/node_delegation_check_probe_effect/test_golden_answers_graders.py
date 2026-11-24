@@ -23,6 +23,7 @@ from uuid import UUID
 
 import httpx
 import pytest
+from _gateway_fake import FakeClock, FakeGateway
 
 from omnimarket.models.overlay_documents.model_delegation_check_responders_overlay import (
     ModelDelegationCheckResponder,
@@ -32,6 +33,9 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_delega
     InMemoryCheckPublisher,
     InMemoryCustomerMachine,
     InMemoryResponderReader,
+)
+from omnimarket.nodes.node_delegation_check_probe_effect.handlers.gateway_checks import (
+    GatewayRunSettings,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.grade_delegation_checks import (
     grade_c13,
@@ -483,6 +487,7 @@ def _handler(machine: Any) -> HandlerDelegationCheckProbe:
         ModelResponderReading,
     )
 
+    clock = FakeClock()
     return HandlerDelegationCheckProbe(
         responders=(_LOCAL,),
         reader=InMemoryResponderReader(
@@ -492,6 +497,10 @@ def _handler(machine: Any) -> HandlerDelegationCheckProbe:
         publisher=InMemoryCheckPublisher(),
         topic=contract_topics()[0],
         clock=lambda: datetime(2026, 11, 24, 15, 0, tzinfo=UTC),
+        gateway=FakeGateway(),
+        gateway_settings=GatewayRunSettings(run_budget_s=5.0, poll_interval_s=0.0),
+        sleep=clock.sleep,
+        monotonic=clock.monotonic,
     )
 
 
