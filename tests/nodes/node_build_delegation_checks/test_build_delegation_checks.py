@@ -7,6 +7,7 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Literal
 
 import yaml
 
@@ -66,9 +67,9 @@ def _settings(**changes: object) -> ModelBuildDelegationChecksOverlay:
 
 
 def _event(
-    sha: str, lane: str = "dev", status: str = "success"
+    sha: str, lane: str = "dev", status: Literal["success", "failed"] = "success"
 ) -> ModelRebuildCompletedObserved:
-    return ModelRebuildCompletedObserved(git_sha=sha, runtime_lane=lane, status=status)  # type: ignore[arg-type]
+    return ModelRebuildCompletedObserved(git_sha=sha, runtime_lane=lane, status=status)
 
 
 class _Rig:
@@ -326,7 +327,9 @@ def test_file_store_keeps_builds_across_instances(tmp_path: Path) -> None:
     )
     rig.handler.handle(_event(B1))
     reopened = FileBuildStore(path, 50)
-    assert reopened.begin(reopened.previous_build("dev", B2).model_copy()) is False  # type: ignore[union-attr]
+    previous = reopened.previous_build("dev", B2)
+    assert previous is not None
+    assert reopened.begin(previous.model_copy()) is False
     last = reopened.last_reading("C14", B2)
     assert last is not None
     assert last.build_id == B1

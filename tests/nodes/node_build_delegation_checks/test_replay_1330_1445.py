@@ -51,7 +51,7 @@ class _HistoryMergeSource:
         return tuple(self._by_sha[s] for s in self._shas[lo + 1 : hi + 1])
 
 
-def _replay() -> tuple[RecordingSink, dict[str, object]]:
+def _replay() -> tuple[RecordingSink, tuple[ModelAttributionCandidate, ...], list[str]]:
     doc = json.loads(FIXTURE.read_text(encoding="utf-8"))
     history = parse_log("\n".join(doc["dev_log"]))
     committed = {c.commit_sha: c.merged_at for c in history}
@@ -82,14 +82,13 @@ def _replay() -> tuple[RecordingSink, dict[str, object]]:
     )
     for build in builds:
         handler.handle(ModelRebuildCompletedObserved(git_sha=build, runtime_lane="dev"))
-    return sink, {"history": history, "builds": builds}
+    return sink, history, builds
 
 
 def test_replay_1330_1445() -> None:
-    sink, context = _replay()
-    history: tuple[ModelAttributionCandidate, ...] = context["history"]  # type: ignore[assignment]
+    sink, history, builds = _replay()
     pr_of = {c.commit_sha: c.pr_number for c in history}
-    short = {s[:8]: s for s in context["builds"]}  # type: ignore[attr-defined]
+    short = {s[:8]: s for s in builds}
 
     by_check = {e.check_id: e for e in sink.regressions}
     # Exactly the two real transitions: no other check of the ten went from pass to fail in the window.
