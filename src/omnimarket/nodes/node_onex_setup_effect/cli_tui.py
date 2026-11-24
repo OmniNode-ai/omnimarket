@@ -1912,7 +1912,7 @@ class ThemeStore:
             return None
 
 
-async def apply_theme(app: object, name: str) -> None:
+async def apply_theme(app: App[int], name: str) -> None:
     """Apply (and persist) a registered theme (OMN-26620 AC5)."""
     ThemeStore.save(name)
     app.theme = name
