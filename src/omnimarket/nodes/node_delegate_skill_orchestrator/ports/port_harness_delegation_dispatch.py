@@ -20,11 +20,6 @@ from uuid import UUID
 
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
-from omnimarket.events.harness_backend_call import (
-    ModelHarnessAttemptRecord,
-    ModelHarnessBackendCallRequest,
-    ModelHarnessBackendCallResult,
-)
 from omnimarket.models.delegation.delegation_caller_lane import (
     DELEGATION_CALLER_LANE_METADATA_KEY,
 )
@@ -34,6 +29,11 @@ from omnimarket.models.delegation.model_delegation_routing_overlay import (
 from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
     EnumDelegationBackendKind,
     EnumDelegationBackendSurface,
+)
+from omnimarket.models.model_harness_backend_call import (
+    ModelHarnessAttemptRecord,
+    ModelHarnessBackendCallRequest,
+    ModelHarnessBackendCallResult,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.dispatch_progress import (
     dispatch_stage,
