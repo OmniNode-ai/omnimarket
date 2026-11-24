@@ -190,10 +190,13 @@ async def test_the_status_bar_says_auto_and_how_many_models_when_none_is_first()
 
 
 async def test_the_status_bar_says_reading_until_the_setup_is_read() -> None:
-    """S1: before the first read, nothing about a model is claimed."""
+    """S1: before the first read, only the saved state shows (OMN-26620 AC7)."""
     import asyncio
 
     from omnimarket.nodes.node_onex_setup_effect.cli_tui import ModelTuiStatus
+    from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
+        tui_design,
+    )
 
     gate = asyncio.Event()
 
@@ -201,11 +204,19 @@ async def test_the_status_bar_says_reading_until_the_setup_is_read() -> None:
         await gate.wait()
         return ModelTuiStatus(models=0)
 
+    design = tui_design()
+    saved = design.last_known or {}
     app = OnexTui(root=_root, runner=_Runner([]), load_status=slow)
     async with app.run_test() as pilot:
         await pilot.pause()
         status = str(app.query_one("#status").render())
-        assert "reading your setup" in status
+        # AC7: the saved state seeds the bar at once, never "reading your setup…".
+        assert design.words.status_reading not in status
+        assert str(saved.get("model")) in status
+        assert (
+            design.words.delegation_off in status
+            or design.words.delegation_hook in status
+        )
         assert "not set" not in status
         gate.set()
         await pilot.pause()

@@ -2090,6 +2090,11 @@ class OnexTui(App[int]):
         #: the start-up read can be one no tab has shown.
         self._read_at = 0.0
         self._shown = False
+        #: Whether a status read has landed this session. The OMN-26620 AC7
+        #: seed shows in the status bar at once, but the /delegation tab still
+        #: waits for a read: a state nobody has read is never drawn as OFF
+        #: (review 2026-11-15), and an untouched Save never sends off over it.
+        self._status_read = False
         #: What each server said, by (URL, models), with when it was asked.
         self._said: dict[
             tuple[str, tuple[str, ...]],
@@ -2141,6 +2146,7 @@ class OnexTui(App[int]):
         """The status bar and any open /delegation tab show ``status``: a tab
         opened before a read landed is redrawn when it lands (review 2026-11-15)."""
         self._status = status
+        self._status_read = True
         self._render_status()
         for screen in self.screen_stack:
             if isinstance(screen, DelegationScreen):
@@ -2525,10 +2531,15 @@ class OnexTui(App[int]):
                 ),
             )
         if name == "delegation":
+            # The AC7 seed is for the status bar; a tab opened before a read
+            # landed still sees no state (review 2026-11-15).
+            seeded = self._status if self._status_read else None
             return cast(
                 Screen[object],
                 DelegationScreen(
-                    selection, self._status.delegation, self._status.hooks
+                    selection,
+                    None if seeded is None else seeded.delegation,
+                    None if seeded is None else seeded.hooks,
                 ),
             )
         if name == "dashboard":
