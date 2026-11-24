@@ -29,3 +29,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py::test_every_repo_contract_binds_every_criterion -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26488-ac2-evidence-check-types
+  description: 'tests/ci/test_repo_evidence_caller_workflow.py::test_every_repo_contract_binds_every_criterion and ::test_no_repo_contract_hides_a_pytest_run_behind_uv_run_frozen_command fail at dev head 06cc078369 on the AC14 item of contracts/OMN-22519.yaml, whose check_type command text carries uv run --frozen pytest and so binds no test file, and pass at the pushed head where that item is a test_passes check. No test code changed, nothing skipped or widened.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py::test_no_repo_contract_hides_a_pytest_run_behind_uv_run_frozen_command -q --no-cov -n 0 -p no:randomly
+    cwd: .
