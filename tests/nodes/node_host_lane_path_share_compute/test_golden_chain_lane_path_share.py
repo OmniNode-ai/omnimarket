@@ -65,3 +65,44 @@ def test_lane_path_share_golden_chain_json_entry_and_exit_code(
     assert printed["hosts"][0]["state"] == "ok"
     monkeypatch.setattr("sys.stdin", io.StringIO(_request(0, 0).model_dump_json()))
     assert entry.main() == 65
+
+
+def test_entry_point_passes_core_contract_compliance() -> None:
+    """The imperative contract guard reads node.py as declarative: no method of its own (job 138040445530)."""
+    from omnibase_core.models.nodes.handler_contract_compliance.model_compliance_node_source import (
+        ModelComplianceNodeSource,
+    )
+    from omnibase_core.models.nodes.handler_contract_compliance.model_handler_contract_compliance_input import (
+        ModelHandlerContractComplianceInput,
+    )
+    from omnibase_core.models.nodes.no_utcnow_check.model_source_file import (
+        ModelSourceFile,
+    )
+    from omnibase_core.nodes.node_imperative_contract_guard_check_effect.handler_arch_handler_contract_compliance import (
+        HandlerArchHandlerContractCompliance,
+    )
+
+    node_dir = NodeHostLanePathShareCompute.contract_path.parent
+    relative = "src/omnimarket/nodes/node_host_lane_path_share_compute"
+    report = HandlerArchHandlerContractCompliance().handle(
+        ModelHandlerContractComplianceInput(
+            repo="omnimarket",
+            nodes=[
+                ModelComplianceNodeSource(
+                    node_dir=relative,
+                    contract_yaml=NodeHostLanePathShareCompute.contract_path.read_text(),
+                    node_py=(node_dir / "node.py").read_text(),
+                    handlers=[
+                        ModelSourceFile(
+                            path=f"{relative}/handlers/handler_lane_path_share.py",
+                            source=(
+                                node_dir / "handlers/handler_lane_path_share.py"
+                            ).read_text(),
+                        )
+                    ],
+                )
+            ],
+        )
+    )
+    assert report.total == 1
+    assert report.new_violations == []
