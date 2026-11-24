@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import asyncio
 import socket
-import urllib.parse
 from pathlib import Path
 from uuid import UUID
 
@@ -52,7 +51,6 @@ from omnimarket.nodes.node_local_dashboard_serve_effect.bundle import (
     ensure_bundle,
 )
 from omnimarket.nodes.node_local_dashboard_serve_effect.handlers.handler_local_dashboard_serve import (
-    DASHBOARD_TOKEN_PARAM,
     HandlerLocalDashboardServe,
 )
 from omnimarket.nodes.node_local_dashboard_serve_effect.models import (
@@ -173,8 +171,17 @@ def _free_port(host: str) -> int:
     default=None,
     help="Overlay document carrying dashboard.bind (host:port, loopback only).",
 )
+@click.option(
+    "--access-token",
+    "access_token",
+    default=None,
+    hidden=True,
+    help="A start token minted by the canonical setup lifecycle.",
+)
 @click.pass_context
-def dashboard_command(ctx: click.Context, overlay_path: Path | None) -> None:
+def dashboard_command(
+    ctx: click.Context, overlay_path: Path | None, access_token: str | None
+) -> None:
     """Serve this install's projection exposures to the local dashboard (OMN-19976).
 
     ``onex dashboard`` is a top-level command (plan T2.3) registered from this
@@ -212,14 +219,25 @@ def dashboard_command(ctx: click.Context, overlay_path: Path | None) -> None:
         ) from exc
     identity = read_local_tenant_identity()
     tenant = None if identity is None else str(identity.tenant_uuid)
-    # OMN-19916: the request mints this start's token and the start URL is the
-    # one place it is handed out; every request without it is refused.
-    # OMN-26226: the tenant id is no longer announced here.
-    request = ModelLocalDashboardServeRequest(host=host, port=port, tenant_id=tenant)
-    start_url = f"http://{host}:{port}/?" + urllib.parse.urlencode(
-        {DASHBOARD_TOKEN_PARAM: request.access_token.get_secret_value()}
+    # OMN-26226: a start token may be supplied by the canonical setup
+    # lifecycle; a direct run mints its own. The token is never announced here;
+    # `onex dashboard open` builds the authenticated URL.
+    request_kwargs: dict[str, object] = {
+        "host": host,
+        "port": port,
+        "tenant_id": tenant,
+    }
+    if access_token:
+        from pydantic import SecretStr
+
+        request_kwargs["access_token"] = SecretStr(access_token)
+    request = ModelLocalDashboardServeRequest(**request_kwargs)
+    click.echo(f"onex dashboard: http://{host}:{port}/")
+    click.echo(
+        "onex dashboard: running on loopback. "
+        "Press Enter in the TUI, use the Open button, or run `onex dashboard open` "
+        "to open it."
     )
-    click.echo(f"onex dashboard: {start_url}")
     asyncio.run(HandlerLocalDashboardServe(pages=pages).handle(request))
 
 

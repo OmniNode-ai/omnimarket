@@ -19,13 +19,16 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import urlsplit
 
 import httpx
 from omnibase_core.cli.cli_user_config import user_config_path
 
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
 from omnimarket.local_deployment.tenant_identity import read_local_tenant_identity
+from omnimarket.nodes.node_local_dashboard_serve_effect.models.model_local_dashboard import (
+    mint_dashboard_token,
+)
 from omnimarket.nodes.node_onex_setup_effect.handlers.setup_contract_values import (
     loopback_url,
 )
@@ -178,6 +181,9 @@ class HandlerSetupDashboard:
             identity = read_local_tenant_identity(db_path=self._store.db_path)
             if identity is None:
                 raise ValueError("Run onex local init before starting this dashboard")
+            reference = "setup.dashboard.session"
+            token = mint_dashboard_token().get_secret_value()
+            asyncio.run(self._store.set_secret(reference, token))
             environment = os.environ.copy()
             for name in tuple(environment):
                 if (
@@ -196,7 +202,12 @@ class HandlerSetupDashboard:
                 ):
                     environment.pop(name)
             process = subprocess.Popen(
-                [str(Path(sys.executable).parent / "onex"), "dashboard"],
+                [
+                    str(Path(sys.executable).parent / "onex"),
+                    "dashboard",
+                    "--access-token",
+                    token,
+                ],
                 cwd=Path.home(),
                 env=environment,
                 stdin=subprocess.DEVNULL,
@@ -224,18 +235,14 @@ class HandlerSetupDashboard:
                     start = urlsplit(
                         line[len(prefix) :].split(b" ", 1)[0].decode().strip()
                     )
-                    token = parse_qs(start.query).get("token", [""])[0]
                     stamp = _stamp(process.pid)
                     if (
                         start.scheme != "http"
                         or start.hostname != "127.0.0.1"
                         or not start.port
-                        or not token
                         or not stamp
                     ):
                         raise ValueError("Invalid dashboard startup binding")
-                    reference = "setup.dashboard.session"
-                    asyncio.run(self._store.set_secret(reference, token))
                     record = ModelSetupDashboardProcess(
                         pid=process.pid,
                         process_stamp=stamp,
