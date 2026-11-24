@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from _gateway_fake import FakeClock, FakeGateway
 
 from omnimarket.handlers.routing.delegation_check_responder_chain import (
     ModelChainResolution,
@@ -32,6 +33,9 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_delega
     InMemoryCheckPublisher,
     InMemoryCustomerMachine,
     InMemoryResponderReader,
+)
+from omnimarket.nodes.node_delegation_check_probe_effect.handlers.gateway_checks import (
+    GatewayRunSettings,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.handler_delegation_check_probe import (
     HandlerDelegationCheckProbe,
@@ -133,6 +137,9 @@ def good_surface(**over: object) -> ModelSurfaceObservation:
     return ModelSurfaceObservation(**{**base, **over})
 
 
+_GATEWAY_CLOCK = FakeClock()
+
+
 def handler(
     machine: ProtocolCustomerMachine,
     *,
@@ -148,6 +155,10 @@ def handler(
             publisher=pub,
             topic=contract_topics()[0],
             clock=_clock,
+            gateway=FakeGateway(),
+            gateway_settings=GatewayRunSettings(run_budget_s=5.0, poll_interval_s=0.0),
+            sleep=_GATEWAY_CLOCK.sleep,
+            monotonic=_GATEWAY_CLOCK.monotonic,
         ),
         pub,
     )
@@ -189,7 +200,7 @@ def test_c14_reads_pass_on_all_three_rows() -> None:
     h, _ = handler(machine)
     result = h.handle(request("C14"))
     assert result.verdict is EnumCheckVerdict.PASS
-    assert {c.name for c in result.clauses} == {
+    assert {c.name for c in result.clauses if not c.name.startswith("gateway_")} == {
         "no_checkout",
         "row1_local_answer_ends_chain",
         "row2_no_unbindable_tier",
@@ -419,6 +430,7 @@ def test_the_tick_with_no_collector_exits_1_emits_the_record_and_writes_evidence
     code = tick.main(
         ["--omni-home", str(tmp_path), "--state-dir", str(tmp_path / "state")],
         publisher=pub,
+        gateway=FakeGateway(),
     )
     assert code == tick.EXIT_FAILED
     assert pub.events[0]["payload"]["verdict"] == "NOT_MEASURED"
