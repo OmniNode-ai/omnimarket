@@ -3,7 +3,12 @@
 """Packaged models for node_lab_placement_compute."""
 
 from omnimarket.models.model_host_table_verdict import ModelHostTableVerdict
-from omnimarket.models.model_priority_rules import PRIORITY_OTHER, ModelPriorityRules
+from omnimarket.models.model_priority_rules import (
+    PRIORITY_OTHER,
+    ModelPriorityRules,
+    ModelRedCheckReading,
+    ModelRedCheckRules,
+)
 
 from .model_lab_lane_priority import (
     ModelLanePriorityOverlay,
@@ -55,5 +60,7 @@ __all__ = [
     "ModelPluginParityRequest",
     "ModelPluginParityResult",
     "ModelPriorityRules",
+    "ModelRedCheckReading",
+    "ModelRedCheckRules",
     "ModelUnitProfile",
 ]

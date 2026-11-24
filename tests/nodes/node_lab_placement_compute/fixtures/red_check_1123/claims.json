@@ -1,0 +1,12 @@
+{
+  "source": "CLAIM rows of the rolling work ledger, 2026-11-23T12:02:17Z to 2026-11-24T00:36:27Z; ticket_text is the line the ledger gives for the ticket's check",
+  "recorded_priority": "other",
+  "lanes": [
+    {"claimed_at": "2026-11-23T12:02:17Z", "lane": "c13red-1205", "ticket": "OMN-26534", "check": "C13", "ticket_text": "the customer-local check (C13) times out queued behind lab traffic"},
+    {"claimed_at": "2026-11-23T13:04:38Z", "lane": "c13fix-1330", "ticket": "OMN-26534", "check": "C13", "ticket_text": "the customer-local check (C13) times out queued behind lab traffic"},
+    {"claimed_at": "2026-11-23T17:30:49Z", "lane": "c14red-1730", "ticket": "OMN-26043", "check": "C14", "ticket_text": "C14 local routing is red after the failover to the llama.cpp host"},
+    {"claimed_at": "2026-11-23T18:04:08Z", "lane": "chaincheck-1820", "ticket": "OMN-26043", "check": "C14", "ticket_text": "C14 local routing is red after the failover to the llama.cpp host"},
+    {"claimed_at": "2026-11-23T17:31:23Z", "lane": "c29red-1730", "ticket": "OMN-26236", "check": "C29", "ticket_text": "C29 customer-own-key clause is red"},
+    {"claimed_at": "2026-11-24T00:36:27Z", "lane": "c29-0020", "ticket": "OMN-26236", "check": "C29", "ticket_text": "C29 customer-own-key clause is red"}
+  ]
+}

@@ -16,6 +16,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from omnimarket.models.model_priority_rules import ModelRedCheckReading
+
 from .model_lab_fill_effect import LANE_PATTERN, RUN_KEY_PATTERN
 from .model_lab_fill_send_gate import DEFAULT_FACT_HOSTS
 
@@ -95,6 +97,9 @@ class ModelLabFillTickRequest(BaseModel):
     # OMN-19998, the select step's held tickets (ticket -> skip reason, ModelLabFillSelectResult.holds()): a row whose ticket
     # is held there is skipped with reason "selection:<reason>" and never launched.
     selection_holds: Mapping[str, str] = Field(default_factory=dict)
+    # OMN-26624: what the caller read of the delegation check results (``read_red_checks``). A row whose goal or
+    # acceptance check names a red declared check is placed before every other row; None: the caller read none.
+    red_check_reading: ModelRedCheckReading | None = None
 
     @field_validator("ledger_path", "approved_work_path", "brief_dir")
     @classmethod
@@ -122,7 +127,8 @@ class ModelLabFillTickDispatch(BaseModel):
     ticket: str
     row_id: str
     host: str
-    priority: PriorityClass
+    # The fill's own class, or the contract's red-check class for a row naming a red delegation check (OMN-26624).
+    priority: str
     receipt: str = ""
     # ``auto`` when the lane went with --placement auto (OMN-21881); empty otherwise.
     placement: str = ""
@@ -208,6 +214,11 @@ class ModelLabFillTickResult(BaseModel):
     # OMN-21881: one line - the cloud placement verdict and why, the age of the newest
     # host=cloud CLAIM in the ledger, and the cloud credit left (``unmeasured`` when unread).
     cloud_line: str = ""
+    # OMN-26624: red declared checks that no approved-work row names, so no lane is placed on them; the tick cannot
+    # make a row for them, and they are never dropped from the result.
+    red_checks_unplaced: tuple[str, ...] = ()
+    # ``RED-CHECK-UNREADABLE: ...`` when the check results could not be read: the checks are not read as green.
+    red_check_report: str | None = None
 
 
 __all__: list[str] = [

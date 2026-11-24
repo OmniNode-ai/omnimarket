@@ -56,6 +56,7 @@ from omnimarket.models.lab_fill import (
 from omnimarket.nodes.node_cloud_session_placement_effect.handlers import (
     HandlerCloudSessionPlacement,
 )
+from omnimarket.nodes.node_lab_placement_compute.handlers import load_priority_rules
 
 from ..models import (
     ModelLabFillLaunchRequest,
@@ -165,6 +166,37 @@ def priority_class(
     if row.get("kind") == "process-fix" or repo in process_repos:
         return "process-fix"
     return "other"
+
+
+def red_checks_of_row(
+    request: ModelLabFillTickRequest, row: Mapping[str, object]
+) -> tuple[str, ...]:
+    """The red declared checks a row's goal or acceptance check names (OMN-26624), in the contract's order."""
+    declared = load_priority_rules().red_checks
+    reading = request.red_check_reading
+    if declared is None or reading is None or reading.unreadable is not None:
+        return ()
+    red = {c.upper() for c in reading.red}
+    named = declared.named_in(
+        str(row.get("goal") or ""), str(row.get("acceptance_check") or "")
+    )
+    return tuple(c for c in named if c.upper() in red)
+
+
+def _red_check_facts(
+    request: ModelLabFillTickRequest, rows: Sequence[Mapping[str, object]]
+) -> tuple[tuple[str, ...], str | None]:
+    """(red declared checks no row names, the unreadable report): both empty when nothing was read."""
+    reading = request.red_check_reading
+    if reading is None:
+        return (), None
+    if reading.unreadable is not None:
+        return (), (
+            f"RED-CHECK-UNREADABLE: no check result could be read ({reading.unreadable}); "
+            "the checks are not read as green and the rows keep their order"
+        )
+    covered = {c.upper() for r in rows for c in red_checks_of_row(request, r)}
+    return tuple(c for c in reading.red if c.upper() not in covered), None
 
 
 def _slots(request: ModelLabFillTickRequest) -> list[str]:
@@ -465,10 +497,15 @@ class HandlerLabFillTick:
             else:
                 candidates.append(row)
         candidates.sort(
-            key=lambda r: _RANK[
-                priority_class(r, request.mvp_repos, request.process_repos)
-            ]
+            key=lambda r: (
+                not red_checks_of_row(request, r),
+                _RANK[priority_class(r, request.mvp_repos, request.process_repos)],
+            )
         )
+        red_class = (
+            declared.class_ if (declared := load_priority_rules().red_checks) else ""
+        )
+        unplaced, red_report = _red_check_facts(request, rows)
 
         facts: LabFillClaimFacts | str
         try:
@@ -514,7 +551,11 @@ class HandlerLabFillTick:
                 row = queue.popleft()
                 ticket, row_id = str(row["ticket"]), str(row["id"])
                 lane = lane_name(ticket, request.run_key)
-                priority = priority_class(row, request.mvp_repos, request.process_repos)
+                priority: str = priority_class(
+                    row, request.mvp_repos, request.process_repos
+                )
+                if red_class and red_checks_of_row(request, row):
+                    priority = red_class
                 cloud_kind = ""
                 if request.cloud.enabled and request.cloud.lane_kinds:
                     cloud_kind, why_not = cloud_eligibility(request, row, lane)
@@ -540,6 +581,9 @@ class HandlerLabFillTick:
                     host,
                     lanes_left=len(slots) - i,
                     cloud_kind=cloud_kind,
+                    priority_class=red_class
+                    if red_class and priority == red_class
+                    else "",
                 )
                 if launched.detached:
                     memory.brief_refusals.pop(ticket, None)
@@ -608,6 +652,8 @@ class HandlerLabFillTick:
             refusals_cell=render_refusals(tuple(refusals)),
             parked=tuple(parked_now),
             placed=0 if outcome == "planned" else len(dispatched),
+            red_checks_unplaced=unplaced,
+            red_check_report=red_report,
         )
 
     @staticmethod
@@ -745,6 +791,7 @@ class HandlerLabFillTick:
         *,
         lanes_left: int,
         cloud_kind: str = "",
+        priority_class: str = "",
     ) -> ModelLabFillLaunchResult:
         ticket, row_id, kind = str(row["ticket"]), str(row["id"]), str(row["kind"])
         marker = f"APPROVED-ROW {row_id} (unresolved)"
@@ -762,6 +809,7 @@ class HandlerLabFillTick:
                 id=row_id, kind=kind, ticket=ticket, marker=marker
             ),
             placement="auto" if cloud_kind else None,
+            priority_class=priority_class or None,
         )
         return self._launch.handle(
             ModelLabFillLaunchRequest(
