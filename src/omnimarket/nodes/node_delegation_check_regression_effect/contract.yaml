@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Delegation Check Regression Effect
+#
+# A change that can turn a delegation check red (a settings-store version of a routing or host overlay, a host's model
+# server moving, a release of the package the customer machine installs) runs the checks that read what it changed, and a
+# check that reads red where it did not read red before alarms once, to the owner its setting names, within the alarm
+# deadline, through the lab alarm delivery (node_lab_alarm_deliver_effect). The key-to-check rules, the owners, the read
+# deadlines, the red streak and the alarm deadline are settings (overlay.py; overlay.defaults.yaml holds the tested defaults),
+# never handler constants. A prod target is refused in the handler before any check runs.
+name: node_delegation_check_regression_effect
+contract_name: node_delegation_check_regression_effect
+node_name: node_delegation_check_regression_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Selects the delegation checks a change reads, runs them after the change applied, compares each reading with the
+  check's previous reading and raises one lab alarm, to a named owner, for each check that turned red. A check that stays
+  green, or was red already, raises nothing. A prod target is refused.
+
+handler:
+  module: omnimarket.nodes.node_delegation_check_regression_effect.handlers.handler_check_regression
+  class: HandlerCheckRegression
+  input_model: omnimarket.nodes.node_delegation_check_regression_effect.models.model_check_regression.ModelCheckRegressionRequest
+
+# Not a runtime-dispatched handler: the handler takes the settings, the check runner, the check history, the alarm delivery
+# and a clock as constructor parameters, so the node runs through its own command (runtime_check_regression). It declares no
+# topic of its own: the alarm delivery owns the ledger's and the channel's.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [check-run, ledger-append, channel-post]
+  timeout_ms: 900000
+
+input_model:
+  name: ModelCheckRegressionRequest
+  module: omnimarket.nodes.node_delegation_check_regression_effect.models.model_check_regression
+  description: One change (kind, subject, changed keys or the two documents), when it applied, who applied it and its target.
+output_model:
+  name: ModelCheckRegressionResult
+  module: omnimarket.nodes.node_delegation_check_regression_effect.models.model_check_regression
+  description: The keys that changed, the checks selected, each check's verdict against its previous reading, and the alarms raised.
+
+settings:
+  module: omnimarket.nodes.node_delegation_check_regression_effect.overlay
+  model: ModelCheckRegressionSettings
+  defaults: overlay.defaults.yaml
+
+dod_evidence:
+  - test: tests/nodes/node_delegation_check_regression_effect/test_delegation_check_regression.py::test_delegation_check_regression_selection_picks_c14_and_c29_for_the_recorded_change
+    description: "AC1 a settings-store change to a routing or host key selects C14 and C29"
+  - test: tests/nodes/node_delegation_check_regression_effect/test_delegation_check_regression.py::test_delegation_check_regression_a_red_check_raises_one_alarm_with_an_owner_and_green_raises_none
+    description: "AC2 a red check raises one alarm with a named owner; a green check raises none"
+  - test: tests/nodes/node_delegation_check_regression_effect/test_delegation_check_regression.py::test_delegation_check_regression_overlay_defaults_declare_every_threshold_and_owner
+    description: "AC5 the overlay defaults declare every threshold and owner, and a prod target is refused"
+  - test: tests/nodes/node_delegation_check_regression_effect/test_delegation_check_regression.py::test_delegation_check_regression_replays_the_recorded_transition_into_alarm_rows_for_c14_and_c29
+    description: "AC6 the recorded 2026-11-23 transition raises alarms for C14 and C29"
+
+metadata:
+  ticket: OMN-26618
+  transport_type: none
