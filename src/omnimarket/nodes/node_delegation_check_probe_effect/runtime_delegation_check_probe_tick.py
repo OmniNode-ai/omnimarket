@@ -32,6 +32,7 @@ import yaml
 from omnimarket.events.emit_effect_topic_publisher import EmitEffectTopicPublisher
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
+    NodeOverlayNotFoundError,
     load_structured_overlay,
 )
 from omnimarket.models.overlay_documents.model_delegation_check_responders_overlay import (
@@ -40,6 +41,14 @@ from omnimarket.models.overlay_documents.model_delegation_check_responders_overl
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_delegation_check import (
     AbsentCustomerMachine,
     HttpResponderReader,
+)
+from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_gateway import (
+    DevTenantCredential,
+    HttpGatewayClient,
+    load_gateway_row,
+)
+from omnimarket.nodes.node_delegation_check_probe_effect.handlers.gateway_checks import (
+    GATEWAY_CHECKS,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.handler_delegation_check_probe import (
     NODE,
@@ -56,6 +65,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation
 from omnimarket.nodes.node_delegation_check_probe_effect.protocols.protocol_delegation_check import (
     ProtocolCheckResultPublisher,
     ProtocolCustomerMachine,
+    ProtocolGatewayClient,
 )
 
 EVIDENCE_FILE = "last-run.json"
@@ -96,6 +106,9 @@ def evidence_for(result: ModelDelegationCheckResult) -> dict[str, Any]:
         "absent": [p.name for p in result.preconditions if not p.present],
         "emitted": result.emitted,
         "error": result.error,
+        "runner": result.runner,
+        "gateway_url": result.gateway_url,
+        "tenant_slug": result.tenant_slug,
     }
 
 
@@ -129,6 +142,7 @@ def main(
     machine: ProtocolCustomerMachine | None = None,
     publisher: ProtocolCheckResultPublisher | None = None,
     now: datetime | None = None,
+    gateway: ProtocolGatewayClient | None = None,
 ) -> int:
     parser = argparse.ArgumentParser(prog=f"{NODE}.tick", description=__doc__)
     parser.add_argument("--omni-home", dest="registry_root", required=True, type=Path)
@@ -163,16 +177,38 @@ def main(
         _write_atomically(evidence_path, json.dumps(reading, sort_keys=True) + "\n")
         sys.stderr.write(f"{NODE}: {reading['error']}\n")
         return EXIT_OVERLAY
+    wanted = (args.check,) if args.check else overlay.checks
+    if gateway is None and any(c in GATEWAY_CHECKS for c in wanted):
+        # The gateway address and the test tenant are the settings store's row; with none served the gateway checks read
+        # PRECONDITION-ABSENT. A row that is served but broken ends the tick like any other unreadable overlay.
+        try:
+            gateway = HttpGatewayClient(
+                load_gateway_row(), DevTenantCredential(), overlay.responder_timeout_s
+            )
+        except NodeOverlayNotFoundError:
+            gateway = None
+        except (NodeOverlayError, ValueError, OSError) as exc:
+            faulthandler.cancel_dump_traceback_later()
+            reading = {
+                "node": NODE,
+                "ran_at": stamp.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "status": "gateway_row_unreadable",
+                "error": f"{type(exc).__name__}: {exc}"[-2000:],
+            }
+            _write_atomically(evidence_path, json.dumps(reading, sort_keys=True) + "\n")
+            sys.stderr.write(f"{NODE}: {reading['error']}\n")
+            return EXIT_OVERLAY
     handler = HandlerDelegationCheckProbe(
         responders=row.responders,
         reader=HttpResponderReader(overlay.responder_timeout_s),
         machine=machine or AbsentCustomerMachine(MACHINE_ABSENT),
         publisher=publisher or EmitEffectTopicPublisher(),
         topic=overlay.result_topic,
+        gateway=gateway,
     )
     results: list[ModelDelegationCheckResult] = []
     try:
-        for check in (args.check,) if args.check else overlay.checks:
+        for check in wanted:
             results.append(
                 handler.handle(
                     ModelDelegationCheckRequest(
