@@ -1,11 +1,19 @@
 schema_version: 1.0.0
 ticket_id: OMN-26582
-title: A credential delivery row can name the OS account whose home its folder is relative to, resolved on the target by the fixed delivery script
-summary: ModelServicePrincipalDelivery of node_service_principal_mint_effect gains an optional account field (default none, so every existing row behaves as before). With an account, the fixed delivery script reads the account's home on the target with getent passwd and takes the folder relative to that home; it refuses an unknown account, a uid that differs from the declared owner's uid, a home that is a symlink and a home that does not exist, never creates the home, and receives the account name on standard input only. This contract covers the delivery field alone; the ticket's AC1 (bindings and derived grants for the agent message topic) and AC2 (the per-host read-only check) are separate pieces and are not claimed here.
+title: The agent message client reaches the agent message node instead of refusing node_unavailable, and a credential delivery row can name the OS account whose home its folder is relative to
+summary: node_agent_message_client_effect's node factory is bound to node_agent_message_effect's handler. The client's kinds and platforms are the node's own enums, a send returns the node's event id as the message id, and a node refusal comes back as a typed client refusal. This is the client half of the path whose per-host broker grant OMN-26582 declares. ModelServicePrincipalDelivery of node_service_principal_mint_effect gains an optional account field (default none, so every existing row behaves as before). With an account, the fixed delivery script reads the account's home on the target with getent passwd and takes the folder relative to that home; it refuses an unknown account, a uid that differs from the declared owner's uid, a home that is a symlink and a home that does not exist, never creates the home, and receives the account name on standard input only. The ticket's bindings and derived grants for the agent message topic and its per-host read-only check are separate pieces and are not claimed here.
 is_seam_ticket: false
-interface_change: false
-interfaces_touched: []
+interface_change: true
+interfaces_touched:
+- public_api
 requirements:
+- id: req-omn26582-client-node
+  statement: The agent message command line and MCP server call the agent message node, so a host login that holds the topic grants can send and read, and a refusal by the node is typed.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the node factory opens the agent message node and no longer refuses node_unavailable; a send returns the event id the node published and a read returns the same id as the message id -- falsifier: uv run pytest tests/cli/test_agent_message_node_adapter.py fails when the factory refuses or the ids differ'
+  - id: AC2
+    statement: 'AC2: a node refusal or a message that only reached the durable spool is a typed client refusal (undeclared_broker, broker_refused), never a stack trace or a false send -- falsifier: the adapter test with a down broker or an undeclared broker fails when send returns an id'
 - id: req-omn26582-delivery-account
   statement: A delivery row may name an OS account, and the delivery script keeps the credential file inside that account's own home folder, refusing every row whose account, uid or home does not check out.
   acceptance:
@@ -17,6 +25,9 @@ requirements:
     statement: 'AC5: the account name and the secret travel on standard input only, on the local and the ssh path, and no command line carries either -- falsifier: the same test file, test_account_and_secret_are_on_standard_input_only, fails when the account or the secret appears in an argv word'
 evidence_requirements:
 - kind: tests
+  description: The adapter, command line and MCP tests pass at the pushed head.
+  command: uv run pytest tests/cli/test_agent_message_node_adapter.py tests/cli/test_agent_message_cli.py tests/cli/test_agent_message_mcp.py -q -m unit -n 0 --no-cov -p no:cacheprovider
+- kind: tests
   description: The delivery account tests plus the node's existing adapter, handler and chain tests.
   command: uv run pytest tests/nodes/node_service_principal_mint_effect -q --no-cov
 emergency_bypass:
@@ -24,6 +35,24 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+- id: dod-omn26582-ac1
+  description: 'AC1: send then read round-trips through the node handler over a fake bus with the event id as the message id; the factory no longer refuses.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/cli/test_agent_message_node_adapter.py -q -m unit -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26582-ac2
+  description: 'AC2: a send that only reached the spool, and a node with no declared broker, are typed refusals; the command and MCP tests still pass with the node kinds.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/cli/test_agent_message_node_adapter.py tests/cli/test_agent_message_cli.py tests/cli/test_agent_message_mcp.py -q -m unit -n 0 --no-cov -p no:cacheprovider
+    cwd: .
 - id: dod-omn26582-delivery-model
   description: AC3 the row model takes an optional account, refuses an absolute or ".." folder and a non-login-name account, and an existing row with no account still loads with account none.
   source: manual
@@ -52,10 +81,12 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_service_principal_mint_effect/test_service_principal_delivery_account.py -q --no-cov -k standard_input_only
     cwd: .
 - id: dod-omn26582-integration-proof
-  description: Run the delivery account tests and the node's existing tests on a lab host at the pushed revision.
+  description: the agent message client adapter, command and MCP unit tests and the delivery account tests with the node's existing tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
   source: manual
   execution_scope: local_done_gate
   checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26582 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/cli/test_agent_message_node_adapter.py tests/cli/test_agent_message_cli.py tests/cli/test_agent_message_mcp.py -q -m unit --no-cov
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26582 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_service_principal_mint_effect -m 'not e2e' -q -n 0 --no-cov --refuse-skips
     cwd: .

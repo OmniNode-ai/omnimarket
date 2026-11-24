@@ -35,24 +35,29 @@ config:
     prefix_chars: 12
   stack:
     base_rule: newest_contained_open_pr_head
-  # The claims read through the ledger reader node (OMN-26433). A CLAIM is live 0.75 hours after its lane's last row, so the primary
-  # read is every row of the last heartbeat_window_hours (it names the live lanes), then the claim_kinds rows of the window for those
-  # lanes; the dev broker answers each in a page. The fallback is every row of the window. Each primary read waits at most
-  # primary_timeout_s, the fallback at most fallback_timeout_s, all three together at most total_budget_s; when none answers the
-  # guard is unchecked and opens nothing.
+  # The claims read through the ledger reader node (OMN-26433). A CLAIM is live 0.75 hours after its lane's last row, so the read is
+  # every row of the last heartbeat_window_hours (it names the live lanes), then the claim_kinds rows of the window for those
+  # lanes; the dev broker answers each in a page. A read that fails is asked once more (OMN-26387): the every-row read of the
+  # window needs 84 reply pages and did not finish in 400 seconds on h053 (2026-11-24), so it is never the fallback. A first read
+  # waits at most primary_timeout_s, its retry at most retry_timeout_s, every read together at most total_budget_s; when a
+  # read and its retry fail the guard is unchecked and opens nothing. The reader's own bus wait and the deadline it stamps on
+  # each request are its overlay's route.timeout_seconds and route.stamp_deadline.
   ledger_read:
     reader: pr-duplicate-guard-claims
     window_hours: 168
     heartbeat_window_hours: 1
     claim_kinds: [CLAIM, TERMINAL, RELEASE]
     primary_timeout_s: 150
-    fallback_timeout_s: 300
+    retry_timeout_s: 150
     total_budget_s: 600
 event_bus:
   subscribe_topics: []
   publish_topics: []
 runtime_dispatch:
   external_trigger: Direct Python invocation by onex scm pr-create and onex scm pr-duplicate-check.
+  on_demand:
+    command: onex scm pr-duplicate-check <owner>/<repo> --branch <branch>
+    owner: OmniNode Platform Team
 descriptor:
   node_archetype: effect
   purity: effectful

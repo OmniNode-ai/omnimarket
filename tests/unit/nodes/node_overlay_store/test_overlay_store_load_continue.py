@@ -228,6 +228,7 @@ def test_a_run_the_overlay_refuses_ends_the_tick_and_records_why(
 
     monkeypatch.setattr(tick, "_run", refused)
     state = tmp_path / "state"
+    seed(state, home, {i: NOW - timedelta(minutes=70) for i in IDS})
     assert run_tick(home, state) == tick.EXIT_REFUSED
     assert "ValueError: the overlay home is unreadable" in capfd.readouterr().err
     record = json.loads((state / "last-run.json").read_text(encoding="utf-8"))
@@ -341,3 +342,82 @@ def test_the_command_line_loader_without_its_overlay_exits_nonzero(
     code = load_module.main(["--clone", str(tmp_path), "--id", "first_one"])
     assert code == 65
     assert "NodeOverlayNotFoundError" in capfd.readouterr().err
+
+
+def alarmed_ids(bus: FakeBus) -> list[str]:
+    return sorted(a["overlay_id"] for a in alarms(bus))
+
+
+def test_a_clone_that_is_not_at_origin_still_alarms_every_id_older_than_two_hours(
+    home: Path,
+    bus: FakeBus,
+    tmp_path: Path,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    """A tick that loads nothing because the clone is behind or dirty must still name each id nobody asserted for two hours."""
+    pins = next(home.glob("*/.omnimarket-node-pins"))
+    pins.write_text(pins.read_text(encoding="utf-8") + "# edited\n", encoding="utf-8")
+    state = tmp_path / "state"
+    seed(state, home, {i: NOW - timedelta(hours=3) for i in IDS})
+    assert run_tick(home, state) == tick.EXIT_STALE_CLONE
+    assert published_ids(bus) == []
+    assert alarmed_ids(bus) == sorted(IDS)
+    err = capfd.readouterr().err
+    assert all(f'"overlay_id":"{i}"' in err for i in IDS)
+    record = json.loads((state / "last-run.json").read_text(encoding="utf-8"))
+    assert sorted(a["overlay_id"] for a in record["alarms"]) == sorted(IDS)
+
+
+def test_a_clone_that_is_not_at_origin_raises_no_alarm_inside_the_two_hours(
+    home: Path, bus: FakeBus, tmp_path: Path
+) -> None:
+    pins = next(home.glob("*/.omnimarket-node-pins"))
+    pins.write_text(pins.read_text(encoding="utf-8") + "# edited\n", encoding="utf-8")
+    state = tmp_path / "state"
+    seed(state, home, {i: NOW - timedelta(minutes=70) for i in IDS})
+    assert run_tick(home, state) == tick.EXIT_STALE_CLONE
+    assert alarms(bus) == []
+
+
+def test_a_broker_that_does_not_answer_the_load_still_alarms_the_stale_ids_by_name(
+    home: Path,
+    bus: FakeBus,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    async def down(*_: Any) -> Any:
+        raise ConnectionError("broker unreachable")
+
+    monkeypatch.setattr(tick, "_run", down)
+    state = tmp_path / "state"
+    seed(
+        state,
+        home,
+        {
+            "first_one": NOW - timedelta(minutes=70),
+            "second_one": NOW - timedelta(hours=3),
+            "third_one": NOW - timedelta(minutes=70),
+        },
+    )
+    assert run_tick(home, state) == tick.EXIT_BUS
+    assert alarmed_ids(bus) == ["second_one"]
+    assert '"overlay_id":"second_one"' in capfd.readouterr().err
+    record = json.loads((state / "last-run.json").read_text(encoding="utf-8"))
+    assert [a["overlay_id"] for a in record["alarms"]] == ["second_one"]
+
+
+def test_a_run_the_overlay_refuses_still_alarms_the_stale_ids_by_name(
+    home: Path,
+    bus: FakeBus,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def refused(*_: Any) -> Any:
+        raise ValueError("the overlay home is unreadable")
+
+    monkeypatch.setattr(tick, "_run", refused)
+    state = tmp_path / "state"
+    seed(state, home, {i: NOW - timedelta(hours=3) for i in IDS})
+    assert run_tick(home, state) == tick.EXIT_REFUSED
+    assert alarmed_ids(bus) == sorted(IDS)
