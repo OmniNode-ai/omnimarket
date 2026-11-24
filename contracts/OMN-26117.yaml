@@ -1,0 +1,62 @@
+schema_version: 1.0.0
+ticket_id: OMN-26117
+title: The M4 beta board check C11 (probe c11-negative-paths) reads green against what exists now, or its real product defect is named with a ticket
+summary: The C11 probe's newest completed scheduled run reads red at its credential-fetch step, before the probe reaches the dev lane. The probe's credential-free arms read their declared typed refusals live on the dev lane; the two arms that need a valid key are unmeasured until the key is stored. This lane changes no probe clause and restores nothing.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26117-c11-cause
+  statement: The cause of the C11 red is named from the newest completed run's failure text, with the run id and the failure line.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the cause of the red is named from the probe's newest failure text, with the run id and the failure lines read -- falsifier: the lane report names a cause with no run id or no quoted failure line"
+- id: req-omn26117-c11-green
+  statement: The C11 probe's next run reads green against what exists now.
+  acceptance:
+  - id: AC2
+    statement: "AC2: the probe's next run reads green against what exists now, with no retired thing restored and no clause removed unless a ruling retired the fact it graded -- falsifier: the newest c11-negative-paths run reads red, or the clause table in the report lists a removed assertion that no ruling retires"
+- id: req-omn26117-c11-status-row
+  statement: The lane writes one STATUS row for C11 with its verdict and read time.
+  acceptance:
+  - id: AC3
+    statement: "AC3: the lane writes one STATUS row `crit=C11 probe=c11-negative-paths verdict=<green|red> read_at=<UTC>` -- falsifier: a ledger grep for `crit=C11 probe=c11-negative-paths` finds no STATUS row after this ticket's creation"
+evidence_requirements:
+- kind: manual
+  description: The failed credential-fetch line of the newest completed C11 run read back from the job log.
+  command: onex scm job-log OmniNode-ai/omnibase_infra --job-id 138261791367
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26117-c11-cause-line
+  description: The job log of run 45340216110 (job 138261791367) holds the line naming CHAIN_CANARY_GATEWAY_API_KEY as not readable from dev/shared/env/ with HTTP 404. Read through the watcher-backed job-log verb, so only the local Done gate runs it.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: sh -c 'onex scm job-log OmniNode-ai/omnibase_infra --job-id 138261791367 | grep -F "is not readable from dev/shared/env/ (HTTP 404)"'
+    cwd: .
+- id: dod-omn26117-c11-newest-run-green
+  description: The newest scheduled run of chain-canary-c11-negative-paths.yml concluded success. This reads red until the probe key is stored where the fetch step reads it, so the criterion stays open until it passes.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: sh -c 'onex scm run-list OmniNode-ai/omnibase_infra --workflow chain-canary-c11-negative-paths.yml --limit 1 | grep -F "\"conclusion\":\"success\""'
+    cwd: .
+- id: dod-omn26117-c11-status-row
+  description: The rolling ledger holds a STATUS row of the C11 reading written by this lane.
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: sh -c 'python3 "${OMNI_PLUGIN_ROOT:?}"/skills/lane-brief/scripts/lane_brief.py grep "crit=C11 probe=c11-negative-paths verdict=" | grep -F "lane=c11probe-0710"'
+    cwd: .
