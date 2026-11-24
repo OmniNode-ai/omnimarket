@@ -16,7 +16,10 @@ lifecycle: experimental
 runtime_profiles: [effects]
 
 description: >
-  Runs the lab alarm's broker-lag handler on the runtime's tick in place of the lab host timer, and returns a typed run event. It fails by name when the alarm overlay cannot be read.
+  Runs the lab alarm's broker-lag handler on the runtime tick. When
+  container_restarts_probe is declared in the schedule overlay, it also
+  checks container restart counts without alarm delivery on that job's own
+  interval. Each due job emits a typed run event.
 
 handler:
   module: omnimarket.nodes.node_lab_alarm_scheduled_effect.handlers.handler_lab_alarm_scheduled
@@ -34,7 +37,7 @@ handler_routing:
       event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
       event_type: platform.runtime-tick
       description: >
-        Gate on the overlay's run_interval_seconds, then run the lab alarm's broker-lag handler and return the run event.
+        Gate each configured job on its run_interval_seconds and return the due run events.
 
 input_model:
   name: ModelRuntimeTick
@@ -51,7 +54,7 @@ descriptor:
   idempotent: false
   timeout_ms: 30000
   side_effects:
-    - runs the lab alarm's broker-lag handler on the runtime tick
+    - runs the broker-lag handler and, when declared, reads restart counts on the runtime tick
 
 input_subscriptions:
   - topic: "onex.intent.platform.runtime-tick.v1"
