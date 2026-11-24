@@ -1117,8 +1117,7 @@ def _check_compiles_without_errors(
         return None
 
     for lang, body in tagged_blocks:
-        if not lang and requested is not None:
-            lang = requested
+        lang = lang or requested or ""
         if lang in _YAML_FENCE_LANG_TAGS:
             try:
                 yaml.safe_load(body)
