@@ -47,7 +47,7 @@ class FakeHost:
         blocked: str = "",
         overlay: ModelReconcileOverlay | None = OVERLAY,
         ledger_name: str = "ledger.md",
-        ledger_missing: bool = False,
+        ledger_unreadable: str = "",
     ) -> None:
         self.text = "# Ledger\n" + "\n".join(rows or []) + "\n"
         self.archives = archives
@@ -56,24 +56,23 @@ class FakeHost:
         self.blocked = blocked
         self._overlay = overlay
         self.ledger_name = ledger_name
-        self.ledger_missing = ledger_missing
+        self.ledger_unreadable = ledger_unreadable
         self.roster_reads: list[Path] = []
 
     def prerequisites(self) -> str:
         return self.blocked
 
-    def ledger_path(self) -> Path:
-        return Path("/registry/ledger") / self.ledger_name
-
     def registry_root(self) -> Path:
         return Path("/registry/registry_root")
 
     def read_ledger(
-        self, ledger: Path
+        self,
     ) -> tuple[ModelReconcileSource, tuple[ModelReconcileSource, ...]]:
-        if self.ledger_missing:
-            raise ReconcilePortError(f"live ledger missing: {ledger}")
-        return ModelReconcileSource(name=ledger.name, text=self.text), self.archives
+        if self.ledger_unreadable:
+            raise ReconcilePortError(self.ledger_unreadable)
+        return ModelReconcileSource(
+            name=self.ledger_name, text=self.text
+        ), self.archives
 
     def clone_names(self, root: Path) -> tuple[str, ...]:
         del root
@@ -191,9 +190,7 @@ class FakeAppender:
         self.error = error
         self.errors = errors or {}
         self.rows: list[str] = []
-        self.ledgers: list[Path] = []
 
-    def append(self, ledger: Path, row: str) -> str:
-        self.ledgers.append(ledger)
+    def append(self, row: str) -> str:
         self.rows.append(row)
         return self.errors.get(len(self.rows) - 1, self.error)

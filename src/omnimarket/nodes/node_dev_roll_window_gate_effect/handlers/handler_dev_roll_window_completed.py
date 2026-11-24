@@ -2,12 +2,18 @@
 # SPDX-License-Identifier: MIT
 """Completed handler of node_dev_roll_window_gate_effect (OMN-19998).
 
-The deploy agent's completion of the NEWEST command the gate released ends the roll the
-gate started: it records the finish and the health, which the batching decision reads to
-hold the next release until the previous roll has finished and has been healthy for the
-overlay's bound. The agent folds a batch into one roll of its newest command, and runs an
-unfoldable batch in order, so the newest completes last either way. A completion for any
-other command changes nothing.
+The deploy agent's completion of a command the gate released ends the roll the gate started: it records the
+finish and the health, which the batching decision reads to hold the next release until the previous roll has
+finished and has been healthy for the overlay's bound.
+
+Any command of the released batch ends the roll, not only the newest. A deploy-agent instance publishes a
+completion only for a command it ran; a command the dev routing table gives to another instance is skipped by
+the instance it was not routed to, with nothing published. A batch whose newest command is a skipped one would
+otherwise never end, and the gate would hold every later merge until ``roll_completion_deadline_seconds``. The
+roll keeps its newest command as its id. The agent folds a batch into one roll of its newest and runs an
+unfoldable batch in order, so a later completion of the same batch than the one recorded replaces the
+recorded finish and health (the newest completes last, as it always did); a completion that is not later, a
+repeat of one, and a completion of a command outside the batch change nothing.
 """
 
 from __future__ import annotations
@@ -58,17 +64,19 @@ class HandlerDevRollWindowCompleted:
             return None  # no gate overlay installed: this lane's completions are not the gate's
         state = store.load()
         last = state.last_roll
-        if last is None or request.correlation_id != last.job_id:
+        if last is None:
             return None
-        if last.finished_at is not None:
+        batch = {*state.last_roll_command_ids, last.job_id}
+        if request.correlation_id not in batch:
             return None
         now = self._context.now()
         completed_at = request.completed_at
-        finished = (
-            completed_at
-            if completed_at is not None and completed_at.utcoffset() is not None
-            else now
-        )
+        stamped = completed_at is not None and completed_at.utcoffset() is not None
+        if last.finished_at is not None and (
+            not stamped or completed_at is None or completed_at <= last.finished_at
+        ):
+            return None  # the roll already ended, and this is not a later completion of its batch
+        finished = completed_at if stamped and completed_at is not None else now
         healthy = request.status is EnumRedeployStatus.SUCCESS
         store.save(
             state.model_copy(
