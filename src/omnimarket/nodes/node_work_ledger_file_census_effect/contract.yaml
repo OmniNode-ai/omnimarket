@@ -28,7 +28,18 @@ handler:
   input_model: omnimarket.nodes.node_work_ledger_file_census_effect.models.model_file_census.ModelCensusRequest
 
 # HandlerFileCensus takes the overlay, the repository source, the ratchet store, the emission sink and
-# the clock as constructor parameters, so the node runs through its own CLI, not handler_routing.
+# the clock as constructor parameters, so the node runs through its own CLI, not a subscription. The two daily-record
+# handlers are bound here by their operation; the tick constructs them in process with the history and the publisher.
+handler_routing:
+  handlers:
+    - operation: "change_daily_record"
+      handler:
+        name: "HandlerDailyChange"
+        module: "omnimarket.nodes.node_work_ledger_file_census_effect.handlers.handler_daily_change"
+    - operation: "publish_daily_record"
+      handler:
+        name: "HandlerDailyPublication"
+        module: "omnimarket.nodes.node_work_ledger_file_census_effect.handlers.handler_daily_publication"
 
 descriptor:
   node_archetype: effect
