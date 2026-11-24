@@ -156,6 +156,7 @@ class _BuildChecksRun:
                 reading=outcome.reading,
                 detail=outcome.detail,
                 run_id=outcome.run_id,
+                probe=outcome.probe,
                 at=outcome.finished_at or now,
                 merges=added,
             )
@@ -209,6 +210,17 @@ class _BuildChecksRun:
                 )
                 if refusal is not None
             )
+        # One record per check on the per-check topic, so each of the ten checks has its own reading on the bus.
+        failed.extend(
+            refusal
+            for refusal in (
+                self._attempt(
+                    record.check_id, "check", self._sink.publish_check_record, record
+                )
+                for record in records
+            )
+            if refusal is not None
+        )
         try:
             self._sink.publish_result(result)
         except OSError as exc:
@@ -390,7 +402,7 @@ class HandlerBuildDelegationChecks:
         runner: ProtocolCheckRunner = (
             recorded_results(Path(replay))
             if replay
-            else CommandCheckExecutor(settings.check_routes)
+            else CommandCheckExecutor(settings.check_routes, registry_root=root)
         )
         self._run = _BuildChecksRun(
             settings=settings,
@@ -403,6 +415,7 @@ class HandlerBuildDelegationChecks:
                 regression_topic=topics["regression_detected"],
                 alarm_topic=topics["alarm_delivery_requested"],
                 result_topic=topics["build_checks_recorded"],
+                check_topic=topics["check_recorded"],
                 bus="kafka",
                 lane=settings.bus_lane,
                 workspace=root,
