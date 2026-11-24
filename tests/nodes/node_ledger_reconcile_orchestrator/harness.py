@@ -81,7 +81,7 @@ class Rig:
                     "verify_ledger_reconcile_evidence",
                 ): HandlerVerifyEvidence(github=self.github, git=self.git, host=host),
                 (EFFECT_NODE, "append_ledger_reconcile_rows"): HandlerAppendRows(
-                    appender=self.appender, host=host
+                    appender=self.appender
                 ),
             }
         )
