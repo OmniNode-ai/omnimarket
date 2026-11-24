@@ -413,6 +413,7 @@ node_broker_load_reading_effect = "omnimarket.nodes.node_broker_load_reading_eff
 node_broker_topic_delete_effect = "omnimarket.nodes.node_broker_topic_delete_effect"
 node_broker_topic_removal_effect = "omnimarket.nodes.node_broker_topic_removal_effect"
 node_budget_policy_compute = "omnimarket.nodes.node_budget_policy_compute"
+node_build_delegation_checks = "omnimarket.nodes.node_build_delegation_checks"
 node_build_dispatch_effect = "omnimarket.nodes.node_build_dispatch_effect"
 node_build_loop = "omnimarket.nodes.node_build_loop"
 node_build_loop_orchestrator = "omnimarket.nodes.node_build_loop_orchestrator"

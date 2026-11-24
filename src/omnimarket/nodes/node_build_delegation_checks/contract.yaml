@@ -1,0 +1,134 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Build Delegation Checks (OMN-26621)
+#
+# Mechanism 2 of the regression catch: when the deploy agent completes a dev rebuild, the ten delegation checks (C11 to C17, C28,
+# C29, C30) run once against that build. Each check is recorded pass, fail or unavailable with the build id and the merges the
+# build added. A check that passed on the previous reading and fails now raises one regression event (the event model shared with
+# the probe-run regression alarm) naming those merges as suspects, and one alarm through the lab alarm delivery with a named owner.
+name: node_build_delegation_checks
+contract_name: node_build_delegation_checks
+node_name: node_build_delegation_checks
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  EFFECT: one rebuild-completed event of the dev lane is one build, identified by its git sha. The build is claimed first, so a
+  second event for the same sha runs nothing. Each of the ten checks' probes is run once against the build and recorded as pass,
+  fail or unavailable (a probe that cannot run, a lab host down or a timeout, is unavailable and never a regression) with the
+  build id and the merges the build added over the previous recorded build. A check whose last reading was a pass and that now
+  fails raises one regression event with the merges between the two builds as suspects and one alarm to the lab alarm delivery
+  command; a check already red raises nothing. The owner and the thresholds are the settings store's overlay; a missing owner
+  refuses the alarm. Every check goes through the probe's own responder chain, so no model or address is named here.
+
+handler:
+  module: omnimarket.nodes.node_build_delegation_checks.handlers.handler_build_delegation_checks_route
+  class: HandlerBuildDelegationChecksRoute
+  input_model: omnimarket.nodes.node_build_delegation_checks.models.model_build_delegation_checks.ModelRebuildCompletedObserved
+  output_model: omnimarket.nodes.node_build_delegation_checks.models.model_build_delegation_checks.ModelBuildChecksResult
+
+# HandlerBuildDelegationChecks takes its ports as constructor parameters; the route handler builds them from the overlay on the
+# first request, so the runtime builds the route with no argument.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: build_delegation_checks.run
+      topic: onex.evt.deploy.rebuild-completed.v1
+      message_category: event
+      handler:
+        name: HandlerBuildDelegationChecksRoute
+        module: omnimarket.nodes.node_build_delegation_checks.handlers.handler_build_delegation_checks_route
+      input_model: omnimarket.nodes.node_build_delegation_checks.models.model_build_delegation_checks.ModelRebuildCompletedObserved
+      output_model: omnimarket.nodes.node_build_delegation_checks.models.model_build_delegation_checks.ModelBuildChecksResult
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [probe-run, git-log-read, bus-publish, state-file-write]
+  # Ten checks, each as long as its probe (the check timeout of the overlay is 30 minutes).
+  timeout_ms: 3600000
+
+input_model:
+  name: ModelRebuildCompletedObserved
+  module: omnimarket.nodes.node_build_delegation_checks.models.model_build_delegation_checks
+  description: The deploy agent's rebuild-completed event, reduced to the sha, the runtime lane and the status.
+output_model:
+  name: ModelBuildChecksResult
+  module: omnimarket.nodes.node_build_delegation_checks.models.model_build_delegation_checks
+  description: The per-check records of the build, the regression events, the alarm requests and any refused alarm.
+
+topics:
+  rebuild_completed: onex.evt.deploy.rebuild-completed.v1
+  regression_detected: onex.evt.omnimarket.delegation-check-regression-detected.v1
+  alarm_delivery_requested: onex.cmd.omnimarket.lab-alarm-delivery-requested.v1
+  build_checks_recorded: onex.evt.omnimarket.build-delegation-checks-recorded.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.deploy.rebuild-completed.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-check-regression-detected.v1
+    - onex.cmd.omnimarket.lab-alarm-delivery-requested.v1
+    - onex.evt.omnimarket.build-delegation-checks-recorded.v1
+
+terminal_event: onex.evt.omnimarket.build-delegation-checks-recorded.v1
+
+externally_produced_topics:
+  - topic: onex.evt.deploy.rebuild-completed.v1
+    producer: "the deploy agent (scripts/deploy-agent), not a node contract"
+
+# The regression event is read by the orchestrator's dispatch and the alarm command by node_lab_alarm_deliver_effect.
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-check-regression-detected.v1
+  - onex.cmd.omnimarket.lab-alarm-delivery-requested.v1
+  - onex.evt.omnimarket.build-delegation-checks-recorded.v1
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.deploy.rebuild-completed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.deploy.rebuild-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-check-regression-detected.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-check-regression-detected.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-alarm-delivery-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-alarm-delivery-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.build-delegation-checks-recorded.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.build-delegation-checks-recorded.v1, operation: DESCRIBE}
+
+# Every setting has a tested default in the model and overlay.example.yaml; only the owner has none, so a store with no row
+# for this node loads the defaults and the node refuses the alarm instead of sending it unowned. The overlay is therefore
+# optional for the node to load (overlay.required false); the owner is set in the settings store, never by a file.
+overlay:
+  required: false
+  id: node_build_delegation_checks
+  file_env: ONEX_BUILD_DELEGATION_CHECKS_OVERLAY
+  example: overlay.example.yaml
+  document_model: omnimarket.models.overlay_documents.model_build_delegation_checks_overlay.ModelBuildDelegationChecksOverlay
+
+golden_path:
+  - "The deploy agent publishes rebuild-completed for a dev build"
+  - "The node claims the build id, runs the ten checks once and records each as pass, fail or unavailable with the build id and the merges the build added"
+  - "A check that passed on the previous reading and fails now publishes one regression event naming the merges as suspects and one alarm with the named owner"
+
+dod_evidence:
+  - test: tests/nodes/node_build_delegation_checks/test_build_delegation_checks.py::test_once_per_build_a_replayed_rebuild_runs_nothing
+    description: "AC1 - a second rebuild-completed for the same build id runs no check"
+  - test: tests/nodes/node_build_delegation_checks/test_build_delegation_checks.py::test_records_per_check_carry_the_build_id_and_the_merge_list
+    description: "AC2 - each check's row carries pass, fail or unavailable, the build id and the merges the build added"
+  - test: tests/nodes/node_build_delegation_checks/test_build_delegation_checks.py::test_suspects_name_the_merges_and_a_repeat_red_raises_nothing
+    description: "AC3 - a new red names the merges as suspects; an already red check raises none"
+  - test: tests/nodes/node_build_delegation_checks/test_build_delegation_checks.py::test_owner_required_refuses_an_unowned_alarm
+    description: "AC4 - a missing owner refuses the alarm"
+  - test: tests/nodes/node_build_delegation_checks/test_replay_1330_1445.py::test_replay_1330_1445
+    description: "AC5 - the recorded 2026-11-23 transition raises C29 and C14 with the merges between the builds"
+
+metadata:
+  transport_type: kafka
+  description: "Runs the ten delegation checks once per dev build and names the merges of a newly red check"
+  author: "OmniNode Team"
+  tags: ["effect", "delegation", "regression", "build"]

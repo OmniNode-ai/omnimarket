@@ -1,0 +1,278 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""HandlerBuildDelegationChecks: run the ten delegation checks once per dev build and name the merges of a new red (OMN-26621).
+
+One rebuild-completed event of the dev lane is one build. The build id is the event's git sha: a second event for the same
+sha runs nothing. Each check's probe is run once against the build and recorded as pass, fail or unavailable with the build id
+and the merges the build added over the previous recorded build. A check whose last reading was a pass and that now fails is a
+regression: one event in the shared event model, with the merges between the two builds as suspects, and one alarm through the
+lab alarm delivery with the named owner. A check whose last reading was already a fail raises nothing; a check that could not
+run reads unavailable and is never a regression. A missing owner refuses the alarm.
+
+The suspect merges are first-parent commits read through ``ModelAttributionCandidate``, the shape the nightly test attribution
+(node_test_selector_reading_compute) uses for the commits between two heads. They are candidates, never proof of cause.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from datetime import UTC, datetime
+
+from omnimarket.models.delegation_check_regression import (
+    EnumChangeKind,
+    EnumRegressionSource,
+    ModelChange,
+    ModelRegressionEvent,
+    ModelRunRef,
+    ModelSuspectMerge,
+    regression_event_id,
+)
+from omnimarket.models.lab_alarm_delivery import (
+    EnumDeliveryCondition,
+    ModelLabAlarm,
+    ModelLabAlarmDeliveryRequest,
+)
+from omnimarket.models.overlay_documents.model_build_delegation_checks_overlay import (
+    ModelBuildDelegationChecksOverlay,
+)
+from omnimarket.models.test_selector_reading import ModelAttributionCandidate
+from omnimarket.nodes.node_build_delegation_checks.models.model_build_delegation_checks import (
+    EnumBuildChecksStatus,
+    EnumCheckReading,
+    ModelBuildChecksResult,
+    ModelBuildRecord,
+    ModelCheckOutcome,
+    ModelCheckRecord,
+    ModelRebuildCompletedObserved,
+    ModelRefusedAlarm,
+)
+from omnimarket.nodes.node_build_delegation_checks.protocols.protocol_build_checks import (
+    ProtocolBuildStore,
+    ProtocolCheckRunner,
+    ProtocolMergeSource,
+    ProtocolRegressionSink,
+)
+
+WORKFLOW = "build-delegation-checks"
+
+
+def _suspect(candidate: ModelAttributionCandidate) -> ModelSuspectMerge:
+    return ModelSuspectMerge(
+        commit_sha=candidate.commit_sha,
+        pr_number=candidate.pr_number,
+        merged_at=candidate.merged_at,
+    )
+
+
+def _name(merge: ModelSuspectMerge) -> str:
+    return f"#{merge.pr_number}" if merge.pr_number else merge.commit_sha[:12]
+
+
+class HandlerBuildDelegationChecks:
+    """EFFECT handler. Every port is a constructor parameter; the runtime module builds them from the overlay."""
+
+    def __init__(
+        self,
+        *,
+        settings: ModelBuildDelegationChecksOverlay,
+        runner: ProtocolCheckRunner,
+        store: ProtocolBuildStore,
+        merges: ProtocolMergeSource,
+        sink: ProtocolRegressionSink,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._settings = settings
+        self._runner = runner
+        self._store = store
+        self._merges = merges
+        self._sink = sink
+        self._clock = clock or (lambda: datetime.now(UTC))
+
+    def handle(self, request: ModelRebuildCompletedObserved) -> ModelBuildChecksResult:
+        settings = self._settings
+        build_id = request.git_sha
+        if request.runtime_lane != settings.dev_runtime_lane:
+            return self._skipped(
+                build_id, f"runtime lane {request.runtime_lane} is not the dev lane"
+            )
+        if request.status != "success":
+            return self._skipped(build_id, "the rebuild did not succeed")
+
+        now = self._clock()
+        previous = self._store.previous_build(request.runtime_lane, build_id)
+        previous_id = previous.build_id if previous else ""
+        added = self._between(previous_id, build_id)
+        begun = ModelBuildRecord(
+            build_id=build_id,
+            runtime_lane=request.runtime_lane,
+            previous_build_id=previous_id,
+            started_at=now,
+            merges=added,
+        )
+        # The claim comes before any probe runs: a second event for this build, replayed or concurrent, finds it taken.
+        if not self._store.begin(begun):
+            return ModelBuildChecksResult(
+                build_id=build_id,
+                status=EnumBuildChecksStatus.ALREADY_RUN,
+                reason="the build already has a record",
+                previous_build_id=previous_id,
+            )
+
+        records: list[ModelCheckRecord] = []
+        events: list[ModelRegressionEvent] = []
+        alarms: list[ModelLabAlarmDeliveryRequest] = []
+        refused: list[ModelRefusedAlarm] = []
+        for check_id in settings.checks:
+            outcome = self._run(check_id, build_id)
+            last = self._store.last_reading(check_id, build_id)
+            record = ModelCheckRecord(
+                check_id=check_id,
+                build_id=build_id,
+                previous_build_id=previous_id,
+                reading=outcome.reading,
+                detail=outcome.detail,
+                run_id=outcome.run_id,
+                at=outcome.finished_at or now,
+                merges=added,
+            )
+            records.append(record)
+            if outcome.reading is not EnumCheckReading.FAIL:
+                continue
+            if last is None or last.reading is not EnumCheckReading.PASS:
+                continue  # already red, or never read green: no new regression
+            owner = (settings.owner or "").strip()
+            if not owner:
+                refused.append(
+                    ModelRefusedAlarm(
+                        check_id=check_id,
+                        reason="owner-missing: the settings store names no owner, so the alarm is refused, not sent unowned",
+                    )
+                )
+                continue
+            suspects = (
+                added
+                if last.build_id == previous_id
+                else self._between(last.build_id, build_id)
+            )
+            event = self._event(check_id, build_id, record, last, suspects, owner, now)
+            events.append(event)
+            alarms.append(self._alarm(event))
+
+        result = ModelBuildChecksResult(
+            build_id=build_id,
+            status=EnumBuildChecksStatus.RAN,
+            previous_build_id=previous_id,
+            records=tuple(records),
+            regressions=tuple(events),
+            alarms=tuple(alarms),
+            refused=tuple(refused),
+        )
+        self._store.finish(
+            begun.model_copy(update={"checks": tuple(records), "complete": True})
+        )
+        failed: list[ModelRefusedAlarm] = []
+        for event, alarm in zip(events, alarms, strict=True):
+            try:
+                self._sink.publish_regression(event)
+                self._sink.request_alarm(alarm)
+            except OSError as exc:
+                failed.append(
+                    ModelRefusedAlarm(
+                        check_id=event.check_id,
+                        reason=f"publish-failed: {type(exc).__name__}",
+                    )
+                )
+        if failed:
+            result = result.model_copy(
+                update={"refused": result.refused + tuple(failed)}
+            )
+        self._sink.publish_result(result)
+        return result
+
+    def _skipped(self, build_id: str, reason: str) -> ModelBuildChecksResult:
+        return ModelBuildChecksResult(
+            build_id=build_id, status=EnumBuildChecksStatus.SKIPPED, reason=reason
+        )
+
+    def _between(self, base_id: str, head_id: str) -> tuple[ModelSuspectMerge, ...]:
+        if not base_id:
+            return ()
+        return tuple(_suspect(c) for c in self._merges.merges_between(base_id, head_id))
+
+    def _run(self, check_id: str, build_id: str) -> ModelCheckOutcome:
+        try:
+            return self._runner.run(
+                check_id, build_id, self._settings.check_timeout_seconds
+            )
+        except Exception as exc:
+            return ModelCheckOutcome(
+                reading=EnumCheckReading.UNAVAILABLE,
+                detail=f"the probe could not run: {type(exc).__name__}",
+            )
+
+    def _event(
+        self,
+        check_id: str,
+        build_id: str,
+        red: ModelCheckRecord,
+        green: ModelCheckRecord,
+        suspects: tuple[ModelSuspectMerge, ...],
+        owner: str,
+        now: datetime,
+    ) -> ModelRegressionEvent:
+        latency = max(0.0, (now - red.at).total_seconds())
+        return ModelRegressionEvent(
+            event_id=regression_event_id(check_id, build_id),
+            check_id=check_id,
+            repository=self._settings.repository,
+            workflow=WORKFLOW,
+            last_green=ModelRunRef(
+                run_id=green.run_id or green.build_id, at=green.at, ref=green.build_id
+            ),
+            first_red=ModelRunRef(
+                run_id=red.run_id or build_id, at=red.at, ref=build_id
+            ),
+            changes=(
+                ModelChange(
+                    kind=EnumChangeKind.DEV_BUILD,
+                    at=now,
+                    ref=build_id,
+                    summary=f"dev build {build_id[:12]} over {green.build_id[:12]}, {len(suspects)} merge(s) added",
+                ),
+            ),
+            owner=owner,
+            alarm_lane=self._settings.alarm_lane,
+            detected_at=now,
+            alarm_latency_seconds=latency,
+            late=latency > self._settings.max_alarm_latency_seconds,
+            source=EnumRegressionSource.DEV_BUILD,
+            build_id=build_id,
+            previous_build_id=green.build_id,
+            suspects=suspects,
+        )
+
+    def _alarm(self, event: ModelRegressionEvent) -> ModelLabAlarmDeliveryRequest:
+        names = (
+            ", ".join(_name(m) for m in event.suspects)
+            or "none (the build added no merge)"
+        )
+        detail = (
+            f"{event.check_id} passed on build {event.previous_build_id[:12]} and fails on build {event.build_id[:12]}; "
+            f"owner {event.owner}; suspect merges: {names}"
+        )
+        condition = self._settings.alarm_condition
+        return ModelLabAlarmDeliveryRequest(
+            correlation_id=event.event_id,
+            condition=condition,
+            outcome=EnumDeliveryCondition.ALARM,
+            # One subject per regression: a check that recovers and goes red on a later build is a new episode.
+            alarms=(
+                ModelLabAlarm(
+                    condition=condition, subject=event.event_id, detail=detail
+                ),
+            ),
+            evidence=f"regression event {event.event_id}",
+        )
+
+
+__all__ = ["WORKFLOW", "HandlerBuildDelegationChecks"]
