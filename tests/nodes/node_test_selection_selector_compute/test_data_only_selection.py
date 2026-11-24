@@ -128,11 +128,23 @@ LIBYAML_FILES = (
 )
 
 
+# Baselined files that import the one shared libyaml loader instead of spelling it again.
+SHARED_LOADER_FILES = frozenset({"scripts/ci/check_contract_publish_parity.py"})
+SHARED_LOADER_MODULE = REPO_ROOT / "src/omnimarket/handlers/libyaml_loader.py"
+
+
 @pytest.mark.parametrize("relative", LIBYAML_FILES)
 def test_data_only_contract_readers_parse_with_the_libyaml_loader(
     relative: str,
 ) -> None:
     text = (REPO_ROOT / relative).read_text(encoding="utf-8")
+    if relative in SHARED_LOADER_FILES:
+        # A baselined file may not grow, so it takes the loader from the shared module.
+        assert "from omnimarket.handlers.libyaml_loader import" in text, relative
+        assert "yaml.safe_load(" not in text, relative
+        shared = (SHARED_LOADER_MODULE).read_text(encoding="utf-8")
+        assert "CSafeLoader" in shared, relative
+        return
     assert "CSafeLoader" in text, relative
     assert "yaml.safe_load(path.read_text" not in text, relative
 

@@ -40,15 +40,9 @@ import re
 import sys
 from pathlib import Path
 
-import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
-# libyaml's loader reads the same documents about ten times faster than the pure-Python one. The
-# gate parses every node contract (over a thousand), and that parse was nearly all of its time
-# (OMN-26270). The fallback keeps a PyYAML built without libyaml working.
-YAML_LOADER: type[yaml.SafeLoader] | type[yaml.CSafeLoader] = getattr(
-    yaml, "CSafeLoader", yaml.SafeLoader
-)
+from omnimarket.handlers.libyaml_loader import load_yaml_text
 
 # Evidence that a node's Python actually reaches the bus. Deliberately broad:
 # the gate's job is to catch contracts with ZERO publish surface, not to police
@@ -83,7 +77,7 @@ def scan_publish_parity(root: Path) -> list[ModelPublishParityFinding]:
     """Return one finding per node that declares an unpublished topic."""
     findings: list[ModelPublishParityFinding] = []
     for contract_path in sorted(root.glob("*/contract.yaml")):
-        raw = yaml.load(contract_path.read_text(encoding="utf-8"), Loader=YAML_LOADER)
+        raw = load_yaml_text(contract_path.read_text(encoding="utf-8"))
         if not isinstance(raw, dict):
             continue
         event_bus = raw.get("event_bus") or {}

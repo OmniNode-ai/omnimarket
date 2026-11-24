@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.handlers import libyaml_loader
 from scripts.ci import check_contract_publish_parity
 from scripts.ci.check_contract_publish_parity import (
     ModelPublishParityFinding,
@@ -102,7 +103,9 @@ def test_the_scanner_parses_contracts_with_the_libyaml_loader_when_present() -> 
     """The pure-Python loader is ~10x slower and was nearly all of the gate's time."""
     expected = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
-    assert check_contract_publish_parity.YAML_LOADER is expected
+    assert libyaml_loader.YAML_LOADER is expected
+    assert check_contract_publish_parity.load_yaml_text is libyaml_loader.load_yaml_text
+    assert libyaml_loader.load_yaml_text("a: [1, 2]\n") == {"a": [1, 2]}
 
 
 @pytest.mark.unit
