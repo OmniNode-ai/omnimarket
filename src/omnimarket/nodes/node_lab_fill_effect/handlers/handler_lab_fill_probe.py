@@ -47,9 +47,7 @@ class HandlerLabFillProbe:
         notes: list[str] = []
         if not request.force:
             try:
-                delivered = self._ledger.status_row_time(
-                    request.ledger_path, request.run_key
-                )
+                delivered = self._ledger.status_row_time(request.run_key)
             except LabFillPortError as exc:
                 delivered = None
                 notes.append(f"precheck: {exc}")

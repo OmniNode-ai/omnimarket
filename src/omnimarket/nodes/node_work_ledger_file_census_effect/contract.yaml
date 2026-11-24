@@ -31,20 +31,19 @@ handler:
   input_model: omnimarket.nodes.node_work_ledger_file_census_effect.models.model_file_census.ModelCensusRequest
 
 # HandlerFileCensus takes the overlay, the repository source, the ratchet store, the emission sink and
-# the clock as constructor parameters, and the daily-record publication handler takes the history and the publisher, so
-# the node runs through its own CLI and tick. The two daily-record handlers are bound here, beside the census handler,
-# so the contract names every handler the node owns.
-handler_routing:
-  routing_strategy: operation_match
-  handlers:
-    - operation: census_daily_change
-      handler:
-        name: HandlerDailyChange
-        module: omnimarket.nodes.node_work_ledger_file_census_effect.handlers.handler_daily_change
-    - operation: census_daily_publication
-      handler:
-        name: HandlerDailyPublication
-        module: omnimarket.nodes.node_work_ledger_file_census_effect.handlers.handler_daily_publication
+# the clock as constructor parameters, and the daily-record handlers take the history and the publisher, which the
+# runtime's boot-time auto-wiring cannot supply. So the node declares no handler_routing: the census runs through its own
+# CLI and the tick constructs the two daily-record handlers in process, and they are bound here, beside the census
+# handler, so the contract names every handler the node owns.
+in_process_handlers:
+  census_daily_change:
+    handler:
+      module: "omnimarket.nodes.node_work_ledger_file_census_effect.handlers.handler_daily_change"
+      class: "HandlerDailyChange"
+  census_daily_publication:
+    handler:
+      module: "omnimarket.nodes.node_work_ledger_file_census_effect.handlers.handler_daily_publication"
+      class: "HandlerDailyPublication"
 
 descriptor:
   node_archetype: effect

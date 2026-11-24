@@ -37,9 +37,16 @@ TERMINAL_EVENT_CONSUMED_DEBT: frozenset[str] = frozenset(
 )
 
 
+#: libyaml's loader reads the same documents about ten times faster than the pure-Python one. This
+#: file is in the always set, so every data-only pull request runs it (OMN-26270).
+_LOADER: type[yaml.SafeLoader] | type[yaml.CSafeLoader] = getattr(
+    yaml, "CSafeLoader", yaml.SafeLoader
+)
+
+
 def _contracts() -> dict[str, dict[str, Any]]:
     return {
-        path.parent.name: yaml.safe_load(path.read_text(encoding="utf-8"))
+        path.parent.name: yaml.load(path.read_text(encoding="utf-8"), Loader=_LOADER)
         for path in sorted(NODES.glob("node_*/contract.yaml"))
     }
 
