@@ -124,9 +124,9 @@ dod_evidence:
         check_value: "uv run pytest tests/landing/test_running_read_due_cli.py -q"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn26433-due-call-line-deploy-assessment"
-    description: "Deploy assessment: the PR adds a module entry point to the pure node node_running_read_due_compute and names it in the node's runtime_dispatch callers. No migration, no prod mutation, no new topic, no ledger write: the entry point prints rows and appends none. The check reads the node contract and fails when the caller is not named."
+    description: "Deploy assessment: the PR adds a module entry point to the pure node node_running_read_due_compute and describes its call line in the node's runtime_dispatch external_trigger; the caller list keeps only the tick handler outside the node directory. No migration, no prod mutation, no new topic, no ledger write: the entry point prints rows and appends none. The check reads the node contract and fails when the call line is not described."
     source: "manual"
     checks:
       - check_type: "command"
-        check_value: "grep -q 'runtime_running_read_due.py' src/omnimarket/nodes/node_running_read_due_compute/contract.yaml"
+        check_value: "grep -q 'python -m omnimarket.nodes.node_running_read_due_compute' src/omnimarket/nodes/node_running_read_due_compute/contract.yaml"
         cwd: "."
