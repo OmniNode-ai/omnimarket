@@ -13,6 +13,8 @@ requirements:
     statement: "AC2: the serve unit's LAB_WORK_ROOT is the host row's declared work root, and a row with no work root keeps the home-directory root -- falsifier: uv run pytest tests -q -k work_root_declared in omnimarket (the host rows themselves, each on its data drive, are held by tests/test_lab_host_work_root_declared.py in the overlays repository)"
   - id: AC3
     statement: "AC3: an install is refused when the live volume under the work root is above 85 percent used and admitted at or below it -- falsifier: uv run pytest tests -q -k work_root_volume_bar, failing with the bar removed"
+  - id: AC7
+    statement: "AC7: the serve unit installer links the registry root's omni_worktrees to the host row's lab_worktree_root, never over a directory that holds entries or a link to another place -- falsifier: uv run pytest tests/nodes/node_host_installer_serve_units -q -k worktree_root"
 evidence_requirements:
 - kind: tests
   description: The serve unit and volume bar tests at the pushed head.
@@ -50,6 +52,8 @@ dod_evidence:
 - id: dod-omn26371-worktree-root
   description: The serve unit installer points the registry root's omni_worktrees at the host row's declared lab_worktree_root, never over a directory that holds entries, never over a link to another place, and refuses a root on a volume above 85 percent used. The test written first failed on dev with extra_forbidden for hosts.0.lab_worktree_root.
   source: manual
+  binds_ac:
+  - AC7
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_host_installer_serve_units -q --no-cov -n 0 -p no:randomly -k worktree_root

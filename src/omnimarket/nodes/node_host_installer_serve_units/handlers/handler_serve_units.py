@@ -28,13 +28,13 @@ from omnimarket.handlers.work_root_volume_bar import (
     read_live_volume,
     refuse_work_root_over_bar,
 )
-from omnimarket.models.overlay_keys import ModelLabHostRow, ModelLabHostsTable
-from omnimarket.nodes.node_host_installer_serve_units.handlers.handler_worktree_root import (
+from omnimarket.handlers.worktree_root_link import (
     WorktreeRootPlan,
     WorktreeRootRefusalError,
     apply_worktree_root,
     plan_worktree_root,
 )
+from omnimarket.models.overlay_keys import ModelLabHostRow, ModelLabHostsTable
 from omnimarket.nodes.node_host_installer_serve_units.models.model_serve_units import (
     ModelServeUnitsOverlay,
     ModelServeUnitsRequest,
