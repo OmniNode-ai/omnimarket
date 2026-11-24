@@ -1,0 +1,67 @@
+schema_version: 1.0.0
+ticket_id: OMN-26121
+title: The M4 beta board check C15 (probe chain-canary) reads green against what exists now, or its real product defect is named with a ticket
+summary: The stability gateway key node stores its key under the name the stability probes read from the stability Infisical (STABILITY_TEST_CHAIN_CANARY_GATEWAY_API_KEY in /shared/env), so the node's output and the probes' fetch step agree on one name; the probe-facing name is the canonical side because the omnibase_infra workflows and their test pin it.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26121-key-name
+  statement: The key the stability gateway key node generates is stored under the name the stability probes fetch, and a test in this repository pins the name.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the cause of the red is named from the probe''s newest failure text, with the run id and the failure lines read -- falsifier: the lane report names a cause with no run id or no quoted failure line'
+  - id: AC2
+    statement: 'AC2: the probe''s next run reads green against what exists now, with no retired thing restored and no clause removed unless a ruling retired the fact it graded -- falsifier: the newest chain-canary run reads red, or the clause table in the report lists a removed assertion that no ruling retires'
+  - id: AC3
+    statement: 'AC3: the lane writes one STATUS row `crit=C15 probe=chain-canary verdict=<green|red> read_at=<UTC>` -- falsifier: a ledger grep for `crit=C15 probe=chain-canary` finds no STATUS row after this ticket''s creation'
+evidence_requirements:
+- kind: tests
+  description: The stability gateway key node tests pass at the pushed head, including the test that the stored key name equals the probe-read name.
+  command: uv run pytest tests/nodes/node_stability_gateway_key_provision_effect -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26121-ac1
+  description: 'AC1 (cause, from the probes'' failure text): the name the node stored (STABILITY_GATEWAY_API_KEY) differed from the name the probe workflows fetch (STABILITY_TEST_CHAIN_CANARY_GATEWAY_API_KEY), so the fetch step answered HTTP 404. The seam test fails on the old name and passes on the probe-read name; the run ids and failure lines are in the lane report.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_stability_gateway_key_provision_effect/test_provision_stability.py -q -n 0 --no-cov -p no:cacheprovider -k stored_key_name
+    cwd: .
+- id: dod-omn26121-ac2
+  description: 'AC2 (hosted proxy): the node run path stores the key under the probe-read name, asserted by the handler test over the declared secret store key. The probe run itself is read in the lane report; C15 no longer carries a gateway credential (the chain canary submits over the bus), so its own red is a separate cause named in the report.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_stability_gateway_key_provision_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26121-ac3
+  description: 'AC3: the STATUS row `crit=C15 probe=chain-canary` is written to the rolling ledger by the lane; the ledger is not reachable from hosted CI, so only the local Done gate runs this unbound check.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_stability_gateway_key_provision_effect -q --no-cov
+- id: dod-omn26121-ac3-hosted
+  description: 'AC3 (hosted part): the STATUS row itself is written to the rolling ledger by the lane and cannot be read from hosted CI; the hosted check pins only the seam the row reports on, the stored key name equal to the probe-read name, which fails at the merge base and passes at the head.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_stability_gateway_key_provision_effect/test_provision_stability.py -q -n 0 --no-cov -p no:cacheprovider -k stored_key_name
+    cwd: .
+- id: dod-omn26121-integration-proof
+  description: the stability gateway key node tests and the secret store key generation tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26121 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_stability_gateway_key_provision_effect tests/unit/nodes/node_secret_store_effect/test_generate_key.py -q --no-cov

@@ -220,3 +220,21 @@ async def test_a_malformed_load_raises_for_the_dead_letter_and_stores_nothing() 
             == 0
         )
         assert published == []
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_setting_record_with_operator_paths_is_stored_and_published_as_the_plain_record() -> (
+    None
+):
+    """The record a setting set publishes carries ``operator_paths``; the real write binds, and the snapshot is the plain record."""
+    async with _migrated() as (runner, connection, published):
+        loaded = record()
+        payload = {
+            **loaded.model_dump(mode="json"),
+            "operator_paths": ["floor_fill_live/pool_engine"],
+        }
+        assert await runner.project_event("t", payload, META)
+        compared = compare_documents(TABLE, await _stored(connection))
+        assert compared.equal, compared.differing
+        assert ModelOverlayStoreRecord.model_validate_json(published[-1][2]) == loaded

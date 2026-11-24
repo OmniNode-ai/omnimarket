@@ -35,6 +35,13 @@ requirements:
       - id: "AC4"
         statement: |-
           AC4: the placement CLAIM carries the sidecar lane name, and a replay of the 18 refused create payloads gives zero refusals -- falsifier: uv run pytest tests/ -k sidecar_name_replay exits non-zero
+  - id: "req-omn26216-ac5"
+    statement: |-
+      the failure alarm router alarms delegation failure streaks, pr-create refusal causes and seam deadline readings from ledger rows, with its thresholds read from its contract.
+    acceptance:
+      - id: "AC5"
+        statement: |-
+          AC5: the failure alarm router alarms the 2026-11-23 delegation failures by 05:30Z and each pr-create refusal cause and the seam drill within 10 minutes of the first row, with the latency budget and the cadence read from its contract -- falsifier: uv run pytest tests/nodes/node_failure_alarm_router_effect -q --no-cov exits non-zero
 evidence_requirements:
   - kind: "tests"
     description: "AC1: the focused tests named *reconcile_failure_alert*."
@@ -48,6 +55,9 @@ evidence_requirements:
   - kind: "tests"
     description: "AC4: the focused tests named *sidecar_name_replay*."
     command: "uv run pytest tests/nodes/node_lab_fill_plan_compute/test_placement_claim_sidecar_name.py -k sidecar_name_replay -q --no-cov"
+  - kind: "tests"
+    description: "AC5: the failure alarm router tests."
+    command: "uv run pytest tests/nodes/node_failure_alarm_router_effect -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -84,6 +94,14 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_lab_fill_plan_compute/test_placement_claim_sidecar_name.py -k sidecar_name_replay -q --no-cov"
+        cwd: "."
+  - id: "dod-omn26216-alarmwire-replay"
+    description: "The failure alarm router alarms the 2026-11-23 delegation failures by 05:30Z, each pr-create refusal cause and the seam drill within 10 minutes of the first row, with the latency budget and the cadence read from its contract. The hosted runner runs them from the repository root with no lab host, no ledger and no network."
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_failure_alarm_router_effect -q --no-cov"
         cwd: "."
   - id: "dod-omn26216-integration-proof"
     description: >-
