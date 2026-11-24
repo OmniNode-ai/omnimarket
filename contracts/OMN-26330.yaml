@@ -29,6 +29,23 @@ requirements:
         statement: >-
           AC3: each moved reader has a test that fails on the old code and passes on the change, and the
           node tests stay green -- falsifier: the focused pytest run below exits non-zero
+  - id: req-omn26330-group2-part2
+    statement: The ledger reconciler reads its window of rows and appends its rows over the bus with no ledger file path variable set, and the lab fill lane brief names no ledger file.
+    acceptance:
+      - id: AC4
+        statement: >-
+          AC4: the census prints no hit for local_ledger_reconcile_adapters.py or
+          handler_lab_fill_lane_render.py -- falsifier: the census run with --per-file --verbose
+          prints a hit for one of those two files
+      - id: AC5
+        statement: >-
+          AC5: the ratchet rows of those two files and of the lab fill parity fixture are lowered with
+          the census node's --lower and no row is raised or added -- falsifier: git diff origin/dev
+          -- the ratchet file shows a raised or added row, or the census run exits non-zero
+      - id: AC6
+        statement: >-
+          AC6: the reconciler adapters and the lab fill brief have tests that fail on the old code
+          and pass on the change -- falsifier: the focused pytest run below exits non-zero
 evidence_requirements:
   - kind: tests
     description: The ruling recovery and operator capture tests pass at the pushed head; the new bus-read tests fail at the merge base.
@@ -51,13 +68,13 @@ dod_evidence:
         check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_omn26330_cleared_files.py -q --no-cov -n 0 -p no:randomly
         cwd: .
   - id: dod-omn26330-ac2-ratchet
-    description: The census exits 0 with the lowered per-file rows, the ratchet total reads 133 and no cleared file keeps a row (at the merge base the ratchet reads 140 and still holds those rows, so this fails there).
+    description: The census exits 0 with the lowered per-file rows, the ratchet total reads at most 124 and no cleared file keeps a row (at the merge base the ratchet reads 140 and still holds those rows, so this fails there).
     source: manual
     binds_ac: [AC2]
     checks:
       - check_type: command
         check_value: >-
-          bash -o pipefail -c 'env ONEX_LEDGER_CENSUS_ROOT="$(dirname "$PWD")" uv run --frozen python -m omnimarket.nodes.node_work_ledger_file_census_effect --packaged-overlay --repos omnimarket --directory omnimarket="$PWD" --per-file && r=src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml && grep -qE "^  omnimarket: 133$" "$r" && ! grep -E "handler_ruling_recovery.py|node_operator_capture_effect/(contract.yaml|handlers/capture_ports.py|runtime_capture_cli.py)" "$r"'
+          bash -o pipefail -c 'env ONEX_LEDGER_CENSUS_ROOT="$(dirname "$PWD")" uv run --frozen python -m omnimarket.nodes.node_work_ledger_file_census_effect --packaged-overlay --repos omnimarket --directory omnimarket="$PWD" --per-file && r=src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml && awk "/^  omnimarket: /{exit !(\$2<=124)}" "$r" && ! grep -E "handler_ruling_recovery.py|node_operator_capture_effect/(contract.yaml|handlers/capture_ports.py|runtime_capture_cli.py)" "$r"'
         cwd: .
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_omn26330_cleared_files.py -q --no-cov -n 0 -p no:randomly
@@ -85,6 +102,30 @@ dod_evidence:
       - check_type: command
         check_value: >-
           bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_operator_capture_effect/handlers/ledger_read.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "def bus_relevant_rows" > /dev/null'
+        cwd: .
+  - id: dod-omn26330-ac4-ac5-cleared
+    description: The census exits 0 and no row of the two cleared files remains (at the merge base both files hold a row, so this fails there).
+    source: manual
+    binds_ac: [AC4, AC5]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_omn26330_cleared_files.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn26330-ac6-tests
+    description: The reconciler adapter bus tests and the lab fill brief test pass at the head and fail at the merge base.
+    source: manual
+    binds_ac: [AC6]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_ledger_reconcile_effect tests/nodes/node_ledger_reconcile_orchestrator tests/nodes/node_lab_fill_plan_compute/test_lab_fill_brief_names_no_ledger_file.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn26330-deploy-reconcile
+    description: 'Deploy probe the hosted runner can run: the bus appender class exists in the reconciler adapters at the checked-out commit on GitHub; it does not exist at the merge base.'
+    source: manual
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_ledger_reconcile_effect/protocols/local_ledger_reconcile_adapters.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class BusLedgerAppender" > /dev/null'
         cwd: .
   - id: dod-omn26330-integration-proof
     description: The pushed head ran the touched node tests on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
