@@ -77,6 +77,14 @@ handler_routing:
       event_model:
         name: ModelGenerateKeyRequest
         module: omnimarket.models.secret_store.model_generate_key_request
+    # OMN-24611: deliver a declared generated key into the host env file its env_file_deliveries entry names; the answer never carries the value.
+    - operation: deliver_key_to_env_file
+      handler:
+        name: HandlerDeliverKeyToEnvFile
+        module: omnimarket.nodes.node_secret_store_effect.handlers.handler_deliver_key
+      event_model:
+        name: ModelDeliverKeyRequest
+        module: omnimarket.models.secret_store.model_deliver_key_request
     # OMN-22417: a house model key (LLM_<PROVIDER>_API_KEY) is the secret of that
     # name in the house folder /shared/env. In process the result carries the
     # value to the host's harness login; on the bus it carries the outcome, the
@@ -119,6 +127,21 @@ generated_keys:
   nut_secondary_password: {folder: /shared/env, key: NUT_SECONDARY_PASSWORD, bytes: 24, prefix: ""}
   # (OMN-24115) the dev probe user's password, read by node_dev_identity_provision_effect
   dev_probe_user_password: {folder: /shared/env, key: DEV_PROBE_USER_PASSWORD, bytes: 24, prefix: "Dp1!"}
+  # (OMN-24611) the dev-only signing key of the dev deploy agent; the live agent's key is a different name and is never read or written here.
+  deploy_agent_dev_signing_key: {folder: /shared/env, key: DEPLOY_AGENT_DEV_HMAC_SECRET, bytes: 32, prefix: ""}
+
+# Deliveries of generated keys into a host env file (OMN-24611): one operation writes the stored
+# value of the generated_keys entry `key_id` names as one `<env_name>=<value>` line into the file
+# `home_relative_path` names under the user's home, mode `mode`, so the dev deploy agent's unit
+# reads this file through EnvironmentFile= and no person types or sees the value.
+# The mode is enforced on every run: a target left at any other mode is chmodded back to `mode`,
+# and no `mode` wider than 0600 is accepted.
+env_file_deliveries:
+  deploy_agent_dev_signing_key:
+    key_id: deploy_agent_dev_signing_key
+    home_relative_path: .omnibase/deploy-agent-dev-signing-key.env
+    env_name: DEPLOY_AGENT_HMAC_SECRET
+    mode: "0600"
 
 # A reference's first segment, when it names one of these, maps through it:
 # secret://onex/captured/<digest> is key CAPTURED_<digest> in folder /captured
@@ -179,3 +202,4 @@ metadata:
     - "OMN-21921"
     - "OMN-22417"
     - "OMN-23695"
+    - "OMN-24611"

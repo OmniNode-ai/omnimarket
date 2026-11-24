@@ -232,3 +232,4 @@ def test_the_contract_declares_the_generated_key_and_the_generate_key_operation(
     assert int(block["bytes"]) >= 24
     operations = [h["operation"] for h in raw["handler_routing"]["handlers"]]
     assert "generate_key" in operations
+    assert "deliver_key_to_env_file" in operations
