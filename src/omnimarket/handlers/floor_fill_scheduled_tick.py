@@ -11,11 +11,14 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Any, NamedTuple
 
+from omnibase_core.utils.util_run_coro_sync import run_coro_sync
+
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
     resolve_setting,
 )
+from omnimarket.handlers.overlay_store.reader_store import StoreOverlayReader
 from omnimarket.nodes.node_floor_fill_orchestrator.container.container_inmemory import (
     build_inmemory_handler,
 )
@@ -60,11 +63,21 @@ def run_floor_fill_tick(
     environ: Mapping[str, str] | None,
     build_handler: Callable[[Any], Any] | None = None,
     store: ProtocolFloorStateStore | None = None,
+    overlay_reader: StoreOverlayReader | None = None,
 ) -> ModelFloorFillTickOutcome:
-    """Read the fill overlay and run one tick; raises ``NodeOverlayError`` when it cannot be read."""
-    document = load_structured_overlay(
-        fill_overlay_id, ModelFloorFillOverlayDocument, environ
-    )
+    """Read the fill overlay and run one tick; raises ``NodeOverlayError`` when it cannot be read.
+
+    With ``overlay_reader`` (built over the injected settings store) the overlay is read from the store and never
+    from a file; without one the files are read as before, until the cutover removes that path.
+    """
+    if overlay_reader is not None:
+        document = run_coro_sync(
+            overlay_reader.read_model(fill_overlay_id, ModelFloorFillOverlayDocument)
+        )
+    else:
+        document = load_structured_overlay(
+            fill_overlay_id, ModelFloorFillOverlayDocument, environ
+        )
     config = document.floor_fill
     build = build_handler
     if build is None:
