@@ -23,7 +23,7 @@ from omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers.handler_pr_dupl
     load_stack_config,
     read_request,
 )
-from tests.helpers.fake_ledger_rows import FakeLedgerRows
+from tests.helpers.fake_ledger_rows import FakeLedgerRows, quiet_heartbeat_row
 from tests.unit.handlers.scm.test_scm_duplicate_guard import (
     BASELINE,
     LANE,
@@ -103,7 +103,7 @@ def snapshot(world: World) -> ModelPrDuplicateGuardRequest:
         lane=LANE,
         cause=None,
         watcher_state=world.state,
-        ledger_reader=FakeLedgerRows(),
+        ledger_reader=FakeLedgerRows(lines=[quiet_heartbeat_row()]),
         clone=world.root / "omnibase_core",
         worktree=world.lane,
     )
