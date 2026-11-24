@@ -31,7 +31,11 @@ from omnimarket.nodes.node_tenant_provision_effect.handlers.tenant_identity_post
 
 KEY_VALUE = "onxk_fake-generated-gateway-key-value"
 FOLDER = "/shared/env"
-KEY_NAME = "STABILITY_GATEWAY_API_KEY"
+# The name the stability probes read from the stability Infisical (omnibase_infra's chain-canary and C16 workflows fetch
+# CHAIN_CANARY_GATEWAY_API_KEY under this name from /shared/env): spelled here, in this repository, so the node's stored
+# name is pinned against it without reading the other repository.
+PROBE_READS_KEY_NAME = "STABILITY_TEST_CHAIN_CANARY_GATEWAY_API_KEY"
+KEY_NAME = PROBE_READS_KEY_NAME
 
 
 class FakeSettingStore:

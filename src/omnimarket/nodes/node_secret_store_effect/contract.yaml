@@ -119,8 +119,9 @@ generated_keys:
   nut_secondary_password: {folder: /shared/env, key: NUT_SECONDARY_PASSWORD, bytes: 24, prefix: ""}
   # (OMN-24115) the dev probe user's password, read by node_dev_identity_provision_effect
   dev_probe_user_password: {folder: /shared/env, key: DEV_PROBE_USER_PASSWORD, bytes: 24, prefix: "Dp1!"}
-  # (OMN-26586) the stability gateway key node_stability_gateway_key_provision_effect hashes into tenant_api_keys; prefix is the gateway's API key prefix
-  stability_gateway_api_key: {folder: /shared/env, key: STABILITY_GATEWAY_API_KEY, bytes: 32, prefix: "onxk_"}
+  # (OMN-26586) the stability gateway key node_stability_gateway_key_provision_effect hashes into tenant_api_keys; prefix is the gateway's API key prefix.
+  # (OMN-26121) `key` is the name the stability probes (C15, C16, C11) read from the stability Infisical, so it carries their STABILITY_TEST_ name.
+  stability_gateway_api_key: {folder: /shared/env, key: STABILITY_TEST_CHAIN_CANARY_GATEWAY_API_KEY, bytes: 32, prefix: "onxk_"}
 
 # A reference's first segment, when it names one of these, maps through it:
 # secret://onex/captured/<digest> is key CAPTURED_<digest> in folder /captured

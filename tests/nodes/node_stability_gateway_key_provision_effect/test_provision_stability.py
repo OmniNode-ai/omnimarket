@@ -29,6 +29,7 @@ from .fakes import (
     FOLDER,
     KEY_NAME,
     KEY_VALUE,
+    PROBE_READS_KEY_NAME,
     FakeIdentityStore,
     FakeKeyGenerator,
     FakeSettingStore,
@@ -205,3 +206,13 @@ def test_seam_generated_key_id_is_declared_by_the_secret_store_with_the_gateway_
     ][key_id]
     assert declared["prefix"] == "onxk_"
     assert declared["bytes"] >= 32
+
+
+def test_seam_stored_key_name_is_the_name_the_probes_read() -> None:
+    contract = yaml.safe_load((NODE / "contract.yaml").read_text(encoding="utf-8"))
+    key_id = contract["stability_only"]["generated_key_id"]
+    declared = yaml.safe_load(STORE_CONTRACT.read_text(encoding="utf-8"))[
+        "generated_keys"
+    ][key_id]
+    assert declared["key"] == PROBE_READS_KEY_NAME
+    assert declared["folder"] == FOLDER
