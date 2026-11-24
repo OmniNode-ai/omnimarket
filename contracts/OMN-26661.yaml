@@ -43,6 +43,13 @@ dod_evidence:
   - check_type: test_passes
     check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_code_eval_trial_orchestrator/test_injected_trial.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26661-suite-reader-recorded-task
+  description: The suite reader follows the committed suite's recorded checks, check files and held paths for a task it records, so the six rebuilt tasks are all admitted, and the score request carries the recorded item ids.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_code_eval_trial_orchestrator/test_suite_reader_recorded_task.py tests/nodes/node_code_eval_trial_orchestrator/test_code_eval_suite_admission.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn26661-integration-proof
   description: Hosted CI cannot reach a lab host, so only the local Done gate runs this unbound check, the focused tests of the change at the sha on a lab host.
   source: manual
