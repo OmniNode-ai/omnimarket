@@ -26,6 +26,7 @@ from omnimarket.nodes.node_hook_delegate_effect.handlers.handler_hook_delegate i
     write_switches,
 )
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_claude import (
+    HOOK_ASSETS_UNREADABLE_FIX,
     SWITCH_OVERRIDE_FIX,
     HandlerSetupClaude,
 )
@@ -130,11 +131,11 @@ def _report(
     generic_unreadable_assets = (
         hooks_obs is not None
         and hooks_obs.status == "action_required"
-        and "Install or repair the packaged delegation hook assets"
-        in str(hooks_obs.fix or "")
+        and hooks_obs.fix == HOOK_ASSETS_UNREADABLE_FIX
     )
+    # Only `status` reports "off"; `on` that failed reports "not_ready" and keeps its repair.
     healthy_off = (
-        status != "on"
+        status == "off"
         and cause is None
         and claude_code == "ready"
         and not delegation_switch_enabled()

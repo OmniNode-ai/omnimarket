@@ -7,16 +7,14 @@ import pytest
 from click.testing import CliRunner
 
 from omnimarket.nodes.node_onex_setup_effect import cli_delegation
+from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_claude import (
+    HOOK_ASSETS_UNREADABLE_FIX as INSTALL_HINT,
+)
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_observation import (
     ModelSetupObservation,
 )
 
 pytestmark = pytest.mark.unit
-
-INSTALL_HINT = (
-    "Install or repair the packaged delegation hook assets with onex install "
-    "omninode-claude and check the selected Claude settings, then retry setup."
-)
 
 
 class _Step:
@@ -82,3 +80,26 @@ def test_ac2_assets_really_broken_keeps_the_repair_command(
     text, document = _run_status(monkeypatch, tmp_path, switch=True)
     assert "onex install" in text
     assert "onex install" in str(document["fix"])
+
+
+def test_on_that_fails_to_install_names_the_repair_not_healthy_off(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """`onex delegation on` with really broken assets must not read as healthy off."""
+    plugin = _obs("claude-plugin", "success")
+    hooks = _obs("claude-hooks", "action_required", INSTALL_HINT)
+    monkeypatch.setattr(
+        cli_delegation,
+        "HandlerSetupClaude",
+        lambda name, _replace=False: _Step(
+            plugin if name == "claude-plugin" else hooks
+        ),
+    )
+    monkeypatch.delenv("ONEX_HOOKS_MASK", raising=False)
+    monkeypatch.setattr(cli_delegation, "delegation_switch_enabled", lambda: False)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    (tmp_path / "home").mkdir(exist_ok=True)
+    result = CliRunner().invoke(cli_delegation.delegation_group, ["on"])
+    assert result.exit_code == 1
+    assert "onex install omninode-claude" in result.output
+    assert "Run onex delegation on" not in result.output

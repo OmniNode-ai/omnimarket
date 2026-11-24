@@ -443,8 +443,6 @@ def claude_code_state(document: dict[str, object] | None) -> tuple[str, str]:
         return ("unknown", "")
     named = document.get("claude_code")
     if named in ("not_installed", "signed_out", "ready", "installed"):
-        if named == "ready":
-            return (str(named), str(document.get("fix") or ""))
         return (str(named), str(document.get("fix") or ""))
     steps = document.get("observations")
     step = next(
