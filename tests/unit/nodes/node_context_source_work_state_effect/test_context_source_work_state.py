@@ -28,9 +28,9 @@ from omnibase_core.models.context.model_context_source_result import (
     ModelContextSourceResult,
 )
 
+from omnimarket.handlers.ledger_row_parser import row_id_of
 from omnimarket.nodes.node_context_source_ledger_effect.handlers.ledger_row_reader import (
     LedgerSourceReadError,
-    MarkdownLedgerRowReader,
     ModelLedgerSourceRow,
     ProtocolLedgerRowReader,
 )
@@ -40,6 +40,9 @@ from omnimarket.nodes.node_context_source_work_state_effect import (
 )
 from omnimarket.nodes.node_context_source_work_state_effect.handlers.handler_context_source_work_state import (
     ModelWorkStateBinding,
+)
+from tests.unit.nodes.node_context_source_ledger_effect.test_context_source_ledger import (
+    _ListReader,
 )
 
 pytestmark = pytest.mark.unit
@@ -81,10 +84,9 @@ ROWS = (
 )
 
 
-def _ledger(tmp_path: Path, rows: tuple[str, ...] = ROWS) -> MarkdownLedgerRowReader:
-    path = tmp_path / "ROLLING_WORK_LEDGER.md"
-    path.write_text("# ledger\n\n" + "\n".join(rows) + "\n", encoding="utf-8")
-    return MarkdownLedgerRowReader([path], manifest_root=tmp_path)
+def _ledger(rows: tuple[str, ...] = ROWS) -> ProtocolLedgerRowReader:
+    """The rows as the projection serves them: the reader the live source binds, no file."""
+    return _ListReader(rows)
 
 
 def _handler(
@@ -120,63 +122,57 @@ def _texts(result: ModelContextSourceResult) -> list[str]:
     return [entry.text for entry in result.entries]
 
 
-def test_open_work_is_every_unanswered_message_to_the_lane(tmp_path: Path) -> None:
-    result = _handler(_ledger(tmp_path)).handle(_request(OPEN_WORK))
+def test_open_work_is_every_unanswered_message_to_the_lane() -> None:
+    result = _handler(_ledger()).handle(_request(OPEN_WORK))
     assert result.status is EnumContextSourceStatus.RESOLVED
     assert _texts(result) == [HANDOFF]
     entry = result.entries[0]
     assert entry.verbatim_verified is True
     assert entry.span is not None
     assert entry.span.end == len(HANDOFF)
-    assert entry.source_ref == "ROLLING_WORK_LEDGER.md:5"
+    assert entry.source_ref == f"work_ledger_rows:{row_id_of(HANDOFF)}"
     assert result.entry_counts == {"work_ledger": 1, "stale": 1}
 
 
-def test_open_work_with_any_sender_keeps_reports_addressed_to_the_lane(
-    tmp_path: Path,
-) -> None:
-    result = _handler(_ledger(tmp_path), senders="any").handle(_request(OPEN_WORK))
+def test_open_work_with_any_sender_keeps_reports_addressed_to_the_lane() -> None:
+    result = _handler(_ledger(), senders="any").handle(_request(OPEN_WORK))
     assert _texts(result) == [HANDOFF, STATUS_REPORT]
 
 
-def test_orchestration_state_is_every_open_child_claim(tmp_path: Path) -> None:
-    result = _handler(_ledger(tmp_path)).handle(_request(STATE))
+def test_orchestration_state_is_every_open_child_claim() -> None:
+    result = _handler(_ledger()).handle(_request(STATE))
     assert result.status is EnumContextSourceStatus.RESOLVED
     # The session's own claim (lane) and its open child (parent); the closed child
     # and the other parent's claim are not orchestration state of this session.
     assert _texts(result) == [OWN_CLAIM, OPEN_CHILD]
 
 
-def test_a_row_after_the_watermark_is_not_read(tmp_path: Path) -> None:
-    result = _handler(_ledger(tmp_path)).handle(
+def test_a_row_after_the_watermark_is_not_read() -> None:
+    result = _handler(_ledger()).handle(
         _request(OPEN_WORK, revision="2026-10-19T06:59:59Z")
     )
     assert result.status is EnumContextSourceStatus.UNRESOLVED
     assert result.entries == ()
 
 
-def test_an_unknown_tenant_is_denied(tmp_path: Path) -> None:
-    result = _handler(_ledger(tmp_path)).handle(_request(OPEN_WORK, tenant="other"))
+def test_an_unknown_tenant_is_denied() -> None:
+    result = _handler(_ledger()).handle(_request(OPEN_WORK, tenant="other"))
     assert result.status is EnumContextSourceStatus.DENIED
 
 
-def test_a_revision_that_is_not_a_row_stamp_is_an_invalid_request(
-    tmp_path: Path,
-) -> None:
-    result = _handler(_ledger(tmp_path)).handle(_request(OPEN_WORK, revision="head"))
+def test_a_revision_that_is_not_a_row_stamp_is_an_invalid_request() -> None:
+    result = _handler(_ledger()).handle(_request(OPEN_WORK, revision="head"))
     assert result.status is EnumContextSourceStatus.UNAVAILABLE
     assert result.error_code is EnumContextSourceErrorCode.INVALID_REQUEST
 
 
-def test_a_request_naming_no_lane_is_an_invalid_request(tmp_path: Path) -> None:
-    result = _handler(_ledger(tmp_path)).handle(_request(STATE, lane=None, scopes=()))
+def test_a_request_naming_no_lane_is_an_invalid_request() -> None:
+    result = _handler(_ledger()).handle(_request(STATE, lane=None, scopes=()))
     assert result.error_code is EnumContextSourceErrorCode.INVALID_REQUEST
 
 
-def test_a_factor_it_does_not_serve_is_unresolved(tmp_path: Path) -> None:
-    result = _handler(_ledger(tmp_path)).handle(
-        _request(EnumContextFactor.OPERATOR_RULINGS)
-    )
+def test_a_factor_it_does_not_serve_is_unresolved() -> None:
+    result = _handler(_ledger()).handle(_request(EnumContextFactor.OPERATOR_RULINGS))
     assert result.status is EnumContextSourceStatus.UNRESOLVED
 
 
