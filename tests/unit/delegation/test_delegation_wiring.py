@@ -123,11 +123,8 @@ def test_contract_subscribes_to_inference_response_topic() -> None:
 
 @pytest.fixture
 def mock_container() -> MagicMock:
-    """Create a mock container with a service registry that resolves HandlerDelegationWorkflow."""
-    container = MagicMock()
-    handler = HandlerDelegationWorkflow()
-    container.service_registry.resolve_service = AsyncMock(return_value=handler)
-    return container
+    """Create a mock container; dispatcher wiring takes the shared handler, not the container."""
+    return MagicMock()
 
 
 @pytest.fixture
@@ -245,21 +242,22 @@ class TestWireDelegationDispatchers:
         )
 
     @pytest.mark.asyncio
-    async def test_wire_handlers_reuses_process_shared_workflow_handler(self) -> None:
+    async def test_wire_handlers_registers_nothing_and_shared_handler_is_stable(
+        self,
+    ) -> None:
+        """OMN-26336: boot wiring registers no service; the shared FSM is built on first use."""
         container = MagicMock()
         container.service_registry.register_instance = AsyncMock()
 
-        await wire_delegation_handlers(container)
-        await wire_delegation_handlers(container)
+        first = await wire_delegation_handlers(container)
+        second = await wire_delegation_handlers(container)
 
-        registered = [
-            call.kwargs["instance"]
-            for call in container.service_registry.register_instance.call_args_list
-        ]
-        assert registered == [
-            get_shared_delegation_workflow_handler(),
-            get_shared_delegation_workflow_handler(),
-        ]
+        assert first == second == {"services": [], "status": "success"}
+        container.service_registry.register_instance.assert_not_awaited()
+        assert (
+            get_shared_delegation_workflow_handler()
+            is get_shared_delegation_workflow_handler()
+        )
 
     @pytest.mark.asyncio
     async def test_split_dispatcher_handler_instances_emit_inference_after_routing(
