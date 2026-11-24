@@ -171,6 +171,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.tenant_overlay_de
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.tenant_overlay_decision import (
     build_tenant_overlay_decision,
+    live_overlay,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_delegation_config import (
     ModelDelegationConfig,
@@ -2800,8 +2801,6 @@ def delta(
     # bridge row) and the caller's own prompt: ONE resolution per call, read by
     # both branches, so they cannot re-diverge.
     dod_resolution = resolve_task_class_dod_resolution(task_type, request.prompt)
-    dod_deterministic = dod_resolution.deterministic
-    dod_heuristic = dod_resolution.heuristic
 
     if tenant_overlay is not None:
         if (
@@ -2873,6 +2872,9 @@ def delta(
             # the platform ladder.
             if is_customer_attributed(tenant_overlay.tenant_id):
                 tenant_overlay = None
+
+    # OMN-25827: a house overlay row spent by a re-route yields to the ladder.
+    tenant_overlay = live_overlay(tenant_overlay, excluded_backend_refs, min_tier_name)
 
     if tenant_overlay is not None:
         overlay_decision = _decision_from_tenant_overlay(
@@ -3174,8 +3176,8 @@ def delta(
                 max_tokens=backend.max_tokens,
                 system_prompt=system_prompt,
                 rationale=rationale,
-                dod_deterministic=dod_deterministic,
-                dod_heuristic=dod_heuristic,
+                dod_deterministic=dod_resolution.deterministic,
+                dod_heuristic=dod_resolution.heuristic,
                 # OMN-17765: record the resolution, not just its effect.
                 requested_shape=dod_resolution.requested_shape,
                 dod_deterministic_source=dod_resolution.deterministic_source,
