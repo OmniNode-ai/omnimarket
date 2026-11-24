@@ -38,6 +38,7 @@ CLONE_THEN_PLUGIN = f"{CLONE}{os.pathsep}{PLUGIN}"
 CHANGED_UNITS = (
     "lane-ctx-ledger-dedupe",
     "c32-auth-boundary-probe",
+    "delegation-check-probe",
     "lab-test-harness",
     "job-log-filler",
     "landing-join-j8",

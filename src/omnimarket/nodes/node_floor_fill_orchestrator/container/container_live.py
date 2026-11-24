@@ -6,7 +6,8 @@ Bound live: the state store (the ``floor_fill_state`` table of omnibase_infra, m
 and plan texts (files), the ledger (the rolling ledger file), the lane process runner (the posix runner of
 ``node_lane_process_effect``), the continuation briefs (directories) and the wall clock; and the four seams that were
 once left to injection: the pool (the lane host pool snapshot), the tickets (the floor-task ticket nodes over the Linear
-store), and the brake and stop signal (the andon stop gate over the stop queue). A source that cannot be read answers
+store), and the brake and stop signal (the andon stop gate over the stop queue; the brake is also engaged when fewer
+hosts than ``brake_min_admitting_hosts`` admit a lane, read from the pool snapshot). A source that cannot be read answers
 ``UNKNOWN <source>-unread:<cause>`` and the pass starts nothing; no seam is ever bound to an "unbound" stand-in.
 """
 
@@ -23,6 +24,7 @@ from omnibase_spi.contracts.services import (
 )
 from omnibase_spi.protocols.lane import (
     ProtocolFloorTicketStore,
+    ProtocolLaneHostPool,
     ProtocolLaneProcessRunner,
 )
 from pydantic import SecretStr
@@ -39,11 +41,13 @@ from omnimarket.nodes.node_floor_fill_orchestrator.handlers.adapter_floor_facts_
     read_text_file,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.handlers.adapter_floor_seams_live import (
+    LiveFloorCapacityBrake,
     LiveFloorPool,
     LiveFloorStopSignals,
     LiveFloorTickets,
     LiveSeamSources,
     default_stop_facts,
+    engaged_by_any,
     unconfigured_stop_facts,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.handlers.adapter_ledger_file import (
@@ -98,15 +102,19 @@ class _UnconfiguredLanePool:
         raise FloorFillUnreadableError(f"unconfigured:{self._keys}")
 
 
-def _snapshot_pool(
+def _snapshot_lane_pool(
     settings: ModelFloorFillLiveSettings, now: Callable[[], datetime]
-) -> ProtocolFloorPool:
-    """The pool seam over the stamped lane host pool snapshot: a missing, stale or empty snapshot is unread."""
+) -> ProtocolLaneHostPool:
+    """The stamped lane host pool snapshot the pool and the brake both read; a missing, stale or empty one is unread."""
     path = settings.pool_snapshot_path
     suffix = settings.pool_record_suffix
     max_age = settings.pool_snapshot_max_age_seconds
-    engine = settings.pool_engine
-    if path is None or suffix is None or max_age is None or engine is None:
+    if (
+        path is None
+        or suffix is None
+        or max_age is None
+        or settings.pool_engine is None
+    ):
         absent = [
             f"{LIVE_OVERLAY_SECTION}.{name}"
             for name in (
@@ -117,11 +125,8 @@ def _snapshot_pool(
             )
             if getattr(settings, name) is None
         ]
-        return LiveFloorPool(_UnconfiguredLanePool(absent), engine or "")
-    return LiveFloorPool(
-        StampedSnapshotFileLaneHostPool(Path(path), suffix, max_age, now),
-        engine,
-    )
+        return _UnconfiguredLanePool(absent)
+    return StampedSnapshotFileLaneHostPool(Path(path), suffix, max_age, now)
 
 
 def _linear_ticket_store(
@@ -202,8 +207,15 @@ def build_live_handler_factory(
                     f"{LIVE_OVERLAY_SECTION}.andon_state_dir"
                 )
             else:
-                stop_facts = default_stop_facts(Path(settings.andon_state_dir), now_utc)
+                stop_facts = default_stop_facts(
+                    Path(settings.andon_state_dir), now_utc, settings.stop_policy()
+                )
         signals = LiveFloorStopSignals(stop_facts)
+        lane_pool = _snapshot_lane_pool(settings, now_utc)
+        engine = settings.pool_engine or ""
+        capacity_brake = LiveFloorCapacityBrake(
+            lane_pool, engine, settings.brake_min_admitting_hosts
+        )
         orchestrator = FloorFillOrchestrator(
             config=config,
             candidates=HandlerFloorFillCandidates(),
@@ -215,10 +227,12 @@ def build_live_handler_factory(
                 read_file=read_file,
                 timeout_seconds=settings.floor_fetch_timeout_seconds,
                 plan_file_pattern=settings.plan_file_pattern,
-                brake=brake if brake is not None else signals.brake,
+                brake=brake
+                if brake is not None
+                else engaged_by_any(capacity_brake, signals.brake),
                 stop=stop if stop is not None else signals.stop,
             ),
-            pool=pool if pool is not None else _snapshot_pool(settings, now_utc),
+            pool=pool if pool is not None else LiveFloorPool(lane_pool, engine),
             ledger=LedgerRowsFloorLedger(FileWorkLedgerStore(settings.ledger_path)),
             tickets=tickets
             if tickets is not None

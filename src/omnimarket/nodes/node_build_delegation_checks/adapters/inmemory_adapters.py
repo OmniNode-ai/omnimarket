@@ -96,6 +96,7 @@ class RecordingSink:
         self.regressions: list[ModelRegressionEvent] = []
         self.alarms: list[ModelLabAlarmDeliveryRequest] = []
         self.results: list[ModelBuildChecksResult] = []
+        self.check_records: list[ModelCheckRecord] = []
 
     def publish_regression(self, event: ModelRegressionEvent) -> None:
         self.regressions.append(event)
@@ -105,6 +106,9 @@ class RecordingSink:
 
     def publish_result(self, result: ModelBuildChecksResult) -> None:
         self.results.append(result)
+
+    def publish_check_record(self, record: ModelCheckRecord) -> None:
+        self.check_records.append(record)
 
 
 __all__ = [
