@@ -1,15 +1,16 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The seams whose live source does not exist yet: they fail closed and name what is unbound.
+"""Stand-ins for a pool or tickets seam that has no reader: they fail closed and name what is unbound.
 
-The pool has no live placement reader, and the floor-task ticket nodes are not on the dev branch, so
-the live binding site wires these in their place: every read raises ``FloorFillUnreadableError`` with
-``unbound:pool`` or ``unbound:tickets``, and the mint answers ``unavailable`` naming the same cause.
+Every read raises ``FloorFillUnreadableError`` with ``unbound:pool`` or ``unbound:tickets``, and the mint answers
+``unavailable`` naming the same cause. The live profile binds its own readers and binds none of these
+(``FloorFillOrchestrator.unbound_seams`` names any that is bound); they stay as the failing control of that check.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from typing import ClassVar
 
 from omnimarket.models.floor_fill import (
     ModelFloorEntryTicketVerdict,
@@ -25,7 +26,9 @@ from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
 
 
 class UnboundFloorPool:
-    """The pool seam with no live placement reader yet: every read is an unreadable pool."""
+    """A pool seam with no reader: every read is an unreadable pool. The live profile binds none of these."""
+
+    unbound: ClassVar[bool] = True
 
     def free_slots(self) -> int:
         raise FloorFillUnreadableError("unbound:pool")
@@ -35,7 +38,10 @@ class UnboundFloorTickets:
     """The tickets seam while the floor-task ticket nodes are not on the dev branch.
 
     Verdict reads are an unreadable tickets source; the mint fails closed as ``unavailable``.
+    The live profile binds none of these.
     """
+
+    unbound: ClassVar[bool] = True
 
     def payload_verdicts(
         self, floor_record: str, plan_texts: Mapping[str, str | None]

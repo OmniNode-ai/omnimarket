@@ -70,6 +70,63 @@ class ModelOverlayStoreLoadResult(_Frozen):
     loaded_at: datetime
 
 
+class ModelOverlayStoreRefusal(_Frozen):
+    """One overlay the loader refused: nothing was published for it and the reason names the cause."""
+
+    overlay_id: str
+    reason: str
+
+
+class ModelOverlayStoreLoadBatch(_Frozen):
+    """What one run over a list of ids did: the loads, and each refusal, in the order the ids were listed."""
+
+    results: tuple[ModelOverlayStoreLoadResult, ...] = ()
+    refused: tuple[ModelOverlayStoreRefusal, ...] = ()
+
+
+class ModelOverlayAssertion(_Frozen):
+    """One loader assertion of one overlay: its id, the digest it asserted and when.
+
+    Kept apart from what a set writes: a set never produces one, so an assertion's age is the loader's liveness for that
+    id and nothing else.
+    """
+
+    overlay_id: OverlayId
+    digest: str = Field(min_length=64, max_length=64)
+    asserted_at: datetime
+
+
+class ModelOverlayAssertionCheck(_Frozen):
+    """The ids a loader lists, the assertions it holds, and the bound past which an id's newest assertion is stale."""
+
+    overlay_ids: tuple[OverlayId, ...]
+    assertions: tuple[ModelOverlayAssertion, ...] = ()
+    now: datetime
+    stale_after_s: int = Field(gt=0)
+    # The role or lane that acts on an alarm; a per-id owner wins over this one.
+    owner: str = Field(min_length=1)
+    owner_by_id: dict[OverlayId, str] = Field(default_factory=dict)
+
+
+class ModelOverlayAssertionStaleAlarm(_Frozen):
+    """The alarm of one overlay whose newest assertion is older than the bound, or that has none."""
+
+    overlay_id: OverlayId
+    owner: str = Field(min_length=1)
+    newest_assertion_at: datetime | None
+    age_s: float | None
+    bound_s: int
+    reason: str
+    raised_at: datetime
+
+
+class ModelOverlayAssertionCheckResult(_Frozen):
+    """One alarm per stale id, and the ids whose newest assertion is inside the bound."""
+
+    alarms: tuple[ModelOverlayAssertionStaleAlarm, ...] = ()
+    fresh: tuple[str, ...] = ()
+
+
 class ModelOverlaySnapshotStamp(_Frozen):
     """What one local snapshot holds and how old its source is.
 
@@ -145,6 +202,11 @@ class ModelOverlayStoreLoadOverlay(_Frozen):
     clone_relpath: str | None = Field(default=None, min_length=1)
     clone_branch: str | None = Field(default=None, min_length=1)
     overlay_ids: tuple[str, ...] = ()
+    # An id whose newest loader assertion is older than this alarms by name (the plan's two hours), and the owner is
+    # the role or lane the alarm names as the one who acts on it; ``alarm_owner_by_id`` overrides it for one id.
+    assertion_stale_after_s: int = Field(default=7200, gt=0)
+    alarm_owner: str = Field(default="overlay-store-owner", min_length=1)
+    alarm_owner_by_id: dict[OverlayId, str] = Field(default_factory=dict)
 
 
 class ModelOverlayReadPolicy(_Frozen):

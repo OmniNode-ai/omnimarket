@@ -1,19 +1,30 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The live profile, the binding site: the seams that have a live source are bound to it, the rest fail closed.
+"""The live profile, the binding site: every seam is bound to its live source, and none is left unbound.
 
 Bound live: the state store (the ``floor_fill_state`` table of omnibase_infra, migration 113), the floor record (URL)
 and plan texts (files), the ledger (the rolling ledger file), the lane process runner (the posix runner of
-``node_lane_process_effect``), the continuation briefs (directories) and the wall clock. The pool, tickets, brake and stop-signal seams have no live source
-of their own (no placement reader, the floor-task ticket nodes off the dev branch, no open-count brake, no stop
-signal): they are bound by injection, and a missing one (left ``None``) refuses by name, making the pass answer
-``UNKNOWN <source>-unread:unbound:<seam>`` and start nothing.
+``node_lane_process_effect``), the continuation briefs (directories) and the wall clock; and the four seams that were
+once left to injection: the pool (the lane host pool snapshot), the tickets (the floor-task ticket nodes over the Linear
+store), and the brake and stop signal (the andon stop gate over the stop queue). A source that cannot be read answers
+``UNKNOWN <source>-unread:<cause>`` and the pass starts nothing; no seam is ever bound to an "unbound" stand-in.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from datetime import datetime
+from pathlib import Path
+from typing import ClassVar
 
+from omnibase_spi.contracts.services import (
+    ModelLaneHostPoolRequest,
+    ModelLaneHostPoolSnapshot,
+)
+from omnibase_spi.protocols.lane import (
+    ProtocolFloorTicketStore,
+    ProtocolLaneProcessRunner,
+)
 from pydantic import SecretStr
 
 from omnimarket.nodes.node_floor_fill_candidates_compute.handlers.handler_floor_fill_candidates import (
@@ -27,6 +38,14 @@ from omnimarket.nodes.node_floor_fill_orchestrator.handlers.adapter_floor_facts_
     fetch_url_text,
     read_text_file,
 )
+from omnimarket.nodes.node_floor_fill_orchestrator.handlers.adapter_floor_seams_live import (
+    LiveFloorPool,
+    LiveFloorStopSignals,
+    LiveFloorTickets,
+    LiveSeamSources,
+    default_stop_facts,
+    unconfigured_stop_facts,
+)
 from omnimarket.nodes.node_floor_fill_orchestrator.handlers.adapter_ledger_file import (
     FileWorkLedgerStore,
 )
@@ -38,6 +57,7 @@ from omnimarket.nodes.node_floor_fill_orchestrator.models import (
     ModelFloorFillStoreSettings,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_live_settings import (
+    LIVE_OVERLAY_SECTION,
     ModelFloorFillLiveSettings,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.adapters import (
@@ -48,6 +68,8 @@ from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.core import (
     FloorFillOrchestrator,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
+    FloorFillUnreadableError,
+    ProtocolFloorClock,
     ProtocolFloorPool,
     ProtocolFloorStateStore,
     ProtocolFloorTickets,
@@ -55,14 +77,71 @@ from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.system_clock import (
     SystemFloorClock,
 )
-from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.unbound_ports import (
-    UnboundFloorPool,
-    UnboundFloorTickets,
-)
 from omnimarket.nodes.node_floor_fill_reducer.handlers import HandlerFloorFillReducer
+from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.adapter_snapshot_file import (
+    StampedSnapshotFileLaneHostPool,
+)
 from omnimarket.nodes.node_lane_process_effect.handlers.handler_posix_process import (
     HandlerPosixProcess,
 )
+
+
+class _UnconfiguredLanePool:
+    """A lane host pool whose overlay keys are absent: every read fails naming them, so the pool seam is unread."""
+
+    synchronous_execution: ClassVar[bool] = True
+
+    def __init__(self, keys: Sequence[str]) -> None:
+        self._keys = ",".join(keys)
+
+    def read_pool(self, request: ModelLaneHostPoolRequest) -> ModelLaneHostPoolSnapshot:
+        raise FloorFillUnreadableError(f"unconfigured:{self._keys}")
+
+
+def _snapshot_pool(
+    settings: ModelFloorFillLiveSettings, now: Callable[[], datetime]
+) -> ProtocolFloorPool:
+    """The pool seam over the stamped lane host pool snapshot: a missing, stale or empty snapshot is unread."""
+    path = settings.pool_snapshot_path
+    suffix = settings.pool_record_suffix
+    max_age = settings.pool_snapshot_max_age_seconds
+    engine = settings.pool_engine
+    if path is None or suffix is None or max_age is None or engine is None:
+        absent = [
+            f"{LIVE_OVERLAY_SECTION}.{name}"
+            for name in (
+                "pool_snapshot_path",
+                "pool_record_suffix",
+                "pool_snapshot_max_age_seconds",
+                "pool_engine",
+            )
+            if getattr(settings, name) is None
+        ]
+        return LiveFloorPool(_UnconfiguredLanePool(absent), engine or "")
+    return LiveFloorPool(
+        StampedSnapshotFileLaneHostPool(Path(path), suffix, max_age, now),
+        engine,
+    )
+
+
+def _linear_ticket_store(
+    lane: str, settings: ModelFloorFillLiveSettings
+) -> Callable[[], ProtocolFloorTicketStore]:
+    """The ticket store over Linear, built on first use: a missing credential is an unread tickets source then."""
+
+    def build_store() -> ProtocolFloorTicketStore:
+        from omnimarket.handlers.floor_task_ticket_linear_store import (
+            build_linear_store,
+        )
+
+        timeout = settings.mint_timeout_seconds
+        if timeout is None:
+            raise FloorFillUnreadableError(
+                f"unconfigured:{LIVE_OVERLAY_SECTION}.mint_timeout_seconds"
+            )
+        return build_linear_store(lane, timeout_seconds=timeout)
+
+    return build_store
 
 
 def build_live_handler_factory(
@@ -76,13 +155,22 @@ def build_live_handler_factory(
     tickets: ProtocolFloorTickets | None = None,
     brake: Callable[[], bool] | None = None,
     stop: Callable[[str], str | None] | None = None,
+    runner: ProtocolLaneProcessRunner | None = None,
+    clock: ProtocolFloorClock | None = None,
+    sources: LiveSeamSources | None = None,
 ) -> Callable[[ModelFloorFillConfig], HandlerFloorFillCommand]:
     """The factory ``run_entry`` takes: given the validated config it wires the live seams.
 
-    ``store`` is for tests; without one the table-backed store is built from the settings and ``dsn``.
-    ``pool``, ``tickets``, ``brake`` and ``stop`` are bound by injection; a missing one (left ``None``)
-    refuses by name, so the pass answers ``UNKNOWN <source>-unread:unbound:<seam>`` and starts nothing.
+    ``store``, ``runner``, ``clock`` and ``sources`` are for tests and other deployments; without them the table-backed
+    store, the posix runner, the wall clock and the default reads (Linear ticket store, exception-queue stop reads)
+    are built from the settings and ``dsn``. ``pool``, ``tickets``, ``brake`` and ``stop`` override one live seam each;
+    left ``None`` the seam is bound to its live reader, so the factory has no unbound seam.
     """
+    live_sources = sources if sources is not None else LiveSeamSources()
+    now = clock if clock is not None else SystemFloorClock()
+
+    def now_utc() -> datetime:
+        return now.now()
 
     def build(config: ModelFloorFillConfig) -> HandlerFloorFillCommand:
         bound_store = store
@@ -99,7 +187,23 @@ def build_live_handler_factory(
                     connect_timeout_seconds=settings.store_connect_timeout_seconds,
                 )
             )
-        process = HandlerPosixProcess(settings.process_output_dir)
+        process = (
+            runner
+            if runner is not None
+            else HandlerPosixProcess(settings.process_output_dir)
+        )
+        ticket_store = live_sources.ticket_store
+        if ticket_store is None:
+            ticket_store = _linear_ticket_store(config.scope, settings)
+        stop_facts = live_sources.stop_facts
+        if stop_facts is None:
+            if settings.andon_state_dir is None:
+                stop_facts = unconfigured_stop_facts(
+                    f"{LIVE_OVERLAY_SECTION}.andon_state_dir"
+                )
+            else:
+                stop_facts = default_stop_facts(Path(settings.andon_state_dir), now_utc)
+        signals = LiveFloorStopSignals(stop_facts)
         orchestrator = FloorFillOrchestrator(
             config=config,
             candidates=HandlerFloorFillCandidates(),
@@ -111,17 +215,21 @@ def build_live_handler_factory(
                 read_file=read_file,
                 timeout_seconds=settings.floor_fetch_timeout_seconds,
                 plan_file_pattern=settings.plan_file_pattern,
-                brake=brake,
-                stop=stop,
+                brake=brake if brake is not None else signals.brake,
+                stop=stop if stop is not None else signals.stop,
             ),
-            pool=pool if pool is not None else UnboundFloorPool(),
+            pool=pool if pool is not None else _snapshot_pool(settings, now_utc),
             ledger=LedgerRowsFloorLedger(FileWorkLedgerStore(settings.ledger_path)),
-            tickets=tickets if tickets is not None else UnboundFloorTickets(),
+            tickets=tickets
+            if tickets is not None
+            else LiveFloorTickets(
+                ticket_store, mint_timeout_seconds=settings.mint_timeout_seconds
+            ),
             runner=process,
             briefs=DirectoryFloorBriefs(
                 config.stopped_reports_root, config.stopped_brief_directory
             ),
-            clock=SystemFloorClock(),
+            clock=now,
         )
         return HandlerFloorFillCommand(
             config=config, orchestrator=orchestrator, runner=process
