@@ -53,6 +53,14 @@ settings:
   model: ModelCheckRegressionSettings
   defaults: overlay.defaults.yaml
 
+runtime_dispatch:
+  external_trigger: true
+  # A change that can turn a delegation check red is replayed, or applied, by a lane or an operator who runs the command
+  # below; it never runs on a timer.
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_delegation_check_regression_effect --replay-fixture tests/fixtures/delegation_check_regression/incident_2026_11_23.json --change host_model
+    owner: OmniNode Platform Team
+
 dod_evidence:
   - test: tests/nodes/node_delegation_check_regression_effect/test_delegation_check_regression.py::test_delegation_check_regression_selection_picks_c14_and_c29_for_the_recorded_change
     description: "AC1 a settings-store change to a routing or host key selects C14 and C29"

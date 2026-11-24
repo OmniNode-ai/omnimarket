@@ -59,7 +59,8 @@ FIXTURE = (
 
 
 def _incident() -> dict[str, Any]:
-    return json.loads(FIXTURE.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
+    incident: dict[str, Any] = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    return incident
 
 
 def _settings() -> ModelCheckRegressionSettings:
