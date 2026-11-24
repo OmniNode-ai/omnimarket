@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import importlib
 import uuid
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -321,9 +320,8 @@ def test_ac2_a_handler_built_without_a_declared_check_refuses_to_start(
 ) -> None:
     _import(MODELS)
     _import(HANDLER)  # a missing module is the RED reason, not a match failure
-    build: Callable[[], Any] = lambda: _handler(omit=omitted)  # noqa: E731
     with pytest.raises(Exception, match=omitted.replace(":", ".")):
-        build()
+        _handler(omit=omitted)
 
 
 def test_ac2_the_credential_is_asked_for_only_after_every_check_passed() -> None:
