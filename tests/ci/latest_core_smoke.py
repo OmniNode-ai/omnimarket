@@ -17,9 +17,11 @@ from __future__ import annotations
 import argparse
 import importlib
 import importlib.metadata
+import os
 import pkgutil
 import re
 import sys
+import traceback
 from dataclasses import dataclass
 
 ENTRY_POINT_GROUP = "onex.nodes"
@@ -35,6 +37,7 @@ class SmokeFailure:
     module: str
     symbol: str
     error: str
+    at: str = "-"
 
 
 def _symbol_of(error: BaseException) -> str:
@@ -49,6 +52,27 @@ def _symbol_of(error: BaseException) -> str:
     return "<unknown>"
 
 
+def _importer_location(error: BaseException) -> str:
+    """``file:line`` of the innermost frame that is neither the interpreter's, an installed package's, nor this script's.
+
+    For a removed name that frame is the import line in the downstream file, which is what the fix edits.
+    """
+    here = os.path.abspath(__file__)
+    for frame in reversed(traceback.extract_tb(error.__traceback__)):
+        name = frame.filename
+        if name.startswith("<") or "site-packages" in name:
+            continue
+        if os.path.abspath(name) == here:
+            continue
+        shown = (
+            os.path.relpath(name)
+            if os.path.abspath(name).startswith(os.getcwd())
+            else name
+        )
+        return f"{shown}:{frame.lineno}"
+    return "-"
+
+
 def _try_import(node: str, module: str, failures: list[SmokeFailure]) -> bool:
     try:
         importlib.import_module(module)
@@ -59,6 +83,7 @@ def _try_import(node: str, module: str, failures: list[SmokeFailure]) -> bool:
                 module=module,
                 symbol=_symbol_of(error),
                 error=f"{type(error).__name__}: {error}",
+                at=_importer_location(error),
             )
         )
         return False
@@ -115,7 +140,7 @@ def main(argv: list[str] | None = None) -> int:
     failures, tried = smoke(packages, walk=not args.no_walk)
     for f in failures:
         _emit(
-            f"LATEST-CORE-SMOKE FAIL node={f.node} module={f.module} symbol={f.symbol} error={f.error}"
+            f"LATEST-CORE-SMOKE FAIL node={f.node} module={f.module} symbol={f.symbol} at={f.at} error={f.error}"
         )
     _emit(
         f"LATEST-CORE-SMOKE packages={len(packages)} modules_tried={tried} failed={len(failures)}"

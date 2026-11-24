@@ -1,13 +1,12 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The four injected live seams, each refusing by name when unbound and carrying a tick when bound.
+"""The four live seams, each overridable by injection and each carrying a tick when bound.
 
 The entry accepts the live profile (the dsn gate runs before any seam is bound). With the four seams
-(pool, tickets, brake, stop) all bound, a live tick ends OK. Each seam left unbound makes the pass fail
-closed and name the seam: ``pool-unread:unbound:pool``, ``brake-unread:unbound:brake``,
-``stop-signal-unread:unbound:stop-signal``, and the tickets seam answers ``unbound:tickets``. The unbound
-mint answers ``unavailable``. A record that the reader lane extends with a ``needs`` cell still reads,
-because the record model ignores unknown cells.
+(pool, tickets, brake, stop) injected, a live tick ends OK; a brake that answers True and a stop that refuses hold the
+pass and are named. The factory never leaves a seam unbound (``test_floor_fill_live_seam_binding``); the ``unbound``
+tickets stand-in stays only as the failing control of the unbound-seam check, and answers its mint as ``unavailable``.
+A record that the reader lane extends with a ``needs`` cell still reads, because the record model ignores unknown cells.
 """
 
 from __future__ import annotations
@@ -129,44 +128,30 @@ def test_live_profile_all_seams_bound_tick_is_ok(tmp_path: Path) -> None:
     assert "unbound" not in out
 
 
-def test_seam_pool_refuses_by_name_when_unbound(tmp_path: Path) -> None:
-    """An unbound pool refuses by name, degrades the pass, and starts nothing."""
-    bindings = {k: v for k, v in all_bound().items() if k != "pool"}
-    out, code, store = tick_with(tmp_path, record_text=_fresh_record(), **bindings)
-    assert "pool-unread:unbound:pool" in out
-    assert code == DEGRADED
-    assert store.load(OVERLAY["scope"]).version == 0
+def test_seam_pool_injected_overrides_the_live_reader(tmp_path: Path) -> None:
+    """An injected pool is the one read: the live snapshot reader is not consulted, and its absence is not an error."""
+    out, code, _store = tick_with(tmp_path, record_text=_fresh_record(), **all_bound())
+    assert "pool-unread" not in out
+    assert code == OK
 
 
-def test_seam_brake_refuses_by_name_when_unbound(tmp_path: Path) -> None:
-    """An unbound brake refuses by name, degrades the pass, and starts nothing."""
-    bindings = {k: v for k, v in all_bound().items() if k != "brake"}
-    out, code, store = tick_with(tmp_path, record_text=_fresh_record(), **bindings)
-    assert "brake-unread:unbound:brake" in out
-    assert code == DEGRADED
-    assert store.load(OVERLAY["scope"]).version == 0
+def test_seam_brake_held_by_the_injected_brake_names_the_hold(tmp_path: Path) -> None:
+    """A brake that answers True holds the pass: it starts nothing and the pass names the open-count hold."""
+    bindings = {**all_bound(), "brake": lambda: True}
+    out, _code, store = tick_with(tmp_path, record_text=_fresh_record(), **bindings)
+    assert "open-count" in out
+    assert store.load(OVERLAY["scope"]).version == 0 or "started" not in out
 
 
-def test_seam_stop_signal_refuses_by_name_when_unbound(tmp_path: Path) -> None:
-    """An unbound stop signal refuses by name, degrades the pass, and starts nothing."""
-    bindings = {k: v for k, v in all_bound().items() if k != "stop"}
-    out, code, store = tick_with(tmp_path, record_text=_fresh_record(), **bindings)
-    assert "stop-signal-unread:unbound:stop-signal" in out
-    assert code == DEGRADED
-    assert store.load(OVERLAY["scope"]).version == 0
-
-
-def test_seam_ticket_refuses_by_name_when_unbound(tmp_path: Path) -> None:
-    """An unbound tickets seam fails the pass closed naming ``unbound:tickets``, and starts nothing."""
-    bindings = {k: v for k, v in all_bound().items() if k != "tickets"}
-    out, code, store = tick_with(tmp_path, record_text=_fresh_record(), **bindings)
-    assert out == "UNKNOWN fill-state:unbound:tickets\n"
-    assert code == FAILED
-    assert store.load(OVERLAY["scope"]).version == 0
+def test_seam_stop_signal_refusal_names_the_hold(tmp_path: Path) -> None:
+    """A stop that refuses holds the pass and the refusal text is printed in the hold."""
+    bindings = {**all_bound(), "stop": lambda _c: "stop-text"}
+    out, _code, _store = tick_with(tmp_path, record_text=_fresh_record(), **bindings)
+    assert "stop-signal:stop-text" in out
 
 
 def test_seam_ticket_mint_is_unavailable_when_unbound() -> None:
-    """The unbound tickets seam answers the mint as ``unavailable`` naming the cause, and carries no start criterion."""
+    """The unbound tickets stand-in answers the mint as ``unavailable`` naming the cause, and carries no start criterion."""
     result = UnboundFloorTickets().mint("k")
     assert result.state == "unavailable"
     assert result.cause == "unbound:tickets"

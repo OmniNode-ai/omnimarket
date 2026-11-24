@@ -22,6 +22,7 @@ Failure modes:
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Callable
 from pathlib import Path
@@ -1435,6 +1436,49 @@ async def test_tab_and_shift_tab_cycle_the_three_screens_and_a_click_opens_one()
         await pilot.pause()
         await pilot.pause()
         assert isinstance(app.screen, ModelPickScreen)
+
+
+class _HeldDiscoverRunner(_Runner):
+    """A runner whose `models discover` waits until the test lets it answer."""
+
+    def __init__(self) -> None:
+        super().__init__([], by_command=_selected_rows(connection=False))
+        self.release = asyncio.Event()
+
+    async def capture(
+        self, argv: tuple[str, ...], stdin: str | None = None
+    ) -> tuple[int, str, str]:
+        if argv[:2] == ("models", "discover"):
+            self.calls.append(argv)
+            await self.release.wait()
+            return 0, json.dumps({"status": "ready", "models": ["llama3.2"]}), ""
+        return await super().capture(argv, stdin)
+
+
+async def test_a_list_that_answers_after_the_config_tab_was_left_is_dropped() -> None:
+    """The list answers after the user tabbed away (a slow runner answers late,
+    as in CI, after the screen is gone but before its worker is cancelled):
+    nothing is read from the departed screen and nothing raises."""
+    from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
+        ModelPickScreen,
+        SetupScreen,
+    )
+
+    runner = _HeldDiscoverRunner()
+    app = _app(runner)
+    async with app.run_test(size=(140, 44)) as pilot:
+        await _open_config(pilot, app)
+        setup = app.screen
+        assert isinstance(setup, SetupScreen)
+        loading = asyncio.create_task(setup._find())
+        await pilot.pause()
+        assert not loading.done()  # `models discover` is still out
+        await pilot.press("tab")
+        for _ in range(6):
+            await pilot.pause()
+        assert isinstance(app.screen, ModelPickScreen)
+        runner.release.set()
+        await loading  # the late answer lands on a screen that is gone
 
 
 async def test_one_click_ticks_a_row_and_the_list_takes_focus_when_it_loads() -> None:

@@ -18,6 +18,7 @@ from omnimarket.events.runtime_deployment import (
     EnumRuntimeLane,
     ModelDeployPublishCommand,
 )
+from omnimarket.models.dev_roll import EnumDevRollHealth
 from omnimarket.nodes.node_dev_roll_window_gate_effect.handlers import (
     HandlerDevRollWindowCompleted,
     HandlerDevRollWindowTick,
@@ -266,22 +267,36 @@ def test_a_command_the_gate_cannot_hold_is_refused_and_passed_straight_on(
     assert gate.store.load().held == ()
 
 
-def test_only_the_completion_of_the_newest_released_command_ends_the_roll(
+def test_the_completion_of_any_released_command_ends_the_roll_and_the_newest_one_completing_later_sets_its_health(
     gate: Gate,
 ) -> None:
     held = hold_three(gate)
     gate.clock.advance(WINDOW)
     gate.tick.handle(a_tick(gate))
     gate.clock.advance(60)
-    # an older command of the batch completing (an unfolded batch runs in order) is not the end of the roll
-    assert (
-        gate.completed.handle(completed(held[0].correlation_id, at=gate.clock.now))
-        is None
+    # an older command of the batch completing ends the roll: the agent publishes a completion only for a command it
+    # ran, so the newest may be one it skipped and never complete
+    first_at = gate.clock.now
+    ended = gate.completed.handle(completed(held[0].correlation_id, at=first_at))
+    assert isinstance(ended, ModelDevRollGateRollRecorded)
+    last = gate.store.load().last_roll
+    assert last is not None
+    assert last.finished_at == first_at
+    assert last.job_id == str(held[-1].correlation_id)
+    # an unfolded batch runs in order: the newest completing later is the final word on the roll's health
+    gate.clock.advance(60)
+    done = gate.completed.handle(
+        completed(
+            held[-1].correlation_id,
+            at=gate.clock.now,
+            status=EnumRedeployStatus.FAILED,
+        )
     )
-    assert gate.store.load().last_roll.finished_at is None
-    done = gate.completed.handle(completed(held[-1].correlation_id, at=gate.clock.now))
     assert isinstance(done, ModelDevRollGateRollRecorded)
-    assert gate.store.load().last_roll.finished_at == gate.clock.now
+    last = gate.store.load().last_roll
+    assert last is not None
+    assert last.finished_at == gate.clock.now
+    assert last.health is EnumDevRollHealth.UNHEALTHY
 
 
 def test_a_roll_with_no_completion_by_the_deadline_is_abandoned_and_the_held_commands_go_to_the_next_roll(
