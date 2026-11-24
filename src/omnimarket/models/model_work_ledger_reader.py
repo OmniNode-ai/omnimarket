@@ -210,6 +210,10 @@ class ModelCommandReadRoute(BaseModel):
     kind: Literal["command"]
     command_env: str = Field(min_length=1)
     timeout_seconds: int = Field(ge=1, le=600)
+    # Stamp each request with the deadline this route will wait to (send time plus timeout_seconds), so
+    # the answerer drops a request nobody waits for any more (OMN-26609). Off unless the overlay turns it
+    # on: an answerer that predates the deadline field refuses a request that carries it.
+    stamp_deadline: bool = False
 
 
 class ModelInMemoryReadRoute(BaseModel):
@@ -228,6 +232,8 @@ class ModelBusSessionReadRoute(BaseModel):
     kind: Literal["bus-session"]
     bus_lane: str = Field(min_length=1)
     timeout_seconds: int = Field(ge=1, le=600)
+    # As on the command route: the deadline this route will wait to rides on every request (OMN-26609).
+    stamp_deadline: bool = False
 
 
 class ModelReaderEvents(BaseModel):

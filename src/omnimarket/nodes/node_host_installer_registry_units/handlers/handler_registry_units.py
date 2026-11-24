@@ -43,11 +43,16 @@ from omnimarket.handlers.rules_unit_roots import (
     under_worktrees,
 )
 from omnimarket.models.overlay_keys import ModelLabHostsTable
+from omnimarket.nodes.node_host_installer_registry_units.handlers.node_schedule_unit import (
+    default_overlay,
+    run_node_schedule,
+)
 from omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units import (
     ModelCopiedUnitPayload,
     ModelRegistryUnitsRequest,
     ModelRegistryUnitsResult,
 )
+from omnimarket.nodes.node_lab_alarm.overlay import ModelLabAlarmOverlay
 
 NODE_DIR = Path(__file__).resolve().parents[1]
 
@@ -234,8 +239,12 @@ class HandlerRegistryUnits:
         run: Runner = run_command,
         units: dict[str, dict[str, Any]] | None = None,
         hosts: Callable[[], ModelLabHostsTable] | None = None,
+        schedule_overlay: Callable[[], ModelLabAlarmOverlay] | None = None,
     ) -> None:
         self.run = run
+        self.schedule_overlay = (
+            schedule_overlay if schedule_overlay is not None else default_overlay
+        )
         self.units = units if units is not None else load_units()
         self.hosts = hosts if hosts is not None else default_hosts
 
@@ -311,6 +320,14 @@ class HandlerRegistryUnits:
             with self.install_lock(request, unit):
                 if unit.get("kind") == "copied_tree":
                     return self.copied_unit(request, unit)
+                if unit.get("kind") == "node_schedule":
+                    return run_node_schedule(
+                        request,
+                        unit,
+                        run=lambda command: self.run(list(command)),
+                        overlay_root=self.overlays_root,
+                        overlay=self.schedule_overlay,
+                    )
                 if unit.get("platform") == "systemd":
                     return self.dispatch_systemd(request, unit)
                 return self.dispatch(request, unit)

@@ -138,7 +138,33 @@ class HandlerWorkLedgerQuery:
         """Answer the request, or refuse it when its answer would not fit the bound."""
         if not isinstance(request, ModelWorkLedgerQueryRequest):
             raise TypeError("work ledger query handler requires its contract payload")
+        if request.deadline is not None and self._now() >= request.deadline:
+            return self._expired(request)
         return bound_answer(request, self._answer_request(request), self._answer_bound)
+
+    def _expired(
+        self, request: ModelWorkLedgerQueryRequest
+    ) -> ModelWorkLedgerQueryResult:
+        """The caller's deadline passed before the request was read: no store is touched (OMN-26609).
+
+        A typed error answer, never an empty one, so a late reader that still holds the correlation
+        id cannot mistake it for "no rows". It is cheap: the work a stale request costs is the
+        answer's publish only.
+        """
+        now = self._now()
+        assert request.deadline is not None
+        late = int((now - request.deadline).total_seconds())
+        return ModelWorkLedgerQueryResult(
+            correlation_id=request.correlation_id,
+            query=request.query,
+            window_since=request.since,
+            window_until=now,
+            status="error",
+            error=(
+                f"deadline_expired: the caller's deadline {request.deadline.isoformat()} "
+                f"passed {late}s before the request was read; it was not worked"
+            ),
+        )
 
     def _answer_request(
         self, request: ModelWorkLedgerQueryRequest

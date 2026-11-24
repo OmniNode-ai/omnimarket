@@ -193,6 +193,9 @@ from omnimarket.handlers.routing.local_byok_route import (
 from omnimarket.handlers.routing.measured_correct_ceiling import (
     refuse_above_measured_correct_ceiling,
 )
+from omnimarket.handlers.routing.spread_load_snapshot import (
+    read_spread_load_snapshot,
+)
 from omnimarket.handlers.tenant_mirror_requirement import require_tenant_mirrored
 from omnimarket.inference import provider_quota_state
 from omnimarket.inference.protocol_config import (
@@ -4806,6 +4809,7 @@ class LocalDelegationDispatchPort:
                 task_type,
                 spread_key=spread_key,
                 prompt=_ACTIVE_PROMPT.get(),
+                load_state=read_spread_load_snapshot(),
                 **byok_kwargs,
             )
             blocked = quota_blocked_backend_refs(quota_state)

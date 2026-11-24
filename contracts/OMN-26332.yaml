@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-26332
 title: Ledger-file census group 4, first part - the review key credit probe appends over the bus and two overlay examples stop naming the ledger file
-summary: The review key credit probe no longer takes a ledger file path or runs the ledger command on one; a key's credit flip is an attributed append request on the bus lane the host's lab host table row declares, and the probe refuses to run on a host that declares none. The tailnet and ledger copy overlay examples show the bus-form append command with no ledger file path. The census ratchet rows of the probe handler and the tailnet example are dropped and the copy example's row is lowered, with the census node's --lower. The other group 4 files are not cleared by this change and keep their rows.
+summary: The review key credit probe no longer takes a ledger file path or runs the ledger command on one; a key's credit flip is an attributed append request on the bus lane the host's lab host table row declares, and the probe refuses to run on a host that declares none. The tailnet and ledger copy overlay examples show the bus-form append command with no ledger file path. The census ratchet rows of the probe handler and the tailnet example are dropped and the copy example's row is lowered, with the census node's --lower. A second change moves the silent failure alarm handler and the work-state projection contract to the bus. The other group 4 files are not cleared by these changes and keep their rows.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -50,6 +50,33 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_group4_first_part_omn26332.py tests/unit/nodes/node_tailnet_https_serve_effect tests/unit/nodes/node_work_ledger_copy_effect -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn26332-ac1-alarm-projection
+    description: The silent failure alarm reads its ledger window through the rows loader and appends through the work ledger append command, the work-state projection reads only the command route its contract names, and neither names a ledger file; the new cases fail on the merge base, where the alarm reads a file and the projection reads the file named by its path variable.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_silent_failure_alarm_effect/test_ledger_over_bus_omn26332.py tests/nodes/node_work_state_projection_effect/test_ledger_read_route.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn26332-ac2-census-second-part
+    description: The census holds no hit in the alarm handler and the projection contract, their per-file rows are dropped and the repository row is 137; the cases fail on the merge base.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_group4_second_part_omn26332.py -q --no-cov --tb=line
+        cwd: .
+  - id: dod-omn26332-ac3-alarm-projection-suites
+    description: The alarm, projection and installer alarm-config suites stay green on the moved reader and writer.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_silent_failure_alarm_effect tests/nodes/node_silent_failure_alarm_compute tests/nodes/node_work_state_projection_effect tests/nodes/node_work_state_projection_scheduled_effect tests/nodes/node_host_installer_registry_units/test_alarm_config_omn22778.py -q --no-cov --tb=line
         cwd: .
   - id: dod-omn26332-integration-proof
     description: "Run the probe and the two node suites on a lab host at the pushed head; the local Done gate runs this unbound check."

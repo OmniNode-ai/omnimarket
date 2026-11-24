@@ -164,11 +164,18 @@ class DerivedReadRowSource(TableRowSource):
         since: str | None = None,
         correlation_id: str | None = None,
         selection: str = "newest",
+        window_seconds: int | None = None,
+        row_cap: int | None = None,
     ) -> list[dict[str, Any]]:
         """The exposure's served window; a view's is one held pass over it."""
         keyed = bool(cfg.key_columns) and recency_column(cfg) is not None
         scoped = cfg.tenant_column is None or tenant_id is not None
-        plain = since is None and correlation_id is None and selection == "newest"
+        plain = (
+            since is None
+            and correlation_id is None
+            and selection == "newest"
+            and window_seconds is None
+        )
         if not (keyed and scoped and plain) or not await self._is_derived(cfg):
             return await super().rows(
                 cfg,
@@ -177,6 +184,8 @@ class DerivedReadRowSource(TableRowSource):
                 since=since,
                 correlation_id=correlation_id,
                 selection=selection,
+                window_seconds=window_seconds,
+                row_cap=row_cap,
             )
         return await self._derived_windows.read(
             (qualified_relation(cfg), tenant_id, order_spec),
