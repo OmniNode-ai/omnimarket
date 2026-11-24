@@ -71,6 +71,9 @@ from omnimarket.nodes.node_code_graph_effect.adapters.repo_sources import GitRep
 from omnimarket.nodes.node_code_graph_effect.adapters.version_stores import (
     InMemoryVersionStore,
 )
+from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_handlers import (
+    handlers_summary_line,
+)
 from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_index import (
     build_version,
 )
@@ -498,6 +501,8 @@ def _lookup(arguments: argparse.Namespace) -> int:
         f"fallback_reason={result.fallback_reason.value if result.fallback_reason else 'none'} "
         f"reason={result.reason or 'none'}\n"
     )
+    if result.question is EnumCodeGraphQuestion.HANDLERS:
+        sys.stdout.write(handlers_summary_line(result.repo, result.handler_rows) + "\n")
     return 1 if result.status == "failed" else 0
 
 

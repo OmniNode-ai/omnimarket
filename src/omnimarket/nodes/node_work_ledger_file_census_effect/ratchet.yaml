@@ -105,7 +105,7 @@ files:
     src/omnimarket/nodes/node_compaction_cost_compute/data/recovery_call_patterns.yaml: 2
     src/omnimarket/nodes/node_friction_rollup_compute/tests/fixtures/recorded_day_unit_output.json: 3
     src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml: 5
-    src/omnimarket/nodes/node_host_installer_registry_units/handlers/handler_registry_units.py: 3
+    src/omnimarket/nodes/node_host_installer_registry_units/handlers/handler_registry_units.py: 2
     src/omnimarket/nodes/node_host_reading_effect/overlay.example.yaml: 4
     src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_launch.py: 1
     src/omnimarket/nodes/node_lab_history_archive_effect/handlers/handler_lab_history_archive.py: 1
