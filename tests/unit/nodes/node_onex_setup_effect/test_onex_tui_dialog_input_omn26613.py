@@ -53,7 +53,9 @@ async def _focus_field(app: OnexTui, pilot: Pilot[Any], field: str) -> Input:
     return widget
 
 
-async def _swap_closed_by_esc(app: OnexTui, pilot: Pilot[Any]) -> None:
+async def _swap_closed_by_esc(
+    app: OnexTui, pilot: Pilot[Any], patch: pytest.MonkeyPatch
+) -> None:
     """Start a swap to another tab, close the tab before the swap lands."""
     gate = asyncio.Event()
     real = app.tab_screen
@@ -62,7 +64,7 @@ async def _swap_closed_by_esc(app: OnexTui, pilot: Pilot[Any]) -> None:
         await gate.wait()
         return await real(name)
 
-    app.tab_screen = slow  # type: ignore[method-assign]
+    patch.setattr(app, "tab_screen", slow)
     await pilot.press("tab")  # Config -> Model: the swap waits on its read
     await pilot.pause()
     await pilot.press("escape")  # the user closes the tab meanwhile
@@ -70,7 +72,7 @@ async def _swap_closed_by_esc(app: OnexTui, pilot: Pilot[Any]) -> None:
     gate.set()
     for _ in range(4):
         await pilot.pause()
-    app.tab_screen = real  # type: ignore[method-assign]
+    patch.setattr(app, "tab_screen", real)
 
 
 @pytest.mark.parametrize("field", _FIELDS)
@@ -91,13 +93,13 @@ async def test_typing_with_no_palette_on_the_main_screen_keeps_the_tui_running(
 
 @pytest.mark.parametrize("field", _FIELDS)
 async def test_typing_after_a_tab_swap_raced_esc_keeps_the_tui_running(
-    field: str,
+    field: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """K1/K2: the real route to a missing main screen."""
     app = _app(_Runner([]))
     async with app.run_test(size=(140, 44)) as pilot:
         await _open_config(pilot, app)
-        await _swap_closed_by_esc(app, pilot)
+        await _swap_closed_by_esc(app, pilot, monkeypatch)
         assert app.is_running
         assert len(app.screen_stack) >= 2  # the main screen is still under a tab
         for _ in range(3):  # Model -> Delegation -> Dashboard -> Config

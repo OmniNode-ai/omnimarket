@@ -13,7 +13,7 @@ requirements:
   statement: "Typing into the Config tab's key and URL fields does not raise, the model search still starts, and the / palette still opens from the main prompt."
   acceptance:
   - id: AC1
-    statement: 'AC1: typing into the key and URL fields does not raise and the model search still starts; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_typing_with_no_palette_on_the_main_screen_keeps_the_tui_running'
+    statement: 'AC1: typing into the key and URL fields does not raise and the model search still starts; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_typing_with_no_palette_on_the_main_screen_keeps_the_tui_running; the search starts: tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_typing_in_key_and_url_starts_the_model_search'
   - id: AC2
     statement: 'AC2: the / palette still opens and filters from the main prompt; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py::test_shortcuts_lead_the_palette_like_coding_agent_tuis'
   - id: AC3
@@ -37,7 +37,10 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_typing_with_no_palette_on_the_main_screen_keeps_the_tui_running tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_typing_after_a_tab_swap_raced_esc_keeps_the_tui_running -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_typing_in_key_and_url_starts_the_model_search -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26613-ac2
   description: 'AC2: the / palette still opens and filters from the main prompt.'
