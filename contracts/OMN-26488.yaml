@@ -38,3 +38,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest "tests/ci/test_repository_prose_removed_omn17427.py::test_removed_prose_file_is_absent[CHANGELOG.md]" -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26488-ac2-changelog-absent-regression
+  description: 'tests/ci/test_changelog_absent_omn26488.py fails at origin/dev 2bb5039b9f, where CHANGELOG.md is present, and passes at the pushed head, where it is removed, with no skip.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_changelog_absent_omn26488.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
