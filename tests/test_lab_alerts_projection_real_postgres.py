@@ -60,7 +60,7 @@ async def _connect_or_skip() -> asyncpg.Connection:
     dsn = f"postgresql://{quote_plus(user)}:{quote_plus(secret)}@{host}:{port}/{db}"
     try:
         return await asyncpg.connect(dsn)
-    except (OSError, asyncpg.PostgresError) as exc:  # pragma: no cover
+    except (OSError, asyncpg.PostgresError) as exc:
         pytest.skip(f"no reachable Postgres for lab alerts proof: {exc}")
 
 

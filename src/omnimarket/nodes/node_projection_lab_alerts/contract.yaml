@@ -61,6 +61,9 @@ event_bus:
     - onex.evt.omnimarket.projection-lab-alerts-applied.v1
   dlq_topics:
     - onex.dlq.omnimarket.projection-lab-alerts-malformed.v1
+externally_produced_topics:
+  - topic: onex.evt.omnimarket.lab-alert-transitioned.v1
+    producer: "an alert source publishing ModelLabAlertTransitioned; no alarm node does yet, so a raised test alert is published by the onex node dispatcher (`onex run-node`) directly -- not a node contract"
 externally_consumed_topics:
   - onex.evt.omnimarket.projection-lab-alerts-applied.v1
 # The broker grants of the node's two topics (the broker ACL coverage gate): the runtime login reads the transition

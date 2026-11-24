@@ -499,3 +499,39 @@ def test_the_shape_documents_example_is_a_valid_row() -> None:
     assert raised.tzinfo is not None
     assert datetime.fromisoformat(example["cleared_at"]) >= raised
     assert EnumLabAlertTransition.RAISED.value == "raised"
+
+
+SOURCES_DOC = ROOT / "docs" / "reference" / "lab-alert-sources.yaml"
+ALARM_CONTRACT = (
+    ROOT / "src" / "omnimarket" / "nodes" / "node_lab_alarm" / "contract.yaml"
+)
+
+
+def test_every_declared_alarm_source_is_listed_with_whether_its_alerts_reach_the_bus() -> (
+    None
+):
+    declared = yaml.safe_load(ALARM_CONTRACT.read_text(encoding="utf-8"))[
+        "alarm_sources"
+    ]
+    listed = yaml.safe_load(SOURCES_DOC.read_text(encoding="utf-8"))["sources"]
+    assert [entry["condition"] for entry in listed] == [
+        entry["condition"] for entry in declared
+    ], (
+        "a declared alarm source is missing from the list, or the list holds one that is not declared"
+    )
+    for entry, source in zip(listed, declared, strict=True):
+        assert entry["posts_via"] == source["posts_via"], entry["condition"]
+        assert isinstance(entry["publishes_transition"], bool), entry["condition"]
+
+
+def test_a_source_listed_as_publishing_the_transition_declares_the_topic() -> None:
+    listed = yaml.safe_load(SOURCES_DOC.read_text(encoding="utf-8"))["sources"]
+    publishers = [e["condition"] for e in listed if e["publishes_transition"]]
+    transition_topic = _contract()["event_bus"]["subscribe_topics"][0]
+    declared_by = [
+        path
+        for path in (ROOT / "src" / "omnimarket" / "nodes").glob("*/contract.yaml")
+        if path.parent.name != "node_projection_lab_alerts"
+        and transition_topic in path.read_text(encoding="utf-8")
+    ]
+    assert bool(publishers) == bool(declared_by), (publishers, declared_by)

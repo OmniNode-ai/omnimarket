@@ -46,13 +46,13 @@ dod_evidence:
     check_value: test -s docs/reference/lab-alerts-projection-read.yaml
     cwd: .
 - id: dod-omn26663-source-list
-  description: The AC1 list of every alert source is in the lane report; this check binds the declared alarm-source table the list is read from.
+  description: Every alarm source node_lab_alarm declares is listed in docs/reference/lab-alert-sources.yaml with whether its alerts reach the bus as a lab alert transition; a source missing from the list fails the test. The scheduled jobs outside the alarm nodes are not in this list.
   source: manual
   binds_ac:
   - AC1
   checks:
-  - check_type: command
-    check_value: grep -q 'alarm_sources:' src/omnimarket/nodes/node_lab_alarm/contract.yaml
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn26663_lab_alerts_projection.py -q --no-cov -n 0 -p no:randomly -k 'alarm_source or listed_as_publishing'
     cwd: .
 - id: dod-omn26663-hosted-deploy-check
   description: 'Deploy check the hosted runner can run: the contract declares the transition topic and the bus-backed exposure, and the node is registered as an onex.nodes entry point. This binds no criterion by itself.'
