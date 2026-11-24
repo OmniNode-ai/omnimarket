@@ -149,6 +149,11 @@ class ModelCensusResult(_Frozen):
     counts: tuple[ModelRepositoryCount, ...]
     failure_code: str | None = None
     failure_detail: str = ""
+    absent_repositories: tuple[str, ...] = Field(
+        default=(),
+        description="Registered repositories with no clone, in registry order. They are not counted and do not fail the "
+        "run by themselves; the run counts every present repository and names each absent one.",
+    )
     lowered_ratchet: dict[str, int] = Field(
         default_factory=dict,
         description="The ratchet with every lowerable count lowered; never one raised.",
@@ -179,6 +184,10 @@ class ModelCensusDailyRecord(_Frozen):
     total_files: int = Field(ge=0)
     runtime_files: int = Field(ge=0)
     repositories: tuple[ModelCensusDailyRow, ...]
+    absent_repositories: tuple[str, ...] = Field(
+        default=(),
+        description="Registered repositories with no clone, which the counts leave out.",
+    )
 
     @classmethod
     def from_result(
@@ -191,6 +200,7 @@ class ModelCensusDailyRecord(_Frozen):
             failure_code=result.failure_code,
             total_files=result.total_files,
             runtime_files=result.runtime_files,
+            absent_repositories=result.absent_repositories,
             repositories=tuple(
                 ModelCensusDailyRow(
                     repository=c.repository,

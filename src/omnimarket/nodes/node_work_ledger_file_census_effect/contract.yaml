@@ -18,8 +18,11 @@ description: >
   Reading 2 of the no-file ledger: a census of executable readers and writers of the ledger file's
   name and path variable over the registered repositories, held by a ratchet that only shrinks. The
   repositories, names, variables, comment rules and the ratchet file are overlay settings. A repository
-  that is absent or unreadable, one with no ratchet row and an unreadable ratchet file are typed
-  failures, never a pass. Every run is one emission chain (piece 6): a start, then a success or a
+  that is unreadable, one with no ratchet row and an unreadable ratchet file are typed failures, never a
+  pass. A repository with no clone is counted as absent, named in the result and in the daily record
+  (absent_repositories) and never a failure of the run by itself (operator ruling 2026-11-24T16:19:26Z); a run
+  with no repository present fails with repo-absent. The node declares no alert path of its own: the daily
+  record on the declared topic carries the absent list for a consumer to alert on. Every run is one emission chain (piece 6): a start, then a success or a
   typed failure under one correlation id.
 
 handler:

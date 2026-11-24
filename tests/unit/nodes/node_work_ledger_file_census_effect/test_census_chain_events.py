@@ -3,7 +3,7 @@
 """Golden and error chain events of the ledger file census (OMN-22917, piece 6).
 
 The golden chain is a start then a success under one correlation id. Each error chain ends in its typed
-failure and never in a pass: a grown count, an absent repository, an unreadable one, a repository with
+failure and never in a pass: a grown count, no repository present, an unreadable one, a repository with
 no ratchet row, a ratchet file that cannot be read, a name that is not registered.
 """
 
@@ -67,6 +67,16 @@ def test_error_chain_absent_repository() -> None:
     del repos["beta"]
     census, sink = handler(repos, ZERO)
     result = census.handle(ModelCensusRequest(correlation_id="absent"))
+    # one absent repository is named and the others are counted: the chain still ends in a success
+    assert result.failure_code is None
+    assert result.absent_repositories == ("beta",)
+    assert phases(sink) == [("start", None), ("success", None)]
+    assert sink.events[-1].counters == {"files": 0, "repositories": 2}
+
+
+def test_error_chain_every_repository_absent_ends_in_repo_absent() -> None:
+    census, sink = handler({}, ZERO)
+    result = census.handle(ModelCensusRequest(correlation_id="none-present"))
     assert result.failure_code == "repo-absent"
     assert phases(sink)[-1] == ("failure", "repo-absent")
 

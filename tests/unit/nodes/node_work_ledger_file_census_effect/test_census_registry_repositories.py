@@ -320,18 +320,20 @@ def test_absent_repository_daily_record_none_absent_carries_an_empty_list(
     assert payload["absent_repositories"] == []
 
 
-def test_daily_record_a_missing_clone_is_a_typed_failure_not_a_pass(
+def test_daily_record_no_clone_present_is_a_typed_failure_that_still_publishes_and_names_every_repository(
     registry_root: Path, tmp_path: Path
 ) -> None:
-    shutil.rmtree(registry_root / "omnidash")
-    code, _lines, evidence = _tick(registry_root, tmp_path)
-    assert code == 69
+    for name in _REGISTRY:
+        shutil.rmtree(registry_root / name)
+    code, lines, evidence, bus = _tick_recording(registry_root, tmp_path)
+    assert code == 69, lines
     record = evidence["record"]
     assert isinstance(record, dict)
     assert record["passed"] is False
     assert record["failure_code"] == "repo-absent"
-    row = next(r for r in record["repositories"] if r["repository"] == "omnidash")
-    assert row["state"] == "absent"
+    assert record["absent_repositories"] == list(_REGISTRY)
+    assert all(r["state"] == "absent" for r in record["repositories"])
+    assert len(bus.sent) == 1, "a failed run still publishes its record"
 
 
 @pytest.mark.parametrize("seeded", _REGISTRY)
@@ -401,10 +403,13 @@ def test_retired_repository_a_deployment_overlay_naming_one_is_neither_required_
     assert "failure=none" in out
 
 
-def test_retired_repository_an_absent_repository_that_is_not_retired_is_still_a_failure(
+def test_retired_repository_an_absent_repository_that_is_not_retired_is_named_and_the_present_one_is_counted(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     env = _deployment_overlay(tmp_path, ["omnimemory", "omnidash"])
-    assert runtime_file_census.main([], environ=env) == 69
+    assert runtime_file_census.main([], environ=env) == 0
     out = capsys.readouterr().out
-    assert "failure=repo-absent" in out
+    assert "CENSUS omnidash counted state=ok" in out
+    assert "CENSUS omnimemory counted state=absent" in out
+    assert "CENSUS-ABSENT omnimemory" in out
+    assert "failure=none" in out
