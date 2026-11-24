@@ -45,6 +45,13 @@ description: >
 
 output_model: omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result.ModelModelSetupResult
 
+runtime_dispatch:
+  external_trigger: true
+  # A customer sets up their models by hand, never on a timer: the `onex models` command group is the whole trigger.
+  on_demand:
+    command: uv run onex models refresh-prices
+    owner: OmniNode Platform Team
+
 handler:
   module: omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup
   class: HandlerModelSetup
