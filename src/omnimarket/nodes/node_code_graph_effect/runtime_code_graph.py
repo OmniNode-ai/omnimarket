@@ -64,6 +64,10 @@ from omnimarket.nodes.node_code_graph_effect.adapters.memgraph_version_store imp
     open_memgraph_store,
     revision_key,
 )
+from omnimarket.nodes.node_code_graph_effect.adapters.missing_repo_alerts import (
+    ChannelMissingRepoAlerts,
+    ShellAlertChannel,
+)
 from omnimarket.nodes.node_code_graph_effect.adapters.pull_request_sources import (
     WatcherStatePullRequestSource,
 )
@@ -236,6 +240,21 @@ def _keep(result: ModelCodeGraphResult) -> None:
     staged.replace(target)
 
 
+def _missing_alerts(
+    overlay: ModelCodeGraphOverlay, environ: Mapping[str, str]
+) -> ChannelMissingRepoAlerts | None:
+    """The alert for a missing repository as the overlay declares it, or none where it declares none."""
+    declared = overlay.alert
+    if declared is None:
+        return None
+    state = environ.get(declared.state_path_env, "").strip()
+    return ChannelMissingRepoAlerts(
+        send=ShellAlertChannel(declared, environ),
+        category=declared.category,
+        state_path=Path(state) if state else None,
+    )
+
+
 def build_handler(write: bool) -> tuple[CodeGraphRun, str]:
     """The nightly handler as the overlay and the environment name it, and this host's name."""
     overlay = load_overlay()
@@ -255,6 +274,7 @@ def build_handler(write: bool) -> tuple[CodeGraphRun, str]:
         clock=lambda: datetime.now(UTC),
         version_writer=_memgraph_writer(overlay) if write else None,
         commit_clock=source,
+        missing_alerts=_missing_alerts(overlay, os.environ) if write else None,
     )
     return handler, host
 
@@ -305,6 +325,8 @@ def _run(arguments: argparse.Namespace, write: bool) -> int:
         f"sample={f'{sample.agree}/{sample.total}' if sample else 'none'} "
         f"controls={f'{sample.controls_reached}/{sample.controls_total}' if sample else 'none'} "
         f"ledger={result.ledger} key={result.row_key} memgraph={result.memgraph} "
+        f"missing={','.join(m.repo for m in result.missing) or 'none'} "
+        f"alerts={','.join(result.alerts) or 'none'} "
         f"reason={','.join(result.reasons[:8])}\n"
     )
     if result.failure:

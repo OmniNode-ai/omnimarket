@@ -34,8 +34,10 @@ description: >
   question answers one row per operation of each contract's handler_routing: the handler class and module, the
   input and output model, the topics, the declared failure causes and examples, read through the contract graph
   import and resolved against the version's definition index; a reference it cannot place is marked UNRESOLVED and
-  an operation with no command topic and no subscribed topic with an observable output is NO_ROUTE. An unreadable
-  repository, pull request source or an append that does not land are typed failures.
+  an operation with no command topic and no subscribed topic with an observable output is NO_ROUTE. A declared repository that cannot be read
+  never empties the graph (OMN-26104): the readable ones are built and stored, the run says PARTIAL and names each missing
+  one, and the declared alert channel raises one alert per missing repository until its reason changes. A run with no
+  readable repository, an unreadable pull request source or an append that does not land are typed failures.
 
 handler:
   module: omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph_requested

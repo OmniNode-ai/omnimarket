@@ -151,6 +151,15 @@ class ModelCodeGraphCommand(BaseModel):
     fault: EnumGraphFault = EnumGraphFault.NONE
 
 
+class ModelMissingRepo(BaseModel):
+    """A declared repository the run could not read, and why: named, never an empty graph."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+
+
 class ModelCodeGraphResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -170,6 +179,11 @@ class ModelCodeGraphResult(BaseModel):
     failure: str | None = None
     #: What the Memgraph version write did: ``not-configured``, ``skipped:<reason>``, ``written:<n>`` or ``failed:<reason>``.
     memgraph: str = "not-configured"
+    #: Declared repositories that could not be read; the graph holds the rest (verdict PARTIAL).
+    missing: tuple[ModelMissingRepo, ...] = ()
+    #: One outcome per missing repository: ``alerted:<repo>``, ``already-alerted:<repo>``,
+    #: ``alert-failed:<repo>:<why>`` or ``not-configured:<repo>``.
+    alerts: tuple[str, ...] = ()
 
 
 class ModelGraphCheckResult(BaseModel):

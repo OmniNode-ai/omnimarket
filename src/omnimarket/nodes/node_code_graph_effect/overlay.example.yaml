@@ -23,6 +23,10 @@
 #                     lookup) and fallback_deadline_seconds (the file store, separate so the lookup cannot
 #                     consume it); a comparison takes at most their sum plus a second (optional: absent
 #                     where no comparison is run)
+#   alert             the channel a missing repository is named through: the variable naming the alert-channel
+#                     library, its function and category, the shell and timeout that run it, and the variable naming
+#                     the file that remembers which repository was alerted for which reason (optional: absent where
+#                     no alert is raised)
 #   schedule_hosts    hosts that install the nightly systemd user timer
 #   unit_environment  environment the installed unit carries
 graph_backend: in_memory
@@ -77,6 +81,13 @@ shadow:
   max_pull_requests: 50
 lookup:
   retention_versions: 3
+alert:
+  lib_env: EXAMPLE_ALERT_CHANNEL_LIB
+  function: alert_channel_send
+  category: code-graph
+  shell: /bin/bash
+  timeout_seconds: 60
+  state_path_env: EXAMPLE_ALERT_STATE_PATH
 compare:
   lookup_deadline_seconds: 20
   fallback_deadline_seconds: 60
@@ -88,4 +99,6 @@ unit_environment:
   EXAMPLE_REPOS_ROOT: $OMNI_HOME
   EXAMPLE_HOST_NAME: example-host
   EXAMPLE_PR_STATE_PATH: $OMNI_HOME/.onex_state/pr-watcher/state.json
+  EXAMPLE_ALERT_CHANNEL_LIB: $OMNI_HOME/omniclaude/plugins/onex/hooks/scripts/alert-channel.sh
+  EXAMPLE_ALERT_STATE_PATH: $OMNI_HOME/.onex_state/code-graph/missing-repo-alerts.json
 injected_fault: Stop the timer and advance the clock, or drop the contract links in a drill run

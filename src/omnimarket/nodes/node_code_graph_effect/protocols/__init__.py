@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from typing import Protocol
 
@@ -76,9 +76,25 @@ class ProtocolCommitClock(Protocol):
         ...
 
 
+class ProtocolMissingRepoAlerts(Protocol):
+    """Raises the alert for each declared repository the run could not read, once until it changes."""
+
+    def announce(
+        self, missing: Mapping[str, str], *, host: str, at: datetime
+    ) -> tuple[str, ...]:
+        """One outcome token per missing repository, sorted by repository.
+
+        ``missing`` maps each repository to its reason. A repository already alerted for the same reason
+        is ``already-alerted:<repo>``; one that is no longer missing is forgotten, so it alerts again if
+        it goes missing again.
+        """
+        ...
+
+
 __all__ = [
     "ProtocolCodeGraphVersionStore",
     "ProtocolCommitClock",
+    "ProtocolMissingRepoAlerts",
     "ProtocolPullRequestSource",
     "ProtocolRepoSource",
     "PullRequestSourceError",

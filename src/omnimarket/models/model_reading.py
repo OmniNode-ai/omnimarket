@@ -23,6 +23,9 @@ class EnumReadingVerdict(StrEnum):
     WORKING = "WORKING"
     NOT_WORKING = "NOT_WORKING"
     UNKNOWN = "UNKNOWN"
+    #: A graph built from the repositories that were present, with one or more named missing. Not WORKING, so
+    #: it blocks; only the code graph run writes it (OMN-26104).
+    PARTIAL = "PARTIAL"
 
     @property
     def display(self) -> str:

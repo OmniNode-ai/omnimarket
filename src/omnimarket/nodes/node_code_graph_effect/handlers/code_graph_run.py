@@ -4,9 +4,11 @@
 
 It writes code graph rows only, never a gate, a stop or an admission. A run is WORKING when the
 graph agrees with the frozen sample at or above its bar and reaches every known-used control;
-otherwise NOT_WORKING with the misses named. A repository that cannot be read fails the run, and
-the row says NOT_WORKING with the outcome ``source-unreadable``: a graph that could not be built is
-not working. A run with an injected fault is a drill, and its row carries ``drill=yes`` so that no
+otherwise NOT_WORKING with the misses named. A declared repository that cannot be read never empties the
+graph (OMN-26104): the repositories that are present are built, each missing one is named on the result and
+alerted once through the declared alert channel until its reason changes, and a run whose sample is otherwise
+met says PARTIAL. Only a run with no readable repository fails, and its row says NOT_WORKING with the outcome
+``source-unreadable``: a graph that could not be built is not working. A run with an injected fault is a drill, and its row carries ``drill=yes`` so that no
 operational reading reads it.
 """
 
@@ -26,6 +28,7 @@ from omnimarket.models.model_code_graph import (
     EnumGraphFault,
     ModelCodeGraphCommand,
     ModelCodeGraphResult,
+    ModelMissingRepo,
     ModelRepoSnapshot,
     ModelSampleOutcome,
 )
@@ -46,6 +49,7 @@ from omnimarket.nodes.node_code_graph_effect.overlay import ModelCodeGraphOverla
 from omnimarket.nodes.node_code_graph_effect.protocols import (
     ProtocolCodeGraphVersionStore,
     ProtocolCommitClock,
+    ProtocolMissingRepoAlerts,
     ProtocolRepoSource,
     RepoSourceError,
 )
@@ -81,6 +85,19 @@ def _cell(text: str) -> str:
     return text.replace("|", "/").replace(" ", "_")
 
 
+def _repo(missing: ModelMissingRepo) -> str:
+    return missing.repo
+
+
+def _verdict(
+    reasons: tuple[str, ...], missing: list[ModelMissingRepo]
+) -> EnumReadingVerdict:
+    """WORKING when whole and agreed, PARTIAL when agreed over what was present, else NOT_WORKING."""
+    if reasons != ("ok",):
+        return EnumReadingVerdict.NOT_WORKING
+    return EnumReadingVerdict.PARTIAL if missing else EnumReadingVerdict.WORKING
+
+
 class CodeGraphRun:
     """Run the graph over the overlay's repositories."""
 
@@ -94,7 +111,9 @@ class CodeGraphRun:
         clock: Callable[[], datetime],
         version_writer: ProtocolCodeGraphVersionStore | None = None,
         commit_clock: ProtocolCommitClock | None = None,
+        missing_alerts: ProtocolMissingRepoAlerts | None = None,
     ) -> None:
+        self._missing_alerts = missing_alerts
         self._version_writer = version_writer
         self._commit_clock = commit_clock
         self._overlay = overlay
@@ -112,8 +131,14 @@ class CodeGraphRun:
 
     def _snapshots(
         self, rules: GraphRules, fault: EnumGraphFault
-    ) -> list[ModelRepoSnapshot]:
+    ) -> tuple[list[ModelRepoSnapshot], list[ModelMissingRepo]]:
+        """Each declared repository that reads, and each that does not with its reason.
+
+        An injected unreadable repository is a drill of the whole run and raises; a repository a host does
+        not hold is only missing.
+        """
         snapshots: list[ModelRepoSnapshot] = []
+        missing: list[ModelMissingRepo] = []
         for position, repo in enumerate(self._overlay.repos):
             if position == 0 and fault is EnumGraphFault.UNREADABLE_REPO:
                 raise RepoSourceError(f"injected-unreadable:{repo.name}")
@@ -122,8 +147,18 @@ class CodeGraphRun:
                     self._source.snapshot(repo.name, repo.ref, rules.wanted)
                 )
             except RepoSourceError as exc:
-                raise RepoSourceError(f"{repo.name}:{exc}") from None
-        return snapshots
+                missing.append(ModelMissingRepo(repo=repo.name, reason=str(exc)))
+        return snapshots, missing
+
+    def _announce(
+        self, missing: list[ModelMissingRepo], now: datetime
+    ) -> tuple[str, ...]:
+        """Alert each missing repository once; the outcomes, or the gap when no channel is declared."""
+        if self._missing_alerts is None:
+            return tuple(f"not-configured:{m.repo}" for m in sorted(missing, key=_repo))
+        return self._missing_alerts.announce(
+            {m.repo: m.reason for m in missing}, host=self._host, at=now
+        )
 
     def handle(self, command: ModelCodeGraphCommand) -> ModelCodeGraphResult:
         now = self._clock().astimezone(UTC)
@@ -139,7 +174,7 @@ class CodeGraphRun:
             )
         rules = self.rules(command.fault)
         try:
-            snapshots = self._snapshots(rules, command.fault)
+            snapshots, missing = self._snapshots(rules, command.fault)
         except RepoSourceError as exc:
             why = f"repo-unreadable:{reason_token(str(exc))}"
             return self._publish(
@@ -155,9 +190,28 @@ class CodeGraphRun:
                     failure=why,
                 ),
             )
+        alerts = self._announce(missing, now) if command.write else ()
+        if not snapshots:
+            why = f"repo-unreadable:{reason_token(','.join(f'{m.repo}:{m.reason}' for m in missing))}"
+            return self._publish(
+                command,
+                now,
+                ModelCodeGraphResult(
+                    correlation_id=command.correlation_id,
+                    status="failed",
+                    verdict=EnumReadingVerdict.NOT_WORKING,
+                    outcome=EnumReadingOutcome.SOURCE_UNREADABLE,
+                    reasons=(why,),
+                    fault=command.fault,
+                    failure=why,
+                    missing=tuple(missing),
+                    alerts=alerts,
+                ),
+            )
         graph = build_graph(snapshots, rules)
         sample = judge_sample(graph, self._overlay.sample)
         reasons = self._reasons(sample)
+        gaps = tuple(f"missing:{m.repo}:{reason_token(m.reason)}" for m in missing)
         memgraph = (
             self._write_versions(snapshots, rules)
             if command.write
@@ -169,11 +223,9 @@ class CodeGraphRun:
             ModelCodeGraphResult(
                 correlation_id=command.correlation_id,
                 status="completed",
-                verdict=EnumReadingVerdict.WORKING
-                if reasons == ("ok",)
-                else EnumReadingVerdict.NOT_WORKING,
+                verdict=_verdict(reasons, missing),
                 outcome=EnumReadingOutcome.READ,
-                reasons=reasons,
+                reasons=gaps if reasons == ("ok",) and gaps else (*reasons, *gaps),
                 fault=command.fault,
                 repos=tuple(
                     graph.repo_graph(snapshot.repo, snapshot.head)
@@ -181,6 +233,8 @@ class CodeGraphRun:
                 ),
                 sample=sample,
                 memgraph=memgraph,
+                missing=tuple(missing),
+                alerts=alerts,
             ),
         )
 
@@ -278,6 +332,8 @@ class CodeGraphRun:
             f"outcome={result.outcome.value}",
             f"reason={_cell(','.join(shown))}" + (f",+{more}-more" if more else ""),
             f"repos={len(result.repos)}",
+            f"missing={_cell(','.join(m.repo for m in result.missing)) if result.missing else 'none'}",
+            f"alerts={_cell(','.join(result.alerts)) if result.alerts else 'none'}",
             *(f"{name}={value}" for name, value in totals.items()),
             f"sample={sample.agree}/{sample.total}" if sample else "sample=none",
             f"sample_bar={self._overlay.sample.min_agree}",

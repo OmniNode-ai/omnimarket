@@ -213,6 +213,27 @@ class ModelCodeGraphShadow(BaseModel):
     max_pull_requests: int = Field(ge=1)
 
 
+class ModelCodeGraphAlert(BaseModel):
+    """The declared alert channel a missing repository is named through (OMN-26104).
+
+    The library is the alert-channel shell library the platform already sends through; the variables name
+    where this host keeps it and where it keeps the alerts it has already sent, so a repository is alerted once
+    until its reason changes and never once per run.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The variable naming the shell library that defines ``function``.
+    lib_env: str = Field(min_length=1)
+    #: The function the library defines; called with ``category`` and the alert text.
+    function: str = Field(min_length=1)
+    category: str = Field(min_length=1)
+    shell: str = Field(min_length=1)
+    timeout_seconds: int = Field(ge=1)
+    #: The variable naming the file that remembers which repository was alerted for which reason.
+    state_path_env: str = Field(min_length=1)
+
+
 class ModelCodeGraphScheduleHost(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -243,6 +264,8 @@ class ModelCodeGraphOverlay(BaseModel):
     lookup: ModelCodeGraphLookupSettings | None = None
     #: The selection comparison's deadlines; absent where no comparison is run.
     compare: ModelCodeGraphCompareSettings | None = None
+    #: Where a missing repository is named; absent where no alert is raised (the result then says so).
+    alert: ModelCodeGraphAlert | None = None
     schedule_hosts: tuple[ModelCodeGraphScheduleHost, ...] = ()
     #: Environment the installed unit carries (the append command and the repository root).
     unit_environment: dict[str, str] = Field(default_factory=dict)
