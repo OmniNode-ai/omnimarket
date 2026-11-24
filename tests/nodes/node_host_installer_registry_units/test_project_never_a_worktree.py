@@ -25,13 +25,17 @@ from omnimarket.nodes.node_host_installer_registry_units.models.model_registry_u
 )
 from tests.nodes.node_host_installer_registry_units.test_overlay_env_probe_unit import (
     _checkout,
-    linux_host,  # noqa: F401  (fixture)
+    linux_host,
 )
 from tests.nodes.node_host_installer_registry_units.test_registry_units_systemd import (
     Recorder,
 )
 
 pytestmark = pytest.mark.unit
+
+# `linux_host` is an autouse fixture (a Linux host with uv) taken from the sibling module: naming
+# it in `__all__` marks the import as used.
+__all__ = ["linux_host"]
 
 PROBE_UNIT = "overlay-env-probe-systemd"
 
@@ -56,7 +60,6 @@ def _request(
 
 def test_golden_a_checkout_outside_omni_worktrees_installs(
     tmp_path: Path,
-    linux_host: None,  # noqa: F811
 ) -> None:
     """Positive control: the same checkout, not under omni_worktrees, is accepted by the same request."""
     project = tmp_path / "branch"
@@ -69,7 +72,6 @@ def test_golden_a_checkout_outside_omni_worktrees_installs(
 
 def test_error_a_checkout_under_omni_worktrees_is_refused_with_the_path_named(
     tmp_path: Path,
-    linux_host: None,  # noqa: F811
 ) -> None:
     project = tmp_path / "omni" / "omni_worktrees" / "lane-1" / "omnimarket"
     revision = _checkout(project)
@@ -86,7 +88,6 @@ def test_error_a_checkout_under_omni_worktrees_is_refused_with_the_path_named(
 
 def test_error_a_dry_run_refuses_it_too(
     tmp_path: Path,
-    linux_host: None,  # noqa: F811
 ) -> None:
     project = tmp_path / "omni" / "omni_worktrees" / "lane-1" / "omnimarket"
     revision = _checkout(project)
