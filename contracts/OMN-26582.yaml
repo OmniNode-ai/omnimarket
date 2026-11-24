@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-26582
+title: A credential delivery row can name the OS account whose home its folder is relative to, resolved on the target by the fixed delivery script
+summary: ModelServicePrincipalDelivery of node_service_principal_mint_effect gains an optional account field (default none, so every existing row behaves as before). With an account, the fixed delivery script reads the account's home on the target with getent passwd and takes the folder relative to that home; it refuses an unknown account, a uid that differs from the declared owner's uid, a home that is a symlink and a home that does not exist, never creates the home, and receives the account name on standard input only. This contract covers the delivery field alone; the ticket's AC1 (bindings and derived grants for the agent message topic) and AC2 (the per-host read-only check) are separate pieces and are not claimed here.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26582-delivery-account
+  statement: A delivery row may name an OS account, and the delivery script keeps the credential file inside that account's own home folder, refusing every row whose account, uid or home does not check out.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the delivery row model accepts an optional account with a folder relative to that account''s home, refuses an absolute folder, a folder with a ".." segment and a name that is not a login name when an account is set, and a row with no account loads and behaves as before -- falsifier: uv run pytest tests/nodes/node_service_principal_mint_effect/test_service_principal_delivery_account.py -k "account or without_account" fails when the model accepts an absolute or ".." folder with an account'
+  - id: AC4
+    statement: 'AC4: the fixed delivery script resolves the home with getent passwd and refuses, with a nonzero exit, a stderr line and no write, an unknown account, a uid that differs from the declared owner''s uid, a symlinked home and a missing home, and never creates the home -- falsifier: the same test file fails when any of those four rows is written or the home directory is created'
+  - id: AC5
+    statement: 'AC5: the account name and the secret travel on standard input only, on the local and the ssh path, and no command line carries either -- falsifier: the same test file, test_account_and_secret_are_on_standard_input_only, fails when the account or the secret appears in an argv word'
+evidence_requirements:
+- kind: tests
+  description: The delivery account tests plus the node's existing adapter, handler and chain tests.
+  command: uv run pytest tests/nodes/node_service_principal_mint_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26582-delivery-model
+  description: AC3 the row model takes an optional account, refuses an absolute or ".." folder and a non-login-name account, and an existing row with no account still loads with account none.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_service_principal_mint_effect/test_service_principal_delivery_account.py -q --no-cov -k "account or without_account"
+    cwd: .
+- id: dod-omn26582-delivery-script
+  description: AC4 the script refuses an unknown account, a uid mismatch, a symlinked home and a missing home, writes nothing in each case and never creates the home; a row with no account never looks an account up.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_service_principal_mint_effect/test_service_principal_delivery_account.py -q --no-cov
+    cwd: .
+- id: dod-omn26582-stdin-only
+  description: AC5 the account name and the secret are on standard input only, on the local and the ssh path.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_service_principal_mint_effect/test_service_principal_delivery_account.py -q --no-cov -k standard_input_only
+    cwd: .
+- id: dod-omn26582-integration-proof
+  description: Run the delivery account tests and the node's existing tests on a lab host at the pushed revision.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26582 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_service_principal_mint_effect -m 'not e2e' -q -n 0 --no-cov --refuse-skips
+    cwd: .
