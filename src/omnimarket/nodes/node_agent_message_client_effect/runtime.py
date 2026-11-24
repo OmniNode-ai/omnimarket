@@ -87,8 +87,8 @@ class _LazyNode:
             self._node = self._stack.enter_context(self._opener())
         return self._node
 
-    def send(self, message: ModelAgentMessage) -> None:
-        self._open().send(message)
+    def send(self, message: ModelAgentMessage) -> str | None:
+        return self._open().send(message)
 
     def read(self, query: ModelAgentMessageQuery) -> tuple[ModelAgentMessage, ...]:
         return self._open().read(query)
