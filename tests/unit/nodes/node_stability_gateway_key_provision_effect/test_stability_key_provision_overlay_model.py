@@ -16,7 +16,7 @@ import pytest
 from pydantic import ValidationError
 
 from omnimarket.handlers.node_overlay_reader import OVERLAY_ROOTS_ENV
-from omnimarket.nodes.node_stability_gateway_key_provision_effect.overlay import (
+from omnimarket.models.stability_gateway_key_provision.overlay import (
     NODE_NAME,
     ModelStabilityGatewayKeyProvisionOverlay,
     build_identity_store,

@@ -4,7 +4,7 @@
 schema_version: "1.0.0"
 ticket_id: OMN-26566
 title: "The stability gateway key provision overlay model reaches dev before the node that reads it, so the node's overlay document can be added to the overlays repository"
-summary: "This change adds only the overlay model of node_stability_gateway_key_provision_effect (overlay.py and metadata.yaml) with a unit test, and no contract.yaml, no overlay.example.yaml and no node wiring, so the overlay required check has nothing to require of it. The overlays repository pins a document to a commit on dev, and the key provision node cannot merge until that document is on overlays main; adding the model first breaks that cycle. It is one step of the fix for the C16 refusal, not the whole fix."
+summary: "This change adds only the overlay model of node_stability_gateway_key_provision_effect (overlay.py, under omnimarket.models, not a node directory) with a unit test, and no contract.yaml, no overlay.example.yaml and no node wiring, so the overlay required check has nothing to require of it. The overlays repository pins a document to a commit on dev, and the key provision node cannot merge until that document is on overlays main; adding the model first breaks that cycle. It is one step of the fix for the C16 refusal, not the whole fix."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
