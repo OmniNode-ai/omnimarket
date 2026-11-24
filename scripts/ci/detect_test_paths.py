@@ -69,7 +69,7 @@ def compute_selection(
 ) -> ModelTestSelection:
     config = load_adjacency_map(adjacency_path)
     policy = load_policy()
-    closure_stage, root_conftest_edge = policy.closure_settings()
+    closure_stage, edge = policy.closure_settings()
     closure = (stage if stage is not None else policy.selection_stage) >= closure_stage
     root = repo_root or REPO_ROOT
 
@@ -99,7 +99,7 @@ def compute_selection(
     # Below it, the module-level escalations run, then the diff resolves with a declared data file's
     # changed keys read against base_ref (OMN-26275).
     if closure:
-        resolved = closure_selection(changed_files, config, root, root_conftest_edge)
+        resolved = closure_selection(changed_files, config, root, edge, base_ref)
         if isinstance(resolved, EnumFullSuiteReason):
             return _full_suite(resolved)
     elif reason := legacy_module_escalation(changed_files, config):

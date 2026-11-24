@@ -11,7 +11,11 @@ from __future__ import annotations
 import ast
 import importlib.util
 import multiprocessing
+import multiprocessing.pool as multiprocessing_pool
+import os
+import subprocess
 import sys
+import threading
 import uuid
 from pathlib import Path
 from types import ModuleType
@@ -216,24 +220,346 @@ def test_discriminator_is_the_tool_use_id_or_the_text_digest() -> None:
     assert ident.item_discriminator("SessionStart", {"prompt": "hi"}) == ""
 
 
-def _issue(args: tuple[str, str, int]) -> list[int]:
-    directory, stream, count = args
-    return [
+#: Spawn workers import this module and start staggered, so a writer can only be
+#: known to run beside the others if it waits for them. The barrier wait is the
+#: proof; both bounds sit under the 300 s per-test limit the CI split runs with.
+_WRITER_BARRIER_WAIT_S = 120.0
+_WRITER_RESULT_WAIT_S = 180.0
+#: ``Pool.terminate()`` and ``Pool.join()`` take no timeout, so a worker that
+#: ignores SIGTERM would hold the pytest process until the per-test thread timeout
+#: ends it with ``os._exit``, which loses the split's coverage data. The cleanup
+#: runs under this bound, and the result and cleanup waits together stay under
+#: ``_TEST_TIMEOUT_S``.
+_POOL_CLEANUP_WAIT_S = 20.0
+_TEST_TIMEOUT_S = 240
+#: A subprocess that runs one pool wait gets longer than that wait, so a hung
+#: child fails inside the subprocess (a non-zero exit with its traceback) and
+#: never reaches ``TimeoutExpired``; it still ends under ``_TEST_TIMEOUT_S``.
+_SUBPROCESS_WAIT_S = _WRITER_RESULT_WAIT_S + 30.0
+
+#: Set in each spawn worker by ``_init_writer``; the parent never holds a barrier here.
+_writer_barrier: Any = None
+
+#: Set only in the parent, only while a writers pool is being started. A spawn
+#: worker re-imports this module and sees ``False``; a forked worker copies the
+#: parent's memory and sees ``True``.
+_PARENT_STATE = {"marked": False}
+
+
+def _init_writer(barrier: Any) -> None:
+    global _writer_barrier
+    _writer_barrier = barrier
+
+
+def _issue(args: tuple[str, str, int, float]) -> tuple[int, str, list[int]]:
+    """One writer: wait for every other writer, then issue ``count`` sequence numbers.
+
+    Returns the worker's pid and the start method its own process was created with
+    (CPython sets it in the child's bootstrap, whatever the parent's default is), so
+    the test can read, from the workers themselves, that they ran side by side and
+    were started fresh. A pool with fewer workers than barrier parties breaks
+    the barrier after ``barrier_wait_s`` and the job raises.
+    """
+    directory, stream, count, barrier_wait_s = args
+    _writer_barrier.wait(timeout=barrier_wait_s)
+    seqs = [
         ident.next_producer_seq(Path(directory), SESSION, stream) for _ in range(count)
     ]
+    return os.getpid(), multiprocessing.get_start_method(), seqs
 
 
+def _child_sees_parent_mark(_: None) -> tuple[bool, str]:
+    return _PARENT_STATE["marked"], multiprocessing.get_start_method()
+
+
+def _writer_context() -> multiprocessing.context.BaseContext:
+    """Spawn starts fresh interpreters: forking a multithreaded host may deadlock."""
+    return multiprocessing.get_context("spawn")
+
+
+def _start_writer_pool(workers: int, parties: int) -> multiprocessing_pool.Pool:
+    """The one place a writers pool is built, always from ``_writer_context()``."""
+    ctx = _writer_context()
+    barrier = ctx.Barrier(parties)
+    return ctx.Pool(workers, initializer=_init_writer, initargs=(barrier,))
+
+
+def _close_pool(pool: Any, wait_s: float = _POOL_CLEANUP_WAIT_S) -> None:
+    """Terminate and join ``pool``, giving up with ``TimeoutError`` after ``wait_s``.
+
+    The two calls run in a daemon thread because neither takes a timeout; a worker
+    that never exits then fails this test inside its own bound and does not leave
+    the pytest process to the per-test thread timeout.
+    """
+
+    def close() -> None:
+        pool.terminate()
+        pool.join()
+
+    thread = threading.Thread(target=close, daemon=True)
+    thread.start()
+    thread.join(wait_s)
+    if thread.is_alive():
+        raise TimeoutError(f"the writers pool did not shut down within {wait_s} s")
+
+
+def _run_pool(workers: int, parties: int, func: Any, jobs: list[Any]) -> list[Any]:
+    """Run ``jobs`` on a writers pool with the parent mark set while workers start."""
+    _PARENT_STATE["marked"] = True
+    try:
+        pool = _start_writer_pool(workers, parties)
+        try:
+            return pool.map_async(func, jobs, chunksize=1).get(
+                timeout=_WRITER_RESULT_WAIT_S
+            )
+        finally:
+            _close_pool(pool)
+    finally:
+        _PARENT_STATE["marked"] = False
+
+
+def _run_writers(
+    workers: int, parties: int, jobs: list[tuple[str, str, int, float]]
+) -> list[tuple[int, str, list[int]]]:
+    return _run_pool(workers, parties, _issue, jobs)
+
+
+@pytest.mark.timeout(_TEST_TIMEOUT_S)
 def test_eight_concurrent_writers_issue_1000_gap_free_sequence_numbers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # A loaded runner must not turn this into a lock-timeout test.
     monkeypatch.setenv("ONEX_HOOK_LOCK_WAIT_S", "60")
-    jobs = [(str(tmp_path), ident.STREAM_CONTENT, 125)] * 8
-    with multiprocessing.get_context("fork").Pool(8) as pool:
-        issued = [n for batch in pool.map(_issue, jobs) for n in batch]
+    jobs = [(str(tmp_path), ident.STREAM_CONTENT, 125, _WRITER_BARRIER_WAIT_S)] * 8
+    results = _run_writers(8, 8, jobs)
+    # Eight distinct workers each held a job at the barrier together, so the
+    # writes below came from eight processes and not one worker draining the queue.
+    assert len({pid for pid, _, _ in results}) == 8
+    # The workers themselves report how they were started.
+    assert {method for _, method, _ in results} == {"spawn"}
+    issued = [n for _, _, seqs in results for n in seqs]
     assert sorted(issued) == list(range(1, 1001))
     assert ident.high_water(tmp_path, SESSION, ident.STREAM_CONTENT) == 1000
     assert ident.high_water(tmp_path, SESSION, ident.STREAM_LINEAGE) == 0
+
+
+@pytest.mark.timeout(_TEST_TIMEOUT_S)
+def test_serial_writers_cannot_satisfy_the_concurrency_barrier(tmp_path: Path) -> None:
+    """One worker for eight writers breaks the barrier; the gap-free check alone passes."""
+    jobs = [(str(tmp_path), ident.STREAM_CONTENT, 5, 3.0)] * 8
+    with pytest.raises(threading.BrokenBarrierError):
+        _run_writers(1, 8, jobs)
+
+
+def _worker_view_of_the_parent_mark() -> list[tuple[bool, str]]:
+    """What one pool worker sees of the parent's mark."""
+    return _run_pool(1, 1, _child_sees_parent_mark, [None])
+
+
+@pytest.mark.timeout(_TEST_TIMEOUT_S)
+def test_writer_pool_workers_start_fresh_not_forked() -> None:
+    saw = _worker_view_of_the_parent_mark()
+    assert saw == [(False, "spawn")]
+
+
+#: Mark names and calls that let a test pass, or end its run, without proving anything.
+_SKIPPING_MARKS = frozenset({"skip", "skipif", "xfail"})
+_SKIPPING_CALLS = frozenset({"skip", "xfail", "importorskip"})
+_EIGHT_WRITER_TEST = (
+    "test_eight_concurrent_writers_issue_1000_gap_free_sequence_numbers"
+)
+
+
+def _as_list(marks: Any) -> list[Any]:
+    """A ``pytestmark`` value is one mark or a list of marks; read both as a list."""
+    return list(marks) if isinstance(marks, (list, tuple)) else [marks]
+
+
+def _mark_names(fn: Any, module_marks: Any) -> set[str]:
+    marks = [*_as_list(getattr(fn, "pytestmark", [])), *_as_list(module_marks)]
+    return {mark.name for mark in marks}
+
+
+def _item_mark_names(item: Any) -> set[str]:
+    return {mark.name for mark in item.iter_markers()}
+
+
+def _skipping_lines(source: str) -> list[str]:
+    """Every ``pytest.skip``/``xfail``/``importorskip`` call and ``mark.skip*``/``xfail`` use."""
+    found: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Attribute):
+            continue
+        base = node.value
+        is_call_name = node.attr in _SKIPPING_CALLS
+        is_mark_name = node.attr in _SKIPPING_MARKS
+        if is_call_name and isinstance(base, ast.Name) and base.id == "pytest":
+            found.append(f"line {node.lineno}: pytest.{node.attr}")
+        elif is_mark_name and isinstance(base, ast.Attribute) and base.attr == "mark":
+            found.append(f"line {node.lineno}: pytest.mark.{node.attr}")
+    return found
+
+
+def test_the_eight_writer_test_carries_no_skip_or_xfail_marker() -> None:
+    """A marker on the writers test would let it pass without proving anything."""
+    fn = test_eight_concurrent_writers_issue_1000_gap_free_sequence_numbers
+    assert not _mark_names(fn, pytestmark) & _SKIPPING_MARKS
+
+
+def test_the_mark_reader_accepts_a_module_mark_that_is_a_list() -> None:
+    """``pytestmark`` may be one mark or a list; a list must not raise or hide a skip."""
+    fn = test_eight_concurrent_writers_issue_1000_gap_free_sequence_numbers
+    assert _mark_names(fn, [pytest.mark.unit]) == {"unit", "timeout"}
+    for name in sorted(_SKIPPING_MARKS):
+        skipping = getattr(pytest.mark, name)
+        assert name in _mark_names(fn, [pytest.mark.unit, skipping])
+        assert name in _mark_names(fn, skipping)
+
+
+def test_the_test_file_calls_no_skip_xfail_or_importorskip() -> None:
+    """A ``pytest.skip()`` call would let the run pass with the proof not run."""
+    assert _skipping_lines(Path(__file__).read_text()) == []
+
+
+def test_the_skip_reader_finds_each_way_to_skip() -> None:
+    """Positive control for the check above: each form is found when it is present."""
+    source = (
+        "import pytest\n"
+        "pytest.skip('x')\n"
+        "pytest.xfail('x')\n"
+        "pytest.importorskip('x')\n"
+        "@pytest.mark.skip\n"
+        "@pytest.mark.skipif(True, reason='x')\n"
+        "@pytest.mark.xfail\n"
+        "def test_a(): pass\n"
+    )
+    assert len(_skipping_lines(source)) == 6
+    assert (
+        _skipping_lines("import pytest\n@pytest.mark.unit\ndef test_a(): pass\n") == []
+    )
+
+
+def test_the_collected_eight_writer_item_carries_no_marker_added_by_conftest(
+    request: pytest.FixtureRequest,
+) -> None:
+    """A marker a conftest adds at collection is on the item, not on the function."""
+    items = [i for i in request.session.items if i.name == _EIGHT_WRITER_TEST]
+    for item in items:
+        names = _item_mark_names(item)
+        assert not names & _SKIPPING_MARKS, f"{item.nodeid} carries {names}"
+
+
+class _StubItem:
+    name = _EIGHT_WRITER_TEST
+
+    def __init__(self, *names: str) -> None:
+        self._marks = [getattr(pytest.mark, name) for name in names]
+
+    def iter_markers(self) -> list[Any]:
+        return [mark.mark for mark in self._marks]
+
+
+def test_the_item_marker_reader_sees_a_skip_a_conftest_would_add() -> None:
+    """Positive control: the marker names read from an item include an added skip."""
+    assert _item_mark_names(_StubItem("unit", "skip")) >= {"skip"}
+    assert not _item_mark_names(_StubItem("unit")) & _SKIPPING_MARKS
+
+
+def test_a_pool_that_does_not_shut_down_fails_inside_its_bound() -> None:
+    """``terminate``/``join`` that never return end in ``TimeoutError``, not a hang."""
+    release = threading.Event()
+
+    class Stuck:
+        def terminate(self) -> None:
+            release.wait()
+
+        def join(self) -> None:
+            release.wait()
+
+    try:
+        with pytest.raises(TimeoutError):
+            _close_pool(Stuck(), wait_s=0.2)
+    finally:
+        release.set()
+
+
+#: Each variant runs in a fresh single-threaded interpreter that forks, so the
+#: multithreaded pytest process these controls guard is never forked itself.
+#: ``set_start_method("spawn")`` makes the default method differ from the forced
+#: context: a worker still reports the method that created it, so both tests fail.
+_FORK_VARIANT_PRELUDE = """
+import multiprocessing
+multiprocessing.set_start_method("spawn")
+import tests.test_capture_item_identity_effect as mod
+
+mod._writer_context = lambda: multiprocessing.get_context("fork")
+"""
+
+_FRESH_WORKER_FORK_VARIANT = (
+    _FORK_VARIANT_PRELUDE
+    + """
+saw = mod._worker_view_of_the_parent_mark()
+if saw != [(True, "fork")]:
+    raise SystemExit(f"a forked worker was expected to report (True, 'fork'), saw {saw}")
+print("fork variant: the worker saw the parent mark, so the fresh-worker test goes red")
+"""
+)
+
+_WRITERS_FORK_VARIANT = (
+    _FORK_VARIANT_PRELUDE
+    + """
+import pathlib
+import tempfile
+import traceback
+import pytest
+
+with pytest.MonkeyPatch.context() as patch, tempfile.TemporaryDirectory() as tmp:
+    try:
+        mod.test_eight_concurrent_writers_issue_1000_gap_free_sequence_numbers(
+            pathlib.Path(tmp), patch
+        )
+    except AssertionError as error:
+        failed_line = traceback.extract_tb(error.__traceback__)[-1].line or ""
+        if '== {"spawn"}' not in failed_line:
+            raise SystemExit(f"the writers test failed on another line: {failed_line}")
+        print("fork variant: the writers test failed on the start method check")
+    else:
+        raise SystemExit("the writers test passed with a fork context")
+"""
+)
+
+
+def _run_fork_variant(script: str) -> subprocess.CompletedProcess[str]:
+    root = Path(__file__).resolve().parents[1]
+    env = {
+        **os.environ,
+        "PYTHONPATH": os.pathsep.join([str(root / "src"), str(root)]),
+    }
+    return subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=root,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=_SUBPROCESS_WAIT_S,
+        check=False,
+    )
+
+
+@pytest.mark.timeout(_TEST_TIMEOUT_S)
+def test_fresh_worker_test_fails_when_the_writer_context_is_fork() -> None:
+    """Red-then-green control: the fresh-worker test with ``_writer_context`` forked."""
+    done = _run_fork_variant(_FRESH_WORKER_FORK_VARIANT)
+    assert done.returncode == 0, done.stdout + done.stderr
+
+
+@pytest.mark.timeout(_TEST_TIMEOUT_S)
+def test_writers_test_fails_when_the_writer_context_is_fork_under_a_spawn_default() -> (
+    None
+):
+    """Red-then-green control: the writers test with ``_writer_context`` forked."""
+    done = _run_fork_variant(_WRITERS_FORK_VARIANT)
+    assert done.returncode == 0, done.stdout + done.stderr
 
 
 def test_barrier_states_the_high_water_and_the_lineage_capture_flag() -> None:

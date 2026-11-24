@@ -138,6 +138,11 @@ class ModelWorkLedgerQueryRequest(BaseModel):
     history: ModelWorkLedgerHistoryRange | None = None
     cursor: str | None = Field(default=None, min_length=1, max_length=4096)
     page_size: int | None = Field(default=None, ge=1, le=MAX_POINT_PAGE_SIZE)
+    # The instant the caller stops waiting (OMN-26609). A request read at or after it is not worked:
+    # the answerer returns a typed ``deadline_expired`` error answer and touches no store, so a burst
+    # of requests whose callers timed out cannot become a backlog that every new read waits behind.
+    # Absent means no deadline, and the request is worked whatever its age.
+    deadline: AwareDatetime | None = None
     # A paged rows answer carries lines and no typed rows; the reader prints lines only.
     lines_only: bool = False
     # latest-state (OMN-23606): which kind of subject to read (a lane or a ticket), the tickets to read
@@ -145,6 +150,12 @@ class ModelWorkLedgerQueryRequest(BaseModel):
     # (``since``) the entries are narrowed to.
     subject_kind: EnumWorkLedgerLatestSubject | None = None
     tickets: tuple[Annotated[str, Field(pattern=_TICKET)], ...] = ()
+    # Request expiry (OMN-26433): when the caller sent the request, and how long it waits for the
+    # answer. The node drops a request older than its bound and publishes no answer for it. A request
+    # with a send time and no bound takes the contract's work_ledger_query.request_expiry default; a
+    # request with no send time cannot be aged and is answered as before.
+    requested_at: AwareDatetime | None = None
+    max_age_seconds: float | None = Field(default=None, gt=0, allow_inf_nan=False)
 
     @model_validator(mode="after")
     def _history_boundary(self) -> ModelWorkLedgerQueryRequest:

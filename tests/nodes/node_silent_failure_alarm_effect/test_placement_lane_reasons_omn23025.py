@@ -40,6 +40,7 @@ from omnimarket.nodes.node_silent_failure_alarm_effect.models import (
     ModelSilentFailureAlarmOptions,
     ModelSilentFailureAlarmRequest,
 )
+from tests.helpers.fake_alarm_ledger import LEDGER_FIXTURE_NAME
 from tests.nodes.node_silent_failure_alarm_compute.test_golden_chain_silent_failure_alarm_compute import (
     RECORDED,
     Watch,
@@ -84,8 +85,7 @@ def _lane_end(at: datetime, lane: str, status: str, exit_code: int) -> str:
 
 
 def _append(options: ModelSilentFailureAlarmOptions, *rows: str) -> None:
-    assert options.ledger is not None
-    with options.ledger.open("a") as handle:
+    with (options.registry_root / LEDGER_FIXTURE_NAME).open("a") as handle:
         handle.write("".join(f"{row}\n" for row in rows))
 
 
