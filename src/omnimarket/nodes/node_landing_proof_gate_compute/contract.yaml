@@ -46,6 +46,9 @@ event_bus:
   publish_topics: []
 runtime_dispatch:
   external_trigger: "The command python -m omnimarket.nodes.node_landing_proof_gate_compute, or direct invocation of the handler with injected readers."
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_landing_proof_gate_compute
+    owner: OmniNode Platform Team
 descriptor:
   node_archetype: compute
   purity: pure
