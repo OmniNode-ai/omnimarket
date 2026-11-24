@@ -78,6 +78,10 @@ WORKFLOW = "build-delegation-checks"
 CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 REPLAY_ENV = "ONEX_BUILD_DELEGATION_CHECKS_REPLAY"
 OMNI_HOME_ENV = "OMNI_HOME"
+#: The writable state directory of the runtime; the registry root of a runtime image is not writable by the runtime user.
+STATE_DIR_ENV = "ONEX_STATE_DIR"
+#: The directory name under the registry root that a state directory replaces.
+STATE_DIR_NAME = ".onex_state"
 
 
 def _suspect(candidate: ModelAttributionCandidate) -> ModelSuspectMerge:
@@ -348,6 +352,20 @@ def recorded_results(path: Path) -> RecordedResultsExecutor:
     )
 
 
+def _state_root(registry_root: Path) -> Path:
+    """The directory the node keeps its state in: ``ONEX_STATE_DIR`` when the runtime names one, else under the registry root."""
+    named = os.environ.get(STATE_DIR_ENV, "").strip()
+    return Path(named) if named else registry_root / STATE_DIR_NAME
+
+
+def _history_path(registry_root: Path, state_root: Path, relpath: str) -> Path:
+    """A path the overlay gives under ``.onex_state/`` is kept under the state root; any other is relative to the registry root."""
+    parts = Path(relpath).parts
+    if parts and parts[0] == STATE_DIR_NAME:
+        return state_root.joinpath(*parts[1:])
+    return registry_root / relpath
+
+
 class HandlerBuildDelegationChecks:
     """EFFECT handler bound by the contract: the runtime builds it with no argument and its ports are made from the overlay on
     the first request. A caller that passes every port (the tests, a replay) gets exactly those ports; a partial set is refused."""
@@ -398,17 +416,21 @@ class HandlerBuildDelegationChecks:
         if not home:
             raise OSError(f"{OMNI_HOME_ENV} names no registry root")
         root = Path(home)
+        state_root = _state_root(root)
         replay = os.environ.get(REPLAY_ENV, "").strip()
         runner: ProtocolCheckRunner = (
             recorded_results(Path(replay))
             if replay
-            else CommandCheckExecutor(settings.check_routes, registry_root=root)
+            else CommandCheckExecutor(
+                settings.check_routes, registry_root=root, state_root=state_root
+            )
         )
         self._run = _BuildChecksRun(
             settings=settings,
             runner=runner,
             store=FileBuildStore(
-                root / settings.history_relpath, settings.history_keep
+                _history_path(root, state_root, settings.history_relpath),
+                settings.history_keep,
             ),
             merges=GitMergeSource(root / settings.merge_clone_relpath),
             sink=BusRegressionSink(
@@ -428,6 +450,7 @@ class HandlerBuildDelegationChecks:
 __all__ = [
     "OMNI_HOME_ENV",
     "REPLAY_ENV",
+    "STATE_DIR_ENV",
     "WORKFLOW",
     "HandlerBuildDelegationChecks",
     "recorded_results",

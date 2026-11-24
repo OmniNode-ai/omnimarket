@@ -29,16 +29,24 @@ def _probe_name(argv: tuple[str, ...]) -> str:
 
 class CommandCheckExecutor:
     """Placeholders in a route: ``{build_id}`` the build's sha, ``{python}`` the interpreter running this handler and
-    ``{registry_root}`` the registry root the handler was built with."""
+    ``{registry_root}`` the registry root the handler was built with and ``{state_root}`` the directory the node keeps its state in
+    (under the registry root unless the runtime names a state directory)."""
 
     def __init__(
         self,
         routes: Mapping[str, tuple[str, ...]],
         *,
         registry_root: Path | None = None,
+        state_root: Path | None = None,
     ) -> None:
         self._routes = routes
         self._registry_root = str(registry_root) if registry_root is not None else ""
+        if state_root is not None:
+            self._state_root = str(state_root)
+        elif registry_root is not None:
+            self._state_root = str(registry_root / ".onex_state")
+        else:
+            self._state_root = ""
 
     def run(
         self, check_id: str, build_id: str, timeout_seconds: float
@@ -54,6 +62,7 @@ class CommandCheckExecutor:
             arg.replace("{build_id}", build_id)
             .replace("{python}", sys.executable)
             .replace("{registry_root}", self._registry_root)
+            .replace("{state_root}", self._state_root)
             for arg in argv
         ]
         try:

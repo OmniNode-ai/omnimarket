@@ -30,7 +30,8 @@ PROBE_NODE_TICK = "omnimarket.nodes.node_delegation_check_probe_effect.runtime_d
 
 #: The checks whose probe is one of this repository's nodes. The other seven have no node here yet, so they have no route and
 #: read unavailable; none of them is a cloud workflow dispatch. ``{python}`` is the interpreter running the handler,
-#: ``{registry_root}`` the registry root.
+#: ``{registry_root}`` the registry root,
+#: ``{state_root}`` the directory the node keeps its state in.
 DEFAULT_CHECK_ROUTES: dict[str, tuple[str, ...]] = {
     check: (
         "{python}",
@@ -39,7 +40,7 @@ DEFAULT_CHECK_ROUTES: dict[str, tuple[str, ...]] = {
         "--omni-home",
         "{registry_root}",
         "--state-dir",
-        "{registry_root}/.onex_state/delegation-check-probe",
+        "{state_root}/delegation-check-probe",
         "--trigger",
         "manual",
         "--check",
@@ -68,7 +69,8 @@ class ModelBuildDelegationChecksOverlay(BaseModel):
     check_timeout_seconds: float = Field(default=1800.0, gt=0)
     #: A regression detected later than this after the red reading is marked late.
     max_alarm_latency_seconds: float = Field(default=900.0, gt=0)
-    #: The file the per-build records are kept in, relative to the registry root.
+    #: The file the per-build records are kept in, relative to the registry root; a path under ``.onex_state/`` is kept under the
+    #: runtime's state directory (``ONEX_STATE_DIR``) when it names one.
     history_relpath: str = Field(
         default=".onex_state/build-delegation-checks/builds.json", min_length=1
     )

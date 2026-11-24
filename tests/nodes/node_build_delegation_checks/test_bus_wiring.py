@@ -22,6 +22,7 @@ from omnimarket.nodes.node_build_delegation_checks.adapters.bus_sink import (
 from omnimarket.nodes.node_build_delegation_checks.handlers.handler_build_delegation_checks import (
     OMNI_HOME_ENV,
     REPLAY_ENV,
+    STATE_DIR_ENV,
     HandlerBuildDelegationChecks,
 )
 from omnimarket.nodes.node_build_delegation_checks.models.model_build_delegation_checks import (
@@ -149,3 +150,77 @@ def test_a_partial_set_of_ports_is_refused() -> None:
 
     with pytest.raises(ValueError, match="every port"):
         HandlerBuildDelegationChecks(settings=ModelBuildDelegationChecksOverlay())
+
+
+def test_the_build_history_is_kept_under_the_state_dir_not_the_registry_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The runtime image's registry root is read-only to the runtime user; its writable state lives at ONEX_STATE_DIR."""
+    home = tmp_path / "home"
+    home.mkdir()
+    state = tmp_path / "state"
+    clone = home / "omnimarket"
+    clone.mkdir()
+    _git(clone, "init", "-q")
+    _git(clone, "commit", "-q", "--allow-empty", "-m", "first (#1)")
+    green = _git(clone, "rev-parse", "HEAD")
+    replay = tmp_path / "recorded.json"
+    _recorded(replay, green, green)
+    overlay = tmp_path / "overlay.yaml"
+    overlay.write_text(
+        yaml.safe_dump({"checks": ["C14"], "owner": "delegation-owner"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(OMNI_HOME_ENV, str(home))
+    monkeypatch.setenv(STATE_DIR_ENV, str(state))
+    monkeypatch.setenv(REPLAY_ENV, str(replay))
+    monkeypatch.setenv(FILE_ENV, str(overlay))
+
+    async def drop(self: BusRegressionSink, topic: str, key: str, value: bytes) -> None:
+        return None
+
+    monkeypatch.setattr(BusRegressionSink, "_send", drop)
+
+    result = HandlerBuildDelegationChecks().handle(
+        ModelRebuildCompletedObserved(git_sha=green, runtime_lane="dev")
+    )
+
+    assert result.status != EnumBuildChecksStatus.ALREADY_RUN
+    assert (state / "build-delegation-checks" / "builds.json").is_file()
+    assert not (home / ".onex_state").exists()
+
+
+def test_a_route_names_the_state_root_through_a_placeholder(tmp_path: Path) -> None:
+    from omnimarket.nodes.node_build_delegation_checks.adapters.command_check_executor import (
+        CommandCheckExecutor,
+    )
+    from omnimarket.nodes.node_build_delegation_checks.models.model_build_delegation_checks import (
+        EnumCheckReading,
+    )
+
+    state = tmp_path / "state"
+    routes = {
+        "C14": (
+            "{python}",
+            "-c",
+            "import sys; sys.exit(0 if sys.argv[1] == sys.argv[2] else 1)",
+            "{state_root}/delegation-check-probe",
+            str(state / "delegation-check-probe"),
+        )
+    }
+
+    outcome = CommandCheckExecutor(
+        routes, registry_root=tmp_path / "home", state_root=state
+    ).run("C14", "abc", 30.0)
+
+    assert outcome.reading == EnumCheckReading.PASS
+
+
+def test_the_default_probe_routes_write_under_the_state_root_placeholder() -> None:
+    from omnimarket.models.overlay_documents.model_build_delegation_checks_overlay import (
+        DEFAULT_CHECK_ROUTES,
+    )
+
+    for route in DEFAULT_CHECK_ROUTES.values():
+        assert "{state_root}/delegation-check-probe" in route
+        assert not any(".onex_state" in arg for arg in route)
