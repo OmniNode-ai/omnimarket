@@ -42,6 +42,12 @@ handler:
 # Not a runtime-dispatched handler: it takes the sensor, hold, episode, cutter and ledger ports and the clock as constructor
 # parameters, so the tick main builds it and the contract declares no handler_routing.
 
+runtime_dispatch:
+  external_trigger: true
+  # Every 60 s and at load, the host timer of node_host_installer_registry_units runs runtime_host_thermal_guard_tick.
+  host_unit:
+    unit: host-thermal-guard-systemd
+
 terminal_event: onex.evt.omnimarket.host-thermal-guard-ran.v1
 externally_consumed_topics: [onex.evt.omnimarket.host-thermal-guard-ran.v1]
 
