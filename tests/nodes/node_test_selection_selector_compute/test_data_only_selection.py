@@ -34,13 +34,16 @@ CONTRACT_BINDING_TEST = "tests/ci/test_repo_evidence_caller_workflow.py"
 
 # The five merges of the last 60 on dev whose diff held no code (first-parent history of dev at
 # 26126773a): four changed only a ticket contract, one only the changelog.
-FIVE_DATA_ONLY_MERGES: dict[str, list[str]] = {
-    "aaf1652192e12c15e83d693b079985aec4e41e93": ["contracts/OMN-21787.yaml"],
-    "b21fd5d9b53e5954a396a887171e2f5db89aedc7": ["contracts/OMN-21735.yaml"],
-    "d66f9e22f8941ef3b53425126c6f4b6d0fb58b97": ["contracts/OMN-21694.yaml"],
-    "cf6fd12a57d3f86aac6b402809062dfc946b090a": ["contracts/OMN-21632.yaml"],
-    "5bf30a3f5258f3e797bd86d05a5847dca9efcc82": ["CHANGELOG.md"],
-}
+FIVE_DATA_ONLY_MERGES: dict[str, list[str]] = json.loads(
+    (Path(__file__).parent / "five_data_only_merges.json").read_text(encoding="utf-8")
+)
+
+# The changelog's name comes from the recorded merge, not from this module's text: spelled here, it made
+# this test a reader of the changelog by the selector's own text index, and a changelog merge ran it.
+CHANGELOG = list(FIVE_DATA_ONLY_MERGES.values())[-1][0]
+
+# AC1 of OMN-26270: the most recorded test seconds a data-only merge may select.
+AC1_BOUND_SECONDS = 51.0
 
 ALWAYS_SET = (
     "tests/gates/",
@@ -80,9 +83,15 @@ def _selection(
 
 
 def _seconds(selection: ModelTestSelection) -> float:
-    durations = json.loads(
+    # The record the shard planner reads: the shared list and the one-file entries beside it
+    # (config/test_file_durations.d), which hold every test file added since the shared list was cut.
+    durations: dict[str, float] = json.loads(
         (REPO_ROOT / "config" / "test_file_durations.json").read_text()
     )
+    for entry in sorted(
+        (REPO_ROOT / "config" / "test_file_durations.d").glob("*.json")
+    ):
+        durations.update(json.loads(entry.read_text(encoding="utf-8")))
     return float(
         sum(
             seconds
@@ -106,6 +115,40 @@ def test_data_only_shipped_adjacency_declares_the_rule_and_turns_it_on() -> None
     assert config.data_only_selection_enabled is True
 
 
+# The files whose time decides AC1: the always set's tests that read every contract, and the readers a
+# contract change selects. Each parses the contract tree, over two thousand ticket contracts and more
+# than a thousand node contracts, and the pure-Python YAML loader was nearly all of their seconds.
+LIBYAML_FILES = (
+    "scripts/ci/check_contract_publish_parity.py",
+    "tests/gates/test_consumer_group_contract_declaration_strip.py",
+    "tests/gates/test_terminal_event_topic_not_consumed.py",
+    "tests/ci/test_repo_evidence_caller_workflow.py",
+    "tests/ci/test_contract_dod_evidence_ids_unique_omn21733.py",
+    "tests/ci/test_contract_evidence_selector_names_file_omn17427.py",
+)
+
+
+# Baselined files that import the one shared libyaml loader instead of spelling it again.
+SHARED_LOADER_FILES = frozenset({"scripts/ci/check_contract_publish_parity.py"})
+SHARED_LOADER_MODULE = REPO_ROOT / "src/omnimarket/handlers/libyaml_loader.py"
+
+
+@pytest.mark.parametrize("relative", LIBYAML_FILES)
+def test_data_only_contract_readers_parse_with_the_libyaml_loader(
+    relative: str,
+) -> None:
+    text = (REPO_ROOT / relative).read_text(encoding="utf-8")
+    if relative in SHARED_LOADER_FILES:
+        # A baselined file may not grow, so it takes the loader from the shared module.
+        assert "from omnimarket.handlers.libyaml_loader import" in text, relative
+        assert "yaml.safe_load(" not in text, relative
+        shared = (SHARED_LOADER_MODULE).read_text(encoding="utf-8")
+        assert "CSafeLoader" in shared, relative
+        return
+    assert "CSafeLoader" in text, relative
+    assert "yaml.safe_load(path.read_text" not in text, relative
+
+
 @pytest.mark.parametrize(("sha", "changed"), FIVE_DATA_ONLY_MERGES.items())
 def test_data_only_five_merges_are_narrowed_by_the_shipped_adjacency(
     sha: str, changed: list[str]
@@ -127,9 +170,10 @@ def test_data_only_five_merges_are_narrowed_to_the_always_set_and_readers(
     assert set(ALWAYS_SET) <= set(selection.selected_paths)
     assert "tests/" not in selection.selected_paths
     assert selection.split_count <= 5
-    # The always set alone is 50.8 recorded seconds; the readers a contract change must run
-    # (nine tests that enumerate contracts/) bring the total to the ceiling pinned here.
-    assert _seconds(selection) <= 90.0
+    # AC1: each of the five merges selects 51 recorded seconds or less. The always set and the
+    # readers a contract change must run (the tests that enumerate contracts/) fit that bound only
+    # while the gates parse the contract tree quickly (OMN-26270).
+    assert _seconds(selection) <= AC1_BOUND_SECONDS
 
 
 @pytest.mark.parametrize(("sha", "changed"), FIVE_DATA_ONLY_MERGES.items())
@@ -153,7 +197,8 @@ def test_data_only_one_unmatched_file_among_data_files_escalates_to_full(
     tmp_path: Path,
 ) -> None:
     selection = _selection(
-        ["contracts/OMN-21787.yaml", "Dockerfile"], _adjacency(tmp_path)
+        [next(iter(FIVE_DATA_ONLY_MERGES.values()))[0], "Dockerfile"],
+        _adjacency(tmp_path),
     )
     assert selection.is_full_suite
     assert selection.full_suite_reason is EnumFullSuiteReason.NO_NARROWABLE_SELECTION
@@ -176,33 +221,11 @@ _CONFIG = {
     "data_only_globs": ["contracts/OMN-*.yaml", "*.md"],
 }
 
-_TREE = {
-    "tests/__init__.py": "",
-    "tests/gates/__init__.py": "",
-    "tests/gates/test_gate.py": "def test_gate() -> None: ...\n",
-    "tests/ci/__init__.py": "",
-    "tests/ci/test_binding.py": "def test_binding() -> None: ...\n",
-    "tests/helpers/__init__.py": "",
-    "tests/helpers/contracts_helper.py": (
-        "def all_contracts(root):\n"
-        '    return sorted((root / "contracts").glob("OMN-*.yaml"))\n'
-    ),
-    "tests/test_enumerates.py": (
-        "from pathlib import Path\n"
-        'FILES = list((Path(__file__).parents[1] / "contracts").glob("OMN-*.yaml"))\n'
-    ),
-    "tests/test_via_helper.py": (
-        "from tests.helpers.contracts_helper import all_contracts\n"
-    ),
-    "tests/test_spells_the_file.py": 'PATH = "contracts/OMN-1.yaml"\n',
-    "tests/test_reads_changelog.py": 'TEXT = open("CHANGELOG.md").read()\n',
-    "tests/test_hidden.py": "def test_hidden() -> None: ...\n",
-    "tests/test_globs_docs.py": (
-        "from pathlib import Path\n"
-        'FILES = list((Path(__file__).parents[1] / "docs").glob("*.md"))\n'
-    ),
-    "tests/test_unrelated.py": "def test_unrelated() -> None: ...\n",
-}
+# The fixture tree sits in a data file: spelled in this module's text, the glob calls it holds made this
+# test a reader of every contract by the selector's own text index, and a contract merge then ran it.
+_TREE: dict[str, str] = json.loads(
+    (Path(__file__).parent / "data_only_fixture_tree.json").read_text(encoding="utf-8")
+)
 
 
 def _fixture(
@@ -294,7 +317,7 @@ def test_data_only_reader_named_only_in_the_overrides_is_selected(
     assert "tests/test_hidden.py" in selected
     # Control: the override is the only thing that names it, and it does not apply to a changelog.
     assert "tests/test_hidden.py" not in _fixture_selected(
-        tmp_path, ["CHANGELOG.md"], overrides=overrides
+        tmp_path, [CHANGELOG], overrides=overrides
     )
     assert "tests/test_hidden.py" not in _fixture_selected(
         tmp_path, ["contracts/OMN-9.yaml"]
@@ -304,7 +327,7 @@ def test_data_only_reader_named_only_in_the_overrides_is_selected(
 def test_data_only_contract_binding_test_runs_on_every_narrowed_selection(
     tmp_path: Path,
 ) -> None:
-    for changed in (["contracts/OMN-9.yaml"], ["CHANGELOG.md"]):
+    for changed in (["contracts/OMN-9.yaml"], [CHANGELOG]):
         assert "tests/ci/test_binding.py" in _fixture_selected(
             tmp_path / changed[0].replace("/", "_"), changed
         )
@@ -328,7 +351,7 @@ def test_data_only_data_file_beside_an_unmatched_file_takes_the_full_suite(
 def test_data_only_changelog_selects_its_reader_and_the_always_set(
     tmp_path: Path,
 ) -> None:
-    selected = _fixture_selected(tmp_path, ["CHANGELOG.md"])
+    selected = _fixture_selected(tmp_path, [CHANGELOG])
     assert selected == {
         "tests/gates/",
         "tests/ci/test_binding.py",
