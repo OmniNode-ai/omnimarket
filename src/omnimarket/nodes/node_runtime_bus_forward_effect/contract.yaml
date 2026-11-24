@@ -23,6 +23,8 @@ description: >
   none of the overlay's allowed topic prefixes, or past the overlay's max_events, is refused by name and never
   published; a publish the client refuses, or a flush that leaves events unconfirmed, counts as failed, and the run's
   receipt carries the detail.
+  A machine whose operator declared no hosted bus (no overlay for this node) is not a failure: the events are kept in
+  a local record file under the user's .onex directory and the receipt says they were kept locally (OMN-26451).
 
 handler:
   module: omnimarket.nodes.node_runtime_bus_forward_effect.handlers.handler_runtime_bus_forward
