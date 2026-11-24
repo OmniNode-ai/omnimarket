@@ -26,8 +26,8 @@ handler:
   input_model: omnimarket.nodes.node_delegation_check_regression_effect.models.model_regression.ModelRegressionScanRequest
   output_model: omnimarket.nodes.node_delegation_check_regression_effect.models.model_regression.ModelRegressionScanResult
 
-# The handlers take their ports (the run source, change source, claims, seen store and publisher) as constructor parameters,
-# so the node's own runtime module builds them from the overlay and attaches the two operations to the topics below.
+# The runtime builds both handlers with no argument; each makes its ports (the run source, change source, claims, seen store,
+# publisher and dev build store) from the node's overlay on a request. A caller that passes every port gets exactly those ports.
 handler_routing:
   routing_strategy: operation_match
   handlers:

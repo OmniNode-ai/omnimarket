@@ -17,6 +17,8 @@ max_transition_age_seconds: 86400
 runs_per_check: 40
 gateway_timeout_seconds: 60
 bus_lane: dev
+# The registry root the clones, the ledger and the state directory sit under.
+registry_root: /example/registry-root
 dev_runtime_lane: dev
 ledger_read:
   route: file

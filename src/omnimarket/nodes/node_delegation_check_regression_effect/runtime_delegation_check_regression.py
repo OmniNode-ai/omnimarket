@@ -20,67 +20,23 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
 
-from omnimarket.handlers.node_overlay_reader import (
-    NodeOverlayError,
-    load_structured_overlay,
-)
-from omnimarket.nodes.node_delegation_check_regression_effect.adapters.bus_publisher import (
-    BusRegressionPublisher,
-)
-from omnimarket.nodes.node_delegation_check_regression_effect.adapters.change_sources import (
-    CompositeChangeSource,
-    GitMergeChangeSource,
-    LedgerMarkerChangeSource,
-)
-from omnimarket.nodes.node_delegation_check_regression_effect.adapters.claims import (
-    LedgerClaimHolders,
-)
-from omnimarket.nodes.node_delegation_check_regression_effect.adapters.gateway_runs import (
-    GatewayProbeRunSource,
-)
-from omnimarket.nodes.node_delegation_check_regression_effect.adapters.inmemory_adapters import (
-    InMemorySeenStore,
-)
-from omnimarket.nodes.node_delegation_check_regression_effect.adapters.state_files import (
-    FileDevBuildStore,
-    FileSeenStore,
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.nodes.node_delegation_check_regression_effect.adapters.ports import (
+    open_ports,
 )
 from omnimarket.nodes.node_delegation_check_regression_effect.handlers.handler_delegation_check_regression import (
     HandlerDelegationCheckRegression,
 )
 from omnimarket.nodes.node_delegation_check_regression_effect.models.model_regression import (
-    ModelProbeRun,
     ModelRegressionScanRequest,
     ModelRegressionSettings,
-    ModelWatchedCheck,
 )
-from omnimarket.nodes.node_delegation_check_regression_effect.protocols import (
-    ProtocolProbeRunSource,
+from omnimarket.nodes.node_delegation_check_regression_effect.overlay import (
+    load_settings,
 )
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
     LedgerRouteError,
-    build_row_source,
 )
-
-OVERLAY_ID = "node_delegation_check_regression_effect"
-OVERLAY_FILE_ENV = "ONEX_DELEGATION_CHECK_REGRESSION_OVERLAY"
-
-
-def load_settings() -> ModelRegressionSettings:
-    return load_structured_overlay(
-        OVERLAY_ID, ModelRegressionSettings, file_env=OVERLAY_FILE_ENV
-    )
-
-
-class _UntilRunSource:
-    """A replay clock over any run source: a run finished after ``until`` has not happened yet."""
-
-    def __init__(self, inner: ProtocolProbeRunSource, until: datetime) -> None:
-        self._inner = inner
-        self._until = until
-
-    def runs(self, check: ModelWatchedCheck, limit: int) -> tuple[ModelProbeRun, ...]:
-        return tuple(r for r in self._inner.runs(check, limit) if r.at <= self._until)
 
 
 def run_scan(
@@ -93,34 +49,16 @@ def run_scan(
     bus: str,
     out: TextIO = sys.stdout,
 ) -> int:
-    rows = build_row_source(settings.ledger_read)
-    changes = CompositeChangeSource(
-        [
-            LedgerMarkerChangeSource(rows, settings.change_markers),
-            GitMergeChangeSource(registry_root, settings.merge_sources),
-            FileDevBuildStore(registry_root / settings.dev_builds_relpath),
-        ]
-    )
-    source: ProtocolProbeRunSource = GatewayProbeRunSource(
-        settings.gateway_timeout_seconds
-    )
-    if replay:
-        source = _UntilRunSource(source, now)
-    seen = (
-        InMemorySeenStore()
-        if replay
-        else FileSeenStore(registry_root / settings.seen_relpath)
-    )
-    with BusRegressionPublisher(
-        "kafka" if bus == "kafka" else "inmemory", settings.bus_lane, registry_root
-    ) as publisher:
+    with open_ports(
+        settings, now=now, registry_root=registry_root, bus=bus, replay=replay
+    ) as ports:
         handler = HandlerDelegationCheckRegression(
             settings=settings,
-            runs=source,
-            changes=changes,
-            claims=LedgerClaimHolders(rows, now),
-            seen=seen,
-            publisher=publisher,
+            runs=ports.runs,
+            changes=ports.changes,
+            claims=ports.claims,
+            seen=ports.seen,
+            publisher=ports.publisher,
         )
         result = handler.handle(ModelRegressionScanRequest(now=now, write=write))
     out.write(result.model_dump_json(indent=1) + "\n")

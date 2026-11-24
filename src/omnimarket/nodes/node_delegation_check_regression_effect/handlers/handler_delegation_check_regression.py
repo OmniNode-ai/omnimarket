@@ -24,10 +24,14 @@ from uuid import NAMESPACE_URL, uuid5
 import yaml
 from pydantic import BaseModel
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.models.lab_alarm_delivery import (
     EnumDeliveryCondition,
     ModelLabAlarm,
     ModelLabAlarmDeliveryRequest,
+)
+from omnimarket.nodes.node_delegation_check_regression_effect.adapters.ports import (
+    open_ports,
 )
 from omnimarket.nodes.node_delegation_check_regression_effect.models.model_regression import (
     EnumRunVerdict,
@@ -43,6 +47,9 @@ from omnimarket.nodes.node_delegation_check_regression_effect.models.model_regre
     ModelRunRef,
     ModelUnreadCheck,
     ModelWatchedCheck,
+)
+from omnimarket.nodes.node_delegation_check_regression_effect.overlay import (
+    load_settings,
 )
 from omnimarket.nodes.node_delegation_check_regression_effect.protocols import (
     ProbeRunsUnreadableError,
@@ -109,8 +116,8 @@ def find_flaps(
     ]
 
 
-class HandlerDelegationCheckRegression:
-    """Read the probes' results, raise each new green to red transition and each second flap."""
+class RegressionScan:
+    """One scan over given ports: read the probes' results, raise each new green to red transition and each second flap."""
 
     def __init__(
         self,
@@ -379,3 +386,70 @@ class HandlerDelegationCheckRegression:
             except OSError as exc:
                 failures.append(f"{label} {key}: {type(exc).__name__}")
         return failures
+
+
+class HandlerDelegationCheckRegression:
+    """EFFECT handler bound by the contract: the runtime builds it with no argument and its ports are made from the node's
+    overlay on each request. A caller that passes every port (the tests, a replay) gets exactly those ports; a partial set is
+    refused."""
+
+    def __init__(
+        self,
+        *,
+        settings: ModelRegressionSettings | None = None,
+        runs: ProtocolProbeRunSource | None = None,
+        changes: ProtocolChangeSource | None = None,
+        claims: ProtocolLiveClaims | None = None,
+        seen: ProtocolSeenStore | None = None,
+        publisher: ProtocolRegressionPublisher | None = None,
+        topics: dict[str, str] | None = None,
+    ) -> None:
+        self._scan: RegressionScan | None = None
+        self._topics = topics
+        given = (settings, runs, changes, claims, seen, publisher)
+        if any(p is not None for p in given):
+            if (
+                settings is None
+                or runs is None
+                or changes is None
+                or claims is None
+                or seen is None
+                or publisher is None
+            ):
+                raise ValueError(
+                    "pass every port (settings, runs, changes, claims, seen, publisher) or none"
+                )
+            self._scan = RegressionScan(
+                settings=settings,
+                runs=runs,
+                changes=changes,
+                claims=claims,
+                seen=seen,
+                publisher=publisher,
+                topics=topics,
+            )
+
+    def handle(self, request: ModelRegressionScanRequest) -> ModelRegressionScanResult:
+        if self._scan is not None:
+            return self._scan.handle(request)
+        settings = load_settings()
+        if settings.registry_root is None:
+            raise NodeOverlayError(
+                "the overlay names no registry_root, so the scan has nowhere to read the clones, the ledger and the state"
+            )
+        with open_ports(
+            settings,
+            now=request.now,
+            registry_root=settings.registry_root,
+            bus="kafka",
+            replay=False,
+        ) as ports:
+            return RegressionScan(
+                settings=settings,
+                runs=ports.runs,
+                changes=ports.changes,
+                claims=ports.claims,
+                seen=ports.seen,
+                publisher=ports.publisher,
+                topics=self._topics,
+            ).handle(request)

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from pathlib import Path
 from typing import Annotated
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
@@ -110,6 +111,9 @@ class ModelRegressionSettings(_Frozen):
         Field(discriminator="route"),
     ]
     bus_lane: Lane = "dev"
+    #: The registry root that holds the clones, the ledger and the state directory. The runtime builds the node's ports from
+    #: it; a command-line run names it with ``--registry-root`` instead.
+    registry_root: Path | None = None
     #: The runtime lane whose rebuilds are the dev builds between two probe runs.
     dev_runtime_lane: str = Field(default="dev", min_length=1)
     dev_builds_relpath: str = Field(

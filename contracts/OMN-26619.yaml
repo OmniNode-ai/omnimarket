@@ -25,7 +25,7 @@ requirements:
 evidence_requirements:
 - kind: tests
   description: The four regression tests and the adapter tests pass at the pushed head.
-  command: uv run pytest tests/unit/test_regression_transition.py tests/unit/test_regression_alarm.py tests/unit/test_regression_flap.py tests/unit/test_regression_recorded_replay.py tests/unit/test_regression_adapters.py -q -n 0 --no-cov -p no:cacheprovider
+  command: uv run pytest tests/unit/test_regression_transition.py tests/unit/test_regression_alarm.py tests/unit/test_regression_flap.py tests/unit/test_regression_recorded_replay.py tests/unit/test_regression_adapters.py tests/unit/test_regression_autowire.py -q -n 0 --no-cov -p no:cacheprovider
 emergency_bypass:
   enabled: false
   justification: ''
