@@ -74,9 +74,10 @@ def _executable_text() -> str:
 
 
 def _guard_step(doc: dict[Any, Any]) -> dict[str, Any] | None:
-    for step in doc["jobs"].get(GUARD_JOB, {}).get("steps", []):
+    steps: list[dict[str, Any]] = doc["jobs"].get(GUARD_JOB, {}).get("steps", [])
+    for step in steps:
         if step.get("id") == GUARD_STEP_ID:
-            return step  # type: ignore[no-any-return]
+            return step
     return None
 
 
