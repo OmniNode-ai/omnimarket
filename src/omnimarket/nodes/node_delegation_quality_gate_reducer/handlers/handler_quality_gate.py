@@ -142,6 +142,7 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.code_artifac
     _YAML_FENCE_LANG_TAGS,
     _block_is_code_artifact,
     _compiles_without_errors_is_evaluable,
+    _declared_artifact_blocks,
     _extract_fenced_code_blocks,
     _extract_fenced_code_blocks_with_lang,
     _is_json_edit_artifact,
@@ -1102,10 +1103,9 @@ def _check_compiles_without_errors(
     """
     if _is_search_replace_artifact(content) or _is_json_edit_artifact(content):
         return None
-
     content = _remove_search_replace_blocks(content)
     requested = prompt_requested_artifact_language(task_prompt)
-    tagged_blocks = _extract_fenced_code_blocks_with_lang(content)
+    tagged_blocks = _declared_artifact_blocks(content, requested)
     if not tagged_blocks:
         candidate = _strip_markdown_code_fence(content)
         if requested is not None:
@@ -1117,8 +1117,7 @@ def _check_compiles_without_errors(
         return None
 
     for lang, body in tagged_blocks:
-        if not lang and requested is not None:
-            lang = requested
+        lang = lang or requested or ""
         if lang in _YAML_FENCE_LANG_TAGS:
             try:
                 yaml.safe_load(body)

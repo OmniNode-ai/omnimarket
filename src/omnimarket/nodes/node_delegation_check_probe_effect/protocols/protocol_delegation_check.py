@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from omnimarket.handlers.routing.delegation_check_responder_chain import (
     ModelChainResolution,
@@ -16,6 +16,9 @@ from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation
     ModelDelegateObservation,
     ModelRoutingCollection,
     ModelSurfaceObservation,
+)
+from omnimarket.nodes.node_delegation_check_probe_effect.models.model_gateway_check import (
+    ModelGatewayObservation,
 )
 
 
@@ -59,3 +62,23 @@ class ProtocolCheckResultPublisher(Protocol):
         correlation_id: str | None = None,
         partition_key: str | None = None,
     ) -> bool: ...
+
+
+@runtime_checkable
+class ProtocolGatewayClient(Protocol):
+    """The dev gateway as a customer reaches it: the address and tenant the settings store names, one request at a time.
+
+    ``auth`` is ``none`` (no credential), ``invalid`` (a credential no tenant owns) or ``tenant`` (the test tenant's own).
+    """
+
+    gateway_url: str
+    tenant_slug: str
+
+    def call(
+        self,
+        method: str,
+        path: str,
+        *,
+        auth: str,
+        body: dict[str, Any] | None = None,
+    ) -> ModelGatewayObservation: ...

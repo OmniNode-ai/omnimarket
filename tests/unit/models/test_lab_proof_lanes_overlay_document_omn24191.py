@@ -112,6 +112,26 @@ def test_golden_document_with_gateway_renders_stripped_url() -> None:
     assert list(lane.keys())[-1] == "gateway_url"
 
 
+HOUSE_TENANT_ID = "820272f9-4aaf-5add-a2df-0af942852ab2"
+
+
+def test_lane_with_tenant_id_renders_it_last() -> None:
+    doc = _with_lane(gateway_url="http://192.0.2.10:18090", tenant_id=HOUSE_TENANT_ID)
+    overlay = ModelLabProofLanesOverlay.model_validate(doc)
+    lane = json.loads(overlay.render_variable_value())[0]
+    assert lane["tenant_id"] == HOUSE_TENANT_ID
+    assert list(lane.keys())[-2:] == ["gateway_url", "tenant_id"]
+
+
+@pytest.mark.parametrize(
+    "tenant_id",
+    ["omninode", "", "820272f9-4aaf-5add-a2df-0af942852ab", HOUSE_TENANT_ID.upper()],
+)
+def test_a_tenant_id_that_is_not_a_lowercase_uuid_refuses(tenant_id: str) -> None:
+    with pytest.raises(ValidationError, match=r"tenant_id .* must be"):
+        ModelLabProofLanesOverlay.model_validate(_with_lane(tenant_id=tenant_id))
+
+
 @pytest.mark.parametrize("document", _WRONG_DOCUMENTS)
 def test_a_wrong_document_refuses(document: dict[str, object]) -> None:
     with pytest.raises(ValidationError):
