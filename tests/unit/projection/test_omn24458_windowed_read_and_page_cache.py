@@ -20,7 +20,16 @@ Failure modes these tests are written against:
   ``page_cache.ttl_seconds``;
 * C3 a Valkey that raises serves an empty page, an invented page or an error
   instead of the windowed store read with ``cache.fallback`` set;
-* C4 a failed or refused read is held in the cache.
+* C4 a failed or refused read is held in the cache;
+* S1 a read just past the expiry waits for the store read instead of being
+  answered from the held page (the dev lane's cold reads of 2.1 s to 13.5 s on
+  2026-11-24 were exactly these waits);
+* S2 a stale page is served without saying it is stale, or is never refreshed;
+* S3 two stale reads, or two runtimes, each start a store read for one page (one
+  claim in the shared Valkey decides);
+* S4 a refresh that fails drops the held page, or leaves the refresh claim
+  held so no later read can refresh it;
+* S5 a page older than the contract's stale window is served.
 """
 
 from __future__ import annotations
@@ -276,6 +285,11 @@ class _FakeValkey:
         self.down = down
         self.held: dict[str, tuple[float, str]] = {}
         self.ttls: list[int] = []
+        self.deleted: list[str] = []
+        self.fail_claims = False
+
+    def now(self) -> float:
+        return self._clock.now
 
     async def get(self, key: str) -> str | None:
         if self.down:
@@ -285,12 +299,26 @@ class _FakeValkey:
             return None
         return found[1]
 
-    async def set(self, key: str, value: str, ex: int | None = None) -> None:
-        if self.down:
+    async def set(
+        self, key: str, value: str, ex: int | None = None, nx: bool = False
+    ) -> bool | None:
+        if self.down or (self.fail_claims and nx):
             raise ConnectionError("valkey is down")
         assert ex is not None
-        self.ttls.append(ex)
+        if nx:
+            found = self.held.get(key)
+            if found is not None and found[0] > self._clock.now:
+                return None
+        else:
+            self.ttls.append(ex)
         self.held[key] = (self._clock.now + ex, value)
+        return True
+
+    async def delete(self, key: str) -> int:
+        if self.down:
+            raise ConnectionError("valkey is down")
+        self.deleted.append(key)
+        return 1 if self.held.pop(key, None) is not None else 0
 
 
 def _handler(store: _FakeStore, client: _FakeValkey) -> HandlerProjectionQuery:
@@ -298,7 +326,7 @@ def _handler(store: _FakeStore, client: _FakeValkey) -> HandlerProjectionQuery:
     return HandlerProjectionQuery(
         topic_map={_DECISIONS: _decisions_cfg()},
         row_source=store,
-        page_cache=ValkeyPageCache(settings, client),
+        page_cache=ValkeyPageCache(settings, client, clock=client.now),
         page_cache_key_prefix=settings.key_prefix,
     )
 
@@ -324,11 +352,12 @@ def test_c1_a_second_request_inside_the_expiry_is_served_from_the_cache() -> Non
     assert len(store.calls) == 1
     assert second.body["rows"] == first.body["rows"]
 
-    clock.now = ttl + 1
+    settings = contract_page_cache()
+    clock.now = ttl + settings.stale_seconds + 1
     third = _ask(handler, window="7d", limit=100)
     assert third.body["cache"]["state"] == "miss"
     assert len(store.calls) == 2
-    assert client.ttls == [ttl, ttl]
+    assert client.ttls == [ttl + settings.stale_seconds] * 2
 
 
 def test_c1b_a_different_window_is_a_different_page() -> None:
@@ -392,6 +421,10 @@ def test_c5_the_cache_adapter_names_an_outage_it_does_not_swallow() -> None:
         asyncio.run(cache.get("k"))
     with pytest.raises(PageCacheUnavailableError):
         asyncio.run(cache.put("k", {"a": 1}))
+    with pytest.raises(PageCacheUnavailableError):
+        asyncio.run(cache.claim_refresh("k"))
+    with pytest.raises(PageCacheUnavailableError):
+        asyncio.run(cache.release_refresh("k"))
 
 
 def test_c6_the_key_changes_with_every_input_that_changes_the_rows() -> None:
@@ -436,3 +469,198 @@ def test_c7_the_environment_names_the_valkey_and_a_missing_host_means_no_cache()
         settings.valkey.operation_timeout_seconds,
     )
     assert build_page_cache({settings.valkey.host_env: "valkey"}) is None
+
+
+# --- stale while refreshing (OMN-24458) -----------------------------------------------------
+
+
+class _GatedStore(_FakeStore):
+    """A store whose reads wait on a gate, so a test can hold a refresh open or let it fail."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.gate: asyncio.Event | None = None
+        self.fail = False
+
+    async def rows(self, cfg: Any, **kwargs: Any) -> list[dict[str, Any]]:
+        if self.gate is not None:
+            await self.gate.wait()
+        if self.fail:
+            raise RuntimeError("store read failed")
+        return await super().rows(cfg, **kwargs)
+
+
+def _request() -> ModelProjectionQueryRequest:
+    return ModelProjectionQueryRequest(
+        route_id="projection_page",
+        topic=_DECISIONS,
+        tenant=_TENANT,
+        window="7d",
+        limit=100,
+    )
+
+
+def _key() -> str:
+    return page_cache_key(contract_page_cache().key_prefix, _request())
+
+
+async def _settle(handler: HandlerProjectionQuery) -> None:
+    await asyncio.gather(*handler.pending_refreshes())
+
+
+def test_s1_a_stale_page_is_answered_without_waiting_for_the_store() -> None:
+    async def scenario() -> None:
+        clock, store = _Clock(), _GatedStore()
+        handler = _handler(store, _FakeValkey(clock))
+        await handler.handle(_request())
+        assert len(store.calls) == 1
+        clock.now = contract_page_cache().ttl_seconds + 5
+        store.gate = asyncio.Event()  # the store would never answer
+        answer = await asyncio.wait_for(handler.handle(_request()), timeout=2)
+        assert answer.status_code == 200
+        assert answer.body["cache"]["state"] == "stale"
+        assert len(store.calls) == 1
+        store.gate.set()
+        await _settle(handler)
+        assert len(store.calls) == 2
+
+    asyncio.run(scenario())
+
+
+def test_s2_the_stale_answer_names_its_age_and_the_refresh_makes_the_next_read_a_hit() -> (
+    None
+):
+    async def scenario() -> None:
+        clock, store = _Clock(), _GatedStore()
+        client = _FakeValkey(clock)
+        handler = _handler(store, client)
+        settings = contract_page_cache()
+        first = await handler.handle(_request())
+        clock.now = settings.ttl_seconds + 5
+        stale = await handler.handle(_request())
+        assert stale.body["cache"] == {
+            "state": "stale",
+            "ttl_seconds": settings.ttl_seconds,
+            "stale_seconds": settings.stale_seconds,
+            "age_seconds": settings.ttl_seconds + 5,
+            "refreshing": True,
+        }
+        assert stale.body["rows"] == first.body["rows"]
+        await _settle(handler)
+        fresh = await handler.handle(_request())
+        assert fresh.body["cache"] == {
+            "state": "hit",
+            "ttl_seconds": settings.ttl_seconds,
+        }
+        assert len(store.calls) == 2
+        assert client.deleted == [f"{_key()}:refresh"]
+
+    asyncio.run(scenario())
+
+
+def test_s3_one_page_is_refreshed_once_across_reads_and_runtimes() -> None:
+    async def scenario() -> None:
+        clock, store = _Clock(), _GatedStore()
+        client = _FakeValkey(clock)
+        handler = _handler(store, client)
+        await handler.handle(_request())
+        clock.now = contract_page_cache().ttl_seconds + 5
+        store.gate = asyncio.Event()
+        for _ in range(3):
+            assert (await handler.handle(_request())).body["cache"]["state"] == "stale"
+            # the fake Valkey never suspends; a real one does, which lets the refresh start
+            await asyncio.sleep(0)
+        store.gate.set()
+        await _settle(handler)
+        assert (
+            len(store.calls) == 2
+        )  # one first read, one refresh for three stale reads
+
+        # a second runtime on the same Valkey, with the claim already held elsewhere
+        clock.now += contract_page_cache().ttl_seconds + 5
+        other = _handler(store, client)
+        client.held[f"{_key()}:refresh"] = (clock.now + 30, "1")
+        answer = await other.handle(_request())
+        await _settle(other)
+        assert answer.body["cache"]["state"] == "stale"
+        assert len(store.calls) == 2
+
+    asyncio.run(scenario())
+
+
+def test_s4_a_failed_refresh_keeps_the_held_page_and_releases_the_claim() -> None:
+    async def scenario() -> None:
+        clock, store = _Clock(), _GatedStore()
+        client = _FakeValkey(clock)
+        handler = _handler(store, client)
+        first = await handler.handle(_request())
+        clock.now = contract_page_cache().ttl_seconds + 5
+        store.fail = True
+        stale = await handler.handle(_request())
+        await _settle(handler)
+        assert stale.body["cache"]["state"] == "stale"
+        assert client.deleted == [f"{_key()}:refresh"]
+        again = await handler.handle(_request())
+        assert again.body["cache"]["state"] == "stale"
+        assert again.body["rows"] == first.body["rows"]
+        await _settle(handler)
+        store.fail = False
+        await handler.handle(_request())
+        await _settle(handler)
+        assert (await handler.handle(_request())).body["cache"]["state"] == "hit"
+
+    asyncio.run(scenario())
+
+
+def test_s5_a_page_past_the_stale_window_is_recomputed_before_it_is_answered() -> None:
+    async def scenario() -> None:
+        clock, store = _Clock(), _GatedStore()
+        handler = _handler(store, _FakeValkey(clock))
+        settings = contract_page_cache()
+        await handler.handle(_request())
+        clock.now = settings.ttl_seconds + settings.stale_seconds - 1
+        assert (await handler.handle(_request())).body["cache"]["state"] == "stale"
+        await _settle(handler)
+        clock.now = 2 * (settings.ttl_seconds + settings.stale_seconds)
+        late = await handler.handle(_request())
+        assert late.body["cache"]["state"] == "miss"
+        assert handler.pending_refreshes() == ()
+
+    asyncio.run(scenario())
+
+
+def test_s6_a_claim_that_cannot_be_taken_leaves_the_page_stale_and_still_answered() -> (
+    None
+):
+    async def scenario() -> None:
+        clock, store = _Clock(), _GatedStore()
+        client = _FakeValkey(clock)
+        handler = _handler(store, client)
+        await handler.handle(_request())
+        clock.now = contract_page_cache().ttl_seconds + 5
+        client.fail_claims = True
+        stale = await handler.handle(_request())
+        await _settle(handler)
+        assert stale.status_code == 200
+        assert stale.body["cache"]["state"] == "stale"
+        assert len(store.calls) == 1
+
+    asyncio.run(scenario())
+
+
+def test_s7_the_stale_window_and_the_claim_time_are_the_contracts() -> None:
+    contract = yaml_contract()["page_cache"]
+    settings = contract_page_cache()
+    assert contract["stale_seconds"] == settings.stale_seconds >= 1
+    assert contract["refresh_lock_seconds"] == settings.refresh_lock_seconds >= 1
+    text = inspect.getsource(handler_projection_query)
+    assert "stale_seconds=" not in text
+    assert "ex=" not in text
+
+
+def test_s8_a_page_stored_by_the_earlier_shape_is_read_as_nothing() -> None:
+    clock = _Clock()
+    client = _FakeValkey(clock)
+    cache = ValkeyPageCache(contract_page_cache(), client, clock=client.now)
+    client.held["old"] = (100.0, json.dumps({"rows": [], "topic": "t"}))
+    assert asyncio.run(cache.get("old")) is None
