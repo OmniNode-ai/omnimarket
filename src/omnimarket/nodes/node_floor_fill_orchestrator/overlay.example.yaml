@@ -83,3 +83,11 @@ floor_fill_live:
   mint_timeout_seconds: 10.0
   # The brake and stop-signal seams: the directory of the andon stop queue (the exception queue's state directory).
   andon_state_dir: /srv/example/state/exception-queue
+  # The brake over the pool snapshot is engaged (landing work only) when fewer hosts than this admit a further lane. Optional: default 1.
+  brake_min_admitting_hosts: 1
+  # The andon_stop policy the stop signal asks the stop gate with (class -> observe or enforce; an enforced class needs its citation).
+  # Optional: absent, the policy is the andon_stop overlay of the stop reducer. An open stop of a class with no mode refuses.
+  stop_modes:
+    example-stop-class: enforce
+  stop_enforce_citations:
+    example-stop-class: example-citation

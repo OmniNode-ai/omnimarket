@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT
 """``python -m <runtime module> schedule <install|uninstall|status|run-now> --this-host <host>``.
 
-Reads the overlay's ``floor_fill`` section from ``<root>/node_floor_fill_orchestrator/overlay.yaml`` under
-``ONEX_SKILL_OVERLAY_ROOTS`` and the lab host table, then hands both to the schedule handler. ``install --profile live``
+Reads the overlay's ``floor_fill`` section from ``<root>/node_floor_fill_orchestrator/overlay.yaml`` under the resolver's
+ordered roots (the settings store's root first, then the overlays clone, then ``ONEX_SKILL_OVERLAY_ROOTS``) and the lab
+host table, then hands both to the schedule handler, so a key set in the store reaches the unit the next install renders. ``install --profile live``
 also reads the overlay's ``floor_fill_live`` section (refused, naming the key, when it is missing or unknown). A
 refused overlay or host prints its refusal naming the key and exits 1.
 """
@@ -20,6 +21,7 @@ from typing import Any
 import yaml
 
 from omnimarket.handlers.node_overlay_reader import find_node_overlay
+from omnimarket.handlers.node_overlay_resolved_roots import resolved_overlay_environ
 from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
 from omnimarket.nodes.node_floor_fill_orchestrator.handlers.adapter_floor_fill_schedule import (
     NODE_NAME,
@@ -106,18 +108,28 @@ def run_schedule(
     return handler.run_now(this_host=args.this_host)
 
 
-def main(argv: Sequence[str]) -> int:
-    found = find_node_overlay(NODE_NAME)
+def load_schedule_overlay(
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, Any] | None:
+    """The floor fill overlay from the first resolver root that holds one (the store's root first), or ``None``."""
+    found = find_node_overlay(NODE_NAME, resolved_overlay_environ(environ))
     if found is None:
+        return None
+    loaded = yaml.safe_load(found.read_text(encoding="utf-8"))
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def main(argv: Sequence[str]) -> int:
+    overlay = load_schedule_overlay()
+    if overlay is None:
         sys.stderr.write(
-            f"no overlay: {NODE_NAME}/overlay.yaml is not under ONEX_SKILL_OVERLAY_ROOTS\n"
+            f"no overlay: {NODE_NAME}/overlay.yaml is not under the settings store's root or ONEX_SKILL_OVERLAY_ROOTS\n"
         )
         return 1
-    overlay = yaml.safe_load(found.read_text(encoding="utf-8"))
     table = resolve_lab_hosts_table()
     result = run_schedule(
         argv,
-        overlay if isinstance(overlay, dict) else {},
+        overlay,
         hosts=[(row.name, row.available) for row in table.hosts],
         home=Path.home(),
     )
