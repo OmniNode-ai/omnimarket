@@ -1,0 +1,86 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeDelegationReplayRouteCompute (OMN-26563)
+#
+# Decides how one earlier delegation prompt is replayed against a model:
+#
+#   handle(ModelReplayRouteRequest) -> ModelReplayRouteAnswer
+#
+# A repository-edit task (the prompt says to edit files in a worktree or to run a
+# check, or the run that first answered it was a harness run) is replayed in a
+# worktree of its repository at the source run's sha and is scored by the task's
+# own check, exit code 0. It is never replayed as a bare chat call and never
+# scored by the chat gate. A repository task with no repository, no recoverable
+# source sha or no check is a typed refusal. A self-contained prompt replays as a
+# chat call. The node holds no state, reads no file and has no clock.
+name: "node_delegation_replay_route_compute"
+contract_name: "node_delegation_replay_route_compute"
+node_name: "node_delegation_replay_route_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Routes one replay task to a chat call (self-contained prompt) or to a worktree
+  of its repository at the source sha (repository-edit task), scored by the task's
+  own check. Refuses a repository task with no repository, no recoverable source
+  sha or no check, naming the task and what is missing.
+input_model:
+  name: "ModelReplayRouteRequest"
+  module: "omnimarket.nodes.node_delegation_replay_route_compute.models.model_replay_route_request"
+  description: "The replay prompt, the source run's backend, repository and sha, the task's check commands, and the check's exit code once it ran."
+output_model:
+  name: "ModelReplayRouteAnswer"
+  module: "omnimarket.nodes.node_delegation_replay_route_compute.models.model_replay_route_answer"
+  description: "Route (chat or worktree), the repository, sha and check, the accepted verdict with its basis, or a typed refusal naming the task."
+handler:
+  module: "omnimarket.nodes.node_delegation_replay_route_compute.handlers.handler_replay_route"
+  class: "HandlerDelegationReplayRoute"
+  input_model: "omnimarket.nodes.node_delegation_replay_route_compute.models.model_replay_route_request.ModelReplayRouteRequest"
+  output_model: "omnimarket.nodes.node_delegation_replay_route_compute.models.model_replay_route_answer.ModelReplayRouteAnswer"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_delegation_replay_route_compute.handlers.handler_replay_route:HandlerDelegationReplayRoute"
+  handlers:
+    - operation: "route_replay_task"
+      handler:
+        name: "HandlerDelegationReplayRoute"
+        module: "omnimarket.nodes.node_delegation_replay_route_compute.handlers.handler_replay_route"
+# The event_bus lists no topic and runtime_dispatch names a direct invocation: the
+# replay driver that sends a recorded prompt to a model invokes the handler in
+# process before each send. A topic would need broker permission rows in the
+# overlays repository (broker-acl-coverage-gate); add the topics and the rows
+# together when a bus caller exists.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the replay driver before it sends one recorded prompt, and again with the check's exit code to score it.
+  on_demand:
+    command: uv run onex node node_delegation_replay_route_compute --input <request.json>
+    owner: OmniNode Platform Team
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  runtime_profiles: []
+  timeout_ms: 5000
+metadata:
+  transport_type: local
+  description: "Route a replay task to a chat call or a worktree and score a worktree task by its own check."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-23"
+  tags:
+    - compute
+    - delegation
+    - replay
+    - routing

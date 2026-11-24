@@ -20,10 +20,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections.abc import Callable
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from omnimarket.handlers.emission_sink import ChainEmitter, JsonlEmissionSink
 from omnimarket.handlers.node_overlay_reader import (
@@ -33,6 +34,11 @@ from omnimarket.handlers.node_overlay_reader import (
 from omnimarket.handlers.tick_unit_arguments import (
     add_tick_arguments,
     write_tick_heartbeat,
+)
+from omnimarket.models.landing_decision import ModelLandingLivenessFacts
+from omnimarket.nodes.node_pr_landing_liveness_read_effect import (
+    ModelLivenessReadRequest,
+    build_liveness_read,
 )
 from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.handler_pr_landing_snapshot import (
     HandlerPrLandingSnapshot,
@@ -87,6 +93,23 @@ def run_once(
             "tick": tick,
             **retention_line(recorder.decision, trimmed=False),
         }
+    liveness_read = None
+    if overlay.read_liveness:
+        try:
+            liveness_handler = build_liveness_read(os.environ, publisher_)
+        except NodeOverlayError as exc:
+            return 3, {"status": "liveness_overlay_unread", "detail": str(exc)}
+
+        def read_head(
+            correlation_id: UUID, pr: str, head_sha: str
+        ) -> ModelLandingLivenessFacts:
+            return liveness_handler.handle(
+                ModelLivenessReadRequest(
+                    correlation_id=correlation_id, pr=pr, head_sha=head_sha
+                )
+            ).liveness
+
+        liveness_read = read_head
     request = ModelLandingSnapshotRequest(correlation_id=uuid4(), tick=tick)
     if (
         overlay.emission_journal is None
@@ -107,6 +130,7 @@ def run_once(
         recorder=recorder,
         publisher=publisher_,
         controller_source=controller,
+        liveness_read=liveness_read,
     ).handle(request)
     line: dict[str, object] = {
         "status": result.status.value,

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_pr_landing_snapshot_effect
 version: "0.1.0"
-description: "The landing snapshot step: each tick's facts filled with the PR node id and failed run ids and recorded on the bus (OMN-23409)"
+description: "The landing snapshot step fills the PR node id, failed run ids and declared liveness reads before recording each tick"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
