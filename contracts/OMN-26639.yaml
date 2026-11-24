@@ -10,7 +10,7 @@ requirements:
   statement: The suite document declares the kept tasks on their real fix commits and parents, and states why each dropped task is dropped.
   acceptance:
   - id: AC1
-    statement: 'AC1: the lane report lists every earlier number from the nine-task set as invalid with its location -- falsifier: grep -l "6 of 22" across the report directories finds a file the report does not name'
+    statement: 'AC1: the committed suite document is the rebuilt set, its id ending 2026-11-21 and holding 316 rows, and the lane report marks every earlier nine-task number invalid -- falsifier: a suite document still ending 2026-11-11 or holding 310 rows'
   - id: AC2
     statement: 'AC2: each kept task shows two recorded grader runs on the base (failing) and two on the real fix (passing), and the suite rows carry the fix commit and its parent -- falsifier: a kept task with fewer than four recorded runs, a base run that passes, or a suite row whose base is not the fix commit''s first parent'
   - id: AC3
@@ -31,11 +31,18 @@ dod_evidence:
   description: The lane report section 1 names the h051 codetool report, the exemplar2-1400 report and the ledger rows that cite the numbers, each marked invalid. It reads from the lab host that holds the report, so only the local Done gate runs it.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC1
   checks:
   - check_type: command
     check_value: bash -o pipefail -c 'f=$(ls "${OMNI_HOME:?}"/.claude_scratch/reports/taskset-1540-*.md | head -n 1); grep -q "codetool-0910-2026-11-24T1012Z.md" "$f" && grep -q "exemplar2-1400-2026-11-24T1448Z.md" "$f" && grep -c "INVALID" "$f" | grep -qv "^0$"'
+    cwd: .
+- id: dod-omn26639-ac1-suite-is-rebuilt
+  description: The committed suite document carries the rebuilt set (id ending 2026-11-21, 316 rows). The hosted check reads the document; the report part is read by the local Done gate.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_code_eval_suite_census_compute/test_taskset_1540.py -q --no-cov -n 0 -p no:randomly -k rebuilt_set_not_the_earlier
     cwd: .
 - id: dod-omn26639-ac2-kept-rows-and-runs
   description: The suite document holds the six kept rows, each on its real fix commit with the fix commit's first parent as base, and the lane report holds twenty-eight recorded grader runs (seven kept tasks, two arms, two runs; the seventh kept task is counted as an exclusion in the document). The hosted check reads the document; the report is read by the local Done gate.
@@ -50,8 +57,6 @@ dod_evidence:
   description: The lane report records every grader run, two per arm per kept task, and no base run exited 0. Reads the report on the lab host, so only the local Done gate runs it.
   source: manual
   execution_scope: local_done_gate
-  binds_ac:
-  - AC2
   checks:
   - check_type: command
     check_value: bash -o pipefail -c 'f=$(ls "${OMNI_HOME:?}"/.claude_scratch/reports/taskset-1540-*.md | head -n 1); test "$(grep -c -E "^\| r[0-9]-code-[01] \| (base|fix) \| [12] \| [0-9]+ \|" "$f")" = 28 && ! grep -E "^\| r[0-9]-code-[01] \| base \| [12] \| 0 \|" "$f"'
