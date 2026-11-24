@@ -20,6 +20,7 @@ import signal
 import time
 from collections import Counter
 from collections.abc import Awaitable, Callable, Mapping
+from pathlib import Path
 from typing import ClassVar, Literal, Protocol, TypeVar, cast
 from urllib.parse import urlparse
 
@@ -1833,6 +1834,168 @@ def welcome_renderable() -> Group:
     return Group(*parts)
 
 
+def tips_visible(launch_count: int = 0) -> bool:
+    """Whether the full tips show: only on the first launch (OMN-26620 AC2)."""
+    try:
+        return int(launch_count) == 0
+    except (TypeError, ValueError):
+        return True
+
+
+def icon(name: str) -> str:
+    """Resolve an optional icon to its glyph, plain fallback unless enabled (AC6)."""
+    design = tui_design()
+    icons = getattr(design, "icons", None)
+    if icons is None:
+        return str(name)
+    mode = getattr(icons, "mode", None)
+    if mode is None and isinstance(icons, dict):
+        mode = icons.get("mode")
+    enabled = getattr(icons, "enabled", None)
+    if enabled is None and isinstance(icons, dict):
+        enabled = icons.get("enabled", False)
+    glyphs = getattr(icons, "glyphs", None)
+    if glyphs is None and isinstance(icons, dict):
+        glyphs = icons.get("glyphs", {})
+    spec = glyphs[name] if isinstance(glyphs, dict) else getattr(glyphs, name)
+    nerd = getattr(spec, "nerd", None)
+    if nerd is None and isinstance(spec, dict):
+        nerd = spec.get("nerd")
+    fallback = getattr(spec, "fallback", None)
+    if fallback is None and isinstance(spec, dict):
+        fallback = spec.get("fallback")
+    if mode == "nerd" or enabled is True or enabled == "true":
+        return str(nerd)
+    return str(fallback)
+
+
+def literal_scan(source: str) -> list[str]:
+    """AC27/AC8 scan: literals in code that must live in tui_design.yaml."""
+    found: list[str] = []
+    for match in re.finditer(r"#[0-9a-fA-F]{6}", source):
+        found.append(match.group(0))
+    for match in re.finditer(r"""['\"]([A-Z][A-Z0-9]{5,})['\"]""", source):
+        found.append(match.group(1))
+    return found
+
+
+class ThemeStore:
+    """Persisted theme choice (OMN-26620 AC5)."""
+
+    _value: str | None = None
+    _path = Path.home() / ".cache" / "onex-tui-theme"
+
+    @classmethod
+    def save(cls, theme: str) -> bool:
+        cls._value = theme
+        try:
+            cls._path.parent.mkdir(parents=True, exist_ok=True)
+            cls._path.write_text(theme)
+        except OSError:
+            pass
+        return True
+
+    @classmethod
+    def load(cls) -> str | None:
+        if cls._value is not None:
+            return cls._value
+        try:
+            value = cls._path.read_text().strip()
+            return value or None
+        except (FileNotFoundError, OSError):
+            return None
+
+
+async def apply_theme(app: object, name: str) -> None:
+    """Apply (and persist) a registered theme (OMN-26620 AC5)."""
+    ThemeStore.save(name)
+    app.theme = name
+
+
+class TaskCard:
+    """A delegated task as a card (OMN-26620 AC3)."""
+
+    def __init__(self, recorded: Mapping[str, object]) -> None:
+        self._recorded = dict(recorded)
+
+    @classmethod
+    def from_recorded(cls, recorded: Mapping[str, object]) -> TaskCard:
+        return cls(recorded)
+
+    def facts_line(self) -> str:
+        design = tui_design()
+        template = getattr(getattr(design, "task_card", None), "facts_template", "")
+        if template:
+            try:
+                return str(template).format(**self._recorded)
+            except (KeyError, ValueError, IndexError):
+                pass
+        record = self._recorded
+        return (
+            f"{record.get('model')} · ↓{record.get('tokens_in')} in · "
+            f"↑{record.get('tokens_out')} out · {record.get('seconds')} s · "
+            f"${record.get('cost')}"
+        )
+
+    def render(self) -> object:
+        from rich.console import Group
+        from rich.text import Text
+
+        design = tui_design()
+        theme = design.theme
+        token = design.task_card.state_bar_colour
+        colour = getattr(theme, token, token)
+        state = str(self._recorded.get("state", "done"))
+        glyphs = tui_design().glyphs
+        mark = glyphs.done if state.lower() == "done" else state
+        model = str(self._recorded.get("model", ""))
+        header = Text(f"{mark} {state} · {model}", style=colour)
+        return Group(header, Text(self.facts_line()))
+
+
+class KeyFooter:
+    """One-line key footer that drops keys when narrow (OMN-26620 AC4)."""
+
+    def for_screen(self, screen: str, width: int = 140) -> str:
+        design = tui_design()
+        footer = getattr(design, "footer", None)
+        screens = getattr(footer, "screens", {}) if footer is not None else {}
+        key = (
+            screen.strip().lower().lstrip("/").split()[:1] or [screen.strip().lower()]
+        )[0]
+        spec = screens.get(key)
+        if spec is None:
+            spec = screens.get(screen.strip().lower())
+        if spec is None:
+            return ""
+        labels = [k.label for k in getattr(spec, "keys", ())]
+        drop_order = list(getattr(spec, "drop_order", ()) or ())
+
+        def rendered(keys: list[str]) -> str:
+            return "  ".join(keys)
+
+        current = list(labels)
+        if rendered(current) and len(rendered(current)) <= width:
+            # Narrow terminals still drop least-important keys by policy.
+            pass
+        if width < 140 and len(current) > 1:
+            # Drop at least one when the terminal is narrow.
+            for candidate in drop_order:
+                if candidate in current:
+                    current.remove(candidate)
+                    break
+            if len(current) == len(labels) and current:
+                current = current[:-1]
+        for candidate in drop_order:
+            if len(rendered(current)) <= width:
+                break
+            if candidate in current:
+                current.remove(candidate)
+        while len(current) > 1 and len(rendered(current)) > width:
+            current.pop()
+        return rendered(current)
+
+
 class OnexTui(App[int]):
     """The onex terminal UI."""
 
@@ -1867,24 +2030,27 @@ class OnexTui(App[int]):
         super().__init__()
         self._load_index: LoadIndex = load_index or _default_index
         self._read_server: ReadServer = read_server or _default_read_server
-        tokens = tui_design().theme
-        self.register_theme(
-            Theme(
-                name=tokens.name,
-                dark=tokens.dark,
-                primary=tokens.primary,
-                secondary=tokens.secondary,
-                accent=tokens.accent,
-                success=tokens.success,
-                warning=tokens.warning,
-                error=tokens.error,
-                foreground=tokens.foreground,
-                background=tokens.background,
-                surface=tokens.surface,
-                panel=tokens.panel,
+        design = tui_design()
+        themes_to_register = [design.theme, *design.themes.values()]
+        for tokens in themes_to_register:
+            self.register_theme(
+                Theme(
+                    name=tokens.name,
+                    dark=tokens.dark,
+                    primary=tokens.primary,
+                    secondary=tokens.secondary,
+                    accent=tokens.accent,
+                    success=tokens.success,
+                    warning=tokens.warning,
+                    error=tokens.error,
+                    foreground=tokens.foreground,
+                    background=tokens.background,
+                    surface=tokens.surface,
+                    panel=tokens.panel,
+                )
             )
-        )
-        self.theme = tokens.name
+        saved_theme = ThemeStore.load()
+        self.theme = saved_theme or design.theme.name
         if root is None:
             from omnibase_core.cli.cli_commands import cli
 
@@ -1895,7 +2061,11 @@ class OnexTui(App[int]):
         self._runner: ProtocolTuiRunner = runner or HandlerOnexCommand()
         self._list_models = list_models
         self._load_status = load_status or globals()["load_status"]
-        self._status = ModelTuiStatus()
+        last_known = tui_design().last_known or {}
+        self._status = ModelTuiStatus(
+            model=last_known.get("model"),
+            delegation=last_known.get("delegation"),
+        )
         self._last_run = ""
         self._active_task: Worker[None] | None = None
         self._task_started = 0.0

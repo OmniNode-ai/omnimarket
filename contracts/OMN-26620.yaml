@@ -1,0 +1,100 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-26620"
+title: "the onex TUI looks current: a small header, task cards, a key footer, light and dark themes and optional icons"
+summary: "The onex Textual TUI shows a header of at most four lines, task cards, a key footer, a theme switch and optional icons, all read from tui_design.yaml."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26620-tui-refresh
+  statement: "The onex TUI header, task cards, footer, themes, icons and status seeding are driven by tui_design.yaml with no new literal in code."
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the start screen header is at most four lines and the full tips show only on the first launch; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_header.py::test_header_no_taller_than_four_lines'
+  - id: AC3
+    statement: 'AC3: each delegated task shows as a card with a coloured state bar and one facts line; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_task_card.py::test_task_card_renders'
+  - id: AC4
+    statement: 'AC4: the footer lists every key at 140 columns and does not wrap at 80; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_footer.py::test_footer_all_keys_at_140'
+  - id: AC5
+    statement: 'AC5: /theme applies the chosen theme and it is restored on restart; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_theme.py::test_theme_applies'
+  - id: AC6
+    statement: 'AC6: Nerd Font icons appear only when switched on and every icon has a plain fallback; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_icons.py::test_every_icon_has_fallback'
+  - id: AC7
+    statement: 'AC7: the status bar shows the last known state at once while a slow reader runs; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_status_seeded.py::test_status_seeded_from_last_known'
+  - id: AC8
+    statement: 'AC8: no new colour, word or glyph is written in code, with a planted-word positive control; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_literal_scan.py::test_literal_scan_positive_control'
+evidence_requirements:
+- kind: tests
+  description: The seven OMN-26620 test files pass.
+  command: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_header.py tests/unit/nodes/node_onex_setup_effect/test_task_card.py tests/unit/nodes/node_onex_setup_effect/test_footer.py tests/unit/nodes/node_onex_setup_effect/test_theme.py tests/unit/nodes/node_onex_setup_effect/test_icons.py tests/unit/nodes/node_onex_setup_effect/test_status_seeded.py tests/unit/nodes/node_onex_setup_effect/test_literal_scan.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26620-ac2
+  description: 'AC2: the start screen header is at most four lines and the full tips show only on the first launch.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_header.py::test_header_no_taller_than_four_lines tests/unit/nodes/node_onex_setup_effect/test_header.py::test_tips_only_on_first_launch -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26620-ac3
+  description: 'AC3: each delegated task shows as a card with a coloured state bar and one facts line.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_task_card.py::test_task_card_renders tests/unit/nodes/node_onex_setup_effect/test_task_card.py::test_card_facts_line_single -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26620-ac4
+  description: 'AC4: the footer lists every key at 140 columns and does not wrap at 80.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_footer.py::test_footer_all_keys_at_140 tests/unit/nodes/node_onex_setup_effect/test_footer.py::test_footer_no_wrap_at_80 -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26620-ac5
+  description: 'AC5: /theme applies the chosen theme and it is restored on restart.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_theme.py::test_theme_applies tests/unit/nodes/node_onex_setup_effect/test_theme.py::test_theme_restored_on_restart -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26620-ac6
+  description: 'AC6: Nerd Font icons appear only when switched on and every icon has a plain fallback.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_icons.py::test_every_icon_has_fallback tests/unit/nodes/node_onex_setup_effect/test_icons.py::test_no_nerd_glyph_when_off -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26620-ac7
+  description: 'AC7: the status bar shows the last known state at once while a slow reader runs.'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_status_seeded.py::test_status_seeded_from_last_known -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26620-ac8
+  description: 'AC8: no new colour, word or glyph is written in code, with a planted-word positive control.'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_literal_scan.py::test_literal_scan_positive_control -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .

@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from functools import cache
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -89,6 +89,7 @@ class ModelTuiBanner(BaseModel):
     words: tuple[ModelTuiBannerWord, ...] = Field(min_length=1)
     tagline: str
     tips: tuple[ModelTuiTip, ...]
+    compact: bool = True
 
 
 class ModelTuiShortcut(BaseModel):
@@ -253,6 +254,76 @@ class ModelTuiActivity(BaseModel):
     line: str = Field(min_length=1)
 
 
+class ModelTuiHeader(BaseModel):
+    """Compact header on the start screen (OMN-26620)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lines: tuple[str, ...] = Field(min_length=1)
+    compact: bool = True
+
+
+class ModelTuiTaskCard(BaseModel):
+    """A delegated task rendered as a card (OMN-26620)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    state_bar_colour: str
+    facts_template: str = Field(min_length=1)
+
+
+class ModelTuiFooterKey(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    label: str = Field(min_length=1)
+
+
+class ModelTuiFooterScreen(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    keys: tuple[ModelTuiFooterKey, ...] = Field(min_length=1)
+    drop_order: tuple[str, ...] = ()
+
+
+class ModelTuiFooter(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    screens: dict[str, ModelTuiFooterScreen] = Field(default_factory=dict)
+
+
+class ModelTuiIcon(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    nerd: str = Field(min_length=1)
+    fallback: str = Field(min_length=1)
+
+
+class ModelTuiIcons(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    mode: Literal["nerd", "plain"] = "plain"
+    enabled: bool = False
+    glyphs: dict[str, ModelTuiIcon] = Field(default_factory=dict)
+
+
+class ModelTuiWords(BaseModel):
+    """Words dict with attribute access (OMN-26620 AC7 test convenience)."""
+
+    model_config = ConfigDict(frozen=True, extra="allow")
+
+    def __getitem__(self, key: str) -> str:
+        return cast(str, getattr(self, key))
+
+    def get(self, key: str, default: object = None) -> object:
+        try:
+            return getattr(self, key)
+        except AttributeError:
+            return default
+
+    def __contains__(self, key: object) -> bool:
+        return isinstance(key, str) and hasattr(self, key)
+
+
 class ModelTuiTabSpec(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -264,6 +335,15 @@ class ModelTuiDesign(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     theme: ModelTuiTheme
+    #: Optional additional themes selectable via /theme (OMN-26620 AC5).
+    themes: dict[str, ModelTuiTheme] = Field(default_factory=dict)
+    header: ModelTuiHeader
+    first_launch: bool = True
+    launch_count: int = 0
+    task_card: ModelTuiTaskCard
+    footer: ModelTuiFooter
+    icons: ModelTuiIcons = Field(default_factory=ModelTuiIcons)
+    last_known: dict[str, str] = Field(default_factory=dict)
     gradients: dict[str, tuple[str, ...]]
     font: dict[str, tuple[str, str, str]]
     banner: ModelTuiBanner
@@ -277,7 +357,7 @@ class ModelTuiDesign(BaseModel):
     activity: ModelTuiActivity
     tabs: tuple[ModelTuiTabSpec, ...] = Field(min_length=1)
     #: The model screens' sentences, by name; ``{name}`` parts are filled in.
-    words: dict[str, str]
+    words: ModelTuiWords
     glyphs: ModelTuiGlyphs
     prompt_placeholder: str
     help: str

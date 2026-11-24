@@ -385,3 +385,81 @@ words:
   run_id: "run {run}"
   last_run: "last run {model} ${cost}"
   last_run_unmeasured: "last run {model} · cost not measured"
+
+# Compact header on the start screen (OMN-26620 AC2): at most four lines.
+header:
+  lines:
+    - "onex"
+    - "v1"
+    - "first model"
+    - "folder"
+  compact: true
+
+first_launch: true
+launch_count: 0
+
+# Delegated task card (OMN-26620 AC3).
+task_card:
+  state_bar_colour: success
+  facts_template: "{model} · ↓{tokens_in} in · ↑{tokens_out} out · {seconds} s · ${cost}"
+
+# Key footer (OMN-26620 AC4): per-screen keys and drop order.
+footer:
+  screens:
+    config:
+      keys:
+        - {label: Space}
+        - {label: Enter}
+        - {label: Esc}
+        - {label: Ctrl+S}
+      drop_order: [Ctrl+S, Enter, Space, Esc]
+
+# /theme registry (OMN-26620 AC5).
+themes:
+  onex:
+    name: onex
+    dark: true
+    primary: "#f2c14e"
+    secondary: "#2ec4b6"
+    accent: "#b48ead"
+    success: "#8ac926"
+    info: "#56c7dc"
+    warning: "#f4a259"
+    error: "#e76f51"
+    foreground: "#efe7dc"
+    muted: "#a39686"
+    background: "#1c1915"
+    surface: "#241f1a"
+    panel: "#2c2620"
+  onex-light:
+    name: onex-light
+    dark: false
+    primary: "#7a5c00"
+    secondary: "#1b7a70"
+    accent: "#6b4c8a"
+    success: "#3a7d12"
+    info: "#1b6f8a"
+    warning: "#8a5a1b"
+    error: "#8a3a2a"
+    foreground: "#1c1915"
+    muted: "#5a5246"
+    background: "#f4efe6"
+    surface: "#ece6dc"
+    panel: "#e3ddd2"
+
+# Nerd Font icons (OMN-26620 AC6): off by default (plain).
+icons:
+  mode: plain
+  enabled: false
+  glyphs:
+    done:
+      nerd: ""
+      fallback: "✓"
+    task:
+      nerd: ""
+      fallback: "›"
+
+# Last known status for seeding (OMN-26620 AC7).
+last_known:
+  model: "Last-Model"
+  delegation: "off"
