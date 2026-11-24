@@ -10,11 +10,9 @@ from typing import Literal
 from omnimarket.nodes.node_metering_summary_compute import (
     HandlerMeteringSummary,
     ModelCounterfactualBaseline,
+    ModelMeteringSummary,
     ModelMeteringSummaryRequest,
     ModelMeteringWindow,
-)
-from omnimarket.nodes.node_metering_summary_compute.models.model_metering_summary import (
-    ModelMeteringSummary,
 )
 from omnimarket.nodes.node_projection_metering_summary.models import (
     ModelMeteringSummaryFoldRequest,

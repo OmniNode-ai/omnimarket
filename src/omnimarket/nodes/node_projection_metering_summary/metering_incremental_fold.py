@@ -23,17 +23,15 @@ from decimal import Decimal
 from typing import Any
 
 from omnimarket.nodes.node_metering_summary_compute import (
+    EnumBaselineState,
     HandlerMeteringSummary,
     ModelCounterfactualBaseline,
-    ModelMeteringRecord,
-    ModelMeteringSummaryRequest,
-    ModelMeteringWindow,
-)
-from omnimarket.nodes.node_metering_summary_compute.models.model_metering_summary import (
-    EnumBaselineState,
     ModelMeteringModelRow,
     ModelMeteringReconciliation,
+    ModelMeteringRecord,
     ModelMeteringSummary,
+    ModelMeteringSummaryRequest,
+    ModelMeteringWindow,
 )
 from omnimarket.nodes.node_projection_metering_summary.handlers.handler_projection_metering_summary import (
     summary_row,
