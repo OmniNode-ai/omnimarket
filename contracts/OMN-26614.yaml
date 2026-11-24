@@ -17,7 +17,7 @@ requirements:
   - id: AC2
     statement: 'AC2: each plain line says whether --set-aside fixes it or it must be fixed by hand; Falsifier: tests/e2e/test_setup_workflow_cli.py::test_shell_conflicts_print_one_plain_line_per_conflict'
   - id: AC3
-    statement: 'AC3: the machine-readable JSON output still carries the structured conflict list; Falsifier: tests/e2e/test_setup_workflow_cli.py::test_json_output_keeps_structured_conflict_list'
+    statement: 'AC3: the machine-readable JSON output still carries the structured conflict list, and the human output no longer prints it; Falsifier: tests/e2e/test_setup_workflow_cli.py::test_json_output_keeps_structured_conflict_list'
 evidence_requirements:
 - kind: tests
   description: Human output renders one plain line per conflict with remedy wording.
@@ -49,7 +49,7 @@ dod_evidence:
     check_value: uv run pytest tests/e2e/test_setup_workflow_cli.py::test_shell_conflicts_print_one_plain_line_per_conflict tests/unit/nodes/node_onex_setup_effect/test_setup_cli_shell_conflict_lines.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26614-ac3
-  description: 'AC3: the machine-readable JSON output still carries the structured conflict list. must-fail-control: impossible (pure-refactor): JSON output is unchanged by this PR, so the control cannot fail at the merge base by design.'
+  description: 'AC3: the machine-readable JSON output still carries the structured conflict list.'
   source: manual
   binds_ac:
   - AC3

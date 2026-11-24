@@ -241,21 +241,22 @@ def test_shell_conflicts_print_one_plain_line_per_conflict(
 
 
 def test_json_output_keeps_structured_conflict_list(tmp_path: Path) -> None:
-    """OMN-26614 AC3: the --json output still carries the structured conflict list."""
+    """OMN-26614 AC3: the structured conflict list is carried by the --json output,
+    and only there: the same run without --json prints plain words, not that list."""
     _, environment = _conflicted_shell_home(tmp_path)
+    command = (
+        str(Path(sys.executable).parent / "onex"),
+        "setup",
+        "--action",
+        "verify",
+        "--component",
+        "delegation",
+        "--workspace",
+        str(tmp_path / "workspace"),
+        "--no-interactive",
+    )
     result = subprocess.run(
-        (
-            str(Path(sys.executable).parent / "onex"),
-            "setup",
-            "--action",
-            "verify",
-            "--component",
-            "delegation",
-            "--workspace",
-            str(tmp_path / "workspace"),
-            "--no-interactive",
-            "--json",
-        ),
+        (*command, "--json"),
         env=environment,
         cwd=tmp_path / "workspace",
         capture_output=True,
@@ -277,6 +278,19 @@ def test_json_output_keeps_structured_conflict_list(tmp_path: Path) -> None:
     )
     assert ("environment", "OMNI_HOME") in by_kind
     assert ("executable", "onex") in by_kind
+
+    human = subprocess.run(
+        command,
+        env=environment,
+        cwd=tmp_path / "workspace",
+        capture_output=True,
+        text=True,
+        input="",
+        timeout=45,
+        check=False,
+    )
+    assert '"kind"' not in human.stdout, human.stdout + human.stderr
+    assert ".bashrc line 2: KAFKA_BROKERS" in human.stdout, human.stdout
 
 
 def test_secret_bearing_plan_is_refused_before_writes(tmp_path: Path) -> None:
