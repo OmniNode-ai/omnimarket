@@ -135,6 +135,11 @@ reference_namespaces:
   tenant:
     folder: /tenant-inference-credentials
     key_template: "{name}"
+  # A tenant's gateway key kept in the dev secret store (`onex tenant key mint --store-dev-secret`):
+  # secret://onex/gateway_key/<name> is key <name> in /tenant-gateway-keys. A caller holds the reference, never the folder.
+  gateway_key:
+    folder: /tenant-gateway-keys
+    key_template: "{name}"
   # OMN-21921: a provider key a backend's routing declares (llm.<provider>.<name>)
   # is key <ref> in /provider-credentials: secret://onex/provider/<ref>. The
   # overlay may point a name at the path its own store keeps it under
