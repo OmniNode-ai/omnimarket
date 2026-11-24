@@ -282,14 +282,14 @@ def test_missing_registry_root_is_a_prerequisite_error() -> None:
     assert rig.appender.rows == []
 
 
-def test_missing_ledger_path_is_a_prerequisite_error() -> None:
-    rig = Rig(FakeHost(blocked="ONEX_LEDGER_PATH is not set (required, no default)"))
+def test_an_unconfigured_host_is_a_prerequisite_error() -> None:
+    rig = Rig(FakeHost(blocked="the ledger host is not configured (required)"))
     request, _, _ = parse_request(["--apply"])
     result = rig.run(request)
     assert result.exit_code == 3
     assert result.status == "blocked"
     assert result.stderr.startswith(
-        "ledger_reconcile: NOT RUN — ONEX_LEDGER_PATH is not set"
+        "ledger_reconcile: NOT RUN — the ledger host is not configured"
     )
     assert rig.appender.rows == []
 

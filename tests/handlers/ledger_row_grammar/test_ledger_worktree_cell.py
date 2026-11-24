@@ -17,7 +17,7 @@ from omnimarket.handlers import ledger_worktree_cell as worktree
 
 pytestmark = pytest.mark.unit
 REGISTRY_ENV = "OMNI_HOME"
-LEDGER_NAME = "ROLLING_WORK_LEDGER.md"
+LEDGER_NAME = sorted(g.GOVERNED_LEDGER_NAMES)[0]
 CLAIM_AT = "2026-09-30T10:00:00Z"
 TERMINAL_AT = "2026-09-30T11:00:00Z"
 COST = "est ~1 lane-hours; displaces nothing; (OMN-20148)"

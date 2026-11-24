@@ -371,6 +371,7 @@ def test_a_verification_that_is_not_goal_scoped_writes_nothing_and_says_so() -> 
     (result,) = _replay(db, [message])
     assert result["rows_upserted"] == 0
     assert result["skipped"] == "not goal-scoped"
+    assert result["projection_noop_reason"] == "skipped"
     assert not db.events
 
 

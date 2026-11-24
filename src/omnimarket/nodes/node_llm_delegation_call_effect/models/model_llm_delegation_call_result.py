@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from omnimarket.enums.enum_anthropic_stop_reason import EnumAnthropicStopReason
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
+from omnimarket.enums.enum_cost_source import EnumCostSource
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_secret_source import EnumSecretSource
@@ -78,6 +79,9 @@ class ModelLlmDelegationCallResult(BaseModel):
     # Token evidence only; cost provenance is carried separately by cost_basis.
     usage_source: EnumUsageSource = EnumUsageSource.UNKNOWN
     cost_basis: EnumCostBasis = EnumCostBasis.UNKNOWN
+    # Which figure ``actual_cost_usd`` is: the charge the provider reported in
+    # its usage accounting, or the provider's token counts times a price.
+    cost_source: EnumCostSource = EnumCostSource.ESTIMATED
     # OMN-23413 AC35: which source priced this call (the provider's own list,
     # models.dev, or packaged configuration) and when that source was read
     # (ISO UTC; None for packaged configuration). Both None when unpriced.

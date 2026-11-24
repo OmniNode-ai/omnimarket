@@ -139,3 +139,12 @@ dod_evidence:
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26274 --kind test -- env PYTHONDONTWRITEBYTECODE=1
       uv run --frozen pytest tests/ci/test_selection_stage_evidence.py tests/nodes/node_test_selection_selector_compute -q --no-cov
     cwd: .
+- id: dod-omn26274-ac4-stage-savings-report
+  description: 'AC4, the three stage targets reported over the merged pull requests since the stage went live: the node operation report_stage_savings reads each pull request''s selection record artifact and CI run through the repository gateway and totals the selected test seconds against the full-suite seconds, the CI minutes and the share narrowed. A record whose selected seconds exceed the full-suite seconds is refused as selected_exceeds_full, a pull request with no record is counted unreadable with the reason no_record, neither is averaged into a total, and a full-suite run saves nothing. The file is new at this head.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_stage_savings_report.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

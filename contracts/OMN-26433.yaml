@@ -39,6 +39,13 @@ requirements:
       - id: "AC6"
         statement: |-
           AC6: a request older than its requested_at plus max_age_seconds (or the contract default) gets no answer and a live request is answered -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_request_expiry_omn26433.py -q fails on origin/dev
+  - id: "req-running-read-due-call-line"
+    statement: |-
+      The running-read due node has a call line that prints the due rows from a ledger and refuses an unreadable ledger.
+    acceptance:
+      - id: "AC7"
+        statement: |-
+          AC7: python -m omnimarket.nodes.node_running_read_due_compute prints the due rows of a ledger and exits 3 on an unreadable ledger -- falsifier: uv run pytest tests/landing/test_running_read_due_cli.py -q fails on origin/dev
 evidence_requirements:
   - kind: tests
     description: "The claims read is bounded by the node contract, falls back, and refuses unchecked when unread"
@@ -46,6 +53,9 @@ evidence_requirements:
   - kind: tests
     description: "The recorded refusals of 2026-11-22 raise one alert per cause"
     command: "uv run pytest tests/test_golden_chain_pr_create_refusal_alert.py -q"
+  - kind: tests
+    description: "The running-read due node's call line prints the due row of a merge and the alarms and holds owed from a ledger, and refuses an unreadable ledger"
+    command: "uv run pytest tests/landing/test_running_read_due_cli.py -q"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -112,4 +122,19 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: "grep -q 'default_max_age_seconds:' src/omnimarket/nodes/node_work_ledger_query_effect/contract.yaml"
+        cwd: "."
+  - id: dod-omn26433-running-read-due-call-line
+    description: "python -m omnimarket.nodes.node_running_read_due_compute prints the due row one merge maps to and, read from a ledger file, the open due rows, the alarm rows owed and the tickets held out of Done; an unreadable ledger is a refusal (exit 3), never an empty answer. At the merge base the entry point does not exist and every case fails."
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/landing/test_running_read_due_cli.py -q"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC7"]
+  - id: "dod-omn26433-due-call-line-deploy-assessment"
+    description: "Deploy assessment: the PR adds a module entry point to the pure node node_running_read_due_compute and describes its call line in the node's runtime_dispatch external_trigger; the caller list keeps only the tick handler outside the node directory. No migration, no prod mutation, no new topic, no ledger write: the entry point prints rows and appends none. The check reads the node contract and fails when the call line is not described."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -q 'python -m omnimarket.nodes.node_running_read_due_compute' src/omnimarket/nodes/node_running_read_due_compute/contract.yaml"
         cwd: "."
