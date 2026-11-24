@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import asyncio
 import socket
+import urllib.parse
 from pathlib import Path
 from uuid import UUID
 
@@ -51,6 +52,7 @@ from omnimarket.nodes.node_local_dashboard_serve_effect.bundle import (
     ensure_bundle,
 )
 from omnimarket.nodes.node_local_dashboard_serve_effect.handlers.handler_local_dashboard_serve import (
+    DASHBOARD_TOKEN_PARAM,
     HandlerLocalDashboardServe,
 )
 from omnimarket.nodes.node_local_dashboard_serve_effect.models import (
@@ -210,16 +212,14 @@ def dashboard_command(ctx: click.Context, overlay_path: Path | None) -> None:
         ) from exc
     identity = read_local_tenant_identity()
     tenant = None if identity is None else str(identity.tenant_uuid)
-    # OMN-26226: never announce the bare loopback address, this start's token
-    # or the tenant id. Tell the operator how to open the dashboard instead;
-    # `onex dashboard open` (or Enter/Open in the TUI) builds the authenticated
-    # URL itself.
-    click.echo(
-        "onex dashboard: running on loopback. "
-        "Press Enter in the TUI, use the Open button, or run `onex dashboard open` "
-        "to open it."
-    )
+    # OMN-19916: the request mints this start's token and the start URL is the
+    # one place it is handed out; every request without it is refused.
+    # OMN-26226: the tenant id is no longer announced here.
     request = ModelLocalDashboardServeRequest(host=host, port=port, tenant_id=tenant)
+    start_url = f"http://{host}:{port}/?" + urllib.parse.urlencode(
+        {DASHBOARD_TOKEN_PARAM: request.access_token.get_secret_value()}
+    )
+    click.echo(f"onex dashboard: {start_url}")
     asyncio.run(HandlerLocalDashboardServe(pages=pages).handle(request))
 
 
