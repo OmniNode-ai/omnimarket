@@ -9,18 +9,21 @@ Every test here uses an in-memory gateway; the live readback is in the PR body.
 
 from __future__ import annotations
 
+import asyncio
 import re
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
+from uuid import UUID
 
 import pytest
 from _gateway_fake import GATEWAY, TENANT, FakeClock, FakeGateway
 from pydantic import SecretStr
 
+from omnimarket.models.model_http_tenant_identity import ModelHttpTenantIdentity
 from omnimarket.models.overlay_documents.model_delegation_check_gateway_overlay import (
     ModelDelegationCheckGatewayOverlay,
     ModelDevTenantTokenSource,
@@ -60,6 +63,9 @@ from omnimarket.nodes.node_delegation_check_probe_effect.models.model_gateway_ch
 from omnimarket.nodes.node_delegation_check_probe_effect.protocols.protocol_delegation_check import (
     CollectorAbsentError,
 )
+from omnimarket.nodes.node_workflow_gateway_effect.handlers.caller_identity import (
+    CompositeCallerIdentity,
+)
 
 HANDLERS = (
     Path(__file__).resolve().parents[3]
@@ -87,7 +93,10 @@ def test_each_of_the_ten_checks_resolves_to_the_settings_store_gateway(
     check: CheckId,
 ) -> None:
     overlay = ModelDelegationCheckGatewayOverlay(
-        schema_version=1, gateway_url=GATEWAY, tenant_slug=TENANT
+        schema_version=1,
+        gateway_url=GATEWAY,
+        tenant_slug=TENANT,
+        credential_kind="api_key",
     )
     route = resolve_check_route(check, overlay.gateway_url)
     assert route.endpoint == overlay.gateway_url
@@ -396,7 +405,10 @@ def test_the_host_literal_scan_bites_on_a_planted_literal() -> None:
 def test_the_overlay_refuses_a_host_local_gateway(bad: str) -> None:
     with pytest.raises(ValueError, match=r".+"):
         ModelDelegationCheckGatewayOverlay(
-            schema_version=1, gateway_url=bad, tenant_slug=TENANT
+            schema_version=1,
+            gateway_url=bad,
+            tenant_slug=TENANT,
+            credential_kind="api_key",
         )
 
 
@@ -407,10 +419,11 @@ def test_the_overlay_requires_an_explicit_port_and_no_default_address() -> None:
             schema_version=1,
             gateway_url="http://gateway.test.example",
             tenant_slug=TENANT,
+            credential_kind="api_key",
         )
     with pytest.raises(ValueError, match=r".+"):
         ModelDelegationCheckGatewayOverlay.model_validate(
-            {"schema_version": 1, "tenant_slug": TENANT}
+            {"schema_version": 1, "tenant_slug": TENANT, "credential_kind": "api_key"}
         )
 
 
@@ -491,7 +504,7 @@ def test_with_no_tenant_token_the_run_record_still_names_the_gateway_and_is_neve
 
 
 @pytest.mark.unit
-def test_the_http_client_sends_the_tenant_token_only_in_the_api_key_header() -> None:
+def test_an_api_key_row_sends_the_tenant_token_only_in_the_api_key_header() -> None:
     class _Echo(BaseHTTPRequestHandler):
         seen: ClassVar[list[dict[str, str]]] = []
 
@@ -513,6 +526,7 @@ def test_the_http_client_sends_the_tenant_token_only_in_the_api_key_header() -> 
             schema_version=1,
             gateway_url=f"http://127.0.0.1:{server.server_address[1]}",
             tenant_slug=TENANT,
+            credential_kind="api_key",
         )
         client = HttpGatewayCaller(
             row, DevTenantCredential(_dev_tenant_source(), _Reader("tok-value")), 5.0
@@ -528,10 +542,125 @@ def test_the_http_client_sends_the_tenant_token_only_in_the_api_key_header() -> 
     assert "x-api-key" not in _Echo.seen[1]
 
 
+def _resolving_gateway(
+    resolved: list[str], kind_seen: list[dict[str, str]]
+) -> HTTPServer:
+    """A local gateway whose requests go through the gateway's real caller identity resolver (bearer first, then the API key header)."""
+
+    class _Identity:
+        def __init__(self, label: str) -> None:
+            self._label = label
+
+        async def resolve(self, headers: Mapping[str, str]) -> ModelHttpTenantIdentity:
+            resolved.append(self._label)
+            return ModelHttpTenantIdentity(
+                tenant_id=UUID(int=1), tenant_slug=TENANT, principal_id=self._label
+            )
+
+    resolver = CompositeCallerIdentity(
+        bearer=_Identity("bearer"),
+        api_key=_Identity("api-key"),
+        api_key_header="x-api-key",
+    )
+
+    class _Gateway(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            headers = {k.lower(): v for k, v in self.headers.items()}
+            kind_seen.append(headers)
+            identity = asyncio.run(resolver.resolve(headers))
+            self.send_response(200 if identity is not None else 401)
+            self.send_header("content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(b"{}")
+
+        def log_message(self, *_a: object) -> None:
+            return None
+
+    server = HTTPServer(("127.0.0.1", 0), _Gateway)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("kind", "resolver_label", "header", "wire_value"),
+    [
+        ("api_key", "api-key", "x-api-key", "tok-value"),
+        ("jwt", "bearer", "authorization", "Bearer tok-value"),
+    ],
+)
+def test_the_credential_kind_of_the_row_picks_the_header_the_gateway_resolver_reads(
+    kind: Literal["api_key", "jwt"],
+    resolver_label: str,
+    header: str,
+    wire_value: str,
+) -> None:
+    resolved: list[str] = []
+    seen: list[dict[str, str]] = []
+    server = _resolving_gateway(resolved, seen)
+    try:
+        row = ModelDelegationCheckGatewayOverlay.model_construct(
+            schema_version=1,
+            gateway_url=f"http://127.0.0.1:{server.server_address[1]}",
+            tenant_slug=TENANT,
+            credential_kind=kind,
+            secret_name="ROW_SECRET_NAME",
+        )
+        reader = _Reader("tok-value")
+        client = HttpGatewayCaller(
+            row,
+            DevTenantCredential(
+                _dev_tenant_source(), reader, secret_name=row.secret_name
+            ),
+            5.0,
+        )
+        answered = client.call("GET", "/v1/workflows/contracts", auth="tenant")
+        refused = client.call("GET", "/v1/workflows/contracts", auth="none")
+    finally:
+        server.shutdown()
+    assert answered.status == 200
+    assert resolved == [resolver_label]
+    assert seen[0][header] == wire_value
+    other = "authorization" if header == "x-api-key" else "x-api-key"
+    assert other not in seen[0]
+    assert refused.status == 401
+    # The secret name is the row's, never the dev tenant node's.
+    assert reader.read_names == [("/shared/env", "ROW_SECRET_NAME")]
+
+
+@pytest.mark.unit
+def test_a_jwt_sent_in_the_api_key_header_is_not_what_the_gateway_resolver_reads_as_a_bearer() -> (
+    None
+):
+    resolved: list[str] = []
+    seen: list[dict[str, str]] = []
+    server = _resolving_gateway(resolved, seen)
+    try:
+        answered = HttpGatewayCaller(
+            ModelDelegationCheckGatewayOverlay.model_construct(
+                schema_version=1,
+                gateway_url=f"http://127.0.0.1:{server.server_address[1]}",
+                tenant_slug=TENANT,
+                credential_kind="jwt",
+            ),
+            DevTenantCredential(_dev_tenant_source(), _Reader("tok-value")),
+            5.0,
+        ).call("GET", "/v1/workflows/contracts", auth="invalid")
+    finally:
+        server.shutdown()
+    # An invalid credential of the row's kind is read by the resolver of that kind, never by the other one.
+    assert resolved == ["bearer"]
+    assert "x-api-key" not in seen[0]
+    assert answered.status == 200
+
+
 @pytest.mark.unit
 def test_the_http_client_reports_an_unreachable_gateway_as_no_answer() -> None:
     row = ModelDelegationCheckGatewayOverlay.model_construct(
-        schema_version=1, gateway_url="http://127.0.0.1:9", tenant_slug=TENANT
+        schema_version=1,
+        gateway_url="http://127.0.0.1:9",
+        tenant_slug=TENANT,
+        credential_kind="api_key",
     )
     client = HttpGatewayCaller(
         row, DevTenantCredential(_dev_tenant_source(), _Reader("t")), 0.5

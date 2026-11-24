@@ -181,8 +181,11 @@ def main(
         # The gateway address and the test tenant are the settings store's row; with none served the gateway checks read
         # PRECONDITION-ABSENT. A row that is served but broken ends the tick like any other unreadable overlay.
         try:
+            gateway_row = load_gateway_row()
             gateway = HttpGatewayCaller(
-                load_gateway_row(), DevTenantCredential(), overlay.responder_timeout_s
+                gateway_row,
+                DevTenantCredential(secret_name=gateway_row.secret_name),
+                overlay.responder_timeout_s,
             )
         except NodeOverlayNotFoundError:
             gateway = None

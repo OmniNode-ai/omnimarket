@@ -5,7 +5,8 @@
 The row is where the delegation checks that used to run as cloud workflows find the system: the dev gateway's address and the
 test tenant they act as. The address has no default and no value lives here: a row with no address does not load, and a
 loopback or host-local address is refused, because a check that reached the gateway through the machine it runs on would not
-be the customer path. The tenant's credential is not in this row: it is the dev tenant node's token for the named tenant.
+be the customer path. The tenant's credential itself is not in this row: the row names its kind and, when the dev tenant node's
+overlay does not, its secret name.
 """
 
 from __future__ import annotations
@@ -34,6 +35,11 @@ class ModelDelegationCheckGatewayOverlay(BaseModel):
     gateway_url: str = Field(min_length=1)
     # A tenant slug the dev tenant node's overlay declares; the token is read by that node's secret name.
     tenant_slug: str = Field(min_length=1)
+    # How the gateway reads the tenant's credential: an API key travels in the x-api-key header and is resolved by its digest,
+    # a signed JWT travels in the Authorization header as a bearer token. The kind has no default: it is the row's to say.
+    credential_kind: Literal["api_key", "jwt"]
+    # The secret name of the tenant's credential in the dev secret store; with none the dev tenant node's overlay names it.
+    secret_name: str | None = Field(default=None, min_length=1)
 
     @field_validator("gateway_url")
     @classmethod

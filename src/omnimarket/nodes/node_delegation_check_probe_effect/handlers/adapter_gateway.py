@@ -35,6 +35,7 @@ GATEWAY_OVERLAY_ID: Final = "delegation_check_gateway"
 GATEWAY_FILE_ENV: Final = "ONEX_DELEGATION_CHECK_GATEWAY_OVERLAY"
 DEV_TENANT_NODE: Final = "node_dev_proof_tenant_token_effect"
 API_KEY_HEADER: Final = "x-api-key"
+AUTHORIZATION_HEADER: Final = "authorization"
 #: A credential no tenant owns, in the gateway's key shape; it never authenticates.
 INVALID_CREDENTIAL: Final = "onxk_" + "0" * 32
 BODY_LIMIT: Final = 1 << 20
@@ -55,9 +56,12 @@ class DevTenantCredential:
         self,
         source: ModelDevTenantTokenSource | None = None,
         reader: ProtocolSecretReader | None = None,
+        secret_name: str | None = None,
     ) -> None:
         self._source = source
         self._reader = reader
+        # The gateway row's secret name for the credential; with none the dev tenant node's overlay names it.
+        self._secret_name = secret_name
         self._cached: dict[str, str] = {}
 
     def _declared(self) -> ModelDevTenantTokenSource:
@@ -77,14 +81,19 @@ class DevTenantCredential:
                 "tenant_credential",
                 f"the dev tenant node's overlay cannot be read: {type(exc).__name__}",
             ) from None
-        row = next((t for t in declared.tenants if t.tenant_slug == tenant_slug), None)
-        if row is None:
-            raise CollectorAbsentError(
-                "tenant_credential",
-                "the dev tenant node's overlay does not declare the tenant the gateway row names",
+        secret_name = self._secret_name
+        if secret_name is None:
+            row = next(
+                (t for t in declared.tenants if t.tenant_slug == tenant_slug), None
             )
+            if row is None:
+                raise CollectorAbsentError(
+                    "tenant_credential",
+                    "the dev tenant node's overlay does not declare the tenant the gateway row names",
+                )
+            secret_name = row.secret_name
         reader = self._reader or SecretStoreSettingsReader(overlay=declared.store)
-        secret = asyncio.run(reader.read(declared.token_folder, row.secret_name))
+        secret = asyncio.run(reader.read(declared.token_folder, secret_name))
         if secret is None:
             raise CollectorAbsentError(
                 "tenant_credential",
@@ -105,8 +114,15 @@ class HttpGatewayCaller:
     ) -> None:
         self.gateway_url = row.gateway_url
         self.tenant_slug = row.tenant_slug
+        self._credential_kind = row.credential_kind
         self._credential = credential
         self._timeout_s = timeout_s
+
+    def _credential_headers(self, value: str) -> dict[str, str]:
+        """An API key goes in the API key header; a signed JWT goes in the Authorization header as a bearer token."""
+        if self._credential_kind == "jwt":
+            return {AUTHORIZATION_HEADER: f"Bearer {value}"}
+        return {API_KEY_HEADER: value}
 
     def call(
         self,
@@ -118,9 +134,11 @@ class HttpGatewayCaller:
     ) -> ModelGatewayObservation:
         headers: dict[str, str] = {"accept": "application/json"}
         if auth == "tenant":
-            headers[API_KEY_HEADER] = self._credential.token(self.tenant_slug)
+            headers.update(
+                self._credential_headers(self._credential.token(self.tenant_slug))
+            )
         elif auth == "invalid":
-            headers[API_KEY_HEADER] = INVALID_CREDENTIAL
+            headers.update(self._credential_headers(INVALID_CREDENTIAL))
         data = None
         if body is not None:
             data = json.dumps(body).encode("utf-8")

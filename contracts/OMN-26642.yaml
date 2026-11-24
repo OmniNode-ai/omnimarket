@@ -75,7 +75,7 @@ dod_evidence:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_gateway_checks.py -q --no-cov -n 0 -p no:randomly -k 'names_the_gateway_address or with_no_tenant_token or no_gateway_row or tenant_token_is_read'
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_gateway_checks.py -q --no-cov -n 0 -p no:randomly -k 'names_the_gateway_address or with_no_tenant_token or no_gateway_row or tenant_token_is_read or credential_kind or jwt_sent'
     cwd: .
 - id: dod-omn26642-hosted-deploy-check
   description: 'Deploy check the hosted runner can run: the contract declares the gateway row and the next-milestone list, the node is registered as an onex.nodes entry point, and the node''s trigger declaration holds. This binds no criterion by itself.'

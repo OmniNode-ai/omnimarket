@@ -10,4 +10,4 @@ history_keep: 120
 result_topic: onex.evt.omnimarket.delegation-check-probe-completed.v1
 responder_timeout_s: 10
 # The gateway row of the seven gateway-graded checks is the settings store's delegation_check_gateway row, not this document:
-# python -m omnimarket.nodes.node_overlay_setting_set_effect --overlay delegation_check_gateway --key gateway --value-json '{"schema_version":1,"gateway_url":"<scheme>://<host>:<port>","tenant_slug":"<a tenant of the dev tenant node>"}' --actor <who>
+# python -m omnimarket.nodes.node_overlay_setting_set_effect --overlay delegation_check_gateway --key gateway --value-json '{"schema_version":1,"gateway_url":"<scheme>://<host>:<port>","tenant_slug":"<a tenant of the dev tenant node>","credential_kind":"<api_key|jwt>","secret_name":"<optional: the secret name of the credential when the dev tenant node does not name it>"}' --actor <who>
