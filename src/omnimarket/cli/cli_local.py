@@ -171,17 +171,8 @@ def _free_port(host: str) -> int:
     default=None,
     help="Overlay document carrying dashboard.bind (host:port, loopback only).",
 )
-@click.option(
-    "--access-token-file",
-    "access_token_file",
-    default=None,
-    hidden=True,
-    help="Path to a file containing a start token minted by the setup lifecycle.",
-)
 @click.pass_context
-def dashboard_command(
-    ctx: click.Context, overlay_path: Path | None, access_token_file: str | None
-) -> None:
+def dashboard_command(ctx: click.Context, overlay_path: Path | None) -> None:
     """Serve this install's projection exposures to the local dashboard (OMN-19976).
 
     ``onex dashboard`` is a top-level command (plan T2.3) registered from this
@@ -219,26 +210,17 @@ def dashboard_command(
         ) from exc
     identity = read_local_tenant_identity()
     tenant = None if identity is None else str(identity.tenant_uuid)
-    # OMN-26226: a start token may be supplied by the canonical setup
-    # lifecycle; a direct run mints its own. The token is never announced here;
-    # `onex dashboard open` builds the authenticated URL.
+    # OMN-26226: the canonical setup lifecycle may mint a start token into
+    # an owner-only file; a direct run mints its own. The token is never
+    # announced here; `onex dashboard open` builds the authenticated URL.
     request_kwargs: dict[str, object] = {
         "host": host,
         "port": port,
         "tenant_id": tenant,
     }
-    if access_token_file:
-        token_text = Path(access_token_file).read_text(encoding="utf-8").strip()
-        if token_text:
-            from pydantic import SecretStr
-
-            request_kwargs["access_token"] = SecretStr(token_text)
     request = ModelLocalDashboardServeRequest(**request_kwargs)
-    click.echo(f"onex dashboard: http://{host}:{port}/")
     click.echo(
-        "onex dashboard: running on loopback. "
-        "Press Enter in the TUI, use the Open button, or run `onex dashboard open` "
-        "to open it."
+        f"onex dashboard: http://{host}:{port}/\nPress Enter in the TUI, use the Open button, or run `onex dashboard open` to open it."
     )
     asyncio.run(HandlerLocalDashboardServe(pages=pages).handle(request))
 

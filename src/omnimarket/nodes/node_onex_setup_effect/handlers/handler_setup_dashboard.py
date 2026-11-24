@@ -12,6 +12,7 @@ import asyncio
 import contextlib
 import fcntl
 import os
+import secrets
 import select
 import signal
 import stat
@@ -24,12 +25,10 @@ from urllib.parse import urlsplit
 
 import httpx
 from omnibase_core.cli.cli_user_config import user_config_path
+from pydantic import SecretStr
 
 from omnimarket.inference.local_byok_credential_adapter import LocalByokCredentialStore
 from omnimarket.local_deployment.tenant_identity import read_local_tenant_identity
-from omnimarket.nodes.node_local_dashboard_serve_effect.models.model_local_dashboard import (
-    mint_dashboard_token,
-)
 from omnimarket.nodes.node_onex_setup_effect.handlers.setup_contract_values import (
     loopback_url,
 )
@@ -55,6 +54,11 @@ def _stamp(pid: int) -> str | None:
     if result.returncode:
         return None
     return result.stdout.strip() or None
+
+
+def mint_dashboard_token() -> SecretStr:
+    """A fresh random token for one start of the dashboard (OMN-19916)."""
+    return SecretStr(secrets.token_urlsafe(32))
 
 
 class HandlerSetupDashboard:
@@ -185,10 +189,10 @@ class HandlerSetupDashboard:
             reference = "setup.dashboard.session"
             token = mint_dashboard_token().get_secret_value()
             asyncio.run(self._store.set_secret(reference, token))
-            token_fd, token_name = tempfile.mkstemp(
-                prefix=".dashboard-token-", dir=self._home
+            token_path = self._home / "dashboard.token"
+            token_fd = os.open(
+                token_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600
             )
-            token_path = Path(token_name)
             with os.fdopen(token_fd, "w") as token_file:
                 token_file.write(token)
                 token_file.flush()
@@ -214,8 +218,6 @@ class HandlerSetupDashboard:
                 [
                     str(Path(sys.executable).parent / "onex"),
                     "dashboard",
-                    "--access-token-file",
-                    str(token_path),
                 ],
                 cwd=Path.home(),
                 env=environment,

@@ -8,6 +8,7 @@ import ipaddress
 import secrets
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from pathlib import Path
 
 from pydantic import (
     AwareDatetime,
@@ -36,6 +37,16 @@ def mint_dashboard_token() -> SecretStr:
     return SecretStr(secrets.token_urlsafe(32))
 
 
+def mint_or_load_dashboard_token() -> SecretStr:
+    """Reuse a token minted by the setup lifecycle when present, else mint one."""
+    token_path = Path.home() / ".onex" / "dashboard.token"
+    if token_path.is_file():
+        token_text = token_path.read_text().strip()
+        if token_text:
+            return SecretStr(token_text)
+    return mint_dashboard_token()
+
+
 def is_loopback_host(host: str) -> bool:
     """True when ``host`` (a name or an address, no port) is a loopback interface."""
     if host.lower() in _LOOPBACK_NAMES:
@@ -57,7 +68,7 @@ class ModelLocalDashboardServeRequest(BaseModel):
         default=None, description="The identity `onex local init` minted, if any."
     )
     access_token: SecretStr = Field(
-        default_factory=mint_dashboard_token,
+        default_factory=mint_or_load_dashboard_token,
         description=(
             "Minted per start; every request must carry it (OMN-19916). Handed to "
             "the developer once, in the start URL, and never written to a page."
@@ -135,5 +146,6 @@ __all__ = [
     "ModelLocalDashboardServeResult",
     "is_loopback_host",
     "mint_dashboard_token",
+    "mint_or_load_dashboard_token",
     "resolve_dashboard_bind",
 ]
