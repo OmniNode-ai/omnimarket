@@ -1,0 +1,1 @@
+2200-01-01T00:00:00Z | STATUS | lane=fixture-heartbeat | ticket=OMN-26648 | A ledger that still receives rows: dated past every fixed clock these tests use, so the claim read is fresh and names no claim (OMN-26648).

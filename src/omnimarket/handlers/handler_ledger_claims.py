@@ -66,3 +66,31 @@ def claim_names_tree(path: Path, root: Path, row: str) -> bool:
 def claimed(path: Path, root: Path, claims: tuple[str, ...]) -> bool:
     """A live claim names the tree's path or, as a whole word, its ticket directory."""
     return any(claim_names_tree(path, root, row) for row in claims)
+
+
+def ledger_refusal(text: str, now: datetime, max_age_hours: float) -> str:
+    """Why a claim read of this ledger text cannot stand for "no claim", or ``""`` when it can.
+
+    :func:`live_claims` answers "no live claim" for a ledger that holds no dated row and for one
+    whose newest row ended long before now, and both read like a quiet host. Rows are appended every
+    few seconds, so a ledger with no row inside ``max_age_hours`` is a stale copy no live lane's
+    CLAIM can be in (OMN-26648). A run that removes must refuse on a non-empty answer.
+    """
+    newest: datetime | None = None
+    for line in text.splitlines():
+        first = line.strip().strip("|").split("|")[0].strip()
+        try:
+            stamp = datetime.fromisoformat(first.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if stamp.tzinfo is not None and (newest is None or stamp > newest):
+            newest = stamp
+    if newest is None:
+        return "the claim ledger holds no dated row"
+    age = (now - newest).total_seconds() / 3600
+    if age > max_age_hours:
+        return (
+            f"the claim ledger's newest row is {age:.1f}h old ({newest.isoformat()}), "
+            f"past the {max_age_hours:.1f}h bound"
+        )
+    return ""

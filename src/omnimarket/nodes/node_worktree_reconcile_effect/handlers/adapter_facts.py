@@ -20,7 +20,11 @@ from omnimarket.events.worktree_reconcile import (
     ModelWorktreeFacts,
     ModelWorktreeReconcileCommand,
 )
-from omnimarket.handlers.handler_ledger_claims import claimed, live_claims
+from omnimarket.handlers.handler_ledger_claims import (
+    claimed,
+    ledger_refusal,
+    live_claims,
+)
 from omnimarket.handlers.rules_unit_roots import UnitRoots
 from omnimarket.models.model_skipped_unit import ModelSkippedUnit
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_commands import (
@@ -191,6 +195,10 @@ def repo_slug(url: str) -> str | None:
     )
 
 
+class ClaimReadRefusedError(OSError):
+    """The claim read cannot stand for "no claim": no ledger declared, no dated row or a stale one."""
+
+
 class GitWorktreeFactsProbe:
     def __init__(
         self,
@@ -243,6 +251,9 @@ class GitWorktreeFactsProbe:
         # the normal state, not an error: claims are re-read before each removal.
         try:
             self._claims = self._read_claims(now)
+        except ClaimReadRefusedError as exc:
+            self._claims = ()
+            errors.append(f"ledger_unreadable:{exc}")
         except OSError:
             self._claims = ()
             errors.append("ledger_unreadable")
@@ -376,8 +387,20 @@ class GitWorktreeFactsProbe:
     def _read_claims(self, now: datetime) -> tuple[str, ...]:
         assert self._command is not None
         if not self._command.ledger_path:
+            if self._command.execute:
+                # No ledger is no claim read: an empty claim set here would read every tree as
+                # unclaimed and remove it (h202, 2026-11-24T15:26:39Z, OMN-26648).
+                raise ClaimReadRefusedError(
+                    "no ledger_path is declared for a host that removes"
+                )
             return ()
         text = Path(self._command.ledger_path).read_text(encoding="utf-8")
+        if self._command.execute:
+            refusal = ledger_refusal(
+                text, now, self._command.policy.claims_max_age_hours
+            )
+            if refusal:
+                raise ClaimReadRefusedError(refusal)
         return live_claims(text, now, self._command.policy.quiet_hours)
 
     def revalidate(
@@ -397,6 +420,8 @@ class GitWorktreeFactsProbe:
             errors.append("process_revalidation_failed")
         try:
             claims = self._read_claims(now)
+        except ClaimReadRefusedError as exc:
+            errors.append(f"ledger_unreadable:{exc}")
         except OSError:
             errors.append("ledger_unreadable")
         # A unit may have been installed since discovery: ask again just before removal.

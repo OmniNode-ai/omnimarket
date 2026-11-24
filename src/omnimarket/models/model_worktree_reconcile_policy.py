@@ -21,6 +21,10 @@ class ModelWorktreeReconcilePolicy(BaseModel):
     # remove, is held at KEEP with the rule's reason, so a host can be limited to
     # the merged class by its overlay.
     merged_only: bool = False
+    # A run that removes needs its claim read to have succeeded (OMN-26648): a ledger whose newest
+    # row is older than this, or that holds no dated row, is a stale copy that no live lane's CLAIM
+    # can be in, and every tree is kept. Rows are appended every few seconds on a live ledger.
+    claims_max_age_hours: float = Field(default=3.0, gt=0, allow_inf_nan=False)
     # What a systemd EnvironmentFile the run user cannot open holds, declared by the host overlay: key = the file's absolute
     # path, value = the absolute paths it holds that matter to the live-path set (empty: it holds none). Nothing is read
     # with elevated rights and no file mode changes; an unreadable file the host does not declare still fails the snapshot.

@@ -128,10 +128,16 @@ class Fakes:
         )
 
 
+# A run that removes needs a claim read that succeeded (OMN-26648): this ledger is fresh against every
+# fixed clock below and holds no claim. A test of the refusals passes its own ledger_path.
+FRESH_LEDGER = Path(__file__).parent / "fixtures" / "worktree_reconcile_fresh_ledger.md"
+
+
 def command(**updates: object) -> ModelWorktreeReconcileCommand:
     return ModelWorktreeReconcileCommand(
         host="host",
         roots=("trees",),
+        ledger_path=str(FRESH_LEDGER),
         policy=ModelWorktreeReconcilePolicy(allowed_remote_owners=("owner",)),
         execute=True,
         pin_command=["pin"],
