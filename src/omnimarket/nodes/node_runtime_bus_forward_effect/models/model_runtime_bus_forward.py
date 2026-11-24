@@ -78,3 +78,20 @@ class ModelRuntimeBusForwardResult(BaseModel):
             "failed": self.failed,
             "detail": self.detail,
         }
+
+
+class ModelRuntimeBusLocalRecordCommand(BaseModel):
+    """The recorded events of a run to keep on this machine because no hosted bus is declared (OMN-26451)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    events: tuple[ModelForwardEvent, ...] = ()
+
+
+class ModelRuntimeBusLocalRecordResult(BaseModel):
+    """How many recorded events were kept locally, and the file they were appended to."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kept: int = Field(ge=0)
+    record_path: str = Field(min_length=1)

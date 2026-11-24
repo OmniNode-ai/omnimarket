@@ -32,7 +32,23 @@ handler:
   input_model: omnimarket.nodes.node_runtime_bus_forward_effect.models.model_runtime_bus_forward.ModelRuntimeBusForwardCommand
 
 # HandlerRuntimeBusForward takes the overlay and the publisher as constructor parameters, so it is called by the
-# omnibase_core runtime through the entry point adapter, not handler_routing.
+# omnibase_core runtime through the entry point adapter. The same adapter calls HandlerRuntimeBusLocalRecord when the
+# machine declares no hosted bus (OMN-26451); both handlers are bound here.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: runtime_bus_forward
+      handler:
+        name: HandlerRuntimeBusForward
+        module: omnimarket.nodes.node_runtime_bus_forward_effect.handlers.handler_runtime_bus_forward
+      input_model: omnimarket.nodes.node_runtime_bus_forward_effect.models.model_runtime_bus_forward.ModelRuntimeBusForwardCommand
+      output_model: omnimarket.nodes.node_runtime_bus_forward_effect.models.model_runtime_bus_forward.ModelRuntimeBusForwardResult
+    - operation: runtime_bus_local_record
+      handler:
+        name: HandlerRuntimeBusLocalRecord
+        module: omnimarket.nodes.node_runtime_bus_forward_effect.handlers.handler_runtime_bus_local_record
+      input_model: omnimarket.nodes.node_runtime_bus_forward_effect.models.model_runtime_bus_forward.ModelRuntimeBusLocalRecordCommand
+      output_model: omnimarket.nodes.node_runtime_bus_forward_effect.models.model_runtime_bus_forward.ModelRuntimeBusLocalRecordResult
 
 descriptor:
   node_archetype: effect
@@ -53,8 +69,12 @@ output_model:
 
 terminal_event: onex.evt.omnimarket.runtime-bus-forward-completed.v1
 
+# The omnibase_core runtime calls this node after each node run on a runtime-local bus, through the forwarder this
+# repository registers under the onex.runtime_bus_forwarders entry-point group in pyproject.toml.
 runtime_dispatch:
   external_trigger: true
+  callers:
+    - path: pyproject.toml
 
 topics:
   runtime_bus_forward_requested: onex.cmd.omnimarket.runtime-bus-forward-requested.v1

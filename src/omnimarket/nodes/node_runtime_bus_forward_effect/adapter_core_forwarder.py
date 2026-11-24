@@ -32,6 +32,7 @@ from omnimarket.nodes.node_runtime_bus_forward_effect.models.model_https_event_b
 from omnimarket.nodes.node_runtime_bus_forward_effect.models.model_runtime_bus_forward import (
     ModelForwardEvent,
     ModelRuntimeBusForwardCommand,
+    ModelRuntimeBusLocalRecordCommand,
 )
 from omnimarket.nodes.node_runtime_bus_forward_effect.overlay import (
     NODE_NAME,
@@ -102,16 +103,18 @@ class CoreRuntimeBusForwarder:
         recorder = HandlerRuntimeBusLocalRecord(record_dir=record_dir)
         try:
             kept = recorder.handle(
-                tuple(
-                    ModelForwardEvent(
-                        topic=event.topic,
-                        key_b64=event.key_b64,
-                        value_b64=event.value_b64,
-                        headers=dict(event.headers),
+                ModelRuntimeBusLocalRecordCommand(
+                    events=tuple(
+                        ModelForwardEvent(
+                            topic=event.topic,
+                            key_b64=event.key_b64,
+                            value_b64=event.value_b64,
+                            headers=dict(event.headers),
+                        )
+                        for event in events
                     )
-                    for event in events
                 )
-            )
+            ).kept
         except OSError as exc:
             raise RuntimeError(
                 f"no hosted bus is declared and the local event record {recorder.path} "

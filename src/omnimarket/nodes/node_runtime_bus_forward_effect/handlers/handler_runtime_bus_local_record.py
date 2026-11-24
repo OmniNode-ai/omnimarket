@@ -13,11 +13,11 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Sequence
 from pathlib import Path
 
 from omnimarket.nodes.node_runtime_bus_forward_effect.models.model_runtime_bus_forward import (
-    ModelForwardEvent,
+    ModelRuntimeBusLocalRecordCommand,
+    ModelRuntimeBusLocalRecordResult,
 )
 
 LOCAL_RECORD_FILE_NAME = "runtime_bus_events.jsonl"
@@ -33,14 +33,18 @@ class HandlerRuntimeBusLocalRecord:
     def path(self) -> Path:
         return self._record_dir / LOCAL_RECORD_FILE_NAME
 
-    def handle(self, events: Sequence[ModelForwardEvent]) -> int:
-        """Append ``events`` in order and return the count kept; ``OSError`` when the file cannot be written."""
+    def handle(
+        self, request: ModelRuntimeBusLocalRecordCommand
+    ) -> ModelRuntimeBusLocalRecordResult:
+        """Append the request's events in order and answer the count kept; ``OSError`` when the file cannot be written."""
         self._record_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         lines = "".join(
             json.dumps(event.model_dump(mode="json"), sort_keys=True) + "\n"
-            for event in events
+            for event in request.events
         )
         descriptor = os.open(self.path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
         with os.fdopen(descriptor, "a", encoding="utf-8") as record:
             record.write(lines)
-        return len(events)
+        return ModelRuntimeBusLocalRecordResult(
+            kept=len(request.events), record_path=str(self.path)
+        )
