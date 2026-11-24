@@ -29,6 +29,7 @@ from omnimarket.nodes.node_lab_alarm.protocols import (
     ManifestUnreadableError,
     ProjectionUnreadableError,
     RunRecordUnwritableError,
+    UnitStateUnreadableError,
 )
 
 
@@ -186,6 +187,27 @@ class InMemoryHeartbeatSource:
         return self.document
 
 
+class InMemoryUnitStateSource:
+    """Serves one USER-scope unit state pair, or refuses as a unit that cannot be read."""
+
+    def __init__(
+        self,
+        load_state: str = "loaded",
+        active_state: str = "active",
+        error: str | None = None,
+    ) -> None:
+        self.load_state = load_state
+        self.active_state = active_state
+        self.error = error
+        self.reads = 0
+
+    def read(self) -> tuple[str, str]:
+        self.reads += 1
+        if self.error is not None:
+            raise UnitStateUnreadableError(self.error)
+        return self.load_state, self.active_state
+
+
 class InMemoryCanaryRunSource:
     """Serves the canary workflow's runs, or refuses as a surface that cannot be read."""
 
@@ -248,4 +270,5 @@ __all__ = [
     "InMemoryProjectionNewest",
     "InMemoryRunRecords",
     "InMemorySamples",
+    "InMemoryUnitStateSource",
 ]
