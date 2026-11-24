@@ -73,3 +73,65 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22369 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_factory_floor_compute -q --no-cov -k "select or line_class"
+- id: dod-omn22369-ac1-accepted-20261124t0145z
+  description: AC1 the nine-line fixture yields nine lines, one per line id, and the mutant that keeps duplicates fails it.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_line_select.py -q --no-cov -p no:randomly -k nine_line
+    cwd: .
+- id: dod-omn22369-ac2-accepted-20261124t0145z
+  description: AC2 the declared line ids from the new compute equal the six ids of the 2026-11-03T13:21:32Z record.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_line_select.py::test_line_class_declared_ids_equal_the_recorded_six -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn22369-ac3-accepted-20261124t0145z
+  description: AC3 the same request gives byte-equal output JSON with the clock moved.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_line_select.py::test_select_the_same_request_gives_byte_equal_output_at_two_wall_clock_times -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn22369-ac4-accepted-20261124t0145z
+  description: AC4 the stale plans-today fixture keeps its lines with coverage stale and its time; the never-read fixture gives unread and no class 2 count.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_line_select.py -q --no-cov -p no:randomly -k "coverage_a_stale_plans_today or coverage_a_plans_today_never_read"
+    cwd: .
+context:
+  ac_binding_provenance:
+    dod-omn22369-ac1-accepted-20261124t0145z:
+    - label: AC1
+      criterion_hash: de620a37da65b32c00be5e81d27dd2201965a5a9c7a85c3b36ca4a6d246ddd19
+      proposed_by: lane=dod-closeout-bind-2026-11-24T0145Z-c3
+      accepted_by: lane=dod-closeout-accept-2026-11-24T0145Z-c3
+      accepted_at: '2026-11-24T02:15:18Z'
+    dod-omn22369-ac2-accepted-20261124t0145z:
+    - label: AC2
+      criterion_hash: f412cd2cc24edb3b553950dc102ba9b7974db766f9641e3afa5e7ab025de1263
+      proposed_by: lane=dod-closeout-bind-2026-11-24T0145Z-c3
+      accepted_by: lane=dod-closeout-accept-2026-11-24T0145Z-c3
+      accepted_at: '2026-11-24T02:15:18Z'
+    dod-omn22369-ac3-accepted-20261124t0145z:
+    - label: AC3
+      criterion_hash: 1793f019781540b596aceed0d83f782d699a56b0e29b642efae926adc6e20028
+      proposed_by: lane=dod-closeout-bind-2026-11-24T0145Z-c3
+      accepted_by: lane=dod-closeout-accept-2026-11-24T0145Z-c3
+      accepted_at: '2026-11-24T02:15:18Z'
+    dod-omn22369-ac4-accepted-20261124t0145z:
+    - label: AC4
+      criterion_hash: edd5d6d436ec2f34ab42c03a87689d164a0f5811b7efb56b295168c513d1dce4
+      proposed_by: lane=dod-closeout-bind-2026-11-24T0145Z-c3
+      accepted_by: lane=dod-closeout-accept-2026-11-24T0145Z-c3
+      accepted_at: '2026-11-24T02:15:18Z'
