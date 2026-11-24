@@ -32,6 +32,11 @@ requirements:
   acceptance:
   - id: AC5
     statement: 'AC5: the nightly schedule invokes the publish through the existing nightly workflow or a node schedule declared in the node contract and no new script is added -- falsifier: `uv run pytest tests/ci/test_nightly_record_schedule.py -q --no-cov -k schedule`'
+- id: req-omn26325-serve
+  statement: The collect_nightly command is served by a runtime process that answers with the terminal event the nightly sender waits for.
+  acceptance:
+  - id: AC6
+    statement: 'AC6: a one-pass serve tick reads the collect_nightly command topic the node contract names, runs the collect handler and publishes the result in an envelope the sender matches by correlation id, and the registry declares a systemd unit that starts it -- falsifier: `uv run pytest tests/nodes/node_test_selector_miss_collect_effect/test_collect_serve.py -q --no-cov`'
 evidence_requirements:
 - kind: tests
   description: The record, golden chain and schedule tests.
@@ -85,6 +90,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/ci/test_nightly_record_schedule.py -q --no-cov -k schedule
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn26325-ac6
+  description: The serve tick reads the declared command topic, answers with a terminal event the sender's matcher accepts, counts an unreadable record, keeps alarm rows across passes, and the registry unit starts the module with a run limit covering the bus bounds.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_test_selector_miss_collect_effect/test_collect_serve.py -q --no-cov
     cwd: ${OMNI_HOME}/omnimarket
 - id: dod-omn26325-integration-proof
   description: Run the node's directory and tests/ci on a lab host at the pushed revision. This local completion proof carries no hosted AC bindings; the hosted runner executes only the focused test_passes checks above, which need no lab host.

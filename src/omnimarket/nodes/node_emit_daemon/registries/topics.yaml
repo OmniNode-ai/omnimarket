@@ -1139,3 +1139,15 @@ events:
         description: "Lab proof judge use: repo, pr, head, class, outcome, node names and substitute receipt ids"
     partition_key_field: head
     required_fields: [repo, pr_number, head, class_id, outcome]
+
+  # Agent message (cross-platform agent message bus): one message from one agent to one recipient in one thread, from
+  # Claude, Codex, GLM, Hermes, Gemini or another platform. Carries the sender, recipient, thread, kind, text, send time
+  # and platform; never a credential. Duty-critical: a message accepted for sending is never dropped from the spool.
+  agent.message:
+    node_owned: true
+    fan_out:
+      - topic: "onex.evt.omnimarket.agent-message.v1"
+        tier: duty_critical
+        description: "An agent message: from, to, thread, kind, text, sent_at, platform"
+    partition_key_field: thread
+    required_fields: [from, to, thread, kind, text, sent_at, platform]
