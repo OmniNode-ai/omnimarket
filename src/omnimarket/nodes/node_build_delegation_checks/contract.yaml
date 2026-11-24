@@ -67,6 +67,7 @@ topics:
   regression_detected: onex.evt.omnimarket.delegation-check-regression-detected.v1
   alarm_delivery_requested: onex.cmd.omnimarket.lab-alarm-delivery-requested.v1
   build_checks_recorded: onex.evt.omnimarket.build-delegation-checks-recorded.v1
+  check_recorded: onex.evt.omnimarket.build-delegation-check-recorded.v1
 
 event_bus:
   subscribe_topics:
@@ -75,6 +76,7 @@ event_bus:
     - onex.evt.omnimarket.delegation-check-regression-detected.v1
     - onex.cmd.omnimarket.lab-alarm-delivery-requested.v1
     - onex.evt.omnimarket.build-delegation-checks-recorded.v1
+    - onex.evt.omnimarket.build-delegation-check-recorded.v1
 
 terminal_event: onex.evt.omnimarket.build-delegation-checks-recorded.v1
 
@@ -87,6 +89,7 @@ externally_consumed_topics:
   - onex.evt.omnimarket.delegation-check-regression-detected.v1
   - onex.cmd.omnimarket.lab-alarm-delivery-requested.v1
   - onex.evt.omnimarket.build-delegation-checks-recorded.v1
+  - onex.evt.omnimarket.build-delegation-check-recorded.v1
 
 broker_acl_grants:
   - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
@@ -99,6 +102,8 @@ broker_acl_grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-alarm-delivery-requested.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.build-delegation-checks-recorded.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.build-delegation-checks-recorded.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.build-delegation-check-recorded.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.build-delegation-check-recorded.v1, operation: DESCRIBE}
 
 # Every setting has a tested default in the model and overlay.example.yaml; only the owner has none, so a store with no row
 # for this node loads the defaults and the node refuses the alarm instead of sending it unowned. The overlay is therefore
@@ -113,6 +118,7 @@ overlay:
 golden_path:
   - "The deploy agent publishes rebuild-completed for a dev build"
   - "The node claims the build id, runs the ten checks once and records each as pass, fail or unavailable with the build id and the merges the build added"
+  - "Each check's record is also published on its own, one event per check, so the ten checks each have a reading on the bus"
   - "A check that passed on the previous reading and fails now publishes one regression event naming the merges as suspects and one alarm with the named owner"
 
 dod_evidence:
@@ -126,6 +132,10 @@ dod_evidence:
     description: "AC4 - a missing owner refuses the alarm"
   - test: tests/nodes/node_build_delegation_checks/test_replay_1330_1445.py::test_replay_1330_1445
     description: "AC5 - the recorded 2026-11-23 transition raises C29 and C14 with the merges between the builds"
+  - test: tests/nodes/node_build_delegation_checks/test_per_check_events_and_probe_routes.py::test_a_rebuild_completed_runs_the_probe_node_and_never_a_workflow_dispatch
+    description: "OMN-26043 - a rebuild-completed runs the probe node of this repository for each check it owns and dispatches no cloud workflow"
+  - test: tests/nodes/node_build_delegation_checks/test_per_check_events_and_probe_routes.py::test_each_of_the_ten_checks_publishes_one_record_on_the_bus
+    description: "OMN-26043 - each of the ten checks publishes its own record on the per-check topic"
 
 metadata:
   transport_type: kafka
