@@ -128,12 +128,17 @@ class HandlerDelegationCheckProbe:
 
     def _surface_check(self) -> ModelDelegationCheckReading:
         observation = self._machine.collect_surface()
+        # An install that did not complete installed no core to read: that is the install clause failing, which must read FAIL
+        # (the product's own line did not install), never an absent instrument.
+        installed = observation.install_rc == 0
         precondition = ModelCheckPrecondition(
             name="operator_switch_named",
-            present=observation.operator_switch_env is not None,
+            present=observation.operator_switch_env is not None or not installed,
             detail="the installed core names the switch that shows every command group"
             if observation.operator_switch_env
-            else "the installed core was not read for its operator switch",
+            else "the installed core was not read for its operator switch"
+            if installed
+            else "the guide's install line did not complete, so no core was installed to read",
         )
         return ModelDelegationCheckReading(
             clauses=grade_c17(observation), preconditions=(precondition,)
