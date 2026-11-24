@@ -43,5 +43,7 @@ event_bus:
   publish_topics: []
 runtime_dispatch:
   external_trigger: Direct Python invocation by the overlay store load tick with its assertions, the clock and the bound.
+  callers:
+    - path: src/omnimarket/nodes/node_overlay_store_load_effect/runtime_overlay_store_load_tick.py
 metadata:
   transport_type: local
