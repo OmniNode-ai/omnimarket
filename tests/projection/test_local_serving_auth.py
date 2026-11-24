@@ -242,7 +242,7 @@ def test_the_pages_own_origin_is_served(tmp_path: Path, host: str) -> None:
 # -- the start line hands the developer the token, once --------------------------
 
 
-def test_onex_dashboard_prints_the_start_url_with_this_starts_token(
+def test_onex_dashboard_does_not_print_start_url_or_token(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     handed: list[ModelLocalDashboardServeRequest] = []
@@ -266,5 +266,5 @@ def test_onex_dashboard_prints_the_start_url_with_this_starts_token(
     assert result.exit_code == 0, result.output
     [request] = handed
     token = request.access_token.get_secret_value()
-    assert f"http://127.0.0.1:{_PORT}/?{DASHBOARD_TOKEN_PARAM}={token}" in result.output
-    assert result.output.count(token) == 1
+    assert "onex dashboard open" in result.output
+    assert token not in result.output
