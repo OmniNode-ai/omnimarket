@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-26613"
+title: "Typing in the key or URL field of the onex TUI no longer crashes it with NoMatches '#palette'"
+summary: "The onex TUI's app-level input handler acts only on the main prompt, so a character typed into a tab's key or URL field cannot raise NoMatches; a tab swap that lands after Esc opens the tab instead of popping the main screen. The model search still starts."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26613-key-url-typing-safe
+  statement: "Typing into the Config tab's key and URL fields does not raise, the model search still starts, and the / palette still opens from the main prompt."
+  acceptance:
+  - id: AC1
+    statement: 'AC1: typing into the key and URL fields does not raise and the model search still starts; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_typing_with_no_palette_on_the_main_screen_keeps_the_tui_running'
+  - id: AC2
+    statement: 'AC2: the / palette still opens and filters from the main prompt; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py::test_shortcuts_lead_the_palette_like_coding_agent_tuis'
+  - id: AC3
+    statement: 'AC3: the app input handler acts only on the main prompt input (input id prompt); Falsifier: tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_typing_with_no_palette_on_the_main_screen_keeps_the_tui_running'
+evidence_requirements:
+- kind: tests
+  description: Typing in the key and URL fields keeps the TUI running, with and without a tab swap raced by Esc, and the model search still starts.
+  command: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py -q -n 0 --no-cov -p no:cacheprovider
+- kind: tests
+  description: The existing TUI and palette tests pass unchanged.
+  command: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26613-ac1
+  description: 'AC1: typing one character into #key and into #url does not raise, and the model search still starts.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26613-ac2
+  description: 'AC2: the / palette still opens and filters from the main prompt.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26613-ac3
+  description: 'AC3: the app input handler acts only on the main prompt input.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
