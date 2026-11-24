@@ -5,7 +5,7 @@
 They reach what the lab-fill workflow reached, the same way: the remote-lane
 runner's pool read and launcher (loaded from the installed omni plugin's skills
 directory, ``ONEX_OMNI_SKILLS_DIR`` or the newest installed copy), the rolling
-ledger file, the approved-work list, Linear (through node_ticket_query, the key from the secret store), the PR watcher's
+ledger (through the bus work ledger reader node), the approved-work list, Linear (through node_ticket_query, the key from the secret store), the PR watcher's
 state file and ``onex-triage-fences``. Each failure is a ``LabFillPortError`` that
 names what failed; a reading that cannot be made is never an empty answer.
 """
@@ -26,6 +26,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from types import ModuleType
 
+from omnimarket.handlers.adapter_work_ledger_rows_reader import (
+    SubprocessLedgerRowsReader,
+)
 from omnimarket.handlers.rules_lab_fill_closer import built_reports_from_ledger
 from omnimarket.models.lab_fill.model_lab_fill_closer import ModelLabFillBuiltReport
 from omnimarket.models.ticket_query.model_ticket_credential_refusal import (
@@ -58,6 +61,10 @@ from omnimarket.nodes.node_ticket_query.handlers.store_resolved_tracker import (
     ProtocolSecretResolve,
     resolve_linear_tracker,
 )
+from omnimarket.protocols.protocol_ledger_rows_reader import (
+    LedgerReadError,
+    ProtocolLedgerRowsReader,
+)
 
 from .local_lab_fill_merged_history import LocalMergedHistory
 from .protocol_lab_fill_effect import (
@@ -70,6 +77,10 @@ from .protocol_lab_fill_effect import (
 
 SKILLS_ENV = "ONEX_OMNI_SKILLS_DIR"
 LEDGER_BUS_LANE_ENV = "ONEX_LAB_FILL_LEDGER_BUS_LANE"
+#: The work ledger reader node's moved reader that answers this tick's STATUS, host=cloud CLAIM and TERMINAL reads,
+#: and the node's 30 day window (the reader's longest). The reader overlay must list it, or each read is unread.
+LAB_FILL_PORTS_READER = "lab-fill-ports"
+LAB_FILL_PORTS_WINDOW_HOURS = 720
 WORKSPACE_ROOT_ENV = "OMNIBASE_PATH"
 APPROVED_KINDS = ("process-fix", "partial-node", "wiring")
 _REQUIRED = (
@@ -220,42 +231,47 @@ class LocalPlacementReader:
 
 
 class LocalLedgerReader:
-    """The rolling ledger file: this fire's STATUS row, if one is there."""
+    """The rolling ledger through the bus work ledger reader node, never a file: this fire's STATUS row, if one is there."""
 
-    def status_row_time(self, ledger_path: str, run_key: str) -> str | None:
-        path = Path(os.path.expandvars(ledger_path))
+    def __init__(self, rows: ProtocolLedgerRowsReader | None = None) -> None:
+        self._rows = (
+            rows if rows is not None else SubprocessLedgerRowsReader(os.environ)
+        )
+
+    def _read(self, kinds: Sequence[str], lanes: Sequence[str] = ()) -> list[list[str]]:
         try:
-            with path.open(encoding="utf-8") as handle:
-                for line in handle:
-                    cells = [c.strip() for c in line.split("|")]
-                    if (
-                        len(cells) > 2
-                        and cells[1] == "STATUS"
-                        and "lane=lab-fill" in cells
-                        and f"run={run_key}" in cells
-                    ):
-                        return cells[0]
-        except OSError as exc:
+            lines = self._rows.rows(
+                reader=LAB_FILL_PORTS_READER,
+                window_hours=LAB_FILL_PORTS_WINDOW_HOURS,
+                kinds=kinds,
+                lanes=lanes,
+            )
+        except LedgerReadError as exc:
             raise LabFillPortError(f"ledger unreadable: {exc}") from exc
+        return [[c.strip() for c in line.split("|")] for line in lines]
+
+    def status_row_time(self, run_key: str) -> str | None:
+        for cells in self._read(("STATUS",), ("lab-fill",)):
+            if (
+                len(cells) > 2
+                and cells[1] == "STATUS"
+                and "lane=lab-fill" in cells
+                and f"run={run_key}" in cells
+            ):
+                return cells[0]
         return None
 
-    def newest_cloud_claim(self, ledger_path: str) -> str | None:
-        """The timestamp of the newest CLAIM row carrying a ``host=cloud`` cell (OMN-21881)."""
-        path = Path(os.path.expandvars(ledger_path))
+    def newest_cloud_claim(self) -> str | None:
+        """The timestamp of the newest CLAIM row carrying a ``host=cloud`` cell in the reader's window (OMN-21881)."""
         newest: str | None = None
-        try:
-            with path.open(encoding="utf-8") as handle:
-                for line in handle:
-                    cells = [c.strip() for c in line.split("|")]
-                    if (
-                        len(cells) > 2
-                        and cells[1] == "CLAIM"
-                        and "host=cloud" in cells
-                        and (newest is None or cells[0] > newest)
-                    ):
-                        newest = cells[0]
-        except OSError as exc:
-            raise LabFillPortError(f"ledger unreadable: {exc}") from exc
+        for cells in self._read(("CLAIM",)):
+            if (
+                len(cells) > 2
+                and cells[1] == "CLAIM"
+                and "host=cloud" in cells
+                and (newest is None or cells[0] > newest)
+            ):
+                newest = cells[0]
         return newest
 
 
@@ -445,9 +461,13 @@ class LocalMergedWork:
         self,
         reader: LocalOwnerReader | None = None,
         history: LocalMergedHistory | None = None,
+        rows: ProtocolLedgerRowsReader | None = None,
     ) -> None:
         self._reader = reader if reader is not None else LocalOwnerReader()
         self._history = history
+        self._rows = (
+            rows if rows is not None else SubprocessLedgerRowsReader(os.environ)
+        )
 
     def merged_prs(self, ticket: str, state_path: str) -> Sequence[str]:
         watcher_error: LabFillPortError | None = None
@@ -473,18 +493,16 @@ class LocalMergedWork:
             raise history_error
         return ()
 
-    def built_reports(
-        self, ticket: str, ledger_path: str
-    ) -> Sequence[ModelLabFillBuiltReport]:
-        path = Path(os.path.expandvars(ledger_path))
+    def built_reports(self, ticket: str) -> Sequence[ModelLabFillBuiltReport]:
         try:
-            with path.open(encoding="utf-8") as handle:
-                lines = [
-                    line for line in handle if ticket in line and "TERMINAL" in line
-                ]
-        except OSError as exc:
+            rows = self._rows.rows(
+                reader=LAB_FILL_PORTS_READER,
+                window_hours=LAB_FILL_PORTS_WINDOW_HOURS,
+                kinds=("TERMINAL",),
+            )
+        except LedgerReadError as exc:
             raise LabFillPortError(f"ledger unreadable: {exc}") from exc
-        return built_reports_from_ledger(lines)
+        return built_reports_from_ledger([line for line in rows if ticket in line])
 
 
 class LocalBriefBlocks:

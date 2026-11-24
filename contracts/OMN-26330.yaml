@@ -46,6 +46,18 @@ requirements:
         statement: >-
           AC6: the reconciler adapters and the lab fill brief have tests that fail on the old code
           and pass on the change -- falsifier: the focused pytest run below exits non-zero
+  - id: req-omn26330-group2-part3
+    statement: The lab fill tick reads this fire's STATUS row, the newest host=cloud CLAIM and a ticket's already-built TERMINAL reports through the work ledger reader node with the ledger path variable unset and no ledger file present; the two ports the reader cannot serve and the launch environment are named in the pull request and left.
+    acceptance:
+      - id: AC7
+        statement: >-
+          AC7: the lab fill tick's status_row_time, newest_cloud_claim and built_reports ports ask the
+          rows reader and open no file -- falsifier: the focused pytest run below exits non-zero, or
+          fails to fail at the merge base
+      - id: AC8
+        statement: >-
+          AC8: no row of the census ratchet is raised or added by this change -- falsifier: git diff
+          origin/dev -- the ratchet file shows an added or raised line, or the census run exits non-zero
 evidence_requirements:
   - kind: tests
     description: The ruling recovery and operator capture tests pass at the pushed head; the new bus-read tests fail at the merge base.
@@ -126,6 +138,31 @@ dod_evidence:
       - check_type: command
         check_value: >-
           bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_ledger_reconcile_effect/protocols/local_ledger_reconcile_adapters.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class BusLedgerAppender" > /dev/null'
+        cwd: .
+  - id: dod-omn26330-ac7-ports
+    description: The lab fill ledger port bus tests pass at the head; at the merge base the ports take no rows reader and open the file, so they fail there.
+    source: manual
+    binds_ac: [AC7]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_lab_fill_effect/test_ledger_ports_bus_read.py tests/nodes/node_lab_fill_effect/test_local_adapters_lab_fill_effect.py tests/nodes/node_lab_fill_effect/test_merged_history_lab_fill.py tests/unit/nodes/node_lab_fill_effect/test_lab_fill_cloud_placement.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn26330-ac8-ratchet
+    description: The census exits 0 against the ratchet unchanged by this change (omnimarket row 106).
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'env ONEX_LEDGER_CENSUS_ROOT="$(dirname "$PWD")" uv run --frozen python -m omnimarket.nodes.node_work_ledger_file_census_effect --packaged-overlay --repos omnimarket --directory omnimarket="$PWD" --per-file'
+        cwd: .
+  - id: dod-omn26330-deploy-lab-fill-ports
+    description: 'Deploy probe the hosted runner can run: the lab fill ports reader name exists in the lab fill adapters at the checked-out commit on GitHub; it does not exist at the merge base.'
+    source: manual
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_lab_fill_effect/protocols/local_lab_fill_adapters.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "LAB_FILL_PORTS_READER =" > /dev/null'
         cwd: .
   - id: dod-omn26330-integration-proof
     description: The pushed head ran the touched node tests on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
