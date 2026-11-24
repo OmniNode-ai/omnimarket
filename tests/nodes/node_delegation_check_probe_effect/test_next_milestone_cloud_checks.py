@@ -10,6 +10,7 @@ workflow, or when a default route of the build checks node dispatches a workflow
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -24,23 +25,30 @@ CONTRACT = NODES / "node_delegation_check_probe_effect/contract.yaml"
 BUILD_EXAMPLE = NODES / "node_build_delegation_checks/overlay.example.yaml"
 
 
-def _next_milestone() -> dict[str, object]:
-    return yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))["next_milestone"]
+def _next_milestone() -> dict[str, Any]:
+    milestone = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))["next_milestone"]
+    assert isinstance(milestone, dict)
+    return milestone
+
+
+def _cloud_checks() -> list[dict[str, Any]]:
+    entries = _next_milestone()["cloud_checks"]
+    assert isinstance(entries, list)
+    return entries
 
 
 @pytest.mark.unit
 def test_every_one_of_the_ten_checks_has_its_cloud_variant_on_the_next_milestone_list() -> (
     None
 ):
-    entries = _next_milestone()["cloud_checks"]
-    assert isinstance(entries, list)
+    entries = _cloud_checks()
     listed = sorted(e["check"] for e in entries)
     assert listed == sorted(DELEGATION_CHECKS)
 
 
 @pytest.mark.unit
 def test_each_entry_names_the_workflow_and_the_repository_that_owns_it() -> None:
-    for entry in _next_milestone()["cloud_checks"]:  # type: ignore[union-attr]
+    for entry in _cloud_checks():
         assert entry["workflow"].endswith(".yml"), entry
         assert "repository" not in entry, entry
         assert entry["owner"] == "cloud-owner", entry
@@ -59,7 +67,7 @@ def test_the_list_is_the_next_milestone_and_deletes_nothing() -> None:
 
 @pytest.mark.unit
 def test_a_missing_cloud_check_would_fail_the_list_test() -> None:
-    entries = [e for e in _next_milestone()["cloud_checks"] if e["check"] != "C28"]  # type: ignore[union-attr]
+    entries = [e for e in _cloud_checks() if e["check"] != "C28"]
     assert sorted(e["check"] for e in entries) != sorted(DELEGATION_CHECKS)
 
 

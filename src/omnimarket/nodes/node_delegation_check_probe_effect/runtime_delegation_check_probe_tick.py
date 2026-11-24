@@ -44,7 +44,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_delega
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_gateway import (
     DevTenantCredential,
-    HttpGatewayClient,
+    HttpGatewayCaller,
     load_gateway_row,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.gateway_checks import (
@@ -182,7 +182,7 @@ def main(
         # The gateway address and the test tenant are the settings store's row; with none served the gateway checks read
         # PRECONDITION-ABSENT. A row that is served but broken ends the tick like any other unreadable overlay.
         try:
-            gateway = HttpGatewayClient(
+            gateway = HttpGatewayCaller(
                 load_gateway_row(), DevTenantCredential(), overlay.responder_timeout_s
             )
         except NodeOverlayNotFoundError:

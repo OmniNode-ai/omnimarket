@@ -238,7 +238,9 @@ class _Session:
         return workflow_id, status, receipt, answered
 
 
-def _healthy(s: _Session, source: str = "external-client"):  # type: ignore[no-untyped-def]
+def _healthy(
+    s: _Session, source: str = "external-client"
+) -> tuple[str | None, Mapping[str, Any] | None, Mapping[str, Any] | None, str]:
     return s.run("test", source)
 
 

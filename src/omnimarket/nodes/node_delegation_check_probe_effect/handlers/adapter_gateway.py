@@ -94,7 +94,7 @@ class DevTenantCredential:
         return self._cached[tenant_slug]
 
 
-class HttpGatewayClient:
+class HttpGatewayCaller:
     """One request at a time to the gateway the row names; an unanswered request is an observation with an error."""
 
     def __init__(
@@ -163,7 +163,7 @@ def load_gateway_row(
 
 __all__ = [
     "DevTenantCredential",
-    "HttpGatewayClient",
+    "HttpGatewayCaller",
     "ProtocolSecretReader",
     "ProtocolTenantCredential",
     "load_gateway_row",

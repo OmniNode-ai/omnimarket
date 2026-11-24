@@ -35,7 +35,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_delega
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_gateway import (
     DevTenantCredential,
-    HttpGatewayClient,
+    HttpGatewayCaller,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.gateway_checks import (
     CLOUD_DEPENDENT_CHECKS,
@@ -49,7 +49,9 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.handler_delega
     HandlerDelegationCheckProbe,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe import (
+    CheckId,
     EnumCheckVerdict,
+    ModelDelegationCheckReading,
     ModelDelegationCheckRequest,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.models.model_gateway_check import (
@@ -67,10 +69,10 @@ SETTINGS = GatewayRunSettings(run_budget_s=5.0, poll_interval_s=0.0)
 UUID_RE = re.compile(r"^[0-9a-f-]{36}$")
 
 
-def _run(check: str, gateway: FakeGateway):
+def _run(check: CheckId, gateway: FakeGateway) -> ModelDelegationCheckReading:
     clock = FakeClock()
     return run_gateway_check(
-        check,  # type: ignore[arg-type]
+        check,
         gateway,
         SETTINGS,
         sleep=clock.sleep,
@@ -82,12 +84,12 @@ def _run(check: str, gateway: FakeGateway):
 @pytest.mark.unit
 @pytest.mark.parametrize("check", GATEWAY_CHECKS)
 def test_each_of_the_ten_checks_resolves_to_the_settings_store_gateway(
-    check: str,
+    check: CheckId,
 ) -> None:
     overlay = ModelDelegationCheckGatewayOverlay(
         schema_version=1, gateway_url=GATEWAY, tenant_slug=TENANT
     )
-    route = resolve_check_route(check, overlay.gateway_url)  # type: ignore[arg-type]
+    route = resolve_check_route(check, overlay.gateway_url)
     assert route.endpoint == overlay.gateway_url
     assert route.runner == "omnimarket-node"
     assert route.board == "omnimarket-beta-board"
@@ -115,14 +117,16 @@ def test_the_ten_checks_are_the_seven_gateway_only_checks_and_the_three_with_a_c
         "C30",
     }
     for local in ("C13", "C14", "C17"):
-        route = resolve_check_route(local, GATEWAY)  # type: ignore[arg-type]
+        route = resolve_check_route(local, GATEWAY)
         assert route.kind == "gateway-and-customer-machine"
         assert route.endpoint == GATEWAY
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize("check", GATEWAY_CHECKS)
-def test_every_request_of_a_check_goes_to_the_one_gateway_client(check: str) -> None:
+def test_every_request_of_a_check_goes_to_the_one_gateway_client(
+    check: CheckId,
+) -> None:
     gateway = FakeGateway(url="http://other.test.example:4999")
     reading = _run(check, gateway)
     assert gateway.calls, "the check made no gateway call"
@@ -131,7 +135,7 @@ def test_every_request_of_a_check_goes_to_the_one_gateway_client(check: str) -> 
 
 @pytest.mark.unit
 @pytest.mark.parametrize("check", GATEWAY_CHECKS)
-def test_a_healthy_gateway_grades_every_check_pass(check: str) -> None:
+def test_a_healthy_gateway_grades_every_check_pass(check: CheckId) -> None:
     reading = _run(check, FakeGateway())
     failed = [c.name for c in reading.clauses if not c.ok]
     assert reading.verdict() is EnumCheckVerdict.PASS, failed
@@ -139,7 +143,7 @@ def test_a_healthy_gateway_grades_every_check_pass(check: str) -> None:
 
 
 # Falsifiers: each check goes red when the gateway breaks the thing it grades.
-def _break(check: str, override: Callable[..., Any], expect_clause: str) -> None:
+def _break(check: CheckId, override: Callable[..., Any], expect_clause: str) -> None:
     gateway = FakeGateway()
     gateway.override = override
     reading = _run(check, gateway)
@@ -306,9 +310,11 @@ def _handler(gateway: FakeGateway | None) -> HandlerDelegationCheckProbe:
 
 @pytest.mark.unit
 @pytest.mark.parametrize("check", GATEWAY_ONLY_CHECKS)
-def test_the_run_record_names_the_gateway_address_and_the_tenant(check: str) -> None:
+def test_the_run_record_names_the_gateway_address_and_the_tenant(
+    check: CheckId,
+) -> None:
     result = _handler(FakeGateway()).handle(
-        ModelDelegationCheckRequest(correlation_id="c-1", check_id=check)  # type: ignore[arg-type]
+        ModelDelegationCheckRequest(correlation_id="c-1", check_id=check)
     )
     assert result.verdict is EnumCheckVerdict.PASS, result.error
     assert result.gateway_url == GATEWAY
@@ -319,10 +325,10 @@ def test_the_run_record_names_the_gateway_address_and_the_tenant(check: str) -> 
 @pytest.mark.unit
 @pytest.mark.parametrize("check", GATEWAY_CHECKS)
 def test_with_no_gateway_row_the_check_is_precondition_absent_never_green(
-    check: str,
+    check: CheckId,
 ) -> None:
     result = _handler(None).handle(
-        ModelDelegationCheckRequest(correlation_id="c-2", check_id=check)  # type: ignore[arg-type]
+        ModelDelegationCheckRequest(correlation_id="c-2", check_id=check)
     )
     assert result.verdict is EnumCheckVerdict.PRECONDITION_ABSENT
     assert result.conclusion == "failure"
@@ -332,10 +338,10 @@ def test_with_no_gateway_row_the_check_is_precondition_absent_never_green(
 @pytest.mark.unit
 @pytest.mark.parametrize("check", ["C13", "C14", "C17"])
 def test_a_customer_local_check_is_also_read_from_the_gateway_and_never_green_without_its_machine(
-    check: str,
+    check: CheckId,
 ) -> None:
     result = _handler(FakeGateway()).handle(
-        ModelDelegationCheckRequest(correlation_id="c-4", check_id=check)  # type: ignore[arg-type]
+        ModelDelegationCheckRequest(correlation_id="c-4", check_id=check)
     )
     # With no local responder and no collector the machine half reads not measured or absent: never green.
     assert result.verdict in (
@@ -403,7 +409,9 @@ def test_the_overlay_requires_an_explicit_port_and_no_default_address() -> None:
             tenant_slug=TENANT,
         )
     with pytest.raises(ValueError, match=r".+"):
-        ModelDelegationCheckGatewayOverlay(schema_version=1, tenant_slug=TENANT)  # type: ignore[call-arg]
+        ModelDelegationCheckGatewayOverlay.model_validate(
+            {"schema_version": 1, "tenant_slug": TENANT}
+        )
 
 
 # The tenant credential: the dev tenant node's overlay names the secret, the secret store holds the token.
@@ -458,16 +466,23 @@ def test_a_token_missing_from_the_store_is_precondition_absent() -> None:
 @pytest.mark.unit
 @pytest.mark.parametrize("check", GATEWAY_CHECKS)
 def test_with_no_tenant_token_the_run_record_still_names_the_gateway_and_is_never_green(
-    check: str,
+    check: CheckId,
 ) -> None:
     class _NoToken(FakeGateway):
-        def call(self, method, path, *, auth, body=None):  # type: ignore[no-untyped-def]
+        def call(
+            self,
+            method: str,
+            path: str,
+            *,
+            auth: str,
+            body: dict[str, Any] | None = None,
+        ) -> ModelGatewayObservation:
             if auth == "tenant":
                 raise CollectorAbsentError("tenant_credential", "no token")
             return super().call(method, path, auth=auth, body=body)
 
     result = _handler(_NoToken()).handle(
-        ModelDelegationCheckRequest(correlation_id="c-3", check_id=check)  # type: ignore[arg-type]
+        ModelDelegationCheckRequest(correlation_id="c-3", check_id=check)
     )
     assert result.verdict is EnumCheckVerdict.PRECONDITION_ABSENT
     assert result.conclusion == "failure"
@@ -499,7 +514,7 @@ def test_the_http_client_sends_the_tenant_token_only_in_the_api_key_header() -> 
             gateway_url=f"http://127.0.0.1:{server.server_address[1]}",
             tenant_slug=TENANT,
         )
-        client = HttpGatewayClient(
+        client = HttpGatewayCaller(
             row, DevTenantCredential(_dev_tenant_source(), _Reader("tok-value")), 5.0
         )
         answered = client.call("GET", "/v1/workflows/contracts", auth="tenant")
@@ -518,7 +533,7 @@ def test_the_http_client_reports_an_unreachable_gateway_as_no_answer() -> None:
     row = ModelDelegationCheckGatewayOverlay.model_construct(
         schema_version=1, gateway_url="http://127.0.0.1:9", tenant_slug=TENANT
     )
-    client = HttpGatewayClient(
+    client = HttpGatewayCaller(
         row, DevTenantCredential(_dev_tenant_source(), _Reader("t")), 0.5
     )
     answered = client.call("GET", "/health", auth="none")
