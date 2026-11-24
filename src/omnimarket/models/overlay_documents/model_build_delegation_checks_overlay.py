@@ -28,9 +28,9 @@ DELEGATION_CHECKS: tuple[str, ...] = (
 #: The module of the delegation check probe node's tick, which runs one named check on a customer machine and answers by exit code.
 PROBE_NODE_TICK = "omnimarket.nodes.node_delegation_check_probe_effect.runtime_delegation_check_probe_tick"
 
-#: The checks whose probe is one of this repository's nodes. The other seven have no node here yet, so they have no route and
-#: read unavailable; none of them is a cloud workflow dispatch. ``{python}`` is the interpreter running the handler,
-#: ``{registry_root}`` the registry root.
+#: Every one of the ten checks is probed by this repository's delegation check probe node: C13, C14 and C17 on a customer
+#: machine through the responder chain, and the other seven through the dev gateway the settings store names. None is a cloud
+#: workflow dispatch. ``{python}`` is the interpreter running the handler, ``{registry_root}`` the registry root.
 DEFAULT_CHECK_ROUTES: dict[str, tuple[str, ...]] = {
     check: (
         "{python}",
@@ -45,7 +45,7 @@ DEFAULT_CHECK_ROUTES: dict[str, tuple[str, ...]] = {
         "--check",
         check,
     )
-    for check in ("C13", "C14", "C17")
+    for check in DELEGATION_CHECKS
 }
 
 
