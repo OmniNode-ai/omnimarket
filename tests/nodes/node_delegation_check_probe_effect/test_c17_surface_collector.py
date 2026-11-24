@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
+from _gateway_fake import FakeClock, FakeGateway
 
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers import (
     clean_machine_driver as driver,
@@ -28,6 +29,9 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_clean_
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_delegation_check import (
     InMemoryCheckPublisher,
     InMemoryResponderReader,
+)
+from omnimarket.nodes.node_delegation_check_probe_effect.handlers.gateway_checks import (
+    GatewayRunSettings,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.grade_customer_guide import (
     CONTROL_OPTION,
@@ -306,6 +310,9 @@ def _uv(tmp_path: Path) -> str:
     return str(uv)
 
 
+_GATEWAY_CLOCK = FakeClock()
+
+
 def _handler(machine: CleanInstallCustomerMachine) -> HandlerDelegationCheckProbe:
     return HandlerDelegationCheckProbe(
         responders=(),
@@ -313,6 +320,10 @@ def _handler(machine: CleanInstallCustomerMachine) -> HandlerDelegationCheckProb
         machine=machine,
         publisher=InMemoryCheckPublisher(),
         topic=contract_topics()[0],
+        gateway=FakeGateway(),
+        gateway_settings=GatewayRunSettings(run_budget_s=5.0, poll_interval_s=0.0),
+        sleep=_GATEWAY_CLOCK.sleep,
+        monotonic=_GATEWAY_CLOCK.monotonic,
     )
 
 
