@@ -2,6 +2,11 @@
 # SPDX-License-Identifier: MIT
 # ONEX Node Contract - Delegation Check Probe Effect (OMN-26043)
 #
+# OMN-26642 (operator ruling 2026-11-24): a delegation check that depended on the cloud depends on a communication through the dev
+# gateway instead. All ten checks are graded here by requests to the gateway address the settings store's
+# delegation_check_gateway row names, as the test tenant the dev tenant node declares; the cloud variants of all ten checks are
+# listed under next_milestone and stay where they are.
+#
 # Moved from the cloud repository's c13, c14 and m4-c17 producers (operator ruling 2026-11-09: the cloud repository is cloud
 # only; delegation work goes to omnimarket). One run sends the check's task through the delegation responder chain the settings
 # store declares (local least busy, then OpenRouter, then the Claude API: a check never names one model), grades what a
@@ -13,14 +18,15 @@ node_type: effect
 contract_version: {major: 0, minor: 1, patch: 0}
 node_version: {major: 0, minor: 1, patch: 0}
 description: >
-  EFFECT: run one delegation check (C13 customer-local delegation, C14 customer-local routing, C17 customer surface) and
-  publish the run (run id, trigger, verdict PASS, FAIL, NOT_MEASURED, PRECONDITION-ABSENT or ERROR, conclusion success only
+  EFFECT: run one delegation check (C13 customer-local delegation, C14 customer-local routing, C17 customer surface, and through
+  the dev gateway C11 negative paths, C12 provider catalogue, C15 chain, C16 receipt identity, C28 consumer flow, C29 customer
+  key, C30 plugin delegation) and publish the run (run id, trigger, verdict PASS, FAIL, NOT_MEASURED, PRECONDITION-ABSENT or ERROR, conclusion success only
   for PASS, every graded clause, the responder chain tried and the responder chosen) on the result topic. A task that never
   reached a local responder reads NOT_MEASURED with cause lab-model; a FAIL carries cause product.
 input_model:
   name: ModelDelegationCheckRequest
   module: omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe
-  description: "Correlation id, the check (C13, C14 or C17) and the trigger (schedule or manual)."
+  description: "Correlation id, the check (one of the ten delegation checks) and the trigger (schedule or manual)."
 output_model:
   name: ModelDelegationCheckResult
   module: omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe
@@ -56,6 +62,18 @@ responder_chain:
   overlay_id: delegation_check_responders
   file_env: ONEX_DELEGATION_CHECK_RESPONDERS_OVERLAY
   setting_key: responders
+# The gateway the cloud-dependent checks are graded through: one row of the settings store, set only through
+# node_overlay_setting_set_effect (overlay delegation_check_gateway, key gateway), which leaves an audit row. It holds the gateway
+# address and the test tenant's slug; the tenant's token is the dev tenant node's, read by the secret name its overlay declares.
+gateway_row:
+  overlay_id: delegation_check_gateway
+  file_env: ONEX_DELEGATION_CHECK_GATEWAY_OVERLAY
+  setting_key: gateway
+  # Every one of the ten: C11, C12, C15, C16, C28, C29 and C30 are graded through the gateway alone; C13, C14 and C17 are read
+  # from the gateway as well as on a customer machine, and read red until both halves hold.
+  checks: [C11, C12, C13, C14, C15, C16, C17, C28, C29, C30]
+  gateway_only_checks: [C11, C12, C15, C16, C28, C29, C30]
+  tenant_source_node: node_dev_proof_tenant_token_effect
 # The tick publishes the run record on the result topic under the runtime's broker login.
 broker_acl_grants:
   - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
@@ -71,8 +89,25 @@ reading:
   name: delegation_check_newest_scheduled_run
   description: "The conclusion of the newest scheduled run of each check (success only when every clause held), its cause class and its age."
   injected_fault: "A responder row whose local responders all fail to answer: the run reads NOT_MEASURED, cause lab-model, and the tick exits 1."
+# The cloud variants of the ten delegation checks, listed as checks for the next milestone (operator ruling 2026-11-24). Each stays
+# where it is, owned by the cloud owner; this list only names it, and nothing here deletes or edits a workflow. The beta board's
+# milestone data is the settings store's overlay and holds no list in this repository, so the contract carries it.
+next_milestone:
+  milestone: next
+  note: "Each cloud variant becomes a check of the next milestone; this milestone grades the same ten checks through the dev gateway."
+  cloud_checks:
+    - {check: C11, workflow: chain-canary-c11-negative-paths.yml, owner: cloud-owner, disposition: keep, gateway_graded_by: node_delegation_check_probe_effect}
+    - {check: C12, workflow: chain-canary-c12-provider-catalogue.yml, owner: cloud-owner, disposition: keep, gateway_graded_by: node_delegation_check_probe_effect}
+    - {check: C13, workflow: c13-customer-local-delegation.yml, owner: cloud-owner, disposition: keep, gateway_graded_by: node_delegation_check_probe_effect}
+    - {check: C14, workflow: c14-customer-local-routing.yml, owner: cloud-owner, disposition: keep, gateway_graded_by: node_delegation_check_probe_effect}
+    - {check: C15, workflow: chain-canary.yml, owner: cloud-owner, disposition: keep, gateway_graded_by: node_delegation_check_probe_effect}
+    - {check: C16, workflow: chain-canary-c16-receipt-identity.yml, owner: cloud-owner, disposition: keep, gateway_graded_by: node_delegation_check_probe_effect}
+    - {check: C17, workflow: m4-c17-customer-surface-verdict.yml, owner: cloud-owner, disposition: keep, gateway_graded_by: node_delegation_check_probe_effect}
+    - {check: C28, workflow: chain-canary-c28-consumer-flow.yml, owner: cloud-owner, disposition: keep, gateway_graded_by: node_delegation_check_probe_effect}
+    - {check: C29, workflow: c29-customer-byo-key-delegation.yml, owner: cloud-owner, disposition: keep, gateway_graded_by: node_delegation_check_probe_effect}
+    - {check: C30, workflow: c30-claude-code-plugin-delegate.yml, owner: cloud-owner, disposition: keep, gateway_graded_by: node_delegation_check_probe_effect}
 metadata:
   transport_type: kafka
-  description: "Runs the delegation checks C13, C14 and C17 through the delegation responder chain and publishes each run"
+  description: "Runs the ten delegation checks (customer-local through the responder chain, the rest through the dev gateway) and publishes each run"
   author: "OmniNode Team"
-  tags: ["effect", "probe", "delegation", "c13", "c14", "c17", "OMN-26043"]
+  tags: ["effect", "probe", "delegation", "c11", "c12", "c13", "c14", "c15", "c16", "c17", "c28", "c29", "c30", "gateway", "OMN-26043", "OMN-26642"]
