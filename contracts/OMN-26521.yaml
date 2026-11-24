@@ -19,6 +19,8 @@ requirements:
     statement: 'AC4: integrated: after the change is installed on h051 through the declared install, onex-floor-fill-tick exits 0 for three consecutive runs and a floor-fill state row exists, or the unit is named blocked with one cause and one owner -- falsifier: ssh h051 systemctl --user show onex-floor-fill-tick -p ExecMainStatus reads a non-zero status with no blocked= STATUS row'
   - id: AC5
     statement: 'AC5: the pull request to omnimarket has its required checks green and is handed to the landing controller by one ledger MSG -- falsifier: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests on the pull request head exits non-zero'
+  - id: AC6
+    statement: 'AC6: the floor fill schedule reads its overlay from the settings store root before the declared overlay file, and node_overlay_setting_set declares the floor_fill_live keys settable -- falsifier: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_schedule_store_overlay.py on the merge base exits non-zero'
 evidence_requirements:
 - kind: tests
   description: The floor fill orchestrator tests pass at the pushed head.
@@ -76,6 +78,8 @@ dod_evidence:
 - id: dod-omn26521-store-overlay
   description: 'The floor fill schedule reads its overlay from the settings store root before the declared overlay file, and the node_overlay_setting_set contract declares the floor_fill_live keys settable (failing control: the store overlay test fails with ImportError on load_schedule_overlay before the change).'
   source: manual
+  binds_ac:
+  - AC6
   checks:
   - check_type: test_passes
     check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_schedule_store_overlay.py -q -n 0 --no-cov -p no:cacheprovider
