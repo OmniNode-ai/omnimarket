@@ -4,6 +4,88 @@
 # line counts (run with --per-file): a file with no row, or with more lines than its row, fails the
 # census (new code opening the ledger file). `--lower` drops a cleared file and never adds one.
 files:
+  knowledge_base: {}
+  omnibase_compat: {}
+  omnibase_core:
+    contracts/OMN-21147.yaml: 1
+    tests/conftest.py: 1
+    tests/fixtures/andon_replay/snapshots/job_fin_claude3019_0035.json: 1
+    tests/unit/models/events/work/test_model_work_kinds_v2.py: 1
+    tests/unit/models/events/work/test_model_work_question.py: 3
+    tests/unit/models/events/work/test_work_ledger_line.py: 1
+    tests/unit/validation/hardcoded_model_config/test_hardcoded_model_config.py: 1
+    tests/unit/validation/test_ticket_creation_parity.py: 1
+  omnibase_infra:
+    config/deploy_lane_routing.yaml: 1
+    config/skip_count_baseline.yaml: 1
+    contracts/OMN-20275.yaml: 1
+    contracts/OMN-21099.yaml: 3
+    contracts/OMN-23039.yaml: 1
+    deploy/disk-gc/install-worktree-prune.sh: 1
+    deploy/disk-gc/onex-disk-gc.service: 1
+    deploy/disk-gc/onex-worktree-prune.service: 2
+    scripts/deploy-agent/deploy/deploy-agent-launch.sh: 1
+    scripts/runtime_build/prepr_runtime_pool.py: 2
+    tests/ci/test_dev_lane_pack_builder_settings_omn21099.py: 1
+    tests/conftest.py: 1
+    tests/incident_replays/registry.yaml: 1
+    tests/integration/test_ledger_write_guard_omn19513.py: 1
+    tests/scripts/test_git_maintenance_prune_safety_omn19396.py: 2
+    tests/scripts/test_git_maintenance_root_resolution_omn19396.py: 1
+    tests/scripts/test_reconcile_verify_movement_owner_omn20547.py: 2
+    tests/scripts/test_runner_job_started_tmp_reaper_omn17427.py: 1
+    tests/scripts/test_worktree_prune_timer.py: 2
+    tests/unit/scripts/test_ledger_watermark_omn17023.py: 1
+    tests/unit/scripts/test_prepr_pool_local_transport_omn20085.py: 1
+  omnibase_spi: {}
+  omniclaude:
+    .github/workflows/branch-claim-check-reusable.yml: 1
+    config/public_repo_hygiene_scrub_map.yaml: 1
+    plugins/onex/hooks/config/credential_rotation_policy.json: 1
+    plugins/onex/hooks/lib/credential_rotation_guard.py: 1
+    plugins/onex/hooks/tests/test_ticket_route_gate.py: 1
+    scripts/converge-canonical-clone.sh: 2
+    scripts/hooks/pre-push-branch-claim: 1
+    scripts/install-hook-process-canary.sh: 3
+    scripts/launchd/ai.omninode.hook-process-canary.plist: 1
+    scripts/worktree_auto_prune.py: 2
+    src/omniclaude/nodes/node_git_effect/git_admission_policy.json: 2
+    src/omniclaude/nodes/node_git_effect/handlers/handler_git_admission.py: 2
+    tests/conftest.py: 1
+    tests/handlers/test_ledger_write_guard_omn19513.py: 1
+    tests/hooks/fixtures/git_admission_parity_golden.json: 1
+    tests/hooks/fixtures/workflow_model_guard/passing_pr-backlog-drain-wf_aeb1c3c7-41a.js: 1
+    tests/hooks/test_canonical_clone_sync.py: 1
+    tests/hooks/test_credential_rotation_guard.py: 15
+    tests/hooks/test_dev_runtime_mutation_guard_hook.py: 2
+    tests/hooks/test_dev_runtime_mutation_interpreter_omn22405.py: 2
+    tests/hooks/test_git_admission_parity.py: 1
+    tests/hooks/test_git_fetch_guard.py: 2
+    tests/hooks/test_hook_emit_alarm_delivery_omn20109.py: 3
+    tests/hooks/test_ledger_ruling_reread.py: 12
+    tests/hooks/test_refusal_recorder_delivery_omn20883.py: 2
+    tests/hooks/test_refusal_row_lane_github_read_omn21020.py: 1
+    tests/hooks/test_refusal_row_lane_omn19381.py: 1
+    tests/hooks/test_refusal_surface_omn18983.py: 1
+    tests/hooks/test_shared_tree_git_guard.py: 12
+    tests/hooks/test_ticket_creation_guard_lane_intake.py: 1
+    tests/hooks_system/fixtures/bash_guard_corpus.json: 13
+    tests/hooks_system/fixtures/bash_guard_golden.json: 88
+    tests/scripts/test_branch_claim.py: 2
+    tests/scripts/test_branch_claim_check_workflow.py: 3
+    tests/scripts/test_canonical_clone_guard.py: 1
+    tests/scripts/test_converge_canonical_clone.py: 5
+    tests/scripts/test_gh_shim_refusal_row_omn21020.py: 1
+    tests/scripts/test_install_canonical_clone_guard.py: 1
+    tests/scripts/test_private_repo_runner_placement_lane_omn20141.py: 1
+    tests/scripts/test_private_repo_runner_placement_local_sources_omn20074.py: 1
+    tests/scripts/test_public_repo_hygiene_gate.py: 1
+    tests/unit/hooks/test_prose_command_substitution_guard_omn18750.py: 2
+    tests/unit/nodes/node_git_effect/test_handler_git_subprocess.py: 2
+    tests/unit/nodes/node_validate_skills_compute/test_handler_whole_file_hygiene_omn22273.py: 1
+    tests/unit/scripts/test_hook_canary_ledger_append.py: 2
+  omnidash: {}
+  omniintelligence: {}
   omnimarket:
     benchmarks/delegation_ladder/bundles/R2-04.json: 2
     benchmarks/delegation_ladder/results/responses/cloud/R2-03.json: 1
@@ -23,17 +105,14 @@ files:
     src/omnimarket/nodes/node_compaction_cost_compute/data/recovery_call_patterns.yaml: 2
     src/omnimarket/nodes/node_friction_rollup_compute/tests/fixtures/recorded_day_unit_output.json: 3
     src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml: 5
-    src/omnimarket/nodes/node_host_installer_registry_units/handlers/handler_registry_units.py: 3
+    src/omnimarket/nodes/node_host_installer_registry_units/handlers/handler_registry_units.py: 2
     src/omnimarket/nodes/node_host_reading_effect/overlay.example.yaml: 4
     src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_launch.py: 1
     src/omnimarket/nodes/node_lab_fill_plan_compute/handlers/handler_lab_fill_lane_render.py: 1
     src/omnimarket/nodes/node_lab_history_archive_effect/handlers/handler_lab_history_archive.py: 1
     src/omnimarket/nodes/node_ledger_reconcile_effect/protocols/local_ledger_reconcile_adapters.py: 2
-    src/omnimarket/nodes/node_pr_duplicate_guard_compute/contract.yaml: 1
     src/omnimarket/nodes/node_process_health_effect/contract.yaml: 2
     src/omnimarket/nodes/node_process_health_effect/tests/test_runtime_process_health.py: 4
-    src/omnimarket/nodes/node_projection_work_events/ledger_view.py: 1
-    src/omnimarket/nodes/node_projection_work_ledger/parity.py: 2
     src/omnimarket/nodes/node_retention_cleanup/contract.yaml: 1
     src/omnimarket/nodes/node_retention_cleanup/handlers/handler_file_retention.py: 1
     src/omnimarket/nodes/node_session_front_door_compute/handlers/entry.py: 1
@@ -133,5 +212,16 @@ files:
     tests/unit/nodes/node_work_ledger_reader_effect/test_reader_chain_events.py: 2
     tests/unit/validators/test_ledger_file_census.py: 27
     tests/unit/work_ledger_bus/test_work_ledger_append_cli.py: 1
+  omnimemory:
+    contracts/OMN-25400.yaml: 1
 ratchet:
-  omnimarket: 128
+  knowledge_base: 0
+  omnibase_compat: 0
+  omnibase_core: 8
+  omnibase_infra: 21
+  omnibase_spi: 0
+  omniclaude: 45
+  omnidash: 0
+  omniintelligence: 0
+  omnimarket: 125
+  omnimemory: 1

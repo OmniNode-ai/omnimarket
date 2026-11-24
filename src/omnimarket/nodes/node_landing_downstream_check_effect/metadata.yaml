@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_landing_downstream_check_effect
+version: 1.0.0
+description: Installs a core or spi pull request head into each downstream repository and runs its import smoke, so the landing controller refuses a merge that breaks one.
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+pack: operator_tooling
+node_role: effect
+display_name: Landing Downstream Check Effect
+entry_points:
+  onex.nodes:
+    node_landing_downstream_check_effect: omnimarket.nodes.node_landing_downstream_check_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies: []
+license: MIT
+tags: [effect, operator, landing, downstream]
