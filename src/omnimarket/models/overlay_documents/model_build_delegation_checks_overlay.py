@@ -25,6 +25,29 @@ DELEGATION_CHECKS: tuple[str, ...] = (
     "C30",
 )
 
+#: The module of the delegation check probe node's tick, which runs one named check on a customer machine and answers by exit code.
+PROBE_NODE_TICK = "omnimarket.nodes.node_delegation_check_probe_effect.runtime_delegation_check_probe_tick"
+
+#: The checks whose probe is one of this repository's nodes. The other seven have no node here yet, so they have no route and
+#: read unavailable; none of them is a cloud workflow dispatch. ``{python}`` is the interpreter running the handler,
+#: ``{registry_root}`` the registry root.
+DEFAULT_CHECK_ROUTES: dict[str, tuple[str, ...]] = {
+    check: (
+        "{python}",
+        "-m",
+        PROBE_NODE_TICK,
+        "--omni-home",
+        "{registry_root}",
+        "--state-dir",
+        "{registry_root}/.onex_state/delegation-check-probe",
+        "--trigger",
+        "manual",
+        "--check",
+        check,
+    )
+    for check in ("C13", "C14", "C17")
+}
+
 
 class ModelBuildDelegationChecksOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -60,8 +83,15 @@ class ModelBuildDelegationChecksOverlay(BaseModel):
     #: Per check, the argv the check's probe entry point is run with; exit 0 is pass, 1 is fail, anything else (a host down,
     #: a timeout, no route) reads unavailable. The probe itself sends its task through the responder chain, so no model or
     #: address is named here. {build_id} in an argument is the build's sha.
-    check_routes: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+    check_routes: dict[str, tuple[str, ...]] = Field(
+        default_factory=lambda: dict(DEFAULT_CHECK_ROUTES)
+    )
     bus_lane: str = Field(default="dev", min_length=1)
 
 
-__all__ = ["DELEGATION_CHECKS", "ModelBuildDelegationChecksOverlay"]
+__all__ = [
+    "DEFAULT_CHECK_ROUTES",
+    "DELEGATION_CHECKS",
+    "PROBE_NODE_TICK",
+    "ModelBuildDelegationChecksOverlay",
+]

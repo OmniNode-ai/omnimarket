@@ -15,6 +15,7 @@ from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from omnimarket.models.stop_gate import EnumStopMode, ModelStopPolicy
 from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_config import (
     FloorFillConfigError,
 )
@@ -36,7 +37,11 @@ SEAM_KEYS: tuple[str, ...] = (
 
 
 class ModelFloorFillLiveSettings(BaseModel):
-    """The live bindings' overlay keys. Every one is required except the six ``SEAM_KEYS``.
+    """The live bindings' overlay keys. Every one is required except the six ``SEAM_KEYS`` and the three policy keys.
+
+    The policy keys (``brake_min_admitting_hosts``, ``stop_modes``, ``stop_enforce_citations``) are choices, not deployment
+    facts: the brake bound defaults to one host, and an overlay that supplies no ``stop_modes`` leaves the stop policy to the
+    ``andon_stop`` overlay of the stop reducer.
 
     ``store_dsn_env`` is the NAME of the environment variable that holds the store DSN, never the DSN
     itself; the binding site reads it, so the secret never lands in the overlay.
@@ -62,6 +67,12 @@ class ModelFloorFillLiveSettings(BaseModel):
     mint_timeout_seconds: float | None = Field(default=None, gt=0)
     # The brake and stop-signal seams: the directory of the andon stop queue (the exception queue's state directory).
     andon_state_dir: str | None = Field(default=None, min_length=1)
+    # The brake over the pool snapshot: it is engaged (landing work only) when fewer hosts than this admit a further lane.
+    brake_min_admitting_hosts: int = Field(default=1, ge=1)
+    # The ``andon_stop`` policy the stop signal asks the stop gate with (class -> observe|enforce, and the citation that moved
+    # an enforced class). Absent, the policy is the ``andon_stop`` overlay of the stop reducer.
+    stop_modes: dict[str, EnumStopMode] | None = None
+    stop_enforce_citations: dict[str, str] = Field(default_factory=dict)
     # The env file the secret store writes the DSN variable into; optional, because the unit's own
     # EnvironmentFile may already carry the variable.
     store_dsn_env_file: str | None = None
@@ -72,15 +83,41 @@ class ModelFloorFillLiveSettings(BaseModel):
         if isinstance(data, dict):
             missing = [
                 name
-                for name in cls.model_fields
-                if name != "store_dsn_env_file"
-                and name not in SEAM_KEYS
-                and data.get(name) is None
+                for name, field in cls.model_fields.items()
+                if field.is_required() and data.get(name) is None
             ]
             if missing:
                 keys = tuple(f"{_PREFIX}{name}" for name in missing)
                 raise ValueError("no overlay supplies " + ", ".join(keys))
         return data
+
+    @model_validator(mode="after")
+    def _enforced_classes_carry_their_citation(self) -> Self:
+        if self.stop_modes is None:
+            if self.stop_enforce_citations:
+                raise ValueError(
+                    f"{_PREFIX}stop_enforce_citations is set and {_PREFIX}stop_modes is not"
+                )
+            return self
+        for class_id, mode in self.stop_modes.items():
+            if (
+                mode is EnumStopMode.ENFORCE
+                and not self.stop_enforce_citations.get(class_id, "").strip()
+            ):
+                raise ValueError(
+                    f"{_PREFIX}stop_enforce_citations.{class_id} is missing: a class in enforce mode needs "
+                    "the citation that moved it"
+                )
+        return self
+
+    def stop_policy(self) -> ModelStopPolicy | None:
+        """The stop policy the settings supply, or ``None`` when the ``andon_stop`` overlay is to supply it."""
+        if self.stop_modes is None:
+            return None
+        return ModelStopPolicy(
+            modes=dict(self.stop_modes),
+            enforce_citations=dict(self.stop_enforce_citations),
+        )
 
     @model_validator(mode="after")
     def _plan_pattern_names_the_line(self) -> Self:
