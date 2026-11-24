@@ -37,7 +37,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_store/test_overlay_store_load_continue.py -q -n 0 --no-cov -p no:cacheprovider -k "unchanged_clone"
+    check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_store/test_overlay_store_load_continue.py -q -n 0 --no-cov -p no:cacheprovider -k "unchanged_clone or not_at_origin_still_alarms"
     cwd: .
 - id: dod-omn26636-ac2
   description: 'AC2: a refusal planted on the second of three ids leaves the first and third published and the alarm names the second only'
@@ -46,7 +46,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_store/test_overlay_store_load_continue.py -q -n 0 --no-cov -p no:cacheprovider -k "second_id"
+    check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_store/test_overlay_store_load_continue.py -q -n 0 --no-cov -p no:cacheprovider -k "second_id or stale_ids_by_name"
     cwd: .
 - id: dod-omn26636-ac3
   description: 'AC3: an id older than two hours alarms by name when the load ran, when the clone is not at origin, when the run is refused and when the broker does not answer the load; the three stop tests failed on origin/dev before the change'
