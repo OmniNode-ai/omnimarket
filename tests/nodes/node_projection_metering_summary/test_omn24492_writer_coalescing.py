@@ -25,6 +25,10 @@ from omnimarket.models.model_metering_summary_refresh_requested import (
     ModelMeteringSummaryRefreshRequested,
 )
 from omnimarket.nodes.node_metering_summary_compute import METERING_COLUMNS
+from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_incremental_refresh import (
+    INCREMENTAL_RECORDS_SQL,
+    STORED_DAYS_SQL,
+)
 from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_summary_store_refresh import (
     RECORDS_SQL,
     VISIBLE_TENANTS_SQL,
@@ -103,6 +107,23 @@ class FakeStore:
             # Row-level security: only the GUC's tenant is visible.
             assert params == (tenant,)
             return list(self.runs.get(str(tenant), []))
+        if sql == INCREMENTAL_RECORDS_SQL:
+            # OMN-21288: the runs created at or after the stored watermark.
+            self.reads.append(("records_since", tenant))
+            assert params[0] == tenant
+            return [
+                r
+                for r in self.runs.get(str(tenant), [])
+                if r["created_at"] >= params[1]
+            ]
+        if sql == STORED_DAYS_SQL:
+            self.reads.append(("stored_days", tenant))
+            return [
+                row
+                for (t, kind, start, base), row in self.rows.items()
+                if (t, base, kind) == (params[0], params[1], "day")
+                and start in params[2]
+            ]
         if sql.startswith("SELECT pricing_manifest_version"):
             self.reads.append(("stored", tenant))
             key = (str(params[0]), "all", "", str(params[1]))
@@ -215,7 +236,10 @@ def test_control_without_an_interval_every_terminal_reads_the_store(
         results.append(_terminal(i, "2026-10-19", clock, store, writer))
         now += timedelta(seconds=1)
 
-    assert store.reads.count(("records", _DEV)) == 10
+    # OMN-21288: every terminal still reads the store, but only the first (which has
+    # no state to continue from) reads it whole; the other nine read the new runs.
+    assert store.reads.count(("records", _DEV)) == 1
+    assert store.reads.count(("records_since", _DEV)) == 9
     assert all(result["refresh_coalesced"] is False for result in results)
 
 
@@ -231,6 +255,9 @@ def test_golden_held_back_days_are_carried_by_the_next_run() -> None:
     )
     _terminal(0, "2026-10-19", clock, store, writer)
     now += timedelta(seconds=10)
+    # OMN-21288: the held-back terminal's run is what the next run carries; a day
+    # with no run has no row (a refresh folds runs, it does not write empty days).
+    store.runs[_DEV].append(_run("c", _T0 + timedelta(days=2, hours=1)))
     held = _terminal(1, "2026-10-20", clock, store, writer)
     assert held["refresh_coalesced"] is True
     assert held["refresh_pending_tenants"] == [_DEV]
