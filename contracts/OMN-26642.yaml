@@ -77,6 +77,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_gateway_checks.py -q --no-cov -n 0 -p no:randomly -k 'names_the_gateway_address or with_no_tenant_token or no_gateway_row or tenant_token_is_read or credential_kind or jwt_sent'
     cwd: .
+- id: dod-omn26642-golden-answers
+  description: A good answer of the real in-process workflow gateway (its real caller-identity resolvers, the probe's real HTTP client) passes each of the ten gateway-graded checks under both tenant credential kinds, and an answer with one clause removed fails naming that clause. The unknown-source refusal is read as the 400 naming the source field the real gateway answers, the correlation id of every submit is a UUID, the status is read against the receipt on every field both declared models carry, a registered onxk_ key in x-api-key is accepted, a JWT-shaped value in x-api-key is refused 401 auth.credential.invalid, and a bearer JWT is accepted where the resolver takes one.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_golden_answers_gateway_graders.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn26642-hosted-deploy-check
   description: 'Deploy check the hosted runner can run: the contract declares the gateway row and the next-milestone list, the node is registered as an onex.nodes entry point, and the node''s trigger declaration holds. This binds no criterion by itself.'
   source: manual
