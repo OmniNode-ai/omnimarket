@@ -47,7 +47,8 @@ NODE_DIR = (
     / "src/omnimarket/nodes/node_build_delegation_checks"
 )
 PROBE_MODULE = "omnimarket.nodes.node_delegation_check_probe_effect.runtime_delegation_check_probe_tick"
-OUR_NODE_CHECKS = ("C13", "C14", "C17")
+# OMN-26642: every one of the ten checks is graded by the probe node of this repository (three on a customer machine, seven through the dev gateway).
+OUR_NODE_CHECKS = tuple(DELEGATION_CHECKS)
 CHECK_TOPIC = "onex.evt.omnimarket.build-delegation-check-recorded.v1"
 BUILD = "a" * 40
 
@@ -113,11 +114,10 @@ def test_a_rebuild_completed_runs_the_probe_node_and_never_a_workflow_dispatch(
     readings = {r.check_id: r.reading for r in result.records}
     for check in OUR_NODE_CHECKS:
         assert readings[check] is EnumCheckReading.PASS
-    # A check with no node of ours is unavailable with the reason, never green and never a cloud dispatch.
-    for check in set(DELEGATION_CHECKS) - set(OUR_NODE_CHECKS):
-        assert readings[check] is EnumCheckReading.UNAVAILABLE
-    detail = {r.check_id: r.detail for r in result.records}
-    assert detail["C29"] == "no probe route is declared for this check"
+    # A check with no route is unavailable with the reason, never green and never a cloud dispatch; none of the ten lacks one now.
+    assert set(DELEGATION_CHECKS) - set(OUR_NODE_CHECKS) == set()
+    unrouted = ModelBuildDelegationChecksOverlay(check_routes={}).check_routes
+    assert unrouted == {}
 
 
 def test_the_record_names_the_probe_node_that_ran_it(
@@ -129,7 +129,7 @@ def test_the_record_names_the_probe_node_that_ran_it(
     )
     probes = {r.check_id: r.probe for r in result.records}
     assert {probes[c] for c in OUR_NODE_CHECKS} == {PROBE_MODULE}
-    assert {probes[c] for c in set(DELEGATION_CHECKS) - set(OUR_NODE_CHECKS)} == {""}
+    assert set(DELEGATION_CHECKS) - set(OUR_NODE_CHECKS) == set()
 
 
 def test_each_of_the_ten_checks_publishes_one_record_on_the_bus(
