@@ -106,7 +106,14 @@ def test_live_profile_unit_exec_carries_profile_and_live_section(
     ]
     assert json.loads(words[4]) == {
         "floor_fill": OVERLAY,
-        "floor_fill_live": {**section, "store_dsn_env_file": None},
+        "floor_fill_live": {
+            **section,
+            "store_dsn_env_file": None,
+            # The optional policy keys the section does not carry, as the settings dump them.
+            "brake_min_admitting_hosts": 1,
+            "stop_modes": None,
+            "stop_enforce_citations": {},
+        },
         "lab_hosts": [{"name": OVERLAY["host_id"], "available": True}],
     }
 
