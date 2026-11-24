@@ -6,7 +6,10 @@
 drafts measured for a class, keeps the ones that completed, and returns the slowest completed duration times the overlay's margin,
 rounded up to the overlay's step; it refuses with too few completed samples and over the overlay's ceiling. A draft that timed out
 is never a sample: its duration is the budget that cut it off, not what the draft needed. ``input_ceiling`` returns the overlay's input
-ceiling for a backend and task class and refuses a pair the overlay does not name (OMN-23631). No clock, no I/O, no value of its own.
+ceiling for a backend and task class and refuses a pair the overlay does not name (OMN-23631). ``output_budget`` returns a backend's
+output budget for one request: the overlay's window, less the request's measured input tokens, less the overlay's margin, held to the
+overlay's ceiling; it refuses a backend the overlay does not name and a request whose room is under the overlay's floor (OMN-26640).
+No clock, no I/O, no value of its own.
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ from omnimarket.models.model_delegation_code_budget import (
     EnumCodeBudgetRefusal,
     ModelCodeBudgetRequest,
     ModelCodeBudgetResult,
+    ModelOutputBudget,
     input_ceiling_overlay_key,
 )
 
@@ -49,6 +53,9 @@ class HandlerDelegationCodeBudget:
                 detail="",
                 sampling=sampling,
             )
+
+        if request.operation == "output_budget":
+            return self._output_budget(request)
 
         if request.operation == "input_ceiling":
             backend = request.backend or ""
@@ -137,4 +144,57 @@ class HandlerDelegationCodeBudget:
             refusal=None,
             completed_samples=completed_samples,
             detail="",
+        )
+
+    def _output_budget(self, request: ModelCodeBudgetRequest) -> ModelCodeBudgetResult:
+        backend = request.backend or ""
+        input_tokens = request.input_tokens or 0
+        setting = (
+            request.overlay.output_budgets.get(backend)
+            if request.overlay.output_budgets is not None
+            else None
+        )
+        if setting is None:
+            return ModelCodeBudgetResult(
+                operation="output_budget",
+                task_class=request.task_class,
+                call_budget_s=None,
+                source="overlay",
+                refusal=EnumCodeBudgetRefusal.UNNAMED_OUTPUT_BUDGET,
+                completed_samples=0,
+                detail=f"No output budget named for backend: {backend}",
+                backend=backend,
+            )
+        room = setting.window - input_tokens - setting.margin
+        if room < setting.floor:
+            return ModelCodeBudgetResult(
+                operation="output_budget",
+                task_class=request.task_class,
+                call_budget_s=None,
+                source="overlay",
+                refusal=EnumCodeBudgetRefusal.NO_OUTPUT_ROOM,
+                completed_samples=0,
+                detail=(
+                    f"Room {room} is under the floor {setting.floor}: window "
+                    f"{setting.window}, input {input_tokens}, margin {setting.margin}"
+                ),
+                backend=backend,
+            )
+        return ModelCodeBudgetResult(
+            operation="output_budget",
+            task_class=request.task_class,
+            call_budget_s=None,
+            source="overlay",
+            refusal=None,
+            completed_samples=0,
+            detail="",
+            backend=backend,
+            output_budget=ModelOutputBudget(
+                tokens=min(room, setting.ceiling),
+                window=setting.window,
+                input_tokens=input_tokens,
+                margin=setting.margin,
+                floor=setting.floor,
+                ceiling=setting.ceiling,
+            ),
         )

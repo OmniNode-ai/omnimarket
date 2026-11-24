@@ -22,7 +22,10 @@ description: >
   rounded up to the overlay's step, refusing with too few completed samples or over the overlay's ceiling. Operation input_ceiling
   (OMN-23631) returns the overlay's input ceiling, in grounding tokens, for a named backend and task class and refuses a pair the
   overlay does not name; the routing handler reads every input ceiling through it, from the overlay key
-  delegation.code_budget.input_ceilings.<backend>.<task_class>. No clock read, no state, no I/O.
+  delegation.code_budget.input_ceilings.<backend>.<task_class>. Operation output_budget (OMN-26640) returns a named backend's
+  output budget for one request: the overlay's window less the request's measured input tokens less the overlay's margin, held to
+  the overlay's ceiling (overlay key output_budgets.<backend>), refusing a backend the overlay does not name and a request whose room
+  is under the overlay's floor. No clock read, no state, no I/O.
 
 handler_routing:
   routing_strategy: operation_match

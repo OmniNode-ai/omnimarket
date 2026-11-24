@@ -75,6 +75,12 @@ settable_settings:
     key: responders
     path: responders
     document_model: "omnimarket.models.overlay_documents.model_delegation_check_responders_overlay:ModelDelegationCheckRespondersOverlay"
+  # OMN-26642: the dev gateway address and the test tenant the gateway-graded delegation checks act as. The row holds no secret: the
+  # tenant's token is the dev tenant node's, found by the secret name its overlay declares.
+  - overlay_id: delegation_check_gateway
+    key: gateway
+    path: gateway
+    document_model: "omnimarket.models.overlay_documents.model_delegation_check_gateway_overlay:ModelDelegationCheckGatewayOverlay"
   # OMN-26484: the age past which a held dev deploy command raises its alarm. The dev roll window gate reads its policy from this
   # overlay on every tick, so a value set here moves the alarm on the next tick; an unset value (null) switches the alarm off.
   - overlay_id: node_dev_roll_window_gate_effect
@@ -125,6 +131,13 @@ settable_settings:
     key: floor_fill_live.andon_state_dir
     path: floor_fill_live/andon_state_dir
     document_model: "omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_overlay_document:ModelFloorFillOverlayDocument"
+  # OMN-26461: the goal's ticket rule roots, the tickets and epics whose pull requests the landing goal admits. A set of the list is
+  # validated against the whole overlay document, so a non-ticket string or a wrong type is refused with nothing written. The row holds no
+  # secret: the list is OMN-<n> ticket ids.
+  - overlay_id: goal_scope_ticket_rule
+    key: ticket_roots
+    path: ticket_roots
+    document_model: "omnimarket.models.overlay_documents.model_goal_scope_ticket_rule_overlay:ModelGoalScopeTicketRuleOverlay"
 config:
   # The live record the set builds on must have been loaded within this many seconds: the loader asserts every overlay
   # each cycle, so an older record means the read did not reach the newest one, and a set built on it would replace newer settings.
