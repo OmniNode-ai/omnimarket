@@ -57,3 +57,50 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/formal/test_host_state_models_omn22429.py -q --no-cov --tb=line -k verdict
     cwd: .
+- id: dod-omn22429-ac1-accepted-20261124t0545z
+  description: 'AC1 binding (accepted 2026-11-24T0545Z, proposed by lane=dod-closeout-bind-2026-11-24T0545Z-c3, accepted by lane=dod-closeout-accept-2026-11-24T0545Z-c3). Each design Model.cfg checks TypeOK plus all its invariants and results/Model.out carries the completed-no-error line, no Error:, a nonzero distinct-state count and exit=0. Re-run at origin/dev 0b3df317b0 PASSED (2 passed); at the parent of f7cd2d0d76 the test file is absent, so the criterion postdates the parent.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q --no-cov -p no:cacheprovider tests/formal/test_host_state_models_omn22429.py::test_design_passes_all_invariants
+    cwd: .
+- id: dod-omn22429-ac2-accepted-20261124t0545z
+  description: 'AC2 binding (accepted 2026-11-24T0545Z, proposed by lane=dod-closeout-bind-2026-11-24T0545Z-c3, accepted by lane=dod-closeout-accept-2026-11-24T0545Z-c3). Each of the seventeen mutants changes one knob, keeps every invariant, and its results/mut_<Invariant>.out reports exactly one violation, of its own invariant, ending exit=12; per model the mutant cfg and output sets equal the declared invariant set. Re-run at origin/dev 0b3df317b0 PASSED (19 passed); at the parent of f7cd2d0d76 the test file is absent.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q --no-cov -p no:cacheprovider tests/formal/test_host_state_models_omn22429.py::test_mutant_changes_one_knob_and_violates_only_its_invariant tests/formal/test_host_state_models_omn22429.py::test_mutant_inventory_and_full_state_space_exactness
+    cwd: .
+- id: dod-omn22429-ac3-accepted-20261124t0545z
+  description: 'AC3 binding (accepted 2026-11-24T0545Z, proposed by lane=dod-closeout-bind-2026-11-24T0545Z-c3, accepted by lane=dod-closeout-accept-2026-11-24T0545Z-c3). Each model''s results/design_review_verdict.txt ends with exactly one VERDICT: PASS and cites the sha256 of the current model file. Re-run at origin/dev 0b3df317b0 PASSED (2 passed); at the parent of f7cd2d0d76 the test file is absent.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q --no-cov -p no:cacheprovider tests/formal/test_host_state_models_omn22429.py::test_verdict_approves_the_current_model
+    cwd: .
+context:
+  ac_binding_provenance:
+    dod-omn22429-ac1-accepted-20261124t0545z:
+    - label: AC1
+      criterion_hash: 2534204de4fd5e36859306989b38c76f3aa558e68a5cc766bd67956a67610ad5
+      proposed_by: lane=dod-closeout-bind-2026-11-24T0545Z-c3
+      accepted_by: lane=dod-closeout-accept-2026-11-24T0545Z-c3
+      accepted_at: '2026-11-24T06:13:04Z'
+    dod-omn22429-ac2-accepted-20261124t0545z:
+    - label: AC2
+      criterion_hash: 0de1b08adbf9fa5cb4e53f8e3ea8875a7ad1fa0285a3e083aca0964c872595b9
+      proposed_by: lane=dod-closeout-bind-2026-11-24T0545Z-c3
+      accepted_by: lane=dod-closeout-accept-2026-11-24T0545Z-c3
+      accepted_at: '2026-11-24T06:13:04Z'
+    dod-omn22429-ac3-accepted-20261124t0545z:
+    - label: AC3
+      criterion_hash: 4cec22d52bcdf071b268056d2b0c68d189f560a04eb40b4b7c59b02451ee5e32
+      proposed_by: lane=dod-closeout-bind-2026-11-24T0545Z-c3
+      accepted_by: lane=dod-closeout-accept-2026-11-24T0545Z-c3
+      accepted_at: '2026-11-24T06:13:04Z'

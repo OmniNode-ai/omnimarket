@@ -19,7 +19,10 @@ from omnimarket.handlers.handler_projection_runtime_writer import (
     RuntimeProjectionWriter,
 )
 from omnimarket.handlers.overlay_store.store_postgres import PostgresOverlayStore
-from omnimarket.models.overlay_store import ModelOverlayStoreRecord
+from omnimarket.models.overlay_store import (
+    ModelOverlaySettingRecord,
+    ModelOverlayStoreRecord,
+)
 from omnimarket.projection.envelope import strip_runner_injected_keys
 from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta, PublishFn
 
@@ -91,9 +94,12 @@ class HandlerOverlayStoreProjectionRunner(BaseProjectionRunner):
     ) -> bool:
         payload = strip_runner_injected_keys(data)
         payload.pop("_db", None)
-        loaded = ModelOverlayStoreRecord.model_validate(payload)
+        # A setting set publishes the loader's record plus ``operator_paths``: both are stored as the document they carry.
+        loaded = ModelOverlaySettingRecord.model_validate(payload)
         store = PostgresOverlayStore(self.db_for(_STORE_TABLE, operation="write").pool)
-        await store.write_version(loaded.model_dump(mode="json"))
+        await store.write_version(
+            loaded.model_dump(mode="json", exclude={"operator_paths"})
+        )
         current = await store.read_current(loaded.overlay_id)
         publish = await self.get_keyed_publish_fn()
         if publish is not None and current is not None:
