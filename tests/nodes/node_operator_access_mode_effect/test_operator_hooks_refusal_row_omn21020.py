@@ -66,7 +66,7 @@ class Scratch:
     def __init__(self, tmp_path: Path) -> None:
         self.tmp = tmp_path
         self.state = tmp_path / "state"
-        self.ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
+        self.ledger = tmp_path / "scratch_rows.md"
         self.ledger.write_text("# scratch ledger\n", encoding="utf-8")
         self.seam = tmp_path / "hook_refusal.sh"
         self.seam.write_text(FAKE_SEAM, encoding="utf-8")
