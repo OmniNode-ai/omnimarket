@@ -23,6 +23,9 @@ requirements:
       - id: "AC7"
         statement: |-
           AC7 (replaces AC5; closeout sweep 2026-11-22T0945Z, comment dbab7908): each measured candidate's 2026-11-20 row in the cheap_frontier smoke receipts records its model, accepted count and p50, each unmeasured candidate records its model and why it was not measured, and the ten task prompts are stored beside them -- falsifier: the 2026-11-20 receipt has a measured row without its model, accepted count or p50, an unmeasured candidate without its model or the reason it was not measured, or fewer than ten stored task prompts
+      - id: "AC6"
+        statement: |-
+          AC6 (as ruled 2026-11-24, option 1; the ticket's own AC6 line asks for an accepted count and a p50 for both models and still needs this amendment): each 2026-11-20 cheap_frontier smoke candidate that was not measured that day (google/gemma-4-31b-it:free and inclusionai/ling-3.2-flash:free) has a dated later row in the cheap_frontier smoke receipts that records today's honest outcome on the ten stored task prompts, either a measured row (model, whole-number accepted count within its tasks, outcome, and a p50 only when something was accepted) or a not-measured entry (model, reason with its UTC time, tries) -- falsifier: the receipts have no dated later row for either model, or a row without those fields
   - id: "req-omn26129-tier-stays-free"
     statement: |-
       cheap_frontier stays free; paid models reach it only through the code eval.
@@ -89,6 +92,14 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/routing/test_cheap_frontier_closeout_omn26129.py::test_every_candidate_row_is_recorded_with_model_accepted_and_p50 tests/unit/routing/test_cheap_frontier_closeout_omn26129.py::test_no_unmeasured_candidate_is_on_the_ladder tests/unit/routing/test_cheap_frontier_closeout_omn26129.py::test_the_ladder_check_catches_an_unmeasured_model_placed tests/unit/routing/test_cheap_frontier_closeout_omn26129.py::test_the_ten_prompts_are_stored_beside_the_rows tests/unit/routing/test_cheap_frontier_closeout_omn26129.py::test_the_receipt_checks_catch_each_planted_gap tests/unit/routing/test_cheap_frontier_smoke_evidence_omn20376.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26129-ac6-later-rows-recorded"
+    description: "AC6 as ruled 2026-11-24: the 2026-11-24 receipt records, for google/gemma-4-31b-it:free and inclusionai/ling-3.2-flash:free, a dated later row with the attempt's honest outcome (a measured row with a whole-number accepted count and a p50 only when something was accepted, or a not-measured entry with a reason, its UTC time and tries) and stores all ten task prompts; controls spoil each field and each is refused."
+    source: "manual"
+    binds_ac: ["AC6"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_cheap_frontier_ac6_later_rows_omn26129.py tests/unit/routing/test_cheap_frontier_smoke_evidence_omn20376.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn26129-integration-proof"
     description: >-
