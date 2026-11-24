@@ -47,6 +47,11 @@ class ModelOverlayStoreRecord(_Frozen):
     source_ref: str = Field(min_length=1)
     loaded_by: str = Field(min_length=1)
     loaded_at: datetime
+    # The setting paths an operator set (keys from the document's root joined by "/"), which a loader's refresh keeps.
+    # A loader's own load names none: the store keeps the paths it already holds.
+    operator_paths: tuple[str, ...] = ()
+    # The number the store gave this version of the overlay: 0 on a load not yet stored, then one per version.
+    revision: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def _digest_is_the_documents(self) -> ModelOverlayStoreRecord:

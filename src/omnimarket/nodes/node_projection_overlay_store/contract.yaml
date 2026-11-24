@@ -5,13 +5,20 @@ name: projection_overlay_store
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
-input_model: omnimarket.models.overlay_store.ModelOverlayStoreRecord
+input_model: omnimarket.models.overlay_store.ModelOverlayStoreWrite
 description: >
   OMN-22478, RULING 2026-11-06T00:23:28Z. Holds loaded deployment overlays in the database, the host table
   first: the overlay home is the source, node_overlay_store_load_effect puts a version of one overlay on the
   bus, and this node stores it, every version kept and the one asserted last the current one, and
   publishes the overlay read back from the store on the snapshot topic hosts read. A malformed load is
   dead-lettered and the stored overlay stays.
+
+  OMN-26635: the same topic carries a set (node_overlay_setting_set_effect): a record with operator_paths, a write
+  id, the revision it was built on and its audit row. The store applies it only when that revision is the overlay's
+  current one, and writes the record, its provenance per path, the new revision, the write id and the audit row in
+  one transaction; a stale revision is a conflict reply and writes nothing, and a write id delivered twice is applied
+  once. The audit topic is then published from the audit row of the table, and the write reply topic carries the
+  committed or conflict answer under the write id.
 
 runtime_profiles: [main]
 
@@ -43,12 +50,30 @@ event_bus:
   publish_topics:
     # onex-topic-allow: a projection snapshot topic has the projection's own name form.
     - onex.snapshot.projection.overlay-store.v1
+    - onex.evt.omnimarket.overlay-setting-set.v1
+    - onex.evt.omnimarket.overlay-store-write-reply.v1
   dlq_topics:
     - onex.dlq.omnimarket.projection-overlay-store-malformed.v1
 
 externally_consumed_topics:
   # onex-topic-allow: a projection snapshot topic has the projection's own name form.
   - onex.snapshot.projection.overlay-store.v1
+  # The audit rows are read from the topic by operators and audit tooling; the reply is read by node_overlay_setting_set_effect.
+  - onex.evt.omnimarket.overlay-setting-set.v1
+
+# The runtime that applies a write publishes the audit row from the table and the reply under the write id.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-setting-set.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-setting-set.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-store-write-reply.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-store-write-reply.v1, operation: DESCRIBE}
+
+# The two topics a set's write is answered on, by the name the runner reads them under.
+write_topics:
+  audit: onex.evt.omnimarket.overlay-setting-set.v1
+  write_reply: onex.evt.omnimarket.overlay-store-write-reply.v1
 
 db_io:
   db_tables:
@@ -58,7 +83,31 @@ db_io:
       migration: "0000_create_overlay_store.sql"
       access: write
       role: overlay_store
-  idempotency_key: "overlay_id,digest"
+    - name: overlay_store_revision
+      database_ref: application
+      schema: omninode_internal
+      migration: "0002_overlay_store_revision_provenance_audit.sql"
+      access: write
+      role: overlay_store
+    - name: overlay_store_write
+      database_ref: application
+      schema: omninode_internal
+      migration: "0002_overlay_store_revision_provenance_audit.sql"
+      access: write
+      role: overlay_store
+    - name: overlay_store_provenance
+      database_ref: application
+      schema: omninode_internal
+      migration: "0002_overlay_store_revision_provenance_audit.sql"
+      access: write
+      role: overlay_store
+    - name: overlay_store_audit
+      database_ref: application
+      schema: omninode_internal
+      migration: "0002_overlay_store_revision_provenance_audit.sql"
+      access: write
+      role: overlay_store
+  idempotency_key: "overlay_id,digest,write_id"
 
 metadata:
   transport_type: kafka

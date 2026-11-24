@@ -39,6 +39,12 @@ from tests.unit.nodes.node_overlay_store.support import (
     TABLE,
     record,
 )
+from tests.unit.nodes.node_projection_overlay_store.support import (
+    AUDIT_TOPIC,
+    REPLY_TOPIC,
+    default_load,
+    set_write,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -220,3 +226,27 @@ async def test_a_malformed_load_raises_for_the_dead_letter_and_stores_nothing() 
             == 0
         )
         assert published == []
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_set_is_answered_and_its_audit_row_is_published_from_the_table_once() -> (
+    None
+):
+    """OMN-26635: through the real runner, a set and its redelivery leave one audit row, two replies and one audit publish."""
+    async with _migrated() as (runner, connection, published):
+        await runner.project_event("t", default_load(), META)
+        write = set_write(based_on_revision=1)
+        await runner.project_event("t", write, META)
+        await runner.project_event("t", write, META)
+        topics = [topic for topic, _, _ in published]
+        assert topics.count(AUDIT_TOPIC) == 1
+        assert topics.count(REPLY_TOPIC) == 2
+        assert topics.count(SNAPSHOT_TOPIC) == 3
+        row = await connection.fetchrow(
+            "SELECT count(*) AS rows, count(published_at) AS published "
+            "FROM omninode_internal.overlay_store_audit WHERE write_id = $1",
+            write["write_id"],
+        )
+        assert row is not None
+        assert (row["rows"], row["published"]) == (1, 1)

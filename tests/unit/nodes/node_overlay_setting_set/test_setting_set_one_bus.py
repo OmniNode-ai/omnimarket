@@ -96,12 +96,12 @@ class _Bus:
         self._probe.published.append(topic)
 
         class _Reply:
-            pass
+            value: bytes
 
         write = json.loads(value)
         reply = _Reply()
         reply.value = (
-            ModelOverlayWriteReply(  # type: ignore[attr-defined]
+            ModelOverlayWriteReply(
                 write_id=write["write_id"],
                 overlay_id=write["overlay_id"],
                 outcome=EnumOverlayWriteOutcome.COMMITTED,

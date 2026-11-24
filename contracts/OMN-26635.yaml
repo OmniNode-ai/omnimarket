@@ -74,11 +74,11 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_projection_overlay_store -q --no-cov -n 0 -p no:randomly -k "provenance_per_path or idempotent_write"
     cwd: .
-- id: dod-omn26635-live-read
-  description: On the running dev lane, one real set is in the table with provenance operator for its path and exactly one audit row for its write id. Needs the launch settings in the dev store (Task 2), so it is read after that lands.
+- id: dod-omn26635-integration-proof-live-read
+  description: The store's real-Postgres write path (revision check, provenance, one audit row per write id, rollback of a failed audit insert) is run on a lab host at the pushed head. The read of one real set on the running dev lane (provenance operator for its path and exactly one audit row for its write id, counts and digests only) needs the launch settings in the dev store (Task 2) and is not part of this check.
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: uv run pytest tests/test_overlay_store_write_real_postgres.py -q --no-cov -n 0 -p no:randomly
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26635 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_overlay_store_write_real_postgres.py tests/test_overlay_store_real_postgres.py -q --no-cov -n 0 -p no:randomly
     cwd: .
