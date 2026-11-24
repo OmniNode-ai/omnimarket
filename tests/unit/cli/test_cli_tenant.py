@@ -14,6 +14,7 @@ import json
 import logging
 import re
 from pathlib import Path
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -240,7 +241,9 @@ def test_a_failed_registration_prints_no_key() -> None:
     assert result.exit_code == 2
     assert "key:" not in result.output
     (sent,) = world.bus.sent
-    assert "key_hash" in sent["payload"]  # type: ignore[operator]
+    payload = sent["payload"]
+    assert isinstance(payload, dict)
+    assert "key_hash" in payload
 
 
 @pytest.mark.parametrize(
@@ -257,7 +260,7 @@ def test_a_failed_registration_prints_no_key() -> None:
 def test_store_dev_secret_is_refused_before_any_store_or_bus_call(
     label: str, world_args: dict[str, str | None]
 ) -> None:
-    world = World(**world_args)  # type: ignore[arg-type]
+    world = World(**cast("Any", world_args))
     world.bus.answers = [_registered()]
     result = world.run(*_mint("--store-dev-secret"))
     assert result.exit_code == 2, label
@@ -334,7 +337,7 @@ def test_an_unavailable_bus_is_a_typed_result_with_no_key() -> None:
 
 def test_each_command_publishes_on_its_own_operation_topic_pair() -> None:
     world = World()
-    slug_answer = {
+    slug_answer: dict[str, object] = {
         "command_id": str(uuid4()),
         "outcome": "created",
         "detail": "created",

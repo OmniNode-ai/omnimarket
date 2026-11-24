@@ -58,6 +58,10 @@ handler_routing:
   routing_strategy: operation_match
   default_handler: omnimarket.nodes.node_tenant_cli_effect.handlers.handler_tenant_create:HandlerTenantCreate
   handlers:
+    - operation: tenant_key_mint
+      handler:
+        name: HandlerTenantKeyMint
+        module: omnimarket.nodes.node_tenant_cli_effect.handlers.handler_tenant_key_mint
     - operation: tenant_show
       handler:
         name: HandlerTenantShow
