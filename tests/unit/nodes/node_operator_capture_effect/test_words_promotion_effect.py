@@ -98,7 +98,7 @@ def _handler(
     lane: str | None = LANE,
     clock: Clock | None = None,
 ) -> HandlerOperatorCaptureEffect:
-    ledger_path = tmp_path / "ROLLING_WORK_LEDGER.md"
+    ledger_path = tmp_path / "scratch_rows.md"
     ledger_path.touch()
     return HandlerOperatorCaptureEffect(
         store_dir=tmp_path / "store",
