@@ -55,6 +55,9 @@ event_bus:
   publish_topics: []
 runtime_dispatch:
   external_trigger: Direct Python invocation by onex scm pr-create and onex scm pr-duplicate-check.
+  on_demand:
+    command: onex scm pr-duplicate-check <owner>/<repo> --branch <branch>
+    owner: OmniNode Platform Team
 descriptor:
   node_archetype: effect
   purity: effectful

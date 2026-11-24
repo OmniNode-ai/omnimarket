@@ -14,6 +14,8 @@ requirements:
     acceptance:
       - id: AC6
         statement: "AC6: the guard's reader subprocess is given a timeout longer than the 253 second read recorded on h051 at a load of 46 on 2026-11-21 -- falsifier: uv run pytest of the loaded-host test fails when the guard keeps the reader adapter's 120 second default"
+      - id: AC7
+        statement: "AC7: a claims read that fails is asked once more as the same bounded read and never as the every-row read of 168 hours -- falsifier: uv run pytest of the retry and budget tests fails when the guard falls back to the every-row read"
 evidence_requirements:
   - kind: tests
     description: "The guard's reader-host tests, replaying the recorded reader answers through the production adapter."
@@ -53,6 +55,7 @@ dod_evidence:
   - id: dod-omn26387-bounded-retry
     description: "A late first answer is retried once as the same bounded read and never as the 168 hour every-row read; the waits and the total budget come from the snapshot node contract and the clock is injected. These tests fail at origin/dev, which fell back to the every-row read."
     source: manual
+    binds_ac: [AC7]
     checks:
       - check_type: test_passes
         check_value: >-
