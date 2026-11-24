@@ -1,0 +1,37 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The deployment overlay of node_delegation_check_regression_effect: the checks watched, who is alarmed, the thresholds, and
+# where changes between two runs are read from. The values below are tested defaults; a deployment's overlay names its own
+# repositories, workflows and owner.
+alarm_lane: example-orchestrator-lane
+owner: example-owner
+# An alarm reaches the lab alarm path inside this many seconds of the red run being readable; the scan runs every
+# scan_interval_seconds (the node's schedule), which must fit inside it.
+max_alarm_latency_seconds: 900
+scan_interval_seconds: 300
+# The second flap of a check inside the window raises a flap alarm.
+flap_window_seconds: 86400
+flap_alarm_count: 2
+flap_grace_seconds: 600
+max_transition_age_seconds: 86400
+runs_per_check: 40
+gateway_timeout_seconds: 60
+bus_lane: dev
+dev_runtime_lane: dev
+ledger_read:
+  route: file
+  path_env: EXAMPLE_LEDGER_FILE
+  archive_subdir: archive
+  timeout_seconds: 60
+  row_limit: 5000
+checks:
+  - {check_id: C11, repository: example-org/example-infra, workflow: example-c11.yml, interval_seconds: 3600}
+  - {check_id: C13, repository: example-org/example-customer, workflow: example-c13.yml, interval_seconds: 3600}
+  - {check_id: C14, repository: example-org/example-customer, workflow: example-c14.yml, interval_seconds: 3600}
+  - {check_id: C29, repository: example-org/example-customer, workflow: example-c29.yml, interval_seconds: 3600}
+# A ledger row of this type naming every term is a host or model setting change between two runs.
+change_markers:
+  - {kind: host_change, row_type: RULING, contains_all: [example-gpu]}
+  - {kind: model_setting, row_type: RULING, contains_all: [example-model, settings]}
+merge_sources:
+  - {repository: example-org/example-platform, clone: example-platform, branch: dev}
