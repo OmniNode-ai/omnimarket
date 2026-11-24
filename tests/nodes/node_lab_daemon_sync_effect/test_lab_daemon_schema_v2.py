@@ -225,6 +225,7 @@ def test_shipped_surfaces_and_loader_preserve_variables(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("OMNI_PLUGIN_ROOT", "plugin-root")
+    monkeypatch.setenv("ONEX_LAB_FIX_LANE_MODEL", "fixture-fix-lane-model")
     overlay = load_overlay(DEFAULT_OVERLAY, [])
     raw = ModelDaemonOverlay.model_validate(_document())
     assert overlay.surfaces == raw.surfaces

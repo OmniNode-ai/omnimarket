@@ -164,7 +164,8 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--model-id",
-        default="cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit",  # onex-allow-model-id OMN-10580 reason="experiment CLI dev default; override via --model-id"
+        required=True,
+        help="Model identifier the endpoint serves (a deployment fact; no default).",
     )
     parser.add_argument("--max-tokens", type=_max_tokens_int, default=4096)
     return parser.parse_args(argv)

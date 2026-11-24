@@ -95,7 +95,7 @@ def aggregate(
     }
 
     track_b_block: dict[str, Any] = {
-        "model": f"Qwen3-Coder-30B ({track_b_metrics['base_url']})",
+        "model": f"{track_b_metrics['model_id']} ({track_b_metrics['base_url']})",
         "transport": "curl shellout (macOS firewall workaround)",
         "latency_seconds_median": round(b_latency, 6),
         "cost_usd_per_run_median": round(b_cost, 6),

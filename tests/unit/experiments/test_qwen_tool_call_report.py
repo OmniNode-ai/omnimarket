@@ -48,6 +48,10 @@ def test_qwen_tool_call_report_artifacts() -> None:
         (t["id"], rep) for rep in (1, 2, 3) for t in tasks
     ]
     schemas = {t["function"]["name"]: t["function"]["parameters"] for t in tools}
+    # The publication copies withhold the model id (see frozen-inputs.json); the raw request bodies
+    # carry it, and every request and response of every trial must agree on that one value.
+    served_model = rows[0]["requests"][0]["model"]
+    assert protocol["model"] == "WITHHELD_OPERATOR_MODEL"
     for r in rows:
         assert r["turns"] == len(r["responses"]) <= protocol["max_turns"]
         assert r["http_attempts"] == len(r["requests"]) == r["turns"]
@@ -60,11 +64,11 @@ def test_qwen_tool_call_report_artifacts() -> None:
         assert all(
             req["tools"] == tools
             and req["tool_choice"] == "auto"
-            and req["model"] == protocol["model"]
+            and req["model"] == served_model
             for req in r["requests"]
         )
         assert all(
-            response["status"] == 200 and response["body"]["model"] == protocol["model"]
+            response["status"] == 200 and response["body"]["model"] == served_model
             for response in r["responses"]
         )
         for call in r["proposed_calls"]:
@@ -143,3 +147,11 @@ def test_qwen_tool_call_report_artifacts() -> None:
             in report
         )
     assert all(f"| {t['id']} |" in report for t in tasks)
+    # OMN-26651: the machine-readable publication copies withhold the model id.
+    endpoint = load("endpoint.json")
+    assert [m["id"] for m in endpoint["served_models"]] == ["WITHHELD_OPERATOR_MODEL"]
+    redactions = load("frozen-inputs.json")["publication_redactions"]
+    assert "model" in redactions["protocol.json"]
+    assert "served model id" in redactions["endpoint.json"]
+    for name in ("protocol.json", "endpoint.json"):
+        assert "qwen" not in (root / name).read_text().lower()

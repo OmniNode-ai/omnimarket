@@ -53,8 +53,7 @@ _PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 _SYSTEM_PROMPT_PATH = _PROMPTS_DIR / "system.md"
 _USER_TEMPLATE_PATH = _PROMPTS_DIR / "user_template.md"
 
-_PROVIDER_NAME = "qwen3_coder_local"
-_DEFAULT_MODEL_ID = "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit"  # onex-allow-model-id OMN-10580 reason="experiment dev default; real deployments set LLM_CODER_MODEL_NAME"
+_PROVIDER_NAME = "local_openai_compatible"
 _DEFAULT_MAX_TOKENS = 4096
 _DEFAULT_TIMEOUT_SECONDS = 420.0
 _DEFAULT_TEMPERATURE = 0.1
@@ -74,9 +73,12 @@ class ModelTrackBConfig(BaseModel):
         description="OpenAI-compatible endpoint base URL; a deployment fact with no default.",
     )
     model_id: str = Field(
-        default=_DEFAULT_MODEL_ID,
+        ...,
         min_length=1,
-        description="Model identifier passed to the provider and the LLM request.",
+        description=(
+            "Model identifier passed to the provider and the LLM request; "
+            "a deployment fact with no default."
+        ),
     )
     max_tokens: int = Field(
         default=_DEFAULT_MAX_TOKENS,

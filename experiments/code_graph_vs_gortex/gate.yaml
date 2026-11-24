@@ -11,7 +11,7 @@ design:
   expected_result_rows: 32      # 8 questions x 2 arms x 2 repetitions
   clean_session_per_run: true
   same_for_both_arms: [model, instructions, tool_call_budget, token_budget, wall_clock_budget]
-  model: claude-sonnet-5-5
+  model_setting: EXPERIMENT_GATE_MODEL   # the one model both arms run, a deployment fact; each arm run records the value it read
   tool_call_budget: 40
   token_budget: 200000
   wall_clock_budget_minutes: 20

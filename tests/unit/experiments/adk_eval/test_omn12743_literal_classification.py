@@ -63,36 +63,36 @@ LITERAL_CLASSIFICATION_TABLE: list[tuple[str, str, ClassificationKind]] = [
     # --- Demo fanout golden chain test (experiment-only: preflight error test) ---
     (
         "src/omnimarket/nodes/node_demo_fanout_orchestrator/tests/test_golden_chain.py",
-        "model_id='gemini/gemini-2.0-flash' endpoint_url='...v1beta/openai' (preflight test fixture)",
+        "a gemini-family model_id with a v1beta/openai endpoint_url (preflight test fixture)",
         "experiment-only",
     ),
     # --- Demo runtime path test (demo-path: integration test exercising the live demo path) ---
     (
         "tests/test_demo_runtime_path.py",
-        "model_id='gemini/gemini-2.0-flash' endpoint_url='...v1beta/openai' (demo integration test)",
+        "a gemini-family model_id with a v1beta/openai endpoint_url (demo integration test)",
         "demo-path",
     ),
     # --- Config/registry YAML (deferred: model_name values in YAML data files) ---
     (
         "src/omnimarket/configs/bifrost_delegation.yaml",
-        "model_name: 'gemini-2.0-flash' (data file, endpoint_url resolved from overlay)",
+        "a gemini-family model_name (data file, endpoint_url resolved from overlay)",
         "deferred",
     ),
     (
         "src/omnimarket/data/model_registry/model_registry_v1.yaml",
-        "model_name: 'gemini-2.5-flash-lite' (registry data, endpoint resolved from GEMINI_API_URL env; OMN-12937)",
+        "a gemini-family model_name (registry data, endpoint resolved from GEMINI_API_URL env; OMN-12937)",
         "deferred",
     ),
     # --- tests/constants.py (experiment-only: test-only symbolic constant) ---
     (
         "tests/constants.py",
-        "MODEL_GEMINI_2_5_FLASH_LITE = 'gemini-2.5-flash-lite' (test constant module; OMN-12937)",
+        "MODEL_GEMINI_2_5_FLASH_LITE, a gemini-family model id (test constant module; OMN-12937)",
         "experiment-only",
     ),
     # --- Unit test using model registry (experiment-only: tests the registry itself) ---
     (
         "tests/unit/models/delegation/llm_cost_routing/test_model_registry_omn12492.py",
-        "'gemini-2.5-flash-lite' as registry lookup key in test (OMN-12937)",
+        "a gemini-family model id as registry lookup key in test (OMN-12937)",
         "experiment-only",
     ),
     # --- generation_consumer test (experiment-only: regression test for URL construction) ---
@@ -110,7 +110,7 @@ LITERAL_CLASSIFICATION_TABLE: list[tuple[str, str, ClassificationKind]] = [
     # --- nightly loop controller test (experiment-only: test fixture model) ---
     (
         "tests/test_golden_chain_nightly_loop_controller.py",
-        "model_id='gpt-4o' (test fixture, not runtime default)",
+        "an OpenAI-family model_id (test fixture, not runtime default)",
         "experiment-only",
     ),
     # --- test_node_model_router_contract_boundary.py (experiment-only: CI scanner) ---
@@ -234,7 +234,7 @@ class TestTrackAModelResolution:
         """
         import sys
 
-        monkeypatch.setenv("TRACK_A_GEMINI_MODEL", "gemini-2.5-pro-preview-1234")
+        monkeypatch.setenv("TRACK_A_GEMINI_MODEL", "track-a-model-override-fixture")
         # Remove cached module so the env var is re-read.
         sys.modules.pop("app.agent", None)
 
