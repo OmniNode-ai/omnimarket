@@ -38,8 +38,10 @@ from omnimarket.models.overlay_documents.model_delegation_check_responders_overl
     ModelDelegationCheckRespondersOverlay,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_delegation_check import (
-    AbsentCustomerMachine,
     HttpResponderReader,
+)
+from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_local_delegation_machine import (
+    LocalDelegationCustomerMachine,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.handler_delegation_check_probe import (
     NODE,
@@ -66,10 +68,6 @@ EXIT_FAILED = 1
 EXIT_OVERLAY = 2
 EXIT_NOT_PUBLISHED = 3
 EXIT_NOT_MEASURED = 4
-MACHINE_ABSENT = (
-    "no customer-machine collector is wired to this node yet: the fresh-container install, the egress recorder, "
-    "the routing walk and the clean-machine driver still run in the producer workflows"
-)
 
 
 def tick_deadline_s() -> float:
@@ -166,7 +164,7 @@ def main(
     handler = HandlerDelegationCheckProbe(
         responders=row.responders,
         reader=HttpResponderReader(overlay.responder_timeout_s),
-        machine=machine or AbsentCustomerMachine(MACHINE_ABSENT),
+        machine=machine or LocalDelegationCustomerMachine(),
         publisher=publisher or EmitEffectTopicPublisher(),
         topic=overlay.result_topic,
     )
