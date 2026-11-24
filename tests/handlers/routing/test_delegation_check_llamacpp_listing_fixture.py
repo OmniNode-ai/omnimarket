@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from omnimarket.handlers.routing.delegation_check_responder_chain import (
     reading_from_models_body,
@@ -26,12 +27,13 @@ FIXTURE = Path(__file__).parent / "fixtures" / "llamacpp_models_listing_pc2.json
 LLAMACPP_HOST = "http://127.0.0.12:8000"
 
 
-def _body() -> dict[str, object]:
-    return json.loads(FIXTURE.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
+def _body() -> dict[str, Any]:
+    body: dict[str, Any] = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    return body
 
 
 def test_the_listing_has_no_max_model_len_and_a_serving_window_in_meta() -> None:
-    entry = _body()["data"][0]  # type: ignore[index]
+    entry = _body()["data"][0]
     assert "max_model_len" not in entry
     assert entry["meta"]["n_ctx"] != entry["meta"]["n_ctx_train"]
 
