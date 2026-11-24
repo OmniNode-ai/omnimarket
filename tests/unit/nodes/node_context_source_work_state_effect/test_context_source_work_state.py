@@ -134,6 +134,11 @@ def test_open_work_is_every_unanswered_message_to_the_lane() -> None:
     assert result.entry_counts == {"work_ledger": 1, "stale": 1}
 
 
+def test_the_ledger_reader_is_the_in_memory_list_reader() -> None:
+    """The fixture feeds rows through the in-memory reader, never a ledger file."""
+    assert isinstance(_ledger(), _ListReader)
+
+
 def test_open_work_with_any_sender_keeps_reports_addressed_to_the_lane() -> None:
     result = _handler(_ledger(), senders="any").handle(_request(OPEN_WORK))
     assert _texts(result) == [HANDOFF, STATUS_REPORT]
