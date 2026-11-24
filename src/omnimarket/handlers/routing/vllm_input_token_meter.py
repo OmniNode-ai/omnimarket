@@ -5,16 +5,19 @@
 vLLM's ``POST /tokenize`` takes the same ``messages`` a chat completion takes, applies the served model's
 chat template and returns ``count``: the tokens the request will meter as input. The count is the server's
 reading, never an estimate. The call is a POST to the server the chat request goes to, built from the
-chat-completions URL the routing contract resolved, and it is bounded by the timeout the caller passes.
+chat-completions URL the routing contract resolved, and it is bounded by the timeout the caller passes. The POST goes
+through the delegation call node's declared transport (curl on the LAN-safe profile, httpx elsewhere), the one the chat
+request itself rides.
 """
 
 from __future__ import annotations
 
-import json
-import urllib.error
-import urllib.request
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
+
+import httpx
+
+from omnimarket.nodes.node_llm_delegation_call_effect import post_chat_completion
 
 _CHAT_SUFFIX = "/v1/chat/completions"
 _TOKENIZE_PATH = "/tokenize"
@@ -27,14 +30,11 @@ class InputTokenMeterError(RuntimeError):
 
 
 def _post_json(url: str, body: dict[str, Any], timeout_s: float) -> Any:
-    data = json.dumps(body).encode("utf-8")
-    http_request = urllib.request.Request(
-        url, data=data, headers={"Content-Type": "application/json"}, method="POST"
-    )
     try:
-        with urllib.request.urlopen(http_request, timeout=timeout_s) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except (urllib.error.URLError, TimeoutError, OSError, ValueError) as error:
+        return post_chat_completion(
+            endpoint_url=url, payload=body, timeout_seconds=timeout_s
+        ).json_body
+    except (httpx.HTTPError, RuntimeError, OSError, ValueError) as error:
         raise InputTokenMeterError(f"tokenize call to {url} failed: {error}") from error
 
 

@@ -8,6 +8,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 
 from omnimarket.handlers.delegation_output_budget import (
@@ -16,11 +17,15 @@ from omnimarket.handlers.delegation_output_budget import (
     resolve_output_budget,
 )
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.handlers.routing import vllm_input_token_meter
 from omnimarket.handlers.routing.input_token_bound import input_token_upper_bound
 from omnimarket.handlers.routing.measured_correct_ceiling import CODE_BUDGET_OVERLAY_ID
 from omnimarket.handlers.routing.vllm_input_token_meter import (
     InputTokenMeterError,
     VllmTokenizeMeter,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.transport import (
+    ModelTransportResponse,
 )
 
 pytestmark = pytest.mark.unit
@@ -212,4 +217,46 @@ def test_the_vllm_meter_refuses_an_endpoint_that_is_not_a_chat_completions_url()
             model_id="m",
             messages=MESSAGES,
             timeout_s=1,
+        )
+
+
+def test_the_default_post_rides_the_delegation_call_nodes_declared_transport(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, Any]] = []
+
+    def transport(
+        *, endpoint_url: str, payload: dict[str, Any], timeout_seconds: float
+    ) -> ModelTransportResponse:
+        calls.append(
+            {"url": endpoint_url, "payload": payload, "timeout": timeout_seconds}
+        )
+        return ModelTransportResponse(
+            status_code=200, json_body={"count": 31}, latency_ms=1
+        )
+
+    monkeypatch.setattr(vllm_input_token_meter, "post_chat_completion", transport)
+    count = VllmTokenizeMeter().count(
+        endpoint_ref=ENDPOINT, model_id="m", messages=MESSAGES, timeout_s=7
+    )
+    assert count == 31
+    assert calls == [
+        {
+            "url": "http://192.0.2.7:8111/tokenize",
+            "payload": {"model": "m", "messages": MESSAGES},
+            "timeout": 7,
+        }
+    ]
+
+
+def test_a_transport_failure_is_the_meters_own_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def transport(**_kwargs: Any) -> ModelTransportResponse:
+        raise httpx.ConnectError("refused")
+
+    monkeypatch.setattr(vllm_input_token_meter, "post_chat_completion", transport)
+    with pytest.raises(InputTokenMeterError):
+        VllmTokenizeMeter().count(
+            endpoint_ref=ENDPOINT, model_id="m", messages=MESSAGES, timeout_s=1
         )
