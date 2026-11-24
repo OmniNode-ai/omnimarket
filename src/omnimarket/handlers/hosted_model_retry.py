@@ -6,6 +6,10 @@ OMN-18265: a retryable provider failure may be reissued only on the customer's
 own key; a house credential is never a lawful successor. OMN-21217 walks that
 key's captured model order before its bounded same-model retries. Neither step
 reselects the credential or consults the platform ladder.
+
+OMN-25827: only a customer's route is retried this way. A house overlay route
+(``cost_tier`` ``house_overlay``) has no customer key to protect and returns ``None``
+here, so its failure reaches the escalation decision.
 """
 
 from __future__ import annotations
@@ -24,6 +28,7 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_reque
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     TENANT_OVERLAY_TIER_NAME,
 )
+from omnimarket.routing.tenant_overlay_resolver import HOUSE_OVERLAY_COST_TIER
 
 
 class _CustomerRetryWorkflow(Protocol):
@@ -64,6 +69,12 @@ def next_customer_retry(
         or workflow.request is None
         or decision is None
     ):
+        return None
+    # OMN-25827: the house tenant's own overlay row is one rung of the platform
+    # chain (local, then OpenRouter, then Claude API), not a customer's chosen
+    # provider. Re-asking the backend that just refused it pins the run to one
+    # model; the escalation decision climbs to the next rung instead.
+    if decision.cost_tier == HOUSE_OVERLAY_COST_TIER:
         return None
     backend_ref = (decision.selected_backend_ref or "").strip()
     max_retries = max_retries_for(backend_ref)

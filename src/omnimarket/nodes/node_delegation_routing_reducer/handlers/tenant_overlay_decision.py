@@ -35,6 +35,25 @@ from omnimarket.routing.tenant_overlay_resolver import (
 )
 
 
+def live_overlay(
+    overlay: ModelTenantRoutingOverlayBackend | None,
+    excluded_backend_refs: frozenset[str],
+    min_tier_name: str | None,
+) -> ModelTenantRoutingOverlayBackend | None:
+    """The overlay row, or ``None`` once a re-route has spent it (OMN-25827).
+
+    The house tenant's row is the first rung of its chain, not the whole chain:
+    once the orchestrator re-routes past it (``min_tier_name`` set to a ladder
+    tier) or has excluded its backend, the platform ladder resolves. A
+    customer's row is never spent: it has no lawful successor (INV-068), so it
+    keeps returning the customer's own route.
+    """
+    if overlay is None or is_customer_attributed(overlay.tenant_id):
+        return overlay
+    rerouted = min_tier_name is not None and min_tier_name != TENANT_OVERLAY_TIER_NAME
+    return None if rerouted or overlay.backend_id in excluded_backend_refs else overlay
+
+
 def build_tenant_overlay_decision(
     request: ModelDelegationRequest,
     *,

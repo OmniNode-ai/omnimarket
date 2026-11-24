@@ -24,6 +24,7 @@ from omnimarket.models.delegation_check_regression import ModelRegressionEvent
 from omnimarket.models.lab_alarm_delivery import ModelLabAlarmDeliveryRequest
 from omnimarket.nodes.node_build_delegation_checks.models.model_build_delegation_checks import (
     ModelBuildChecksResult,
+    ModelCheckRecord,
 )
 
 BusKind = Literal["kafka", "inmemory"]
@@ -39,11 +40,12 @@ class BusRegressionSink:
         regression_topic: str,
         alarm_topic: str,
         result_topic: str,
+        check_topic: str,
         bus: BusKind,
         lane: str | None,
         workspace: Path | None,
     ) -> None:
-        self._topics = (regression_topic, alarm_topic, result_topic)
+        self._topics = (regression_topic, alarm_topic, result_topic, check_topic)
         self._bus_kind: BusKind = bus
         self._lane = lane if bus == "kafka" else None
         self._workspace = workspace
@@ -87,6 +89,9 @@ class BusRegressionSink:
 
     def publish_result(self, result: ModelBuildChecksResult) -> None:
         self._publish(self._topics[2], result.build_id, result)
+
+    def publish_check_record(self, record: ModelCheckRecord) -> None:
+        self._publish(self._topics[3], f"{record.build_id}:{record.check_id}", record)
 
 
 __all__ = ["BusKind", "BusRegressionSink"]
