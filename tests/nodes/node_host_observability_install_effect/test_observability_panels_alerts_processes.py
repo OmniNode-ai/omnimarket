@@ -319,3 +319,74 @@ def test_readback_names_the_top_process_of_each_host(tmp_path: Path) -> None:
     assert result.exit_code == 0
     assert "TOP PROCESS host-a python3 cpu=3.50" in result.stdout
     assert "TOP PROCESS host-b dockerd cpu=0.40" in result.stdout
+
+
+# --- The collaborator's machines are never scraped, never counted ---------------------------------------------------
+
+
+def _table_with_collaborator() -> ModelLabHostsTable:
+    return ModelLabHostsTable.model_validate(
+        {
+            "hosts": [
+                {"name": "host-a", "target": "host-a"},
+                {"name": "host-b", "target": "host-b"},
+                {
+                    "name": "host-x",
+                    "target": "host-x",
+                    "contributor": True,
+                    "lane_binding": "example-lane",
+                    "lane_not_ready_reason": "owned by its owner",
+                },
+            ]
+        }
+    )
+
+
+def test_readback_leaves_a_collaborator_machine_out_of_the_count(
+    tmp_path: Path,
+) -> None:
+    def get(url: str) -> str:
+        rows = [
+            {
+                "metric": {"host": h},
+                "value": [0, "1" if "last_over" not in url else "2"],
+            }
+            for h in ("host-a", "host-b")
+        ]
+        return json.dumps({"status": "success", "data": {"result": rows}})
+
+    overlay_file = tmp_path / "overlay.yaml"
+    overlay_file.write_text(yaml.safe_dump(_document(tmp_path)), encoding="utf-8")
+    result = HandlerObservabilityInstall(
+        hosts=lambda _f: _table_with_collaborator(), get=get, environ={}
+    ).handle(
+        ModelObservabilityInstallRequest(
+            host_name="host-a", mode="readback", overlay_file=str(overlay_file)
+        )
+    )
+    assert result.exit_code == 0
+    assert "COVERED 2 of 2" in result.stdout
+    assert "NO TARGET host-x" not in result.stdout
+    assert "EXCLUDED host-x" in result.stdout
+    assert result.uncovered_hosts == ()
+
+
+def test_a_target_naming_a_collaborator_machine_is_refused(tmp_path: Path) -> None:
+    document = _document(tmp_path)
+    document["targets"]["host-x"] = {
+        "address": "host-x.example.test",
+        "exporter": "existing",
+        "port": 9100,
+    }
+    overlay_file = tmp_path / "overlay.yaml"
+    overlay_file.write_text(yaml.safe_dump(document), encoding="utf-8")
+    result = HandlerObservabilityInstall(
+        hosts=lambda _f: _table_with_collaborator(), environ={}
+    ).handle(
+        ModelObservabilityInstallRequest(
+            host_name="host-a", mode="install", overlay_file=str(overlay_file)
+        )
+    )
+    assert result.exit_code == 1
+    assert "host-x" in result.stderr
+    assert "collaborator" in result.stderr

@@ -102,7 +102,15 @@ class HandlerObservabilityInstall:
             return ModelObservabilityInstallResult(
                 exit_code=3, stderr=f"INDETERMINATE: {type(exc).__name__}: {exc}\n"
             )
-        names = [row.name for row in table.hosts]
+        # A collaborator's machine (a row marked contributor) is never scraped and never counted.
+        collaborator = [row.name for row in table.hosts if row.contributor]
+        names = [row.name for row in table.hosts if not row.contributor]
+        refused = sorted(set(overlay.targets) & set(collaborator))
+        if refused:
+            return ModelObservabilityInstallResult(
+                exit_code=1,
+                stderr=f"targets {refused} are a collaborator's machines; nothing done\n",
+            )
         unknown = sorted(set(overlay.targets) - set(names))
         if unknown:
             return ModelObservabilityInstallResult(
@@ -111,7 +119,7 @@ class HandlerObservabilityInstall:
             )
         uncovered = tuple(name for name in names if name not in overlay.targets)
         if request.mode == "readback":
-            return self._readback(overlay, names, uncovered)
+            return self._readback(overlay, names, uncovered, tuple(collaborator))
         units = units_for_host(overlay, request.host_name)
         if not units:
             return ModelObservabilityInstallResult(
@@ -250,6 +258,7 @@ class HandlerObservabilityInstall:
         overlay: ModelObservabilityOverlay,
         names: list[str],
         uncovered: tuple[str, ...],
+        excluded: tuple[str, ...] = (),
     ) -> ModelObservabilityInstallResult:
         prom = overlay.prometheus
         base = f"http://{prom.address}:{prom.port}/api/v1/query"
@@ -279,6 +288,7 @@ class HandlerObservabilityInstall:
             else:
                 good += 1
                 lines.append(f"READ {name} up=1 age={seconds:.0f}s")
+        lines += [f"EXCLUDED {name} (a collaborator's machine)" for name in excluded]
         lines += self._top_processes(overlay, base, names)
         lines.append(
             f"COVERED {good} of {len(names)} lab_hosts rows "
