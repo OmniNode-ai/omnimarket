@@ -26,6 +26,7 @@ from omnimarket.handlers.rules_lane_requirements import (
 from omnimarket.handlers.rules_lane_requirements import (
     declarations as declarations,
 )
+from omnimarket.models.lane_brief.enum_lane_engine import EnumLaneEngine
 
 from ..models.model_lane_engine_failover import (
     ModelLaneEngineFailoverRequest,
@@ -37,7 +38,14 @@ FAILOVER_HISTORY_ATTR = "_failover_history"
 FAILOVER_MANAGED_ATTR = "_failover_managed"
 FAILOVER_LOG_ATTR = "_failover_log"
 
-CLAUDE = frozenset({"opus", "sonnet", "claude-opus", "claude-sonnet"})
+CLAUDE = frozenset(
+    {
+        "opus",
+        "sonnet",
+        EnumLaneEngine.CLAUDE_OPUS.value,
+        EnumLaneEngine.CLAUDE_SONNET.value,
+    }
+)
 UNAVAILABLE = frozenset(
     {
         "no-host",

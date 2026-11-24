@@ -26,6 +26,10 @@ from omnibase_infra.models.pricing.model_pricing_entry import ModelPricingEntry
 from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.handlers.model_binding_reader import (
+    model_binding,
+    model_binding_section,
+)
 from omnimarket.models import model_tenant_routing_overlay_backend as _overlay
 from omnimarket.models.baseline_fallback import (
     BaselineSelectionCase,
@@ -41,12 +45,11 @@ logger = logging.getLogger(__name__)
 # handler currently emits on the durable event.
 ROUTING_TIERS_YAML = Path(__file__).resolve().parent / "configs" / "routing_tiers.yaml"
 
-DEFAULT_BASELINE_MODEL = "claude-sonnet-5-5"
-DEFAULT_FRONTIER_COMPARISON_MODELS: tuple[str, ...] = (
-    "claude-opus-4-6",
-    "claude-sonnet-4-20250514",
-    "claude-haiku-3-5",
-    "gpt-4o",
+# The baseline and the frontier comparison models are declared in
+# configs/model_bindings.v1.yaml (OMN-21805); this module names no model.
+DEFAULT_BASELINE_MODEL = model_binding("pricing_baseline_model")
+DEFAULT_FRONTIER_COMPARISON_MODELS: tuple[str, ...] = tuple(
+    model_binding_section("frontier_comparison_models")
 )
 
 
