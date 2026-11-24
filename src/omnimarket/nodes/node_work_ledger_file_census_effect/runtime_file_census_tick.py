@@ -8,9 +8,10 @@
 ``probe_ok`` line, with no census pass and no file written.
 
 The host installer renders the unit (``ledger-file-census-systemd`` in ``node_host_installer_registry_units``) with
-``ONEX_LEDGER_CENSUS_ROOT`` set to the registry root. One pass runs the census with the overlay and the ratchet file
-packaged beside this node (paths that do not depend on the unit's working directory) and the ``--record`` flag, so the
-daily record is printed and written to ``last-run.json`` in the state directory whether the census passed or failed. Exit codes are the census's own: 0 at or under every ratchet row, 1 a count grew, 69 a read failed.
+``ONEX_LEDGER_CENSUS_ROOT`` set to the registry root. One pass runs the census over every repository the packaged overlay registers, each against its own row and per-file table
+in the ratchet file packaged beside this node (paths that do not depend on the unit's working directory), with ``--per-file``
+so a reader in a file that holds no row fails, and the ``--record`` flag, so the daily record (one row per repository and the
+runtime-code count) is printed and written to ``last-run.json`` in the state directory whether the census passed or failed. Exit codes are the census's own: 0 at or under every ratchet row, 1 a count grew, 69 a read failed.
 """
 
 from __future__ import annotations
@@ -38,6 +39,7 @@ ROOT_ENV = "ONEX_LEDGER_CENSUS_ROOT"
 _RATCHET_FILE = Path(__file__).resolve().parent / "ratchet.yaml"
 _CENSUS_ARGV = (
     "--packaged-overlay",
+    "--per-file",
     "--record",
     "--ratchet-file",
     str(_RATCHET_FILE),

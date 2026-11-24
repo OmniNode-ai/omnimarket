@@ -28,6 +28,10 @@ event_bus:
   publish_topics: []
 runtime_dispatch:
   external_trigger: "Direct Python invocation by the host installer (python -m omnimarket.nodes.node_host_installer_overlay_env_probe < request.json)."
+  # Every 900 s and at load, the host timer of node_host_installer_registry_units runs runtime_overlay_env_probe_tick, which builds
+  # the request for its own host from the overlays and the unit's environment and prints one line per name as set or unset.
+  host_unit:
+    unit: overlay-env-probe-systemd
 execution:
   deterministic: true
   side_effects: false

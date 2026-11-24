@@ -1,0 +1,61 @@
+schema_version: 1.0.0
+ticket_id: OMN-26553
+title: The lab alarm container-restarts and digest schedules are units the host installer installs on the operator Mac, so the merged schedules run
+summary: The host installer registry declares the two lab alarm condition schedules as node_schedule units whose render, load and removal are the lab alarm node's own scheduler, so one host-install run on h200 installs both launchd units.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26553-lab-alarm-units
+  statement: Each lab alarm condition schedule the overlay declares for container-restarts and the alarm digest is a unit the host installer installs.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: each merge named above has one verdict, SEEN RUNNING or NOT RUNNING, with the evidence line (log line, row or command output) quoted beside it -- falsifier: grep the lane report for one verdict line per merge each followed by a non-empty evidence line returns fewer lines than merges today'
+  - id: AC2
+    statement: 'AC2: every SEEN RUNNING verdict names the log, database or journal read that holds its line, and every NOT RUNNING verdict names the declared caller that was invoked and the missing piece with its fix -- falsifier: the report''s verdict table read for a row with an empty source or fix cell'
+  - id: AC3
+    statement: 'AC3: the verdicts are sent to orchestrator-31d9-swarm by one ledger MSG -- falsifier: grep the rolling ledger for a MSG row from proof1-4-1210 to=orchestrator-31d9-swarm returns zero rows today'
+evidence_requirements:
+- kind: tests
+  description: The lab alarm schedule unit tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_host_installer_registry_units/test_lab_alarm_schedule_units.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26553-ac1
+  description: 'hosted proxy for AC1, the overlays 789 verdict (NOT RUNNING, in the earlier lane''s report): this change adds the missing piece, so the registry declares the unit labels ai.omninode.lab-alarm-container-restarts and ai.omninode.lab-alarm-digest; the test fails at origin/dev with KeyError for the missing unit and passes at the head. The verdict lines themselves are in the earlier lane''s report and are not met by this change alone.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_lab_alarm_schedule_units.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26553-ac2
+  description: the missing piece of the NOT RUNNING verdict for the lab alarm schedules is a unit no installer installed; the fix is a node_schedule unit in the host installer registry that hands the render and the load to the lab alarm node's own scheduler. The test shows the dry-run plist carries the overlay's label and interval (900 for container-restarts, 86400 for the digest) and the install writes and loads it through that scheduler.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_lab_alarm_schedule_units.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26553-ac3
+  description: 'hosted proxy for AC3: the one ledger MSG to orchestrator-31d9-swarm is a ledger row written after the pull request is open (it carries the h200 install command and the readback line) and is not met by this change alone; the registry test passes here.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_lab_alarm_schedule_units.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26553-integration-proof
+  description: the registry unit tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26553 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_lab_alarm_schedule_units.py -q --no-cov
+    cwd: .

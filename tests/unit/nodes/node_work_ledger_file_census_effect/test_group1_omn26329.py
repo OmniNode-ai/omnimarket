@@ -35,6 +35,8 @@ CLEARED = (
     f"{NODES}/node_handoff_check_effect/handlers/facts.py",
     f"{NODES}/node_handoff_check_effect/handlers/handler_handoff_check.py",
     f"{NODES}/node_handoff_check_effect/runtime_handoff_check_cli.py",
+    f"{NODES}/node_host_reconcile_effect/__main__.py",
+    f"{NODES}/node_hourly_tick_effect/models/model_hourly_tick.py",
 )
 LOWERED = f"{NODES}/node_host_installer_registry_units/contract.yaml"
 #: The registry units contract held eight counted hits before this change; the rest stay for a later change.
@@ -70,3 +72,17 @@ def test_the_registry_units_contract_row_is_lowered_never_raised() -> None:
     live = len(executable_hits(LOWERED, text, _overlay()))
     row = _rows()[LOWERED]
     assert live <= row < LOWERED_ROW_BEFORE
+
+
+LOWERED_HANDLER = (
+    f"{NODES}/node_host_installer_registry_units/handlers/handler_registry_units.py"
+)
+#: The registry units handler held three counted hits before the dead {ledger_path} default was deleted.
+LOWERED_HANDLER_ROW_BEFORE = 3
+
+
+def test_the_registry_units_handler_row_is_lowered_never_raised() -> None:
+    text = (ROOT / LOWERED_HANDLER).read_text(encoding="utf-8")
+    live = len(executable_hits(LOWERED_HANDLER, text, _overlay()))
+    row = _rows()[LOWERED_HANDLER]
+    assert live <= row < LOWERED_HANDLER_ROW_BEFORE

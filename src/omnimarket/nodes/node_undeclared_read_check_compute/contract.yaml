@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+name: node_undeclared_read_check_compute
+contract_name: node_undeclared_read_check_compute
+node_name: node_undeclared_read_check_compute
+
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+node_type: compute
+# Run in process by a CI job and a pre-commit hook over a unified diff; it has no topic of its own,
+# so it carries no onex.nodes entry point and is named in node_entry_point_registration_compute's reviewed list.
+lifecycle: experimental
+description: >-
+  Pure check that every setting a change newly reads is declared in an overlay. A unified diff and
+  the overlay documents in; the reads the diff adds (environment variables, repository variables of
+  a workflow, image build arguments) and the ones no overlay declares out. A name is declared when it
+  is a whole string value of any overlay document or a line of the declared_settings register, or it
+  starts with a platform prefix the register lists. A change that adds an undeclared read is refused.
+
+input_model:
+  name: ModelUndeclaredReadCheckRequest
+  module: omnimarket.nodes.node_undeclared_read_check_compute.models
+output_model:
+  name: ModelUndeclaredReadCheckResult
+  module: omnimarket.nodes.node_undeclared_read_check_compute.models
+
+capabilities:
+  - name: settings.undeclared_read.check
+    description: Refuse a diff that adds a read of a setting no overlay declares
+    version: 1.0.0
+
+io_operations:
+  - operation: check
+    description: Judge the reads a diff adds against the declared settings
+    protocol_method: handle
+    input_fields:
+      - request: ModelUndeclaredReadCheckRequest
+    output_fields:
+      - result: ModelUndeclaredReadCheckResult
+    idempotent: true
+
+handler:
+  module: omnimarket.nodes.node_undeclared_read_check_compute.handlers.handler_undeclared_read_check
+  class: HandlerUndeclaredReadCheck
+  input_model: omnimarket.nodes.node_undeclared_read_check_compute.models.ModelUndeclaredReadCheckRequest
+  output_model: omnimarket.nodes.node_undeclared_read_check_compute.models.ModelUndeclaredReadCheckResult
+
+runtime_dispatch:
+  external_trigger: true
+  # The undeclared read job of the CI workflow runs it on every pull request.
+  callers:
+    - path: .github/workflows/ci.yml
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+
+metadata:
+  transport_type: inmemory
+  author: OmniNode Team
+  license: MIT
+  related_tickets: [OMN-26424]
