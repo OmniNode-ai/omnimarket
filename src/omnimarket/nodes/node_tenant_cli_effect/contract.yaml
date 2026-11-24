@@ -59,6 +59,17 @@ handler_routing:
   default_handler: omnimarket.nodes.node_tenant_cli_effect.handlers.handler_tenant_create:HandlerTenantCreate
   handlers: []
 
+# Binds the command line's other handlers to this node's contract for the canonical file shape check. They take required
+# ports at construction and are not envelope-shaped, so the runtime does not route them; this block is not read by the
+# dispatcher.
+command_line_handlers:
+  - handler:
+      name: HandlerTenantShow
+      module: omnimarket.nodes.node_tenant_cli_effect.handlers.handler_tenant_show
+  - handler:
+      name: HandlerTenantKeyRevoke
+      module: omnimarket.nodes.node_tenant_cli_effect.handlers.handler_tenant_key_revoke
+
 # The command topics belong to the nodes that serve them (node_tenant_provision_effect, node_tenant_api_key_effect); this
 # node declares none of its own, and its handlers read each pair from the serving node's contract.
 event_bus:
