@@ -25,6 +25,9 @@ from tests.unit.nodes.node_projection_overlay_store.support import (
     META,
     OVERLAY_ID,
     PATH_OWNER,
+    PROJECTION_NODE,
+    REPLY_TOPIC,
+    contract,
     default_load,
     set_write,
 )
@@ -57,3 +60,9 @@ async def test_the_projection_accepts_a_set_record_that_names_operator_paths(
     assert current is not None
     assert current["operator_paths"] == [PATH_OWNER]
     assert current["document"]["owner"] == "owner-b"
+
+
+def test_write_reply_topic_is_declared_and_published() -> None:
+    assert REPLY_TOPIC == "onex.evt.omnimarket.overlay-store-write-reply.v1"
+    declared = contract(PROJECTION_NODE)["event_bus"]["publish_topics"]
+    assert "onex.evt.omnimarket.overlay-store-write-reply.v1" in declared
