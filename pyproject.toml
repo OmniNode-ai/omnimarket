@@ -846,6 +846,7 @@ node_host_installer_serve_units = "omnimarket.nodes.node_host_installer_serve_un
 node_host_introspection_announce_effect = "omnimarket.nodes.node_host_introspection_announce_effect"
 node_host_introspection_compute = "omnimarket.nodes.node_host_introspection_compute"
 node_host_job_claim_compute = "omnimarket.nodes.node_host_job_claim_compute"
+node_host_lane_path_share_compute = "omnimarket.nodes.node_host_lane_path_share_compute"
 node_host_local_config_drift_compute = "omnimarket.nodes.node_host_local_config_drift_compute"
 node_host_memory_admission_compute = "omnimarket.nodes.node_host_memory_admission_compute"
 node_host_pool_alarm_effect = "omnimarket.nodes.node_host_pool_alarm_effect"
