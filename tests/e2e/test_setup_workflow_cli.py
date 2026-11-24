@@ -179,7 +179,7 @@ def _conflicted_shell_home(tmp_path: Path) -> tuple[Path, dict[str, str]]:
     shadow = tmp_path / "shadow"
     shadow.mkdir()
     (shadow / "onex").write_text("#!/bin/sh\nexit 0\n")
-    os.chmod(shadow / "onex", 0o755)
+    os.chmod(shadow / "onex", 0o700)
     cli = str(Path(sys.executable).parent / "onex")
     environment = {
         "HOME": str(home),

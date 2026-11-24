@@ -55,9 +55,9 @@ def test_each_kind_renders_location_name_and_remedy() -> None:
     )
     assert lines == [
         ".bashrc line 2: KAFKA_BROKERS is set by this profile line; "
-        "--set-aside preserves and disables it when setup runs again.",
+        + "--set-aside preserves and disables it when setup runs again.",
         "current environment: OMNI_HOME is inherited from the current environment; "
-        "resolve it by hand.",
+        + "resolve it by hand.",
         "PATH: another onex executable resolves first on PATH; resolve it by hand.",
         ".bashrc: this profile is not a regular readable file; resolve it by hand.",
     ]
