@@ -26,6 +26,7 @@ from omnimarket.models.model_downstream_gate import (
 )
 from omnimarket.nodes.node_landing_downstream_check_effect.handlers.handler_landing_downstream_check import (
     HandlerLandingDownstreamCheck,
+    Runner,
 )
 from omnimarket.nodes.node_landing_downstream_check_effect.models import (
     ModelCommandOutcome,
@@ -270,7 +271,7 @@ def test_a_failing_extra_command_is_a_break_naming_its_file_and_line(
     )
 
 
-def _replay_runner(core: Path) -> ScriptedRunner:
+def _replay_runner(core: Path) -> Runner:
     """Venv and install steps scripted; the smoke step is the real script run against ``core`` and the fixture."""
     base = ScriptedRunner()
 
@@ -295,7 +296,7 @@ def _replay_runner(core: Path) -> ScriptedRunner:
             returncode=done.returncode, stdout=done.stdout, stderr=done.stderr
         )
 
-    return run  # type: ignore[return-value]
+    return run
 
 
 def test_replay_core_head_that_dropped_a_name_is_held_with_the_import_line(

@@ -48,6 +48,11 @@ event_bus:
 
 runtime_dispatch:
   external_trigger: "python -m omnimarket.nodes.node_landing_downstream_check_effect invokes the typed handler locally on the controller host, before it merges a core or spi pull request."
+  # No topic starts this node and no file of this repository calls it yet: the landing controller's snapshot step is the
+  # caller that follows, and until it lands a lane or a person runs the node by hand with a request document on stdin.
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_landing_downstream_check_effect < <request.json>
+    owner: OmniNode Platform Team
 
 metadata:
   ticket: OMN-26513
