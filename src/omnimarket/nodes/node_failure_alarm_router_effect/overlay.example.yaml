@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The deployment overlay of the failure alarm router: where a fire reads rows and delivers an alarm.
+# The values below are synthetic; the real overlay sits under a root named in ONEX_SKILL_OVERLAY_ROOTS.
+ledger_rows_command: example-ledger-rows-reader --window 6h
+alert_command: example-push-channel send
+ledger_append_command: example-ledger-writer append
+host: example-alarm-runtime

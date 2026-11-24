@@ -1,0 +1,107 @@
+schema_version: 1.0.0
+ticket_id: OMN-26226
+title: The onex TUI dashboard and onex dashboard output instruct how to open it without leaking secrets
+summary: Replace the bare dashboard address on the dashboard tab and onex dashboard output with instructions to press Enter, use Open, or run onex dashboard open; serve a readable HTML page (not a bare address) to a browser without a token; keep 401 JSON for API reads; and show spend and savings as not measured for models missing from the pricing manifest.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26226-dashboard-open-instruction
+    statement: The dashboard screen and onex dashboard output tell the user how to open the dashboard.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: dashboard screen and onex dashboard output instruct Enter, Open, or onex dashboard open; falsifier: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_dashboard_open_instruction.py -q'
+  - id: req-omn26226-bare-address-page
+    statement: A browser request to the bare address without a token gets a readable HTML page; API reads still get 401.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: Accept text/html without a token gets the readable page; JSON/API reads without a token get 401; falsifier: uv run pytest tests/unit/nodes/node_local_dashboard_serve_effect/test_bare_address_page.py -q'
+  - id: req-omn26226-no-token-shown
+    statement: No TUI screen or onex dashboard output shows the session token.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: a planted token never appears on any TUI screen or onex dashboard output; falsifier: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_dashboard_no_token_shown.py -q'
+  - id: req-omn26226-no-tenant-unpriced
+    statement: No TUI screen or output shows the tenant id, and an unpriced run shows spend and savings as not measured.
+    acceptance:
+      - id: AC4
+        statement: 'AC4: a planted tenant id is never shown; a run on Beam-1.0-501B-A23B shows cost and savings as not measured, never $0.0000 or a saved figure; falsifier: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_dashboard_no_tenant_id_shown.py -q'
+  - id: req-omn26226-start-url-redirect
+    statement: Opening the start address with this start''s token sets the cookie and redirects without the token.
+    acceptance:
+      - id: AC5
+        statement: 'AC5: opening the start address with this start''s token sets the HttpOnly cookie and redirects (303) to the same path without the token, keeping other query parameters; missing or wrong token still refused; falsifier: uv run pytest tests/unit/nodes/node_local_dashboard_serve_effect/test_start_url_redirect_strips_token.py -q'
+evidence_requirements:
+  - kind: tests
+    description: AC1-AC5 tests.
+    command: uv run --frozen pytest -q --no-cov tests/unit/nodes/node_onex_setup_effect/test_dashboard_open_instruction.py tests/unit/nodes/node_onex_setup_effect/test_dashboard_no_token_shown.py tests/unit/nodes/node_onex_setup_effect/test_dashboard_no_tenant_id_shown.py tests/unit/nodes/node_local_dashboard_serve_effect/test_bare_address_page.py tests/unit/nodes/node_local_dashboard_serve_effect/test_start_url_redirect_strips_token.py
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn26226-ac1
+    description: Dashboard screen and onex dashboard output instruct how to open.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/unit/nodes/node_onex_setup_effect/test_dashboard_open_instruction.py
+        cwd: .
+  - id: dod-omn26226-ac2
+    description: Browser gets a readable page; API reads still 401.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/unit/nodes/node_local_dashboard_serve_effect/test_bare_address_page.py
+        cwd: .
+  - id: dod-omn26226-ac3
+    description: No TUI screen or output shows the session token.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/unit/nodes/node_onex_setup_effect/test_dashboard_no_token_shown.py
+        cwd: .
+  - id: dod-omn26226-ac4
+    description: No tenant id shown; unpriced run cost and savings not measured.
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/unit/nodes/node_onex_setup_effect/test_dashboard_no_tenant_id_shown.py
+        cwd: .
+  - id: dod-omn26226-ac5
+    description: Start URL with token redirects without it and sets the cookie.
+    source: manual
+    binds_ac: [AC5]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/unit/nodes/node_local_dashboard_serve_effect/test_start_url_redirect_strips_token.py
+        cwd: .
+  # Not bound as a check: tests/unit/nodes/node_onex_setup_effect/test_dashboard_token_not_in_argv.py
+  # guards a regression made and fixed inside this branch (a token on the child's
+  # command line). Dev never put the token in argv, so on the merge base it can
+  # only fail on a name this branch adds, not on behaviour, and dod-verify needs
+  # a bound check to fail there. It still runs in the test suite.
+  - id: dod-omn26226-integration-proof
+    description: Run the five OMN-26226 test files and the changed dashboard tests on a lab host at the pushed revision. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run
+          --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+          --lane dod-integration-proof-26226 --kind test --
+          env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest
+          tests/unit/nodes/node_onex_setup_effect/test_dashboard_open_instruction.py
+          tests/unit/nodes/node_local_dashboard_serve_effect/test_bare_address_page.py
+          tests/unit/nodes/node_onex_setup_effect/test_dashboard_no_token_shown.py
+          tests/unit/nodes/node_onex_setup_effect/test_dashboard_no_tenant_id_shown.py
+          tests/unit/nodes/node_local_dashboard_serve_effect/test_start_url_redirect_strips_token.py
+          tests/projection/test_local_serving_auth.py
+          tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dashboard.py
+          -q -n 0 --no-cov --refuse-skips
+        cwd: .
