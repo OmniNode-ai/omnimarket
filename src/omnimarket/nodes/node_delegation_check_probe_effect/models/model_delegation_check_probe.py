@@ -79,6 +79,13 @@ class ModelDelegateObservation(_Frozen):
     token_counter_moved: bool = False
     # A deliberate outbound connect, through the same wrapper and parser, was classified external.
     control_external_classified: bool = False
+    # Where the customer machine resolves ``onex`` after the install, and whether that is the install's own packaged entry. A
+    # customer install ships ``onex`` on PATH; a runner that carries its own ``onex`` (runner image v15) must not stand in for
+    # it, so what is graded is that the delegate ran through the install's entry, never that the runner has no ``onex``.
+    entry_path: str | None = None
+    entry_is_install_own: bool = False
+    # The ``onex`` the runner itself resolves, recorded beside the run; it is not graded.
+    runner_entry_path: str | None = None
 
 
 class ModelRoutingCollection(_Frozen):

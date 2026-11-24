@@ -9,6 +9,10 @@ run history under the state directory and writes ``<state-dir>/last-run.json``.
 Exit codes: 0 every check PASSed and its record was emitted; 1 a run concluded failure (FAIL, NOT_MEASURED,
 PRECONDITION-ABSENT or ERROR): the record is still emitted and the unit shows failed; 2 the overlay or the responder row
 cannot be loaded; 3 a record was not accepted by the bus. The evidence file is written for every code.
+
+``--check <id>`` runs that one check (the build checks node runs the tick once per check). In that mode the exit code is the
+one the build checks node's executor reads: 0 PASS, 1 only a FAIL (the product failed a clause), and 4 for a run that could
+not measure the check (NOT_MEASURED, PRECONDITION-ABSENT or ERROR), which reads unavailable there and is never a regression.
 """
 
 from __future__ import annotations
@@ -21,7 +25,7 @@ import sys
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 import yaml
 
@@ -43,6 +47,8 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.handler_delega
     contract_topics,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe import (
+    CheckId,
+    EnumCheckVerdict,
     ModelDelegationCheckProbeOverlay,
     ModelDelegationCheckRequest,
     ModelDelegationCheckResult,
@@ -59,6 +65,7 @@ RESPONDERS_FILE_ENV = "ONEX_DELEGATION_CHECK_RESPONDERS_OVERLAY"
 EXIT_FAILED = 1
 EXIT_OVERLAY = 2
 EXIT_NOT_PUBLISHED = 3
+EXIT_NOT_MEASURED = 4
 MACHINE_ABSENT = (
     "no customer-machine collector is wired to this node yet: the fresh-container install, the egress recorder, "
     "the routing walk and the clean-machine driver still run in the producer workflows"
@@ -127,6 +134,7 @@ def main(
     parser.add_argument("--omni-home", dest="registry_root", required=True, type=Path)
     parser.add_argument("--state-dir", required=True, type=Path)
     parser.add_argument("--trigger", choices=("schedule", "manual"), default="schedule")
+    parser.add_argument("--check", choices=get_args(CheckId), default=None)
     args = parser.parse_args(argv)
     faulthandler.dump_traceback_later(tick_deadline_s(), exit=True)
     stamp = now or datetime.now(UTC)
@@ -164,7 +172,7 @@ def main(
     )
     results: list[ModelDelegationCheckResult] = []
     try:
-        for check in overlay.checks:
+        for check in (args.check,) if args.check else overlay.checks:
             results.append(
                 handler.handle(
                     ModelDelegationCheckRequest(
@@ -186,10 +194,26 @@ def main(
     sys.stdout.write(json.dumps(readings, sort_keys=True) + "\n")
     if not all(r.emitted for r in results):
         return EXIT_NOT_PUBLISHED
+    if args.check and any(
+        r.verdict
+        in (
+            EnumCheckVerdict.NOT_MEASURED,
+            EnumCheckVerdict.PRECONDITION_ABSENT,
+            EnumCheckVerdict.ERROR,
+        )
+        for r in results
+    ):
+        return EXIT_NOT_MEASURED
     return 0 if all(r.conclusion == "success" for r in results) else EXIT_FAILED
 
 
-__all__ = ["EVIDENCE_FILE", "append_history", "evidence_for", "main"]
+__all__ = [
+    "EVIDENCE_FILE",
+    "EXIT_NOT_MEASURED",
+    "append_history",
+    "evidence_for",
+    "main",
+]
 
 if __name__ == "__main__":
     raise SystemExit(main(sys.argv[1:]))

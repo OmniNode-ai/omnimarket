@@ -96,6 +96,8 @@ def good_delegation(
         model_connects=3,
         token_counter_moved=True,
         control_external_classified=True,
+        entry_path="/srv/customer-install/bin/onex",
+        entry_is_install_own=True,
     )
 
 

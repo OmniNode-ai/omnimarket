@@ -79,6 +79,13 @@ def grade_c13(
             else "an OmniNode distribution did not come from the package index",
         ),
         ModelCheckClause(
+            name="install_entry",
+            ok=obs.entry_is_install_own,
+            detail=f"the delegate ran through the install's own packaged onex ({obs.entry_path})"
+            if obs.entry_is_install_own
+            else f"the delegate did not run through the install's own onex: the customer machine resolved {obs.entry_path}",
+        ),
+        ModelCheckClause(
             name="three_files",
             ok=obs.rc == 0 and obs.three_files_agree,
             detail="result.txt, receipt.json and run.json exist and agree"
