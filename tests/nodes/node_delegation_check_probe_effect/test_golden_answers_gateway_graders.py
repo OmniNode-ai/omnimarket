@@ -124,7 +124,7 @@ class Replay:
 def _grade(check: str, answers: dict[str, Any]) -> tuple[EnumCheckVerdict, list[str]]:
     clock = _Clock()
     reading = run_gateway_check(
-        check,  # type: ignore[arg-type]
+        check,
         Replay(answers),
         SETTINGS,
         sleep=clock.sleep,
@@ -307,7 +307,7 @@ def test_a_clause_removed_alone_fails_and_names_that_clause(
 def _clause_names(check: str) -> list[str]:
     clock = _Clock()
     reading = run_gateway_check(
-        check,  # type: ignore[arg-type]
+        check,
         Replay(ANSWERS),
         SETTINGS,
         sleep=clock.sleep,
@@ -373,7 +373,7 @@ def _handle(gateway: Replay, check: str) -> EnumCheckVerdict:
     )
     return handler.handle(
         ModelDelegationCheckRequest(correlation_id="g", check_id=check)
-    ).verdict  # type: ignore[arg-type]
+    ).verdict
 
 
 @pytest.mark.parametrize("check", ["C11", "C12", "C15", "C16", "C28", "C29", "C30"])
@@ -400,16 +400,16 @@ def test_an_empty_answer_a_timeout_and_a_missing_credential_are_never_pass(
 KINDS = ["api_key", "jwt"]
 
 
-def _real(kind: str):  # type: ignore[no-untyped-def]
+def _real(kind: str) -> Any:
     from _golden_real_gateway import VALID_KEY, InProcessGateway, tenant_jwt
 
-    return InProcessGateway(VALID_KEY if kind == "api_key" else tenant_jwt(), kind)  # type: ignore[arg-type]
+    return InProcessGateway(VALID_KEY if kind == "api_key" else tenant_jwt(), kind)
 
 
 def _run(check: str, gateway: Any) -> Any:
     clock = _Clock()
     return run_gateway_check(
-        check,  # type: ignore[arg-type]
+        check,
         gateway,
         SETTINGS,
         sleep=clock.sleep,
@@ -534,7 +534,7 @@ def test_a_jwt_in_the_api_key_header_fails_the_check_where_the_right_header_pass
 # ----- a real wrong answer from the real gateway -------------------------------------------------------------------------
 
 
-def _tampered(kind_of_answer: str, field: str, value: Any):  # type: ignore[no-untyped-def]
+def _tampered(kind_of_answer: str, field: str, value: Any) -> Any:
     from _golden_real_gateway import VALID_KEY, InProcessGateway
 
     class Tampered(InProcessGateway):

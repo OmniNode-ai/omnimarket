@@ -148,7 +148,7 @@ class InProcessGateway:
         identity = CompositeCallerIdentity(
             bearer=BearerJwtTenantIdentity(overlay, _StaticKeys()),
             api_key=PostgresApiKeyTenantIdentity(
-                pool=_KeyTable({VALID_KEY: (TENANT_A, "tenant-a")}),  # type: ignore[arg-type]
+                pool=_KeyTable({VALID_KEY: (TENANT_A, "tenant-a")}),
                 header="x-api-key",
                 prefix="onxk_",
             ),
@@ -239,7 +239,7 @@ class InProcessGateway:
                 status,
                 "refused",
                 {},
-                io.BytesIO(raw),  # type: ignore[arg-type]
+                io.BytesIO(raw),
             )
         return _Answer(status, raw)
 
