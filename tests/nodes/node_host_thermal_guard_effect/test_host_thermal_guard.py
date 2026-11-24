@@ -406,10 +406,10 @@ def test_the_tick_simulation_shows_a_hold_then_a_release_with_both_hold_states(
         runtime_host_thermal_guard_tick as tick,
     )
 
-    root = tmp_path / "overlays" / "node_host_thermal_guard_effect"
+    root = tmp_path / "ovl" / "node_host_thermal_guard_effect"
     root.mkdir(parents=True)
     (root / "overlay.yaml").write_text(example_overlay_text(), encoding="utf-8")
-    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "overlays"))
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "ovl"))
     code = tick.main(["--host", "lab-a", "--simulate-readings", "90,84,70"])
     lines = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
     assert code == 0
