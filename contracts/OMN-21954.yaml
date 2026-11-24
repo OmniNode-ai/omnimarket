@@ -68,6 +68,13 @@ dod_evidence:
       - check_type: test_passes
         check_value: env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_remote_lane_effect/test_run_retention.py -k symlinked_lab_root -q --no-cov --tb=line
         cwd: .
+  - id: dod-omn21954-saved-git-work
+    description: Retention archives every bundle and patch under the run trees (no link followed, git directories skipped) with the file named in the archive manifest before removal, through the typed function and the inlined host payload, and keeps a run whose clone holds a commit on no remote with the unpushed-commits keep reason. The archive tests fail at the merge base; the keep and remove tests hold there already.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_remote_lane_effect/test_run_retention_saved_git_work.py -q --no-cov --tb=line
+        cwd: .
   - id: dod-omn21954-integration-proof
     description: Run the retention suite on a lab host at the evaluated commit, including the packaged handler and the standalone shell payload against real temporary filesystem trees. The linked-root cases assert archive contents, removal of the ended lane's trees and preservation of the live lane's trees. Hosted CI cannot reach the lab, so this unbound check runs only at the local Done gate.
     source: manual

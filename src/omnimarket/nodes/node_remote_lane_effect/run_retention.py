@@ -19,6 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from .handlers.retention_artifacts import _closeout_files
 from .handlers.retention_tree_safety import _inside, _trees_keep_reason
 
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,160}\Z")
@@ -139,11 +140,7 @@ def retain_run(
         Path(str(root) + p[len(str(given)) :] if p.startswith(f"{given}/") else p)
         for p in references
     }
-    ctx = trees[1]
-    for name in ("result.txt", "result.json", "report.md"):
-        path = ctx / name
-        if path.exists():
-            paths.add(path)
+    paths |= _closeout_files(trees[1], trees)
     sources: dict[str, Path] = {}
     for path in sorted(paths):
         relative_path = _inside(root, path)
@@ -255,12 +252,10 @@ def retention_script(
     source = Path(__file__).read_text().split("\ndef retention_script(", 1)[0]
     # Inline the same safety module used by the typed handler: the host runs
     # stdlib Python and does not import a separately installed Market package.
-    source = source.replace(
-        "from .handlers.retention_tree_safety import _inside, _trees_keep_reason\n",
-        Path(__file__)
-        .with_name("handlers")
-        .joinpath("retention_tree_safety.py")
-        .read_text(),
+    source = re.sub(
+        r"from \.handlers\.(\w+) import [^\n]*\n",
+        lambda m: Path(__file__).parent.joinpath("handlers", f"{m[1]}.py").read_text(),
+        source,
     )
     return (
         "python3 - <<'LANE_RETENTION_PY'\n"
