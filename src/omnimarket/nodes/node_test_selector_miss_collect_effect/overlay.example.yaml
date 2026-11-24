@@ -18,3 +18,17 @@ public_repositories:
 # Names of private repositories, hosts or people the deployment refuses in a record (synthetic here).
 private_terms:
   - example-private-term
+# The serve tick (runtime_collect_serve): the process that answers the collect_nightly command the nightly sender publishes. The unit
+# is test-selector-collect-serve-systemd (node_host_installer_registry_units), installed on the host this overlay is read on.
+# bus_lane: the lane the command topic is read on; the broker resolves from the workspace's lane declaration.
+# workspace_root, commit_clone, state_dir: environment variables and ~ expand; the clone is only read (git log), never fetched.
+# consumer_group: under the host login's group family; max_records, read_timeout_s, join_timeout_s bound one pass.
+serve:
+  bus_lane: example-lane
+  workspace_root: $EXAMPLE_WORKSPACE_ROOT
+  consumer_group: local.example.node_test_selector_miss_collect_effect.consume.v1.example-host
+  max_records: 10
+  read_timeout_s: 20.0
+  join_timeout_s: 15.0
+  commit_clone: $EXAMPLE_REGISTRY_ROOT/example-repo
+  state_dir: $EXAMPLE_REGISTRY_ROOT/.onex_state/example-collect-alarms

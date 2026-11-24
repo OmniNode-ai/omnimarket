@@ -2128,6 +2128,47 @@ units:
     environment_file: .config/onex/stability-refresh-serve.env
     evidence_file: .local/state/omni/stability-refresh-serve/last-run.json
     state_directory: .onex_state/stability-refresh-serve
+  # The nightly collector's serve tick (OMN-26325): the collector node subscribes to nothing at the runtime (its handlers take their
+  # ports as constructor parameters), so nothing consumed the collect_nightly command the nightly sender publishes. Every 60 s one
+  # pass reads onex.cmd.omnimarket.test-selector-collect-nightly-requested.v1 under the overlay's consumer group, runs each command
+  # through the collect handler with the repository gateway, a first-parent commit range, a durable alarm store and the alarm routing,
+  # and publishes the typed answer on onex.evt.omnimarket.test-selector-collect-completed.v1, which the sender waits for. The host,
+  # lane, group, clone and state directory are the node overlay's serve block (the overlays clone), never this contract's. The run
+  # limit covers the group join and the read plus one collect (the node's descriptor timeout is 300 s);
+  # tests/nodes/node_test_selector_miss_collect_effect/test_collect_serve.py holds that.
+  test-selector-collect-serve-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-test-selector-collect-serve
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 60
+      run_timeout_s: 600
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_test_selector_miss_collect_effect.runtime_collect_serve
+    entry_file: src/omnimarket/nodes/node_test_selector_miss_collect_effect/runtime_collect_serve.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/test-selector-collect-serve/last-run.json
+    state_directory: .onex_state/test-selector-collect-serve
   # The Claude token pool rotation tick (OMN-23887), installed the declared way on every host the pool overlay lists: a
   # unit here, with its own project path and expected revision (the request's project_path and expected_revision), and
   # its own environment, in place of the pool's own `schedule install` (which ran a hand-built venv). One unit per

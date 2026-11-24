@@ -17,6 +17,9 @@ class ModelRuntimeDelegationDispatchTopics(BaseModel):
     failed: str
     failed_unrouted: str | None = None
     pre_dispatch_failed: str | None = None
+    # OMN-26220: the harness handler's command and result topics (None: not declared).
+    harness_command: str | None = None
+    harness_completed: str | None = None
 
     @field_validator("*")
     @classmethod

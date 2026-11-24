@@ -94,7 +94,7 @@ def _delegate(answer: str | None = ANSWER) -> FakeDelegate:
 
 @pytest.fixture
 def ledger(tmp_path: Path) -> Path:
-    path = tmp_path / "ledger" / "ROLLING_WORK_LEDGER.md"
+    path = tmp_path / "ledger" / "scratch_rows.md"
     path.parent.mkdir()
     path.write_text(RULING + "\n")
     return path
