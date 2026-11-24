@@ -433,12 +433,14 @@ def test_a_row_is_appended_over_the_bus_on_stdin_under_a_stable_request_id(
         f"open({str(out)!r}, 'w').write(json.dumps([sys.argv[1:], sys.stdin.read()]))\n",
     )
     monkeypatch.setenv(adapters.APPEND_COMMAND_ENV, writer)
-    assert BusLedgerAppender().append("the row") == ""
+    refusal = BusLedgerAppender().append("the row")
+    assert refusal == ""
     argv, stdin = json.loads(out.read_text())
     assert argv[:3] == ["append", "--lane", "ledger-reconcile"]
     first_id = argv[argv.index("--request-id") + 1]
     assert stdin == "the row"
-    assert BusLedgerAppender().append("the row") == ""
+    refusal = BusLedgerAppender().append("the row")
+    assert refusal == ""
     again, _ = json.loads(out.read_text())
     assert again[again.index("--request-id") + 1] == first_id
 
