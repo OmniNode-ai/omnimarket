@@ -544,7 +544,6 @@ def require_local_access(app: FastAPI, *, token: str, port: int) -> None:
         presented = _presented_tokens(request, cookie)
         accept = request.headers.get("accept", "")
         if not any(_matches(p, expected) for p in presented):
-            accept = request.headers.get("accept", "")
             if request.url.path == "/" and "text/html" in accept:
                 return HTMLResponse(
                     status_code=200,
@@ -569,7 +568,6 @@ def require_local_access(app: FastAPI, *, token: str, port: int) -> None:
                     ),
                 },
             )
-        accept = request.headers.get("accept", "")
         query_token = request.query_params.get(DASHBOARD_TOKEN_PARAM)
         if query_token and _matches(query_token, expected) and "text/html" in accept:
             remaining = [
