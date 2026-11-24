@@ -2063,6 +2063,8 @@ class OnexTui(App[int]):
         ]
 
     def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id != "prompt":  # #key and #url bubble up from a tab
+            return
         palette = self.query_one("#palette", OptionList)
         if not event.value.startswith("/"):
             palette.display = False
@@ -2363,7 +2365,12 @@ class OnexTui(App[int]):
         """Swap the open tab for another: the next one is read first, so the
         main screen never shows between them (OMN-23413)."""
         screen = await self.tab_screen(name)
-        await self.switch_screen(screen)
+        if len(self.screen_stack) < 2:
+            # Esc closed the tab while the next was read: the main screen is on
+            # top, and switch_screen would pop it (OMN-26613). Open, not swap.
+            await self.push_screen(screen)
+        else:
+            await self.switch_screen(screen)
 
     async def _shortcut(self, action: str) -> None:
         if action == "quit":
