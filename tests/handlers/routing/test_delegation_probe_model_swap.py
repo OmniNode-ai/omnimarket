@@ -18,7 +18,7 @@ import tempfile
 from collections.abc import Mapping
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 import pytest
 
@@ -100,8 +100,25 @@ def served(
     return ModelResponderReading(**kwargs)
 
 
+class SwapSpec(TypedDict):
+    model: str
+    window: int
+    shape: str
+    capabilities: dict[str, str]
+
+
+def served_swap(base: str, spec: SwapSpec) -> ModelResponderReading:
+    return served(
+        base,
+        spec["model"],
+        window=spec["window"],
+        shape=spec["shape"],
+        capabilities=spec["capabilities"],
+    )
+
+
 # Models a lab host can serve behind an endpoint; each is a synthetic listing entry, none is a recorded one.
-SWAPS = {
+SWAPS: dict[str, SwapSpec] = {
     "vllm-large": {
         "model": "model-vllm-large",
         "window": 262144,
@@ -188,8 +205,8 @@ def test_delegation_probe_model_swap_leaves_every_probe_green(
     # The other endpoint goes down so the swapped endpoint is the one the chain must choose.
     other = ENDPOINT_B if endpoint == ENDPOINT_A else ENDPOINT_A
     reader.serving.pop(other)
-    spec = dict(SWAPS[swap])
-    swapped = served(endpoint, **spec)  # type: ignore[arg-type]
+    spec = SWAPS[swap]
+    swapped = served_swap(endpoint, spec)
     reader.serving[endpoint] = swapped
     machine = machine_for(endpoint, swapped.served_model or "")
     result = run(probe(reader, machine), check)
@@ -219,7 +236,7 @@ def test_delegation_probe_model_swap_between_two_checks_is_read_each_time(
     handler = probe(reader, machine_for(ENDPOINT_A, "model-before-swap-a"))
     first = run(handler, check)
     assert first.window == 65536
-    reader.serving[ENDPOINT_A] = served(ENDPOINT_A, **SWAPS["llamacpp-mid"])  # type: ignore[arg-type]
+    reader.serving[ENDPOINT_A] = served_swap(ENDPOINT_A, SWAPS["llamacpp-mid"])
     handler = probe(reader, machine_for(ENDPOINT_A, "model-llamacpp-mid"))
     second = run(handler, check)
     assert (second.served_model, second.window) == ("model-llamacpp-mid", 131072)
