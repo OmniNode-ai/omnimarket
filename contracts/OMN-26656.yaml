@@ -71,7 +71,7 @@ dod_evidence:
     check_value: grep -q 'def checks_in_force_under_response_contract' src/omnimarket/nodes/node_delegation_orchestrator/quality_bar_authority.py
     cwd: .
   - check_type: command
-    check_value: grep -q 'def _with_executed_class_checks' src/omnimarket/nodes/node_delegation_quality_gate_reducer/handlers/handler_quality_gate.py
+    check_value: grep -q 'def with_executed_class_checks' src/omnimarket/nodes/node_delegation_quality_gate_reducer/handlers/response_contract_class_checks.py
     cwd: .
 - id: dod-omn26656-integration-proof
   description: On a lab host, at the pushed sha, the focused tests drive the quality gate, the local dispatch port and the bus workflow with a code request carrying a schema and a failing named test, and a document request carrying a schema; hosted CI holds no lab bus, so only the local Done gate runs this unbound check (the lab reading is in the PR's Lab line).
