@@ -27,6 +27,9 @@ from omnimarket.nodes.node_host_thermal_guard_effect.models import (
 from omnimarket.nodes.node_host_thermal_guard_effect.overlay import (
     ModelHostThermalGuardOverlay,
 )
+from omnimarket.nodes.node_host_thermal_guard_effect.protocols import (
+    ProtocolLedgerAppender,
+)
 
 NODE = "omnimarket.nodes.node_host_thermal_guard_effect"
 START = datetime(2026, 11, 23, 21, 0, 0, tzinfo=UTC)
@@ -52,6 +55,7 @@ class Rig:
         self.holds = InMemoryHoldStore()
         self.episodes = InMemoryEpisodeStore()
         self.ledger = InMemoryLedgerAppender()
+        self.appender: ProtocolLedgerAppender = self.ledger
         self.cutter = InMemoryLaneCutter()
         self.reading = ModelThermalReading("", 40.0, ())
 
@@ -74,7 +78,7 @@ class Rig:
             InMemorySensors(reading),
             self.holds,
             self.episodes,
-            self.ledger,
+            self.appender,
             self.cutter,
             lambda: self.now,
         )

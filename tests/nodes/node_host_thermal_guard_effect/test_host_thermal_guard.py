@@ -355,7 +355,8 @@ def test_a_receipt_carrying_a_principal_field_reads_as_delivered(
         _fake_bus_append(tmp_path, 0, receipt), "guard-lane", "h202", 30
     )
     row = "2026-11-23T21:00:00Z | HOLD | lane=guard-lane | id=2026-11-23T21:00:00Z-guard-lane | surface=thermal-h202 | until=2026-11-24T03:00:00Z | note"
-    assert appender.append(row, request_id).status == "accepted"
+    outcome = appender.append(row, request_id)
+    assert outcome.status == "accepted"
 
 
 def test_a_client_that_exits_70_reads_as_not_delivered_and_the_row_stays_queued(
@@ -372,13 +373,14 @@ def test_a_client_that_exits_70_reads_as_not_delivered_and_the_row_stays_queued(
         30,
     )
     rig = Rig(overlay)
-    rig.ledger = failing  # type: ignore[assignment]
+    rig.appender = failing
     result = rig.run(90.0)
     assert not result.ok
     assert result.delivered == 0
     assert result.pending == 1
     assert result.errors[0][0] == "row_not_delivered"
-    assert len(rig.episodes.record["pending"]) == 1  # type: ignore[index]
+    assert rig.episodes.record is not None
+    assert len(rig.episodes.record["pending"]) == 1
 
 
 # --- the example overlay and the tick ------------------------------------------------------------------------------------
