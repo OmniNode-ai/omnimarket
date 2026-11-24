@@ -56,6 +56,14 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest tests/nodes/node_hourly_tick_effect tests/nodes/node_linear_snapshot_effect/test_parity_with_unit.py tests/test_host_reconcile_effect.py tests/test_host_reconcile_bus_append.py -q --no-cov -p no:cacheprovider
         cwd: .
+  - id: dod-omn26329-ac3-registry-units-dead-default
+    description: "AC3: the registry units installer no longer fills a configuration placeholder {ledger_path} with the registry's own ledger file (a default no unit declaration used); a configuration that names it is refused like any placeholder nothing fills, and the handler's census row is lowered from 3 to 2. At the merge base the placeholder is filled with the ledger file's path and the row stands at 3, so these fail."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_alarm_config_omn22778.py tests/unit/nodes/node_work_ledger_file_census_effect/test_group1_omn26329.py -q --no-cov -p no:cacheprovider
+        cwd: .
   - id: dod-omn26329-integration-proof
     description: "Run the focused node tests of the cleared files on a lab host at the pushed revision. This local completion proof carries no hosted AC bindings."
     source: manual

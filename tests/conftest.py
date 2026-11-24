@@ -235,17 +235,23 @@ def _ensure_omni_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 def _no_real_models_dev_price_reads(
     monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
 ) -> None:
-    """No unit test reads models.dev to price a call (OMN-23413 AC35).
+    """No unit test reads models.dev, to price a call or to refresh the price list.
 
-    A delegation call on a customer key falls back to models.dev's price, and
-    the projection read prices a stored run from models.dev read live; every
-    test sees an empty index unless it serves its own. A test that asks for
+    A delegation call on a customer key falls back to the kept models.dev copy or
+    the shipped price list, and the projection read prices a stored run from
+    models.dev read live; every test sees an empty index unless it serves its own,
+    and the setup and refresh reads of models.dev return the empty index. A test that asks for
     the ``models_dev_home`` fixture reads its own copy under that home.
     """
     from omnimarket.handlers import model_catalog, models_dev_historical_read
 
     monkeypatch.setattr(
         model_catalog, "pricing_models_dev_index", lambda: model_catalog.EMPTY_INDEX
+    )
+    monkeypatch.setattr(
+        model_catalog,
+        "refresh_models_dev",
+        lambda _onex_home=None: model_catalog.EMPTY_INDEX,
     )
     if "models_dev_home" not in request.fixturenames:
         monkeypatch.setattr(

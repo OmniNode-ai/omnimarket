@@ -17,6 +17,13 @@ requirements:
     statement: 'AC3: the declared topics are the tenant provision node''s own, the request is a command that node accepts and its answer is readable by this node -- falsifier: uv run pytest tests/nodes/node_dev_identity_provision_effect/test_runtime_tenant_provision.py -q -k "declared_topics or accepts or readable"'
   - id: AC4
     statement: 'AC4: a deployed overlay document that still holds the retired api block loads and the block is never read -- falsifier: uv run pytest tests/nodes/node_dev_identity_provision_effect -q -k retired_api_block'
+  - id: AC6
+    statement: 'AC6: a broker that refuses the read of the completed topic (InfraConnectionError) is a typed runtime_unreachable result, not a traceback -- falsifier: uv run pytest tests/nodes/node_dev_identity_provision_effect/test_tenant_provisioner_bus_refusal.py -q'
+- id: req-omn23563-setting-set-one-bus
+  statement: The settings store set command holds one lane bus at a time, so a provisioning setting can be written through the settings store route.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: a set run holds at most one lane bus open at once and still reads the live record then publishes the record and its audit row -- falsifier: uv run pytest tests/unit/nodes/node_overlay_setting_set/test_setting_set_one_bus.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
 - kind: tests
   description: 'The node''s focused tests at the pushed head.'
@@ -61,6 +68,24 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_dev_identity_provision_effect -k retired_api_block -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23563-ac5-setting-set-one-bus
+  description: 'AC5: the set command opens its write bus after the live read has closed its own; against the pre-change command the one-bus test failed with max_open 2 against 1, and with the change both tests in the file pass.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_setting_set/test_setting_set_one_bus.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn23563-ac6-bus-refusal
+  description: 'The adapter translates InfraConnectionError from the broker into the typed unavailable error that the handler reports as runtime_unreachable; the new test file failed before the change and passes after.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_identity_provision_effect/test_tenant_provisioner_bus_refusal.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn23563-integration-proof
   description: 'The pushed head ran the node''s tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The node is not run against the live dev runtime in this change: the tenant operator login and the dev roll are the next reading.'
