@@ -31,10 +31,10 @@ from tests.nodes.node_host_installer_registry_units.test_registry_units_systemd 
     Recorder,
 )
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("linux_host")]
 
-# `linux_host` is an autouse fixture (a Linux host with uv) taken from the sibling module: naming
-# it in `__all__` marks the import as used.
+# `linux_host` (a Linux host with uv) is taken from the sibling module and applied to every test here, so the
+# result does not depend on which interpreters the host has; naming it in `__all__` marks the import as used.
 __all__ = ["linux_host"]
 
 PROBE_UNIT = "overlay-env-probe-systemd"
