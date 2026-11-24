@@ -53,6 +53,8 @@ output_model:
   module: omnimarket.models.cross_owner_ask.model_cross_owner_ask_result
   description: The verdict, whether the draft may go on, the verified-by line and the matches.
 
+terminal_event: onex.evt.omnimarket.cross-owner-ask-check-completed.v1
+
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.cross-owner-ask-check-requested.v1
   terminal_events:

@@ -12,7 +12,11 @@ from omnimarket.models.cross_owner_ask.enum_cross_owner_ask_verdict import (
 
 
 class ModelCrossOwnerAskResult(BaseModel):
-    """``verified_by`` is the ``verified by: <command> => <observation>`` line the draft carries."""
+    """``verified_by`` is the ``verified by: <command> => <observation>`` line the draft carries.
+
+    ``terminal_failure_cause`` is set when the read was refused (UNREADABLE or
+    NONCANONICAL_READ), which routes the result to the failure terminal event.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -20,3 +24,4 @@ class ModelCrossOwnerAskResult(BaseModel):
     draft_allowed: bool
     verified_by: str
     matches: tuple[str, ...] = ()
+    terminal_failure_cause: str | None = None
