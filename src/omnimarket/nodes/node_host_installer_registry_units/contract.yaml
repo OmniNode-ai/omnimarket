@@ -756,6 +756,46 @@ units:
     schedule_node: node_lab_alarm
     schedule_condition: alarm-digest
     state_directory: .onex_state/lab-alarm
+  # OMN-26553: the systemd variant of each lab alarm condition schedule above. A Linux lab host (a systemd user host) was offered none of
+  # them: the launchd units name a launchd label and the node's scheduler only installs for a host the lab alarm overlay lists. Each
+  # twin names the same node and condition and carries a label that is only the name `--list-units` and a plan print (the installed unit is named by
+  # the overlay's unit_name); the node's own scheduler renders the service and the timer for a host the overlay lists with a systemd-user scheduler, so the cadence and the
+  # host environment stay the overlay's and no second unit text is written here.
+  lab-alarm-dev-tag-heartbeat-systemd:
+    platform: systemd
+    kind: node_schedule
+    label: lab-alarm-dev-tag-heartbeat
+    schedule_node: node_lab_alarm
+    schedule_condition: dev-tag-heartbeat
+    state_directory: .onex_state/lab-alarm
+  lab-alarm-delegation-chain-canary-systemd:
+    platform: systemd
+    kind: node_schedule
+    label: lab-alarm-delegation-chain-canary
+    schedule_node: node_lab_alarm
+    schedule_condition: delegation-chain-canary
+    state_directory: .onex_state/lab-alarm
+  lab-alarm-work-ledger-projection-stale-systemd:
+    platform: systemd
+    kind: node_schedule
+    label: lab-alarm-work-ledger-projection-stale
+    schedule_node: node_lab_alarm
+    schedule_condition: work-ledger-projection-stale
+    state_directory: .onex_state/lab-alarm
+  lab-alarm-container-restarts-systemd:
+    platform: systemd
+    kind: node_schedule
+    label: lab-alarm-container-restarts
+    schedule_node: node_lab_alarm
+    schedule_condition: container-restarts
+    state_directory: .onex_state/lab-alarm
+  lab-alarm-digest-systemd:
+    platform: systemd
+    kind: node_schedule
+    label: lab-alarm-digest
+    schedule_node: node_lab_alarm
+    schedule_condition: alarm-digest
+    state_directory: .onex_state/lab-alarm
   capture-silence-watch:
     platform: systemd
     kind: registry_module_tick
