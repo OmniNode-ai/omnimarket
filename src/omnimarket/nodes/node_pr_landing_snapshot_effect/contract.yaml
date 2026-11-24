@@ -25,7 +25,8 @@ description: >
   reads each pull request's GraphQL node id and the head's failed run ids from
   the declared write-facts source in one batched read, fills pr_node_id and
   failed_run_ids into the tick's facts (a read at another head fills nothing),
-  and records the filled facts of that tick: appended to the recorder and
+  reads liveness for open PR heads without a current verdict when read_liveness
+  is enabled, and records the filled facts of that tick: appended to the recorder and
   published on the overlay's record topic. During the cutover period it also carries the old
   controller's finished tick onto the facts (its state, bounded to the pull requests the tick holds, and the external
   blockers its sidecar holds as judged) and publishes the controller's decision rows (kind, subject, outcome, reason),
@@ -62,6 +63,10 @@ dependencies:
   - name: ProtocolLandingControllerSource
     dependency_type: protocol
     description: "the old controller's last finished tick during the cutover period (its facts file, tick log and decision log); absent unless the overlay names the controller_* fields and the external blocker values, so the controller's own instance is untouched. Carries the controller's state onto the node's facts and publishes the finished tick on the record (OMN-23665)."
+    required: false
+  - name: HandlerPrLandingLivenessRead
+    dependency_type: service
+    description: "When read_liveness is enabled, compose the declared exact-head reader and carry its fact on the corresponding PR in the snapshot."
     required: false
   - name: ProtocolLandingTickRecorder
     dependency_type: protocol

@@ -1,0 +1,20 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic labels. A deployment's real overlay lives in the overlays repository. The schema is
+# ModelEvalBoardOverlay; no key has a default. The key names are the plan's evals.board.* keys.
+display_names:            # evals.board.display_names: model id -> plain label, in the order the tab lists models
+  example-local-model: Local coding model
+  example-hosted-model: Hosted coding model
+max_models: 4             # evals.board.max_models
+min_n_point: 15           # evals.board.min_n_point: a rate from fewer tasks is never drawn as a number
+trend_look_points: 10     # evals.board.trend_look_points
+glossary:                 # evals.board.glossary
+  task: "In the fixed tests, one past change from our own repositories, given to the model as the ticket described it; in live work, one piece of work a model was actually sent."
+  pass: "In the fixed tests, every check that ticket required passes once the model's change is applied to the code as it was before the change; in live work, the reviewer model accepted the answer. Neither is the same as a person accepting the whole change."
+  size: "Small, medium and large are measured from what the model is given, against the limits of the task class contract."
+  likely range: "The 95 percent range of rates that fit the result."
+size_line:                # the capability map's routing line
+  floor: 0.9
+  margin: 0.07
+  confidence: 0.95
+  power: 0.8

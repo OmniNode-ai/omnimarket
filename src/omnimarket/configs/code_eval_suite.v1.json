@@ -201,6 +201,10 @@
    "reason": "omnimarket:score_refused:check_file_unreadable"
   },
   {
+   "count": 2,
+   "reason": "omnimarket:taskset_1540_no_merged_fix_commit"
+  },
+  {
    "count": 32,
    "reason": "omnimemory:check_names_no_touched_path"
   },
@@ -223,9 +227,13 @@
   {
    "count": 9,
    "reason": "omnimemory:over_40_files_or_binary"
+  },
+  {
+   "count": 1,
+   "reason": "private_repository:path_fails_the_public_repo_hygiene_gate"
   }
  ],
- "suite_id": "code-eval-suite-v1-2026-10-01-to-2026-11-11",
+ "suite_id": "code-eval-suite-v1-2026-10-01-to-2026-11-21",
  "tasks": [
   {
    "band": "M",
@@ -3450,6 +3458,43 @@
    "subject": "fix(OMN-22183): accept a canonical omnimarket clone detached at the floor marker's commit (#5609)"
   },
   {
+   "band": "S",
+   "base_commit": "235df4a3ef3698981924e7070afcf819b8a0e406",
+   "check_files": [
+    "tests/unit/handlers/test_handler_k3s_lab_preflight.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/unit/handlers/test_handler_k3s_lab_preflight.py -q -k \"k3s and node_ip\" --no-cov -n 0 -p no:cacheprovider",
+     "item_id": "dod-omn24956-ac1-node-ip"
+    }
+   ],
+   "contract_id": "OMN-24956",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 14,
+   "held_paths": [
+    "deploy/lab/k3s/k3s-server-config.yaml",
+    "pyproject.toml",
+    "src/omnibase_infra/handlers/handler_k3s_lab_preflight.py",
+    "src/omnibase_infra/models/model_k3s_lab_preflight_request.py",
+    "src/omnibase_infra/models/model_k3s_lab_preflight_result.py",
+    "src/omnibase_infra/nodes/node_k3s_lab_preflight_effect/__init__.py",
+    "src/omnibase_infra/nodes/node_k3s_lab_preflight_effect/contract.yaml",
+    "src/omnibase_infra/nodes/node_k3s_lab_preflight_effect/node.py",
+    "tests/ci/fixtures/dispatch_parity_readback_omn20074.json",
+    "tests/fixtures/dispatch_parity/selection-oracle-no-occ-v2.header.json",
+    "tests/fixtures/dispatch_parity/selection-oracle-v2.json",
+    "tests/integration/handlers/test_handler_k3s_lab_preflight_integration.py"
+   ],
+   "lines_changed": 647,
+   "merge_commit": "711f1ebd2fab832272394c420a28c606b6122a8c",
+   "merged_at": "2026-11-19T03:03:29Z",
+   "repository": "omnibase_infra",
+   "subject": "OMN-24956: lab k3s preflight refuses an unset or dead node-ip (#6043)"
+  },
+  {
    "band": "M",
    "base_commit": "34e6a87329a88523699f68f9889051e6956e24c7",
    "check_files": [
@@ -3858,6 +3903,48 @@
    "merged_at": "2026-11-01T12:45:25Z",
    "repository": "omnibase_infra",
    "subject": "fix(OMN-21789): the dev broker readiness probe ignores the gateway forwarder's outbound consumer groups (#5521)"
+  },
+  {
+   "band": "S",
+   "base_commit": "eff82e2ec9966db0c3a1a9e3f2998053d4f0d8eb",
+   "check_files": [
+    "scripts/deploy-agent/tests/unit/test_llm_endpoint_env_compose_omn24025.py",
+    "tests/ci/test_dev_lane_ledger_source_binding.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest tests/ci/test_dev_lane_ledger_source_binding.py scripts/deploy-agent/tests/unit/test_llm_endpoint_env_compose_omn24025.py -q -p no:cacheprovider",
+     "item_id": "dod-omn24854-ac4-mount-source"
+    }
+   ],
+   "contract_id": "OMN-24854",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 21,
+   "held_paths": [
+    "docker/dev-lane-required-env.manifest.txt",
+    "docker/dev-tenant-fold-required-env.manifest.txt",
+    "docker/docker-compose.dev-lane.yml",
+    "docker/docker-compose.dev-tenant-fold.yml",
+    "scripts/deploy-agent/deploy/dev-instance.env.template",
+    "scripts/deploy-agent/tests/unit/test_dev_refresh_llm_endpoint_env_omn24081.py",
+    "scripts/deploy-agent/tests/unit/test_stability_refresh_llm_endpoint_env_omn24119.py",
+    "scripts/runtime_build/compose_files.sh",
+    "scripts/runtime_build/refresh_dev_lane.sh",
+    "scripts/runtime_build/refresh_stability_lane.sh",
+    "src/omnibase_infra/nodes/node_setup_local_provision_effect/runtime_llm_endpoint_env.py",
+    "tests/ci/_compose_render_omn21099.py",
+    "tests/ci/test_contract_omn24854_checks.py",
+    "tests/integration/ci/test_stability_job_overlay_render_integration_omn24562.py",
+    "tests/integration/infra/test_dev_runtime_compose_render.py",
+    "tests/scripts/test_dev_lane_required_env_omn17530.py"
+   ],
+   "lines_changed": 1580,
+   "merge_commit": "a679b44e2cfe2d6148a201273415ba96401f29ed",
+   "merged_at": "2026-11-19T05:54:04Z",
+   "repository": "omnibase_infra",
+   "subject": "OMN-24854: mount the real lane declaration folder in the dev runtime compose and resolve it in the compose helpers, deploy agent and warm refresh (#6039)"
   },
   {
    "band": "S",
@@ -4549,6 +4636,32 @@
    "merged_at": "2026-11-03T10:45:54Z",
    "repository": "omnibase_infra",
    "subject": "fix(OMN-22233): rename duplicate onex.nodes entry points so discovery loads every contract (#5618)"
+  },
+  {
+   "band": "S",
+   "base_commit": "1034acc9b1e2df6c276afea5485d50a9be8e5589",
+   "check_files": [
+    "tests/scripts/test_workspace_reconcile_no_root_bytecode_omn24899.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/scripts/test_workspace_reconcile_no_root_bytecode_omn24899.py -q -n 0 -p no:cacheprovider",
+     "item_id": "dod-omn24899-ac2-unit-no-bytecode"
+    }
+   ],
+   "contract_id": "OMN-24899",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 3,
+   "held_paths": [
+    "deploy/maintenance/systemd/omninode-workspace-reconcile.service"
+   ],
+   "lines_changed": 89,
+   "merge_commit": "eb8fdbf7e01dc1240bfc65e041cba9fd812060d3",
+   "merged_at": "2026-11-19T06:22:44Z",
+   "repository": "omnibase_infra",
+   "subject": "OMN-24899: Report stale stage dirs the venv sweep could not remove (#6042)"
   },
   {
    "band": "M",
@@ -6729,7 +6842,7 @@
     "src/omnimarket/nodes/node_pr_landing_liveness_read_effect/handlers/liveness_read_ports.py",
     "src/omnimarket/nodes/node_pr_landing_liveness_read_effect/metadata.yaml",
     "src/omnimarket/nodes/node_pr_landing_liveness_read_effect/models/__init__.py",
-    "src/omnimarket/nodes/node_pr_landing_liveness_read_effect/models/model_liveness_read.py",
+    "src/omnimarket/models/pr_landing_liveness_read.py",
     "src/omnimarket/nodes/node_pr_landing_liveness_read_effect/overlay.example.yaml",
     "src/omnimarket/nodes/node_pr_landing_liveness_read_effect/overlay.py",
     "src/omnimarket/nodes/node_pr_landing_liveness_read_effect/protocols/__init__.py",
@@ -6947,6 +7060,34 @@
    "merged_at": "2026-10-04T14:27:52Z",
    "repository": "omnimarket",
    "subject": "feat(OMN-19441): delegation reaper gives a stranded command one no_terminal terminal (#3245)"
+  },
+  {
+   "band": "M",
+   "base_commit": "d4954eaed26bf579d72358733a46e9c0d27fc038",
+   "check_files": [
+    "tests/unit/nodes/node_github_repo_write_effect/test_handler_runner_group_get.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest -q --no-cov -n 0 -p no:randomly tests/unit/nodes/node_github_repo_write_effect/test_handler_runner_group_get.py",
+     "item_id": "dod-omn26079-ac2-rest-boolean"
+    }
+   ],
+   "contract_id": "OMN-26079",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 5,
+   "held_paths": [
+    "src/omnimarket/nodes/node_github_repo_write_effect/handlers/handler_github_repo_write.py",
+    "tests/nodes/node_runner_group_exposure_effect/test_bus_group_read.py",
+    "tests/test_golden_chain_github_repo_write_effect.py"
+   ],
+   "lines_changed": 157,
+   "merge_commit": "2b0f4e88f30fb61c4ae77a026f958e72252c7e44",
+   "merged_at": "2026-11-19T22:31:05Z",
+   "repository": "omnimarket",
+   "subject": "OMN-26079: read the runner-group REST workflow restriction (#6471)"
   },
   {
    "band": "M",
@@ -9028,6 +9169,46 @@
    "merged_at": "2026-11-07T11:08:08Z",
    "repository": "omnimarket",
    "subject": "fix(OMN-22775): the reading writer's ledger read names the refusal class the read command printed (#5230)"
+  },
+  {
+   "band": "M",
+   "base_commit": "3e2cc67654cc0f8d1e29bc356f959a87c36bbeeb",
+   "check_files": [
+    "tests/nodes/node_projection_delegation/test_byok_actual_cost.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/nodes/node_projection_delegation/test_byok_actual_cost.py -q --no-cov -n 0 -p no:randomly -k declared_price_is_booked_as_cost",
+     "item_id": "dod-omn24859-ac1-byok-priced-row"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/nodes/node_projection_delegation/test_byok_actual_cost.py -q --no-cov -n 0 -p no:randomly -k \"no_declared_price or no_byok_backend\"",
+     "item_id": "dod-omn24859-ac2-unpriced-unchanged"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run pytest tests/nodes/node_projection_delegation/test_byok_actual_cost.py -q --no-cov -n 0 -p no:randomly -k declared_price_is_booked_as_cost",
+     "item_id": "dod-omn24859-ac3-r8-cost-above-zero"
+    }
+   ],
+   "contract_id": "OMN-24859",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 7,
+   "held_paths": [
+    "config/test_file_durations.d/tests__nodes__node_projection_delegation__test_byok_actual_cost.json",
+    "config/test_file_durations.d/tests__test_omn24859_byok_projection_cost_real_postgres.json",
+    "src/omnimarket/nodes/node_projection_delegation/handlers/byok_actual_cost.py",
+    "src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py",
+    "tests/test_omn24859_byok_projection_cost_real_postgres.py"
+   ],
+   "lines_changed": 390,
+   "merge_commit": "69d026f1c63955bcbb42de2c6711dac3e79b2ec9",
+   "merged_at": "2026-11-21T21:19:44Z",
+   "repository": "omnimarket",
+   "subject": "OMN-24859: book BYOK catalogue cost in delegation projection instead of zero (#6331)"
   },
   {
    "band": "M",
@@ -11318,6 +11499,120 @@
    "merged_at": "2026-11-06T18:45:52Z",
    "repository": "omnimarket",
    "subject": "fix(OMN-22717): the automation liveness check does not read what a git checkout ignores (#5214)"
+  },
+  {
+   "band": "M",
+   "base_commit": "5bf30a3f5258f3e797bd86d05a5847dca9efcc82",
+   "check_files": [
+    "src/omnimarket/nodes/node_floor_fill_scheduled_effect/tests/test_live_profile.py",
+    "src/omnimarket/nodes/node_floor_fill_scheduled_effect/tests/test_live_profile_real_postgres.py"
+   ],
+   "checks": [
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_scheduled_effect/tests/test_live_profile.py -q --no-cov -n 0 -p no:randomly -k live_golden",
+     "item_id": "dod-omn24307-ac1-live-golden"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_scheduled_effect/tests/test_live_profile.py -q --no-cov -n 0 -p no:randomly -k \"dsn_unset or unreachable or declared_variable\"",
+     "item_id": "dod-omn24307-ac2-dsn-unset"
+    },
+    {
+     "check_type": "test_passes",
+     "check_value": "uv run --frozen pytest src/omnimarket/nodes/node_floor_fill_scheduled_effect/tests/test_live_profile_real_postgres.py -q --no-cov -n 0 -p no:randomly",
+     "item_id": "dod-omn24307-ac4-hosted-row"
+    }
+   ],
+   "contract_id": "OMN-24307",
+   "control": "pass",
+   "control_source": null,
+   "files_changed": 81,
+   "held_paths": [
+    "CHANGELOG.md",
+    "pyproject.toml",
+    "src/omnimarket/configs/work_contracts/contracts/F01-01.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F01-02.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F01-03.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F01-04.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F01-05.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F01-06.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F01-07.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F01-08.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F01-09.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F01-10.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F02-01.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F02-02.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F02-03.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F02-04.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F02-05.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F02-06.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F02-07.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F02-08.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F02-09.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F02-10.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F04-01.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F04-02.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F04-03.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F04-04.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F04-05.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F04-06.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F04-07.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F04-08.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F04-09.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F04-10.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F05-01.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F05-02.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F05-03.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F05-04.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F05-05.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F05-06.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F05-07.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F05-08.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F05-09.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F05-10.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F06-01.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F06-02.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F06-03.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F06-04.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F06-05.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F06-06.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F06-07.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F06-08.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F06-09.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/F06-10.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/dod-OMN-21090-01.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/dod-OMN-21090-02.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/dod-OMN-21090-03.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/dod-OMN-21090-04.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/dod-OMN-21090-05.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/dod-OMN-21090-06.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/dod-OMN-21090-07.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/dod-OMN-21090-08.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/dod-OMN-21090-09.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/dod-OMN-21090-10.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/dod-OMN-21090-11.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/dod-OMN-21090-12.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/dod-OMN-21090-13.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/dod-OMN-21090-14.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/dod-OMN-21090-15.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/dod-OMN-21090-16.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/dod-OMN-21090-17.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/dod-OMN-21090-18.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/dod-OMN-21090-19.yaml",
+    "src/omnimarket/configs/work_contracts/contracts/dod-OMN-21090-20.yaml",
+    "src/omnimarket/handlers/floor_fill_scheduled_tick.py",
+    "src/omnimarket/nodes/node_floor_fill_scheduled_effect/handlers/handler_floor_fill_scheduled.py",
+    "src/omnimarket/nodes/node_floor_fill_scheduled_effect/tests/__init__.py",
+    "tests/fixtures/routing_sources/inventory.yaml",
+    "tests/nodes/node_floor_fill_scheduled_effect/test_golden_chain_floor_fill_scheduled.py",
+    "uv.lock"
+   ],
+   "lines_changed": 1974,
+   "merge_commit": "ae69d5697728071abc46509da777ffebc69582e3",
+   "merged_at": "2026-11-19T13:26:26Z",
+   "repository": "omnimarket",
+   "subject": "OMN-24307: the floor fill job runs its live profile and writes its state row (#6101)"
   },
   {
    "band": "M",

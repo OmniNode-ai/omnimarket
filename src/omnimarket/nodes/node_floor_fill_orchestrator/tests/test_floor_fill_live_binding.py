@@ -3,9 +3,10 @@
 """The live profile: the adapters, the settings, the entry and a tick over the live binding with scripted reads.
 
 The reads (floor URL, plan files, ledger file) are the real adapters pointed at temporary files or driven by an
-injected fetch; the store is the in-memory conditional store. What is not bound live (pool, tickets, brake, stop
-signal) must fail the pass closed naming the seam: ``test_unbound_pool_is_not_read_as_zero_slots`` is the failing
-control for that rule.
+injected fetch; the store is the in-memory conditional store. A source that cannot be read (here the pool snapshot, which
+the test never writes) must fail the pass closed naming the source: ``test_unbound_pool_is_not_read_as_zero_slots`` is
+the failing control for the stand-in that answers ``unbound``, and ``test_floor_fill_live_seam_binding`` proves the live
+binding of all four seams.
 """
 
 from __future__ import annotations
@@ -69,6 +70,12 @@ def live_section(tmp_path: Path, **changes: Any) -> dict[str, Any]:
         "plan_file_pattern": "{line_id}.md",
         "ledger_path": str(tmp_path / "ledger.md"),
         "process_output_dir": str(tmp_path / "out"),
+        "pool_snapshot_path": str(tmp_path / "pool.json"),
+        "pool_record_suffix": ".read-at.json",
+        "pool_snapshot_max_age_seconds": 180,
+        "pool_engine": "claude_sonnet",
+        "mint_timeout_seconds": 5.0,
+        "andon_state_dir": str(tmp_path / "andon"),
     }
     return {**section, **changes}
 
@@ -265,6 +272,12 @@ def tick(tmp_path: Path, fetch: Any) -> tuple[str, int, InMemoryFloorStateStore]
     from omnimarket.nodes.node_floor_fill_orchestrator.container.container_live import (
         build_live_handler_factory,
     )
+    from omnimarket.nodes.node_floor_fill_orchestrator.handlers.adapter_floor_seams_live import (
+        LiveSeamSources,
+    )
+
+    def stop_queue_absent() -> Any:
+        raise OSError("no stop queue in this test")
 
     store = InMemoryFloorStateStore()
     settings = load_floor_fill_live_settings(live_section(tmp_path))
@@ -276,16 +289,21 @@ def tick(tmp_path: Path, fetch: Any) -> tuple[str, int, InMemoryFloorStateStore]
         host_id=OVERLAY["host_id"],
         hosts=[(OVERLAY["host_id"], True)],
         build_handler=build_live_handler_factory(
-            settings, dsn="unused", store=store, fetch_text=fetch
+            settings,
+            dsn="unused",
+            store=store,
+            fetch_text=fetch,
+            sources=LiveSeamSources(stop_facts=stop_queue_absent),
         ),
     )
     return result.stdout, result.exit_code, store
 
 
-def test_live_tick_pool_unbound_fails_closed(tmp_path: Path) -> None:
+def test_live_tick_pool_snapshot_absent_fails_closed(tmp_path: Path) -> None:
     record = floor_record(LINES4, generated_at=T0)
     out, code, store = tick(tmp_path, lambda _url, _timeout: record)
-    assert "pool-unread:unbound:pool" in out
+    assert "pool-unread:pool-snapshot" in out
+    assert "unbound" not in out
     assert code == DEGRADED
     assert store.load("floor-fill-test").version == 0
 
@@ -337,3 +355,55 @@ def test_integrating_item_is_not_startable() -> None:
     record["lines"][0]["stations"][0]["items"][0]["state"] = "integrating"
     parsed = ModelFloorRecordRead.model_validate_json(json.dumps(record))
     assert parsed.lines[0].stations[0].items[0].state == "integrating"
+
+
+def test_settings_accept_store_dsn_env_file(tmp_path: Path) -> None:
+    settings = load_floor_fill_live_settings(
+        live_section(tmp_path, store_dsn_env_file=str(tmp_path / "fill.env"))
+    )
+    assert settings.store_dsn_env_file == str(tmp_path / "fill.env")
+
+
+def test_live_profile_reads_dsn_variable_from_env_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("EXAMPLE_FLOOR_FILL_DSN", raising=False)
+    env_file = tmp_path / "fill.env"
+    env_file.write_text("OTHER=1\nEXAMPLE_FLOOR_FILL_DSN=postgresql://x\n")
+    overlay = full_overlay(tmp_path, store_dsn_env_file=str(env_file))
+    main(
+        [
+            "--overlay-json",
+            json.dumps(overlay),
+            "--this-host",
+            "fill-host",
+            "--profile",
+            "live",
+            "tick",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert "overlay:" not in out
+    assert "store-dsn-unset" not in out
+
+
+def test_live_profile_env_file_without_variable_names_it(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("EXAMPLE_FLOOR_FILL_DSN", raising=False)
+    env_file = tmp_path / "fill.env"
+    env_file.write_text("OTHER=1\n")
+    overlay = full_overlay(tmp_path, store_dsn_env_file=str(env_file))
+    code = main(
+        [
+            "--overlay-json",
+            json.dumps(overlay),
+            "--this-host",
+            "fill-host",
+            "--profile",
+            "live",
+            "tick",
+        ]
+    )
+    assert code == FAILED
+    assert "store-dsn-unset:EXAMPLE_FLOOR_FILL_DSN" in capsys.readouterr().out

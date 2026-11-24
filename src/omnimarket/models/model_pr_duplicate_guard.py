@@ -393,7 +393,6 @@ class ModelPrDuplicateSnapshotRequest(BaseModel):
     lane: str | None = None
     cause: str | None = None
     watcher_state: str | None = None
-    ledger: str | None = None
     clone: str | None = None
     worktree: str | None = None
     #: ``OWNER/REPO#N`` pull requests the caller says this change replaces; the snapshot reads each one's state.

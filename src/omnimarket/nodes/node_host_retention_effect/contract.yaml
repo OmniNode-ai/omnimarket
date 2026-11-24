@@ -23,7 +23,7 @@ description: >-
   declare `archive: true`: the entry is then compressed into the archive tree of node_retention_cleanup's file_retention policy (its archive_root_env and synced marker, the same verified-copy code), read back and compared, and removed only after that; with no archive tree it removes nothing. A terminal guard must declare its receipt evidence (a lane the ledger window does not hold is otherwise kept forever); an entry that the archive cannot hold whole (a symlink or a .git inside) is kept as not_archivable and counted as unknown in the class totals. A lane_results class whose root is a folder that node_retention_cleanup's policy archives (an `action: archive` entry there, enabled or disabled: the operator's archive consent) must declare `archive: true`: a host row that would delete such a folder is refused before anything is read. RUNNER WORK: a CI runner container's mounted work and cache folders
   are evicted, largest declared entry first, down to keep_gib, only while `docker top` shows no Runner.Worker in the runner's
   container (re-read before every removal; an unreadable state refuses the runner) and only through `docker exec` in that
-  container as the runner's own user. UV CACHE: `uv cache prune` once the cache holds min_gib, and, when a cap is declared, evict whole entries (unpacked wheels, git dependency checkouts) of the declared buckets oldest-first until the cache is at or under cap_gib, keeping entries that are hardlinked into a virtual environment, changed within keep_days, held by a live process, or not a plain folder.
+  container as the runner's own user. UV CACHE: `uv cache prune` once the cache holds min_gib, and, when a cap is declared, evict whole entries (unpacked wheels, git dependency checkouts) of the declared buckets oldest-first until the cache is at or under cap_gib, keeping entries that are hardlinked into a virtual environment, changed within keep_days, held by a live process, or not a plain folder. A cache may instead declare a free_disk rule: the node never measures it; it reads the free space of the cache's filesystem once and, only when that is below min_free_gib, evicts whole entries of the declared buckets untouched for keep_days, oldest first, until their bytes bring the free space to target_free_gib (the same keep guards apply).
   PRE-COMMIT STORE: a hook repository folder of the pre-commit cache is removed when nothing under it changed inside
   keep_days and no live process names it, together with its row in the store's index under the store's lock. A dry run reads everything and removes
   nothing: it lists each entry it would remove with its bytes and the totals per class. Never a docker volume, never a secret path,
@@ -60,6 +60,13 @@ runtime_dispatch:
   terminal_events:
     success: onex.evt.omnimarket.host-retention-completed.v1
     failure: onex.evt.omnimarket.host-retention-failed.v1
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_host_retention_effect run --host <host> [--dry-run]
+    owner: OmniNode Platform Team
+  # Every 6 hours on a Linux pool host (a Mac host, once a day), the host timer of node_host_installer_registry_units runs
+  # runtime_host_retention_tick, which runs the uv cache class for the host named by the unit's environment (OMN-26109).
+  host_unit:
+    unit: host-retention-uv-cache-systemd
 externally_consumed_topics:
   - onex.evt.omnimarket.host-retention-completed.v1
   - onex.evt.omnimarket.host-retention-failed.v1
@@ -100,10 +107,15 @@ retention_bounds:
   # (uv makes a new one for every revision it installs and never removes an old one; it rebuilds a missing one from its git
   # database). `keep_linked` keeps an entry in which a file has more than one hard link: a virtual environment shares the
   # unpacked wheel that way, so an archive entry so linked is in use; a git checkout is hard-linked to uv's own git database,
-  # never to a virtual environment, so the link there guards nothing. A cap naming any other folder is refused.
+  # never to a virtual environment, so the link there guards nothing. uv 0.13 names its git folder git-v1 (read on h053, uv 0.13.6:
+  # `git-v1/checkouts/<repository>/<revision>`, the same shape as git-v0) and writes a zero-byte `<revision>.ok` marker beside
+  # each checkout: `marker_suffix` pairs the marker with its checkout, so the scan does not list a marker whose checkout folder is
+  # present and a removal unlinks the marker before the folder (a marker kept beside a half-removed checkout makes uv trust the
+  # half). A marker with no checkout beside it is listed as a special entry and a cap keeps it. A cap naming any other folder is refused.
   uv_evictable_buckets:
     archive-v0: {depth: 1, keep_linked: true}
     git-v0/checkouts: {depth: 2, keep_linked: false}
+    git-v1/checkouts: {depth: 2, keep_linked: false, marker_suffix: ".ok"}
   # The one sanctioned reader of the rolling work ledger (the bus-fed rows loader; it counts any file fallback itself). A terminal guard
   # runs this module and no other, and opens no ledger file: 720 hours is the loader's own window cap.
   terminal_loader: {module: omnimarket.nodes.node_ledger_rows_loader_effect, max_window_hours: 720}

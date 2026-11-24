@@ -174,12 +174,13 @@ runtime:
       to_nodes:
         - node_lab_placement_compute:join_j2
         - node_seam_deadline_probe_effect:join_j2
-  # The ledger the go and the ledger-written piece events are read from (OMN-22674): the live file the environment names and
-  # the rolls beside it. A ledger that cannot be read draws the go and those events as unread, never as zero.
+  # The ledger the go and the ledger-written piece events are read from (OMN-22674): the bus read command the environment names
+  # (OMN-26329; the route read the live file and its rolls before). One command runs per query, with this timeout, and an
+  # answer over the row limit or with an open cursor is an unread ledger. A ledger that cannot be read draws the go and those
+  # events as unread, never as zero.
   ledger:
-    route: file
-    path_env: ONEX_LEDGER_PATH
-    archive_subdir: archive
+    route: command
+    command_env: ONEX_LEDGER_BUS_READ_COMMAND
     timeout_seconds: 60
     row_limit: 100000
   sources:

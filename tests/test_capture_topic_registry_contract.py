@@ -122,6 +122,12 @@ _DUTY_CRITICAL_ALLOWLIST = frozenset(
         "work.ledger.typed.ruling",
         "work.ledger.typed.status",
         "work.ledger.typed.terminal",
+        # OMN-26579: an agent message accepted for sending is never dropped from
+        # the spool. Not a capture topic: every field of the message model
+        # (sender, recipient, thread, kind, text, platform, send time) carries a
+        # max_length, so the payload is bounded by its own schema, not by a byte
+        # cap.
+        "agent.message",
     }
 )
 

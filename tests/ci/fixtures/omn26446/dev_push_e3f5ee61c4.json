@@ -1,0 +1,20 @@
+{
+  "dev_sha": "e3f5ee61c433295f6f6eca469a18b7980c3a8680",
+  "ci_run": 44978250489,
+  "recorded_dev_ci_verdict": "success with every Tests shard skipped",
+  "recorded_by": "a lab run of tests/ci/test_selection_stage_evidence.py (-q --no-cov -p no:randomly) at the sha above: 6 failed, 29 passed",
+  "pair": [
+    "omnimarket#6567",
+    "omnimarket#6580"
+  ],
+  "revert": "omnimarket#6590",
+  "failing_file": "tests/ci/test_selection_stage_evidence.py",
+  "failing_tests": [
+    "tests/ci/test_selection_stage_evidence.py::test_selection_stage_of_this_tree_has_the_receipts_it_needs",
+    "tests/ci/test_selection_stage_evidence.py::test_selection_stage_zero_baseline_receipt_is_the_only_receipt_at_stage_zero",
+    "tests/ci/test_selection_stage_evidence.py::test_selection_stage_zero_replay_equals_todays_decisions[changed0-feature/branch]",
+    "tests/ci/test_selection_stage_evidence.py::test_selection_stage_zero_replay_equals_todays_decisions[changed1-feature/branch]",
+    "tests/ci/test_selection_stage_evidence.py::test_selection_stage_zero_replay_equals_todays_decisions[changed2-feature/branch]",
+    "tests/ci/test_selection_stage_evidence.py::test_selection_stage_zero_replay_equals_todays_decisions[changed3-main]"
+  ]
+}

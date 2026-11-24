@@ -75,6 +75,15 @@ gates:
     skip_semantics: never
     rationale: "Already required on dev in the watcher settings readback; the real ci.yml producer runs on merge_group as well as pull_request and push."
 
+  - name: "Latest Core Smoke"
+    mode: REQUIRED
+    branch: dev
+    producer_kind: local
+    workflow: ci.yml
+    job_path: ["latest-core-smoke"]
+    skip_semantics: never
+    rationale: "OMN-26215: installs the newest omnibase-core without the lockfile and imports every onex.nodes entry point and its submodules (core#2335 removing run_node_in_process was seen first about 43 hours late). The job runs on every pull_request, merge_group and push (needs repo-evidence-preflight, if: always()) and sits in the strict CI Summary slot. Added to this manifest with the job; the live branch-protection context is added by the operator."
+
   - name: "CI Summary"
     mode: REQUIRED
     producer_kind: local

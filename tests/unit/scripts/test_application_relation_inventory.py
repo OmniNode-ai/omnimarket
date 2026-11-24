@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 from types import ModuleType
 
@@ -444,6 +445,31 @@ def test_disposition_relations_have_owners_and_cross_node_read_access() -> None:
     assert "node_projection_delegation_disposition" in events["readers"]
 
 
+def test_projection_freshness_alert_effect_tables_list_it_as_reader() -> None:
+    node = "node_projection_freshness_alert_effect"
+    contract = yaml.safe_load(
+        (
+            REPO_ROOT / "src" / "omnimarket" / "nodes" / node / "contract.yaml"
+        ).read_text()
+    )
+    declared = {row["name"] for row in contract["db_io"]["db_tables"]}
+    assert declared
+    checked_in = json.loads(
+        (
+            REPO_ROOT / "docs" / "evidence" / "OMN-15423-relation-inventory.json"
+        ).read_text()
+    )
+    by_name = {
+        row["name"]: row for row in checked_in["relations"] if row["kind"] == "table"
+    }
+    for name in declared:
+        assert node in by_name[name]["readers"], name
+        assert (
+            f"src/omnimarket/nodes/{node}/contract.yaml"
+            in by_name[name]["contract_sources"]
+        ), name
+
+
 def test_runtime_activity_is_not_inferred_from_checked_in_dsn_keys() -> None:
     payload = _load_generator().build_inventory()
     runtime = payload["runtime_evidence"]
@@ -645,7 +671,11 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +2 for OMN-23865's host_disk_class and host_disk_volume, declared and created in the same PR = 132.
     # +1 for skill_executions, created by node_projection_skill_lifecycle = 133.
     # +2 for OMN-20034's goal_trace_events and goal_traces, created by node_projection_goal_trace = 135.
-    assert census["source_created_tables"] == 135
+    # +4 for the eval-results projection's node-owned tables (node_projection_eval_results) = 139.
+    # +1 for OMN-25104's done_items, declared and created by node_projection_done_items = 140.
+    # +1 for OMN-25103's floor_integration_rows, declared and created by node_projection_floor_integration = 141.
+    # +1 for OMN-25103's floor_integration_pass, the held-pass marker, declared and created in the same PR = 142.
+    assert census["source_created_tables"] == 142
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -839,7 +869,11 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +1 for OMN-24118's branch_deploy_state: ownership is declared before the
     # omnibase_infra migration 116 that creates it.
     # +1 for skill_executions, declared with its CREATE in the same change = 148.
-    assert census["source_declared_tables"] == 148
+    # +4 for the eval-results projection's node-owned tables, declared with their CREATE = 152.
+    # +1 for OMN-25104's done_items, declared with its CREATE in the same change = 153.
+    # +1 for OMN-25103's floor_integration_rows, declared with its CREATE in the same change = 154.
+    # +1 for OMN-25103's floor_integration_pass, declared with its CREATE in the same change = 155.
+    assert census["source_declared_tables"] == 155
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then

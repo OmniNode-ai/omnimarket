@@ -89,8 +89,8 @@ class FakeUv:
 
 class FakeUvArchive:
     """The uv archive port. ``entries`` is a list (the ``archive-v0`` bucket) or a dict bucket -> list; the port records each scan
-    (bucket folder, depth) and each removed ``bucket/name``, can fail a scan (all, or the buckets named in ``fail_buckets``) or a
-    remove, and really deletes the folder when given a cache ``root``."""
+    (bucket folder, depth) and each removed ``bucket/name`` with its marker suffix (``removed_markers``), can fail a scan (all,
+    or the buckets named in ``fail_buckets``) or a remove, and really deletes the folder when given a cache ``root``."""
 
     def __init__(
         self,
@@ -112,6 +112,7 @@ class FakeUvArchive:
         self.root = root
         self.scans: list[tuple[str, int]] = []
         self.removed: list[str] = []
+        self.removed_markers: list[str | None] = []
 
     def _bucket(self, bucket_dir: str) -> str:
         for bucket in self.entries:
@@ -120,7 +121,11 @@ class FakeUvArchive:
         return ""
 
     def scan(
-        self, bucket_dir: str, depth: int, timeout_s: float
+        self,
+        bucket_dir: str,
+        depth: int,
+        timeout_s: float,
+        marker_suffix: str | None = None,
     ) -> list[ModelUvArchiveEntry]:
         self.scans.append((bucket_dir, depth))
         bucket = self._bucket(bucket_dir)
@@ -132,10 +137,13 @@ class FakeUvArchive:
             raise OSError("scan refused")
         return list(self.entries.get(bucket, []))
 
-    def remove(self, bucket_dir: str, name: str) -> None:
+    def remove(
+        self, bucket_dir: str, name: str, marker_suffix: str | None = None
+    ) -> None:
         if self.fail_remove:
             raise OSError("remove refused")
         self.removed.append(f"{self._bucket(bucket_dir)}/{name}")
+        self.removed_markers.append(marker_suffix)
         if self.root is not None:
             shutil.rmtree(self.root / name, ignore_errors=True)
 
@@ -273,14 +281,21 @@ class FakePreCommitStore:
 
 
 class FakeDisk:
-    def __init__(self) -> None:
+    """Used 80 on the first read and 50 after, of 100; ``free`` (bytes), when given, is every reading's free space."""
+
+    def __init__(self, free: int | None = None) -> None:
         self.reads = 0
+        self.free = free
 
     def reading(self, path: str) -> ModelDiskReading:
         self.reads += 1
         used = 80.0 if self.reads == 1 else 50.0
         return ModelDiskReading(
-            path=path, used_bytes=int(used), total_bytes=100, used_percent=used
+            path=path,
+            used_bytes=int(used),
+            total_bytes=100,
+            used_percent=used,
+            free_bytes=int(100 - used) if self.free is None else self.free,
         )
 
 
@@ -297,6 +312,7 @@ def make_ports(
     closure: Any = None,
     receipts: Any = None,
     archive: Any = None,
+    disk: Any = None,
 ) -> HostRetentionPorts:
     return HostRetentionPorts(
         runner_state=runner_state or FakeRunnerState(),
@@ -306,7 +322,7 @@ def make_ports(
         lane_liveness=lanes or FakeLanes(set()),
         container_mounts=mounts or FakeMounts(set()),
         unit_files=units or FakeUnits([]),
-        disk=FakeDisk(),
+        disk=disk or FakeDisk(),
         pre_commit_store=pre_commit or FakePreCommitStore(),
         # An explicit FakeClosure(None) (an unreadable ledger) must pass through.
         lane_closure=closure if closure is not None else FakeClosure({}),

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from typing import Annotated, Literal, Self
 
 from pydantic import (
@@ -196,15 +196,13 @@ class ModelRunnerGroup(_Frozen):
         return self
 
 
-class ModelUvCacheCap(_Frozen):
-    """The size cap of a uv cache.
+class _UvEvictionBuckets(_Frozen):
+    """The folders of a uv cache a pass may evict whole entries from, and how old an entry must be.
 
-    When the cache still holds more than ``cap_gib`` after the prune, the whole entries of each bucket
-    (a path relative to the cache, whose depth the contract declares) are evicted oldest first until the
-    cache is at or under the cap. An entry changed inside ``keep_days`` is never evicted.
+    ``buckets`` are paths relative to the cache whose depth the contract declares. An entry changed inside
+    ``keep_days`` is never evicted.
     """
 
-    cap_gib: float = Field(gt=0)
     buckets: Annotated[tuple[NonEmptyStr, ...], Field(min_length=1)]
     keep_days: float = Field(gt=0)
 
@@ -221,6 +219,39 @@ class ModelUvCacheCap(_Frozen):
         return self
 
 
+class ModelUvCacheCap(_UvEvictionBuckets):
+    """The size cap of a uv cache.
+
+    When the cache still holds more than ``cap_gib`` after the prune, the whole entries of each bucket
+    (a path relative to the cache, whose depth the contract declares) are evicted oldest first until the
+    cache is at or under the cap. An entry changed inside ``keep_days`` is never evicted.
+    """
+
+    cap_gib: float = Field(gt=0)
+
+
+class ModelUvFreeDiskRule(_UvEvictionBuckets):
+    """The free-disk and age rule of a uv cache: no size is ever measured.
+
+    The pass reads the free space of the filesystem the cache sits on (one cheap call). At or above
+    ``min_free_gib`` it does nothing. Below it, whole entries of each bucket are evicted oldest first,
+    only those untouched for ``keep_days``, until the entries' own bytes bring the free space to ``target_free_gib``.
+    The walk of the buckets happens only below ``min_free_gib``, never on a healthy host.
+    """
+
+    min_free_gib: float = Field(gt=0)
+    target_free_gib: float = Field(gt=0)
+
+    @model_validator(mode="after")
+    def target_not_below_min(self) -> Self:
+        if self.target_free_gib < self.min_free_gib:
+            raise ValueError(
+                f"target_free_gib {self.target_free_gib} must be at least "
+                f"min_free_gib {self.min_free_gib}"
+            )
+        return self
+
+
 class ModelUvArchiveEntry(_Frozen):
     """One whole entry of a uv cache bucket: ``name`` is its path relative to the bucket."""
 
@@ -232,20 +263,34 @@ class ModelUvArchiveEntry(_Frozen):
 
 
 class ModelUvCache(_Frozen):
-    """One uv cache directory to prune when it exceeds ``min_gib``."""
+    """One uv cache directory, held under control by exactly one of two rules.
+
+    ``min_gib``: measure the cache (``uv cache size`` walks every file) and ``uv cache prune`` it once it holds ``min_gib``,
+    with an optional size ``cap``. ``free_disk``: read the free space of the cache's filesystem and evict old entries only
+    when it is low; the cache is never measured and ``uv_binary`` is not run.
+    """
 
     path: HostPath
     uv_binary: NonEmptyStr
-    min_gib: float = Field(ge=0)
+    min_gib: float | None = Field(default=None, ge=0)
     ci_prune: bool = False
     timeout_seconds: float = Field(
         gt=0
-    )  # `uv cache size` walks every file of the cache and can take minutes
+    )  # `uv cache size` walks every file of the cache and can take minutes; also the bucket scan's deadline
     cap: ModelUvCacheCap | None = None
+    free_disk: ModelUvFreeDiskRule | None = None
 
     @model_validator(mode="after")
-    def cap_not_below_min(self) -> Self:
-        if self.cap is not None and self.cap.cap_gib < self.min_gib:
+    def one_rule(self) -> Self:
+        if (self.min_gib is None) == (self.free_disk is None):
+            raise ValueError("declare exactly one of min_gib and free_disk")
+        if self.free_disk is not None and self.cap is not None:
+            raise ValueError("a free_disk rule takes no cap")
+        if (
+            self.cap is not None
+            and self.min_gib is not None
+            and self.cap.cap_gib < self.min_gib
+        ):
             raise ValueError(
                 f"cap_gib {self.cap.cap_gib} must be at least min_gib {self.min_gib}"
             )
@@ -271,14 +316,19 @@ class ModelHostRetention(_Frozen):
         True  # keep any entry a running container bind-mounts (or holds a mount inside)
     )
 
-    def consent_refusals(self, consent_roots: Mapping[str, str]) -> list[str]:
+    def consent_refusals(
+        self, consent_roots: Mapping[str, str], classes: Collection[str] = ()
+    ) -> list[str]:
         """Refusal texts for a lane_results class rooted at a root the operator's archive consent names.
 
         ``consent_roots`` maps an absolute real path to the label of the policy entry that names it. A class
         whose real root is one of them and whose ``archive`` is false would delete what the consent says is
-        archived, so it is refused.
+        archived, so it is refused. ``classes`` is the classes the pass runs (empty: every class); a lane_results
+        class the pass does not run is not judged.
         """
         refusals: list[str] = []
+        if classes and "lane_results" not in classes:
+            return refusals
         for age in self.age_classes:
             label = consent_roots.get(os.path.realpath(age.root))
             if age.kind == "lane_results" and label is not None and not age.archive:
@@ -309,10 +359,16 @@ class ModelUvBucketBound(_Frozen):
     ``depth`` is how many levels under the folder a whole entry sits. ``keep_linked`` keeps an entry in which any file has
     more than one hard link: in ``archive-v0`` that is a virtual environment sharing the unpacked wheel, but a git checkout is
     hard-linked to uv's own git database (never to a virtual environment), so there the link says nothing and is not a guard.
+    ``marker_suffix`` is the suffix of the zero-byte marker file uv writes beside each entry of the bucket (uv 0.13 writes a
+    ``<revision>.ok`` beside every git checkout): a marker belongs to its checkout, so the scan skips one whose checkout
+    folder is present and a removal unlinks the marker before the folder.
     """
 
     depth: int = Field(ge=1, le=3)
     keep_linked: bool
+    marker_suffix: str | None = Field(
+        default=None, min_length=1, pattern=r"^[A-Za-z0-9._-]+$"
+    )
 
 
 class ModelTerminalLoaderBound(_Frozen):
@@ -407,6 +463,7 @@ class ModelRetentionKept(_Frozen):
         "protected",
         "under_budget",
         "below_min",
+        "free_disk_ok",
         "store_locked",
         "terminal_too_new",
         "lane_unnamed",
@@ -426,6 +483,7 @@ class ModelDiskReading(_Frozen):
     used_bytes: int
     total_bytes: int
     used_percent: float
+    free_bytes: int = Field(ge=0)  # what a non-root user can still write
 
 
 class ModelClassTotals(_Frozen):

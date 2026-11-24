@@ -94,6 +94,7 @@ def test_golden_the_rendered_agent_runs_the_tick_module_with_the_host_name(
             project_path=str(branch),
             expected_revision=revision,
             ledger_host_name="h101",
+            path_overrides={"ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "roots")},
         )
     )
     assert result.status == "success", result.stderr
@@ -111,9 +112,7 @@ def test_golden_the_rendered_agent_runs_the_tick_module_with_the_host_name(
     assert str(unit["run_timeout_s"]) in args
     env = plist["EnvironmentVariables"]
     assert env["ONEX_HOST_NAME"] == "h101"
-    assert env["ONEX_SKILL_OVERLAY_ROOTS"] == str(
-        tmp_path / "omni" / "overlays" / "overlays"
-    )
+    assert env["ONEX_SKILL_OVERLAY_ROOTS"] == str(tmp_path / "roots")
 
 
 def test_a_checkout_without_the_tick_entry_file_is_refused(tmp_path: Path) -> None:
@@ -123,3 +122,4 @@ def test_a_checkout_without_the_tick_entry_file_is_refused(tmp_path: Path) -> No
         request(tmp_path, unit=UNIT, mode="install", project_path=str(branch))
     )
     assert result.status == "failure"
+    assert "runtime_host_retention_tick.py" in result.stderr

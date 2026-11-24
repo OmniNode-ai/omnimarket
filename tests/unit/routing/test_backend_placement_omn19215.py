@@ -268,19 +268,21 @@ def test_routing_authority_loads_the_placement() -> None:
 def test_placed_backend_is_the_sibling_only_after_its_rung_is_tried() -> None:
     # With nothing tried, the probe offers the rung itself, never the mirror.
     assert (
-        routing.sibling_backend_available_in_tier("local", "document", frozenset())
+        routing.sibling_backend_available_in_tier(
+            "local", "document", frozenset(), prompt=""
+        )
         == "local-heavy-reasoning"
     )
     # With the rung tried (a transport failure on .201), the mirror answers.
     assert (
         routing.sibling_backend_available_in_tier(
-            "local", "document", frozenset({"local-heavy-reasoning"})
+            "local", "document", frozenset({"local-heavy-reasoning"}), prompt=""
         )
         == "local-omnipc2-chat"
     )
     assert (
         routing.sibling_backend_available_in_tier(
-            "local", "code_generation", frozenset({"local-coder"})
+            "local", "code_generation", frozenset({"local-coder"}), prompt=""
         )
         == "local-omnipc2-chat"
     )

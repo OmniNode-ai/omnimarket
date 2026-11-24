@@ -812,8 +812,9 @@ def test_red_replay_deploy_gate_red_now_fails() -> None:
 EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
     ("delegation-health-check.yml", "delegation-health-check"): (
         "OMN-25514: a dev signal that reads lab and stability verdicts, in no "
-        "required list; its red row is admitted by a dated sweep exclusion "
-        "until its triggers move to schedule and push on dev."
+        "required list; it runs on schedule and push to dev, and a dated "
+        "sweep exclusion admits the red row a head that ran the old "
+        "pull_request caller still carries."
     ),
     ("omn20025-ac1-postgres-proof.yml", "ac1-postgres16"): (
         "advisory read-only PostgreSQL 16 proof scoped to one PR; emits "
@@ -874,6 +875,10 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
         "post-merge automation (if: pull_request.merged == true) — "
         "structurally cannot gate the merge that already happened."
     ),
+    ("auto-tag-on-merge.yml", "reopen-dev"): (
+        "post-merge automation (needs auto-tag, which runs only on a merged "
+        "release PR) — structurally cannot gate the merge that already happened."
+    ),
     # --- OMN-19554: the report-only contract walker.
     ("contract-walker.yml", "contract-walker"): (
         "self-declared report-only, non-validating job by operator ruling "
@@ -886,6 +891,27 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
         "asserting it would wedge CI Summary. If the walker is ever promoted "
         "to fail on findings, this entry moves to EXPECTED_EXTERNAL_CONTEXTS "
         "in the same PR."
+    ),
+    # The customer installer's real platform runs (OMN-25070). They run on a
+    # push to dev that changes the installer, and on demand, never on a pull
+    # request, so asserting them would wedge CI Summary; a red run turns dev
+    # red. The installer's platform, checksum and conflict cases run in the
+    # Tests job on every pull request.
+    ("onex-installer.yml", "linux-x86_64"): (
+        "installer run on Linux x86_64 after a push to dev; never on a pull "
+        "request, so asserting it would wedge CI Summary."
+    ),
+    ("onex-installer.yml", "linux-arm64"): (
+        "installer run on Linux arm64 after a push to dev; never on a pull "
+        "request, so asserting it would wedge CI Summary."
+    ),
+    ("onex-installer.yml", "macos-arm64"): (
+        "installer run on Apple Silicon macOS after a push to dev; never on a pull "
+        "request, so asserting it would wedge CI Summary."
+    ),
+    ("onex-installer.yml", "macos-intel"): (
+        "installer run on Intel macOS after a push to dev; never on a pull "
+        "request, so asserting it would wedge CI Summary."
     ),
     ("pr-merged-publisher.yml", "publish-pr-merged"): (
         "post-merge automation (if: pull_request.merged == true) — "
@@ -1018,6 +1044,13 @@ _CI_YML_STRUCTURALLY_COVERED_KEYS: frozenset[str] = frozenset(
         # (naming it in STRICT_GATE_JOBS changes the bytes the recorded-head
         # replay pins).
         "overlay-main-load",
+        # Undeclared Read Check (OMN-26424): unconditional apart from the same fork guard; covered by the L3 default-deny sweep.
+        "undeclared-read-check",
+        # OMN-26446: the dev push tree-pass probe. It reports `skipped` on every
+        # pull request and merge group run, and on a dev push a failed probe is a
+        # non-good conclusion the L3 default-deny sweep fails; the verdict job
+        # (`Dev Push Full Suite Reuse`) also reads its result through `needs`.
+        "dev-tree-pass-probe",
     }
 )
 

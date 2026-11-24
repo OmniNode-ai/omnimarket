@@ -938,7 +938,10 @@ class RemoteLaneStartOrchestrator:
         )
         decided = self._close.handle(
             ModelRemoteLaneResultRequest(
-                engine_exit_code=engine_rc, final_message=message, engine=request.engine
+                engine_exit_code=engine_rc,
+                final_message=message,
+                engine=request.engine,
+                brief=request.brief,
             )
         )
         lane_outcome = (

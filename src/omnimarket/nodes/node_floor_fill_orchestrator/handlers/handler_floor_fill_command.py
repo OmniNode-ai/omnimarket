@@ -67,6 +67,10 @@ class HandlerFloorFillCommand:
         self._orchestrator = orchestrator
         self._runner = runner
 
+    def unbound_seams(self) -> tuple[str, ...]:
+        """The seams of the orchestrator still bound to an ``unbound`` stand-in (none for a live profile that can ship)."""
+        return self._orchestrator.unbound_seams()
+
     def handle(
         self, request: ModelFloorFillCommandRequest
     ) -> ModelFloorFillEntryResult:

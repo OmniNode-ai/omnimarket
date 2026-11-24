@@ -34,6 +34,8 @@ from omnimarket.nodes.node_projection_freshness_alert_effect.handlers.load_fresh
 from omnimarket.nodes.node_projection_freshness_alert_effect.models import (
     EnumFreshnessState,
     FreshnessPolicyError,
+    ModelCoverageCheck,
+    ModelCoverageObservation,
     ModelFreshnessCheck,
     ModelFreshnessEvaluation,
     ModelFreshnessObservation,
@@ -79,6 +81,9 @@ class _Reader:
         if self.error:
             raise RuntimeError(self.error)
         return self.observation
+
+    def read_coverage(self, check: ModelCoverageCheck) -> ModelCoverageObservation:
+        return ModelCoverageObservation(demand_done_tickets=0, unprojected_tickets=0)
 
 
 class _Publisher:
@@ -426,6 +431,7 @@ def test_no_threshold_literal_lives_in_python() -> None:
         "max_age_seconds",
         "window_seconds",
         "min_distinct",
+        "lookback_seconds",
     }
     offenders: list[str] = []
     for path in NODE_ROOT.rglob("*.py"):

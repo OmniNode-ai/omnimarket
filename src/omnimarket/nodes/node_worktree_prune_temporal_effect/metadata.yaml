@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_worktree_prune_temporal_effect
+version: "1.0.0"
+description: The worktree prune run as a Temporal workflow, one pruner step and one report step per host with a disk alarm
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_worktree_prune_temporal_effect: omnimarket.nodes.node_worktree_prune_temporal_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  side_effect_class: external_write
+dependencies:
+  - pydantic>=2.11.0
+  - pyyaml
+  - temporalio>=1.35.0,<2.0.0
+authors: [OmniNode Team]
+license: MIT
+tags: [effect, temporal, worktree, prune]
+node_role: effect
+pack: "routing"
+display_name: "Worktree Prune Workflow"

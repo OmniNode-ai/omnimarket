@@ -1,0 +1,24 @@
+name: node_host_installer_overlay_env_probe
+version: "1.0.0"
+description: "Reads every environment name and secret key the overlays of a host's nodes declare and records one row per name as set or unset for that host, never a value; a host with an unset name is unavailable for that node in placement"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_host_installer_overlay_env_probe: "omnimarket.nodes.node_host_installer_overlay_env_probe"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read
+dependencies:
+  - "pyyaml>=6.0"
+  - "pydantic>=2.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["install", "overlay", "placement", "environment", "effect"]
+pack: "install"
+display_name: "Host Installer Overlay Env Probe"
+node_role: "effect"

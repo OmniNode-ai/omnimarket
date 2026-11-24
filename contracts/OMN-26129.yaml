@@ -1,0 +1,121 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-26129"
+title: "OpenRouter dropped cohere/north-mini-code:free, cheap_frontier's only rung, so Routing Tier Bindability fails on every omnimarket PR; a smoked free model takes the rung"
+summary: "OpenRouter stopped listing cohere/north-mini-code:free, cheap_frontier's only rung, so the provider-catalogue step of Routing Tier Bindability failed on every omnimarket pull request. The rung moves to nvidia/nemotron-3.5-super-vl:free with north-mini-code's placement unchanged, after the tier's 10-task smoke accepted it 10 of 10. The tier stays free: paid OpenRouter models reach it only through the code eval (RULING 2026-11-11T12:33:37Z, OMN-23751)."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn26129-listed-free-rung"
+    statement: |-
+      cheap_frontier's rung is a free OpenRouter model the provider lists, smoked at or above the bar, and nothing packaged names the withdrawn model.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the cheap_frontier rung serves a free OpenRouter model that the provider catalogue lists and whose recorded smoke accepted 7 or more of 10, and no packaged backend declares a model OpenRouter no longer lists -- falsifier: uv run python -m omnimarket.nodes.node_provider_model_catalogue_effect exits non-zero, or uv run pytest tests/unit/routing/test_cheap_frontier_smoke_evidence_omn20376.py -q fails
+      - id: "AC2"
+        statement: |-
+          AC2: no packaged routing, placement or judge configuration names cohere/north-mini-code:free or openrouter-north-mini-code as a live backend, and the tests that pinned it name the new rung -- falsifier: uv run pytest tests/unit/routing tests/unit/delegation tests/validators/test_provider_model_catalogue.py -q fails
+      - id: "AC5"
+        statement: |-
+          AC5: the smoke is recorded: each candidate's 2026-11-20 row in the cheap_frontier smoke receipts with its model, accepted count and p50, the ten task prompts stored beside them -- falsifier: the receipts have no 2026-11-20 rows, or the placed model's row accepted fewer than 7
+      - id: "AC7"
+        statement: |-
+          AC7 (replaces AC5; closeout sweep 2026-11-22T0945Z, comment dbab7908): each measured candidate's 2026-11-20 row in the cheap_frontier smoke receipts records its model, accepted count and p50, each unmeasured candidate records its model and why it was not measured, and the ten task prompts are stored beside them -- falsifier: the 2026-11-20 receipt has a measured row without its model, accepted count or p50, an unmeasured candidate without its model or the reason it was not measured, or fewer than ten stored task prompts
+      - id: "AC6"
+        statement: |-
+          AC6 (operator ruling 2026-11-24 in chat (YES 26129-RECORD); the ticket's own AC6 line asks for an accepted count and a p50 for both models and still needs this amendment): each 2026-11-20 cheap_frontier smoke candidate that was not measured that day (google/gemma-4-31b-it:free and inclusionai/ling-3.2-flash:free) has a dated later row in the cheap_frontier smoke receipts that records today's honest outcome on the ten stored task prompts, either a measured row (model, whole-number accepted count within its tasks, outcome, and a p50 only when something was accepted) or a not-measured entry (model, reason with its UTC time, tries) -- falsifier: the receipts have no dated later row for either model, or a row without those fields
+  - id: "req-omn26129-tier-stays-free"
+    statement: |-
+      cheap_frontier stays free; paid models reach it only through the code eval.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: DeepSeek V4 Flash 0731 and Qwen 3.8 are not placed on the cheap_frontier ladder by this change; they join through the code eval as pinned-only arms (OMN-23751) -- falsifier: bifrost_delegation.yaml or routing_tiers.yaml places a deepseek or qwen3.8 OpenRouter backend on cheap_frontier
+      - id: "AC4"
+        statement: |-
+          AC4: cheap_frontier stays declared free (cost_type free_local, 0.0) and its rung is priced 0/0 in the provider catalogue, and the routing-completeness and free-before-paid ladder tests pass -- falsifier: the rung's catalogue price is above zero, or uv run pytest tests/unit/routing tests/unit/delegation tests/validators -q fails
+evidence_requirements:
+  - kind: "tests"
+    description: "The catalogue, smoke-evidence, withdrawal and free-tier tests."
+    command: "uv run pytest tests/validators/test_provider_model_catalogue.py tests/nodes/node_provider_model_catalogue_effect tests/unit/routing/test_cheap_frontier_smoke_evidence_omn20376.py tests/unit/routing/test_cheap_frontier_stays_free_omn26129.py tests/unit/routing/test_north_mini_spread_omn17427.py tests/unit/routing/test_cheap_frontier_closeout_omn26129.py -q -n 0 --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn26129-ac1-listed-and-smoked"
+    description: "AC1, one module holds it all: the catalogue probe exits 0 on the 2026-11-20 capture, no packaged backend declares a model the capture does not list, and each cheap_frontier rung is a listed free model priced 0/0 whose recorded smoke accepted 7 or more of 10; controls plant an unlisted, a priced, a below-the-bar and an unsmoked rung, each caught."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_cheap_frontier_ac1_listed_and_smoked_omn26129.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26129-ac2-withdrawn-and-renamed"
+    description: "AC2, one module holds it all: no parsed value in any packaged YAML or JSON file under src/omnimarket names cohere/north-mini-code:free or openrouter-north-mini-code (the routing contract, routing_tiers.yaml and the judge configs among the files scanned, an unparseable file failing), the independent-judge selector never picks the withdrawn rung, and the eight files omnimarket#6491 re-pointed name openrouter-nemotron-3-5-super, the only cheap_frontier rung; controls plant a withdrawn backend, a withdrawn judge and a file still pinning the old rung, each caught."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_cheap_frontier_ac2_withdrawn_and_renamed_omn26129.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26129-ac3-no-paid-model-on-the-tier"
+    description: "AC3, one module holds it all: no deepseek or qwen3.8 model is placed on cheap_frontier by any of three routes (bifrost on-tier, a placement block, the routing_tiers.yaml models list), each route and provider spelling caught when planted and malformed entries failing closed; and they join only as pinned-only code-eval arms: a deepseek and a qwen3.8 arm load through the routing overlay and through append_eval_arm_backends as explicit_pin_only with no placement, and an unpinned arm or one placed on cheap_frontier is refused."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_cheap_frontier_no_eval_only_placement_omn26129.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26129-ac4-complete-free-before-paid"
+    description: "AC4, one module holds it all: cheap_frontier declared free_local at 0.0, its rung listed and priced 0/0 in the 2026-11-20 capture, every class ladder that names the tier served there by the placed routing config, and no paid tier ahead of it in any ladder; controls plant a metered tier, a priced and an unlisted rung, an unserved tier and a paid tier first, each caught."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_cheap_frontier_ac4_free_and_first_omn26129.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26129-ac5-smoke-recorded"
+    description: "The 2026-11-20 smoke receipt and its candidate set, pinned: the one measured candidate, the placed Nemotron 3.5 Super, has its model, an accepted count within its task count (10 of 10, against the bar of 7) and a positive p50_seconds, and ran as many tasks as prompts are stored; the two other candidates (gemma-4-31b-it:free and ling-3.2-flash:free) were never measured because OpenRouter answered 429 when the key was registered for them, so they have no accepted count or p50, and each records that 429 and is not on the ladder; the ten task prompts are stored in the same receipt, each with its name, task type and full text, in the 7 summarization, 1 review, 1 code_generation, 1 test mix. Controls remove a p50, an accepted count, the unmeasured rows, a 429 reason, a prompt or a prompt's text, swap the measured candidate, change the mix or place an unmeasured model, and each is caught."
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_cheap_frontier_closeout_omn26129.py::test_every_candidate_row_is_recorded_with_model_accepted_and_p50 tests/unit/routing/test_cheap_frontier_closeout_omn26129.py::test_no_unmeasured_candidate_is_on_the_ladder tests/unit/routing/test_cheap_frontier_closeout_omn26129.py::test_the_ladder_check_catches_an_unmeasured_model_placed tests/unit/routing/test_cheap_frontier_closeout_omn26129.py::test_the_ten_prompts_are_stored_beside_the_rows tests/unit/routing/test_cheap_frontier_closeout_omn26129.py::test_the_receipt_checks_catch_each_planted_gap tests/unit/routing/test_cheap_frontier_smoke_evidence_omn20376.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26129-ac7-measured-and-unmeasured-recorded"
+    description: "AC7, which replaces AC5 as written: the 2026-11-20 receipt records the one measured candidate (the placed Nemotron 3.5 Super) with its model, an accepted count within its task count and a positive p50_seconds; records each unmeasured candidate (gemma-4-31b-it:free and ling-3.2-flash:free) with its model and why it was not measured (OpenRouter's 429 at key registration), off the ladder; and stores the ten task prompts beside them, each with its name, task type and full text. The same receipt checks AC5's binding ran; their controls remove a p50, an accepted count, the unmeasured rows, a 429 reason, a prompt or a prompt's text, and each is caught."
+    source: "manual"
+    binds_ac: ["AC7"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_cheap_frontier_closeout_omn26129.py::test_every_candidate_row_is_recorded_with_model_accepted_and_p50 tests/unit/routing/test_cheap_frontier_closeout_omn26129.py::test_no_unmeasured_candidate_is_on_the_ladder tests/unit/routing/test_cheap_frontier_closeout_omn26129.py::test_the_ladder_check_catches_an_unmeasured_model_placed tests/unit/routing/test_cheap_frontier_closeout_omn26129.py::test_the_ten_prompts_are_stored_beside_the_rows tests/unit/routing/test_cheap_frontier_closeout_omn26129.py::test_the_receipt_checks_catch_each_planted_gap tests/unit/routing/test_cheap_frontier_smoke_evidence_omn20376.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26129-ac6-later-rows-recorded"
+    description: "AC6 per the operator ruling 2026-11-24 in chat (YES 26129-RECORD): the 2026-11-24 receipt records, for google/gemma-4-31b-it:free and inclusionai/ling-3.2-flash:free, a dated later row with the attempt's honest outcome (a measured row with a whole-number accepted count and a p50 only when something was accepted, or a not-measured entry with a reason, its UTC time and tries) and stores all ten task prompts; controls spoil each field and each is refused."
+    source: "manual"
+    binds_ac: ["AC6"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_cheap_frontier_ac6_later_rows_omn26129.py tests/unit/routing/test_cheap_frontier_smoke_evidence_omn20376.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26129-integration-proof"
+    description: >-
+      Run the provider-catalogue check, the routing-completeness and tier-order coverage tests and the free-tier
+      test on a lab host at the pushed revision. This local completion proof carries no hosted AC bindings.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run
+          --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+          --lane dod-integration-proof-26129 --kind test --
+          uv run --frozen pytest
+          tests/unit/delegation/test_routing_completeness_omn15630.py
+          tests/unit/delegation/test_tier_order_backend_coverage_omn17427.py
+          tests/unit/routing/test_cheap_frontier_stays_free_omn26129.py
+          -q -n 0 --no-cov --refuse-skips
+        cwd: "."
