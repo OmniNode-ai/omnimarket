@@ -47,6 +47,13 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_host_installer_serve_units tests/unit/handlers/test_work_root_volume_bar.py -q --no-cov -n 0 -p no:randomly -k work_root_volume_bar
     cwd: .
+- id: dod-omn26371-worktree-root
+  description: The serve unit installer points the registry root's omni_worktrees at the host row's declared lab_worktree_root, never over a directory that holds entries, never over a link to another place, and refuses a root on a volume above 85 percent used. The test written first failed on dev with extra_forbidden for hosts.0.lab_worktree_root.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_installer_serve_units -q --no-cov -n 0 -p no:randomly -k worktree_root
+    cwd: .
 - id: dod-omn26371-ac4
   description: "AC4: moving existing lane run dirs and caches needs the live CLAIMs and the process table read on each host before each move. This pull request moves nothing. A disposition is required at the local Done gate."
   source: manual
