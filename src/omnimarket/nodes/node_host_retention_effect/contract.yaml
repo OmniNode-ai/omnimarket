@@ -60,6 +60,9 @@ runtime_dispatch:
   terminal_events:
     success: onex.evt.omnimarket.host-retention-completed.v1
     failure: onex.evt.omnimarket.host-retention-failed.v1
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_host_retention_effect run --host <host> [--dry-run]
+    owner: OmniNode Platform Team
 externally_consumed_topics:
   - onex.evt.omnimarket.host-retention-completed.v1
   - onex.evt.omnimarket.host-retention-failed.v1
