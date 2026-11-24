@@ -91,6 +91,10 @@ from omnimarket.handlers.routing.customer_key_terminus import (
 from omnimarket.handlers.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
 )
+from omnimarket.handlers.routing.delegation_system_prompts import (
+    SYSTEM_PROMPTS as _SYSTEM_PROMPTS,
+)
+from omnimarket.handlers.routing.endpoint_load_reader import endpoint_load_targets
 from omnimarket.handlers.routing.input_token_bound import input_bound_members
 from omnimarket.handlers.routing.measured_correct_ceiling import (
     exceeds_measured_correct_ceiling,
@@ -139,6 +143,9 @@ from omnimarket.models.delegation.credential_withheld_rung import (
 )
 from omnimarket.models.delegation.model_delegation_backend_placement import (
     ModelPlacedDelegationBackend,
+)
+from omnimarket.models.delegation.model_endpoint_load_snapshot import (
+    ModelEndpointLoadSnapshot,
 )
 from omnimarket.models.delegation.model_entry_tier_share import (
     entry_first_order,
@@ -213,128 +220,6 @@ def _roi_suppressed_tiers(
     """
     return roi_overlay.suppressed_tiers if roi_overlay is not None else frozenset()
 
-
-# System prompts by task type — kept here because they are presentation strings,
-# not routing configuration.
-_SYSTEM_PROMPTS: dict[str, str] = {
-    # OMN-19401: the repository's own conventions, not a fixed marker. The
-    # gate requires @pytest.mark.unit only where the prompt says the repository
-    # marks its tests that way, so this prompt must not demand it of every repo.
-    "test": (
-        "You are a test generation assistant. Write pytest tests for the provided "
-        "code, following the conventions of the repository the request names: use "
-        "the markers, fixtures, naming and assertion style of any tests shown, and "
-        "add no pytest marker the repository does not use. Cover the edge cases and "
-        "error paths the request asks for, with clear assertions."
-    ),
-    "document": (
-        "You are a documentation assistant. Write clear, comprehensive docstrings "
-        "and documentation for the provided code. Follow Google-style docstrings "
-        "with Args, Returns, and Raises sections."
-    ),
-    # OMN-18349: this prompt asked for code-line citations after OMN-13354
-    # replaced `cites_specific_lines` with `cites_sources` on the research
-    # class, so it asked for the one citation form the gate no longer grades.
-    # OMN-21088: it then asked every research prompt to "be thorough and
-    # attribute your claims", and "what is 2+2" came back as about 990 bytes of
-    # sourced reasoning. Sources are asked for by the `cites_sources` directive,
-    # and only when the prompt asks for them.
-    "research": (
-        "You are a research assistant. Answer the question directly, at the "
-        "length the question needs."
-    ),
-    "code_generation": (
-        "You are a code generation assistant. Implement the requested functionality "
-        "following existing patterns, conventions, and architecture in the codebase."
-    ),
-    "code_review": (
-        "You are a code review assistant. Identify bugs, style violations, and "
-        "architectural issues in the provided code. Be specific and actionable."
-    ),
-    "refactor": (
-        "You are a refactoring assistant. Improve the structure, readability, and "
-        "maintainability of the provided code without changing its behavior."
-    ),
-    # OMN-21088: the answer, not the working. Numbered steps are asked for by
-    # the `step_by_step_explanation` directive, and only when the prompt asks.
-    "reasoning": (
-        "You are a reasoning assistant. Work the problem out and give the conclusion."
-    ),
-    "planning": (
-        "You are a planning assistant. Break down the requested work into clear, "
-        "actionable steps with explicit acceptance criteria."
-    ),
-    "review": (
-        "You are a review assistant. Evaluate the provided artifacts against "
-        "the stated requirements and report any gaps or issues."
-    ),
-    "summarization": (
-        "You are a summarization assistant. Produce a concise, accurate summary "
-        "of the provided content."
-    ),
-    "extraction_proposer": (
-        "You are a context extraction assistant. Propose concise, accurate facts "
-        "from the provided content, preserving its identifiers and grounding "
-        "every claim in that content."
-    ),
-    "tail_summary": (
-        "You are a conversation summarization assistant. Produce a concise, "
-        "accurate summary of the provided conversation tail, preserving its "
-        "identifiers and grounding every claim in that content."
-    ),
-    "context_selection": (
-        "You are a context selection assistant. Select the provided context "
-        "relevant to the requested task, preserving its identifiers and "
-        "grounding every claim in that content."
-    ),
-    "context_compaction": (
-        "You are a context compaction assistant. Produce a concise, accurate "
-        "summary of the provided context, preserving its identifiers and "
-        "grounding every claim in that content."
-    ),
-    "simple_tasks": (
-        "You are a helpful assistant. Complete the requested task accurately."
-    ),
-    "escalation": (
-        "You are an expert assistant handling a complex task that requires deep "
-        "reasoning and careful consideration. Approach this methodically."
-    ),
-    "evidence_comment": (
-        "You are an evidence-comment drafting assistant. For each acceptance "
-        "criterion, state only what the lane report says about it, citing the "
-        "report's own identifiers, names, counts and timestamps."
-    ),
-    "complex_reasoning": (
-        "You are an expert reasoning assistant. Analyze the problem deeply, "
-        "consider edge cases, and provide a comprehensive solution."
-    ),
-    "agent_delegation": (
-        "You are an orchestration assistant. Coordinate the required sub-tasks "
-        "and ensure each is completed correctly before proceeding."
-    ),
-    "documentation": (
-        "You are a technical documentation assistant. Write and update "
-        "docstrings, README sections, and reference documentation for the "
-        "provided code. Follow Google-style docstrings with Args, Returns, "
-        "and Raises sections, keep prose accurate to the actual code "
-        "behavior, and never leave a docstring stub or placeholder."
-    ),
-    "validator_generation": (
-        "You are a validator authoring assistant. Write deterministic "
-        "validators and contract-compliance checks for the provided code or "
-        "contract. Every validator must compile without errors, pass the "
-        "existing test suite, and enforce the declared rule precisely — "
-        "prefer a hard failure over a silent pass on an unmet condition."
-    ),
-    # OMN-17427: the model drafts only the free-text slots; code fills the rest.
-    "brief_drafting": (
-        "You are a lane brief drafting assistant. Draft only the free-text "
-        "slots you are asked for, from the facts given. State only what the "
-        "facts state and never add an identifier they do not hold. Never write "
-        "a ticket-state acknowledgement, a quoted criterion, a constraints "
-        "block or a heading of the standing rules; code fills those."
-    ),
-}
 
 # cloud_routing_policy values that block routing to non-local tiers.
 _CLOUD_BLOCKED_POLICY = "blocked"
@@ -508,6 +393,7 @@ def _select_model_for_task(
     spread_peers: dict[str, tuple[str, ...]] | None = None,
     spread_member_weights: dict[str, float] | None = None,
     quota_state: ModelProviderQuotaSnapshot | None = None,
+    load_state: ModelEndpointLoadSnapshot | None = None,
 ) -> ModelTierModel | None:
     """Select a model from a tier, then spread it across its same-model peers.
 
@@ -575,6 +461,7 @@ def _select_model_for_task(
                 backend, require_credential=require_credential, quota_state=quota_state
             )
         ),
+        load=load_state,
     )
 
 
@@ -2139,6 +2026,7 @@ def backend_id_for_tier(
     spread_key: str | None = None,
     byok_backends: tuple[ModelResolvedDelegationBackend, ...] = (),
     prompt: str,
+    load_state: ModelEndpointLoadSnapshot | None = None,
 ) -> str | None:
     """Return the bifrost ``backend_id`` ``tier_name`` would select for ``task_type``.
 
@@ -2204,10 +2092,18 @@ def backend_id_for_tier(
         spread_key=spread_key,
         spread_peers=_spread_peers_for(config),
         spread_member_weights=_spread_weights_for(config),
+        load_state=load_state,
     )
     if selected is None:
         return None
     return selected.backend_ref
+
+
+def spread_load_targets() -> dict[str, str]:
+    """Endpoints whose load a caller reads (OMN-26534); empty with no spread peer."""
+    return endpoint_load_targets(
+        _spread_peers_for(_get_config()), _load_bifrost_endpoints()
+    )
 
 
 def credential_withheld_rung(
@@ -2747,6 +2643,7 @@ def delta(
     surface: EnumDelegationSurface = EnumDelegationSurface.CLOUD,
     quota_state: ModelProviderQuotaSnapshot | None = None,
     capability_map: ModelCapabilityMapRead | None = None,
+    load_state: ModelEndpointLoadSnapshot | None = None,
 ) -> ModelRoutingDecision:
     """Compute routing decision for a delegation request.
 
@@ -3160,6 +3057,7 @@ def delta(
                     spread_peers=spread_peers,
                     spread_member_weights=spread_member_weights,
                     quota_state=quota_state,
+                    load_state=load_state,
                 )
                 if selected is not None and selected.backend_ref in spread_members:
                     # The receipt's backend_id cannot tell two hosts serving
@@ -3213,6 +3111,8 @@ def delta(
                 and selected.id == contract_model_ref
             ):
                 rationale += f" Contract-override: model='{contract_model_ref}'."
+            if load_state is not None and selected.backend_ref in spread_members:
+                rationale += f" Load-aware (OMN-26534), {load_state.describe()}."
             if requested_backend_ref is None and entry is not None:
                 policy_val = entry.get("cloud_routing_policy")
                 policy_str = policy_val if isinstance(policy_val, str) else "allowed"

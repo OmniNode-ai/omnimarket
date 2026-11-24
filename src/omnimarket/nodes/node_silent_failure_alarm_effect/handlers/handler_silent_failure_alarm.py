@@ -32,6 +32,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from omnimarket.handlers.ledger_row_grammar import parse_row
+from omnimarket.handlers.ledger_rows_unreadable_error import LedgerRowsUnreadableError
 from omnimarket.models.silent_failure_alarm import (
     ModelCloserStalenessRequest,
     ModelDrainerRepair,
@@ -73,8 +74,8 @@ from ..models import (
     ModelSilentFailureAlarmRequest,
     ModelSilentFailureAlarmResult,
 )
-from ..protocols import ProtocolDrainerWatch
-from .alarm_io import CONTROLLER_STALE, append_row, one_line, read_controller
+from ..protocols import ProtocolAlarmLedger, ProtocolDrainerWatch
+from .alarm_io import CONTROLLER_STALE, BusAlarmLedger, one_line, read_controller
 from .closer_record_reader import (
     declared_interval,
     ledger_record_at,
@@ -91,6 +92,9 @@ LANE = "silent-failure-alarm"
 STAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 # Runs older than this say nothing about whether lab-fill places lanes now.
 LOOKBACK = timedelta(hours=6)
+# The rows loader answers at most this many hours (30 days); a tick reads a day unless the closer's span is longer.
+DEFAULT_WINDOW_HOURS = 24
+MAX_WINDOW_HOURS = 720
 DEDUPE = timedelta(hours=2)
 CONTROLLER_LIVE = CONTROLLER_STALE
 # An alert the channel has refused for this long is given up on, with a warning: the ledger row that
@@ -227,9 +231,11 @@ class HandlerSilentFailureAlarm:
         drainer_watch: ProtocolDrainerWatch | None = None,
         host_watches: Mapping[str, ProtocolDrainerWatch] | None = None,
         unavailable_hosts: Callable[[], tuple[frozenset[str], str]] | None = None,
+        ledger: ProtocolAlarmLedger | None = None,
     ) -> None:
         options = options or ModelSilentFailureAlarmOptions.from_environment()
         self._options = options
+        self._ledger: ProtocolAlarmLedger = ledger or BusAlarmLedger()
         # The hosts the lab host table declares unavailable take no lane, so the quiet-host reading skips
         # them when the options ask (OMN-22778). Injected so a test supplies the table; the default reads
         # the deployment's.
@@ -276,13 +282,9 @@ class HandlerSilentFailureAlarm:
             return self._drainer_command(request)
         options = self._options
         now = request.now or datetime.now(UTC)
-        ledger = (
-            options.ledger
-            or options.registry_root / "docs/tracking/ROLLING_WORK_LEDGER.md"
-        )
         try:
-            text = ledger.read_bytes().decode("utf-8", errors="replace")
-        except OSError as exc:
+            text = self._ledger.read_rows(self._window_hours())
+        except LedgerRowsUnreadableError as exc:
             detail = one_line(exc, "read failed")
             return ModelSilentFailureAlarmResult(
                 request_id=request.request_id,
@@ -478,13 +480,7 @@ class HandlerSilentFailureAlarm:
                 )
                 rows.append(row)
                 if request.apply:
-                    appended, detail = append_row(
-                        options.python,
-                        options.ledger_lock,
-                        ledger,
-                        row,
-                        registry_root=options.registry_root,
-                    )
+                    appended, detail = self._ledger.append(row)
                     if appended:
                         del opened[name]
                     else:
@@ -539,13 +535,7 @@ class HandlerSilentFailureAlarm:
             if not request.apply:
                 friction = "dry-run"
                 continue
-            appended, detail = append_row(
-                options.python,
-                options.ledger_lock,
-                ledger,
-                row,
-                registry_root=options.registry_root,
-            )
+            appended, detail = self._ledger.append(row)
             friction = "appended" if appended else "append-failed"
             if not appended:
                 warnings.append(
@@ -627,13 +617,7 @@ class HandlerSilentFailureAlarm:
             if not request.apply:
                 friction = "dry-run"
                 continue
-            appended, detail = append_row(
-                options.python,
-                options.ledger_lock,
-                ledger,
-                row,
-                registry_root=options.registry_root,
-            )
+            appended, detail = self._ledger.append(row)
             friction = "appended" if appended else "append-failed"
             if not appended:
                 warnings.append(
@@ -660,13 +644,7 @@ class HandlerSilentFailureAlarm:
                 )
             )
             rows.append(status)
-            appended, detail = append_row(
-                options.python,
-                options.ledger_lock,
-                ledger,
-                status,
-                registry_root=options.registry_root,
-            )
+            appended, detail = self._ledger.append(status)
             if not appended:
                 warnings.append(
                     f"silent_failure_alarm: job-exit status append failed: {detail}"
@@ -804,6 +782,15 @@ class HandlerSilentFailureAlarm:
             observation=before,
             repair=repair,
         )
+
+    def _window_hours(self) -> int:
+        """The hours of ledger rows one tick reads: a day, or the closer's staleness span when that is longer."""
+        closer = self._options.closer
+        if closer is None:
+            return DEFAULT_WINDOW_HOURS
+        interval = declared_interval(closer.liveness_overlay, closer.process_id)
+        span = 0 if interval is None else interval * closer.stale_multiple // 3600 + 2
+        return max(DEFAULT_WINDOW_HOURS, min(MAX_WINDOW_HOURS, span))
 
     def _decide_closer(
         self, now: datetime, ledger_text: str, loaded_labels: tuple[str, ...] | None

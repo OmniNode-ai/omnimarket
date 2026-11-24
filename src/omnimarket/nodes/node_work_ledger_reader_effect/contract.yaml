@@ -53,6 +53,11 @@ output_model:
 
 runtime_dispatch:
   external_trigger: true
+  # The reader runs when a caller asks (the pull request duplicate guard, queue-status, the drain map and the other moved readers
+  # named in the overlay); no timer starts it. The command below is the whole trigger.
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_work_ledger_reader_effect --reader <moved reader name> --query <query>
+    owner: OmniNode Platform Team
 
 # The topics by role; the handler reads these and holds no topic string.
 topics:

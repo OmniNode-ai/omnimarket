@@ -1,0 +1,94 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Topic Reaper Scheduled Effect (OMN-26438)
+#
+# The caller of node_topic_reaper_compute. It subscribes to the runtime scheduler's tick, gates on the schedule below,
+# reads the broker once through the dry-run readers of the topic removal node, calls HandlerTopicReaper with the tick's
+# time as the clock, and logs one line that names the flagged and deletable topic counts. Dry run only: it hands the
+# reaper a policy with enforce false, never deletes a topic and never calls a delete effect. With no reaper policy in
+# the lane overlay the line reads REAPER_POLICY_MISSING and the broker is not read.
+name: node_topic_reaper_scheduled_effect
+contract_name: node_topic_reaper_scheduled_effect
+node_name: node_topic_reaper_scheduled_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Calls the topic reaper on the runtime's tick, dry run only, and logs one line per run with the flagged and deletable topic counts.
+
+handler:
+  module: omnimarket.nodes.node_topic_reaper_scheduled_effect.handlers.handler_topic_reaper_scheduled
+  class: HandlerTopicReaperScheduled
+  input_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: topic_reaper.scheduled_tick
+      handler:
+        name: HandlerTopicReaperScheduled
+        module: omnimarket.nodes.node_topic_reaper_scheduled_effect.handlers.handler_topic_reaper_scheduled
+      handler_module: omnimarket.nodes.node_topic_reaper_scheduled_effect.handlers.handler_topic_reaper_scheduled
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+      description: >
+        Gate on the schedule's run_interval_seconds, then read the broker once, call the topic reaper as a dry run and return the run event.
+
+input_model:
+  name: ModelRuntimeTick
+  module: omnibase_infra.runtime.models.model_runtime_tick
+  description: The runtime scheduler's tick.
+output_model:
+  name: ModelScheduleRunEvent
+  module: omnimarket.models.schedule_trigger.model_schedule_trigger
+  description: "One scheduled job run, with when it was scheduled, when it fired and how it went."
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 60000
+  side_effects:
+    - reads the broker's public metrics and the contract files, then calls the topic reaper as a dry run
+
+input_subscriptions:
+  - topic: "onex.intent.platform.runtime-tick.v1"
+    operation: "topic_reaper.scheduled_tick"
+
+terminal_event: onex.evt.omnimarket.schedule-run.v1
+
+event_bus:
+  subscribe_topics:
+    - "onex.intent.platform.runtime-tick.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.schedule-run.v1"
+
+published_events:
+  - event_type: ModelScheduleRunEvent
+    topic: onex.evt.omnimarket.schedule-run.v1
+    description: "One scheduled topic reaper dry run."
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.schedule-run.v1
+
+# The cadence of the dry run: a cadence of a read-only reading, not a reaper policy value. The reaper's own
+# intervals and its enable flag stay in the lane overlay of node_topic_reaper_compute and have no default.
+schedule:
+  job_id: topic_reaper_dry_run
+  run_interval_seconds: 3600
+  grace_seconds: 300
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.schedule-run.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.schedule-run.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: DESCRIBE}
+
+metadata:
+  ticket: OMN-26438
+  transport_type: kafka
