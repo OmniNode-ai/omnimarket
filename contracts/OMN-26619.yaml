@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-26619
 title: A delegation check that goes green to red in the probes' own results raises one regression event and an alarm to the orchestrator within 15 minutes
-summary: The build delegation checks node (node_build_delegation_checks) keeps its per-build history under the runtime's declared writable state root instead of under the registry root, which the dev runtime mounts read-only, so the ten delegation checks run after every dev build.
+summary: The build delegation checks node (node_build_delegation_checks) keeps its per-build history under the runtime's declared writable state root instead of under the registry root, which the dev runtime mounts read-only, and reads the mounted clone's merges with a per-command safe directory, so the ten delegation checks run after every dev build.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -10,7 +10,7 @@ requirements:
   statement: The node that runs the ten delegation checks after each dev build writes its readings under the runtime's declared state root, so a read-only registry root cannot stop it.
   acceptance:
   - id: AC7
-    statement: 'AC7: the build history of node_build_delegation_checks is written under ONEX_STATE_DIR (then ONEX_STATE_ROOT) with the registry root read-only, and no declared state root refuses instead of choosing a path -- falsifier: uv run pytest tests/nodes/node_build_delegation_checks/test_state_root.py -q fails on a handler that writes under the registry root'
+    statement: 'AC7: node_build_delegation_checks runs under the runtime''s read-only registry root: its build history is written under ONEX_STATE_DIR (then ONEX_STATE_ROOT), no declared state root refuses instead of choosing a path, and its git log of the mounted clone names only that clone as a safe directory -- falsifier: uv run pytest tests/nodes/node_build_delegation_checks/test_state_root.py tests/nodes/node_build_delegation_checks/test_git_merge_source_ownership.py -q fails on a handler that writes under the registry root or a git read that names no safe directory'
 evidence_requirements:
 - kind: tests
   description: The node's focused tests, the new state root test failing against the registry-root path first.
@@ -28,6 +28,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_build_delegation_checks/test_state_root.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26619-merge-source-safe-directory
+  description: The git log of the mounted clone carries a per-command safe.directory naming only that clone and no wildcard, because the runtime container does not own the read-only clone. The test fails on a git read that names no safe directory.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_build_delegation_checks/test_git_merge_source_ownership.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn26619-hosted-deploy-check
   description: 'Deploy check the hosted runner can run: the overlay default names a path relative to the state root, and the handler resolves the history path through the declared state root helper rather than the registry root. This binds no criterion by itself.'
