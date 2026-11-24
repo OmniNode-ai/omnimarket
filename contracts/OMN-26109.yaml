@@ -1,0 +1,82 @@
+schema_version: 1.0.0
+ticket_id: OMN-26109
+title: node_host_retention_effect has a unit in the declared installer registry and runs successfully on h051, h053, h201, h202, h101 and h105
+summary: 'The h051 and h053 retention units (onex-host-retention-uv-cache.service) exited 2 on every run: they were installed from a lane worktree that no longer exists, so uv failed with a project directory that does not exist, and the installer registry on dev declared no unit for the tick, whose module (runtime_host_retention_tick) was also absent from dev. The installer registry now declares the host retention tick for the Linux hosts as host-retention-uv-cache-systemd and for the Mac hosts as host-retention-uv-cache-launchd, both running only the uv cache class for the host named by the ledger host name input, and the node contract names the unit as its host_unit. The installer already refuses a project under omni_worktrees (OMN-26549), so an install runs the canonical clone or a clean non-worktree checkout.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26109-host-units
+  statement: The host retention tick has a declared systemd unit and a declared launchd unit in the installer registry, installed on the six owned hosts through the declared installer, each run read with its freed space or its nothing-to-free reading.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the node_host_installer_registry_units contract declares a unit for the node_host_retention_effect tick (systemd for the Linux hosts, launchd for the Mac hosts), with a test that loads the contract and asserts the unit and its tick module exist -- falsifier: uv run pytest tests -q -k "host_retention_uv_cache_unit or runtime_host_retention_tick" fails, or grep -c runtime_host_retention_tick src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml prints 0'
+  - id: AC2
+    statement: 'AC2: the h053 retention unit runs and its last run exits 0, the exit 2 fixed at its cause -- falsifier: systemctl --user show onex-host-retention-uv-cache.service -p ExecMainStatus on h053 prints a value other than ExecMainStatus=0'
+  - id: AC3
+    statement: 'AC3: the unit is installed from the branch on h051, h053, h201, h202, h101 and h105 with the declared installer, one STATUS row of the ledger carries installed=<host>:<sha> and observed=<run line> per host -- falsifier: the ledger rows of this ticket naming installed= name fewer than the six hosts'
+  - id: AC4
+    statement: 'AC4: one run per host is read and the table records space freed or nothing to free for each host -- falsifier: a host among the six has no run line in the table, or a run line without a freed-bytes or nothing-to-free reading'
+  - id: AC5
+    statement: 'AC5: no run removed a path under the cleanup archive or a live lane directory, and no host file, unit or plist was edited by hand -- falsifier: a run line names a removed path under an archive root or a live lane run directory, or a STATUS row cites no installer receipt'
+evidence_requirements:
+- kind: tests
+  description: The host retention tick and both installer registry unit tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_host_retention_effect/test_runtime_host_retention_tick.py tests/nodes/node_host_installer_registry_units/test_host_retention_uv_cache_unit.py tests/nodes/node_host_installer_registry_units/test_host_retention_uv_cache_launchd_unit.py -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26109-ac1
+  description: 'AC1: the tick tests and the unit tests for the systemd and the launchd form pass at the head; at the merge base the registry holds neither unit.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_retention_effect/test_runtime_host_retention_tick.py tests/nodes/node_host_installer_registry_units/test_host_retention_uv_cache_unit.py tests/nodes/node_host_installer_registry_units/test_host_retention_uv_cache_launchd_unit.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn26109-ac2
+  description: 'hosted proxy for AC2: the unit tests pass here; the h053 unit status read and its run line after the re-install are posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_host_retention_uv_cache_unit.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn26109-ac3
+  description: 'hosted proxy for AC3: the render tests pass here; the installer receipts of the six hosts are in the ledger STATUS rows of the lane and in the pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_host_retention_uv_cache_unit.py tests/nodes/node_host_installer_registry_units/test_host_retention_uv_cache_launchd_unit.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn26109-ac4
+  description: 'hosted proxy for AC4: the tick tests pass here; the table of the six run lines is one ledger STATUS row of the lane.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_retention_effect/test_runtime_host_retention_tick.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn26109-ac5
+  description: 'hosted proxy for AC5: the installer refuses a checkout without the tick entry file and renders no hand-edited file; the run lines naming removed paths are in the ledger STATUS rows.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_host_retention_uv_cache_launchd_unit.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn26109-integration-proof
+  description: the tick and both unit tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26109 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_retention_effect/test_runtime_host_retention_tick.py tests/nodes/node_host_installer_registry_units/test_host_retention_uv_cache_unit.py tests/nodes/node_host_installer_registry_units/test_host_retention_uv_cache_launchd_unit.py -q --no-cov -p no:randomly

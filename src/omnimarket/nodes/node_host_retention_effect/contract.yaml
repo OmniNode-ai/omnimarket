@@ -63,6 +63,10 @@ runtime_dispatch:
   on_demand:
     command: uv run python -m omnimarket.nodes.node_host_retention_effect run --host <host> [--dry-run]
     owner: OmniNode Platform Team
+  # Every 6 hours on a Linux pool host (a Mac host, once a day), the host timer of node_host_installer_registry_units runs
+  # runtime_host_retention_tick, which runs the uv cache class for the host named by the unit's environment (OMN-26109).
+  host_unit:
+    unit: host-retention-uv-cache-systemd
 externally_consumed_topics:
   - onex.evt.omnimarket.host-retention-completed.v1
   - onex.evt.omnimarket.host-retention-failed.v1
