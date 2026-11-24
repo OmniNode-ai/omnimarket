@@ -37,6 +37,20 @@ def validate(manifest_path: Path, expected: dict[str, str]) -> str | None:
     return None
 
 
+def manifest_interpreter(manifest_path: Path) -> str:
+    """The pre-commit interpreter a prepared manifest names, or "" when it names none.
+
+    An unreadable manifest names nothing; ``validate`` then reports it.
+    """
+    try:
+        value = _load_object(manifest_path, "prepared manifest").get(
+            "pre_commit_python"
+        )
+    except ValueError:
+        return ""
+    return value if isinstance(value, str) else ""
+
+
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -244,6 +258,8 @@ def main(argv: list[str] | None = None) -> int:
         "pre-commit-version",
     ):
         manifest.add_argument(f"--{name}", required=True)
+    interpreter = commands.add_parser("manifest-interpreter")
+    interpreter.add_argument("--manifest", type=Path, required=True)
     selection = commands.add_parser("select")
     selection.add_argument("--remote-name", required=True)
     selection.add_argument("--remote-url", required=True)
@@ -260,6 +276,9 @@ def main(argv: list[str] | None = None) -> int:
     cleanup_parser.add_argument("--parent", type=Path, required=True)
     cleanup_parser.add_argument("--selected-sha")
     args = parser.parse_args(argv)
+    if args.command == "manifest-interpreter":
+        print(manifest_interpreter(args.manifest))
+        return 0
     if args.command == "select":
         return select(args.remote_name, args.remote_url, args.refs)
     if args.command == "write-marker":

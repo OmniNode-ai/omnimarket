@@ -92,6 +92,11 @@ prepared_env="$prepared/venv"
 manifest="$prepared/manifest.json"
 [[ -r "$manifest" && -x "$prepared_env/bin/python" && -f "$prepared_tree/uv.lock" ]] || die "prepared target environment unavailable for $local_sha; run: uv run python scripts/hooks/install_prepush_hook.py --prepare $local_sha"
 [[ "$(git -C "$prepared_tree" rev-parse HEAD)" == "$local_sha" ]] || die "prepared source snapshot is not bound to selected local SHA"
+manifest_python="$(env -u PYTHONPATH -u PYTHONHOME -u VIRTUAL_ENV -u CONDA_PREFIX -u CONDA_DEFAULT_ENV "$precommit_python" "$adapter" manifest-interpreter --manifest "$manifest")" || die "could not read the pre-commit interpreter named by the prepared manifest"
+if [[ -n "$manifest_python" ]]; then
+  [[ -x "$manifest_python" ]] && env -u PYTHONPATH -u PYTHONHOME -u VIRTUAL_ENV -u CONDA_PREFIX -u CONDA_DEFAULT_ENV "$manifest_python" -c 'import pre_commit' >/dev/null 2>&1 || die "pre-commit interpreter named by the prepared manifest is unavailable: $manifest_python"
+  precommit_python="$manifest_python"
+fi
 uv_cmd="$(command -v uv || true)"
 [[ -n "$uv_cmd" ]] || die "uv is unavailable; refusing an unbound prepared environment"
 uv_version="$(env -u PYTHONPATH -u PYTHONHOME -u VIRTUAL_ENV -u CONDA_PREFIX -u CONDA_DEFAULT_ENV "$uv_cmd" --version)"
@@ -295,6 +300,7 @@ def _manifest_data(*, tree: Path, local_sha: str, venv: Path) -> dict[str, str]:
         "lock_sha256": _lock_hash(tree / "uv.lock"),
         "platform": platform_name,
         "policy": "uv-sync-frozen-offline-no-editable-v1",
+        "pre_commit_python": precommit_python,
         "pre_commit_version": _output(
             [
                 precommit_python,
