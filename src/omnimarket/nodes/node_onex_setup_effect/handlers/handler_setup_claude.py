@@ -45,6 +45,13 @@ from omnimarket.nodes.node_onex_setup_effect.setup_legacy_hooks import (
     record_installed_hooks,
 )
 
+#: The hook assets could not be read at all (no broken-file evidence); the delegation
+#: status keys its healthy-off decision on this exact text, so both import it.
+HOOK_ASSETS_UNREADABLE_FIX = (
+    "Install or repair the packaged delegation hook assets with onex install "
+    "omninode-claude and check the selected Claude settings, then retry setup."
+)
+
 #: The shell's ONEX_HOOKS_MASK wins over the switch onex saves (the hooks read it first).
 SWITCH_OVERRIDE_FIX = (
     "Your shell sets ONEX_HOOKS_MASK without the delegation bit, and it overrides "
@@ -258,7 +265,7 @@ class HandlerSetupClaude:
                     return ModelSetupObservation(
                         step=self.name,
                         status="action_required",
-                        fix="Install or repair the packaged delegation hook assets with onex install omninode-claude and check the selected Claude settings, then retry setup.",
+                        fix=HOOK_ASSETS_UNREADABLE_FIX,
                     )
                 if legacy.status != "success":
                     return legacy

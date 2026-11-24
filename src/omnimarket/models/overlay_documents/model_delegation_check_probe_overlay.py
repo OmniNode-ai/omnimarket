@@ -13,7 +13,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-CheckId = Literal["C13", "C14", "C17"]
+CheckId = Literal["C11", "C12", "C13", "C14", "C15", "C16", "C17", "C28", "C29", "C30"]
 
 
 class ModelDelegationCheckProbeOverlay(BaseModel):
