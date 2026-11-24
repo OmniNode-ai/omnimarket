@@ -8,7 +8,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.enums.enum_agent_message_operation import EnumAgentMessageOperation
 from omnimarket.enums.enum_agent_message_refusal import EnumAgentMessageRefusal
+from omnimarket.enums.enum_agent_message_verification_reason import (
+    EnumAgentMessageVerificationReason,
+)
 from omnimarket.models.agent_message.model_agent_message import ModelAgentMessage
+from omnimarket.models.agent_message.model_agent_message_rejection import (
+    ModelAgentMessageRejection,
+)
 
 
 class ModelAgentMessageResult(BaseModel):
@@ -34,7 +40,20 @@ class ModelAgentMessageResult(BaseModel):
         ge=0,
         description="read: records on the topic that were not well-formed messages.",
     )
+    unverified: int = Field(
+        default=0,
+        ge=0,
+        description="read: legacy-shape messages returned without a sender proof (allowed until the cutover).",
+    )
+    rejections: tuple[ModelAgentMessageRejection, ...] = Field(
+        default=(),
+        description="read: records on the topic a reader refused, each with its typed reason.",
+    )
     refusal: EnumAgentMessageRefusal | None = None
+    reason: EnumAgentMessageVerificationReason | None = Field(
+        default=None,
+        description="send: the typed reason when the message itself was refused.",
+    )
     detail: str | None = Field(
         default=None, description="The refusal's reason, in words."
     )
