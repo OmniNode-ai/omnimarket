@@ -36,8 +36,8 @@ from omnimarket.nodes.node_delegation_check_probe_effect.protocols.protocol_dele
     ProtocolGatewayClient,
 )
 
-#: The seven checks a cloud workflow graded; the node grades them through the gateway.
-GATEWAY_CHECKS: Final[tuple[CheckId, ...]] = (
+#: The seven checks a cloud workflow graded; the node grades them through the gateway alone.
+GATEWAY_ONLY_CHECKS: Final[tuple[CheckId, ...]] = (
     "C11",
     "C12",
     "C15",
@@ -46,13 +46,20 @@ GATEWAY_CHECKS: Final[tuple[CheckId, ...]] = (
     "C29",
     "C30",
 )
-CLOUD_DEPENDENT_CHECKS: Final[tuple[CheckId, ...]] = GATEWAY_CHECKS
-#: The three checks already graded on a customer machine through the responder chain the settings store declares.
+CLOUD_DEPENDENT_CHECKS: Final[tuple[CheckId, ...]] = GATEWAY_ONLY_CHECKS
+#: The three checks also graded on a customer machine through the responder chain the settings store declares. Each has a
+#: gateway leg as well: the customer's own view of the same behaviour, from the gateway (operator message 2026-11-24T13:54:22Z).
 CUSTOMER_LOCAL_CHECKS: Final[tuple[CheckId, ...]] = ("C13", "C14", "C17")
+#: All ten delegation checks: every one of them is graded through the dev gateway.
+GATEWAY_CHECKS: Final[tuple[CheckId, ...]] = tuple(
+    sorted(
+        (*GATEWAY_ONLY_CHECKS, *CUSTOMER_LOCAL_CHECKS),
+        key=lambda c: int(c[1:]),
+    )
+)
 
 RUNNER: Final = "omnimarket-node"
 BOARD: Final = "omnimarket-beta-board"
-RESPONDER_ROW: Final = "settings-store:delegation_check_responders"
 
 WORKFLOW_TYPE: Final = "delegate-skill"
 TERMINAL: Final = frozenset({"completed", "failed"})
@@ -80,19 +87,13 @@ class GatewayUnreachableError(RuntimeError):
 
 
 def resolve_check_route(check_id: CheckId, gateway_url: str) -> ModelCheckRoute:
-    """Where the check is graded: for a cloud-dependent check, the settings store's gateway address and this node's runner."""
-    if check_id in GATEWAY_CHECKS:
-        return ModelCheckRoute(
-            check_id=check_id,
-            kind="gateway",
-            endpoint=gateway_url,
-            runner=RUNNER,
-            board=BOARD,
-        )
+    """Where the check is graded: the settings store's gateway address, this node as the runner and the omnimarket board."""
     return ModelCheckRoute(
         check_id=check_id,
-        kind="customer-local-responder-chain",
-        endpoint=RESPONDER_ROW,
+        kind="gateway"
+        if check_id in GATEWAY_ONLY_CHECKS
+        else "gateway-and-customer-machine",
+        endpoint=gateway_url,
         runner=RUNNER,
         board=BOARD,
     )
@@ -529,7 +530,68 @@ def _c30(s: _Session) -> tuple[ModelCheckClause, ...]:
     )
 
 
+def _c13_leg(s: _Session) -> tuple[ModelCheckClause, ...]:
+    workflow_id, status, receipt, answered = _healthy(s)
+    return (
+        _completed("gateway_delegation_completes", status, answered, workflow_id),
+        _identity_clause("gateway_receipt_names_route_provider_model", receipt),
+    )
+
+
+def _c14_leg(s: _Session) -> tuple[ModelCheckClause, ...]:
+    workflow_id, status, receipt, answered = _healthy(s)
+    agree = True
+    if status is not None and receipt is not None:
+        agree = all(
+            status[k] == receipt[k]
+            for k in ("route", "provider")
+            if k in status and k in receipt
+        )
+    return (
+        _completed("gateway_routed_run_completes", status, answered, workflow_id),
+        _clause(
+            "gateway_status_agrees_with_receipt",
+            agree,
+            "the status and the receipt name the same route and provider"
+            if agree
+            else "the status and the receipt name a different route or provider",
+        ),
+        *_dying_clauses(s, prefix="gateway_unroutable_class_typed_failure"),
+    )
+
+
+def _c17_leg(s: _Session) -> tuple[ModelCheckClause, ...]:
+    health = s.call("GET", "/health", auth="none")
+    contracts = s.call("GET", "/v1/workflows/contracts", auth="tenant")
+    absent = s.call("GET", "/v1/workflows/contracts", auth="none")
+    malformed = s.call(
+        "GET", f"/v1/workflows/{ABSENT_ID.format(n=17)}/receipt", auth="tenant"
+    )
+    return (
+        _clause(
+            "gateway_surface_answers",
+            health.status == 200 and contracts.status == 200,
+            "the gateway answers /health and serves its contracts to the tenant"
+            if health.status == 200 and contracts.status == 200
+            else f"health answered {health.status}, contracts answered {contracts.status}",
+        ),
+        _clause(
+            "gateway_refusals_typed",
+            absent.status == 401
+            and _code_of(absent.body) is not None
+            and malformed.status == 422
+            and _names_missing(malformed.body, "runner_identity"),
+            "a request with no key is refused 401 with a code and a malformed one names the missing field"
+            if absent.status == 401 and malformed.status == 422
+            else f"no-key answered {absent.status}, malformed answered {malformed.status}",
+        ),
+    )
+
+
 _GRADERS: Final[dict[str, Callable[[_Session], tuple[ModelCheckClause, ...]]]] = {
+    "C13": _c13_leg,
+    "C14": _c14_leg,
+    "C17": _c17_leg,
     "C11": _c11,
     "C12": _c12,
     "C15": _c15,
@@ -550,7 +612,7 @@ def run_gateway_check(
     sleep: Callable[[float], None] = time.sleep,
     monotonic: Callable[[], float] = time.monotonic,
 ) -> ModelDelegationCheckReading:
-    """Grade one cloud-dependent check by requests to ``client`` alone."""
+    """Grade one check, or the gateway leg of a customer-local check, by requests to ``client`` alone."""
     session = _Session(client, settings, check_id, sleep, monotonic)
     head = {"endpoint": client.gateway_url, "tenant_slug": client.tenant_slug}
     try:
@@ -566,6 +628,7 @@ __all__ = [
     "CLOUD_DEPENDENT_CHECKS",
     "CUSTOMER_LOCAL_CHECKS",
     "GATEWAY_CHECKS",
+    "GATEWAY_ONLY_CHECKS",
     "GatewayRunSettings",
     "GatewayUnreachableError",
     "resolve_check_route",

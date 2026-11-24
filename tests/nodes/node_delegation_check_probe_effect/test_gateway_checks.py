@@ -18,11 +18,15 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 import pytest
+from _gateway_fake import GATEWAY, TENANT, FakeClock, FakeGateway
 from pydantic import SecretStr
 
 from omnimarket.models.overlay_documents.model_delegation_check_gateway_overlay import (
     ModelDelegationCheckGatewayOverlay,
     ModelDevTenantTokenSource,
+)
+from omnimarket.models.overlay_documents.model_delegation_check_responders_overlay import (
+    ModelDelegationCheckResponder,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_delegation_check import (
     AbsentCustomerMachine,
@@ -36,6 +40,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_gatewa
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.gateway_checks import (
     CLOUD_DEPENDENT_CHECKS,
     GATEWAY_CHECKS,
+    GATEWAY_ONLY_CHECKS,
     GatewayRunSettings,
     resolve_check_route,
     run_gateway_check,
@@ -54,8 +59,6 @@ from omnimarket.nodes.node_delegation_check_probe_effect.protocols.protocol_dele
     CollectorAbsentError,
 )
 
-GATEWAY = "http://gateway.test.example:4100"
-TENANT = "test-tenant-a"
 HANDLERS = (
     Path(__file__).resolve().parents[3]
     / "src/omnimarket/nodes/node_delegation_check_probe_effect"
@@ -64,137 +67,8 @@ SETTINGS = GatewayRunSettings(run_budget_s=5.0, poll_interval_s=0.0)
 UUID_RE = re.compile(r"^[0-9a-f-]{36}$")
 
 
-class FakeGateway:
-    """An in-memory gateway answering the routes a customer reaches; ``override`` replaces one answer."""
-
-    def __init__(self, url: str = GATEWAY, tenant: str = TENANT) -> None:
-        self.gateway_url = url
-        self.tenant_slug = tenant
-        self.calls: list[tuple[str, str, str]] = []
-        self.override: Callable[
-            [str, str, str, Any], ModelGatewayObservation | None
-        ] = lambda _method, _path, _auth, _body: None
-        self._runs: dict[str, dict[str, Any]] = {}
-
-    def call(
-        self, method: str, path: str, *, auth: str, body: dict[str, Any] | None = None
-    ) -> ModelGatewayObservation:
-        self.calls.append((method, path, auth))
-        replaced = self.override(method, path, auth, body)
-        if replaced is not None:
-            return replaced
-        return self._answer(method, path, auth, body)
-
-    def _answer(
-        self, method: str, path: str, auth: str, body: dict[str, Any] | None
-    ) -> ModelGatewayObservation:
-        if path == "/health":
-            return ModelGatewayObservation(status=200, body={"status": "ok"})
-        if auth == "none":
-            return ModelGatewayObservation(
-                status=401, body={"code": "auth.credential.absent"}
-            )
-        if auth == "invalid":
-            return ModelGatewayObservation(
-                status=401, body={"code": "auth.credential.invalid"}
-            )
-        if path == "/v1/workflows/contracts":
-            return ModelGatewayObservation(
-                status=200,
-                body={
-                    "contracts": [
-                        {"workflow_type": "delegate-skill", "version": "1"},
-                        {"workflow_type": "ledger-append", "version": "1"},
-                    ]
-                },
-            )
-        if method == "POST" and path == "/v1/workflows":
-            assert body is not None
-            payload = body["payload"]
-            source = payload.get("source")
-            if source not in ("claude-code", "codex", "external-client"):
-                return ModelGatewayObservation(
-                    status=422,
-                    body={
-                        "detail": [
-                            {
-                                "type": "literal_error",
-                                "loc": ["body", "payload", "source"],
-                            }
-                        ]
-                    },
-                )
-            workflow_id = f"00000000-0000-4000-8000-{len(self._runs):012d}"
-            dying = payload["task_type"] == "omn19181_not_a_task_class"
-            self._runs[workflow_id] = {"dying": dying}
-            return ModelGatewayObservation(
-                status=202, body={"workflow_id": workflow_id}
-            )
-        match = re.match(r"^/v1/workflows/([^/]+)/(status|receipt)", path)
-        if match and match.group(1) in self._runs:
-            dying = self._runs[match.group(1)]["dying"]
-            if match.group(2) == "status":
-                return ModelGatewayObservation(
-                    status=200,
-                    body={
-                        "status": "failed" if dying else "completed",
-                        **(
-                            {
-                                "terminal_failure_class": "TaskClassError",
-                                "terminal_failure_code": "ONEX_TASK_CLASS_UNKNOWN",
-                            }
-                            if dying
-                            else {"route": "lab-local", "provider": "local"}
-                        ),
-                    },
-                )
-            if dying:
-                return ModelGatewayObservation(
-                    status=200,
-                    body={
-                        "status": "failed",
-                        "terminal_failure_class": "TaskClassError",
-                        "terminal_failure_code": "ONEX_TASK_CLASS_UNKNOWN",
-                    },
-                )
-            return ModelGatewayObservation(
-                status=200,
-                body={
-                    "status": "completed",
-                    "route": "lab-local",
-                    "provider": "local",
-                    "terminal_model_used": "served-model",
-                    "rule_evaluations": [
-                        {"rule": "non_empty", "passed": True, "enforcement": "blocking"}
-                    ],
-                },
-            )
-        if path.startswith("/v1/workflows/") and path.endswith("/receipt"):
-            # An unknown run asked with no runner identity: the request is refused as malformed before it is looked up.
-            return ModelGatewayObservation(
-                status=422,
-                body={
-                    "detail": [{"type": "missing", "loc": ["query", "runner_identity"]}]
-                },
-            )
-        return ModelGatewayObservation(status=404, body={"code": "resource.not_found"})
-
-
-class _Clock:
-    """A clock that moves one second per sleep, so a budget of five seconds is five polls and no real time."""
-
-    def __init__(self) -> None:
-        self.now = 0.0
-
-    def sleep(self, _s: float) -> None:
-        self.now += 1.0
-
-    def monotonic(self) -> float:
-        return self.now
-
-
 def _run(check: str, gateway: FakeGateway):
-    clock = _Clock()
+    clock = FakeClock()
     return run_gateway_check(
         check,  # type: ignore[arg-type]
         gateway,
@@ -206,8 +80,8 @@ def _run(check: str, gateway: FakeGateway):
 
 # AC1: each cloud-dependent check resolves to the gateway address read from the settings store, never to a workflow, host or board.
 @pytest.mark.unit
-@pytest.mark.parametrize("check", CLOUD_DEPENDENT_CHECKS)
-def test_each_cloud_dependent_check_resolves_to_the_settings_store_gateway(
+@pytest.mark.parametrize("check", GATEWAY_CHECKS)
+def test_each_of_the_ten_checks_resolves_to_the_settings_store_gateway(
     check: str,
 ) -> None:
     overlay = ModelDelegationCheckGatewayOverlay(
@@ -223,15 +97,27 @@ def test_each_cloud_dependent_check_resolves_to_the_settings_store_gateway(
 
 
 @pytest.mark.unit
-def test_the_ten_checks_are_the_seven_gateway_checks_and_the_three_customer_local_ones() -> (
+def test_the_ten_checks_are_the_seven_gateway_only_checks_and_the_three_with_a_customer_machine() -> (
     None
 ):
-    assert set(GATEWAY_CHECKS) == {"C11", "C12", "C15", "C16", "C28", "C29", "C30"}
-    assert set(CLOUD_DEPENDENT_CHECKS) == set(GATEWAY_CHECKS)
+    assert set(GATEWAY_ONLY_CHECKS) == {"C11", "C12", "C15", "C16", "C28", "C29", "C30"}
+    assert set(CLOUD_DEPENDENT_CHECKS) == set(GATEWAY_ONLY_CHECKS)
+    assert set(GATEWAY_CHECKS) == {
+        "C11",
+        "C12",
+        "C13",
+        "C14",
+        "C15",
+        "C16",
+        "C17",
+        "C28",
+        "C29",
+        "C30",
+    }
     for local in ("C13", "C14", "C17"):
         route = resolve_check_route(local, GATEWAY)  # type: ignore[arg-type]
-        assert route.runner == "omnimarket-node"
-        assert route.endpoint != GATEWAY
+        assert route.kind == "gateway-and-customer-machine"
+        assert route.endpoint == GATEWAY
 
 
 @pytest.mark.unit
@@ -399,13 +285,13 @@ def test_a_gateway_that_cannot_be_reached_is_not_measured_never_green() -> None:
     assert reading.verdict() is EnumCheckVerdict.NOT_MEASURED
 
 
-_CLOCK = _Clock()
+_CLOCK = FakeClock()
 
 
 # The handler path: the run record names the gateway address and the tenant.
 def _handler(gateway: FakeGateway | None) -> HandlerDelegationCheckProbe:
     return HandlerDelegationCheckProbe(
-        responders=(),
+        responders=(ModelDelegationCheckResponder(tier="openrouter"),),
         reader=InMemoryResponderReader({}),
         machine=AbsentCustomerMachine("none"),
         publisher=InMemoryCheckPublisher(),
@@ -419,7 +305,7 @@ def _handler(gateway: FakeGateway | None) -> HandlerDelegationCheckProbe:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("check", GATEWAY_CHECKS)
+@pytest.mark.parametrize("check", GATEWAY_ONLY_CHECKS)
 def test_the_run_record_names_the_gateway_address_and_the_tenant(check: str) -> None:
     result = _handler(FakeGateway()).handle(
         ModelDelegationCheckRequest(correlation_id="c-1", check_id=check)  # type: ignore[arg-type]
@@ -441,6 +327,27 @@ def test_with_no_gateway_row_the_check_is_precondition_absent_never_green(
     assert result.verdict is EnumCheckVerdict.PRECONDITION_ABSENT
     assert result.conclusion == "failure"
     assert result.gateway_url is None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("check", ["C13", "C14", "C17"])
+def test_a_customer_local_check_is_also_read_from_the_gateway_and_never_green_without_its_machine(
+    check: str,
+) -> None:
+    result = _handler(FakeGateway()).handle(
+        ModelDelegationCheckRequest(correlation_id="c-4", check_id=check)  # type: ignore[arg-type]
+    )
+    # With no local responder and no collector the machine half reads not measured or absent: never green.
+    assert result.verdict in (
+        EnumCheckVerdict.NOT_MEASURED,
+        EnumCheckVerdict.PRECONDITION_ABSENT,
+    )
+    assert result.conclusion == "failure"
+    assert result.gateway_url == GATEWAY
+    assert result.tenant_slug == TENANT
+    gateway_clauses = [c for c in result.clauses if c.name.startswith("gateway_")]
+    assert gateway_clauses
+    assert all(c.ok for c in gateway_clauses), gateway_clauses
 
 
 # AC2: no literal host, address or port in the check node's handlers; the overlay refuses a loopback or host-local gateway.

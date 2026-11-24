@@ -28,7 +28,8 @@ from omnimarket.models.overlay_documents.model_delegation_check_responders_overl
     ModelDelegationCheckResponder,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.gateway_checks import (
-    GATEWAY_CHECKS,
+    CUSTOMER_LOCAL_CHECKS,
+    GATEWAY_ONLY_CHECKS,
     GatewayRunSettings,
     run_gateway_check,
 )
@@ -188,15 +189,43 @@ class HandlerDelegationCheckProbe:
             clauses=grade_c17(observation), preconditions=(precondition,)
         )
 
+    def _with_gateway_leg(
+        self, reading: ModelDelegationCheckReading, request: ModelDelegationCheckRequest
+    ) -> ModelDelegationCheckReading:
+        """A customer-local check is also read from the gateway: its clauses and absent surfaces join the machine reading's."""
+        assert request.check_id in CUSTOMER_LOCAL_CHECKS
+        leg = self._gateway_check(request)
+        return reading.model_copy(
+            update={
+                "clauses": (*reading.clauses, *leg.clauses),
+                "preconditions": (*reading.preconditions, *leg.preconditions),
+                "not_measured": reading.not_measured or leg.not_measured,
+                "endpoint": leg.endpoint,
+                "tenant_slug": leg.tenant_slug,
+            }
+        )
+
     def _reading(
         self, request: ModelDelegationCheckRequest
     ) -> ModelDelegationCheckReading:
-        if request.check_id in GATEWAY_CHECKS:
+        if request.check_id in GATEWAY_ONLY_CHECKS:
             reading = self._gateway_check(request)
-        elif request.check_id == "C17":
-            reading = self._surface_check()
         else:
-            reading = self._task_check(request)
+            try:
+                reading = (
+                    self._surface_check()
+                    if request.check_id == "C17"
+                    else self._task_check(request)
+                )
+            except CollectorAbsentError as exc:
+                reading = ModelDelegationCheckReading(
+                    preconditions=(
+                        ModelCheckPrecondition(
+                            name=exc.name, present=False, detail=exc.detail
+                        ),
+                    )
+                )
+            reading = self._with_gateway_leg(reading, request)
         return reading.model_copy(update={"versions": self._machine.versions()})
 
     def handle(

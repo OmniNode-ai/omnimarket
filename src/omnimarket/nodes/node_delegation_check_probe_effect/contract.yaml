@@ -3,7 +3,7 @@
 # ONEX Node Contract - Delegation Check Probe Effect (OMN-26043)
 #
 # OMN-26642 (operator ruling 2026-11-24): a delegation check that depended on the cloud depends on a communication through the dev
-# gateway instead. C11, C12, C15, C16, C28, C29 and C30 are graded here by requests to the gateway address the settings store's
+# gateway instead. All ten checks are graded here by requests to the gateway address the settings store's
 # delegation_check_gateway row names, as the test tenant the dev tenant node declares; the cloud variants of all ten checks are
 # listed under next_milestone and stay where they are.
 #
@@ -69,7 +69,10 @@ gateway_row:
   overlay_id: delegation_check_gateway
   file_env: ONEX_DELEGATION_CHECK_GATEWAY_OVERLAY
   setting_key: gateway
-  checks: [C11, C12, C15, C16, C28, C29, C30]
+  # Every one of the ten: C11, C12, C15, C16, C28, C29 and C30 are graded through the gateway alone; C13, C14 and C17 are read
+  # from the gateway as well as on a customer machine, and read red until both halves hold.
+  checks: [C11, C12, C13, C14, C15, C16, C17, C28, C29, C30]
+  gateway_only_checks: [C11, C12, C15, C16, C28, C29, C30]
   tenant_source_node: node_dev_proof_tenant_token_effect
 # The tick publishes the run record on the result topic under the runtime's broker login.
 broker_acl_grants:

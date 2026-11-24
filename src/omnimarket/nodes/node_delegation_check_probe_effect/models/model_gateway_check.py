@@ -25,7 +25,7 @@ class ModelCheckRoute(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     check_id: str
-    kind: Literal["gateway", "customer-local-responder-chain"]
+    kind: Literal["gateway", "gateway-and-customer-machine"]
     endpoint: str
     runner: str
     board: str
