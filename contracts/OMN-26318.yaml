@@ -25,7 +25,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn26318-ac1
-  description: The packaged overlay registers the ten public registry repositories and the packaged ratchet file holds one row and one per-file table for each. The census counts three fixture repositories each against its own row and table, counts the runtime files of each apart from tests, plan contracts and data, and the daily tick counts a registry root built from the committed tables.
+  description: The packaged overlay registers the nine public registry repositories and the packaged ratchet file holds one row and one per-file table for each. The census counts three fixture repositories each against its own row and table, counts the runtime files of each apart from tests, plan contracts and data, and the daily tick counts a registry root built from the committed tables.
   source: manual
   binds_ac:
   - AC1
