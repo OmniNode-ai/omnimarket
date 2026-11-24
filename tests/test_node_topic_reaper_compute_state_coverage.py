@@ -15,7 +15,7 @@ import pytest
 import yaml
 
 import omnimarket.nodes.node_topic_reaper_compute as _reaper_node_pkg
-from omnimarket.nodes.node_topic_reaper_compute.models.model_topic_reaper import (
+from omnimarket.models.model_topic_reaper import (
     EnumReaperState,
 )
 

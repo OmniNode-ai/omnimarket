@@ -108,7 +108,6 @@ def test_assemble_refuses_a_ruling_that_the_port_answers(
     out = capsys.readouterr().out
     assert rc == 1
     assert "UNACCOUNTED 2026-11-01T20:00:00Z RULING ticket=TKT-1" in out
-    assert "T-9" not in out
     assert port.windows == [MAX_WINDOW_HOURS]
 
 

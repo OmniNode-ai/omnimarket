@@ -127,6 +127,10 @@ class ModelSnapshotOverlay(BaseModel):
             "refused publish."
         ),
     )
+    read_liveness: bool = Field(
+        default=False,
+        description="Read open PR heads using the declared liveness-reader overlay before recording the snapshot.",
+    )
     controller_facts_path: str | None = Field(
         default=None,
         description=(
