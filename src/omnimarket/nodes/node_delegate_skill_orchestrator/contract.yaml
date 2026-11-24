@@ -374,6 +374,10 @@ delegation_runtime_dispatch:
     # contract I/O failure has neither; accept only validated zero-attempt
     # boundary failures on the canonical V1 failure topic.
     pre_dispatch_failed: onex.evt.omnibase-infra.delegation-failed.v1
+    # OMN-26220: a delegation pinned to a kind: harness backend is published here, to the
+    # harness handler of node_llm_delegation_call_effect, and answered on the completed topic.
+    harness_command: onex.cmd.omnimarket.delegation-harness-execute.v1
+    harness_completed: onex.evt.omnimarket.delegation-harness-completed.v1
   request_message_type: omnibase-infra.delegation-request
   source_tool: delegate-skill-runtime-port
   consumer_group_prefix: delegate-skill-runtime-port
@@ -549,6 +553,18 @@ event_bus:
     # The in-process port's gate decision per attempt; appended so the entries
     # above keep their positions.
     - onex.evt.omnibase-infra.quality-gate-result.v1
+    # OMN-26220: the harness-execute command this node's runtime dispatch port produces.
+    - onex.cmd.omnimarket.delegation-harness-execute.v1
+
+# OMN-26220: the runtime dispatch port produces the harness-execute command and reads the
+# handler's result; the consuming node declares its own READ and result WRITE grants.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.delegation-harness-execute.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.delegation-harness-execute.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-harness-completed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-harness-completed.v1, operation: DESCRIBE}
 
 terminal_event: onex.evt.omnimarket.delegate-skill-completed.v1
 
@@ -568,6 +584,9 @@ published_events:
   - event_type: omnibase-infra.quality-gate-result
     topic: onex.evt.omnibase-infra.quality-gate-result.v1
     description: The checks one in-process gate decision evaluated, skipped and failed, and the rule that decided.
+  - event_type: omnimarket.delegation-harness-execute
+    topic: onex.cmd.omnimarket.delegation-harness-execute.v1
+    description: "OMN-26220: one delegation pinned to a kind: harness backend, consumed by HandlerHarnessDelegation."
 
 # OMN-21098: the admission decision is consumed by the Claude Code adapter's
 # receipt-mode client, which awaits it by correlation id; no omnimarket contract
