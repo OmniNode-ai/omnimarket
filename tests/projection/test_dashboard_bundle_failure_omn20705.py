@@ -172,10 +172,17 @@ def test_the_printed_root_serves_the_verified_pages(
     monkeypatch.setattr(click, "echo", recorder)
 
     token = "test-token-for-bundle-proof"
+    token_file = dashboard_env["tmp_path"] / "dashboard-token.txt"
+    token_file.write_text(token, encoding="utf-8")
     runner = CliRunner()
     result = runner.invoke(
         cli_local.dashboard_command,
-        ["--overlay", str(dashboard_env["overlay"]), "--access-token", token],
+        [
+            "--overlay",
+            str(dashboard_env["overlay"]),
+            "--access-token-file",
+            str(token_file),
+        ],
     )
 
     assert result.exit_code == 0

@@ -172,15 +172,15 @@ def _free_port(host: str) -> int:
     help="Overlay document carrying dashboard.bind (host:port, loopback only).",
 )
 @click.option(
-    "--access-token",
-    "access_token",
+    "--access-token-file",
+    "access_token_file",
     default=None,
     hidden=True,
-    help="A start token minted by the canonical setup lifecycle.",
+    help="Path to a file containing a start token minted by the setup lifecycle.",
 )
 @click.pass_context
 def dashboard_command(
-    ctx: click.Context, overlay_path: Path | None, access_token: str | None
+    ctx: click.Context, overlay_path: Path | None, access_token_file: str | None
 ) -> None:
     """Serve this install's projection exposures to the local dashboard (OMN-19976).
 
@@ -227,10 +227,12 @@ def dashboard_command(
         "port": port,
         "tenant_id": tenant,
     }
-    if access_token:
-        from pydantic import SecretStr
+    if access_token_file:
+        token_text = Path(access_token_file).read_text(encoding="utf-8").strip()
+        if token_text:
+            from pydantic import SecretStr
 
-        request_kwargs["access_token"] = SecretStr(access_token)
+            request_kwargs["access_token"] = SecretStr(token_text)
     request = ModelLocalDashboardServeRequest(**request_kwargs)
     click.echo(f"onex dashboard: http://{host}:{port}/")
     click.echo(

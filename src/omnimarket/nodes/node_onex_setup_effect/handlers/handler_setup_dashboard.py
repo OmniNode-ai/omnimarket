@@ -9,6 +9,7 @@ is consumed from a pipe and stored through the canonical credential API.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import fcntl
 import os
 import select
@@ -184,6 +185,14 @@ class HandlerSetupDashboard:
             reference = "setup.dashboard.session"
             token = mint_dashboard_token().get_secret_value()
             asyncio.run(self._store.set_secret(reference, token))
+            token_fd, token_name = tempfile.mkstemp(
+                prefix=".dashboard-token-", dir=self._home
+            )
+            token_path = Path(token_name)
+            with os.fdopen(token_fd, "w") as token_file:
+                token_file.write(token)
+                token_file.flush()
+                os.fchmod(token_file.fileno(), 0o600)
             environment = os.environ.copy()
             for name in tuple(environment):
                 if (
@@ -205,8 +214,8 @@ class HandlerSetupDashboard:
                 [
                     str(Path(sys.executable).parent / "onex"),
                     "dashboard",
-                    "--access-token",
-                    token,
+                    "--access-token-file",
+                    str(token_path),
                 ],
                 cwd=Path.home(),
                 env=environment,
@@ -275,5 +284,7 @@ class HandlerSetupDashboard:
             finally:
                 if process.stdout is not None:
                     process.stdout.close()
+                with contextlib.suppress(OSError):
+                    token_path.unlink(missing_ok=True)
         finally:
             os.close(fd)
