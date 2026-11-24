@@ -98,10 +98,12 @@ def test_rules_carry_the_declared_thresholds_and_a_changed_setting_changes_them(
     by_name = {r["alert"]: r for r in rules["groups"][0]["rules"]}
     assert set(by_name) == {
         "LabHostDown",
+        "LabHostReadingStale",
         "LabHostDiskOver",
         "LabHostInodesOver",
         "LabHostLoadAboveCores",
         "LabHostServiceFailed",
+        "LabProcessExporterDown",
     }
     assert "> 85" in by_name["LabHostDiskOver"]["expr"]
     assert "> 85" in by_name["LabHostInodesOver"]["expr"]
@@ -135,7 +137,7 @@ def test_dashboard_shows_read_time_oldest_reading_and_failed_services(
 ) -> None:
     dashboard = json.loads(render_files(_overlay(tmp_path))[DASHBOARD_FILE])
     titles = {p["title"]: p for p in dashboard["panels"]}
-    assert titles["Read at"]["targets"][0]["expr"] == "time()"
+    assert titles["Read at"]["targets"][0]["expr"] == "time() * 1000"
     assert (
         "last_over_time(node_time_seconds[30m])"
         in titles["Oldest reading, seconds old"]["targets"][0]["expr"]
@@ -152,18 +154,23 @@ def test_container_unit_overlay_is_accepted_by_the_container_unit_installer_mode
     parsed = ModelContainerUnitsOverlay.model_validate(exporter_host)
     assert [u.name for u in parsed.units] == [
         "example-node-exporter",
+        "example-process-exporter",
         "example-prometheus",
         "example-grafana",
     ]
-    prom = parsed.units[1]
+    prom = parsed.units[2]
     assert prom.published_ports[0].host_address == "host-a.example.test"
     assert any(
         c == "--storage.tsdb.retention.size=20GB"
         for c in prom.create.command  # type: ignore[union-attr]
     )
-    # host-b has an existing exporter: the installer puts no unit there.
-    assert units_for_host(overlay, "host-b") == []
-    assert render_container_units_overlay(overlay, "host-b") == {"units": []}
+    # host-b has an existing node exporter: the installer puts only the process exporter there.
+    assert units_for_host(overlay, "host-b") == ["example-process-exporter"]
+    document = _document(tmp_path)
+    document["targets"]["host-b"]["processes"] = False  # type: ignore[index]
+    bare = ModelObservabilityOverlay.model_validate(document)
+    assert units_for_host(bare, "host-b") == []
+    assert render_container_units_overlay(bare, "host-b") == {"units": []}
 
 
 def test_install_writes_files_then_runs_the_container_unit_installer_per_unit(
@@ -185,6 +192,7 @@ def test_install_writes_files_then_runs_the_container_unit_installer_per_unit(
     installs = [c for c in run.calls if CONTAINER_UNITS_MODULE in c]
     assert [c[c.index("--unit") + 1] for c in installs] == [
         "example-node-exporter",
+        "example-process-exporter",
         "example-prometheus",
         "example-grafana",
     ]
@@ -242,11 +250,13 @@ def test_a_target_that_is_not_a_lab_hosts_row_is_refused_with_nothing_done(
 
 
 def test_a_host_with_no_unit_is_refused(tmp_path: Path) -> None:
+    document = _document(tmp_path)
+    document["targets"]["host-b"]["processes"] = False  # type: ignore[index]
     result = _handler(["host-a", "host-b"]).handle(
         ModelObservabilityInstallRequest(
             host_name="host-b",
             mode="install",
-            overlay_file=_write_overlay(tmp_path, _document(tmp_path)),
+            overlay_file=_write_overlay(tmp_path, document),
         )
     )
     assert result.exit_code == 1

@@ -28,10 +28,11 @@ from omnimarket.handlers.node_overlay_reader import (
 from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
 from omnimarket.models.overlay_keys.model_overlay_documents import ModelLabHostsTable
 from omnimarket.nodes.node_host_observability_install_effect.handlers.render_observability import (
+    PROCESS_CPU,
     PROMETHEUS_CONFIG,
     PROMETHEUS_RULES,
     render_container_units_overlay,
-    render_files,
+    render_host_files,
     units_for_host,
 )
 from omnimarket.nodes.node_host_observability_install_effect.models.model_observability import (
@@ -143,9 +144,8 @@ class HandlerObservabilityInstall:
         self, overlay: ModelObservabilityOverlay, host: str, uncovered: tuple[str, ...]
     ) -> ModelObservabilityInstallResult:
         out = ""
-        if host == overlay.observer_host:
-            for relative, text in render_files(overlay).items():
-                out += f"--- {overlay.config_root}/{relative}\n{text}"
+        for relative, text in render_host_files(overlay, host).items():
+            out += f"--- {overlay.config_root}/{relative}\n{text}"
         out += f"--- {UNITS_OVERLAY_NAME}\n" + yaml.safe_dump(
             render_container_units_overlay(overlay, host), sort_keys=False
         )
@@ -168,12 +168,11 @@ class HandlerObservabilityInstall:
             self._mkdir(root)
             if target is not None and target.exporter == "install":
                 self._mkdir(Path(overlay.exporter.textfile_directory))
-            if host == overlay.observer_host:
-                for relative, text in render_files(overlay).items():
-                    wrote = self._write(root / relative, text)
-                    out += f"{'wrote' if wrote else 'unchanged'} {root / relative}\n"
-                    if wrote and relative in (PROMETHEUS_CONFIG, PROMETHEUS_RULES):
-                        changed_prometheus = True
+            for relative, text in render_host_files(overlay, host).items():
+                wrote = self._write(root / relative, text)
+                out += f"{'wrote' if wrote else 'unchanged'} {root / relative}\n"
+                if wrote and relative in (PROMETHEUS_CONFIG, PROMETHEUS_RULES):
+                    changed_prometheus = True
             units_overlay = root / UNITS_OVERLAY_NAME
             self._write(
                 units_overlay,
@@ -280,6 +279,7 @@ class HandlerObservabilityInstall:
             else:
                 good += 1
                 lines.append(f"READ {name} up=1 age={seconds:.0f}s")
+        lines += self._top_processes(overlay, base, names)
         lines.append(
             f"COVERED {good} of {len(names)} lab_hosts rows "
             f"(reading at most {overlay.max_reading_age_seconds} s old)"
@@ -289,6 +289,34 @@ class HandlerObservabilityInstall:
             stdout="\n".join(lines) + "\n",
             uncovered_hosts=uncovered,
         )
+
+    def _top_processes(
+        self, overlay: ModelObservabilityOverlay, base: str, names: list[str]
+    ) -> list[str]:
+        """One line per host naming the process using the most CPU; informational, it never fails the readback."""
+        if overlay.process_exporter is None:
+            return []
+        try:
+            document = json.loads(
+                self.get(
+                    f"{base}?{urllib.parse.urlencode({'query': f'topk by (host)(1, {PROCESS_CPU})'})}"
+                )
+            )
+            rows = {
+                row["metric"]["host"]: (
+                    row["metric"]["groupname"],
+                    float(row["value"][1]),
+                )
+                for row in document["data"]["result"]
+                if "host" in row["metric"] and "groupname" in row["metric"]
+            }
+        except (OSError, ValueError, KeyError):
+            return ["TOP PROCESS unread"]
+        return [
+            f"TOP PROCESS {name} {rows[name][0]} cpu={rows[name][1]:.2f}"
+            for name in names
+            if name in rows
+        ]
 
     def _series(self, base: str, query: str) -> dict[str, float]:
         document = json.loads(

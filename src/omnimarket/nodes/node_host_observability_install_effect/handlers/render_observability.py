@@ -8,6 +8,7 @@ Nothing here reads the host or the network: every value is an overlay field.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -22,9 +23,15 @@ PROVISIONING_DATASOURCE = f"{GRAFANA_DIR}/provisioning/datasources/prometheus.ya
 PROVISIONING_DASHBOARDS = f"{GRAFANA_DIR}/provisioning/dashboards/lab-hosts.yaml"
 DASHBOARD_FILE = f"{GRAFANA_DIR}/dashboards/lab-hosts.json"
 GRAFANA_ENV_FILE = f"{GRAFANA_DIR}/grafana.env"
+PROCESS_DIR = "process-exporter"
+PROCESS_CONFIG = f"{PROCESS_DIR}/process-exporter.yml"
 PROMETHEUS_CONFIG = f"{PROMETHEUS_DIR}/prometheus.yml"
 PROMETHEUS_RULES = f"{PROMETHEUS_DIR}/rules.yml"
 DATASOURCE_NAME = "lab-prometheus"
+# CPU seconds per second of each process group, per host: the series the top-process panels and the readback rank.
+PROCESS_CPU = (
+    "sum by (host, groupname)(rate(namedprocess_namegroup_cpu_seconds_total[2m]))"
+)
 
 
 def _yaml(document: object) -> str:
@@ -33,35 +40,71 @@ def _yaml(document: object) -> str:
 
 def render_prometheus_config(overlay: ModelObservabilityOverlay) -> str:
     interval = f"{overlay.prometheus.scrape_interval_seconds}s"
+    jobs: list[dict[str, Any]] = [
+        {
+            "job_name": overlay.prometheus.job_name,
+            "static_configs": [
+                {
+                    "targets": [f"{target.address}:{target.port}"],
+                    "labels": {"host": name},
+                }
+                for name, target in sorted(overlay.targets.items())
+            ],
+        }
+    ]
+    process = overlay.process_exporter
+    if process is not None:
+        jobs.append(
+            {
+                "job_name": process.job_name,
+                "static_configs": [
+                    {
+                        "targets": [f"{target.address}:{process.port}"],
+                        "labels": {"host": name},
+                    }
+                    for name, target in sorted(overlay.targets.items())
+                    if target.processes
+                ],
+            }
+        )
     return _yaml(
         {
             "global": {"scrape_interval": interval, "evaluation_interval": interval},
             "rule_files": ["/etc/prometheus/rules.yml"],
-            "scrape_configs": [
-                {
-                    "job_name": overlay.prometheus.job_name,
-                    "static_configs": [
-                        {
-                            "targets": [f"{target.address}:{target.port}"],
-                            "labels": {"host": name},
-                        }
-                        for name, target in sorted(overlay.targets.items())
-                    ],
-                }
-            ],
+            "scrape_configs": jobs,
         }
     )
+
+
+def render_process_config(overlay: ModelObservabilityOverlay) -> str:
+    """The per process exporter's grouping file: every process, under the name the template gives it."""
+    process = overlay.process_exporter
+    template = process.name_template if process is not None else ""
+    return _yaml({"process_names": [{"name": template, "cmdline": [".+"]}]})
 
 
 def render_rules(overlay: ModelObservabilityOverlay) -> str:
     a = overlay.alerts
     job = overlay.prometheus.job_name
+    window = f"{overlay.grafana.reading_window_minutes}m"
     rules: list[dict[str, Any]] = [
         {
             "alert": "LabHostDown",
             "expr": f'up{{job="{job}"}} == 0',
             "for": f"{a.host_down_minutes}m",
             "annotations": {"summary": "{{ $labels.host }} exporter does not answer"},
+        },
+        {
+            # A silent machine: its newest reading is older than the bound (or none lies in the window).
+            "alert": "LabHostReadingStale",
+            "expr": (
+                f"time() - last_over_time(node_time_seconds[{window}]) "
+                f"> {overlay.max_reading_age_seconds}"
+            ),
+            "for": f"{a.reading_stale_minutes}m",
+            "annotations": {
+                "summary": f"{{{{ $labels.host }}}} newest reading is older than {overlay.max_reading_age_seconds} seconds"
+            },
         },
         {
             "alert": "LabHostDiskOver",
@@ -102,6 +145,18 @@ def render_rules(overlay: ModelObservabilityOverlay) -> str:
             },
         },
     ]
+    process = overlay.process_exporter
+    if process is not None:
+        rules.append(
+            {
+                "alert": "LabProcessExporterDown",
+                "expr": f'up{{job="{process.job_name}"}} == 0',
+                "for": f"{a.host_down_minutes}m",
+                "annotations": {
+                    "summary": "{{ $labels.host }} per process exporter does not answer"
+                },
+            }
+        )
     return _yaml({"groups": [{"name": "lab-hosts", "rules": rules}]})
 
 
@@ -150,6 +205,7 @@ def _panel(
     h: int,
     unit: str = "",
     legend: str = "{{host}}",
+    no_value: str = "",
 ) -> dict[str, Any]:
     panel: dict[str, Any] = {
         "id": panel_id,
@@ -167,6 +223,8 @@ def _panel(
         ],
         "fieldConfig": {"defaults": {"unit": unit}, "overrides": []},
     }
+    if no_value:
+        panel["fieldConfig"]["defaults"]["noValue"] = no_value
     return panel
 
 
@@ -177,7 +235,8 @@ def render_dashboard(overlay: ModelObservabilityOverlay) -> str:
         _panel(
             1,
             "Read at",
-            "time()",
+            # time() is seconds; the dateTimeAsIso unit reads milliseconds (seconds showed as 1970).
+            "time() * 1000",
             "stat",
             0,
             0,
@@ -218,6 +277,7 @@ def render_dashboard(overlay: ModelObservabilityOverlay) -> str:
             6,
             4,
             legend="{{host}} {{name}}",
+            no_value="none failed",
         ),
         _panel(
             5,
@@ -226,9 +286,20 @@ def render_dashboard(overlay: ModelObservabilityOverlay) -> str:
             "stat",
             0,
             4,
-            24,
+            12,
             4,
             unit="s",
+        ),
+        _panel(
+            12,
+            "Failed services per host",
+            'sum by (host)(node_systemd_unit_state{state="failed"})',
+            "stat",
+            12,
+            4,
+            12,
+            4,
+            no_value="no systemd reading",
         ),
         _panel(
             6,
@@ -298,6 +369,34 @@ def render_dashboard(overlay: ModelObservabilityOverlay) -> str:
             legend="{{host}} {{mountpoint}}",
         ),
     ]
+    process = overlay.process_exporter
+    if process is not None:
+        cpu = PROCESS_CPU
+        panels += [
+            _panel(
+                13,
+                "Top processes by CPU",
+                f"topk(10, {cpu})",
+                "table",
+                0,
+                29,
+                12,
+                8,
+                legend="{{host}} {{groupname}}",
+                no_value="no process reading",
+            ),
+            _panel(
+                14,
+                "Process CPU over time",
+                f"topk(5, {cpu})",
+                "timeseries",
+                12,
+                29,
+                12,
+                8,
+                legend="{{host}} {{groupname}}",
+            ),
+        ]
     return json.dumps(
         {
             "uid": "lab-hosts",
@@ -324,7 +423,7 @@ def render_grafana_env(overlay: ModelObservabilityOverlay) -> str:
 
 def render_files(overlay: ModelObservabilityOverlay) -> dict[str, str]:
     """Relative path under ``config_root`` -> file text, for the observer host."""
-    return {
+    files = {
         PROMETHEUS_CONFIG: render_prometheus_config(overlay),
         PROMETHEUS_RULES: render_rules(overlay),
         PROVISIONING_DATASOURCE: render_datasource(overlay),
@@ -332,6 +431,19 @@ def render_files(overlay: ModelObservabilityOverlay) -> dict[str, str]:
         DASHBOARD_FILE: render_dashboard(overlay),
         GRAFANA_ENV_FILE: render_grafana_env(overlay),
     }
+    if overlay.process_exporter is not None:
+        files[PROCESS_CONFIG] = render_process_config(overlay)
+    return files
+
+
+def render_host_files(overlay: ModelObservabilityOverlay, host: str) -> dict[str, str]:
+    """The files this host takes: the observer's whole set, or only the process grouping file."""
+    if host == overlay.observer_host:
+        return render_files(overlay)
+    target = overlay.targets.get(host)
+    if target is not None and target.processes and overlay.process_exporter is not None:
+        return {PROCESS_CONFIG: render_process_config(overlay)}
+    return {}
 
 
 def _unit_base(
@@ -355,6 +467,8 @@ def units_for_host(overlay: ModelObservabilityOverlay, host: str) -> list[str]:
     names: list[str] = []
     if target is not None and target.exporter == "install":
         names.append(overlay.exporter.unit)
+    if target is not None and target.processes and overlay.process_exporter is not None:
+        names.append(overlay.process_exporter.unit)
     if host == overlay.observer_host:
         names += [overlay.prometheus.unit, overlay.grafana.unit]
     return names
@@ -382,15 +496,49 @@ def render_container_units_overlay(
                         f"--web.listen-address={target.address}:{target.port}",
                         "--collector.textfile.directory=/textfile",
                         *[f"--collector.{name}" for name in ex.enable_collectors],
+                        *(
+                            [
+                                f"--collector.systemd.unit-include={ex.systemd_unit_include}"
+                            ]
+                            if ex.systemd_unit_include
+                            else []
+                        ),
                     ],
                     "volumes": [
                         f"{ex.rootfs_mount}:/host:ro,rslave",
                         f"{ex.textfile_directory}:/textfile:ro",
+                        *ex.host_mounts,
                     ],
                     "restart_policy": overlay.restart_policy,
+                    "security_opts": list(ex.security_opts),
                 },
                 "memory_gib": ex.memory_gib,
                 "memory_swap_gib": ex.memory_swap_gib,
+            }
+        )
+    proc = overlay.process_exporter
+    if target is not None and target.processes and proc is not None:
+        units.append(
+            {
+                **_unit_base(overlay, host, proc.unit, proc.container),
+                "probe_address": target.address,
+                "probe_port": proc.port,
+                "network": proc.network,
+                "create": {
+                    "image": proc.image,
+                    "command": [
+                        f"-config.path=/config/{Path(PROCESS_CONFIG).name}",
+                        "-procfs=/host/proc",
+                        f"-web.listen-address={target.address}:{proc.port}",
+                    ],
+                    "volumes": [
+                        f"{proc.procfs_mount}:/host/proc:ro",
+                        f"{root}/{PROCESS_DIR}:/config:ro",
+                    ],
+                    "restart_policy": overlay.restart_policy,
+                },
+                "memory_gib": proc.memory_gib,
+                "memory_swap_gib": proc.memory_swap_gib,
             }
         )
     if host == overlay.observer_host:

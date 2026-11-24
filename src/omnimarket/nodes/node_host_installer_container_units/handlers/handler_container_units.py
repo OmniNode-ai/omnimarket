@@ -109,6 +109,8 @@ def create_argv(unit: ModelContainerUnit) -> list[str]:
         argv += ["-v", volume]
     if unit.create.env_file is not None:
         argv += ["--env-file", unit.create.env_file]
+    for option in unit.create.security_opts:
+        argv += ["--security-opt", option]
     argv.append(unit.create.image)
     argv.extend(unit.create.command)
     return argv
