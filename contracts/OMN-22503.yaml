@@ -18,7 +18,7 @@ requirements:
   statement: Stopping an ended lane releases only that lane's exact PR claims.
   acceptance:
   - id: AC13
-    statement: 'AC13: the stop adapter releases only the exact lane/run/session PR claims, handles final receipts, no-tree closeout, dry run, missing identities, replacement races and failed deletion -- falsifier: uv run --frozen --python 3.12 pytest tests/nodes/node_remote_lane_stop_effect/test_ended_claim_release.py -q --no-cov -n 0 -p no:randomly'
+    statement: 'AC13: the stop adapter releases only the exact lane/run/session PR claims, handles final receipts, no-tree closeout, dry run, missing identities, replacement races and failed deletion -- falsifier: uv run --frozen --python=3.12 pytest tests/nodes/node_remote_lane_stop_effect/test_ended_claim_release.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
 - kind: tests
   description: Release exact PR claims after engine exit
