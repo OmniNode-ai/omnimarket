@@ -11,6 +11,8 @@ requirements:
   acceptance:
   - id: AC2
     statement: 'AC2: a regression is fixed by a pull request against dev with a test that fails on the broken code and passes on the fix, with no skip and no widened check -- falsifier: uv run pytest on the named test fails at dev head 4c9f4e97eb and passes on the PR head'
+  - id: AC3
+    statement: 'AC3: the accepted AC14 evidence item in contracts/OMN-22519.yaml declares its pytest run as a test_passes check, so the binding test reads its test file -- falsifier: uv run pytest on the two named binding tests fails at dev head 06cc078369 and passes on the PR head'
 evidence_requirements:
 - kind: tests
   description: 'The repo contract binding test at the pushed head.'
@@ -28,4 +30,13 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py::test_every_repo_contract_binds_every_criterion -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26488-ac3-omn22519-ac14-binding
+  description: 'tests/ci/test_repo_evidence_caller_workflow.py::test_every_repo_contract_binds_every_criterion and test_no_repo_contract_hides_a_pytest_run_behind_uv_run_frozen_command fail at dev head 06cc078369 on OMN-22519.yaml item dod-omn22519-ac14-accepted-20261124t1145z and pass at the pushed head with the same test code and no skip.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -n 0 -p no:randomly -k "test_every_repo_contract_binds_every_criterion or test_no_repo_contract_hides_a_pytest_run_behind_uv_run_frozen_command"
     cwd: .
