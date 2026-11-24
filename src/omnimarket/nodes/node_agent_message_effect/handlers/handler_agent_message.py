@@ -34,7 +34,7 @@ from omnimarket.models.agent_message.model_agent_message import ModelAgentMessag
 from omnimarket.models.agent_message.model_agent_message_rejection import (
     ModelAgentMessageRejection,
 )
-from omnimarket.nodes.node_agent_message_effect.handlers.handler_agent_message_verify import (
+from omnimarket.nodes.node_agent_message_effect.handlers.agent_message_verifier import (
     AgentMessageVerificationError,
     AgentMessageVerifier,
     classify_validation_error,

@@ -28,13 +28,13 @@ from omnimarket.models.agent_message.model_agent_message import (
 from omnimarket.models.agent_message.model_agent_signing_key import (
     ModelAgentSigningKey,
 )
+from omnimarket.nodes.node_agent_message_effect.handlers.agent_message_verifier import (
+    AgentMessageVerificationError,
+    AgentMessageVerifier,
+)
 from omnimarket.nodes.node_agent_message_effect.handlers.handler_agent_message import (
     HandlerAgentMessage,
     message_event_id,
-)
-from omnimarket.nodes.node_agent_message_effect.handlers.handler_agent_message_verify import (
-    AgentMessageVerificationError,
-    AgentMessageVerifier,
 )
 from omnimarket.nodes.node_agent_message_effect.models.model_agent_message_request import (
     ModelAgentMessageRequest,
@@ -139,7 +139,7 @@ def test_the_new_fields_are_optional_so_the_legacy_shape_still_validates() -> No
 def test_the_message_model_is_frozen_and_closed() -> None:
     message = ModelAgentMessage.model_validate(message_fields(message_id="m-1"))
     with pytest.raises(ValidationError):
-        message.message_id = "m-2"  # type: ignore[misc]
+        message.__setattr__("message_id", "m-2")
     with pytest.raises(ValidationError):
         ModelAgentMessage.model_validate(message_fields(unexpected="x"))
 
