@@ -46,9 +46,15 @@ def _obs(step: str, status: str, fix: str | None = None) -> ModelSetupObservatio
     return ModelSetupObservation(step=step, status=status, fix=fix)
 
 
-def _run_status(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, switch: bool):
+def _run_status(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    switch: bool,
+    hooks_fix: str = INSTALL_HINT,
+):
     plugin = _obs("claude-plugin", "success")
-    hooks = _obs("claude-hooks", "action_required", INSTALL_HINT)
+    hooks = _obs("claude-hooks", "action_required", hooks_fix)
     monkeypatch.setattr(
         cli_delegation,
         "HandlerSetupClaude",
@@ -168,6 +174,22 @@ def test_assets_removed_with_delegation_off_leads_with_onex_delegation_on(
     assert document["status"] == "off"
     assert "onex delegation on" in text
     assert "onex install" not in str(document["fix"])
+
+
+def test_ac2_a_different_hooks_break_with_delegation_off_keeps_its_own_repair(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """AC2: broken assets still name the repair. Delegation off and Claude Code ready
+    is a healthy off only when the hooks fix is exactly the generic unreadable-assets
+    text. A different hooks break keeps its own fix and never reads as a plain on."""
+    other_fix = "Restore the hook bundle at /opt/onex/plugins/onex, then retry."
+    assert other_fix != INSTALL_HINT
+    text, document = _run_status(
+        monkeypatch, tmp_path, switch=False, hooks_fix=other_fix
+    )
+    assert other_fix in text
+    assert document["fix"] == other_fix
+    assert "Run onex delegation on" not in text
 
 
 def test_on_that_fails_to_install_names_the_repair_not_healthy_off(
