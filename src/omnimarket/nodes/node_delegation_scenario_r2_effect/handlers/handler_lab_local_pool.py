@@ -1,6 +1,5 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# unimported-handler-allow: HandlerLabLocalPool is built by build_runner in handler_scenario_r2 as the run's local pool; the node contract binds it in handler_routing
 """The lab's local chat servers that answer now, least busy first (scenario R2).
 
 Scenario R2 adds two local servers to a fresh customer home. The product reaches a local model through its local tier:
