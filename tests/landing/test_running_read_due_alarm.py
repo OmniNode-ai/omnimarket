@@ -13,12 +13,12 @@ from datetime import UTC, datetime
 import pytest
 
 from omnimarket.handlers import ledger_row_grammar as grammar
-from omnimarket.nodes.node_running_read_due_compute.handlers.handler_running_read_due import (
-    HandlerRunningReadDue,
-)
-from omnimarket.nodes.node_running_read_due_compute.models.model_running_read_due import (
+from omnimarket.models.running_read_due import (
     ModelMergedPrFact,
     ModelRunningReadDueRequest,
+)
+from omnimarket.nodes.node_running_read_due_compute.handlers.handler_running_read_due import (
+    HandlerRunningReadDue,
 )
 
 pytestmark = pytest.mark.unit

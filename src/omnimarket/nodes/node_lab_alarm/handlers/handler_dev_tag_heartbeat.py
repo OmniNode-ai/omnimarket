@@ -6,6 +6,12 @@ The old lab alarm's dev-tag heartbeat, ported with its rule unchanged: a beat th
 alarmed is a breach. A repository alarms only after its streak of consecutive breaching runs reaches the
 overlay's persistence bound; before that the run is OK with a waiting reason. An unreadable source, a
 document with no heartbeat object, or a malformed beat is INDETERMINATE, never ALARM and never OK.
+When the overlay also declares the agent's systemd USER unit (OMN-26316), the unit is read first: a
+unit that is loaded but not active breaches under the subject ``unit:<name>`` on the same bound, in the
+same streak store, so a stopped unit is seen at once and not only once the beat-age bound has aged out.
+A unit that is not found in the user scope (a wrong name or host) and a state that cannot be read are
+INDETERMINATE, never ALARM and never OK: ``is-active`` prints "inactive" for a unit that does not
+exist too, so only a loaded unit's state can ever alarm.
 """
 
 from __future__ import annotations
@@ -34,6 +40,8 @@ from omnimarket.nodes.node_lab_alarm.protocols import (
     ProtocolAlarmDelivery,
     ProtocolGrowthStreakStore,
     ProtocolHeartbeatSource,
+    ProtocolUnitStateSource,
+    UnitStateUnreadableError,
 )
 
 CONTRACT = Path(__file__).resolve().parents[1] / "contract.yaml"
@@ -48,7 +56,7 @@ def load_topics(path: Path = CONTRACT) -> dict[str, str]:
 
 
 class HandlerDevTagHeartbeat:
-    """Read the deploy agent's heartbeat; a repository alarms when its streak reaches the bound."""
+    """Read the deploy agent's heartbeat, and its USER unit when declared; a breach alarms when its streak reaches the bound."""
 
     def __init__(
         self,
@@ -58,12 +66,14 @@ class HandlerDevTagHeartbeat:
         streaks: ProtocolGrowthStreakStore,
         delivery: ProtocolAlarmDelivery | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        unit_source: ProtocolUnitStateSource | None = None,
     ) -> None:
         self._settings = settings
         self._source = source
         self._streaks = streaks
         self._delivery = delivery
         self._clock = clock
+        self._unit_source = unit_source
 
     def handle(
         self, request: ModelDevTagHeartbeatCommand
@@ -84,9 +94,87 @@ class HandlerDevTagHeartbeat:
                 ("injected: stale-beat",),
                 detail,
             )
+        unit = self._settings.unit
+        unit_source = self._unit_source
+        alarms: list[str] = []
+        reasons: list[str] = []
+        readings: list[str] = []
+        breaching: dict[str, int] = {}
+        stored = self._streaks.load()
+        unit_keys: tuple[str, ...] = ()
+        if unit is not None and unit_source is not None:
+            # The unit is read first: a stopped unit breaches on its own streak instead of
+            # waiting for the beat-age bound to age a stale beat out.
+            try:
+                load_state, active_state = unit_source.read()
+            except UnitStateUnreadableError as exc:
+                return self._finish(
+                    request,
+                    EnumDevTagHeartbeatOutcome.INDETERMINATE,
+                    repositories,
+                    (),
+                    (),
+                    ("unit-unreadable",),
+                    f"the deploy agent's user unit {unit.name} could not be read: {exc}",
+                )
+            if load_state != "loaded":
+                detail = (
+                    f"no unit named {unit.name} is loaded in the user scope of the declared "
+                    f"host (LoadState {load_state}); is-active would print inactive for it "
+                    f"too, so the declared name or host is wrong"
+                )
+                return self._finish(
+                    request,
+                    EnumDevTagHeartbeatOutcome.INDETERMINATE,
+                    repositories,
+                    (),
+                    (),
+                    (f"unit-not-found:{unit.name} (user scope)",),
+                    detail,
+                )
+            readings.append(f"unit {unit.name}: {active_state}")
+            key = f"unit:{unit.name}"
+            # Tracked on every read of a loaded unit, active or not: the save below drops the
+            # key when this run does not breach, which is what clears the unit's streak.
+            unit_keys = (key,)
+            if active_state != "active":
+                streak = stored.get(key, 0) + 1
+                breaching[key] = streak
+                self._classify(
+                    key,
+                    streak,
+                    f"the deploy agent's user unit {unit.name} reads {active_state} "
+                    "(user scope), not active",
+                    alarms,
+                    reasons,
+                )
         try:
             document = self._source.read()
         except HeartbeatUnreadableError as exc:
+            if breaching:
+                # A stopped unit stops the heartbeat too: the unit breach is judged on its own
+                # streak, and the heartbeat's unreadability joins the reasons meanwhile.
+                if request.write:
+                    self._streaks.save({**stored, **breaching})
+                if max(breaching.values()) >= self._settings.persistence.persist_runs:
+                    return self._finish(
+                        request,
+                        EnumDevTagHeartbeatOutcome.ALARM,
+                        repositories,
+                        tuple(readings),
+                        tuple(alarms),
+                        tuple(reasons),
+                        "; ".join(readings),
+                    )
+                return self._finish(
+                    request,
+                    EnumDevTagHeartbeatOutcome.INDETERMINATE,
+                    repositories,
+                    tuple(readings),
+                    (),
+                    ("heartbeat-unreadable", *reasons),
+                    "; ".join(readings),
+                )
             return self._finish(
                 request,
                 EnumDevTagHeartbeatOutcome.INDETERMINATE,
@@ -102,17 +190,12 @@ class HandlerDevTagHeartbeat:
                 request,
                 EnumDevTagHeartbeatOutcome.INDETERMINATE,
                 repositories,
-                (),
+                tuple(readings),
                 (),
                 ("no-heartbeat-object",),
                 "the deploy agent's document has no heartbeat mapping",
             )
         now = self._clock()
-        stored = self._streaks.load()
-        alarms: list[str] = []
-        reasons: list[str] = []
-        readings: list[str] = []
-        breaching: dict[str, int] = {}
         for repo in repositories:
             beat = heartbeat.get(repo)
             if not isinstance(beat, Mapping):
@@ -186,6 +269,11 @@ class HandlerDevTagHeartbeat:
                     to_save[repo] = breaching[repo]
                 else:
                     to_save.pop(repo, None)
+            for key in unit_keys:
+                if key in breaching:
+                    to_save[key] = breaching[key]
+                else:
+                    to_save.pop(key, None)
             self._streaks.save(to_save)
         outcome = (
             EnumDevTagHeartbeatOutcome.ALARM
@@ -205,17 +293,21 @@ class HandlerDevTagHeartbeat:
 
     def _classify(
         self,
-        repo: str,
+        subject: str,
         streak: int,
         detail: str,
         alarms: list[str],
         reasons: list[str],
     ) -> None:
+        """One breaching subject's verdict: an alarm line at the bound, a waiting reason before it.
+
+        ``subject`` is a repository name or a ``unit:<name>`` key; both live in the same streak store.
+        """
         bound = self._settings.persistence.persist_runs
         if streak >= bound:
-            alarms.append(f"dev-tag-heartbeat:{repo}: {detail}")
+            alarms.append(f"dev-tag-heartbeat:{subject}: {detail}")
         else:
-            reasons.append(f"waiting:{repo}: run {streak} of {bound}")
+            reasons.append(f"waiting:{subject}: run {streak} of {bound}")
 
     def _finish(
         self,
