@@ -31,6 +31,10 @@ class _Step:
         return False
 
 
+class _Switches:
+    prompts = True
+
+
 def _obs(step: str, status: str, fix: str | None = None) -> ModelSetupObservation:
     return ModelSetupObservation(step=step, status=status, fix=fix)
 
@@ -46,9 +50,7 @@ def _run_status(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, switch: bool
         ),
     )
     monkeypatch.setattr(cli_delegation, "delegation_switch_enabled", lambda: switch)
-    monkeypatch.setattr(
-        cli_delegation, "read_switches", lambda: type("S", (), {"prompts": True})()
-    )
+    monkeypatch.setattr(cli_delegation, "read_switches", _Switches)
     monkeypatch.setattr(cli_delegation, "write_switches", lambda _switches: None)
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     (tmp_path / "home").mkdir(exist_ok=True)
