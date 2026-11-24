@@ -54,6 +54,7 @@ from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.inode_alarm import
 )
 from omnimarket.nodes.node_lab_disk_watermark_effect.models.model_lab_disk_watermark import (
     Level,
+    ModelClassScanSkip,
     ModelHostDiskReadingSettings,
     ModelLabDiskWatermarkGrowthReading,
     ModelLabDiskWatermarkOverlay,
@@ -298,11 +299,24 @@ class HandlerLabDiskWatermark:
             return reading
         # The reading file is written first: the class scan walks whole caches and must never delay the level
         # placement reads (the unit's start timeout is the contract's, and is not widened for it).
+        host_disk = self._host_disk(
+            row,
+            settings,
+            usages,
+            correlation_id,
+            request.dry_run,
+            budget_seconds=request.budget_seconds,
+            entry_cache_file=reading_file.with_name(
+                f"{reading_file.name}.uv-entries.json"
+            ),
+        )
         return reading.model_copy(
             update={
-                "host_disk": self._host_disk(
-                    row, settings, usages, correlation_id, request.dry_run
-                )
+                "host_disk": host_disk,
+                "scan_skipped": tuple(
+                    ModelClassScanSkip(class_name=name, skipped_entries=count)
+                    for name, count in self.classes.skipped_by_class()
+                ),
             }
         )
 
@@ -313,8 +327,17 @@ class HandlerLabDiskWatermark:
         usages: list[tuple[str, Usage]],
         correlation_id: str,
         dry_run: bool,
+        *,
+        budget_seconds: float | None = None,
+        entry_cache_file: Path | None = None,
     ) -> ModelHostDiskRead | ModelHostDiskReadFailed:
-        classes = self.classes.read_classes(row, settings)
+        classes = self.classes.read_classes(
+            row,
+            settings,
+            budget_seconds=budget_seconds,
+            entry_cache_file=entry_cache_file,
+            persist_entry_cache=not dry_run,
+        )
         read = ModelHostDiskRead(
             correlation_id=correlation_id,
             host_name=row.name,
@@ -490,6 +513,7 @@ class HandlerLabDiskWatermark:
                     "inodes",
                     "inode_alarms",
                     "inodes_unread",
+                    "scan_skipped",
                 }
             ),
             indent=2,
