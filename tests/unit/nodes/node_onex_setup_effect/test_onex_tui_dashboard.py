@@ -123,7 +123,7 @@ async def test_a_running_dashboard_shows_its_url_and_process() -> None:
     async with app.run_test(size=(160, 44)) as pilot:
         await _open_dashboard(pilot)
         assert isinstance(app.screen, DashboardScreen)
-        assert f"Running at {_URL} (process 35653)" in _state(app)
+        assert "Running (process 35653)" in _state(app)
 
 
 async def test_a_stopped_dashboard_shows_the_clis_fix() -> None:
@@ -145,10 +145,11 @@ async def test_s_starts_it_keeps_the_tab_and_reads_the_state_again() -> None:
         await _settle(pilot, 16)
         assert ("dashboard", "start", "--json") in runner.calls
         assert isinstance(app.screen, DashboardScreen)
-        assert f"Dashboard running at {_URL}" in str(
-            app.screen.query_one("#bnote").render()
+        assert (
+            "Dashboard running. Press Enter, use the Open button, or run onex dashboard open to open it."
+            in str(app.screen.query_one("#bnote").render())
         )
-        assert f"Running at {_URL}" in _state(app)
+        assert "Running (process 35653)" in _state(app)
 
 
 async def test_enter_opens_it_and_x_stops_it() -> None:
