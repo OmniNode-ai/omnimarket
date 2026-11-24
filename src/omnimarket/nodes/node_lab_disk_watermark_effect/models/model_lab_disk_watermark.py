@@ -108,6 +108,9 @@ class ModelLabDiskWatermarkSchedule(_Frozen):
     interval_seconds: int = Field(gt=0)
     accuracy: NonEmptyStr
     timeout_start_seconds: int = Field(gt=0)
+    #: The share of ``timeout_start_seconds`` the class scan may spend. The docker reads (two commands, each bounded by the
+    #: overlay's ``timeout_seconds``), the inode read and the publish run after it, so the share leaves room for them.
+    scan_budget_percent: int = Field(gt=0, lt=100, default=70)
     description: NonEmptyStr
 
 
@@ -119,6 +122,8 @@ class ModelLabDiskWatermarkRequest(_Frozen):
     dry_run: bool = False
     #: Names the host disk event and its failure; a blank one is minted by the handler.
     correlation_id: str = ""
+    #: Seconds the class scan may spend before it stops with the classes it has read (OMN-26097); None is unbounded.
+    budget_seconds: float | None = Field(default=None, gt=0)
 
 
 class ModelVolumeReading(_Frozen):
@@ -187,6 +192,13 @@ class ModelInodeAlarm(_Frozen):
     note: str = ""
 
 
+class ModelClassScanSkip(_Frozen):
+    """The entries of one class the scan listed and then found gone (OMN-26097): skipped and counted, never raised."""
+
+    class_name: NonEmptyStr
+    skipped_entries: int = Field(ge=1)
+
+
 class ModelLabDiskWatermarkGrowthReading(ModelLabDiskWatermarkReading):
     """A reading with the growth of each volume against the admission floor (OMN-21663).
 
@@ -201,6 +213,8 @@ class ModelLabDiskWatermarkGrowthReading(ModelLabDiskWatermarkReading):
     inodes: tuple[ModelInodeReading, ...] = ()
     inode_alarms: tuple[ModelInodeAlarm, ...] = ()
     inodes_unread: tuple[str, ...] = ()
+    #: Entries a class scan listed and then found gone, per class (OMN-26097). Result only: the event keeps its shape.
+    scan_skipped: tuple[ModelClassScanSkip, ...] = ()
 
 
 class ModelLabDiskWatermarkScheduleResult(_Frozen):

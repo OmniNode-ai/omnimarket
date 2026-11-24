@@ -31,6 +31,11 @@ from omnimarket.nodes.node_lab_fill_effect.protocols.local_lab_fill_adapters imp
 from omnimarket.nodes.node_work_state_projection_scheduled_effect.handlers.handler_work_state_projection_scheduled import (
     HandlerWorkStateProjectionScheduled,
 )
+from tests.nodes.node_work_state_projection_scheduled_effect.ledger_route_support import (
+    COMMAND_ENV,
+    FakeBusReadCommand,
+    install_fake,
+)
 from tests.nodes.node_work_state_projection_scheduled_effect.support import (
     RULES_EXAMPLE,
     SRC,
@@ -47,14 +52,16 @@ def _contract(node: str) -> dict:
     return yaml.safe_load((SRC / node / "contract.yaml").read_text(encoding="utf-8"))
 
 
-def _home(tmp_path: Path, *, claim_cells: str) -> tuple[Path, dict[str, str], datetime]:
+def _home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, claim_cells: str
+) -> tuple[Path, dict[str, str], datetime]:
     now = datetime.now(UTC).replace(microsecond=0)
-    ledger = tmp_path / "ledger" / "rows.md"
-    ledger.parent.mkdir(parents=True)
     stamp = (now - timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    ledger.write_text(
-        f"{stamp} | CLAIM | lane=seam-lane | {claim_cells} | scope text\n",
-        encoding="utf-8",
+    install_fake(
+        monkeypatch,
+        FakeBusReadCommand(
+            [f"{stamp} | CLAIM | lane=seam-lane | {claim_cells} | scope text"]
+        ),
     )
     linear = tmp_path / ".onex_state" / "linear-snapshot"
     linear.mkdir(parents=True)
@@ -80,9 +87,7 @@ def _home(tmp_path: Path, *, claim_cells: str) -> tuple[Path, dict[str, str], da
     env = {
         "OMNI_HOME": str(tmp_path),
         "ONEX_WORK_STATE_OVERLAY": str(RULES_EXAMPLE),
-        _contract("node_work_state_projection_effect")["runtime"]["ledger"][
-            "path_env"
-        ]: str(ledger),
+        COMMAND_ENV: "fake-read --stdin",
     }
     return tmp_path, env, now
 
@@ -121,7 +126,7 @@ def test_the_three_pieces_name_one_projection_file() -> None:
 def test_golden_a_lane_whose_claim_names_a_ticket_shows_after_one_publish_to_both_readers(
     tmp_path, monkeypatch
 ) -> None:
-    home, env, now = _home(tmp_path, claim_cells="ticket=ZEP-7")
+    home, env, now = _home(tmp_path, monkeypatch, claim_cells="ticket=ZEP-7")
     _publish(env, now)
     written = _contract("node_work_state_projection_effect")["runtime"]["output"][
         "relpath"
@@ -142,7 +147,7 @@ def test_error_the_same_ledger_without_the_ticket_cell_leaves_the_ticket_unowned
     tmp_path, monkeypatch
 ) -> None:
     """The failing control of the golden above: take the cell away and the fill sees no owner."""
-    home, env, now = _home(tmp_path, claim_cells="note=none")
+    home, env, now = _home(tmp_path, monkeypatch, claim_cells="note=none")
     _publish(env, now)
     monkeypatch.setenv("OMNI_HOME", str(home))
     monkeypatch.delenv("ONEX_WORK_STATE_PATH", raising=False)
@@ -152,7 +157,7 @@ def test_error_the_same_ledger_without_the_ticket_cell_leaves_the_ticket_unowned
 def test_error_a_projection_the_readers_cannot_validate_is_refused_not_read_as_empty(
     tmp_path, monkeypatch
 ) -> None:
-    home, env, now = _home(tmp_path, claim_cells="ticket=ZEP-7")
+    home, env, now = _home(tmp_path, monkeypatch, claim_cells="ticket=ZEP-7")
     _publish(env, now)
     written = _contract("node_work_state_projection_effect")["runtime"]["output"][
         "relpath"

@@ -49,10 +49,12 @@ from omnimarket.nodes.node_pr_landing_rerun_request_compute.handlers.handler_pr_
     HandlerPrLandingRerunRequest,
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_ports import (
+    InMemoryTickLedgerAppender,
     InMemoryTickPublisher,
     InMemoryTickWriter,
     NodePathDecider,
     ProtocolTickDecider,
+    ProtocolTickLedgerAppender,
     ProtocolTickLivenessReader,
     ProtocolTickPublisher,
     ProtocolTickWriter,
@@ -60,6 +62,9 @@ from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_ports impo
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_rerun_ledger import (
     InMemoryRerunLedger,
     ProtocolRerunLedger,
+)
+from omnimarket.nodes.node_pr_landing_tick_orchestrator.handlers.tick_running_read import (
+    TickRunningRead,
 )
 from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_orchestrator import (
     EnumTickFailureReason,
@@ -70,6 +75,9 @@ from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_orches
     ModelTickLivenessRead,
     ModelTickRequest,
     ModelTickResult,
+)
+from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_running_read import (
+    ModelTickRunningRead,
 )
 from omnimarket.nodes.node_pr_landing_tick_reducer import HandlerPrLandingTickReducer
 
@@ -126,6 +134,7 @@ class HandlerPrLandingTickOrchestrator:
         rerun_decider: HandlerPrLandingRerunRequest | None = None,
         liveness_reader: ProtocolTickLivenessReader | None = None,
         max_liveness_reads: int = 0,
+        ledger_appender: ProtocolTickLedgerAppender | None = None,
     ) -> None:
         self._decider: ProtocolTickDecider = decider or NodePathDecider()
         self._reducer = reducer or HandlerPrLandingTickReducer()
@@ -148,6 +157,10 @@ class HandlerPrLandingTickOrchestrator:
         # the liveness read is the trigger of node_pr_landing_liveness_read_effect (OMN-26024): observation only
         self._liveness_reader = liveness_reader
         self._max_liveness_reads = max_liveness_reads
+        # the tick is the caller of node_running_read_due_compute (OMN-26549): its requests go to the ledger appender, in act mode only
+        self._running_read = TickRunningRead(
+            appender=ledger_appender or InMemoryTickLedgerAppender()
+        )
 
     def _performed_in(
         self, request: ModelTickRequest, decision: ModelLandingDecision
@@ -224,6 +237,9 @@ class HandlerPrLandingTickOrchestrator:
             result = result.model_copy(
                 update={"liveness_reads": self._read_liveness(request, result)}
             )
+        running_read = self._running_read_step(request)
+        if running_read is not None:
+            result = result.model_copy(update={"running_read": running_read})
         if chain is not None:
             if result.status is EnumTickStatus.COMPARED:
                 chain.success(
@@ -241,6 +257,23 @@ class HandlerPrLandingTickOrchestrator:
                     result.failure_detail,
                 )
         return result
+
+    def _running_read_step(
+        self, request: ModelTickRequest
+    ) -> ModelTickRunningRead | None:
+        """Write the due row of each merge and read the due rows at this tick (OMN-26549).
+
+        Requests go out in an enabled act mode only; observe and replay name what they would send. A step that
+        raises is a refusal on the result, never a failed tick: the comparison is already settled.
+        """
+        try:
+            return self._running_read.run(
+                request, sends=request.mode is EnumTickMode.ACT and self._act_enabled
+            )
+        except Exception as exc:
+            return ModelTickRunningRead(
+                refusals=(f"the running-read step raised {type(exc).__name__}",)
+            )
 
     def _read_liveness(
         self, request: ModelTickRequest, result: ModelTickResult

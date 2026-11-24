@@ -130,6 +130,15 @@ pyproject_narrowable_keys:
   - tool.onex.dashboard_bundle.*
 pyproject_reader_globs:
   - src/omnimarket/**/*.py
+# Decision (OMN-26487): at or above the policy's file_level_closure_stage the file-level closure runs
+# and the rule above adds its tests to the closure's selection (seeds, option b). It reuses
+# pyproject_narrowable_keys, pyproject_lock_paths (the lock's own version line) and
+# pyproject_reader_globs unchanged, so one allowlist rules both sides of the stage; a section-rule
+# escalation (a key off the allowlist, an unparseable or unread diff, a lock change beyond the version
+# line) takes the full suite whatever else the closure selected. Reason: the closure reads no project
+# file, and the rule that narrows a change at a lower stage must narrow it at a higher one, not widen
+# it to the full suite. full_suite (option c) is the value an absent entry takes.
+closure_stage_pyproject_rule: seeds
 
 # Test infrastructure — any change forces the full suite.
 test_infrastructure_paths:
