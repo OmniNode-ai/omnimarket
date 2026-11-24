@@ -7,14 +7,21 @@ import pytest
 from click.testing import CliRunner
 
 from omnimarket.nodes.node_onex_setup_effect import cli_delegation
-from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_claude import (
-    HOOK_ASSETS_UNREADABLE_FIX as INSTALL_HINT,
-)
+from omnimarket.nodes.node_onex_setup_effect.handlers import handler_setup_claude
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_observation import (
     ModelSetupObservation,
 )
 
 pytestmark = pytest.mark.unit
+
+#: The handler's shared constant once it exists; the message the handler has always
+#: printed before that, so these tests collect and fail on behaviour at an older base.
+INSTALL_HINT: str = getattr(
+    handler_setup_claude,
+    "HOOK_ASSETS_UNREADABLE_FIX",
+    "Install or repair the packaged delegation hook assets with onex install "
+    "omninode-claude and check the selected Claude settings, then retry setup.",
+)
 
 
 class _Step:
@@ -79,9 +86,14 @@ def test_ac1_off_and_ready_names_onex_delegation_on_not_an_install(
 def test_ac2_assets_really_broken_keeps_the_repair_command(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    # The boundary AC1 and AC2 share: the same unreadable assets read as a repair
+    # with the switch on, and as a plain "run onex delegation on" with it off.
     text, document = _run_status(monkeypatch, tmp_path, switch=True)
     assert "onex install" in text
     assert "onex install" in str(document["fix"])
+    off_text, off_document = _run_status(monkeypatch, tmp_path, switch=False)
+    assert "onex delegation on" in off_text
+    assert "onex install" not in str(off_document["fix"])
 
 
 def test_on_that_fails_to_install_names_the_repair_not_healthy_off(

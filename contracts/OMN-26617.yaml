@@ -28,7 +28,7 @@ requirements:
   statement: "The existing onex setup delegation unit tests still pass."
   acceptance:
   - id: AC4
-    statement: 'AC4: the existing delegation unit tests still pass; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_cli_delegation.py'
+    statement: 'AC4: the existing delegation unit tests still pass; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_cli_delegation.py tests/unit/nodes/node_onex_setup_effect/test_omn26617_repro_status.py'
 evidence_requirements:
 - kind: tests
   description: AC1 and AC2 status next-step behavior.
@@ -54,9 +54,7 @@ dod_evidence:
     check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_omn26617_repro_status.py::test_ac1_off_and_ready_names_onex_delegation_on_not_an_install -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26617-ac2
-  description: |-
-    AC2: when the hook assets are really missing or broken, the status still names the repair command (`onex install omninode-claude`).
-    must-fail-control: impossible (pure-refactor): the switch-on repair-command path is unchanged by this PR, so the control cannot fail at the merge base by design.
+  description: 'AC2: when the hook assets are really missing or broken, the status still names the repair command (`onex install omninode-claude`).'
   source: manual
   binds_ac:
   - AC2
@@ -74,15 +72,13 @@ dod_evidence:
     check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_omn26617_repro_tui_tab.py::test_delegation_tab_shows_the_cli_next_step_when_off_and_ready -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26617-ac4
-  description: |-
-    AC4: the existing delegation unit tests still pass.
-    must-fail-control: impossible (pure-refactor): this is a regression control over tests that already exist and pass at the merge base, so it cannot fail there by design.
+  description: 'AC4: the existing delegation unit tests still pass, run together with the new status tests.'
   source: manual
   binds_ac:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_cli_delegation.py -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_cli_delegation.py tests/unit/nodes/node_onex_setup_effect/test_omn26617_repro_status.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26617-integration-proof
   description: Run the OMN-26617 tests on a lab host at the pushed revision.
