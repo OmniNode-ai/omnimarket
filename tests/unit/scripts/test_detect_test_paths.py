@@ -868,8 +868,10 @@ def test_protection_globs_reject_invalid_types(invalid: object) -> None:
 
 
 def test_empty_selection_fallback_uses_full_suite_shard_matrix() -> None:
+    # A markdown file is a data-only file (data_only_globs) and narrows; Dockerfile matches no
+    # narrowing rule, so it takes the fallback this test exists for.
     sel = compute_selection(
-        changed_files=["README.md"],
+        changed_files=["Dockerfile"],
         adjacency_path=ADJACENCY_PATH,
         ref_name="jonah/feature",
         event_name="pull_request",

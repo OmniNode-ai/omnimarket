@@ -30,6 +30,7 @@ TICK_MODULES = (
     "omnimarket.nodes.node_overlay_store_load_effect.runtime_overlay_store_load_tick",
     "omnimarket.nodes.node_canonical_clone_refresh_effect.runtime_declared_clone_tick",
     "omnimarket.nodes.node_c32_auth_boundary_probe_effect.runtime_c32_probe_tick",
+    "omnimarket.nodes.node_delegation_check_probe_effect.runtime_delegation_check_probe_tick",
     "omnimarket.nodes.node_job_log_filler_effect.runtime_job_log_filler_tick",
 )
 

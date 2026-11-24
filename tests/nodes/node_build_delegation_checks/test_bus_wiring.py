@@ -37,6 +37,7 @@ NODE_DIR = (
 REGRESSION_TOPIC = "onex.evt.omnimarket.delegation-check-regression-detected.v1"
 ALARM_TOPIC = "onex.cmd.omnimarket.lab-alarm-delivery-requested.v1"
 RESULT_TOPIC = "onex.evt.omnimarket.build-delegation-checks-recorded.v1"
+CHECK_TOPIC = "onex.evt.omnimarket.build-delegation-check-recorded.v1"
 
 
 def _git(clone: Path, *args: str) -> str:
@@ -76,12 +77,13 @@ def _recorded(path: Path, green: str, red: str) -> None:
     )
 
 
-def test_the_contract_declares_the_three_output_topics() -> None:
+def test_the_contract_declares_the_four_output_topics() -> None:
     contract = yaml.safe_load((NODE_DIR / "contract.yaml").read_text(encoding="utf-8"))
     assert contract["event_bus"]["publish_topics"] == [
         REGRESSION_TOPIC,
         ALARM_TOPIC,
         RESULT_TOPIC,
+        CHECK_TOPIC,
     ]
     assert contract["handler"]["class"] == "HandlerBuildDelegationChecks"
     assert contract["handler"]["module"].endswith(
@@ -136,6 +138,8 @@ def test_the_no_argument_handler_publishes_each_output_topic_once(
     assert topics.count(REGRESSION_TOPIC) == 1
     assert topics.count(ALARM_TOPIC) == 1
     assert topics.count(RESULT_TOPIC) == 2
+    # One record per check on the per-check topic: the overlay names two checks and two builds ran.
+    assert topics.count(CHECK_TOPIC) == 4
 
 
 def test_a_partial_set_of_ports_is_refused() -> None:
