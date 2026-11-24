@@ -48,6 +48,15 @@ def test_the_contract_names_a_handler_and_models_that_import() -> None:
     assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]
 
 
+def test_the_guard_declares_its_one_run_event_under_the_literal_topic_name() -> None:
+    contract = _contract()
+    assert contract["event_bus"]["publish_topics"] == [
+        "onex.evt.omnimarket.host-thermal-guard-ran.v1"
+    ]
+    assert contract["terminal_event"] == "onex.evt.omnimarket.host-thermal-guard-ran.v1"
+    assert contract["externally_consumed_topics"] == [contract["terminal_event"]]
+
+
 def test_a_hold_and_a_release_over_real_files_leave_the_state_directory_as_the_placement_probe_reads_it(
     tmp_path: Path, overlay
 ) -> None:
