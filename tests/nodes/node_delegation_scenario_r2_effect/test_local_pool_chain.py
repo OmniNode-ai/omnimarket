@@ -25,14 +25,14 @@ from omnimarket.models.model_delegation_scenario import (
     EnumScenarioConclusion,
     ModelScenarioR2RunCommand,
 )
-from omnimarket.nodes.node_delegation_scenario_r2_effect.handlers.handler_lab_local_pool import (
-    HandlerLabLocalPool,
-)
 from omnimarket.nodes.node_delegation_scenario_r2_effect.handlers.handler_scenario_r2 import (
     HandlerScenarioR2,
     ModelCommandOutcome,
     ModelLocalServer,
     ModelLocalServerPool,
+)
+from omnimarket.nodes.node_delegation_scenario_r2_effect.lab_local_pool import (
+    LabLocalPool,
 )
 from tests.nodes.node_delegation_scenario_r2_effect.test_golden_chain_scenario_r2_effect import (
     NOW,
@@ -168,7 +168,7 @@ def _pool(
     refs: Mapping[str, str],
     waiting: Mapping[str, int | None],
     lists: Mapping[str, tuple[str, ...] | None],
-) -> HandlerLabLocalPool:
+) -> LabLocalPool:
     def load(targets: Mapping[str, str]) -> ModelEndpointLoadSnapshot:
         return ModelEndpointLoadSnapshot(
             as_of=NOW,
@@ -178,7 +178,7 @@ def _pool(
             ),
         )
 
-    return HandlerLabLocalPool(
+    return LabLocalPool(
         targets=lambda: refs, load=load, lister=lambda base: lists.get(base)
     )
 

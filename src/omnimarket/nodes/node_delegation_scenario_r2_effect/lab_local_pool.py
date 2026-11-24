@@ -61,7 +61,7 @@ def list_models(base_url: str) -> tuple[str, ...] | None:
     )
 
 
-class HandlerLabLocalPool:
+class LabLocalPool:
     """The live local servers of the lab's spread groups, least waiting requests first."""
 
     def __init__(
@@ -104,4 +104,4 @@ class HandlerLabLocalPool:
         )
 
 
-__all__ = ["HandlerLabLocalPool", "list_models"]
+__all__ = ["LabLocalPool", "list_models"]

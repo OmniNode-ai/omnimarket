@@ -534,11 +534,11 @@ class HandlerScenarioR2:
 
 def _lab_pool() -> ProtocolLocalServerPool:
     # Imported here: the pool module imports ModelLocalServer from this one.
-    from omnimarket.nodes.node_delegation_scenario_r2_effect.handlers.handler_lab_local_pool import (
-        HandlerLabLocalPool,
+    from omnimarket.nodes.node_delegation_scenario_r2_effect.lab_local_pool import (
+        LabLocalPool,
     )
 
-    return HandlerLabLocalPool()
+    return LabLocalPool()
 
 
 def build_runner(
