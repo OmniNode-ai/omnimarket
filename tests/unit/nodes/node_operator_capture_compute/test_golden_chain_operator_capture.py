@@ -75,7 +75,7 @@ class FileLedger:
 
 def test_golden_chain_prompt_to_ledger_to_open_ask_to_closed(tmp_path: Path) -> None:
     store = tmp_path / "store"
-    ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
+    ledger = tmp_path / "scratch_rows.md"
     ledger.write_text(
         "2026-09-22T20:35:26Z | RULING | lane=m4-board-rescope | ticket=OMN-1 | question=Cloud "
         'work in M4? | kind=process | "Cloud work leaves M4 for M4.5."\n'

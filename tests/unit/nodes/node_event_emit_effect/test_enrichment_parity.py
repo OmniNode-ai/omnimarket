@@ -249,10 +249,11 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     # OMN-25093 registers the host job claim run event, held byte-identical
     # by the same assertion: 107 -> 108.
     # The agent message node registers its agent.message event, held
-    # byte-identical by the same assertion: 108 -> 109.
-    # OMN-26318 registers the ledger-file census daily record event, held
-    # byte-identical by the same assertion: 109 -> 110.
-    assert len(event_types) == 110, (
+    # byte-identical by the same assertion: 108 -> 109. OMN-26043 registers
+    # the delegation check probe's run event, held byte-identical by the same
+    # assertion: 109 -> 110. OMN-26318 registers the ledger-file census daily
+    # record event, held byte-identical by the same assertion: 110 -> 111.
+    assert len(event_types) == 111, (
         f"registry drifted to {len(event_types)} event types; update the "
         "expected parity count deliberately, do not auto-follow it"
     )
@@ -297,8 +298,9 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     # 109 -> 110: OMN-23642's lab-proof-judge-use-recorded fans out to exactly one topic.
     # 110 -> 111: OMN-25093's host_job_claim.run_completed fans out to exactly one topic.
     # 111 -> 112: agent.message fans out to exactly one topic.
-    # 112 -> 113: OMN-26318's ledger_file_census.daily_record fans out to exactly one topic.
-    assert total_old == total_new == 113
+    # 112 -> 113: OMN-26043's delegation_check.probe.completed fans out to exactly one topic.
+    # 113 -> 114: OMN-26318's ledger_file_census.daily_record fans out to exactly one topic.
+    assert total_old == total_new == 114
     enriched = sum(
         1
         for msgs in new_by_event.values()
@@ -309,7 +311,7 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     keyed = sum(1 for msgs in new_by_event.values() for m in msgs if m.key is not None)
     # 65 -> 70: every published record is unconditionally enriched, so this
     # count tracks total_new exactly (OMN-17019 C9 registry growth).
-    assert enriched == 113, f"only {enriched}/113 new-path messages were enriched"
+    assert enriched == 114, f"only {enriched}/114 new-path messages were enriched"
     # 2 of the 67 registered events declare no partition_key_field; the daemon
     # publishes those with a null key, so 68 is the correct non-null count.
     # All five OMN-17019 obligation kinds declare partition_key_field:
@@ -336,8 +338,9 @@ def test_shadow_parity_is_byte_identical_for_every_event_type(
     # 106 -> 107: OMN-23642's lab-proof-judge-use-recorded is published keyed.
     # 107 -> 108: OMN-25093's host_job_claim.run_completed is published keyed (host).
     # 108 -> 109: agent.message is published keyed (thread).
-    # 109 -> 110: OMN-26318's ledger_file_census.daily_record is published keyed (host).
-    assert keyed == 110, f"only {keyed}/110 new-path messages carried a partition key"
+    # 109 -> 110: OMN-26043's delegation_check.probe.completed is published keyed (criterion).
+    # 110 -> 111: OMN-26318's ledger_file_census.daily_record is published keyed (host).
+    assert keyed == 111, f"only {keyed}/111 new-path messages carried a partition key"
 
 
 # ---------------------------------------------------------------------------

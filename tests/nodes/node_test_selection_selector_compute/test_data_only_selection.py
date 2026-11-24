@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.handlers.adapter_test_selection_policy_file import load_policy
 from omnimarket.nodes.node_test_selection_selector_compute.adapters.adjacency_file import (
     load_adjacency_map,
 )
@@ -97,11 +98,23 @@ def _seconds(selection: ModelTestSelection) -> float:
 # --- the real tree -----------------------------------------------------------------------------
 
 
-def test_data_only_shipped_adjacency_declares_the_rule_and_keeps_it_off() -> None:
+def test_data_only_shipped_adjacency_declares_the_rule_and_turns_it_on() -> None:
     config = load_adjacency_map(ADJACENCY)
     assert config.data_only_globs == ["contracts/OMN-*.yaml", "*.md"]
-    # The rule changes what a pull request runs; it is switched on by its own change, not by this one.
-    assert config.data_only_selection_enabled is False
+    # Stage 1 is entered (policy selection_stage 1, receipt stage_1.yaml), so the rule is live.
+    assert load_policy().selection_stage >= 1
+    assert config.data_only_selection_enabled is True
+
+
+@pytest.mark.parametrize(("sha", "changed"), FIVE_DATA_ONLY_MERGES.items())
+def test_data_only_five_merges_are_narrowed_by_the_shipped_adjacency(
+    sha: str, changed: list[str]
+) -> None:
+    """The shipped adjacency file, unmodified, narrows each of the five merges."""
+    selection = _selection(changed, ADJACENCY)
+    assert not selection.is_full_suite, sha
+    assert selection.full_suite_reason is None
+    assert set(ALWAYS_SET) <= set(selection.selected_paths)
 
 
 @pytest.mark.parametrize(("sha", "changed"), FIVE_DATA_ONLY_MERGES.items())

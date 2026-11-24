@@ -81,8 +81,11 @@ def _dashboard_lifecycle(
         click.echo(observation.model_dump_json())
     else:
         click.echo(f"Dashboard: {observation.status}")
-        if observation.status == "success" and "url" in observation.evidence:
-            click.echo(observation.evidence["url"])
+        if observation.status == "success":
+            click.echo(
+                "Press Enter, use the Open button, or run `onex dashboard open` "
+                "to open it."
+            )
         elif observation.fix:
             click.echo(observation.fix, err=True)
     if observation.status != "success":
