@@ -30,7 +30,8 @@ PROBE_NODE_TICK = "omnimarket.nodes.node_delegation_check_probe_effect.runtime_d
 
 #: The checks whose probe is one of this repository's nodes. The other seven have no node here yet, so they have no route and
 #: read unavailable; none of them is a cloud workflow dispatch. ``{python}`` is the interpreter running the handler,
-#: ``{registry_root}`` the registry root.
+#: ``{registry_root}`` the registry root and
+#: ``{state_root}`` the runtime's declared writable state root (ONEX_STATE_DIR, then ONEX_STATE_ROOT), where a probe keeps its state.
 DEFAULT_CHECK_ROUTES: dict[str, tuple[str, ...]] = {
     check: (
         "{python}",
@@ -39,7 +40,7 @@ DEFAULT_CHECK_ROUTES: dict[str, tuple[str, ...]] = {
         "--omni-home",
         "{registry_root}",
         "--state-dir",
-        "{registry_root}/.onex_state/delegation-check-probe",
+        "{state_root}/delegation-check-probe",
         "--trigger",
         "manual",
         "--check",

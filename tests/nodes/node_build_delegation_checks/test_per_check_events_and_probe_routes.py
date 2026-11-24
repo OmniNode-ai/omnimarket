@@ -74,7 +74,11 @@ def _handler(
     sink = RecordingSink()
     handler = HandlerBuildDelegationChecks(
         settings=settings,
-        runner=CommandCheckExecutor(settings.check_routes, registry_root=tmp_path),
+        runner=CommandCheckExecutor(
+            settings.check_routes,
+            registry_root=tmp_path,
+            state_root=tmp_path / "state",
+        ),
         store=InMemoryBuildStore(),
         merges=InMemoryMergeSource({}),
         sink=sink,
