@@ -26,6 +26,9 @@ from omnimarket.nodes.node_delegation_check_regression_effect.models.model_regre
     ModelProbeRun,
     ModelRegressionSettings,
 )
+from omnimarket.nodes.node_delegation_check_regression_effect.protocols import (
+    ProtocolChangeSource,
+)
 
 FIXTURE = (
     Path(__file__).resolve().parents[1]
@@ -93,6 +96,7 @@ class Rig:
         *,
         cfg: ModelRegressionSettings | None = None,
         changes: Sequence[ModelChange] = (),
+        change_source: ProtocolChangeSource | None = None,
         held: Mapping[str, str] | None = None,
         until: datetime | None = None,
         unreadable: Mapping[str, str] | None = None,
@@ -103,7 +107,7 @@ class Rig:
         self.handler = HandlerDelegationCheckRegression(
             settings=self.settings,
             runs=InMemoryRunSource(by_check, until=until, unreadable=unreadable),
-            changes=InMemoryChangeSource(changes),
+            changes=change_source or InMemoryChangeSource(changes),
             claims=InMemoryClaims(held),
             seen=self.seen,
             publisher=self.publisher,

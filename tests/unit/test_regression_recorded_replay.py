@@ -11,6 +11,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
+from omnimarket.models.lab_alarm_delivery import ModelLabAlarmDeliveryRequest
 from omnimarket.nodes.node_delegation_check_regression_effect.adapters.change_sources import (
     LedgerMarkerChangeSource,
 )
@@ -50,11 +53,14 @@ def _rig() -> Rig:
         max_transition_age_seconds=4500,
         flap_window_seconds=4500,
     )
-    rig = Rig(recorded_runs(), cfg=cfg, until=REPLAY_AT)
-    rig.handler._changes = LedgerMarkerChangeSource(
-        InMemoryLedger(LEDGER), cfg.change_markers
-    )  # type: ignore[attr-defined]
-    return rig
+    return Rig(
+        recorded_runs(),
+        cfg=cfg,
+        until=REPLAY_AT,
+        change_source=LedgerMarkerChangeSource(
+            InMemoryLedger(LEDGER), cfg.change_markers
+        ),
+    )
 
 
 def test_replay_at_1445z_raises_c14_and_c29_with_the_5090_host_change() -> None:
@@ -88,25 +94,23 @@ def test_replay_publishes_the_events_and_one_alarm_naming_both_checks() -> None:
     alarm_requests = [
         a
         for a in rig.publisher.on(TOPICS["alarm_delivery_requested"])
-        if getattr(a, "alarms", ())
+        if isinstance(a, ModelLabAlarmDeliveryRequest) and a.alarms
     ]
     assert len(alarm_requests) == 1
     assert sorted(a.subject.split("@")[0] for a in alarm_requests[0].alarms) == [
         "C14",
         "C29",
-    ]  # type: ignore[attr-defined]
+    ]
 
 
-def test_replay_with_no_transition_detection_would_raise_nothing() -> None:
+def test_replay_with_no_transition_detection_would_raise_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Positive control: the same fixture through a detector that finds no transition raises no event, so the test above fails on it."""
     import omnimarket.nodes.node_delegation_check_regression_effect.handlers.handler_delegation_check_regression as module
 
-    original = module.find_transitions
-    module.find_transitions = lambda _runs: []  # type: ignore[assignment]
-    try:
-        result = _rig().handler.handle(ModelRegressionScanRequest(now=REPLAY_AT))
-    finally:
-        module.find_transitions = original
+    monkeypatch.setattr(module, "find_transitions", lambda _runs: [])
+    result = _rig().handler.handle(ModelRegressionScanRequest(now=REPLAY_AT))
     assert result.events == ()
 
 

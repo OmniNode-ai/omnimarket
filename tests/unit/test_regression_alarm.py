@@ -15,11 +15,12 @@ from omnimarket.models.lab_alarm_delivery import (
 from omnimarket.nodes.node_delegation_check_regression_effect.models.model_regression import (
     ModelFixLaneRequest,
     ModelRegressionScanRequest,
+    ModelRegressionScanResult,
 )
 from tests.unit.regression_support import T0, TOPICS, Rig, runs, settings
 
 
-def _scan(rig: Rig, hours: float):  # type: ignore[no-untyped-def]
+def _scan(rig: Rig, hours: float) -> ModelRegressionScanResult:
     return rig.handler.handle(
         ModelRegressionScanRequest(now=T0 + timedelta(hours=hours))
     )

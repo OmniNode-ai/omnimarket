@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -140,13 +139,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--at", help="replay: the ISO-8601 UTC moment the scan is run at"
     )
     parser.add_argument("--bus", choices=("kafka", "inmemory"), default="kafka")
+    parser.add_argument(
+        "--registry-root",
+        required=True,
+        type=Path,
+        help="the registry root that holds the ledger, the clones and the state directory",
+    )
     args = parser.parse_args(argv)
     if args.verb == "replay" and not args.at:
         parser.error("replay needs --at")
-    home = os.environ.get("OMNI_HOME")
-    if not home:
-        sys.stderr.write("OMNI_HOME is not set\n")
-        return 1
     try:
         settings = load_settings()
         now = (
@@ -159,7 +160,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             now=now,
             write=args.verb != "probe",
             replay=args.verb == "replay",
-            registry_root=Path(home),
+            registry_root=args.registry_root,
             bus=args.bus,
         )
     except (NodeOverlayError, LedgerRouteError, OSError, ValueError) as exc:

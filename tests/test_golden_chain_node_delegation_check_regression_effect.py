@@ -80,6 +80,12 @@ def test_hop2_a_scan_publishes_the_event_the_alarm_and_the_fix_lane_on_declared_
     contract = _contract("node_delegation_check_regression_effect")
     published = {topic for topic, _, _ in rig.publisher.published}
     assert published <= set(contract["event_bus"]["publish_topics"])
+    assert published == {
+        "onex.evt.omnimarket.delegation-check-regression-detected.v1",
+        "onex.evt.omnimarket.delegation-check-fix-lane-queued.v1",
+        "onex.cmd.omnimarket.lab-alarm-delivery-requested.v1",
+        "onex.evt.omnimarket.delegation-check-regression-scan-completed.v1",
+    }
     assert {
         e.check_id
         for e in rig.publisher.on(TOPICS["regression_detected"])

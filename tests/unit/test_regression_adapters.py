@@ -223,12 +223,14 @@ def test_a_dev_build_record_keeps_only_the_watched_lane_and_is_read_between_two_
 ) -> None:
     store = FileDevBuildStore(tmp_path / "builds.jsonl")
     handler = HandlerDevBuildRecord(store=store, runtime_lane="dev")
-    inside = ModelRebuildCompletedObserved(
-        git_sha="c" * 40,
-        completed_at=T,
-        runtime_lane="dev",
-        requested_git_ref="refs/heads/dev",
-        extra_field="ignored",  # type: ignore[call-arg]
+    inside = ModelRebuildCompletedObserved.model_validate(
+        {
+            "git_sha": "c" * 40,
+            "completed_at": T,
+            "runtime_lane": "dev",
+            "requested_git_ref": "refs/heads/dev",
+            "extra_field": "ignored",
+        }
     )
     other = ModelRebuildCompletedObserved(
         git_sha="d" * 40, completed_at=T, runtime_lane="stability"

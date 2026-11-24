@@ -68,7 +68,7 @@ def test_green_to_red_emits_one_event_with_every_field() -> None:
     assert event.owner == "example-owner"
     assert event.alarm_lane == "example-orchestrator-lane"
     published = rig.publisher.on(TOPICS["regression_detected"])
-    assert [p.event_id for p in published] == [event.event_id]  # type: ignore[attr-defined]
+    assert published == [event]
 
 
 def test_no_event_without_a_green_before_the_red() -> None:
