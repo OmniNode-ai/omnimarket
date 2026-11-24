@@ -18,10 +18,11 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.models.model_code_graph import ModelFileReferences
+from omnimarket.models.model_code_graph_handlers import ModelHandlerRow
 
 
 class EnumCodeGraphQuestion(StrEnum):
-    """The six questions a lookup answers."""
+    """The questions a lookup answers."""
 
     #: Where a symbol (class or function) is defined.
     DEFINITION = "definition"
@@ -37,6 +38,8 @@ class EnumCodeGraphQuestion(StrEnum):
     USERS = "users"
     #: Where a node lives: its directory, contract, metadata, overlay and the workflows that name it.
     LOCATE = "locate"
+    #: Per contract, per operation: the handler, its models, topics, declared failure causes and examples.
+    HANDLERS = "handlers"
 
 
 class EnumRemovalKind(StrEnum):
@@ -171,6 +174,8 @@ class ModelCodeGraphVersion(BaseModel):
     references: tuple[ModelFileReferences, ...] = ()
     #: Where each node lives and which non-Python files belong to it (OMN-26202).
     node_files: tuple[ModelNodeFile, ...] = ()
+    #: One row per operation of each contract's handler routing (OMN-26337).
+    handler_rows: tuple[ModelHandlerRow, ...] = ()
 
 
 class ModelCodeGraphLookupSettings(BaseModel):
@@ -228,6 +233,7 @@ class ModelCodeGraphLookupCommand(BaseModel):
             EnumCodeGraphQuestion.USERS: bool(self.identity)
             and self.removal_kind is not None,
             EnumCodeGraphQuestion.LOCATE: bool(self.target),
+            EnumCodeGraphQuestion.HANDLERS: True,
         }[self.question]
         if not needed:
             raise ValueError(f"the {self.question.value} question lacks its argument")
@@ -277,3 +283,5 @@ class ModelCodeGraphLookupResult(BaseModel):
     fallback_reason: EnumLookupFallbackReason | None = None
     #: The transport error text behind ``fallback_reason``.
     fallback_detail: str | None = None
+    #: HANDLERS: one row per operation, each marked RESOLVED or UNRESOLVED and routed or NO_ROUTE.
+    handler_rows: tuple[ModelHandlerRow, ...] = ()
