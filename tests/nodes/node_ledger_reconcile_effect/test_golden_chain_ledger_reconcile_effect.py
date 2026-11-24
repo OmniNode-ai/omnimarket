@@ -7,7 +7,6 @@ from __future__ import annotations
 import asyncio
 import importlib
 from importlib.resources import files
-from pathlib import Path
 from typing import Any
 
 import yaml
@@ -136,14 +135,13 @@ def test_the_three_operations_run_through_the_bindings() -> None:
     append_type, append_request, append_result = by_op["append_ledger_reconcile_rows"]
     appender = FakeAppender(errors={1: "ledger_lock exit 5: busy"})
     appended = asyncio.run(
-        append_type(appender=appender, host=host).handle(
+        append_type(appender=appender).handle(
             ModelAppendRowsRequest(
                 rows=(
                     ModelPlannedAppend(index=0, kind="terminal", row="row zero"),
                     ModelPlannedAppend(index=1, kind="attention", row="row one"),
                     ModelPlannedAppend(index=2, kind="release", row="row two"),
                 ),
-                ledger_path=str(Path("/elsewhere/ledger.md")),
             )
         )
     )
@@ -155,4 +153,3 @@ def test_the_three_operations_run_through_the_bindings() -> None:
         (2, ""),
     ]
     assert appender.rows == ["row zero", "row one", "row two"]
-    assert appender.ledgers == [Path("/elsewhere/ledger.md")] * 3

@@ -36,6 +36,7 @@ from omnibase_spi.contracts.services import ModelLaneHostPoolRequest
 
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
+    NodeOverlayNotFoundError,
     load_structured_overlay,
 )
 from omnimarket.models.lab_fill.model_lab_fill_selection_overlay import (
@@ -128,6 +129,15 @@ def _missing_line(
     age = "absent" if absent else "unknown" if age_s is None else str(age_s)
     bound = "unknown" if bound_s is None else str(bound_s)
     return f"MISSING {source} age={age} bound={bound}"
+
+
+def _overlay_detail(exc: Exception) -> str:
+    """The error type; an overlay no root holds also names its id and the roots searched (that text holds no document value).
+
+    An overlay that is present but wrong keeps the type alone: its errors may carry private deployment facts."""
+    if isinstance(exc, NodeOverlayNotFoundError):
+        return f"{type(exc).__name__}: {' '.join(str(exc).split())}"
+    return type(exc).__name__
 
 
 def _hosts_from_snapshot(
@@ -262,7 +272,7 @@ def _select_holds(
     try:
         deployment = ModelLabFillSelectionOverlay.load_deployment(environ)
     except (NodeOverlayError, ValueError) as exc:
-        raise _RefusedError("overlay", type(exc).__name__, _EXIT_OVERLAY) from exc
+        raise _RefusedError("overlay", _overlay_detail(exc), _EXIT_OVERLAY) from exc
     request = ModelLabFillSelectRequest(
         selection={
             "now": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -416,7 +426,7 @@ def main(
         )
     except (NodeOverlayError, ValueError) as exc:
         err.write(
-            f"lab-fill unit: step={_STEP} REFUSED reason=overlay detail={type(exc).__name__}\n"
+            f"lab-fill unit: step={_STEP} REFUSED reason=overlay detail={_overlay_detail(exc)}\n"
         )
         code = _EXIT_OVERLAY
     else:
