@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
+from omnibase_spi.protocols.storage import ProtocolOverlayStore
 
 from omnimarket.handlers.floor_fill_scheduled_tick import (
     FloorFillProfileUnboundError,
@@ -25,6 +26,7 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     NodeOverlayNotFoundError,
 )
+from omnimarket.handlers.overlay_store.reader_store import StoreOverlayReader
 from omnimarket.handlers.schedule_gate import ScheduleGate
 from omnimarket.handlers.scheduled_overlay_refusal import ScheduledOverlayRefusalLatch
 from omnimarket.models.schedule_trigger.model_schedule_trigger import (
@@ -51,6 +53,7 @@ class HandlerFloorFillScheduled:
         environ: Mapping[str, str] | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         store: ProtocolFloorStateStore | None = None,
+        overlay_store: ProtocolOverlayStore | None = None,
     ) -> None:
         self._gate = gate or ScheduleGate(
             NODE_NAME, model=ModelFloorFillScheduleOverlay, environ=environ
@@ -59,7 +62,13 @@ class HandlerFloorFillScheduled:
         self._environ = environ
         self._clock = clock
         self._store = store
+        self._overlay_store = overlay_store
         self._refusals = ScheduledOverlayRefusalLatch(NODE_NAME)
+
+    @property
+    def overlay_store(self) -> ProtocolOverlayStore | None:
+        """The settings store this handler was constructed with; the fill overlay is read through it when given."""
+        return self._overlay_store
 
     def _event(
         self,
@@ -96,6 +105,11 @@ class HandlerFloorFillScheduled:
                 environ=self._environ,
                 build_handler=self._build_handler,
                 store=self._store,
+                overlay_reader=(
+                    StoreOverlayReader(self._overlay_store)
+                    if self._overlay_store is not None
+                    else None
+                ),
             )
         except NodeOverlayError:
             return self._event(

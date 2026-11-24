@@ -340,6 +340,12 @@ Repository = "https://github.com/OmniNode-ai/omnimarket"
 # (node_pr_arm_gate_compute + node_pr_lifecycle_merge_effect). Handler source
 # remains, hard-gated fail-closed (contract.yaml lifecycle: deprecated).
 # Weekly retrospective chain, scaffolded from its design (contracts and seams first).
+# OMN-26638: the overlay-store kinds, selected by one wiring function from the bootstrap inputs.
+[project.entry-points."onex.backends"]
+store_in_memory = "omnimarket.handlers.overlay_store.backend_in_memory:BackendInMemory"
+store_postgres = "omnimarket.handlers.overlay_store.backend_postgres:BackendPostgres"
+store_valkey = "omnimarket.handlers.overlay_store.backend_valkey:BackendValkey"
+
 [project.entry-points."onex.nodes"]
 node_ab_compare_orchestrator = "omnimarket.nodes.node_ab_compare_orchestrator"
 node_ab_compare_reducer = "omnimarket.nodes.node_ab_compare_reducer"
