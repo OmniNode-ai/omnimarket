@@ -40,3 +40,6 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -n 0 -p no:randomly -k "test_every_repo_contract_binds_every_criterion or test_no_repo_contract_hides_a_pytest_run_behind_uv_run_frozen_command"
     cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_omn22519_ac14_binding_omn26488.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
