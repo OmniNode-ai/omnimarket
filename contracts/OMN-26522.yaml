@@ -1,0 +1,81 @@
+schema_version: 1.0.0
+ticket_id: OMN-26522
+title: The goal check says when the goal scope overlay is older than the newest goal ruling
+summary: 'node_throughput_goal_check_compute gains the handler handler_goal_scope_stale (operation check_goal_scope_stale): handed the goal_scope overlay text and the rolling ledger text, it prints one MISSING goal-scope-stale line when the overlay ruling_date is older than the newest RULING row carrying the typed cell kind=goal, and none when the dates are equal or the overlay is newer; an unreadable ruling_date or an empty ledger prints UNKNOWN goal-scope-stale and a ledger with no goal RULING row prints a NOTE, never a silent pass. Retiring the 2026-11-05 per-PR lists from the overlay (AC1) lands in the internal plugin repository; wiring the check into the hourly tick (AC4) follows the install.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26522-lists
+    statement: The 2026-11-05 per-PR lists are retired from the goal_scope overlay, with a test over the overlay file.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: the 2026-11-05 per-PR lists are retired from the goal_scope overlay with a test over the overlay file -- falsifier: the overlay test of the internal plugin repository (its pull request 2035); this repository holds no overlay file'
+  - id: req-omn26522-stale
+    statement: A goal check whose goal_scope overlay ruling date is older than the newest goal RULING row prints MISSING goal-scope-stale.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: a goal check whose goal_scope overlay ruling date is older than the newest /goal RULING row prints MISSING goal-scope-stale, and prints none when the dates are equal or the overlay is newer, red before the code -- falsifier: uv run pytest tests -q -k goal_scope_stale; with the older-than comparison flipped, or the kind=goal cell match widened to a MSG row or a near miss, the AC2 tests fail'
+  - id: req-omn26522-landing
+    statement: The code check lands as one pull request handed to the landing controller by one ledger MSG.
+    acceptance:
+      - id: AC3
+        statement: 'AC3: the code check lands as one pull request, handed to the landing controller by one ledger MSG -- falsifier: the squash merge of the pull request carrying this file, and the ledger MSG row naming its head'
+  - id: req-omn26522-tick
+    statement: The first hourly tick after install prints a goal-scope line below the old figure and no stale line.
+    acceptance:
+      - id: AC4
+        statement: 'AC4: the first hourly tick after install prints a goal-scope line with ready_outside_scope below 77 and no MISSING goal-scope-stale line -- falsifier: the tick output read after the install; the wiring of this handler into the tick is the caller''s change, not this one'
+evidence_requirements:
+  - kind: tests
+    description: The goal-scope-stale cases.
+    command: uv run pytest tests -q -k goal_scope_stale
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn26522-ac1
+    description: AC1 is the internal plugin repository's overlay test; this repository's check is its own AC2 cases.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_throughput_goal_check_compute/test_goal_scope_stale.py -q -k goal_scope_stale_reads_the_overlay_shape_of_the_internal_plugin
+        cwd: .
+  - id: dod-omn26522-ac2
+    description: AC2 is the stale, equal, newer, ignored-row and unread-input cases with their positive controls.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_throughput_goal_check_compute/test_goal_scope_stale.py -q -k goal_scope_stale
+        cwd: .
+  - id: dod-omn26522-ac3
+    description: AC3 is this contract read by dod-verify against the one pull request; the check runs the cases the merge base lacks.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_throughput_goal_check_compute/test_goal_scope_stale.py -q -k goal_scope_stale_by_stamp_prints_one_missing_line
+        cwd: .
+  - id: dod-omn26522-integration-proof
+    description: The goal-scope-stale cases run at the pushed sha on a lab host through the lab-work runner; hosted CI cannot dispatch lab work, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26522 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_throughput_goal_check_compute/test_goal_scope_stale.py -q --no-cov
+        cwd: .
+  - id: dod-omn26522-ac4
+    description: AC4 is read from the first hourly tick after install; the handler's own print of the line is checked here.
+    source: manual
+    binds_ac:
+      - AC4
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_throughput_goal_check_compute/test_goal_scope_stale.py -q -k goal_scope_stale_overlay_newer_prints_no_line
+        cwd: .

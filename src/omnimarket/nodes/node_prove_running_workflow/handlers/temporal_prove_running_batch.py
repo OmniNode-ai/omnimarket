@@ -5,7 +5,9 @@
 Every NOT RUNNING line the integration pass published is read and ends in exactly one result row: proven (carrying its
 reading), blocked (carrying its owner) or next-step (carrying the one next step). The change's own workflow writes the
 row of a change it proves or alarms on; the batch writes the row of every other line (an earlier batch already started
-it, its merge sha was unread, or its workflow failed). No step starts an agent: every step is a node command.
+it, its merge sha was unread, or its workflow failed). Those rows are written by ONE step at the end of the pass, so a
+pass of hundreds of answered lines is one row process and one bus append, not one of each per line. No step starts an
+agent: every step is a node command.
 """
 
 from __future__ import annotations
@@ -38,9 +40,11 @@ with workflow.unsafe.imports_passed_through():
         ModelProveRunningEarlier,
         ModelProveRunningHostGroups,
         ModelProveRunningLinePayload,
-        ModelProveRunningLineWritten,
+        ModelProveRunningLinesPayload,
+        ModelProveRunningLinesWritten,
         ModelProveRunningResult,
         ModelProveRunningStartBatch,
+        ModelProveRunningUnresolvedLine,
     )
 
 BATCH_WORKFLOW_NAME = "ProveRunningBatchWorkflow"
@@ -85,6 +89,20 @@ async def prove_running_earlier(workflow_id: str) -> str:
     ).model_dump_json()
 
 
+def _unresolved_payload(
+    line: ModelProveRunningUnresolvedLine,
+) -> ModelProveRunningLinePayload:
+    """The payload of a line whose merge sha was unread, so no workflow could start for it."""
+    return ModelProveRunningLinePayload(
+        case=EnumProveRunningLineCase.UNRESOLVED,
+        key=line.key,
+        target=line.target,
+        owner=line.owner,
+        next_step=line.next_step,
+        detail=line.reason,
+    )
+
+
 @workflow.defn(name=BATCH_WORKFLOW_NAME)
 class ProveRunningBatchWorkflow:
     """Read every NOT RUNNING line, start one proof per change, and end every line in one result row."""
@@ -94,12 +112,15 @@ class ProveRunningBatchWorkflow:
         plan = ModelProveRunningBatchPlan.model_validate_json(plan_json)
         info = workflow.info()
 
-        async def step(name: str, argv: tuple[str, ...], payload: str = "") -> str:
+        async def step(
+            name: str, argv: tuple[str, ...], payload: str = "", written_at: str = ""
+        ) -> str:
             step_input = ModelProveRunningBatchStepInput(
                 step=name.split("/", 1)[0],
                 step_key=f"{info.workflow_id}/{name}",
                 batch_id=info.workflow_id,
                 payload=payload,
+                written_at=written_at,
             )
             return str(
                 await workflow.execute_activity(
@@ -110,21 +131,9 @@ class ProveRunningBatchWorkflow:
                 )
             )
 
-        async def write_line(
-            payload: ModelProveRunningLinePayload,
-        ) -> EnumProveRunningResultKind:
-            written = ModelProveRunningLineWritten.model_validate_json(
-                await step(
-                    f"write_line_result/{payload.case.value}/{payload.key}",
-                    plan.steps.write_line_result,
-                    payload.model_dump_json(),
-                )
-            )
-            return written.result
-
         async def answer_already_started(
             change: ModelProveRunningChange,
-        ) -> EnumProveRunningResultKind:
+        ) -> ModelProveRunningLinePayload:
             earlier = ModelProveRunningEarlier.model_validate_json(
                 await workflow.execute_activity(
                     EARLIER_ACTIVITY_NAME,
@@ -133,38 +142,34 @@ class ProveRunningBatchWorkflow:
                     retry_policy=RetryPolicy(maximum_attempts=plan.step_max_attempts),
                 )
             )
-            return await write_line(
-                ModelProveRunningLinePayload(
-                    case=EnumProveRunningLineCase.ALREADY_STARTED,
-                    key=change.key,
-                    target=change.target,
-                    owner=change.owner,
-                    next_step=change.next_step,
-                    workflow_id=change.workflow_id,
-                    merge_sha=change.merge_sha,
-                    earlier=earlier,
-                )
+            return ModelProveRunningLinePayload(
+                case=EnumProveRunningLineCase.ALREADY_STARTED,
+                key=change.key,
+                target=change.target,
+                owner=change.owner,
+                next_step=change.next_step,
+                workflow_id=change.workflow_id,
+                merge_sha=change.merge_sha,
+                earlier=earlier,
             )
 
         async def finish(
             change: ModelProveRunningChange,
             handle: workflow.ChildWorkflowHandle[object, str],
             outcomes: dict[str, str],
-        ) -> EnumProveRunningResultKind:
+        ) -> ModelProveRunningLinePayload | EnumProveRunningResultKind:
             try:
                 result = ModelProveRunningResult.model_validate_json(await handle)
             except ChildWorkflowError as exc:
-                return await write_line(
-                    ModelProveRunningLinePayload(
-                        case=EnumProveRunningLineCase.CHILD_FAILED,
-                        key=change.key,
-                        target=change.target,
-                        owner=change.owner,
-                        next_step=change.next_step,
-                        workflow_id=change.workflow_id,
-                        merge_sha=change.merge_sha,
-                        detail=f"{type(exc.cause).__name__ if exc.cause else 'failed'}: {exc.cause or exc}",
-                    )
+                return ModelProveRunningLinePayload(
+                    case=EnumProveRunningLineCase.CHILD_FAILED,
+                    key=change.key,
+                    target=change.target,
+                    owner=change.owner,
+                    next_step=change.next_step,
+                    workflow_id=change.workflow_id,
+                    merge_sha=change.merge_sha,
+                    detail=f"{type(exc.cause).__name__ if exc.cause else 'failed'}: {exc.cause or exc}",
                 )
             outcomes[change.workflow_id] = result.outcome.value
             return (
@@ -199,24 +204,38 @@ class ProveRunningBatchWorkflow:
                     already_proven_or_running.append(child_id)
 
         outcomes: dict[str, str] = {}
-        kinds = await asyncio.gather(
+        earlier_answers = await asyncio.gather(
             *[answer_already_started(changes[c]) for c in already_proven_or_running],
-            *[
-                write_line(
-                    ModelProveRunningLinePayload(
-                        case=EnumProveRunningLineCase.UNRESOLVED,
-                        key=line.key,
-                        target=line.target,
-                        owner=line.owner,
-                        next_step=line.next_step,
-                        detail=line.reason,
-                    )
-                )
-                for line in batch.unresolved
-            ],
+        )
+        child_answers = await asyncio.gather(
             *[finish(changes[c], handle, outcomes) for c, handle in started.items()],
         )
-        # The gathered answers come back in the order they were passed: earlier starts, unresolved lines, new starts.
+        answered: list[ModelProveRunningLinePayload | EnumProveRunningResultKind] = [
+            *earlier_answers,
+            *[_unresolved_payload(line) for line in batch.unresolved],
+            *child_answers,
+        ]
+        # A line the batch answers itself is one payload; every such row goes out in one step. The payloads keep the
+        # order they were gathered in: earlier starts, unresolved lines, then the new starts whose workflow failed.
+        to_write = tuple(
+            a for a in answered if isinstance(a, ModelProveRunningLinePayload)
+        )
+        written_kinds: list[EnumProveRunningResultKind] = []
+        if to_write:
+            written_kinds = list(
+                ModelProveRunningLinesWritten.model_validate_json(
+                    await step(
+                        "write_line_result",
+                        plan.steps.write_line_result,
+                        ModelProveRunningLinesPayload(lines=to_write).model_dump_json(),
+                        written_at=workflow.now().strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    )
+                ).results
+            )
+        kinds = [
+            written_kinds.pop(0) if isinstance(a, ModelProveRunningLinePayload) else a
+            for a in answered
+        ]
         order = [
             *(changes[c].key for c in already_proven_or_running),
             *(line.key for line in batch.unresolved),

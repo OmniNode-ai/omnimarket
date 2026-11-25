@@ -22,16 +22,26 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
 
+from omnimarket.handlers.adapter_work_ledger_rows_reader import (
+    SubprocessLedgerRowsReader,
+)
 from omnimarket.handlers.scm import scm_cli
 from omnimarket.models.model_github_gateway_io import ModelOpenPrFactsResult
+from omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers import (
+    handler_pr_duplicate_snapshot as snapshot_module,
+)
 from omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers.handler_pr_duplicate_snapshot import (
     load_digest_config,
     parse_diff,
     read_request,
 )
+from omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers.ledger_claims_read import (
+    load_ledger_read_config,
+)
 from omnimarket.nodes.node_pr_duplicate_snapshot_effect.ports.protocol_open_pr_facts_source import (
     OpenPrFactsUnreadableError,
 )
+from tests.helpers.fake_ledger_rows import FakeLedgerRows
 
 pytestmark = pytest.mark.unit
 
@@ -113,8 +123,6 @@ class World:
         self.lane = tmp_path / "lane"
         git(tmp_path, "clone", "-q", str(origin), str(self.lane))
         self.state = tmp_path / "watcher.json"
-        self.ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
-        self.ledger.write_text("")
         self.write_state(datetime.now(UTC))
 
     def write_state(self, tick: datetime) -> None:
@@ -180,7 +188,6 @@ class World:
 def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
     built = World(tmp_path)
     monkeypatch.setenv("ONEX_PR_WATCHER_STATE", str(built.state))
-    monkeypatch.setenv("ONEX_LEDGER_PATH", str(built.ledger))
     monkeypatch.setenv("ONEX_SCM_CLONE_ROOT", str(built.root))
     return built
 
@@ -277,28 +284,57 @@ def test_a_stale_watcher_asks_the_injected_gateway_source_once(
     assert gateway.asked == [TARGET]
 
 
-def test_an_unset_ledger_path_checks_nothing(
-    world: World, monkeypatch: pytest.MonkeyPatch
+def test_an_unreadable_ledger_checks_nothing(
+    world: World, ledger_rows: FakeLedgerRows
 ) -> None:
+    """An unread ledger never means no live CLAIM: the answer is unchecked, with the reader's reason."""
     world.lane_branch("src/metrics.py", 15)
-    monkeypatch.delenv("ONEX_LEDGER_PATH")
+    ledger_rows.error = "reader duplicate-guard-claims exited 69: projection stale"
 
     result = invoke(world.check_args())
 
     assert result.exit_code == scm_cli.EXIT_LOCAL_UNANSWERED
-    assert "ONEX_LEDGER_PATH" in json.loads(result.stdout)["reason"]
+    answer = json.loads(result.stdout)
+    assert answer["state"] == "unchecked"
+    assert "projection stale" in answer["reason"]
+    assert "ledger" in answer["reason"]
+
+
+def test_an_unset_ledger_interpreter_checks_nothing(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With no test reader the default one runs under the ledger interpreter; unset, it cannot read, so nothing is checked."""
+    world.lane_branch("src/metrics.py", 15)
+    monkeypatch.setattr(
+        snapshot_module, "SubprocessLedgerRowsReader", SubprocessLedgerRowsReader
+    )
+    monkeypatch.delenv("ONEX_LEDGER_BUS_APPEND_COMMAND", raising=False)
+
+    result = invoke(world.check_args())
+
+    assert result.exit_code == scm_cli.EXIT_LOCAL_UNANSWERED
+    reason = json.loads(result.stdout)["reason"]
+    assert "ONEX_LEDGER_BUS_APPEND_COMMAND" in reason
+
+
+def _row(minutes_ago: int, kind: str, lane: str, *cells: str) -> str:
+    stamp = (datetime.now(UTC) - timedelta(minutes=minutes_ago)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    return " | ".join((stamp, kind, f"lane={lane}", "principal=p", *cells))
+
+
+CAUSE = "cause=omnibase_core:Pre-commit Suite"
 
 
 def test_a_live_claim_with_the_same_cause_cell_is_refused_with_its_lane_named(
-    world: World,
+    world: World, ledger_rows: FakeLedgerRows
 ) -> None:
     world.lane_branch("src/metrics.py", 15)
-    stamp = (datetime.now(UTC) - timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    cause = "cause=omnibase_core:Pre-commit Suite"
-    world.ledger.write_text(
-        f"{stamp} | CLAIM | lane=cause-core-0010 | principal=p | {cause} | pr=omnibase_core#2159 | fix\n"
-        f"{stamp} | CLAIM | lane={LANE} | principal=p | {cause} | mine\n"
-    )
+    ledger_rows.lines = [
+        _row(5, "CLAIM", "cause-core-0010", CAUSE, "pr=omnibase_core#2159", "fix"),
+        _row(5, "CLAIM", LANE, CAUSE, "mine"),
+    ]
 
     result = invoke(world.check_args())
 
@@ -306,6 +342,62 @@ def test_a_live_claim_with_the_same_cause_cell_is_refused_with_its_lane_named(
     answer = json.loads(result.stdout)
     assert answer["adopt_lane"] == "cause-core-0010"
     assert answer["adopt_pr"] == "omnibase_core#2159"
+
+
+def test_the_guard_reads_the_claims_from_the_named_reader_over_its_window(
+    world: World, ledger_rows: FakeLedgerRows
+) -> None:
+    """Two reads, by the guard's own reader name: every row of the heartbeat hour, then the rows that open or close a CLAIM over the window for the lanes that hour names (OMN-26433)."""
+    world.lane_branch("src/metrics.py", 15)
+    ledger_rows.lines = [_row(5, "CLAIM", LANE, "mine")]
+
+    invoke(world.check_args())
+
+    declared = load_ledger_read_config()
+    assert ledger_rows.calls == [
+        (snapshot_module.LEDGER_READER, declared.heartbeat_window_hours, ()),
+        (
+            snapshot_module.LEDGER_READER,
+            snapshot_module.LEDGER_WINDOW_HOURS,
+            declared.claim_kinds,
+        ),
+    ]
+    assert ledger_rows.lanes_asked == [(), (LANE,)]
+    assert snapshot_module.LEDGER_WINDOW_HOURS == 168
+
+
+def test_a_later_status_row_keeps_an_older_claim_live(
+    world: World, ledger_rows: FakeLedgerRows
+) -> None:
+    """The lane's heartbeat is any of its rows, so the recent hour is read in every row type, not only CLAIM and TERMINAL rows."""
+    world.lane_branch("src/metrics.py", 15)
+    ledger_rows.lines = [
+        _row(180, "CLAIM", "cause-core-0010", CAUSE, "pr=omnibase_core#2159", "fix"),
+        _row(10, "STATUS", "cause-core-0010", "working"),
+        _row(5, "CLAIM", LANE, CAUSE, "mine"),
+    ]
+
+    result = invoke(world.check_args())
+
+    assert result.exit_code == scm_cli.EXIT_DUPLICATE, result.output
+    assert json.loads(result.stdout)["adopt_lane"] == "cause-core-0010"
+
+
+def test_a_claim_whose_lane_went_quiet_or_ended_is_not_live(
+    world: World, ledger_rows: FakeLedgerRows
+) -> None:
+    world.lane_branch("src/metrics.py", 15)
+    ledger_rows.lines = [
+        _row(180, "CLAIM", "quiet-lane", CAUSE, "fix"),
+        _row(30, "CLAIM", "done-lane", CAUSE, "fix"),
+        _row(10, "TERMINAL", "done-lane", "outcome=merged"),
+        _row(5, "CLAIM", LANE, CAUSE, "mine"),
+    ]
+
+    result = invoke(world.check_args())
+
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["state"] == "clear"
 
 
 # ---- onex scm pr-create
@@ -470,7 +562,7 @@ def test_parse_diff_intent_digest_normalizes_signed_lines_and_excludes_headers()
 
 
 def test_stacked_git_ancestry_with_default_base_reads_only_tip_ancestor_delta(
-    world: World,
+    world: World, ledger_rows: FakeLedgerRows
 ) -> None:
     parent_branch = "fix/omn-21533-protocol-binding-race"
     git(world.lane, "checkout", "-q", "-b", NEW_BRANCH, f"origin/{parent_branch}")
@@ -504,7 +596,7 @@ def test_stacked_git_ancestry_with_default_base_reads_only_tip_ancestor_delta(
         lane=LANE,
         cause=None,
         watcher_state=world.state,
-        ledger=world.ledger,
+        ledger_reader=ledger_rows,
         clone=world.root / "omnibase_core",
         worktree=world.lane,
     )
@@ -525,7 +617,7 @@ def test_stacked_git_ancestry_with_default_base_reads_only_tip_ancestor_delta(
 
 
 def test_stacked_follows_the_branch_tip_when_the_watcher_recorded_an_older_head(
-    world: World,
+    world: World, ledger_rows: FakeLedgerRows
 ) -> None:
     parent_branch = "fix/omn-21533-protocol-binding-race"
     git(world.lane, "checkout", "-q", "-b", NEW_BRANCH, f"origin/{parent_branch}")
@@ -547,7 +639,7 @@ def test_stacked_follows_the_branch_tip_when_the_watcher_recorded_an_older_head(
         lane=LANE,
         cause=None,
         watcher_state=world.state,
-        ledger=world.ledger,
+        ledger_reader=ledger_rows,
         clone=world.root / "omnibase_core",
         worktree=world.lane,
     )

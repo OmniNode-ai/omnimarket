@@ -49,7 +49,7 @@ import os
 import time
 from collections.abc import AsyncIterator, Callable, Iterable
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Protocol
@@ -57,6 +57,12 @@ from uuid import UUID
 
 import asyncpg
 
+from omnimarket.handlers.projection_table_page_view import (
+    ProtocolProjectionPageView as ProtocolProjectionPageView,
+)
+from omnimarket.handlers.projection_table_page_view import (
+    TablePageView as TablePageView,
+)
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.tenant_isolation import TENANT_GUC
 from omnimarket.projection.tenant_registry_resolution import (
@@ -351,8 +357,16 @@ def build_window_query(
     relation_columns: frozenset[str] | None = None,
     unique_keys: tuple[frozenset[str], ...] = (),
     not_null_columns: frozenset[str] | None = None,
+    window_seconds: int | None = None,
+    row_cap: int | None = None,
 ) -> WindowQuery:
     """The SQL for one exposure's served window.
+
+    ``window_seconds`` bounds the read to the rows whose freshness column lies
+    inside the last that many seconds, newest first, and ``row_cap`` bounds how
+    many of them are read (never more than the ``limit * 4`` the cache kept). A
+    windowed read never runs the ascending walk over the whole history: the
+    window predicate and the cap are part of the one statement.
 
     Every identifier comes from the contract; every caller value is a bound
     parameter. ``since_type`` is the cursor column's catalogue type, read from
@@ -378,6 +392,8 @@ def build_window_query(
     relation = qualified_relation(cfg)
     columns = select_list(cfg)
     retain = cfg.limit * RETAINED_WINDOW_FACTOR
+    if window_seconds is not None and row_cap is not None:
+        retain = max(1, min(retain, row_cap))
     params: list[Any] = []
     tenant_where = ""
 
@@ -411,8 +427,26 @@ def build_window_query(
         )
 
     recency = recency_column(cfg)
+    window_column = cfg.freshness_column if window_seconds is not None else None
+    if window_seconds is not None:
+        if window_column is None:
+            raise ProjectionReadError(
+                "unsupported_filter",
+                f"exposure {cfg.topic!r} declares no freshness_column to window by",
+                status_code=422,
+            )
+        params.append(float(window_seconds))
+        where.append(
+            f"{quote_identifier(window_column)} >= "
+            f"now() - (${len(params)}::double precision * interval '1 second')"
+        )
     newest_by_recency = False
-    if since is not None or (selection == "walk" and cfg.cursor_column is not None):
+    if window_seconds is not None and since is None:
+        # A windowed read is the newest rows inside the window, never the
+        # ascending walk from the oldest row of the table.
+        assert window_column is not None
+        window_order = f"{quote_identifier(window_column)} DESC"
+    elif since is not None or (selection == "walk" and cfg.cursor_column is not None):
         window_order = (
             f"{quote_identifier(recency)} ASC"
             if recency is not None
@@ -451,7 +485,7 @@ def build_window_query(
         if tenant_where:
             where.insert(0, tenant_where)
         source = relation
-    if newest_by_recency and not latest_per_key:
+    if newest_by_recency and not latest_per_key and window_seconds is None:
         assert recency is not None
         inner = _dated_first_sql(
             columns, relation, scope=where, recency=recency, retain=retain
@@ -461,77 +495,14 @@ def build_window_query(
         inner_order = f" ORDER BY {window_order}" if window_order else ""
         inner = f"SELECT {columns} FROM {source}{where_sql}{inner_order} LIMIT {retain}"
     outer_order = order_clause(order_spec)
+    if window_seconds is not None and since is None:
+        # The page cuts its first rows, so a windowed page must hand it the newest first.
+        assert window_column is not None
+        outer_order = f"{quote_identifier(window_column)} DESC"
     sql = f"SELECT * FROM ({inner}) AS served_window" + (
         f" ORDER BY {outer_order}" if outer_order else ""
     )
     return WindowQuery(sql=sql, params=tuple(params))
-
-
-class ProtocolProjectionPageView(Protocol):
-    """The synchronous read surface the status page renders from."""
-
-    def unavailable_reason(self, topic: str) -> tuple[str, str] | None: ...
-
-    def get_rows(
-        self,
-        topic: str,
-        *,
-        limit: int | None = None,
-        tenant_column: str | None = None,
-        tenant_id: str | None = None,
-    ) -> list[dict[str, Any]]: ...
-
-    def latest_event_at(self, topic: str) -> datetime | None: ...
-
-    def row_count(self, topic: str) -> int: ...
-
-
-@dataclass
-class TablePageView:
-    """A prefetched, synchronous view for the status page (``GET /``).
-
-    The page renders from a fixed set of reads with the same interface the
-    cache offered (``is_bootstrapped``/``get_rows``/``latest_event_at``/
-    ``row_count``), so the route awaits every read first and the page code
-    stays synchronous.
-    """
-
-    rows: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
-    latest: dict[str, datetime | None] = field(default_factory=dict)
-    tenants: dict[str, str | None] = field(default_factory=dict)
-    failures: dict[str, tuple[str, str]] = field(default_factory=dict)
-
-    def unavailable_reason(self, topic: str) -> tuple[str, str] | None:
-        if topic in self.failures:
-            return self.failures[topic]
-        if topic not in self.rows:
-            return ("projection_not_read", "the page did not read this exposure")
-        return None
-
-    def is_bootstrapped(self, topic: str) -> bool:
-        return self.unavailable_reason(topic) is None
-
-    def get_rows(
-        self,
-        topic: str,
-        *,
-        limit: int | None = None,
-        tenant_column: str | None = None,
-        tenant_id: str | None = None,
-    ) -> list[dict[str, Any]]:
-        if tenant_column is not None and tenant_id != self.tenants.get(topic):
-            raise ValueError(
-                f"page view for {topic!r} was read as tenant "
-                f"{self.tenants.get(topic)!r}, not {tenant_id!r}"
-            )
-        rows = self.rows.get(topic, [])
-        return rows if limit is None else rows[:limit]
-
-    def latest_event_at(self, topic: str) -> datetime | None:
-        return self.latest.get(topic)
-
-    def row_count(self, topic: str) -> int:
-        return len(self.rows.get(topic, []))
 
 
 def _read_failure(
@@ -613,6 +584,8 @@ class ProtocolProjectionRowSource(Protocol):
         since: str | None = None,
         correlation_id: str | None = None,
         selection: str = "newest",
+        window_seconds: int | None = None,
+        row_cap: int | None = None,
     ) -> list[dict[str, Any]]: ...
 
     async def walk_origin(
@@ -884,6 +857,8 @@ class TableRowSource:
         since: str | None = None,
         correlation_id: str | None = None,
         selection: str = "newest",
+        window_seconds: int | None = None,
+        row_cap: int | None = None,
     ) -> list[dict[str, Any]]:
         """The exposure's served window, ordered by ``order_spec``."""
         pool = await self._pool(cfg)
@@ -917,6 +892,8 @@ class TableRowSource:
                     relation_columns=relation_columns,
                     unique_keys=catalogue.unique_keys,
                     not_null_columns=catalogue.not_null_columns,
+                    window_seconds=window_seconds,
+                    row_cap=row_cap,
                 )
                 records = await connection.fetch(query.sql, *query.params)
         except ProjectionReadError:

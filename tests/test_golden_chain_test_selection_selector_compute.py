@@ -23,6 +23,11 @@ from omnimarket.nodes.node_test_selection_selector_compute.adapters.source_in_me
 from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_selection_selector import (
     HandlerTestSelectionSelector,
 )
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_record import (
+    ModelSelectionRecordRequest,
+    ModelTestSelection,
+    ModelTestSelectionRecord,
+)
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_selector import (
     EnumSelectorOutcome,
     ModelSelectorDecision,
@@ -150,4 +155,122 @@ async def test_error_chain_bad_payload_publishes_the_typed_failure_event() -> No
     assert [t for t, _ in seen] == [failed_topic]
     failure = ModelSelectorFailed.model_validate_json(seen[0][1])
     assert failure.reason == "ValidationError"
+    assert failure.terminal_failure_cause == "ValidationError"
+
+
+# build_selection_record: golden and error chain events over the same in-memory bus.
+
+
+def _record_request(*, stage: int = 0) -> bytes:
+    narrowed = ModelTestSelection(
+        selected_paths=["tests/a/"], split_count=1, is_full_suite=False, matrix=[1]
+    )
+    return (
+        ModelSelectionRecordRequest(
+            repo="OmniNode-ai/omnimarket",
+            pr_number=3,
+            head_sha="a" * 40,
+            base_sha="b" * 40,
+            checkout_sha="c" * 40,
+            run_id=11,
+            run_attempt=1,
+            changed_files=("tests/a/test_x.py",),
+            flag_enabled=True,
+            stage_selections={0: narrowed},
+            repo_root="/unused",
+            selector_version="1.0.0",
+            policy_version="d" * 12,
+        )
+        .model_dump_json()
+        .encode()
+    )
+
+
+async def _run_record_chain(payload: bytes, stage: int) -> list[tuple[str, bytes]]:
+    contract = _contract()
+    routes = {h["operation"]: h for h in contract["handler_routing"]["handlers"]}
+    spec = routes["build_selection_record"]["handler"]
+    handler_class = getattr(importlib.import_module(spec["module"]), spec["name"])
+    policy = load_policy().model_copy(update={"selection_stage": stage})
+    handler = handler_class(
+        HandlerTestSelectionSelector(
+            SourceInMemory({"tests/a/test_x.py": 5.0}), policy
+        ),
+        policy,
+    )
+    request_topic = contract["runtime_dispatch"]["command_topic"]
+    terminal_topic = contract["terminal_event"]
+    failed_topic = contract["runtime_dispatch"]["terminal_events"]["failure"]
+    bus = EventBusInmemory()
+    seen: list[tuple[str, bytes]] = []
+    done: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+
+    async def handle(message: Any) -> None:
+        try:
+            request = ModelSelectionRecordRequest.model_validate_json(message.value)
+        except ValidationError as exc:
+            failure = ModelSelectorFailed(reason=type(exc).__name__)
+            await bus.publish(
+                failed_topic, key=None, value=failure.model_dump_json().encode()
+            )
+            return
+        await bus.publish(
+            terminal_topic,
+            key=None,
+            value=handler.handle(request).model_dump_json().encode(),
+        )
+
+    def collector(topic: str) -> Any:
+        async def collect(message: Any) -> None:
+            seen.append((topic, message.value))
+            if not done.done():
+                done.set_result(None)
+
+        return collect
+
+    await bus.start()
+    try:
+        await bus.subscribe(request_topic, on_message=handle, group_id="tss-record")
+        for topic in (terminal_topic, failed_topic):
+            await bus.subscribe(
+                topic, on_message=collector(topic), group_id=f"r-{topic}"
+            )
+        await bus.publish(request_topic, key=None, value=payload)
+        await asyncio.wait_for(done, timeout=5)
+    finally:
+        await bus.close()
+    return seen
+
+
+@pytest.mark.asyncio
+async def test_golden_chain_build_selection_record_ends_in_the_terminal_event() -> None:
+    seen = await _run_record_chain(_record_request(), stage=0)
+
+    assert [t for t, _ in seen] == [_contract()["terminal_event"]]
+    record = ModelTestSelectionRecord.model_validate_json(seen[0][1])
+    assert record.executed_selection.selected_paths == ["tests/a/"]
+    assert record.selection_by_stage[0] == record.executed_selection
+    assert record.checkout_sha == "c" * 40
+
+
+@pytest.mark.asyncio
+async def test_error_chain_build_selection_record_escalates_when_the_stage_has_no_entry() -> (
+    None
+):
+    seen = await _run_record_chain(_record_request(), stage=2)
+
+    record = ModelTestSelectionRecord.model_validate_json(seen[0][1])
+    assert record.executed_selection.kind == "full_suite"
+    assert record.executed_selection.split_count == load_policy().full_split_count
+
+
+@pytest.mark.asyncio
+async def test_error_chain_build_selection_record_bad_payload_publishes_the_failure() -> (
+    None
+):
+    seen = await _run_record_chain(b'{"repo": "x"}', stage=0)
+
+    failed_topic = _contract()["runtime_dispatch"]["terminal_events"]["failure"]
+    assert [t for t, _ in seen] == [failed_topic]
+    failure = ModelSelectorFailed.model_validate_json(seen[0][1])
     assert failure.terminal_failure_cause == "ValidationError"

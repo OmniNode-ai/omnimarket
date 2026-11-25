@@ -16,6 +16,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import stat
 import tempfile
 from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime, timedelta
@@ -42,6 +43,7 @@ from omnimarket.models.model_catalog_entry import (
 from omnimarket.models.model_local_server_details import ModelLocalServerDetails
 
 _CONFIG_PATH = Path(__file__).resolve().parents[1] / "configs" / "model_catalog.yaml"
+_PRICE_LIST_DIR = Path(__file__).resolve().parents[1] / "data" / "model_prices"
 
 #: Reads a URL within a timeout and returns its body; raises on any failure.
 FetchBytes = Callable[[str, float], bytes]
@@ -54,9 +56,15 @@ class ModelsDevIndex(NamedTuple):
     fetched_at: str | None
     stale: bool
     error: str | None
+    #: Where these entries came from: models.dev as read and kept under the ONEX
+    #: home, or the price list that ships inside the install.
+    source: str = "models.dev"
 
 
 EMPTY_INDEX = ModelsDevIndex(models={}, fetched_at=None, stale=False, error=None)
+
+#: The ``source`` of the index built from the price list shipped in the install.
+SHIPPED_PRICE_SOURCE = "shipped price list"
 
 
 @cache
@@ -113,9 +121,12 @@ def load_models_dev(
     *,
     fetch: FetchBytes | None = None,
     now: datetime | None = None,
+    force: bool = False,
 ) -> ModelsDevIndex:
     """models.dev from the cache, refetched when older than its configured age.
 
+    ``force`` reads models.dev whatever the copy's age: ``onex setup`` and the
+    price refresh command use it, because they are where the copy is renewed.
     A failed refetch keeps the cache and marks it stale; with no cache at all
     the index is empty and every supplemental field stays unknown.
     """
@@ -125,8 +136,9 @@ def load_models_dev(
     cached_at: datetime | None = None
     if path.is_file():
         cached_at = datetime.fromtimestamp(path.stat().st_mtime, UTC)
-    fresh = cached_at is not None and moment - cached_at < timedelta(
-        hours=float(settings["max_age_hours"])
+    fresh = not force and (
+        cached_at is not None
+        and moment - cached_at < timedelta(hours=float(settings["max_age_hours"]))
     )
     error: str | None = None
     if not fresh:
@@ -154,6 +166,29 @@ def load_models_dev(
     )
 
 
+def kept_models_dev_index(onex_home: Path | None = None) -> ModelsDevIndex:
+    """The models.dev copy as kept, without any fetch.
+
+    A session cannot renew the copy, so its age never refuses it: ``fetched_at``
+    says how old it is, and ``onex setup`` and the price refresh command renew
+    it. A missing or unreadable copy yields the empty index; this function never
+    contacts models.dev.
+    """
+    settings = catalog_config()["models_dev"]
+    path = (onex_home or _onex_home()) / str(settings["cache_file"])
+    try:
+        cached_at = datetime.fromtimestamp(path.stat().st_mtime, UTC)
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return EMPTY_INDEX
+    return ModelsDevIndex(
+        models=_index(document),
+        fetched_at=cached_at.isoformat(),
+        stale=False,
+        error=None,
+    )
+
+
 def _decimal(value: Any) -> Decimal | None:
     """A non-negative number as Decimal through its text, or None."""
     if isinstance(value, bool) or not isinstance(value, (int, float, str, Decimal)):
@@ -172,27 +207,78 @@ def _onex_home() -> Path:
     return user_config_path().parent
 
 
-def pricing_models_dev_index() -> ModelsDevIndex:
-    """models.dev as the delegation call reads it to price a model (OMN-23413 AC35).
+def onex_home() -> Path:
+    """The ONEX home folder; looks up ``_onex_home`` at call time."""
+    return _onex_home()
 
-    The same cached index the model table reads, refetched when older than its
-    configured age. Tests replace this function so no unit test reads the network.
+
+def fetch_models_dev(url: str, timeout: float) -> bytes:
+    """models.dev bytes; looks up ``_fetch`` at call time."""
+    return _fetch(url, timeout)
+
+
+@cache
+def _shipped_price_list() -> Mapping[str, Any]:
+    """The price list that ships inside the install (``model_price_list.v1.json``)."""
+    name = str(catalog_config()["shipped_price_list"]["file"])
+    document = json.loads((_PRICE_LIST_DIR / name).read_text(encoding="utf-8"))
+    if not isinstance(document, dict) or not isinstance(
+        document.get("providers"), dict
+    ):
+        raise ValueError(f"{name} must hold a providers mapping")
+    return document
+
+
+def shipped_pricing_index() -> ModelsDevIndex:
+    """The shipped price list as an index of ``cost`` entries, read from disk only.
+
+    It is data in the install. A session prices from it only when no models.dev
+    copy is kept under the ONEX home (``pricing_models_dev_index``).
     """
-    return load_models_dev(_onex_home())
+    document = _shipped_price_list()
+    found: dict[tuple[str, str], Mapping[str, Any]] = {}
+    for provider_id, models in document["providers"].items():
+        if not isinstance(models, dict):
+            continue
+        for model_id, price in models.items():
+            if isinstance(price, list) and len(price) == 2:
+                found[(str(provider_id), str(model_id))] = {
+                    "cost": {"input": price[0], "output": price[1]}
+                }
+    return ModelsDevIndex(
+        models=found,
+        fetched_at=str(document.get("read_on")),
+        stale=False,
+        error=None,
+        source=SHIPPED_PRICE_SOURCE,
+    )
 
 
-def _pricing_index() -> ModelsDevIndex:
-    """The models.dev index a call may price from, or the empty index.
+def pricing_models_dev_index() -> ModelsDevIndex:
+    """The prices a delegation call reads to price a model: no network, ever.
 
-    Supplemental metadata cannot prevent a provider call, so a read failure is
-    no index. A failed refresh may be shown as stale in the explorer, but must
-    not price a new call with metadata older than the configured maximum age.
+    The models.dev copy kept under the ONEX home when there is one, whatever its
+    age (a session cannot renew it; ``onex setup`` and ``onex models
+    refresh-prices`` do), else the price list shipped in the install. A customer
+    session on its own key connects only to the provider it chose.
     """
     try:
-        index = pricing_models_dev_index()
+        kept = kept_models_dev_index(_onex_home())
+        if kept.fetched_at is not None:
+            return kept
+        return shipped_pricing_index()
     except Exception:  # Any failure reading optional metadata: price unknown.
         return EMPTY_INDEX
-    return EMPTY_INDEX if index.stale else index
+
+
+def refresh_models_dev(onex_home: Path | None = None) -> ModelsDevIndex:
+    """Read models.dev now and keep it under the ONEX home, for sessions to price from.
+
+    The one explicit read of the price list: ``onex setup`` and ``onex models
+    refresh-prices`` call it. A failed read keeps the earlier copy and says so
+    in ``error``.
+    """
+    return load_models_dev(onex_home or _onex_home(), force=True)
 
 
 def _listing_path(provider: str, onex_home: Path) -> Path:
@@ -214,24 +300,72 @@ def remember_provider_listing(
     _write_atomic(path, listing.model_dump_json().encode("utf-8"))
 
 
+def _recalled_listing(
+    provider: str,
+    onex_home: Path | None = None,
+    *,
+    now: datetime | None = None,
+) -> tuple[ModelByokModelListing, datetime] | None:
+    """The kept list for ``provider`` while younger than its age, with its kept time.
+
+    Returns the listing and the UTC time it was kept (file mtime). A missing,
+    expired, or unreadable copy yields None.
+    """
+    path = _listing_path(provider, onex_home or _onex_home())
+    settings = catalog_config()["provider_listing"]
+    max_bytes = int(settings["max_bytes"])
+    # Nonblocking, regular files only: the TUI reads this on its event loop.
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+    except OSError:
+        return None
+    try:
+        with os.fdopen(fd, "rb") as source:
+            info = os.fstat(source.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_size > max_bytes:
+                return None
+            kept_at = datetime.fromtimestamp(info.st_mtime, UTC)
+            max_age = timedelta(hours=float(settings["max_age_hours"]))
+            if (now or datetime.now(UTC)) - kept_at >= max_age:
+                return None
+            raw = source.read(max_bytes + 1)
+        if len(raw) > max_bytes:
+            return None
+        listing = ModelByokModelListing.model_validate_json(raw.decode("utf-8"))
+    except (OSError, ValueError):
+        return None
+    return listing, kept_at
+
+
+def provider_listing_expired(
+    provider: str, onex_home: Path | None = None, *, now: datetime | None = None
+) -> bool:
+    """True when a kept list for ``provider`` exists and is older than its age.
+
+    No kept list, or one that is not a regular file, is not an expired list.
+    """
+    path = _listing_path(provider, onex_home or _onex_home())
+    try:
+        info = os.stat(path)
+    except OSError:
+        return False
+    if not stat.S_ISREG(info.st_mode):
+        return False
+    max_age = timedelta(
+        hours=float(catalog_config()["provider_listing"]["max_age_hours"])
+    )
+    kept_at = datetime.fromtimestamp(info.st_mtime, UTC)
+    return (now or datetime.now(UTC)) - kept_at >= max_age
+
+
 def recalled_provider_listing(
     provider: str, onex_home: Path | None = None, *, now: datetime | None = None
 ) -> ModelByokModelListing | None:
     """The kept list for ``provider`` while younger than its age, else None."""
-    path = _listing_path(provider, onex_home or _onex_home())
-    try:
-        kept_at = datetime.fromtimestamp(path.stat().st_mtime, UTC)
-    except OSError:
+    result = _recalled_listing(provider, onex_home, now=now)
+    if result is None:
         return None
-    max_age = timedelta(
-        hours=float(catalog_config()["provider_listing"]["max_age_hours"])
-    )
-    if (now or datetime.now(UTC)) - kept_at >= max_age:
-        return None
-    try:
-        return ModelByokModelListing.model_validate_json(path.read_text("utf-8"))
-    except (OSError, ValueError):
-        return None
+    return result[0]
 
 
 def list_and_remember_models(
@@ -245,35 +379,48 @@ def list_and_remember_models(
     return listing
 
 
-def models_dev_price_per_1m(
+def models_dev_price_with_read_time(
     provider: str, model_id: str
-) -> tuple[Decimal, Decimal] | None:
-    """A model's ``(input, output)`` USD per 1M tokens as models.dev lists it, or None.
+) -> tuple[tuple[Decimal, Decimal], str | None] | None:
+    """A model's models.dev ``(input, output)`` USD per 1M and when it was read, or None.
 
-    OMN-23413 AC35: the provider's own catalogue and the model registry come
-    first; this is read only for a model neither prices. ``provider`` is the ONEX
-    provider id, mapped to models.dev's through ``provider_ids``. None when the
-    provider has no models.dev id, models.dev does not list the model, or the
-    entry states no input or output price.
+    The provider's own catalogue and the model registry come first; this is read
+    only for a model neither prices, from the kept copy or the shipped list
+    (``pricing_models_dev_index``), never from the network. The read time is the
+    ``fetched_at`` of the same index the price came from. ``provider`` is the ONEX provider id,
+    mapped to models.dev's through ``provider_ids``. None when the provider has
+    no models.dev id, models.dev does not list the model, or the entry states
+    no input or output price.
     """
     md_provider = catalog_config()["provider_ids"].get(provider)
     if not md_provider:
         return None
-    metadata = _pricing_index().models.get((str(md_provider), model_id))
+    index = pricing_models_dev_index()
+    metadata = index.models.get((str(md_provider), model_id))
     cost = metadata.get("cost") if metadata else None
     if not isinstance(cost, dict):
         return None
     price_in, price_out = _decimal(cost.get("input")), _decimal(cost.get("output"))
     if price_in is None or price_out is None:
         return None
-    return price_in, price_out
+    return (price_in, price_out), index.fetched_at
+
+
+def models_dev_price_per_1m(
+    provider: str, model_id: str
+) -> tuple[Decimal, Decimal] | None:
+    """A model's ``(input, output)`` USD per 1M tokens as models.dev lists it, or None."""
+    found = models_dev_price_with_read_time(provider, model_id)
+    return found[0] if found is not None else None
 
 
 def _positive(value: Any) -> int | None:
-    return value if isinstance(value, int) and value > 0 else None
+    return value if type(value) is int and value > 0 else None
 
 
-def _capabilities(metadata: Mapping[str, Any] | None) -> dict[str, CapabilityState]:
+def _capabilities(
+    metadata: Mapping[str, Any] | None, deployment: Deployment
+) -> dict[str, CapabilityState]:
     found: dict[str, CapabilityState] = {}
     for spec in catalog_config()["capabilities"]:
         label = str(spec["label"])
@@ -290,7 +437,7 @@ def _capabilities(metadata: Mapping[str, Any] | None) -> dict[str, CapabilitySta
                 )
                 if isinstance(inputs, list):
                     state = "yes" if str(spec["input"]) in inputs else "no"
-            elif "cost" in spec:
+            elif "cost" in spec and deployment == "cloud":
                 cost = metadata.get("cost")
                 if (
                     isinstance(cost, dict)
@@ -327,54 +474,75 @@ def catalog_entry(
     metadata = index.models.get((md_provider, model_id)) if md_provider else None
     limit = metadata.get("limit") if metadata else None
     limit = limit if isinstance(limit, dict) else {}
-    cost = metadata.get("cost") if metadata else None
+    cost = metadata.get("cost") if metadata and deployment == "cloud" else None
     cost = cost if isinstance(cost, dict) else {}
     sources: dict[str, str] = {"model": provider_label}
 
-    context = _positive(context_tokens)
-    if context is not None:
-        sources["context"] = provider_label
-    elif (context := _positive(limit.get("context"))) is not None:
-        sources["context"] = "models.dev"
+    def prefer[T](field: str, stated: T | None, supplemental: T | None) -> T | None:
+        if stated is not None:
+            sources[field] = provider_label
+            return stated
+        if supplemental is not None:
+            sources[field] = index.source
+        return supplemental
 
-    price_in = _decimal(input_usd_per_million)
-    price_out = _decimal(output_usd_per_million)
-    if price_in is not None or price_out is not None:
-        sources["price"] = provider_label
-    if deployment == "cloud":
-        fallback_in = _decimal(cost.get("input")) if price_in is None else None
-        fallback_out = _decimal(cost.get("output")) if price_out is None else None
-        if fallback_in is not None or fallback_out is not None:
-            sources["price"] = (
-                f"{provider_label} + models.dev" if "price" in sources else "models.dev"
-            )
-        price_in = price_in if price_in is not None else fallback_in
-        price_out = price_out if price_out is not None else fallback_out
-    merged = _capabilities(metadata)
+    context = prefer(
+        "context", _positive(context_tokens), _positive(limit.get("context"))
+    )
+    max_output = prefer(
+        "max_output", _positive(max_output_tokens), _positive(limit.get("output"))
+    )
+    catalog_name = metadata.get("name") if metadata else None
+    display_name = prefer(
+        "name", name or None, str(catalog_name) if catalog_name else None
+    )
+    price_in = prefer(
+        "input", _decimal(input_usd_per_million), _decimal(cost.get("input"))
+    )
+    price_out = prefer(
+        "output", _decimal(output_usd_per_million), _decimal(cost.get("output"))
+    )
+    price_sources = {sources[k] for k in ("input", "output") if k in sources}
+    if price_sources:
+        sources["price"] = (
+            f"{provider_label} + models.dev"
+            if len(price_sources) > 1
+            else next(iter(price_sources))
+        )
+    cache_read = prefer("cache_read", None, _decimal(cost.get("cache_read")))
+    cache_write = prefer("cache_write", None, _decimal(cost.get("cache_write")))
+    tiered = bool(cost.get("tiers") or cost.get("context_over_200k"))
+    if tiered:
+        sources["pricing"] = "models.dev"
+    merged = _capabilities(metadata, deployment)
     if metadata is not None:
         sources["capabilities"] = "models.dev"
+        sources.update(
+            {
+                f"capability.{label}": "models.dev"
+                for label, state in merged.items()
+                if state != "unknown"
+            }
+        )
     stated = {k: v for k, v in (capabilities or {}).items() if v != "unknown"}
     if stated:
         merged.update(stated)
         sources["capabilities"] = provider_label
+        sources.update({f"capability.{label}": provider_label for label in stated})
     return ModelCatalogEntry(
         provider=provider,
         provider_label=provider_label,
         model_id=model_id,
         server_url=server_url,
-        display_name=name
-        or (
-            str(metadata.get("name")) if metadata and metadata.get("name") else model_id
-        ),
+        display_name=display_name or model_id,
         deployment=deployment,
         context_tokens=context,
-        max_output_tokens=_positive(max_output_tokens)
-        or _positive(limit.get("output")),
+        max_output_tokens=max_output,
         input_usd_per_million=price_in,
         output_usd_per_million=price_out,
-        cache_read_usd_per_million=_decimal(cost.get("cache_read")),
-        cache_write_usd_per_million=_decimal(cost.get("cache_write")),
-        tiered_price=bool(cost.get("tiers") or cost.get("context_over_200k")),
+        cache_read_usd_per_million=cache_read,
+        cache_write_usd_per_million=cache_write,
+        tiered_price=tiered,
         capabilities=merged,
         status=status,
         status_reason=status_reason,
@@ -382,6 +550,18 @@ def catalog_entry(
         metadata_fetched_at=index.fetched_at if metadata is not None else None,
         metadata_stale=index.stale and metadata is not None,
     )
+
+
+def _provider_capabilities(model: ModelByokListedModel) -> dict[str, CapabilityState]:
+    """What the provider's own row lists. Not listing a capability is not a "no"."""
+    stated: dict[str, CapabilityState] = {}
+    for spec in catalog_config()["capabilities"]:
+        if (
+            spec.get("provider_parameter") in model.supported_parameters
+            or spec.get("provider_input") in model.input_modalities
+        ):
+            stated[str(spec["label"])] = "yes"
+    return stated
 
 
 def listed_catalog_entry(
@@ -403,24 +583,26 @@ def listed_catalog_entry(
         max_output_tokens=model.max_output_tokens,
         input_usd_per_million=model.input_usd_per_million,
         output_usd_per_million=model.output_usd_per_million,
+        capabilities=_provider_capabilities(model),
     )
 
 
 def runtime_catalog_entry(provider: str, model_id: str) -> ModelCatalogEntry:
-    """Provider facts as the explorer last read them, and the same supplemental cache.
+    """One combined entry: the provider list the explorer kept, then the price list.
 
-    Reads only what is kept: the provider list the table last read (AC34) and
-    the cached models.dev index. It never lists models itself, so a delegation
-    call makes no request beyond the call (OMN-20157).
+    It never lists models itself and never reads models.dev, so a delegation call
+    makes no request beyond the call to its provider (``pricing_models_dev_index``
+    says which price list it reads).
     """
-    index = _pricing_index()
-    listing = recalled_provider_listing(provider)
-    if listing is not None:
+    index = pricing_models_dev_index()
+    result = _recalled_listing(provider)
+    if result is not None:
+        listing, kept_at = result
         for model in listing.models:
             if model.id == model_id:
                 return listed_catalog_entry(
                     provider, model, index, provider_label=provider
-                )
+                ).model_copy(update={"provider_listed_at": kept_at.isoformat()})
     return catalog_entry(
         provider,
         model_id,
@@ -463,6 +645,20 @@ def stored_entries(
         provider = str(row.get("provider"))
         last = row.get("last_test")
         on_servers = row.get("local_models")
+        deployment = deployment_of(provider)
+        provider_models: dict[str, ModelByokListedModel] = {}
+        expired = False
+        if (
+            deployment == "cloud"
+            and not on_servers
+            and provider in catalog_config()["provider_ids"]
+        ):
+            listing = recalled_provider_listing(provider)
+            if listing and listing.provider == provider and listing.outcome == "listed":
+                provider_models = {model.id: model for model in listing.models}
+            elif listing is None:
+                # AC4: models.dev fills the facts, and the table says why.
+                expired = provider_listing_expired(provider)
         stored: list[tuple[str, str | None, Any]] = (
             [
                 (str(m["model"]), str(m["base_url"]), m.get("last_test"))
@@ -476,12 +672,23 @@ def stored_entries(
             status, reason = stored_status(
                 model_id, tested if isinstance(tested, dict) else None
             )
+            if model_id in provider_models:
+                entry = listed_catalog_entry(
+                    provider,
+                    provider_models[model_id],
+                    index,
+                    provider_label=label_of(provider, None),
+                )
+                entries.append(
+                    entry.model_copy(update={"status": status, "status_reason": reason})
+                )
+                continue
             said = (servers or {}).get((provider, model_id, url or ""))
             entries.append(
                 catalog_entry(
                     provider,
                     model_id,
-                    deployment=deployment_of(provider),
+                    deployment=deployment,
                     index=index,
                     provider_label=label_of(provider, said.server if said else None),
                     context_tokens=said.context_tokens if said else None,
@@ -489,6 +696,6 @@ def stored_entries(
                     status=status,
                     status_reason=reason,
                     server_url=url,
-                )
+                ).model_copy(update={"provider_list_expired": expired})
             )
     return tuple(entries)

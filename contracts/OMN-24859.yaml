@@ -1,0 +1,64 @@
+schema_version: 1.0.0
+ticket_id: OMN-24859
+title: The delegation projection prices a call on a customer's own key from the BYOK catalogue, so the R8 organic row carries a cost
+summary: The R8 scenario reads the organic row's cost_usd from delegation_events. A call on a customer's own key serves on the tenant_overlay tier, which has no typed cost model in the routing registry, so the delegation projection booked cost_usd 0.0 with cost_measurement_source no_cost_model for glm-5.3-flash on byok-glm-general although the BYOK catalogue declares that model's price. The earlier catalogue price reached only the delegate-skill path, not this one, so R8 still failed organic_run_has_values on every tick. The projection now prices such a call from the catalogue's declared price for its backend and model (metered, saving = counterfactual - cost); a model with no declared price stays unpriced and a call with no BYOK backend is untouched. The R8 node is untouched.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24859-byok-priced-row
+  statement: A delegation row for a call on a customer's own key stores the catalogue-declared cost, and a call the catalogue does not price is stored as before.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the delegation row for a glm-5.3-flash call on byok-glm-general stores cost_usd from the declared price with cost_measurement_source metered and a saving of counterfactual minus that cost -- falsifier: uv run pytest tests/nodes/node_projection_delegation/test_byok_actual_cost.py -q fails at the merge base, where the row stores cost_usd 0 with no_cost_model'
+  - id: AC2
+    statement: 'AC2: a model the catalogue declares no price for, and a call with no BYOK backend, still store no cost with cost_measurement_source no_cost_model -- falsifier: uv run pytest tests/nodes/node_projection_delegation/test_byok_actual_cost.py -q fails when the pricing is applied to a house backend or to an undeclared model'
+  - id: AC3
+    statement: 'AC3: integrated: on the dev runtime after this change is installed there, the R8 organic row''s stored cost_usd is above zero -- falsifier: the R8 unit scenario row on the dev runtime still shows -organic_run_has_values after the installed run'
+evidence_requirements:
+- kind: tests
+  description: The BYOK actual-cost projection tests and the existing measured-actual-cost tests.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_projection_delegation/test_byok_actual_cost.py tests/test_actual_cost_recompute_omn13355.py -q --no-cov -n 0 -p no:randomly
+- kind: manual
+  description: 'Deploy validation command for the caller-contract deploy gate: the committed projection source read at the checkout commit. It starts nothing and touches no running lane.'
+  command: 'deploy: git grep -n byok_priced_actual_cost -- src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py'
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24859-ac1-byok-priced-row
+  description: The projection stores cost_usd 0.00017315 for 231 input and 277 output tokens of glm-5.3-flash on byok-glm-general, from the declared 0.15 in and 0.50 out USD per 1M tokens. At the merge base the row stores cost_usd 0 with no_cost_model, so the test fails there and passes at the head.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_projection_delegation/test_byok_actual_cost.py -q --no-cov -n 0 -p no:randomly -k declared_price_is_booked_as_cost
+    cwd: .
+- id: dod-omn24859-ac2-unpriced-unchanged
+  description: A model with no declared price and a call with no BYOK backend store no cost with no_cost_model, as before.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_projection_delegation/test_byok_actual_cost.py -q --no-cov -n 0 -p no:randomly -k "no_declared_price or no_byok_backend"
+    cwd: .
+- id: dod-omn24859-ac3-r8-cost-above-zero
+  description: Hosted proxy for AC3, the stored row for a declared glm-5.3-flash call on byok-glm-general carries a cost above zero, the value the R8 organic check reads. The live dev runtime reading is the unbound integration-proof item below.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_projection_delegation/test_byok_actual_cost.py -q --no-cov -n 0 -p no:randomly -k declared_price_is_booked_as_cost
+    cwd: .
+- id: dod-omn24859-integration-proof
+  description: Hosted CI cannot reach a lab host, so only the local Done gate runs this unbound check. It runs scenario R8 once (manual, recorded to a file) at the sha on a lab host and fails while that record still shows -organic_run_has_values. It is the R8 scenario result, not the unit tests; the dev runtime reading is taken after this change is installed there.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24859 --kind test -- sh -c 'uv run --frozen python -m omnimarket.nodes.node_delegation_scenario_r8_effect run --manual --record /tmp/r8_omn24859_record.json && ! grep -q -e "-organic_run_has_values" /tmp/r8_omn24859_record.json'
+    cwd: .

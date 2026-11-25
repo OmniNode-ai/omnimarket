@@ -1,0 +1,22 @@
+name: node_install_request_acl_compute
+version: "0.1.0"
+description: "Install request ACL: derive the broker permission declaration, one principal per login, as a pure function"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_install_request_acl_compute: "omnimarket.nodes.node_install_request_acl_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "install-request", "acl", "pure"]
+pack: "host_install"
+display_name: "Install Request ACL"
+node_role: "compute"

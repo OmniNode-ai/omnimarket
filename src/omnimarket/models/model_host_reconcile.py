@@ -24,8 +24,8 @@ class ModelHostReconcileCommand(BaseModel):
     guard_delegate: str | None = None
     receipt: str | None = None
     dispatch_venv: str | None = None
-    ledger: str = ""
     alert_command: str = ""
+    ledger_append_command: str = ""
 
 
 class ModelHostReconcileSlackCommand(BaseModel):

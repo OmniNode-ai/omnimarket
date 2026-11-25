@@ -56,7 +56,7 @@ from omnimarket.nodes.node_prove_running_workflow.handlers import (
     HandlerProveRunningStarter,
 )
 from omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_line_rows import (
-    write_line_row,
+    write_line_rows,
 )
 from omnimarket.nodes.node_prove_running_workflow.handlers.integration_projection_reader import (
     IntegrationBatchRefusedError,
@@ -109,6 +109,26 @@ def contract_config() -> dict[str, Any]:
 
 def _now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _declared_positive_int(section: Mapping[str, Any], key: str, name: str) -> int:
+    """A setting the contract declares as a positive integer; anything else is refused by name."""
+    value = section.get(key)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"{name} must be a positive integer, got {value!r}")
+    return value
+
+
+def worker_options(cfg: dict[str, Any]) -> dict[str, Any]:
+    """The Temporal worker's declared limits: how many activities it runs at once. Each activity is one node command
+    run as its own process, so the bound is the bound on processes the worker puts on its host."""
+    return {
+        "max_concurrent_activities": _declared_positive_int(
+            cfg["worker"],
+            "max_concurrent_activities",
+            "worker.max_concurrent_activities",
+        )
+    }
 
 
 def _argv(template: list[str]) -> tuple[str, ...]:
@@ -295,13 +315,18 @@ def cmd_write_row(cfg: dict[str, Any], outcome: str) -> int:
 
 
 def cmd_write_line_row(cfg: dict[str, Any]) -> int:
+    """The batch's row step: the rows of every line the pass answers itself, appended together (see
+    ``write_line_rows``). The verb keeps its name so a schedule created before the batching still names it."""
     lane = os.environ.get("ONEX_PROVE_RUNNING_LANE", cfg["lane"])
-    code, text = write_line_row(
+    code, text = write_line_rows(
         sys.stdin.read(),
         lane=lane,
         ticket=cfg["ticket"],
         written_at=_now(),
         append=_append_row,
+        max_chars=_declared_positive_int(
+            cfg["batch"], "append_max_chars", "batch.append_max_chars"
+        ),
     )
     (sys.stdout if code == 0 else sys.stderr).write(text + "\n")
     return code
@@ -524,6 +549,7 @@ async def run_worker(target_host: str, namespace: str, task_queue: str) -> None:
             prove_running_batch_step,
             prove_running_earlier,
         ],
+        **worker_options(contract_config()),
     ).run()
 
 

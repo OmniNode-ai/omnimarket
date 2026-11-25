@@ -9,8 +9,12 @@ prevents a reread from reopening a stop that the reducer already cleared.
 from __future__ import annotations
 
 import fcntl
+import os
 from datetime import datetime
 
+from omnimarket.handlers.adapter_work_ledger_rows_reader import (
+    SubprocessLedgerRowsReader,
+)
 from omnimarket.handlers.ledger_row_grammar import Row, hold_release_state, parse_row
 from omnimarket.handlers.rules_stop_gate import load_andon_stop_contract
 from omnimarket.handlers.work_ledger_text import split_ledger_rows
@@ -30,6 +34,12 @@ from omnimarket.nodes.node_exception_queue_effect.models import (
     ModelExceptionRow,
     ModelStopEventRequest,
 )
+from omnimarket.protocols.protocol_ledger_rows_reader import ProtocolLedgerRowsReader
+
+#: The ledger reader node's name for the HOLD/RELEASE read, and the window it covers: a HOLD with no
+#: ``until`` stays in force until a RELEASE, so the window is a month, not a day.
+HOLDS_READER = "exception-queue-andon-holds"
+HOLDS_WINDOW_HOURS = 720
 
 
 def _readback(row: Row) -> str:
@@ -51,7 +61,14 @@ def _rows(text: str, now: datetime) -> list[Row]:
 
 
 class HandlerAndonLedgerHolds:
-    """Reconcile a ledger snapshot before the queue supplies stops to dispatchers."""
+    """Reconcile a ledger snapshot before the queue supplies stops to dispatchers.
+
+    The HOLD and RELEASE rows come from the ledger reader node through ``ledger_reader``; an unreadable
+    ledger raises ``LedgerReadError`` and is never read as "no HOLD rows".
+    """
+
+    def __init__(self, ledger_reader: ProtocolLedgerRowsReader | None = None) -> None:
+        self._ledger_reader = ledger_reader
 
     def handle(
         self, request: ModelAndonLedgerHoldsRequest
@@ -70,7 +87,14 @@ class HandlerAndonLedgerHolds:
     def _reconcile(
         self, request: ModelAndonLedgerHoldsRequest
     ) -> ModelAndonLedgerHoldsResult:
-        text = request.ledger_path.read_text(encoding="utf-8")
+        reader = self._ledger_reader or SubprocessLedgerRowsReader(os.environ)
+        text = "\n".join(
+            reader.rows(
+                reader=HOLDS_READER,
+                window_hours=HOLDS_WINDOW_HOURS,
+                kinds=("HOLD", "RELEASE"),
+            )
+        )
         rows = _rows(text, request.now)
         releases = [row for row in rows if row.row_type == "RELEASE"]
         fsm, config = load_andon_stop_contract()

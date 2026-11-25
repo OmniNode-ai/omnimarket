@@ -1,0 +1,150 @@
+schema_version: 1.0.0
+ticket_id: OMN-26274
+title: A stage advance of test selection needs a receipt of clean nights recomputed from published attribution records and an owner review, and a skipped stage is refused
+summary: 'The stage gate of omnimarket test selection. policy.yaml gains stage_clean_nights (7) and stage_min_pr_records, and config/test_selection_stage_receipts/ holds the stage 0 baseline receipt. The selector
+  node gains the operation validate_stage_receipt: a typed receipt model and a handler that recomputes a receipt''s clean nights, pull request record total, miss, unattributable and incomplete totals and clean-night
+  share from the published nightly attribution records (ModelPublishedAttributionRecord, read through ProtocolAttributionRecordSource, with an in-memory twin), refuses a skipped stage, a short receipt, a wrong
+  figure, selector and policy versions that differ from the records, records that do not hold the entry of the stage entered, and an absent measured target. tests/ci/test_selection_stage_evidence.py runs it
+  over the real tree and over fixtures in tests/ci/fixtures/selection_stage/. A CODEOWNERS file names the owner team on policy.yaml, the receipts directory and that test. The adjacency comments no longer say a
+  data file or an entry point takes the full suite. Not in this change: the real source adapter for the published records (it is wired when the nightly record transport lands), advancing selection_stage beyond 0,
+  and any write of the ENABLE_SMART_TESTS variable. Amended by the operator ruling of 2026-11-23T00:01:29Z: stage 1 is entered on one passing deterministic comparison over the recorded set (config/test_selection_replay_input.json and config/test_selection_observed_input.json, pinned by digest), recomputed by the gate on every validation through the node operation compare_stage_selection and never read from nightly attribution records; stage 2 and above keep the nightly-record rule. selection_stage is 1 with its stage 1 receipt.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26274-stage-gate
+  statement: A stage of test selection is entered one at a time, on a receipt whose figures are recomputed from published nightly attribution records, with the owner on the files that decide it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a stage-advance fixture whose receipt has a wrong figure (one clean night short, or a share that differs from the recomputed one) fails even though the receipt is well formed, and a two-stage
+      jump fails -- falsifier: `uv run pytest tests/ci/test_selection_stage_evidence.py -q --no-cov -k stage_receipt_recomputed`; correct the figure and it must pass'
+  - id: AC2
+    statement: 'AC2: at stage 0 a replay equals the T1 receipt exactly -- falsifier: replay with `selection_stage: 0`; any difference fails'
+  - id: AC3
+    statement: 'AC3: CODEOWNERS names the owner on policy.yaml, the receipts directory and the validator test -- falsifier: grep CODEOWNERS for the three paths in the test; remove one entry and the test fails'
+  - id: AC4
+    statement: 'AC4: stage targets (share of merges narrowed, test-seconds per merge, CI minutes per pull request) are written next to the stage and refused when absent from the receipt -- falsifier: `-k selection_stage`
+      with a receipt lacking a measured value'
+  - id: AC5
+    statement: 'AC5: the old comments no longer say data files and entry points take the full suite -- falsifier: `grep -n "full suite" scripts/ci/test_selection_adjacency.yaml` over the changed lines shows only
+      escapes still in force'
+evidence_requirements:
+- kind: tests
+  description: The stage gate tests and the selector node tests pass at the pushed head.
+  command: uv run --frozen pytest tests/ci/test_selection_stage_evidence.py tests/nodes/node_test_selection_selector_compute -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26274-ac1
+  description: 'AC1: a receipt one clean night short, a share or total that differs from the one recomputed from the published records, versions that differ from the records, and a two-stage jump each fail
+    although the receipt is well formed; a corrected figure passes. The records come from the record source, not from a file the change supplies.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_selection_stage_evidence.py -q --no-cov -n 0 -p no:randomly -k "stage_receipt_recomputed or two_stage_jump or without_a_receipt"
+    cwd: .
+- id: dod-omn26274-ac2
+  description: 'AC2: at selection_stage 0 the record built from the checked-in durations runs exactly what today''s selector decides, for four changes (pyproject, a shared module, a data file, a main-branch change).
+    The T1 receipt is not on dev, so the comparison is against the selector the merged stage tests use.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_selection_stage_evidence.py -q --no-cov -n 0 -p no:randomly -k zero_replay
+    cwd: .
+- id: dod-omn26274-ac3
+  description: 'AC3: .github/CODEOWNERS names the owner team on policy.yaml, config/test_selection_stage_receipts/ and the validator test; removing any one of the three entries fails the test.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_selection_stage_evidence.py -q --no-cov -n 0 -p no:randomly -k codeowners
+    cwd: .
+- id: dod-omn26274-ac4
+  description: 'AC4: a receipt lacking any one of the three measured values, or the whole measured section, is refused with the code targets_absent naming the value.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_selection_stage_evidence.py -q --no-cov -n 0 -p no:randomly -k "measured_value or no_measured_section"
+    cwd: .
+- id: dod-omn26274-ac5
+  description: 'AC5: the adjacency file comments no longer say an entry point change or a data-only diff takes the full suite; the lines that still say full suite name escapes in force (shared module, test
+    infrastructure, protected surfaces). ci.yml carried no such statement.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_selection_stage_evidence.py -q --no-cov -n 0 -p no:randomly -k old_comment
+    cwd: .
+- id: dod-omn26274-ac2-stage-zero-restored-on-dev
+  description: 'AC2, stage 0 restored: with selection_stage 0 back in the policy the six stage evidence tests that fail at dev head 6d15b8e833, picked by name, pass. At dev head 6d15b8e833, where the policy reads 1, the same command reads 6 failed, so this check fails at the merge base and passes at this head.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_selection_stage_evidence.py -q --no-cov -n 0 -p no:randomly -k "has_the_receipts_it_needs or is_the_only_receipt_at_stage_zero or zero_replay_equals_todays_decisions"
+    cwd: .
+- id: dod-omn26274-ac1-stage-one-comparison-recomputed
+  description: 'AC1, stage 1 entered on one comparison in place of the multi-night wait (operator ruling 2026-11-23T00:01:29Z): the stage 1 receipt records one comparison over the recorded set, pinned by digest, and the gate recomputes its figures by the replay and comparison handlers on every validation, reading no nightly record. A receipt whose measured figure or comparison count differs from the recomputed one fails although well formed, a failing test missing from its change''s selection is refused with the typed code comparison_miss (also when the receipt claims no miss), a changed input digest, a selector version that differs, a set that cannot be read and a comparison over too few changes each fail, a jump from stage 0 to 2 still fails, and the corrected figure passes. These tests are new at this head, so the check fails at the merge base.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_selection_stage_evidence.py -q --no-cov -n 0 -p no:randomly -k stage_receipt_recomputed_stage_one
+    cwd: .
+- id: dod-omn26274-ac1-stage-comparison-handler
+  description: 'AC1, the node operation compare_stage_selection: a failing test the change''s selection leaves out is a miss (positive control), a failing test the selection holds is not, a full-suite selection runs every test, no readable run, a failing run that names no test and a run for an unreplayed change are refused, and the same recorded set answers byte for byte the same. The file is new at this head.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_stage_comparison.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26274-ac2-stage-one-entered
+  description: 'AC2, stage 0 replay unchanged and stage 1 entered: the policy holds selection_stage 1, the workflow feeds the record an entry for stage 1 so the executed selection is that entry and never the selection_unavailable full suite, and the stage 1 receipt of the tree equals what the comparison computes over the recorded set. The replay at stage 0 of the checked-in receipt is still checked by the zero_replay tests.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_ci_selection_record_upload.py::test_policy_selection_stage_is_one_and_the_workflow_feeds_that_stage tests/ci/test_selection_stage_evidence.py::test_stage_receipt_recomputed_stage_one_figures_equal_what_the_comparison_computes -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26274-ac4-stage-one-targets
+  description: 'AC4, stage 1 targets: a stage 1 receipt lacking any one of the three measured values is refused with the code targets_absent naming the value, and the measured values must equal the recomputed ones.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_selection_stage_evidence.py -q --no-cov -n 0 -p no:randomly -k stage_one_receipt_lacking_a_measured_value
+    cwd: .
+- id: dod-omn26274-integration-proof
+  description: the stage gate tests and the node's directory run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26274 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/ci/test_selection_stage_evidence.py tests/nodes/node_test_selection_selector_compute -q --no-cov
+    cwd: .
+- id: dod-omn26274-ac4-stage-savings-report
+  description: 'AC4, the three stage targets reported over the merged pull requests since the stage went live: the node operation report_stage_savings reads each pull request''s selection record artifact and CI run through the repository gateway and totals the selected test seconds against the full-suite seconds, the CI minutes and the share narrowed. A record whose selected seconds exceed the full-suite seconds is refused as selected_exceeds_full, a pull request with no record is counted unreadable with the reason no_record, neither is averaged into a total, and a full-suite run saves nothing. The file is new at this head.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_stage_savings_report.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

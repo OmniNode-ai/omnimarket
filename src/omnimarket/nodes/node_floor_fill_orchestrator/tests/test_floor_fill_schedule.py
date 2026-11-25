@@ -25,7 +25,6 @@ from omnimarket.nodes.node_floor_fill_orchestrator.models import (
     EnumFloorFillStatus,
     ModelFloorFillCommandRequest,
     ModelFloorFillConfig,
-    ModelFloorFillSchedule,
     load_floor_fill_schedule,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
@@ -195,8 +194,8 @@ def test_floor_fill_schedule_install_refused_when_the_module_does_not_import(
 
 
 def test_floor_fill_schedule_deadline_above_the_command_timeout(tmp_path: Path) -> None:
-    tight = ModelFloorFillSchedule(
-        unit_name="u", timeout_seconds=60, dispatch_venv=".onex-dispatch-venv"
+    tight = load_floor_fill_schedule().model_copy(
+        update={"unit_name": "u", "timeout_seconds": 60}
     )
     result = run_schedule(
         [

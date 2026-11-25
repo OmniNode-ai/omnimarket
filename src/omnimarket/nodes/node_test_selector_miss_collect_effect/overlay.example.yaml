@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The deployment overlay of node_test_selector_miss_collect_effect (synthetic values).
+# owner_role has no default: the effect refuses to start while it is unset.
+repo: example-org/example-repo
+workflow_file: nightly-full-suite.yml
+# The role the alarm is addressed to; a role, never a person's name.
+owner_role: example-test-selection-owner
+# The alarm routing condition the alarm is raised under.
+alarm_route: test_selector_miss
+# False stops the collector; the slot check still raises the dead-man alarm for the night.
+collector_enabled: true
+# The lab status tick that invokes the slot check as its own process.
+status_tick: example-lab-status-tick
+# Repositories a published attribution record may name (public ones only). Empty refuses every record.
+public_repositories:
+  - example-org/example-repo
+# Names of private repositories, hosts or people the deployment refuses in a record (synthetic here).
+private_terms:
+  - example-private-term
+# The serve tick (runtime_collect_serve): the process that answers the collect_nightly command the nightly sender publishes. The unit
+# is test-selector-collect-serve-systemd (node_host_installer_registry_units), installed on the host this overlay is read on.
+# bus_lane: the lane the command topic is read on; the broker resolves from the workspace's lane declaration.
+# workspace_root, commit_clone, state_dir: environment variables and ~ expand; the clone is only read (git log), never fetched.
+# consumer_group: under the host login's group family; max_records, read_timeout_s, join_timeout_s bound one pass.
+serve:
+  bus_lane: example-lane
+  workspace_root: $EXAMPLE_WORKSPACE_ROOT
+  consumer_group: local.example.node_test_selector_miss_collect_effect.consume.v1.example-host
+  max_records: 10
+  read_timeout_s: 20.0
+  join_timeout_s: 15.0
+  commit_clone: $EXAMPLE_REGISTRY_ROOT/example-repo
+  state_dir: $EXAMPLE_REGISTRY_ROOT/.onex_state/example-collect-alarms

@@ -6,7 +6,9 @@ Definitions are the module-level classes and functions of each Python file. A sh
 ``name: annotation`` fields of a class with annotated fields, hashed without the class name, so two
 models of different names and the same fields share a signature. Imports are the graph's own edges
 inside the repository, test files included (a change reaches the tests that import it). Exemplars
-are the nodes whose contract names an archetype. It reads no clock, file, network or environment.
+are the nodes whose contract names an archetype. Node files are the directory, contract, metadata,
+overlay and workflow paths of each node (OMN-26202). Handler rows are one per operation of each
+contract's handler routing (OMN-26337). It reads no clock, file, network or environment.
 """
 
 from __future__ import annotations
@@ -24,6 +26,12 @@ from omnimarket.models.model_code_graph_lookup import (
     ModelImportRelation,
     ModelShapeEntry,
     ModelSymbolDefinition,
+)
+from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_handlers import (
+    handler_rows_of,
+)
+from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_locate import (
+    node_files_of,
 )
 from omnimarket.nodes.node_code_graph_effect.handlers.graph_compute import (
     GraphRules,
@@ -131,7 +139,7 @@ def build_version(
             exemplar = _exemplar(path, text)
             if exemplar is not None:
                 exemplars.append(exemplar)
-    graph = build_graph([snapshot], rules)
+    graph = build_graph([snapshot], rules, keep_written=True)
     imports = sorted(
         (
             ModelImportRelation(importer_path=importer[1], imported_path=imported[1])
@@ -149,4 +157,16 @@ def build_version(
         shapes=tuple(shapes),
         imports=tuple(imports),
         exemplars=tuple(sorted(exemplars, key=lambda node: node.path)),
+        references=tuple(
+            references
+            for _, references in sorted(
+                (entity, references)
+                for entity, references in graph.written.items()
+                if entity[0] == snapshot.repo
+            )
+        ),
+        node_files=node_files_of(snapshot.files, rules),
+        handler_rows=handler_rows_of(
+            snapshot.files, rules, tuple(definitions), snapshot.head
+        ),
     )

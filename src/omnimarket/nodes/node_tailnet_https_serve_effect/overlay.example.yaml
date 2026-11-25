@@ -14,9 +14,9 @@ in_memory:
   upstream_alive: true
   served: {}
 report:
-  append_argv: [onex-ledger, /srv/ledger/ROLLING_WORK_LEDGER.md, --append]
+  append_argv: [onex-ledger, --append]
   lane: tailnet-https-serve
   actor: node:node_tailnet_https_serve_effect
   timeout_seconds: 60
   environment:
-    ONEX_LEDGER_PATH: /srv/ledger/ROLLING_WORK_LEDGER.md
+    EXAMPLE_LEDGER_ROUTE: example-bus-lane

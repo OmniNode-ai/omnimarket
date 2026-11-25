@@ -27,7 +27,8 @@ from omnimarket.nodes.node_prove_running_workflow.models.model_prove_running imp
     ModelProveRunningBatchStepInput,
     ModelProveRunningLinePayload,
     ModelProveRunningLineRowRequest,
-    ModelProveRunningLineWritten,
+    ModelProveRunningLinesPayload,
+    ModelProveRunningLinesWritten,
     ModelProveRunningRowResult,
 )
 
@@ -118,29 +119,62 @@ class HandlerProveRunningLineRows:
         return ModelProveRunningRowResult(row=" | ".join([*cells, text + detail]))
 
 
-def write_line_row(
+#: What the bus append stamps on every row: ``" | req=<uuid>"``.
+ROW_STAMP_CHARS = len(" | req=") + 36
+
+
+def _chunks(rows: list[str], max_chars: int) -> list[list[str]]:
+    """Consecutive runs of ``rows`` whose stamped text fits ``max_chars``; one run when they all fit. A row that alone
+    exceeds the limit goes by itself, so the bus answers its own refusal for it."""
+    chunks: list[list[str]] = [[]]
+    used = 0
+    for row in rows:
+        size = len(row) + ROW_STAMP_CHARS + 1
+        if chunks[-1] and used + size > max_chars:
+            chunks.append([])
+            used = 0
+        chunks[-1].append(row)
+        used += size
+    return chunks
+
+
+def write_line_rows(
     step_json: str,
     *,
     lane: str,
     ticket: str,
     written_at: str,
     append: Callable[[str, str, str], tuple[int, str]],
+    max_chars: int,
 ) -> tuple[int, str]:
-    """The ``write-line-row`` step: build the line's row from the batch step's payload and append it through
-    ``append(row, step_key, lane)``. Returns the exit code and the one line to print (the answer, or the error)."""
+    """The ``write-line-row`` step: build the row of every line of the pass from the batch step's payload and append
+    them together through ``append(rows, step_key, lane)``, in the order the lines were given. The rows are the
+    ones each line was given when it was written alone (its step key is ``<step key>/<case>/<key>``). One append
+    carries them all unless they pass ``max_chars`` (the bus request's own size bound), and then one append carries
+    each consecutive run that fits. ``written_at`` is the step input's own time when it carries one, else the
+    caller's clock. Returns the exit code and the one line to print (the answer, or the first refusal's reason)."""
     step = ModelProveRunningBatchStepInput.model_validate_json(step_json)
-    request = ModelProveRunningLineRowRequest(
-        **ModelProveRunningLinePayload.model_validate_json(step.payload).model_dump(),
-        step_key=step.step_key,
-        lane=lane,
-        ticket=ticket,
-        written_at=written_at,
-        batch_id=step.batch_id,
-    )
-    row = HandlerProveRunningLineRows().handle(request).row
-    code, error = append(row, step.step_key, lane)
-    if code != 0:
-        return code, f"ledger append exited {code}: {error}"
-    return 0, ModelProveRunningLineWritten(
-        written=True, row=row, result=line_result_kind(request)
+    lines = ModelProveRunningLinesPayload.model_validate_json(step.payload).lines
+    stamp = step.written_at or written_at
+    rows: list[str] = []
+    kinds: list[EnumProveRunningResultKind] = []
+    for line in lines:
+        request = ModelProveRunningLineRowRequest(
+            **line.model_dump(),
+            step_key=f"{step.step_key}/{line.case.value}/{line.key}",
+            lane=lane,
+            ticket=ticket,
+            written_at=stamp,
+            batch_id=step.batch_id,
+        )
+        rows.append(HandlerProveRunningLineRows().handle(request).row)
+        kinds.append(line_result_kind(request))
+    chunks = _chunks(rows, max_chars) if rows else []
+    for index, chunk in enumerate(chunks):
+        key = step.step_key if len(chunks) == 1 else f"{step.step_key}/chunk/{index}"
+        code, error = append("\n".join(chunk), key, lane)
+        if code != 0:
+            return code, f"ledger append exited {code}: {error}"
+    return 0, ModelProveRunningLinesWritten(
+        rows=len(rows), appends=len(chunks), results=tuple(kinds)
     ).model_dump_json()

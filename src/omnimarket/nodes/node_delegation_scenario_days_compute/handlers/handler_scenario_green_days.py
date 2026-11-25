@@ -6,10 +6,11 @@ Rules, all from the plan and all pure:
 
 * Only ``schedule`` results fill a slot; a manual run never does.
 * One result per slot: the latest attempt (the newest ``recorded_at``).
-* A completed conclusion other than ``success`` is not green. A run still queued or in progress after
+* A skipped slot is neutral. Other completed conclusions besides ``success`` fail. A run still queued or in progress after
   ``stale_after_hours`` is not green; a younger one is unsettled and counts as neither settled nor failed.
 * A day is green when at least the cadence's share of slots settled and every settled slot succeeded.
-* ``green_days`` is the count of consecutive green days ending yesterday, over at most ``window_days`` days.
+* A day held below the settled threshold solely by skips neither adds to nor ends the green streak.
+* ``green_days`` counts green days back from yesterday until the first non-green, non-neutral day.
 * A history that was not read to its end is red for every scenario, whatever the results read so far say.
 """
 
@@ -66,10 +67,13 @@ def _day(
     slots: dict[datetime, ModelScenarioResult],
     as_of: datetime,
     stale_after: timedelta,
-) -> ModelScenarioDay:
-    settled = failed = 0
+) -> tuple[ModelScenarioDay, bool]:
+    settled = failed = skipped = 0
     for slot, result in slots.items():
         if slot.date() != day:
+            continue
+        if result.conclusion is EnumScenarioConclusion.SKIPPED:
+            skipped += 1
             continue
         state = _settled_state(result, as_of, stale_after)
         if state == "unsettled":
@@ -77,13 +81,15 @@ def _day(
         settled += 1
         failed += state == "failed"
     cadence = declaration.cadence
-    return ModelScenarioDay(
+    reading = ModelScenarioDay(
         day=day,
         expected=cadence.slots_per_day,
         settled=settled,
         failed=failed,
         green=settled >= cadence.required_settled and failed == 0,
     )
+    neutral = failed == 0 and settled < cadence.required_settled <= settled + skipped
+    return reading, neutral
 
 
 class HandlerScenarioGreenDays:
@@ -108,14 +114,17 @@ class HandlerScenarioGreenDays:
                 )
                 continue
             slots = _latest_per_slot(declaration, request.results)
-            readings = tuple(
+            assessed = tuple(
                 _day(day, declaration, slots, as_of, stale_after) for day in days
             )
             green_days = 0
-            for reading in readings:
+            for reading, neutral in assessed:
+                if neutral:
+                    continue
                 if not reading.green:
                     break
                 green_days += 1
+            readings = tuple(reading for reading, _ in assessed)
             newest = readings[0]
             rows.append(
                 ModelScenarioGreenDaysRow(

@@ -8,6 +8,7 @@ min_start_interval_seconds: 900
 healthy_for_seconds: 600
 failed_roll_release_after_seconds: 3600
 roll_completion_deadline_seconds: 3600
+held_age_alarm_after_seconds: 1800
 known_repositories:
   - omnimarket
   - omnibase_infra

@@ -3,7 +3,7 @@
 """Models of the harness rung: the rung config, the vote request, the run, the vote.
 
 One node serves every harness rung. The rung's config (harness, login, endpoint, task
-class, effort, call budget, harness script and run-directory leaf) is data: the dispatch
+class, effort, call budget, harness backend id, delegation lane and run-directory leaf) is data: the dispatch
 reads it from its overlay and sends it in each vote request, so no harness is named in
 code. The vote has the shape of the dispatch orchestrator's voter review (identity,
 endpoint, model, delegation event id, findings); this package keeps its own copy because
@@ -29,7 +29,13 @@ class ModelHarnessRungConfig(BaseModel):
     task_class: str = Field(min_length=1)
     effort: str = Field(min_length=1)
     call_budget_seconds: float = Field(gt=0)
-    harness_script: str = Field(min_length=1)
+    backend_id: str = Field(
+        min_length=1,
+        description="The kind: harness backend the delegation is pinned to.",
+    )
+    delegate_lane: str = Field(
+        min_length=1, description="The bus lane whose harness handler serves the pin."
+    )
     run_dir_leaf: str = Field(min_length=1, pattern=r"^[A-Za-z0-9_-]+$")
 
 

@@ -55,6 +55,28 @@ emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
+context:
+  ac_binding_provenance:
+    dod-omn22016-ac1-accepted-20261122t2145z:
+      - label: AC1
+        criterion_hash: 0fda878364409d2748b77744d5f99e59a580d9c9f810359a1e22bb0db79c7428
+        proposed_by: lane=dod-closeout-bind-2026-11-22T2145Z-c2
+        accepted_by: lane=dod-closeout-accept-2026-11-22T2145Z-c2
+    dod-omn22016-ac2-accepted-20261122t2145z:
+      - label: AC2
+        criterion_hash: 73d5497ad3bc01f1d432716808b03351cd4ac4c0c665384a2fa07ba5981b331d
+        proposed_by: lane=dod-closeout-bind-2026-11-22T2145Z-c2
+        accepted_by: lane=dod-closeout-accept-2026-11-22T2145Z-c2
+    dod-omn22016-ac3-accepted-20261122t2145z:
+      - label: AC3
+        criterion_hash: 1a6d791c6a55a753ee38cbf6b27fa12e6d1f05153aeecc9a71279c5ed532ff87
+        proposed_by: lane=dod-closeout-bind-2026-11-22T2145Z-c2
+        accepted_by: lane=dod-closeout-accept-2026-11-22T2145Z-c2
+    dod-omn22016-ac5-accepted-20261122t2145z:
+      - label: AC5
+        criterion_hash: 1e8b7999eb7d6e79fdaaa1b811b0543fb4dc9dcedb724f6c4f2b0373d69b17de
+        proposed_by: lane=dod-closeout-bind-2026-11-22T2145Z-c2
+        accepted_by: lane=dod-closeout-accept-2026-11-22T2145Z-c2
 dod_evidence:
   - id: dod-omn22016-ac1-scope
     binds_ac: [AC1]
@@ -133,3 +155,31 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: "uv run pytest tests/unit/nodes/node_event_emit_effect/test_enrichment_parity.py -q -m 'not kafka' --no-cov"
+  - id: dod-omn22016-ac1-accepted-20261122t2145z
+    binds_ac: [AC1]
+    description: "AC1: the unrelated-directory session prints nothing, sends no bus request and journals no miss; the registry and internal-clone sessions emit the package; the inline consumer the session-start skill calls returns the same package in all three. Re-run by the accepting lane on omnimarket dev 8c2a3542cc: 2 passed, 40 deselected. Neither test file exists at the parent of the implementing merge 214cadd3dc."
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_claude_code_hook_adapter_effect/test_additive_rows_omn22016.py tests/nodes/node_context_pack_orchestrator/test_additive_gate_omn22016.py -k session_start_scope -q -m 'not kafka' --no-cov"
+  - id: dod-omn22016-ac2-accepted-20261122t2145z
+    binds_ac: [AC2]
+    description: "AC2: each row's wait never exceeds its budget, a budget above its cap is refused, per_prompt is refused by the list loader and a package after the budget is not injected. Re-run by the accepting lane on omnimarket dev 8c2a3542cc: 14 passed, 28 deselected. Absent at the parent of 214cadd3dc."
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_claude_code_hook_adapter_effect/test_additive_rows_omn22016.py tests/nodes/node_context_pack_orchestrator/test_additive_gate_omn22016.py -k 'additive_latency_budget or additive_list_loader' -q -m 'not kafka' --no-cov"
+  - id: dod-omn22016-ac3-accepted-20261122t2145z
+    binds_ac: [AC3]
+    description: "AC3: with the list empty every additive call answers none and the hook prints nothing, with a positive control when the list names the profile. Re-run by the accepting lane on omnimarket dev 8c2a3542cc: 9 passed, 33 deselected. Absent at the parent of 214cadd3dc."
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_claude_code_hook_adapter_effect/test_additive_rows_omn22016.py tests/nodes/node_context_pack_orchestrator/test_additive_gate_omn22016.py -k additive_list_empty -q -m 'not kafka' --no-cov"
+  - id: dod-omn22016-ac5-accepted-20261122t2145z
+    binds_ac: [AC5]
+    description: "AC5: a timed-out, partial, unhashable or failing bus answer prints nothing, exits within the budget and journals exactly one miss record. Re-run by the accepting lane on omnimarket dev 8c2a3542cc: 8 passed, 19 deselected. Absent at the parent of 214cadd3dc."
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: "env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_claude_code_hook_adapter_effect/test_additive_rows_omn22016.py -k additive_forced_timeout -q -m 'not kafka' --no-cov"

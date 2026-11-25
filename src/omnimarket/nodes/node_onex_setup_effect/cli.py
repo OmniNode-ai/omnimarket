@@ -9,6 +9,7 @@ input or stdin and are never included in a saved plan.
 
 from __future__ import annotations
 
+import platform
 import sys
 from collections.abc import Callable
 from functools import wraps
@@ -21,16 +22,18 @@ from typing import Any
 import click
 import yaml
 from click.core import ParameterSource
-from omnibase_core.cli.cli_run_node import run_node_in_process
 from omnibase_core.cli.cli_user_config import user_config_path
 from omnibase_core.errors.model_onex_error import ModelOnexError
+from omnibase_core.models.event_bus.model_run_node_hosted import ModelRunNodeHosted
 from pydantic import SecretStr
 
 from omnimarket.handlers.handler_endpoint_catalog import HandlerEndpointCatalog
 from omnimarket.handlers.handler_endpoint_probe import HandlerModelProbe
 from omnimarket.handlers.routing import byok_provider_backends
-from omnimarket.nodes.node_onex_setup_effect.cli_choices import ask_choices
-from omnimarket.nodes.node_onex_setup_effect.cli_workflow import run_workflow_cli
+from omnimarket.nodes.node_onex_setup_effect.cli_choices import (
+    ask_choices,
+    stored_key_for_unchanged_provider,
+)
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import (
     KEYLESS_PROVIDERS,
     discard_key,
@@ -42,9 +45,6 @@ from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_plugins impo
 )
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_preflight import (
     HandlerSetupPreflight,
-)
-from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_workflow import (
-    HandlerSetupWorkflow,
 )
 from omnimarket.nodes.node_onex_setup_effect.models import (
     ModelOnexSetupRequest,
@@ -96,9 +96,10 @@ def _json_failures(function: Callable[..., None]) -> Callable[..., None]:
 
 
 def _workflow_cli(ctx: click.Context, **kwargs: Any) -> None:
+    from omnimarket.nodes.node_onex_setup_effect.cli_workflow import run_workflow_cli
+
     run_workflow_cli(
         ctx,
-        workflow_factory=HandlerSetupWorkflow,
         onex_home=user_config_path().parent,
         read_key=_read_key,
         **kwargs,
@@ -121,7 +122,7 @@ def _run_through_runtime(request: ModelOnexSetupRequest) -> ModelOnexSetupResult
     payload = request.model_dump(mode="json", exclude={"key"})
     payload["key_handoff"] = token
     try:
-        produced = run_node_in_process(NODE_NAME, contract_path, payload, timeout_s)
+        produced = ModelRunNodeHosted.run(NODE_NAME, contract_path, payload, timeout_s)
     except ModelOnexError as error:
         raise click.ClickException(error.message) from error
     finally:
@@ -199,6 +200,7 @@ def _ask_choices(
     endpoint_auth: str | None = None,
     credentials: dict[str, SecretStr] | None = None,
     connection_id: str | None = None,
+    saved: ModelSetupPlan | None = None,
 ) -> tuple[str | None, str | None, str | None]:
     return ask_choices(
         provider,
@@ -210,6 +212,12 @@ def _ask_choices(
         discover=discover_models,
         read_key=_read_key,
         probe=probe_models,
+        default_provider=saved.providers[0].provider
+        if saved is not None and saved.providers
+        else None,
+        stored_key=lambda name, address: stored_key_for_unchanged_provider(
+            saved, name, address
+        ),
     )
 
 
@@ -235,21 +243,42 @@ class _SetupCommand(click.Command):
 def current_folder_workspace(cwd: Path, home: Path) -> Path | None:
     """OMN-23413 AC19: the folder setup runs from is the workspace, as in
     coding-agent CLIs, except the home folder or the filesystem root, which
-    fall back to $OMNIBASE_PATH, $OMNI_HOME, the recorded root or a prompt."""
+    fall back to $OMNIBASE_PATH, the recorded root or a prompt."""
     folder = cwd.resolve()
     if folder == home.resolve() or folder == Path(folder.anchor):
         return None
     return folder
 
 
+def linked_workspace_notice(workspace: Path) -> str | None:
+    """The line naming the real folder a workspace reached through a link writes to.
+
+    OMN-23413 (operator decision 2026-11-22): a workspace given as a link is
+    followed as the user's choice, and setup says which real folder it writes
+    to. ``..`` is never collapsed as text: setup resolves links first and then
+    ``..``, so the real folder is ``resolve()``'s. The path itself or any folder
+    above it may be the link, a dangling one included. None when no link is on
+    the path.
+    """
+    given = workspace.expanduser()
+    if not given.is_absolute():
+        given = Path.cwd() / given
+    prefixes = (Path(*given.parts[:end]) for end in range(2, len(given.parts) + 1))
+    if not any(prefix.is_symlink() for prefix in prefixes):
+        return None
+    return (
+        f"Workspace: {given} reaches its real folder {given.resolve()} through a link."
+    )
+
+
 @click.command("setup", cls=_SetupCommand)
 @click.option(
     "--workspace",
     type=click.Path(path_type=Path),
-    envvar=["OMNIBASE_PATH", "OMNI_HOME"],
+    envvar="OMNIBASE_PATH",
     default=None,
     help="Workspace root (default: the current folder; from the home folder or / "
-    "it is $OMNIBASE_PATH, then $OMNI_HOME, then the root an earlier run recorded).",
+    "it is $OMNIBASE_PATH, then the root an earlier run recorded).",
 )
 @click.option(
     "--path",
@@ -307,7 +336,7 @@ def current_folder_workspace(cwd: Path, home: Path) -> Path | None:
 @click.option(
     "--preflight-only",
     is_flag=True,
-    help="Read this Mac's requirements and exit without installing or changing files.",
+    help="Read this machine's requirements and exit without installing or changing files.",
 )
 @click.option(
     "--json", "json_output", is_flag=True, help="Emit only the typed result on stdout."
@@ -417,7 +446,7 @@ def setup_command(
         raise click.ClickException(
             "Run --preflight-only separately from a setup action, component plan, or developer selection."
         )
-    if preflight_only:
+    if preflight_only or platform.system() == "Windows":
         observation = HandlerSetupPreflight().handle(
             ModelSetupPlan(
                 workspace=workspace or Path.home() / "Code" / "omnibase",
@@ -436,6 +465,12 @@ def setup_command(
             if observation.fix:
                 click.echo(observation.fix, err=True)
         ctx.exit(0 if observation.status == "success" else 3)
+    # Provisioning takes POSIX file locks. A native Windows client must receive
+    # the platform remedy before any provisioning modules are imported.
+    from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_workflow import (
+        HandlerSetupWorkflow,
+    )
+
     onex_home = user_config_path().parent
     try:
         saved = (
@@ -470,8 +505,14 @@ def setup_command(
     # OMN-21262 (merged from dev): before the first model question, and before
     # any step in an unattended run. Under --json it goes to stderr, so stdout
     # stays the one typed result.
+    if workspace is not None:
+        notice = linked_workspace_notice(workspace)
+        if notice is not None:
+            click.echo(notice, err=json_output)
     click.echo(LADDER_NOTICE, err=json_output)
     prepared_credentials: dict[str, SecretStr] = {}
+    # A configure re-run with no --provider adds to the saved providers (OMN-23825).
+    added_to: ModelSetupPlan | None = None
     if plan_file is None:
         if compose_file is not None or topology_file is not None:
             if compose_file is None or topology_file is None:
@@ -517,8 +558,18 @@ def setup_command(
             if (
                 ("delegation" in (components or ("delegation",)))
                 and action != "verify"
-                and (provider is not None or saved is None)
+                and (provider is not None or saved is None or action == "configure")
             ):
+                if provider is None and action == "configure":
+                    # Only the added provider changes: every saved choice stays,
+                    # the workspace too unless --workspace names another.
+                    added_to = saved
+                    if (
+                        saved is not None
+                        and ctx.get_parameter_source("workspace")
+                        is not ParameterSource.COMMANDLINE
+                    ):
+                        workspace = saved.workspace
                 provider, model, url = _ask_choices(
                     provider,
                     model,
@@ -526,6 +577,9 @@ def setup_command(
                     endpoint_auth=endpoint_auth,
                     credentials=prepared_credentials,
                     connection_id=connection_id,
+                    # Only a configure re-run reuses a stored key: a named
+                    # --provider can always take a new (rotated) key.
+                    saved=added_to,
                 )
     if (
         not interactive
@@ -559,6 +613,7 @@ def setup_command(
         return
     _workflow_cli(
         ctx,
+        workflow_factory=HandlerSetupWorkflow,
         workspace=workspace,
         action=action,
         components=components,
@@ -573,6 +628,7 @@ def setup_command(
         saved=saved,
         endpoint_auth=endpoint_auth,
         prepared_credentials=prepared_credentials,
+        added_to=added_to,
         connection_id=connection_id,
         native_messages=native_messages,
         compose_file=compose_file,

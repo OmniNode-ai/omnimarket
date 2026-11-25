@@ -5,12 +5,23 @@
 from __future__ import annotations
 
 import json
-import subprocess
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from omnimarket.handlers.ledger_append_via_node import (
+    append_row_via_bus,
+    request_id_for,
+)
+from omnimarket.handlers.ledger_rows_via_node import read_ledger_rows_via_node
+
 CONTROLLER_STALE = timedelta(minutes=20)
+#: The reader name the rows loader answers this alarm's window under (the reader overlay lists it).
+READER = "silent-failure-alarm"
+ALARM_LANE = "silent-failure-alarm"
+LEDGER_COMMAND_ENV = "ONEX_WORK_LEDGER_COMMAND"
+APPEND_NAMESPACE = uuid.UUID("3b0f5a52-6a53-4d3b-9d0e-5f7f4a0c9e21")
 
 
 def one_line(value: object, fallback: str) -> str:
@@ -57,24 +68,22 @@ def read_controller(state_dir: Path) -> TickActivity | None:
         return None
 
 
-def append_row(
-    python: str, ledger_lock: str | None, ledger: Path, row: str, *, registry_root: Path
-) -> tuple[bool, str]:
-    """Use the installed canonical appender; an explicit script supports hermetic replay."""
-    command = [python, ledger_lock] if ledger_lock else ["onex-ledger"]
-    try:
-        done = subprocess.run(
-            [*command, str(ledger), "--append", row],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=120,
-            cwd=registry_root,
+class BusAlarmLedger:
+    """The alarm's ledger over the bus: rows come from the rows loader node, appends from the append node.
+
+    No ledger file is named or opened. A window the loader cannot answer is ``LedgerRowsUnreadableError``,
+    never an empty window, and an append that gets no answer is retried under the same request id, so the
+    ledger host answers a duplicate and the row lands once.
+    """
+
+    def read_rows(self, window_hours: int) -> str:
+        return "\n".join(read_ledger_rows_via_node(READER, window_hours))
+
+    def append(self, row: str) -> tuple[bool, str]:
+        ok, detail = append_row_via_bus(
+            row,
+            lane=ALARM_LANE,
+            request_id=request_id_for(APPEND_NAMESPACE, row),
+            command_env=LEDGER_COMMAND_ENV,
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        return False, one_line(exc, "ledger append could not run")
-    lines = (done.stderr + "\n" + done.stdout).strip().splitlines()
-    return done.returncode == 0, one_line(
-        lines[-1] if lines else "",
-        "appended" if done.returncode == 0 else "append failed",
-    )
+        return ok, one_line(detail, "appended" if ok else "append failed")

@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+ticket_id: OMN-25931
+title: A host alarms, with a named owner, while its mounted data drives hold under 10 percent of its lane path bytes
+summary: The lane path switchover onto the mounted data drives was owned twice and dropped twice because nothing measured it. node_host_lane_path_share_compute reads the lane path sizes a host reports and the mount points that are its data drives, and writes one alarm STATUS row with owner= while the drives hold under 10 percent of the bytes, one ok row at or over it. The existing failure alarm router reads the row as the class lane-path-share and delivers it to the live orchestrator inbox and the operator push channel; it resolves the alarm on a later ok row.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25931-lane-path-share
+  statement: A host whose mounted data drives hold under 10 percent of its lane path bytes raises one alarm row naming its owner, through the failure alarm router; a host at 11 percent does not.
+  acceptance:
+  - id: AC1
+    statement: "AC1: a host fixture at 9 percent of lane path bytes on a mounted data drive produces the alarm row with owner=, and one at 11 percent produces none -- falsifier: uv run pytest tests/nodes/node_host_lane_path_share_compute -q -k 'nine_percent or eleven_percent', failing with the bar changed"
+  - id: AC2
+    statement: "AC2: the alarm row reaches the live orchestrator inbox and the operator push channel through the failure alarm router, once, with owner= on the delivered row, and an ok row resolves it -- falsifier: uv run pytest tests/nodes/node_host_lane_path_share_compute -q -k 'failure_alarm_router or resolves'"
+evidence_requirements:
+- kind: tests
+  description: The lane path share and failure alarm router tests at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_host_lane_path_share_compute tests/nodes/node_failure_alarm_router_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+- id: dod-omn25931-ac1
+  description: A fixture at 9 percent raises the alarm row with owner=; fixtures at 10 and 11 percent and over do not; zero bytes is refused rather than read as ok.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_lane_path_share_compute -q --no-cov -n 0 -p no:randomly -k 'nine_percent or eleven_percent or zero'
+    cwd: .
+- id: dod-omn25931-ac2
+  description: The alarm row is delivered once through the failure alarm router with owner=, and a later ok row resolves it.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_lane_path_share_compute tests/nodes/node_failure_alarm_router_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25931-integration-proof
+  description: The pushed head ran the lane path share and failure alarm router tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25931 -- uv run --frozen pytest tests/nodes/node_host_lane_path_share_compute tests/nodes/node_failure_alarm_router_effect -q --no-cov'
+    cwd: .

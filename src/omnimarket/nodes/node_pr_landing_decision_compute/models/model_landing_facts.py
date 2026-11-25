@@ -26,6 +26,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.model_downstream_gate import ModelDownstreamGateFact
 from omnimarket.models.model_landing_review import (
     ModelLandingReviewFacts,
 )
@@ -186,6 +187,22 @@ class ModelLandingPrFacts(BaseModel):
             "pending, a stale cancelled copy holds the merge: refresh once."
         ),
     )
+    required_contexts: tuple[str, ...] | None = Field(
+        default=None,
+        description=(
+            "The check contexts the PR's base branch requires, read from its branch protection "
+            "and rulesets by the snapshot reader. None is unread: the decision then cannot tell "
+            "a required red from any other and holds every red PR as before, naming why."
+        ),
+    )
+    passed_checks: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Names of the check-runs on the head whose newest copy passed (success, skipped or "
+            "neutral). With required_contexts read, a PR whose reds are all non-required merges "
+            "only when every required context is in this set."
+        ),
+    )
     merge_state: EnumLandingMergeState = EnumLandingMergeState.CLEAN
     lacks_base_head: bool = Field(
         default=False,
@@ -297,6 +314,15 @@ class ModelLandingPrFacts(BaseModel):
             "merges only on a CLEAN verdict for its exact head, and any other reading "
             "of a new-work PR holds it with its own reason. Absent: decided as before, "
             "unless policy.review_read_expected, which holds it as review_unread."
+        ),
+    )
+    downstream: ModelDownstreamGateFact | None = Field(
+        default=None,
+        description=(
+            "The downstream check of this head (OMN-26513): a PR into a repository named in "
+            "policy.downstream_gate_repos merges only when the check ran on its exact head and passed in every "
+            "downstream repository. Absent: decided as before, unless policy.downstream_read_expected, which "
+            "holds it as downstream_unread."
         ),
     )
     gate_since: datetime | None = Field(
@@ -578,6 +604,21 @@ class ModelLandingPolicy(BaseModel):
             "review_status_unread: it is never merged unread. True by default, so a tick whose facts source "
             "does not read the fable-review-gate statuses holds every new-work head instead of merging it; set "
             "False only for a facts source that is known to read none."
+        ),
+    )
+    downstream_gate_repos: tuple[str, ...] = Field(
+        default=("omnibase_core", "omnibase_spi"),
+        description=(
+            "OMN-26513: the repositories other repositories install. A PR into one merges only on a pass of "
+            "the downstream check on its exact head."
+        ),
+    )
+    downstream_read_expected: bool = Field(
+        default=False,
+        description=(
+            "OMN-26513: the snapshot step runs the downstream check for every PR into a downstream_gate_repos "
+            "repository, so such a PR with no downstream fact is held as downstream_unread. False until the "
+            "snapshot reads the fact, so no core or spi PR is held for a read nobody makes."
         ),
     )
     lab_check_wait_seconds: int = Field(

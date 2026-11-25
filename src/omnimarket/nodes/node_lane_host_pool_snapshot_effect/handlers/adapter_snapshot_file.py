@@ -105,17 +105,23 @@ class StampedSnapshotFileLaneHostPool:
         try:
             record = self._store.read_record()
         except PoolSnapshotSourceError as exc:
-            raise PoolSnapshotStaleError(str(exc)) from exc
+            raise PoolSnapshotStaleError(
+                str(exc), bound_seconds=self._max_age_seconds
+            ) from exc
         if record is None:
             raise PoolSnapshotStaleError(
-                f"snapshot record missing at {self._path}{self._record_suffix}"
+                f"snapshot record missing at {self._path}{self._record_suffix}",
+                bound_seconds=self._max_age_seconds,
+                absent=True,
             )
         now = self._clock()
         age = (now - record.read_at).total_seconds()
         if age > self._max_age_seconds:
             raise PoolSnapshotStaleError(
                 f"snapshot record stale: read_at={record.read_at.isoformat()} "
-                f"age={age:.0f}s > {self._max_age_seconds}s"
+                f"age={age:.0f}s > {self._max_age_seconds}s",
+                age_seconds=round(age),
+                bound_seconds=self._max_age_seconds,
             )
         return SnapshotFileLaneHostPool(self._path).read_pool(request)
 

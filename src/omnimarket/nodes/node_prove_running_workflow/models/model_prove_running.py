@@ -169,11 +169,26 @@ class ModelProveRunningLinePayload(_Frozen):
 
 
 class ModelProveRunningLineWritten(_Frozen):
-    """What the line-row write step answers: the row it appended and its kind."""
+    """What the line-row write step answers for one line: the row it appended and its kind."""
 
     written: bool
     row: str
     result: EnumProveRunningResultKind
+
+
+class ModelProveRunningLinesPayload(_Frozen):
+    """Every line of one pass whose result row the batch writes itself, in the order the rows are written."""
+
+    lines: tuple[ModelProveRunningLinePayload, ...]
+
+
+class ModelProveRunningLinesWritten(_Frozen):
+    """What the batched line-row step answers: how many rows went out in how many appends, and each line's kind in
+    the order the lines were given."""
+
+    rows: int = Field(ge=0)
+    appends: int = Field(ge=0)
+    results: tuple[EnumProveRunningResultKind, ...]
 
 
 class ModelProveRunningLineRowRequest(ModelProveRunningLinePayload):
@@ -248,6 +263,9 @@ class ModelProveRunningBatchStepInput(_Frozen):
     step_key: str = Field(min_length=1)
     batch_id: str = Field(min_length=1)
     payload: str = ""
+    #: The time the workflow gave a step that writes rows (its own deterministic clock): a step delivered twice then
+    #: hands the bus the same rows under one request id. Blank for a step that writes none.
+    written_at: str = ""
 
 
 class ModelProveRunningHostGroup(_Frozen):

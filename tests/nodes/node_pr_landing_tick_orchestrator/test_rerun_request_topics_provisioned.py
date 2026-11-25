@@ -34,6 +34,11 @@ _NO_HANDLER_REASON = (
     "node_intelligence_orchestrator subscribes none of the three; OMN-18013 removed the subscriptions that had "
     "no handler; re-declare each only with its handler"
 )
+_COLLECTOR_OWN_PROCESS_REASON = (
+    "node_test_selector_miss_collect_effect builds its handlers from ports and overlay settings, which the runtime's "
+    "auto-wiring cannot supply, so it subscribes none; a lab host runs it as its own process, the way node_lab_alarm "
+    "runs its CLI-built handlers"
+)
 KNOWN_NO_LIVE_CONSUMER_COMMAND_TOPICS: dict[str, str] = {
     "onex.cmd.omnimarket.code-analysis.v1": _NO_HANDLER_REASON,
     "onex.cmd.omnimarket.document-ingestion.v1": _NO_HANDLER_REASON,
@@ -41,6 +46,7 @@ KNOWN_NO_LIVE_CONSUMER_COMMAND_TOPICS: dict[str, str] = {
     "onex.cmd.omnimarket.host-disk-read-requested.v1": (
         "no publisher or consumer exists yet; the host disk orchestrator is a later ticket"
     ),
+    "onex.cmd.omnimarket.test-selector-slot-check-requested.v1": _COLLECTOR_OWN_PROCESS_REASON,
 }
 
 

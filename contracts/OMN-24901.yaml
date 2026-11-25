@@ -168,3 +168,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest -m unit tests/nodes/node_prove_running_workflow -q --no-cov -p no:randomly
     cwd: .
+- id: dod-omn24901-cpu-cap
+  description: 'The prove-running worker no longer saturates a lab host: the rows of one batch pass go in one append in input order, the worker bounds its concurrent activities by a declared setting, the worker unit renders its declared CPUQuota, and the disk watermark tick ends within its interval under a declared scan budget and CPUQuota. The h051 load readings are in the lane report, not in hosted CI.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -m unit tests/nodes/node_prove_running_workflow/test_prove_running_cpu_cap.py tests/nodes/node_lab_disk_watermark_effect/test_watermark_within_interval.py -q --no-cov -p no:randomly
+    cwd: .

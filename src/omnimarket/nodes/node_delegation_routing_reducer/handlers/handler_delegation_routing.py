@@ -45,7 +45,6 @@ from __future__ import annotations
 import importlib
 import importlib.resources
 import logging
-import re
 from functools import lru_cache
 from pathlib import Path
 from uuid import NAMESPACE_DNS, UUID, uuid5
@@ -92,6 +91,11 @@ from omnimarket.handlers.routing.customer_key_terminus import (
 from omnimarket.handlers.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
 )
+from omnimarket.handlers.routing.delegation_system_prompts import (
+    SYSTEM_PROMPTS as _SYSTEM_PROMPTS,
+)
+from omnimarket.handlers.routing.endpoint_load_reader import endpoint_load_targets
+from omnimarket.handlers.routing.input_token_bound import input_bound_members
 from omnimarket.handlers.routing.measured_correct_ceiling import (
     exceeds_measured_correct_ceiling,
     grounded_input_budget,
@@ -108,6 +112,7 @@ from omnimarket.handlers.routing.paid_rungs import (
     paid_rung_gate_reason,
     with_registered_byok_tier,
 )
+from omnimarket.handlers.routing.prompt_waiver import prompt_waived_rules
 from omnimarket.handlers.routing.routing_tiers_path import (
     load_delegation_routing_overlay,
     resolve_routing_tiers_path,
@@ -139,6 +144,9 @@ from omnimarket.models.delegation.credential_withheld_rung import (
 from omnimarket.models.delegation.model_delegation_backend_placement import (
     ModelPlacedDelegationBackend,
 )
+from omnimarket.models.delegation.model_endpoint_load_snapshot import (
+    ModelEndpointLoadSnapshot,
+)
 from omnimarket.models.delegation.model_entry_tier_share import (
     entry_first_order,
     entry_share_draw,
@@ -163,6 +171,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.tenant_overlay_de
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.tenant_overlay_decision import (
     build_tenant_overlay_decision,
+    live_overlay,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_delegation_config import (
     ModelDelegationConfig,
@@ -186,7 +195,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_tier 
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_tier_model import (
     ModelTierModel,
 )
-from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
 from omnimarket.routing.roi_overlay import ModelRoutingRoiOverlay
 from omnimarket.routing.tenant_overlay_resolver import (
     HOUSE_OVERLAY_COST_TIER as HOUSE_OVERLAY_COST_TIER,
@@ -213,128 +221,6 @@ def _roi_suppressed_tiers(
     """
     return roi_overlay.suppressed_tiers if roi_overlay is not None else frozenset()
 
-
-# System prompts by task type — kept here because they are presentation strings,
-# not routing configuration.
-_SYSTEM_PROMPTS: dict[str, str] = {
-    # OMN-19401: the repository's own conventions, not a fixed marker. The
-    # gate requires @pytest.mark.unit only where the prompt says the repository
-    # marks its tests that way, so this prompt must not demand it of every repo.
-    "test": (
-        "You are a test generation assistant. Write pytest tests for the provided "
-        "code, following the conventions of the repository the request names: use "
-        "the markers, fixtures, naming and assertion style of any tests shown, and "
-        "add no pytest marker the repository does not use. Cover the edge cases and "
-        "error paths the request asks for, with clear assertions."
-    ),
-    "document": (
-        "You are a documentation assistant. Write clear, comprehensive docstrings "
-        "and documentation for the provided code. Follow Google-style docstrings "
-        "with Args, Returns, and Raises sections."
-    ),
-    # OMN-18349: this prompt asked for code-line citations after OMN-13354
-    # replaced `cites_specific_lines` with `cites_sources` on the research
-    # class, so it asked for the one citation form the gate no longer grades.
-    # OMN-21088: it then asked every research prompt to "be thorough and
-    # attribute your claims", and "what is 2+2" came back as about 990 bytes of
-    # sourced reasoning. Sources are asked for by the `cites_sources` directive,
-    # and only when the prompt asks for them.
-    "research": (
-        "You are a research assistant. Answer the question directly, at the "
-        "length the question needs."
-    ),
-    "code_generation": (
-        "You are a code generation assistant. Implement the requested functionality "
-        "following existing patterns, conventions, and architecture in the codebase."
-    ),
-    "code_review": (
-        "You are a code review assistant. Identify bugs, style violations, and "
-        "architectural issues in the provided code. Be specific and actionable."
-    ),
-    "refactor": (
-        "You are a refactoring assistant. Improve the structure, readability, and "
-        "maintainability of the provided code without changing its behavior."
-    ),
-    # OMN-21088: the answer, not the working. Numbered steps are asked for by
-    # the `step_by_step_explanation` directive, and only when the prompt asks.
-    "reasoning": (
-        "You are a reasoning assistant. Work the problem out and give the conclusion."
-    ),
-    "planning": (
-        "You are a planning assistant. Break down the requested work into clear, "
-        "actionable steps with explicit acceptance criteria."
-    ),
-    "review": (
-        "You are a review assistant. Evaluate the provided artifacts against "
-        "the stated requirements and report any gaps or issues."
-    ),
-    "summarization": (
-        "You are a summarization assistant. Produce a concise, accurate summary "
-        "of the provided content."
-    ),
-    "extraction_proposer": (
-        "You are a context extraction assistant. Propose concise, accurate facts "
-        "from the provided content, preserving its identifiers and grounding "
-        "every claim in that content."
-    ),
-    "tail_summary": (
-        "You are a conversation summarization assistant. Produce a concise, "
-        "accurate summary of the provided conversation tail, preserving its "
-        "identifiers and grounding every claim in that content."
-    ),
-    "context_selection": (
-        "You are a context selection assistant. Select the provided context "
-        "relevant to the requested task, preserving its identifiers and "
-        "grounding every claim in that content."
-    ),
-    "context_compaction": (
-        "You are a context compaction assistant. Produce a concise, accurate "
-        "summary of the provided context, preserving its identifiers and "
-        "grounding every claim in that content."
-    ),
-    "simple_tasks": (
-        "You are a helpful assistant. Complete the requested task accurately."
-    ),
-    "escalation": (
-        "You are an expert assistant handling a complex task that requires deep "
-        "reasoning and careful consideration. Approach this methodically."
-    ),
-    "evidence_comment": (
-        "You are an evidence-comment drafting assistant. For each acceptance "
-        "criterion, state only what the lane report says about it, citing the "
-        "report's own identifiers, names, counts and timestamps."
-    ),
-    "complex_reasoning": (
-        "You are an expert reasoning assistant. Analyze the problem deeply, "
-        "consider edge cases, and provide a comprehensive solution."
-    ),
-    "agent_delegation": (
-        "You are an orchestration assistant. Coordinate the required sub-tasks "
-        "and ensure each is completed correctly before proceeding."
-    ),
-    "documentation": (
-        "You are a technical documentation assistant. Write and update "
-        "docstrings, README sections, and reference documentation for the "
-        "provided code. Follow Google-style docstrings with Args, Returns, "
-        "and Raises sections, keep prose accurate to the actual code "
-        "behavior, and never leave a docstring stub or placeholder."
-    ),
-    "validator_generation": (
-        "You are a validator authoring assistant. Write deterministic "
-        "validators and contract-compliance checks for the provided code or "
-        "contract. Every validator must compile without errors, pass the "
-        "existing test suite, and enforce the declared rule precisely — "
-        "prefer a hard failure over a silent pass on an unmet condition."
-    ),
-    # OMN-17427: the model drafts only the free-text slots; code fills the rest.
-    "brief_drafting": (
-        "You are a lane brief drafting assistant. Draft only the free-text "
-        "slots you are asked for, from the facts given. State only what the "
-        "facts state and never add an identifier they do not hold. Never write "
-        "a ticket-state acknowledgement, a quoted criterion, a constraints "
-        "block or a heading of the standing rules; code fills those."
-    ),
-}
 
 # cloud_routing_policy values that block routing to non-local tiers.
 _CLOUD_BLOCKED_POLICY = "blocked"
@@ -508,6 +394,7 @@ def _select_model_for_task(
     spread_peers: dict[str, tuple[str, ...]] | None = None,
     spread_member_weights: dict[str, float] | None = None,
     quota_state: ModelProviderQuotaSnapshot | None = None,
+    load_state: ModelEndpointLoadSnapshot | None = None,
 ) -> ModelTierModel | None:
     """Select a model from a tier, then spread it across its same-model peers.
 
@@ -575,6 +462,7 @@ def _select_model_for_task(
                 backend, require_credential=require_credential, quota_state=quota_state
             )
         ),
+        load=load_state,
     )
 
 
@@ -1595,53 +1483,6 @@ def _class_declares_heuristic_for_shape(
     return isinstance(for_shape, dict) and isinstance(for_shape.get("heuristic"), list)
 
 
-def _prompt_waived_rules(
-    contract: dict[str, object] | None,
-    heuristic: tuple[str, ...],
-    prompt: str,
-) -> tuple[str, ...]:
-    """Heuristic rules whose own declaration says this prompt's layout waives them.
-
-    OMN-19432. A rule declares ``waived_when_prompt_matches`` (and, OMN-20844,
-    ``waived_unless_prompt_matches``: the input it needs) under
-    ``quality_rules`` in the SAME contract this resolver reads the DoD from, so
-    what the model is told and what the gate enforces stay one list. Returns the
-    waived names in band order. A rule the contract does not declare, or a
-    malformed declaration, waives nothing: an unreadable waiver must never
-    silently drop a veto (the fail-closed default of ``resolve_quality_rule``).
-    """
-    if not isinstance(contract, dict):
-        return ()
-    rules = contract.get("quality_rules")
-    if not isinstance(rules, dict):
-        return ()
-    waived: list[str] = []
-    for name in heuristic:
-        rule = rules.get(name)
-        if not isinstance(rule, dict):
-            continue
-        patterns = rule.get("waived_when_prompt_matches")
-        if isinstance(patterns, list) and any(
-            isinstance(pattern, str) and re.search(pattern, prompt, re.IGNORECASE)
-            for pattern in patterns
-        ):
-            waived.append(name)
-            continue
-        # OMN-20844: the input the rule judges. A rule that declares what its
-        # input looks like applies only to a prompt carrying some; a malformed
-        # declaration (no readable pattern) leaves the rule in force.
-        needed = rule.get("waived_unless_prompt_matches")
-        if not isinstance(needed, list):
-            continue
-        input_patterns = [pattern for pattern in needed if isinstance(pattern, str)]
-        if input_patterns and not any(
-            re.search(pattern, prompt, re.IGNORECASE | re.MULTILINE)
-            for pattern in input_patterns
-        ):
-            waived.append(name)
-    return tuple(waived)
-
-
 def resolve_task_class_dod_resolution(
     task_type: str,
     prompt: str | None = None,
@@ -1693,7 +1534,7 @@ def resolve_task_class_dod_resolution(
     # OMN-19432: a rule the prompt's own layout contradicts leaves the HEURISTIC
     # band, applied last so it holds whichever band (class, class shape override,
     # contract default) supplied the rule. The deterministic floor is untouched.
-    waived_rules = _prompt_waived_rules(contract, dod_heuristic, prompt)
+    waived_rules = prompt_waived_rules(contract, dod_heuristic, prompt)
     if waived_rules:
         dod_heuristic = tuple(
             name for name in dod_heuristic if name not in waived_rules
@@ -1783,6 +1624,7 @@ def _tier_can_route_task(
     task_type: str,
     bifrost_backends: dict[str, BifrostBackendRef],
     contract: dict[str, object] | None,
+    prompt: str,
     excluded_backend_refs: frozenset[str] = frozenset(),
     byok_backends: tuple[ModelResolvedDelegationBackend, ...] = (),
 ) -> bool:
@@ -1810,7 +1652,7 @@ def _tier_can_route_task(
     # serve the task with a resolvable backend", not the final selection. delta()
     # re-selects with the real token estimate when it builds the decision.
     selected = _select_model_for_task(
-        tier.models,
+        input_bound_members(tier.name, tier.models, prompt),
         task_type,
         0,
         bifrost_backends,
@@ -1832,6 +1674,7 @@ def next_eligible_tier(
     excluded_backend_refs: frozenset[str] = frozenset(),
     correlation_id: object | None = None,
     byok_backends: tuple[ModelResolvedDelegationBackend, ...] = (),
+    prompt: str,
 ) -> str | None:
     """Return the next tier name after current_tier_name, skipping excluded_tiers.
 
@@ -1897,6 +1740,7 @@ def next_eligible_tier(
                 task_type,
                 bifrost_backends,
                 contract,
+                prompt,
                 excluded_backend_refs,
                 byok_backends=byok_backends,
             ):
@@ -1915,6 +1759,7 @@ def first_eligible_tier(
     correlation_id: object | None = None,
     quota_state: ModelProviderQuotaSnapshot | None = None,
     byok_backends: tuple[ModelResolvedDelegationBackend, ...] = (),
+    prompt: str,
 ) -> str | None:
     """Return the initial tier for ``task_type``, honoring its entry share.
 
@@ -1974,7 +1819,12 @@ def first_eligible_tier(
             if tier.name in skip:
                 continue
             if _tier_can_route_task(
-                tier, task_type, bifrost_backends, contract, byok_backends=byok_backends
+                tier,
+                task_type,
+                bifrost_backends,
+                contract,
+                prompt,
+                byok_backends=byok_backends,
             ):
                 return tier.name
         # Only a non-empty ROI suppression warrants a fail-safe second pass.
@@ -2013,10 +1863,7 @@ def _tier_skip_reason(
             return "cloud_routing_blocked"
         return "above_pricing_ceiling"
     if excluded_backend_refs and _tier_can_route_task(
-        tier,
-        task_type,
-        bifrost_backends,
-        contract,
+        tier, task_type, bifrost_backends, contract, prompt=""
     ):
         exhausted = sorted(
             model.backend_ref
@@ -2179,6 +2026,8 @@ def backend_id_for_tier(
     require_credential: bool = True,
     spread_key: str | None = None,
     byok_backends: tuple[ModelResolvedDelegationBackend, ...] = (),
+    prompt: str,
+    load_state: ModelEndpointLoadSnapshot | None = None,
 ) -> str | None:
     """Return the bifrost ``backend_id`` ``tier_name`` would select for ``task_type``.
 
@@ -2232,7 +2081,7 @@ def backend_id_for_tier(
     # 0-token availability probe: identifies which backend the tier WOULD select
     # for the task (delta re-selects with the real token estimate).
     selected = _select_model_for_task(
-        matching_tier.models,
+        input_bound_members(matching_tier.name, matching_tier.models, prompt),
         task_type,
         0,
         bifrost_backends,
@@ -2244,10 +2093,18 @@ def backend_id_for_tier(
         spread_key=spread_key,
         spread_peers=_spread_peers_for(config),
         spread_member_weights=_spread_weights_for(config),
+        load_state=load_state,
     )
     if selected is None:
         return None
     return selected.backend_ref
+
+
+def spread_load_targets() -> dict[str, str]:
+    """Endpoints whose load a caller reads (OMN-26534); empty with no spread peer."""
+    return endpoint_load_targets(
+        _spread_peers_for(_get_config()), _load_bifrost_endpoints()
+    )
 
 
 def credential_withheld_rung(
@@ -2297,11 +2154,13 @@ def credential_withheld_rung(
     bifrost_backends = _load_bifrost_endpoints()
     blocked = quota_blocked_backend_refs(quota_state)
     for tier in _tier_order_from_contract(config, entry):
-        if backend_id_for_tier(tier.name, task_type) is not None:
+        if backend_id_for_tier(tier.name, task_type, prompt="") is not None:
             # The tier serves this task class today. Nothing is withheld here,
             # whatever the state of any OTHER backend the tier declares.
             continue
-        relaxed = backend_id_for_tier(tier.name, task_type, require_credential=False)
+        relaxed = backend_id_for_tier(
+            tier.name, task_type, require_credential=False, prompt=""
+        )
         if relaxed is None or relaxed in blocked:
             # Declined for a reason the credential term does not explain (for
             # OMN-20154, a provider quota block the caller's snapshot holds).
@@ -2326,6 +2185,7 @@ def sibling_backend_available_in_tier(
     tier_name: str,
     task_type: str,
     exclude_backend_refs: frozenset[str],
+    prompt: str,
 ) -> str | None:
     """Return the ``backend_ref`` of an untried sibling backend in ``tier_name``.
 
@@ -2367,7 +2227,7 @@ def sibling_backend_available_in_tier(
     # identifies which backend the tier WOULD select excluding the failed
     # backend(s); the real re-route re-selects with the actual token estimate.
     selected = _select_model_for_task(
-        matching_tier.models,
+        input_bound_members(matching_tier.name, matching_tier.models, prompt),
         task_type,
         0,
         bifrost_backends,
@@ -2686,6 +2546,17 @@ def build_routing_exclusion_report(
             )
             continue
 
+        if tier.models and not input_bound_members(
+            tier.name, tier.models, request.prompt
+        ):
+            candidates.append(
+                ModelRoutingCandidateExclusion(
+                    tier_name=tier.name,
+                    reason=EnumRoutingExclusionReason.TIER_INPUT_BOUND_EXCEEDED,
+                )
+            )
+            continue
+
         if not tier.models:
             candidates.append(
                 ModelRoutingCandidateExclusion(
@@ -2773,6 +2644,7 @@ def delta(
     surface: EnumDelegationSurface = EnumDelegationSurface.CLOUD,
     quota_state: ModelProviderQuotaSnapshot | None = None,
     capability_map: ModelCapabilityMapRead | None = None,
+    load_state: ModelEndpointLoadSnapshot | None = None,
 ) -> ModelRoutingDecision:
     """Compute routing decision for a delegation request.
 
@@ -2929,8 +2801,6 @@ def delta(
     # bridge row) and the caller's own prompt: ONE resolution per call, read by
     # both branches, so they cannot re-diverge.
     dod_resolution = resolve_task_class_dod_resolution(task_type, request.prompt)
-    dod_deterministic = dod_resolution.deterministic
-    dod_heuristic = dod_resolution.heuristic
 
     if tenant_overlay is not None:
         if (
@@ -2994,8 +2864,17 @@ def delta(
             # case that could not arise; left unguarded it would now silently
             # drop every house registration back onto the platform ladder --
             # the registration would appear to succeed and change nothing.
-            if tenant_overlay.tenant_id != HOUSE_TENANT_SLUG:
+            #
+            # OMN-26365: "the house tenant" is both representations of one
+            # identity (ADR-0027). The slug alone left a house row read under
+            # the UUID a runtime carries on every request looking like a
+            # customer's keyless row, so it was nulled and the request went to
+            # the platform ladder.
+            if is_customer_attributed(tenant_overlay.tenant_id):
                 tenant_overlay = None
+
+    # OMN-25827: a house overlay row spent by a re-route yields to the ladder.
+    tenant_overlay = live_overlay(tenant_overlay, excluded_backend_refs, min_tier_name)
 
     if tenant_overlay is not None:
         overlay_decision = _decision_from_tenant_overlay(
@@ -3141,6 +3020,8 @@ def delta(
             ):
                 continue
 
+            bounded_models = input_bound_members(tier.name, tier.models, request.prompt)
+
             if requested_backend_ref is not None:
                 # Caller pin precedence is exact and intentionally bypasses
                 # ``use_for`` / task model overrides.  Endpoint, secret, context,
@@ -3149,7 +3030,7 @@ def delta(
                 selected = next(
                     (
                         model
-                        for model in tier.models
+                        for model in bounded_models
                         if model.backend_ref == requested_backend_ref
                         and model.backend_ref not in excluded_backend_refs
                         and estimated_tokens <= model.max_context_tokens
@@ -3163,7 +3044,7 @@ def delta(
                 )
             else:
                 selected = _select_model_for_task(
-                    tier.models,
+                    bounded_models,
                     task_type,
                     estimated_tokens,
                     bifrost_backends,
@@ -3178,6 +3059,7 @@ def delta(
                     spread_peers=spread_peers,
                     spread_member_weights=spread_member_weights,
                     quota_state=quota_state,
+                    load_state=load_state,
                 )
                 if selected is not None and selected.backend_ref in spread_members:
                     # The receipt's backend_id cannot tell two hosts serving
@@ -3231,6 +3113,8 @@ def delta(
                 and selected.id == contract_model_ref
             ):
                 rationale += f" Contract-override: model='{contract_model_ref}'."
+            if load_state is not None and selected.backend_ref in spread_members:
+                rationale += f" Load-aware (OMN-26534), {load_state.describe()}."
             if requested_backend_ref is None and entry is not None:
                 policy_val = entry.get("cloud_routing_policy")
                 policy_str = policy_val if isinstance(policy_val, str) else "allowed"
@@ -3292,8 +3176,8 @@ def delta(
                 max_tokens=backend.max_tokens,
                 system_prompt=system_prompt,
                 rationale=rationale,
-                dod_deterministic=dod_deterministic,
-                dod_heuristic=dod_heuristic,
+                dod_deterministic=dod_resolution.deterministic,
+                dod_heuristic=dod_resolution.heuristic,
                 # OMN-17765: record the resolution, not just its effect.
                 requested_shape=dod_resolution.requested_shape,
                 dod_deterministic_source=dod_resolution.deterministic_source,

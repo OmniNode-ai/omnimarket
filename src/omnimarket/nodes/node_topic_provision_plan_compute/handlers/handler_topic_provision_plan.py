@@ -11,6 +11,9 @@ Rules:
 - PROFILE: a contract provisions iff the active profile is in its runtime_profiles.
 - PROFILE_AND_MANIFEST: profile match AND the contract name is in the lane manifest.
 
+A loaded contract that declares a ``writer_topics`` template also provisions one writer topic per
+declared service login (``service_writer_topics``), composed by the template.
+
 Skip reasons:
 - OUTSIDE_PROFILE: the profile is not in the contract's runtime_profiles.
 - NOT_IN_LANE_MANIFEST: the contract name is not in the lane manifest.
@@ -27,6 +30,9 @@ from omnimarket.models.topic_provision.enum_topic_provision import (
     EnumTopicProvisionMode,
     EnumTopicSkipReason,
 )
+from omnimarket.models.topic_provision.model_topic_provision_contract import (
+    ModelTopicProvisionContract,
+)
 from omnimarket.models.topic_provision.model_topic_provision_plan import (
     ModelTopicProvisionPlan,
     ModelTopicProvisionSkip,
@@ -38,6 +44,33 @@ from omnimarket.models.topic_provision.model_topic_provision_request import (
 
 class TopicProvisionRuleError(ValueError):
     """Raised when the provision rule cannot be applied to the given request."""
+
+
+def _service_writer_topics(
+    contracts: tuple[ModelTopicProvisionContract, ...],
+    request: ModelTopicProvisionRequest,
+) -> tuple[str, ...]:
+    """One writer topic per declared service login for each contract's writer_topics template.
+
+    A login is declared by the service writers overlay (``service_logins``) or by a broker scope
+    overlay that grants it WRITE on exactly the topic the template composes for it. A login the
+    template's principal_pattern refuses is not planned.
+    """
+    topics: set[str] = set()
+    for contract in contracts:
+        template = contract.writer_topics
+        if template is None:
+            continue
+        for login in request.service_logins:
+            if template.admits(login):
+                topics.add(template.topic_for(login))
+        for grant in request.acl_write_grants:
+            if (
+                template.admits(grant.principal)
+                and template.topic_for(grant.principal) == grant.topic
+            ):
+                topics.add(grant.topic)
+    return tuple(sorted(topics))
 
 
 def plan_topic_provision(
@@ -122,6 +155,10 @@ def plan_topic_provision(
     for contract in contracts:
         if contract.contract_name in loaded_contracts:
             topics_to_provision.update(contract.topics)
+    service_writer_topics = _service_writer_topics(
+        tuple(c for c in contracts if c.contract_name in loaded_contracts), request
+    )
+    topics_to_provision.update(service_writer_topics)
     topics_sorted = tuple(sorted(topics_to_provision))
 
     # Live topic counts.
@@ -145,6 +182,7 @@ def plan_topic_provision(
         live_topics_under_rule=live_topics_under_rule,
         live_topics_outside_rule=live_topics_outside_rule,
         live_topics_undeclared=live_topics_undeclared,
+        service_writer_topics=service_writer_topics,
     )
 
 

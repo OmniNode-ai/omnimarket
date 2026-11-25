@@ -36,13 +36,23 @@ import yaml
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
 from omnimarket.handlers.rules_overlay_root_declared import declared_overlay_root
-from omnimarket.handlers.rules_unit_roots import UnitRootRefusedError, under_worktrees
+from omnimarket.handlers.rules_unit_roots import (
+    UnitRootPinnedError,
+    UnitRootRefusedError,
+    pinned_plugin_cache_version,
+    under_worktrees,
+)
 from omnimarket.models.overlay_keys import ModelLabHostsTable
+from omnimarket.nodes.node_host_installer_registry_units.handlers.node_schedule_unit import (
+    default_overlay,
+    run_node_schedule,
+)
 from omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units import (
     ModelCopiedUnitPayload,
     ModelRegistryUnitsRequest,
     ModelRegistryUnitsResult,
 )
+from omnimarket.nodes.node_lab_alarm.overlay import ModelLabAlarmOverlay
 
 NODE_DIR = Path(__file__).resolve().parents[1]
 
@@ -229,8 +239,12 @@ class HandlerRegistryUnits:
         run: Runner = run_command,
         units: dict[str, dict[str, Any]] | None = None,
         hosts: Callable[[], ModelLabHostsTable] | None = None,
+        schedule_overlay: Callable[[], ModelLabAlarmOverlay] | None = None,
     ) -> None:
         self.run = run
+        self.schedule_overlay = (
+            schedule_overlay if schedule_overlay is not None else default_overlay
+        )
         self.units = units if units is not None else load_units()
         self.hosts = hosts if hosts is not None else default_hosts
 
@@ -306,6 +320,14 @@ class HandlerRegistryUnits:
             with self.install_lock(request, unit):
                 if unit.get("kind") == "copied_tree":
                     return self.copied_unit(request, unit)
+                if unit.get("kind") == "node_schedule":
+                    return run_node_schedule(
+                        request,
+                        unit,
+                        run=lambda command: self.run(list(command)),
+                        overlay_root=self.overlays_root,
+                        overlay=self.schedule_overlay,
+                    )
                 if unit.get("platform") == "systemd":
                     return self.dispatch_systemd(request, unit)
                 return self.dispatch(request, unit)
@@ -444,6 +466,9 @@ class HandlerRegistryUnits:
             raise ValueError(
                 f"project_path {request.project_path!r} is not an absolute path"
             )
+        # OMN-26549: a unit that runs a worktree dies when the worktree is removed (uv exits 2 on every fire).
+        if under_worktrees(str(project)):
+            raise UnitRootRefusedError(request.unit, [str(project)])
         return project, project.resolve() == canonical.resolve()
 
     def checkout_revision(
@@ -525,6 +550,15 @@ class HandlerRegistryUnits:
             ]
             if offending:
                 raise UnitRootRefusedError(request.unit, offending)
+            # OMN-22809: the same variables never pin a plugin version either (the plugin is named through
+            # {marketplace_root}); an old copy of a node's overlay in a versioned cache folder would answer.
+            pinned = [
+                entry
+                for entry in filled.get(str(name), "").split(os.pathsep)
+                if pinned_plugin_cache_version(entry) is not None
+            ]
+            if pinned:
+                raise UnitRootPinnedError(request.unit, pinned)
         if request.mode == "install":
             for name in unit.get("required_environment_inputs") or []:
                 if not filled.get(str(name)):
@@ -625,8 +659,7 @@ class HandlerRegistryUnits:
     ) -> str:
         """The unit's declared configuration document with every placeholder filled.
 
-        Built-in placeholders are {home}, {registry_root} and {ledger_path} (the request's, else the registry's own
-        ledger file). The others are the declaration's ``inputs``: each names a request field and an environment
+        Built-in placeholders are {home} and {registry_root}. The others are the declaration's ``inputs``: each names a request field and an environment
         variable of the installing shell, and falls back to the value the unit's last install recorded, so a
         reinstall with no inputs reproduces the file. A placeholder nothing fills is refused, so a configuration is
         never written with a hole in it, except in a top-level key the declaration lists under ``optional_keys``:
@@ -635,12 +668,9 @@ class HandlerRegistryUnits:
         declared = unit.get("config_file")
         if not declared:
             return ""
-        root = Path(request.registry_root)
         values = {
             "home": request.home,
             "registry_root": request.registry_root,
-            "ledger_path": request.ledger_path
-            or str(root / "docs/tracking/ROLLING_WORK_LEDGER.md"),
         }
         values.update(self.config_inputs(request, unit))
 
@@ -1070,6 +1100,23 @@ class HandlerRegistryUnits:
         return f"\nKillMode={declared}"
 
     @staticmethod
+    def cpu_quota(unit: dict[str, Any]) -> str:
+        """The CPUQuota line of a systemd unit that declares ``cpu_quota_percent``, else nothing.
+
+        The percent of one CPU the unit's whole cgroup may use (800 is eight cores); the value is the unit's own
+        declared setting, never written by the renderer. A value that is not a positive integer is refused rather than
+        written as a line systemd would reject.
+        """
+        declared = unit.get("cpu_quota_percent")
+        if declared is None:
+            return ""
+        if isinstance(declared, bool) or not isinstance(declared, int) or declared < 1:
+            raise ValueError(
+                f"{unit['label']} declares cpu_quota_percent {declared!r}; it must be a positive integer"
+            )
+        return f"\nCPUQuota={declared}%"
+
+    @staticmethod
     def service_type(unit: dict[str, Any]) -> str:
         """The service type a systemd unit declares: ``oneshot`` (a timer-fired tick, the default) or ``simple``."""
         declared = str(unit.get("service_type") or "oneshot")
@@ -1140,7 +1187,9 @@ class HandlerRegistryUnits:
         service = service.replace(
             "__ENVIRONMENT_FILE__", self.environment_file(request, unit)
         )
-        service = service.replace("__KILL_MODE__", self.kill_mode(unit))
+        service = service.replace(
+            "__KILL_MODE__", self.kill_mode(unit) + self.cpu_quota(unit)
+        )
         service = service.replace("__SERVICE_TYPE__", self.service_type_lines(unit))
         service = service.replace(
             "__TICK_SYNC_ARGS__", '"--no-sync"' if unit.get("tick_no_sync") else ""

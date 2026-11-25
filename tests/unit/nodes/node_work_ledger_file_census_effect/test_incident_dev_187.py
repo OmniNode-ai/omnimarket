@@ -151,7 +151,9 @@ def test_ratchet_and_hook_hold_while_the_moved_files_drop_out() -> None:
     ]
     assert len(hooks) == 1
     assert hooks[0]["stages"] == ["pre-commit"]
-    assert hooks[0]["entry"].endswith("--repos omnimarket --directory omnimarket=.")
+    assert hooks[0]["entry"].endswith(
+        "--repos omnimarket --directory omnimarket=. --per-file"
+    )
 
     (count,) = result.counts
     assert count.files <= ratchet["omnimarket"]

@@ -21,7 +21,7 @@ import logging
 from typing import TYPE_CHECKING, TypedDict
 from uuid import UUID
 
-from omnibase_core.enums import EnumInjectionScope, EnumMessageCategory
+from omnibase_core.enums import EnumMessageCategory
 
 if TYPE_CHECKING:
     from omnibase_core.container import ModelONEXContainer
@@ -83,38 +83,27 @@ def get_shared_delegation_workflow_handler() -> HandlerDelegationWorkflow:
 async def wire_delegation_handlers(
     container: ModelONEXContainer,
 ) -> WiringResult:
-    """Register delegation handlers with the container.
+    """Wire delegation handlers at boot without importing the handler module.
 
-    Registers:
-    - HandlerDelegationWorkflow (orchestrator FSM)
+    OMN-26336: this runs inside the kernel bootstrap coroutine, and importing
+    ``handler_delegation_workflow`` here (it pulls in the delegation models,
+    the compliance loop and the state codec) held the event loop 1.149 s in the
+    composed-runtime boot check (job 137964427003, omnimarket#6573). Nothing in
+    the runtime resolves the workflow handler from the container: the six
+    delegation subscriptions are contract-managed and the process-shared FSM is
+    built on first use by ``get_shared_delegation_workflow_handler``. So there
+    is nothing to register at boot; the handler module loads when the first
+    request reaches it.
 
     Args:
-        container: ONEX container instance to register services in.
+        container: ONEX container instance (unused: no service is registered).
 
     Returns:
-        WiringResult with list of registered service names.
+        WiringResult with no registered services.
     """
-    from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
-        HandlerDelegationWorkflow,
-    )
-
-    services_registered: list[str] = []
-
-    # HandlerDelegationWorkflow — stateful orchestrator FSM
-    workflow_handler = get_shared_delegation_workflow_handler()
-    if container.service_registry is not None:
-        await container.service_registry.register_instance(
-            interface=HandlerDelegationWorkflow,
-            instance=workflow_handler,
-            scope=EnumInjectionScope.GLOBAL,
-            metadata={
-                "description": "Delegation workflow orchestrator (FSM)",
-            },
-        )
-    services_registered.append("HandlerDelegationWorkflow")
-    logger.debug("Registered HandlerDelegationWorkflow in container")
-
-    return WiringResult(services=services_registered, status="success")
+    del container
+    logger.debug("Delegation workflow handler loads on first request")
+    return WiringResult(services=[], status="success")
 
 
 async def wire_delegation_dispatchers(
@@ -129,7 +118,8 @@ async def wire_delegation_dispatchers(
     them with the MessageDispatchEngine.
 
     Args:
-        container: ONEX container with registered handlers.
+        container: ONEX container (the workflow handler comes from
+            get_shared_delegation_workflow_handler).
         engine: MessageDispatchEngine to register dispatchers with.
         correlation_id: Optional correlation ID for error tracking.
         event_bus: Optional event bus for output event publishing.
@@ -142,17 +132,12 @@ async def wire_delegation_dispatchers(
     from omnimarket.nodes.node_delegation_orchestrator.dispatchers.dispatcher_delegation_workflow import (
         DispatcherDelegationWorkflow,
     )
-    from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
-        HandlerDelegationWorkflow,
-    )
 
     dispatchers_registered: list[str] = []
     routes_registered: list[str] = []
 
-    # Resolve the workflow handler from the container
-    handler: HandlerDelegationWorkflow = (
-        await container.service_registry.resolve_service(HandlerDelegationWorkflow)
-    )
+    # The process-shared workflow FSM, built on first use
+    handler: HandlerDelegationWorkflow = get_shared_delegation_workflow_handler()
 
     dispatcher_workflow = DispatcherDelegationWorkflow(handler, event_bus=event_bus)
     command_dispatcher_id = f"{dispatcher_workflow.dispatcher_id}.command"

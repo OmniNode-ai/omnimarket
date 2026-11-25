@@ -1,0 +1,22 @@
+{
+ "source": "RECONSTRUCTED, not the controller host's file: the ticks.jsonl of the controller host was not readable from the lab host that built this fixture. Built from the ledger's recorded facts: refusal text 'positive control failed: zero CLAIM rows parsed', refusals from about 17:48Z to the 18:51Z fix, first deciding tick newest=2026-11-22T18:56:29Z status=DEGRADED (product-floor STATUS 2026-11-22T18:58:13Z), tick cadence about 5 minutes, tick shape {ts, tick, mode, status, refusal} as read by node_product_floor_verdict_compute. Replace with the recorded lines when read on the controller host.",
+ "lines": [
+  "{\"ts\": \"2026-11-22T17:43:13Z\", \"tick\": 11560, \"mode\": \"act\", \"status\": \"DEGRADED\"}",
+  "{\"ts\": \"2026-11-22T17:48:13Z\", \"tick\": 11561, \"mode\": \"act\", \"status\": \"REFUSED\", \"refusal\": \"positive control failed: zero CLAIM rows parsed\"}",
+  "{\"ts\": \"2026-11-22T17:53:13Z\", \"tick\": 11562, \"mode\": \"act\", \"status\": \"REFUSED\", \"refusal\": \"positive control failed: zero CLAIM rows parsed\"}",
+  "{\"ts\": \"2026-11-22T17:58:13Z\", \"tick\": 11563, \"mode\": \"act\", \"status\": \"REFUSED\", \"refusal\": \"positive control failed: zero CLAIM rows parsed\"}",
+  "{\"ts\": \"2026-11-22T18:03:13Z\", \"tick\": 11564, \"mode\": \"act\", \"status\": \"REFUSED\", \"refusal\": \"positive control failed: zero CLAIM rows parsed\"}",
+  "{\"ts\": \"2026-11-22T18:08:13Z\", \"tick\": 11565, \"mode\": \"act\", \"status\": \"REFUSED\", \"refusal\": \"positive control failed: zero CLAIM rows parsed\"}",
+  "{\"ts\": \"2026-11-22T18:13:13Z\", \"tick\": 11566, \"mode\": \"act\", \"status\": \"REFUSED\", \"refusal\": \"positive control failed: zero CLAIM rows parsed\"}",
+  "{\"ts\": \"2026-11-22T18:18:13Z\", \"tick\": 11567, \"mode\": \"act\", \"status\": \"REFUSED\", \"refusal\": \"positive control failed: zero CLAIM rows parsed\"}",
+  "{\"ts\": \"2026-11-22T18:23:13Z\", \"tick\": 11568, \"mode\": \"act\", \"status\": \"REFUSED\", \"refusal\": \"positive control failed: zero CLAIM rows parsed\"}",
+  "{\"ts\": \"2026-11-22T18:28:13Z\", \"tick\": 11569, \"mode\": \"act\", \"status\": \"REFUSED\", \"refusal\": \"positive control failed: zero CLAIM rows parsed\"}",
+  "{\"ts\": \"2026-11-22T18:33:13Z\", \"tick\": 11570, \"mode\": \"act\", \"status\": \"REFUSED\", \"refusal\": \"positive control failed: zero CLAIM rows parsed\"}",
+  "{\"ts\": \"2026-11-22T18:38:13Z\", \"tick\": 11571, \"mode\": \"act\", \"status\": \"REFUSED\", \"refusal\": \"positive control failed: zero CLAIM rows parsed\"}",
+  "{\"ts\": \"2026-11-22T18:43:13Z\", \"tick\": 11572, \"mode\": \"act\", \"status\": \"REFUSED\", \"refusal\": \"positive control failed: zero CLAIM rows parsed\"}",
+  "{\"ts\": \"2026-11-22T18:48:13Z\", \"tick\": 11573, \"mode\": \"act\", \"status\": \"REFUSED\", \"refusal\": \"positive control failed: zero CLAIM rows parsed\"}",
+  "{\"ts\": \"2026-11-22T18:51:40Z\", \"tick\": 11574, \"mode\": \"act\", \"status\": \"REFUSED\", \"refusal\": \"positive control failed: zero CLAIM rows parsed\"}",
+  "{\"ts\": \"2026-11-22T18:56:29Z\", \"tick\": 11575, \"mode\": \"act\", \"status\": \"DEGRADED\"}",
+  "{\"ts\": \"2026-11-22T19:01:30Z\", \"tick\": 11576, \"mode\": \"act\", \"status\": \"DEGRADED\"}"
+ ]
+}

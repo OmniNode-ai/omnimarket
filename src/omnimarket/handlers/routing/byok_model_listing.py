@@ -45,6 +45,9 @@ class ModelByokListedModel(BaseModel):
     max_output_tokens: int | None = None
     input_usd_per_million: float | None = None
     output_usd_per_million: float | None = None
+    # What the provider's row says the model takes; empty when it says nothing.
+    supported_parameters: tuple[str, ...] = ()
+    input_modalities: tuple[str, ...] = ()
 
 
 class ModelByokModelListing(BaseModel):
@@ -65,6 +68,8 @@ class ModelByokModelListing(BaseModel):
 
 
 def _positive_int(value: Any) -> int | None:
+    if isinstance(value, bool) or (isinstance(value, float) and not value.is_integer()):
+        return None
     try:
         number = int(value)
     except (TypeError, ValueError):
@@ -93,6 +98,12 @@ def _entries(body: Any) -> list[dict[str, Any]]:
     )
 
 
+def _strings(value: Any) -> tuple[str, ...]:
+    if isinstance(value, list) and all(isinstance(item, str) for item in value):
+        return tuple(value)
+    return ()
+
+
 def _listed(entry: dict[str, Any]) -> ModelByokListedModel | None:
     raw = entry.get("id") or entry.get("name")
     if not isinstance(raw, str) or not raw.strip():
@@ -102,6 +113,8 @@ def _listed(entry: dict[str, Any]) -> ModelByokListedModel | None:
     pricing: dict[str, Any] = pricing_raw if isinstance(pricing_raw, dict) else {}
     top_raw = entry.get("top_provider")
     top: dict[str, Any] = top_raw if isinstance(top_raw, dict) else {}
+    arch_raw = entry.get("architecture")
+    arch: dict[str, Any] = arch_raw if isinstance(arch_raw, dict) else {}
     label = entry.get("displayName") or (entry.get("name") if "id" in entry else None)
     return ModelByokListedModel(
         id=model_id,
@@ -111,11 +124,13 @@ def _listed(entry: dict[str, Any]) -> ModelByokListedModel | None:
             or top.get("context_length")
             or entry.get("inputTokenLimit")
         ),
-        max_output_tokens=_positive_int(
-            entry.get("outputTokenLimit") or top.get("max_completion_tokens")
-        ),
+        max_output_tokens=_positive_int(entry.get("max_output_tokens"))
+        or _positive_int(entry.get("outputTokenLimit"))
+        or _positive_int(top.get("max_completion_tokens")),
         input_usd_per_million=_per_million(pricing.get("prompt")),
         output_usd_per_million=_per_million(pricing.get("completion")),
+        supported_parameters=_strings(entry.get("supported_parameters")),
+        input_modalities=_strings(arch.get("input_modalities")),
     )
 
 
