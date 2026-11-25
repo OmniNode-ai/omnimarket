@@ -513,3 +513,29 @@ palette:
 last_known:
   model: "Last-Model"
   delegation: "off"
+
+# /doctor page (OMN-26620 pages worker).
+doctor_page:
+  title: "Setup check"
+  summary_all_good: "✓ all good · {passed} of {total}"
+  summary_attention: "{problems} need attention · {passed} of {total}"
+  status_ok: "✓ ok"
+  status_attention: "! needs attention"
+  status_skipped: "– optional/skipped"
+  fix_prefix: "fix:"
+
+# /metering page (OMN-26620 pages worker).
+metering_page:
+  title: "Usage and cost"
+  tasks: "Tasks"
+  tokens: "Tokens"
+  cost: "Cost"
+  saved: "Saved ≈ {amount} (modelled)"
+  unmeasured: "not measured"
+  savings_line: "Savings are modelled, not billed."
+  period: "{period}"
+
+# Plain messages for customer-visible errors (OMN-26620 AC9).
+messages:
+  could_not: "Could not {what}."
+  next_step: "Run /doctor."

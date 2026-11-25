@@ -363,6 +363,42 @@ class ModelTuiTabSpec(BaseModel):
     label: str = Field(min_length=1)
 
 
+class ModelTuiDoctorPage(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="allow")
+
+    title: str = Field(default="Setup check", min_length=1)
+    summary_all_good: str = Field(
+        default="✓ all good · {passed} of {total}", min_length=1
+    )
+    summary_attention: str = Field(
+        default="{problems} need attention · {passed} of {total}", min_length=1
+    )
+    status_ok: str = Field(default="✓ ok", min_length=1)
+    status_attention: str = Field(default="! needs attention", min_length=1)
+    status_skipped: str = Field(default="– optional/skipped", min_length=1)  # noqa: RUF001
+    fix_prefix: str = Field(default="fix:", min_length=1)
+
+
+class ModelTuiMeteringPage(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="allow")
+
+    title: str = Field(default="Usage and cost", min_length=1)
+    tasks: str = Field(default="Tasks", min_length=1)
+    tokens: str = Field(default="Tokens", min_length=1)
+    cost: str = Field(default="Cost", min_length=1)
+    saved: str = Field(default="Saved ≈ {amount} (modelled)", min_length=1)
+    unmeasured: str = Field(default="not measured", min_length=1)
+    savings_line: str = Field(default="Savings are modelled, not billed.", min_length=1)
+    period: str = Field(default="{period}", min_length=1)
+
+
+class ModelTuiMessages(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="allow")
+
+    could_not: str = Field(default="Could not {what}.", min_length=1)
+    next_step: str = Field(default="Run /doctor.", min_length=1)
+
+
 class ModelTuiDesign(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -372,6 +408,9 @@ class ModelTuiDesign(BaseModel):
     header: ModelTuiHeader
     task_card: ModelTuiTaskCard
     footer: ModelTuiFooter
+    doctor_page: ModelTuiDoctorPage = Field(default_factory=ModelTuiDoctorPage)
+    metering_page: ModelTuiMeteringPage = Field(default_factory=ModelTuiMeteringPage)
+    messages: ModelTuiMessages = Field(default_factory=ModelTuiMessages)
     icons: ModelTuiIcons = Field(default_factory=ModelTuiIcons)
     palette: ModelTuiPalette
     last_known: dict[str, str] = Field(default_factory=dict)
