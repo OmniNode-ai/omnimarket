@@ -342,8 +342,12 @@ def build_window_query(
     else:
         where_sql = f" WHERE {' AND '.join(where)}" if where else ""
         inner_order = f" ORDER BY {window_order}" if window_order else ""
-        carried = f"{columns}, {window_instant} AS {WINDOW_ORDER_ALIAS}"
-        inner = f"SELECT {carried if hidden else columns} FROM {source}{where_sql}{inner_order} LIMIT {retain}"
+        carried = (
+            f"{columns}, {window_instant} AS {WINDOW_ORDER_ALIAS}"
+            if hidden
+            else columns
+        )
+        inner = f"SELECT {carried} FROM {source}{where_sql}{inner_order} LIMIT {retain}"
     outer_order = order_clause(order_spec)
     outer_columns = "*"
     if window_seconds is not None and since is None:
