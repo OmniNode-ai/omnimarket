@@ -31,6 +31,11 @@ requirements:
     acceptance:
       - id: AC5
         statement: 'AC5: opening the start address with this start''s token sets the HttpOnly cookie and redirects (303) to the same path without the token, keeping other query parameters; missing or wrong token still refused; falsifier: uv run pytest tests/unit/nodes/node_local_dashboard_serve_effect/test_start_url_redirect_strips_token.py -q'
+  - id: req-omn26226-lab-item-allowed-program
+    statement: The integration-proof item starts with programs a lab host runs, so the lab does not refuse it.
+    acceptance:
+      - id: AC6
+        statement: 'AC6: the integration-proof item''s command, and the command it sends to the lab after --, each start with a program a lab host runs, so the lab does not refuse it; falsifier: uv run pytest -q tests/contracts/test_omn26226_lab_item_allowed_program.py'
 evidence_requirements:
   - kind: tests
     description: AC1-AC5 tests.
@@ -96,6 +101,14 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest -q tests/unit/nodes/node_local_dashboard_serve_effect/test_dashboard_command_output.py
         cwd: .
+  - id: dod-omn26226-lab-item-allowed-program
+    description: The integration-proof item's command, and the command it sends to the lab after --, each start with a program a lab host runs (DEFAULT_ALLOWED_EXECUTABLES), so a lab host does not refuse the work unit.
+    source: manual
+    binds_ac: [AC6]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/contracts/test_omn26226_lab_item_allowed_program.py
+        cwd: .
   # Not bound as a check: tests/unit/nodes/node_onex_setup_effect/test_dashboard_token_not_in_argv.py
   # guards a regression made and fixed inside this branch (a token on the child's
   # command line). Dev never put the token in argv, so on the merge base it can
@@ -108,10 +121,10 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: >-
-          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run
+          uv run onex lab-work run
           --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
           --lane dod-integration-proof-26226 --kind test --
-          env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest
+          uv run --frozen pytest
           tests/unit/nodes/node_onex_setup_effect/test_dashboard_open_instruction.py
           tests/unit/nodes/node_local_dashboard_serve_effect/test_bare_address_page.py
           tests/unit/nodes/node_onex_setup_effect/test_dashboard_no_token_shown.py
