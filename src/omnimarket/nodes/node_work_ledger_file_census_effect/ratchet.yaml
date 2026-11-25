@@ -106,8 +106,6 @@ files:
     src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml: 5
     src/omnimarket/nodes/node_host_installer_registry_units/handlers/handler_registry_units.py: 2
     src/omnimarket/nodes/node_host_reading_effect/overlay.example.yaml: 4
-    src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_launch.py: 1
-    src/omnimarket/nodes/node_lab_history_archive_effect/handlers/handler_lab_history_archive.py: 1
     src/omnimarket/nodes/node_process_health_effect/contract.yaml: 2
     src/omnimarket/nodes/node_process_health_effect/tests/test_runtime_process_health.py: 4
     src/omnimarket/nodes/node_retention_cleanup/contract.yaml: 1
