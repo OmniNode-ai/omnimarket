@@ -1030,6 +1030,15 @@ _CI_YML_STRUCTURALLY_COVERED_KEYS: frozenset[str] = frozenset(
         "test",  # dynamic "Tests (Split N/M)" matrix — see the matrix rule.
         "merge-hold-gate",  # reusable caller; covered by the L3 default-deny sweep.
         "ci-summary",  # the poller's own job (SELF_JOB_NAME).
+        # OMN-24562: the parallel lint group jobs. The strict `lint` aggregate needs all of them
+        # and fails on any result but success (a skipped or cancelled group included), and the
+        # L3 default-deny sweep fails on a failed group, so no group needs its own entry.
+        "lint-group-1",
+        "lint-group-2",
+        "lint-group-3",
+        "lint-group-4",
+        "lint-group-5",
+        "lint-group-6",
         # OMN-16662: `docs-only-marker` is a SIGNAL job, not a gate. It asserts
         # nothing and can never fail — its whole body is an echo. The poller
         # reads its *conclusion* to derive docs_only (see

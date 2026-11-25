@@ -10,6 +10,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.ci.lint_jobs import lint_jobs
+
 ROOT = Path(__file__).resolve().parents[1]
 GUARD = (
     "tests/nodes/node_morning_ground_state_orchestrator/"
@@ -47,7 +49,11 @@ def test_morning_phase_tools_wiring_pre_commit() -> None:
 def test_morning_phase_tools_wiring_required_ci() -> None:
     config = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
     # lint is an existing strict gate of CI Summary, including docs-only PRs.
-    job = config["jobs"]["lint"]
+    job = next(
+        job
+        for job in lint_jobs(config)
+        if any(GUARD in step.get("run", "") for step in job.get("steps", []))
+    )
     assert job.get("if") in (None, "always()")
     assert "paths" not in job
     assert "paths-ignore" not in job
