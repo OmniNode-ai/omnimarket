@@ -69,6 +69,7 @@ from omnimarket.nodes.node_build_delegation_checks.models.model_build_delegation
 )
 from omnimarket.nodes.node_build_delegation_checks.overlay import load_overlay
 from omnimarket.nodes.node_build_delegation_checks.protocols.protocol_build_checks import (
+    BuildStoreUnwritableError,
     ProtocolBuildStore,
     ProtocolCheckRunner,
     ProtocolMergeSource,
@@ -135,7 +136,17 @@ class _BuildChecksRun:
             merges=added,
         )
         # The claim comes before any probe runs: a second event for this build, replayed or concurrent, finds it taken.
-        if not self._store.begin(begun):
+        try:
+            claimed = self._store.begin(begun)
+        except BuildStoreUnwritableError as exc:
+            # Nothing was claimed and no probe has run: the build is refused by name, and a replay runs it once the root is writable.
+            return ModelBuildChecksResult(
+                build_id=build_id,
+                status=EnumBuildChecksStatus.REFUSED,
+                reason=str(exc),
+                previous_build_id=previous_id,
+            )
+        if not claimed:
             return ModelBuildChecksResult(
                 build_id=build_id,
                 status=EnumBuildChecksStatus.ALREADY_RUN,

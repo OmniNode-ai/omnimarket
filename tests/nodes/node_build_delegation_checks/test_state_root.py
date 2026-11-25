@@ -13,6 +13,7 @@ import json
 import os
 import stat
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -25,6 +26,9 @@ from omnimarket.models.overlay_documents.model_build_delegation_checks_overlay i
 from omnimarket.nodes.node_build_delegation_checks.adapters.bus_sink import (
     BusRegressionSink,
 )
+from omnimarket.nodes.node_build_delegation_checks.adapters.file_build_store import (
+    FileBuildStore,
+)
 from omnimarket.nodes.node_build_delegation_checks.handlers.handler_build_delegation_checks import (
     OMNI_HOME_ENV,
     REPLAY_ENV,
@@ -32,9 +36,13 @@ from omnimarket.nodes.node_build_delegation_checks.handlers.handler_build_delega
 )
 from omnimarket.nodes.node_build_delegation_checks.models.model_build_delegation_checks import (
     EnumBuildChecksStatus,
+    ModelBuildRecord,
     ModelRebuildCompletedObserved,
 )
 from omnimarket.nodes.node_build_delegation_checks.overlay import FILE_ENV
+from omnimarket.nodes.node_build_delegation_checks.protocols.protocol_build_checks import (
+    BuildStoreUnwritableError,
+)
 from tests.nodes.node_build_delegation_checks.test_bus_wiring import _git, _recorded
 
 
@@ -151,3 +159,91 @@ def test_no_declared_state_root_refuses_instead_of_choosing_a_path(
 def test_the_history_setting_is_a_path_inside_the_state_root(bad: str) -> None:
     with pytest.raises(ValueError, match="history_relpath"):
         ModelBuildDelegationChecksOverlay(history_relpath=bad)
+
+
+def test_an_unwritable_state_root_is_refused_by_name_and_runs_no_check(
+    read_only_home: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The known bad root: the declared state root sits under a regular file, so no directory can be made there (true for any
+    user, root included). The handler answers with a named refusal; it does not raise and it does not run a probe."""
+    home, _state = read_only_home
+    _green, red = _shas(home)
+    blocker = tmp_path / "blocker"
+    blocker.write_text("not a directory", encoding="utf-8")
+    bad_root = blocker / ".onex_state"
+    monkeypatch.setenv("ONEX_STATE_DIR", str(bad_root))
+
+    result = HandlerBuildDelegationChecks().handle(
+        ModelRebuildCompletedObserved(git_sha=red, runtime_lane="dev")
+    )
+
+    assert result.status == EnumBuildChecksStatus.REFUSED
+    assert result.build_id == red
+    assert str(bad_root) in result.reason
+    assert "ONEX_STATE_DIR" in result.reason
+    assert result.records == ()
+    assert not (home / ".onex_state").exists()
+
+
+def test_a_permission_error_on_the_state_root_is_refused_by_name_not_raised(
+    read_only_home: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The failure the dev builds of 2026-11-24 raised: PermissionError making the history directory."""
+    home, state = read_only_home
+    _green, red = _shas(home)
+    real_mkdir = Path.mkdir
+
+    def deny(self: Path, *args: object, **kwargs: object) -> None:
+        if state in self.parents or self == state:
+            raise PermissionError(13, "Permission denied", str(self))
+        real_mkdir(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "mkdir", deny)
+
+    result = HandlerBuildDelegationChecks().handle(
+        ModelRebuildCompletedObserved(git_sha=red, runtime_lane="dev")
+    )
+
+    assert result.status == EnumBuildChecksStatus.REFUSED
+    assert "Permission denied" in result.reason
+    assert str(state) in result.reason
+    assert result.records == ()
+
+
+def test_the_store_names_the_path_and_the_cause_when_it_cannot_write(
+    tmp_path: Path,
+) -> None:
+    blocker = tmp_path / "blocker"
+    blocker.write_text("x", encoding="utf-8")
+    store = FileBuildStore(blocker / "state" / "builds.json", 5)
+    record = ModelBuildRecord(
+        build_id="a" * 40, runtime_lane="dev", started_at=datetime.now(UTC)
+    )
+
+    with pytest.raises(BuildStoreUnwritableError, match=r"builds\.json") as caught:
+        store.begin(record)
+
+    assert isinstance(caught.value, OSError)
+
+
+def test_each_check_has_one_result_row_in_the_history_and_it_reads_back(
+    read_only_home: tuple[Path, Path],
+) -> None:
+    """AC3: after a build on a writable state root, the history holds one row per configured check, read back through the store."""
+    home, state = read_only_home
+    green, red = _shas(home)
+    handler = HandlerBuildDelegationChecks()
+    handler.handle(ModelRebuildCompletedObserved(git_sha=green, runtime_lane="dev"))
+    result = handler.handle(
+        ModelRebuildCompletedObserved(git_sha=red, runtime_lane="dev")
+    )
+
+    history = state / ModelBuildDelegationChecksOverlay().history_relpath
+    raw = json.loads(history.read_text(encoding="utf-8"))
+    assert [row["check_id"] for row in raw[-1]["checks"]] == ["C14", "C29"]
+    assert [r.check_id for r in result.records] == ["C14", "C29"]
+    store = FileBuildStore(history, 200)
+    for check_id in ("C14", "C29"):
+        read_back = store.last_reading(check_id, "no-such-build")
+        assert read_back is not None
+        assert read_back.build_id == red
