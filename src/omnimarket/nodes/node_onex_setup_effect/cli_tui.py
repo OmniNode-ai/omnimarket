@@ -2140,16 +2140,9 @@ class TaskCard:
         spinner = _spinner_frame()
         if self.state == "running":
             return str(glyphs.get("running", spinner))
-        return str(
-            glyphs.get(
-                self.state,
-                {
-                    "done": "✓",
-                    "fallback": "◐",
-                    "failed": "✗",
-                }.get(self.state, "✓"),
-            )
-        )
+        # The design file names a glyph for every state; an unknown state shows
+        # the done one rather than a glyph written here (AC8).
+        return str(glyphs.get(self.state, glyphs.get("done", "")))
 
     def bar_colour_token(self) -> str:
         colours = self._bar_colours()
