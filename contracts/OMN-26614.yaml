@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-26614"
+title: "onex setup names shell profile conflicts in plain words instead of raw JSON"
+summary: "When onex setup finds shell profile conflicts, the human (non---json) output names each conflict in plain words; the machine-readable JSON output keeps the structured conflict list unchanged."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26614-plain-shell-conflicts
+  statement: "Shell-safety conflicts are rendered as one plain line per conflict in human output, with remedy wording, while JSON output keeps structured conflicts."
+  acceptance:
+  - id: AC1
+    statement: 'AC1: each conflict is shown as one plain line naming the file, the line number (when the conflict is in a profile) and what it does, with no JSON; Falsifier: tests/e2e/test_setup_workflow_cli.py::test_shell_conflicts_print_one_plain_line_per_conflict'
+  - id: AC2
+    statement: 'AC2: each plain line says whether --set-aside fixes it or it must be fixed by hand; Falsifier: tests/e2e/test_setup_workflow_cli.py::test_shell_conflicts_print_one_plain_line_per_conflict'
+  - id: AC3
+    statement: 'AC3: the machine-readable JSON output still carries the structured conflict list, and the human output no longer prints it; Falsifier: tests/e2e/test_setup_workflow_cli.py::test_json_output_keeps_structured_conflict_list'
+evidence_requirements:
+- kind: tests
+  description: Human output renders one plain line per conflict with remedy wording.
+  command: uv run pytest tests/e2e/test_setup_workflow_cli.py::test_shell_conflicts_print_one_plain_line_per_conflict tests/unit/nodes/node_onex_setup_effect/test_setup_cli_shell_conflict_lines.py -q -n 0 --no-cov -p no:cacheprovider
+- kind: tests
+  description: JSON output keeps the structured conflict list.
+  command: uv run pytest tests/e2e/test_setup_workflow_cli.py::test_json_output_keeps_structured_conflict_list -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26614-ac1
+  description: 'AC1: the human setup output names each shell conflict in plain words, one plain line per conflict, naming its file, line number and what it does, with no raw JSON blob.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/e2e/test_setup_workflow_cli.py::test_shell_conflicts_print_one_plain_line_per_conflict tests/unit/nodes/node_onex_setup_effect/test_setup_cli_shell_conflict_lines.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26614-ac2
+  description: 'AC2: each plain conflict line says whether --set-aside fixes it or it must be fixed by hand.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/e2e/test_setup_workflow_cli.py::test_shell_conflicts_print_one_plain_line_per_conflict tests/unit/nodes/node_onex_setup_effect/test_setup_cli_shell_conflict_lines.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26614-ac3
+  description: 'AC3: the machine-readable JSON output still carries the structured conflict list.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/e2e/test_setup_workflow_cli.py::test_json_output_keeps_structured_conflict_list -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26614-integration-proof
+  description: the shell-conflict rendering tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26614 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/e2e/test_setup_workflow_cli.py tests/unit/nodes/node_onex_setup_effect/test_setup_cli_shell_conflict_lines.py -q --no-cov

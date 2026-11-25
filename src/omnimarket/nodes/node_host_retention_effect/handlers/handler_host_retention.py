@@ -38,6 +38,7 @@ from omnimarket.nodes.node_host_retention_effect.handlers.host_retention_ports i
     read_references_portable,
 )
 from omnimarket.nodes.node_host_retention_effect.handlers.host_retention_uv_cache_cap import (
+    evict_for_free_disk,
     evict_over_cap,
 )
 from omnimarket.nodes.node_host_retention_effect.models.model_host_retention import (
@@ -56,6 +57,7 @@ from omnimarket.nodes.node_host_retention_effect.models.model_host_retention imp
     ModelTerminalGuard,
     ModelUvBucketBound,
     ModelUvCache,
+    ModelUvFreeDiskRule,
 )
 from omnimarket.nodes.node_retention_cleanup.handlers.handler_file_retention import (
     load_file_policy,
@@ -262,18 +264,19 @@ def validate_declarations(
             )
         except RefusalError as exc:
             refusals.append(str(exc))
-        cap = cache.cap
-        if cap is not None:
-            for bucket in cap.buckets:
+        for label, rule in (("cap", cache.cap), ("free_disk", cache.free_disk)):
+            if rule is None:
+                continue
+            for bucket in rule.buckets:
                 if bucket not in bounds.uv_evictable_buckets:
                     refusals.append(
-                        f"uv cache {cache.path}: cap bucket {bucket!r} is not named by "
+                        f"uv cache {cache.path}: {label} bucket {bucket!r} is not named by "
                         f"the contract, which allows only "
                         f"{', '.join(sorted(bounds.uv_evictable_buckets)) or 'none'}"
                     )
-            if cap.keep_days < bounds.min_keep_days:
+            if rule.keep_days < bounds.min_keep_days:
                 refusals.append(
-                    f"uv cache {cache.path}: cap keep_days {cap.keep_days} is below the "
+                    f"uv cache {cache.path}: {label} keep_days {rule.keep_days} is below the "
                     f"contract minimum {bounds.min_keep_days}"
                 )
     return refusals
@@ -562,6 +565,39 @@ def _runner_group(
                 )
 
 
+def _uv_cache_free_disk(
+    cache: ModelUvCache,
+    rule: ModelUvFreeDiskRule,
+    *,
+    now: float,
+    dry_run: bool,
+    buckets: dict[str, ModelUvBucketBound],
+    refs: ProcessReferences | None,
+    ports: HostRetentionPorts,
+    out: _Pass,
+) -> None:
+    """The free-disk and age rule: one disk read, and the cache is walked only when the disk is low (never sized, never pruned)."""
+    try:
+        free = ports.disk.reading(cache.path).free_bytes
+    except OSError as exc:
+        out.errors.append(f"{cache.path}: {type(exc).__name__}")
+        return
+    if free >= rule.min_free_gib * _GIB:
+        out.keep(UV_CACHE, cache.path, "free_disk_ok")
+        return
+    evict_for_free_disk(
+        cache,
+        rule,
+        free_bytes=free,
+        now=now,
+        dry_run=dry_run,
+        buckets=buckets,
+        refs=refs,
+        ports=ports,
+        out=out,
+    )
+
+
 def _uv_cache(
     cache: ModelUvCache,
     *,
@@ -576,6 +612,22 @@ def _uv_cache(
     if not Path(cache.path).is_dir():
         out.errors.append(f"{cache.path}: absent")
         return
+    if cache.free_disk is not None:
+        _uv_cache_free_disk(
+            cache,
+            cache.free_disk,
+            now=now,
+            dry_run=dry_run,
+            buckets=buckets,
+            refs=refs,
+            ports=ports,
+            out=out,
+        )
+        return
+    min_gib = cache.min_gib
+    if min_gib is None:  # the model admits exactly one of min_gib and free_disk
+        out.errors.append(f"{cache.path}: no uv cache rule declared")
+        return
     try:
         size = ports.uv_cache.size_bytes(
             cache.uv_binary, cache.path, cache.timeout_seconds
@@ -583,7 +635,7 @@ def _uv_cache(
     except OSError as exc:
         out.errors.append(f"{cache.path}: {type(exc).__name__}")
         return
-    if size < cache.min_gib * _GIB:
+    if size < min_gib * _GIB:
         # Below min_gib the cache is also under cap_gib (the model validates cap_gib >= min_gib),
         # so the cap pass has nothing to do here either.
         out.keep(UV_CACHE, cache.path, "below_min")
@@ -708,7 +760,8 @@ class HandlerHostRetention:
         # The uv cache cap pass guards its evictions with the same process references the age
         # classes read, so it is read once for both (and not at all when neither needs it).
         wants_uv_cap = runs("uv_cache") and any(
-            cache.cap is not None for cache in row.uv_caches
+            cache.cap is not None or cache.free_disk is not None
+            for cache in row.uv_caches
         )
         refs = self.references() if (age_classes or wants_uv_cap) else None
         if age_classes:

@@ -64,6 +64,17 @@ class ModelOverlayStoreRecord(_Frozen):
         return self
 
 
+class ModelOverlaySettingRecord(ModelOverlayStoreRecord):
+    """A store record that names the setting paths an operator set: the record a setting set publishes on the loaded topic.
+
+    The projection accepts it beside the loader's plain record and stores the document with its paths, so a later loader
+    run reads them back from the live record and keeps those settings. The loader's own records carry no such field on the
+    wire unless it kept an operator-set setting.
+    """
+
+    operator_paths: tuple[str, ...] = ()
+
+
 class ModelOverlayStoreLoadResult(_Frozen):
     """What one load did."""
 

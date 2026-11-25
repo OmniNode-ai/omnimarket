@@ -280,7 +280,13 @@ class DoneItemsProjectionWriter(BaseProjectionRunner):
                     source_partition=meta.partition,
                     source_offset=meta.offset,
                 )
-        return {"rows_upserted": len(written), "done_items_rows": written}
+        # A TERMINAL that is not done owes no row; say so, so the runtime can
+        # tell this filter from a writer that wrote nothing (OMN-26520).
+        return {
+            "rows_upserted": len(written),
+            "done_items_rows": written,
+            "events_not_applicable": 0 if items else 1,
+        }
 
 
 __all__ = [

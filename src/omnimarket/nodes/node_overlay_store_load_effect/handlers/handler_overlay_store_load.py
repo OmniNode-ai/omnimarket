@@ -320,7 +320,7 @@ class HandlerOverlayStoreLoad:
         """Load each id in order; a refused id is named and the ids after it still publish.
 
         Only a refusal of the overlay itself is carried on: a broker that does not answer still raises, because
-        every id after it would fail the same way and the caller reports the bus, not the overlays. One id for
+        every id after it would fail the same way and the caller reports the bus, not the documents. One id for
         the whole run, so every load, drift report and refusal of it reads as one chain.
         """
         run = correlation_id or str(uuid.uuid4())
