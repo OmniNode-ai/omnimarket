@@ -108,7 +108,7 @@ files:
     src/omnimarket/nodes/node_host_reading_effect/overlay.example.yaml: 4
     src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_launch.py: 1
     src/omnimarket/nodes/node_lab_history_archive_effect/handlers/handler_lab_history_archive.py: 1
-    src/omnimarket/nodes/node_process_health_effect/contract.yaml: 1
+    src/omnimarket/nodes/node_process_health_effect/contract.yaml: 2
     src/omnimarket/nodes/node_process_health_effect/tests/test_runtime_process_health.py: 4
     src/omnimarket/nodes/node_retention_cleanup/contract.yaml: 1
     src/omnimarket/nodes/node_retention_cleanup/handlers/handler_file_retention.py: 1
@@ -161,7 +161,6 @@ files:
     tests/nodes/node_plans_today_effect/test_plans_today_operator.py: 1
     tests/nodes/node_remote_lane_stop_effect/conftest.py: 1
     tests/nodes/node_session_checkpoint_compute/test_golden_chain_session_checkpoint_compute.py: 1
-    tests/nodes/node_session_context_sources_effect/test_session_context_sources.py: 1
     tests/nodes/node_session_front_door_compute/test_front_door_entry_stops_and_operator.py: 1
     tests/nodes/node_session_front_door_compute/test_member_host_mode_receipt.py: 1
     tests/nodes/node_session_resume_compute/test_golden_chain_session_resume_compute.py: 1
@@ -200,5 +199,5 @@ ratchet:
   omniclaude: 45
   omnidash: 0
   omniintelligence: 0
-  omnimarket: 104
+  omnimarket: 101
   omnimemory: 1
