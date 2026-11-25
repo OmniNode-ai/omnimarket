@@ -111,3 +111,6 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_regression_effect/test_relation_inventory_reader.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
