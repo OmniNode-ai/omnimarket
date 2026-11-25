@@ -180,12 +180,20 @@ class EgressRecorder:
                     if k.lower() not in {"proxy-connection", "connection", "keep-alive"}
                 }
                 path = parts.path + (f"?{parts.query}" if parts.query else "")
+                path = path or "/"
+                if (
+                    not path.startswith("/")
+                    or path.startswith("//")
+                    or any(c.isspace() or ord(c) < 32 for c in path)
+                ):
+                    self.send_error(400, "c14 probe: malformed request target")
+                    return
                 try:
                     conn = http.client.HTTPConnection(
                         address, parts.port or 80, timeout=900
                     )
                     headers["Host"] = parts.netloc
-                    conn.request(self.command, path or "/", body=body, headers=headers)
+                    conn.request(self.command, path, body=body, headers=headers)
                     response = conn.getresponse()
                     payload = response.read()
                 except OSError:
