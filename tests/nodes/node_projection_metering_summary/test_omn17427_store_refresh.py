@@ -37,6 +37,10 @@ from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering
 from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_summary_writer import (
     MeteringSummaryProjectionWriter,
 )
+from omnimarket.nodes.node_projection_metering_summary.metering_incremental_refresh import (
+    INCREMENTAL_RECORDS_SQL,
+    STORED_DAYS_SQL,
+)
 from omnimarket.projection.sqlite_metering_summary import (
     refresh_metering_summary_topic,
 )
@@ -95,6 +99,23 @@ class FakeStore:
             # Row-level security: only the GUC's tenant is visible.
             assert params == (tenant,)
             return list(self.runs.get(str(tenant), []))
+        if sql == INCREMENTAL_RECORDS_SQL:
+            # OMN-21288: the runs created at or after the stored watermark.
+            self.reads.append(("records_since", tenant))
+            assert params[0] == tenant
+            return [
+                r
+                for r in self.runs.get(str(tenant), [])
+                if r["created_at"] >= params[1]
+            ]
+        if sql == STORED_DAYS_SQL:
+            self.reads.append(("stored_days", tenant))
+            return [
+                row
+                for (t, kind, start, base), row in self.rows.items()
+                if (t, base, kind) == (params[0], params[1], "day")
+                and start in params[2]
+            ]
         if sql.startswith("SELECT pricing_manifest_version"):
             self.reads.append(("stored", tenant))
             key = (str(params[0]), "all", "", str(params[1]))
@@ -201,6 +222,9 @@ def test_named_tenant_and_day_refolds_that_day_once_the_all_row_exists() -> None
     assert result["tenants_refreshed"] == [_DEV]
     # A named tenant is read directly; no tenant walk.
     assert ("visible", None) not in store.reads[-3:]
+    # OMN-21288: the refresh continued from the stored all row, folding only run c.
+    assert result["records_folded"] == 1
+    assert ("records_since", _DEV) in store.reads
     day = store.rows[(_DEV, "day", "2026-10-19", dev_baseline(store))]
     assert day["runs_total"] == 2
     # The earlier day was not rewritten: its row is the same object.

@@ -23,6 +23,7 @@ import asyncpg
 
 from omnimarket.nodes.node_tenant_provision_effect.handlers.tenant_created_envelope import (
     TENANT_CREATED,
+    TENANT_EVENTS_TOPIC,
     build_tenant_created_envelope,
 )
 from omnimarket.nodes.node_tenant_provision_effect.models.model_tenant_provision import (
@@ -39,7 +40,7 @@ _DRIVER_ERRORS = (
 _OUTBOX_BY_COMMAND = """
 SELECT o.envelope, t.tenant_slug, t.owner_email
 FROM tenant_event_outbox o
-JOIN tenants t ON t.tenant_id = o.tenant_id
+JOIN tenants t ON t.tenant_id = (o.envelope #>> '{payload,tenant,tenant_id}')::uuid
 WHERE o.envelope ->> 'correlation_id' = $1
   AND o.envelope ->> 'operation' = $2
 LIMIT 1
@@ -52,7 +53,7 @@ RETURNING tenant_id, tenant_slug, name, provisioning_state, created_at
 """
 _TENANT_BY_SLUG = """
 SELECT t.tenant_id, t.tenant_slug, t.name, t.provisioning_state, t.created_at, t.owner_email,
-       (SELECT pt.code FROM tenant_plans tp JOIN plan_tiers pt ON pt.id = tp.plan_id
+       (SELECT tp.plan_code FROM tenant_plans tp
          WHERE tp.tenant_id = t.tenant_id AND tp.is_active LIMIT 1) AS plan_code
 FROM tenants t
 WHERE t.tenant_slug = $1
@@ -60,12 +61,12 @@ WHERE t.tenant_slug = $1
 _TENANT_BY_ID = _TENANT_BY_SLUG.replace("t.tenant_slug = $1", "t.tenant_id = $1")
 _DEFAULT_PLAN = "SELECT id, code FROM plan_tiers WHERE is_default ORDER BY code LIMIT 1"
 _INSERT_PLAN = """
-INSERT INTO tenant_plans (tenant_id, plan_id)
+INSERT INTO tenant_plans (tenant_id, plan_code)
 VALUES ($1, $2)
 ON CONFLICT (tenant_id) WHERE is_active = true DO NOTHING
 """
 _INSERT_OUTBOX = (
-    "INSERT INTO tenant_event_outbox (tenant_id, envelope) VALUES ($1, $2::jsonb)"
+    "INSERT INTO tenant_event_outbox (topic, envelope) VALUES ($1, $2::jsonb)"
 )
 _INSERT_API_KEY = """
 INSERT INTO tenant_api_keys (tenant_id, name, key_hash)
@@ -210,7 +211,7 @@ class TenantIdentityPostgres:
         plan = await connection.fetchrow(_DEFAULT_PLAN)
         if plan is None:
             raise _NoDefaultPlanError
-        await connection.execute(_INSERT_PLAN, inserted["tenant_id"], plan["id"])
+        await connection.execute(_INSERT_PLAN, inserted["tenant_id"], plan["code"])
         envelope = build_tenant_created_envelope(
             command_id=command.command_id,
             tenant_id=inserted["tenant_id"],
@@ -221,7 +222,7 @@ class TenantIdentityPostgres:
             plan_code=plan["code"],
         )
         await connection.execute(
-            _INSERT_OUTBOX, inserted["tenant_id"], json.dumps(envelope)
+            _INSERT_OUTBOX, TENANT_EVENTS_TOPIC, json.dumps(envelope)
         )
         return ProvisionRecord(kind=EnumProvisionKind.CREATED, envelope=envelope)
 
