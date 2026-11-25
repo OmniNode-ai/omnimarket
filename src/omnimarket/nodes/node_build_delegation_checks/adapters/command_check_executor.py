@@ -29,16 +29,20 @@ def _probe_name(argv: tuple[str, ...]) -> str:
 
 class CommandCheckExecutor:
     """Placeholders in a route: ``{build_id}`` the build's sha, ``{python}`` the interpreter running this handler and
-    ``{registry_root}`` the registry root the handler was built with."""
+    ``{registry_root}`` the registry root the handler was built with and ``{state_root}`` the runtime's declared writable state
+    root. The registry root is read-only in the runtime, so a probe's own state belongs under ``{state_root}``; a route that
+    names it where no state root was declared reads unavailable, and no path is chosen."""
 
     def __init__(
         self,
         routes: Mapping[str, tuple[str, ...]],
         *,
         registry_root: Path | None = None,
+        state_root: Path | None = None,
     ) -> None:
         self._routes = routes
         self._registry_root = str(registry_root) if registry_root is not None else ""
+        self._state_root = str(state_root) if state_root is not None else ""
 
     def run(
         self, check_id: str, build_id: str, timeout_seconds: float
@@ -50,10 +54,17 @@ class CommandCheckExecutor:
                 detail="no probe route is declared for this check",
             )
         probe = _probe_name(argv)
+        if not self._state_root and any("{state_root}" in arg for arg in argv):
+            return ModelCheckOutcome(
+                probe=probe,
+                reading=EnumCheckReading.UNAVAILABLE,
+                detail="the probe route names the state root and none is declared",
+            )
         command = [
             arg.replace("{build_id}", build_id)
             .replace("{python}", sys.executable)
             .replace("{registry_root}", self._registry_root)
+            .replace("{state_root}", self._state_root)
             for arg in argv
         ]
         try:
