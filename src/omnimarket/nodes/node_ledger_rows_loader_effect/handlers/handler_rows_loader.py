@@ -17,7 +17,7 @@ Named break: a handler that returns an empty ok for a non-ok answer.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import yaml
@@ -68,6 +68,8 @@ class HandlerRowsLoader:
     def handle(self, request: ModelRowsLoaderRequest) -> ModelRowsLoaderResult:
         answer = request.node_answer
         prior = self._events.fallback_reads()
+        if request.since is not None:
+            return self._handle_range(request, prior)
         if answer.status is EnumReaderStatus.OK:
             return self._finish(
                 request,
@@ -92,6 +94,29 @@ class HandlerRowsLoader:
             f"node-{answer.status.value}",
             lines,
             prior + 1,
+        )
+
+    def _handle_range(
+        self, request: ModelRowsLoaderRequest, prior: int
+    ) -> ModelRowsLoaderResult:
+        """A history range: refused when it starts before the store holds, never read from the file."""
+        since = request.since
+        assert since is not None
+        floor = self._clock().astimezone(UTC) - timedelta(
+            days=self._overlay.store_history_days
+        )
+        if since < floor:
+            return self._unreadable(request, "range-wider-than-store", prior)
+        answer = request.node_answer
+        if answer.status is not EnumReaderStatus.OK:
+            return self._unreadable(request, f"node-{answer.status.value}", prior)
+        return self._finish(
+            request,
+            EnumRowsStatus.OK,
+            EnumRowsSource.NODE,
+            "node-answered",
+            answer.lines,
+            prior,
         )
 
     def _unreadable(

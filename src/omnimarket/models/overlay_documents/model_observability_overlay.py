@@ -26,8 +26,12 @@ class ModelObservabilityTarget(_Frozen):
     """One scraped host. ``exporter`` says whether this installer puts the exporter there or only scrapes one that is."""
 
     address: NonEmptyStr
-    exporter: Literal["install", "existing"]
+    # "install": the exporter container; "launchd": the exporter as a launchd job on a Mac host;
+    # "existing": an exporter already answers there.
+    exporter: Literal["install", "existing", "launchd"]
     port: int = Field(gt=0, lt=65536)
+    # This host's own textfile directory; unset, the exporter section's ``textfile_directory`` applies.
+    textfile_directory: AbsPath | None = None
     # True: this installer also keeps the per process exporter running on this host (CPU per process name).
     processes: bool = False
 
@@ -71,6 +75,20 @@ class ModelObservabilityExporter(_Frozen):
     network: NonEmptyStr
     memory_gib: int = Field(gt=0)
     memory_swap_gib: int = Field(gt=0)
+
+
+class ModelObservabilityLaunchdExporter(_Frozen):
+    """The exporter as a launchd job on a Mac host: a binary already on the host, run from a property list."""
+
+    label: NonEmptyStr
+    binary: AbsPath
+    # The directory the property list is written to, and the one the job's logs go to.
+    plist_directory: AbsPath
+    log_directory: AbsPath
+    textfile_directory: AbsPath
+    # The launchctl domain the job is bootstrapped into (``system``, or ``gui/<uid>``).
+    domain: NonEmptyStr
+    enable_collectors: tuple[NonEmptyStr, ...] = ()
 
 
 class ModelObservabilityProcessExporter(_Frozen):
@@ -133,6 +151,7 @@ class ModelObservabilityOverlay(_Frozen):
     targets: dict[NonEmptyStr, ModelObservabilityTarget] = Field(min_length=1)
     exporter: ModelObservabilityExporter
     process_exporter: ModelObservabilityProcessExporter | None = None
+    launchd_exporter: ModelObservabilityLaunchdExporter | None = None
     prometheus: ModelObservabilityPrometheus
     grafana: ModelObservabilityGrafana
     alerts: ModelObservabilityAlerts
@@ -151,5 +170,14 @@ class ModelObservabilityOverlay(_Frozen):
         if asking and self.process_exporter is None:
             raise ValueError(
                 f"targets {asking} ask for the per process exporter but the settings declare no process_exporter section"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _launchd_targets_need_the_launchd_exporter(self) -> ModelObservabilityOverlay:
+        asking = sorted(n for n, t in self.targets.items() if t.exporter == "launchd")
+        if asking and self.launchd_exporter is None:
+            raise ValueError(
+                f"targets {asking} take the launchd exporter but the settings declare no launchd_exporter section"
             )
         return self
