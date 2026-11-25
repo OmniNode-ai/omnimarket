@@ -25,22 +25,50 @@ from pydantic import ValidationError
 
 from omnimarket.enums.enum_agent_message_operation import EnumAgentMessageOperation
 from omnimarket.enums.enum_agent_message_refusal import EnumAgentMessageRefusal
+from omnimarket.enums.enum_agent_message_verification_reason import (
+    EnumAgentMessageVerificationReason,
+)
+from omnimarket.handlers.agent_message.signature import sign_message
 from omnimarket.handlers.bus_binding.node_broker import NodeBrokerResolutionError
 from omnimarket.models.agent_message.model_agent_message import ModelAgentMessage
+from omnimarket.models.agent_message.model_agent_message_rejection import (
+    ModelAgentMessageRejection,
+)
 from omnimarket.models.agent_message.model_agent_message_request import (
     ModelAgentMessageRequest,
 )
 from omnimarket.models.agent_message.model_agent_message_result import (
     ModelAgentMessageResult,
 )
+from omnimarket.nodes.node_agent_message_effect.handlers.agent_message_verifier import (
+    AgentMessageVerificationError,
+    AgentMessageVerifier,
+    classify_validation_error,
+    validation_detail,
+)
 from omnimarket.nodes.node_agent_message_effect.protocols import (
     ProtocolAgentMessageBus,
     ProtocolAgentMessageEmitter,
+    ProtocolAgentSenderRegistry,
+    ProtocolAgentSigningKeys,
 )
 from omnimarket.nodes.node_event_emit_effect import ModelEmitRequest
 
 EVENT_TYPE = "agent.message"
-_WIRE_FIELDS = ("from", "to", "thread", "kind", "text", "sent_at", "platform")
+_WIRE_FIELDS = (
+    "from",
+    "to",
+    "thread",
+    "kind",
+    "text",
+    "sent_at",
+    "platform",
+    "message_id",
+    "message_schema_version",
+    "sender_proof",
+)
+SCHEMA_VERSION = 1
+RECIPIENT_ALL = "all"
 _QUIET_GAP_SECONDS = 1.0
 
 
@@ -56,34 +84,48 @@ def load_contract() -> dict[str, Any]:
 
 
 def message_event_id(message: ModelAgentMessage) -> str:
-    """The content hash of the wire message: a retry of the same message keeps one spool record."""
-    wire = message.model_dump(mode="json", by_alias=True)
+    """The event id: stable across retries, so a retry of the same message keeps one spool record.
+
+    A message with a ``message_id`` hashes that id alone (its ``sent_at`` is re-stamped by a retry and must not
+    change the id). A legacy message with none keeps the content hash of the whole wire message.
+    """
+    if message.message_id is not None:
+        return hashlib.sha256(
+            f"agent-message:{message.message_id}".encode()
+        ).hexdigest()
+    wire = message.model_dump(mode="json", by_alias=True, exclude_none=True)
     return hashlib.sha256(
         json.dumps(wire, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
 
 
 def decode_message(value: bytes) -> ModelAgentMessage:
-    """One topic record as a typed message; ValueError when it is not one."""
-    decoded = json.loads(value)
+    """One topic record as a typed message; ``AgentMessageVerificationError`` (a ValueError) when it is not one."""
+    try:
+        decoded = json.loads(value)
+    except ValueError as exc:
+        raise AgentMessageVerificationError(
+            EnumAgentMessageVerificationReason.MALFORMED_MESSAGE, "record is not JSON"
+        ) from exc
     if not isinstance(decoded, dict):
-        raise ValueError("record is not an object")
+        raise AgentMessageVerificationError(
+            EnumAgentMessageVerificationReason.MALFORMED_MESSAGE,
+            "record is not an object",
+        )
     payload = decoded.get("payload", decoded)
     if not isinstance(payload, dict):
-        raise ValueError("payload is not an object")
+        raise AgentMessageVerificationError(
+            EnumAgentMessageVerificationReason.MALFORMED_MESSAGE,
+            "payload is not an object",
+        )
     try:
         return ModelAgentMessage.model_validate(
             {key: payload[key] for key in _WIRE_FIELDS if key in payload}
         )
     except ValidationError as exc:
-        raise ValueError(str(exc)) from exc
-
-
-def _invalid_detail(exc: ValidationError) -> str:
-    return "; ".join(
-        f"{'.'.join(str(part) for part in err['loc']) or 'message'}: {err['msg']}"
-        for err in exc.errors()
-    )
+        raise AgentMessageVerificationError(
+            classify_validation_error(exc), validation_detail(exc)
+        ) from exc
 
 
 class HandlerAgentMessage:
@@ -95,6 +137,8 @@ class HandlerAgentMessage:
         emitter: ProtocolAgentMessageEmitter | None = None,
         bus: ProtocolAgentMessageBus | None = None,
         bus_factory: Callable[[], ProtocolAgentMessageBus] | None = None,
+        registry: ProtocolAgentSenderRegistry | None = None,
+        signing_keys: ProtocolAgentSigningKeys | None = None,
         read_window_seconds: float | None = None,
         quiet_gap_seconds: float = _QUIET_GAP_SECONDS,
     ) -> None:
@@ -114,31 +158,102 @@ class HandlerAgentMessage:
         self._emitter = emitter
         self._bus = bus
         self._bus_factory = bus_factory
+        self._registry = registry
+        self._signing_keys = signing_keys
+        self._directory_owned = registry is None
 
     async def handle(
         self, request: ModelAgentMessageRequest
     ) -> ModelAgentMessageResult:
         if request.operation is EnumAgentMessageOperation.SEND:
-            return self._send(request)
+            return await self._send(request)
         return await self._read(request)
+
+    def _resolve_directory(self) -> ProtocolAgentSenderRegistry:
+        """The injected registry, or the settings store's when none was injected (which also supplies the keys)."""
+        if self._registry is None:
+            from omnimarket.nodes.node_agent_message_effect.container.container_agent_message_effect import (
+                create_directory,
+            )
+
+            directory = create_directory()
+            self._registry = directory
+            if self._directory_owned and self._signing_keys is None:
+                self._signing_keys = directory
+        return self._registry
 
     def _refuse(
         self,
         operation: EnumAgentMessageOperation,
         refusal: EnumAgentMessageRefusal,
         detail: str,
+        reason: EnumAgentMessageVerificationReason | None = None,
     ) -> ModelAgentMessageResult:
         return ModelAgentMessageResult(
-            operation=operation, accepted=False, refusal=refusal, detail=detail
+            operation=operation,
+            accepted=False,
+            refusal=refusal,
+            detail=detail,
+            reason=reason,
         )
 
-    def _send(self, request: ModelAgentMessageRequest) -> ModelAgentMessageResult:
+    async def _sign(self, message: ModelAgentMessage) -> ModelAgentMessage:
+        """Fix the id and version, then sign with the key this host holds for the declared sender.
+
+        A caller that sent no ``message_id`` gets the content hash of the message as its id, so an identical resend
+        keeps one id; a caller that chose an id keeps it across retries whatever ``sent_at`` is re-stamped to.
+
+        A sender this host holds no key for goes out in the legacy shape while the cutover allows it, and is
+        refused as an unknown sender once it does not.
+        """
+        message = message.model_copy(
+            update={
+                "message_id": message.message_id or message_event_id(message),
+                "message_schema_version": message.message_schema_version
+                or SCHEMA_VERSION,
+            }
+        )
+        if message.sender_proof is not None:
+            return message
+        registry = self._resolve_directory()
+        keys = self._signing_keys
+        key = await keys.signing_key(message.sender) if keys is not None else None
+        if key is not None:
+            return message.model_copy(
+                update={"sender_proof": sign_message(message, key)}
+            )
+        if keys is not None and not await registry.accepts_legacy():
+            raise AgentMessageVerificationError(
+                EnumAgentMessageVerificationReason.UNKNOWN_SENDER,
+                f"this host holds no signing key for {message.sender!r}",
+            )
+        return message
+
+    async def _send(self, request: ModelAgentMessageRequest) -> ModelAgentMessageResult:
         operation = EnumAgentMessageOperation.SEND
         try:
             message = ModelAgentMessage.model_validate(request.message)
         except ValidationError as exc:
             return self._refuse(
-                operation, EnumAgentMessageRefusal.INVALID_MESSAGE, _invalid_detail(exc)
+                operation,
+                EnumAgentMessageRefusal.INVALID_MESSAGE,
+                validation_detail(exc),
+                classify_validation_error(exc),
+            )
+        try:
+            message = await self._sign(message)
+        except AgentMessageVerificationError as exc:
+            return self._refuse(
+                operation,
+                EnumAgentMessageRefusal.INVALID_MESSAGE,
+                exc.detail,
+                exc.reason,
+            )
+        except (
+            Exception
+        ) as exc:  # effect boundary: an unreadable store or key is a typed result
+            return self._refuse(
+                operation, EnumAgentMessageRefusal.PUBLISH_FAILED, repr(exc)
             )
         event_id = message_event_id(message)
         try:
@@ -152,7 +267,9 @@ class HandlerAgentMessage:
                 ModelEmitRequest(
                     event_type=EVENT_TYPE,
                     payload={
-                        **message.model_dump(mode="json", by_alias=True),
+                        **message.model_dump(
+                            mode="json", by_alias=True, exclude_none=True
+                        ),
                         "event_id": event_id,
                     },
                     correlation_id=event_id,
@@ -212,28 +329,64 @@ class HandlerAgentMessage:
             close = getattr(bus, "close", None) if owned else None
             if close is not None:
                 await close()
+        try:
+            return await self._select(request, records)
+        except Exception as exc:  # effect boundary: an unreadable registry fails the read, never a partial answer
+            return self._refuse(
+                operation,
+                EnumAgentMessageRefusal.READ_FAILED,
+                f"{type(exc).__name__}: {str(exc).splitlines()[0] if str(exc) else ''}",
+            )
+
+    async def _select(
+        self, request: ModelAgentMessageRequest, records: list[bytes]
+    ) -> ModelAgentMessageResult:
+        """Decode every record, keep those for the recipient, and return only the ones whose sender verifies."""
+        verifier = AgentMessageVerifier(self._resolve_directory())
         matched: dict[str, ModelAgentMessage] = {}
+        rejections: list[ModelAgentMessageRejection] = []
         skipped = 0
+        unverified = 0
         for value in records:
             try:
                 message = decode_message(value)
-            except ValueError:
+            except AgentMessageVerificationError as exc:
                 skipped += 1
+                rejections.append(
+                    ModelAgentMessageRejection(reason=exc.reason, detail=exc.detail)
+                )
                 continue
-            if message.to != request.to:
+            if message.to not in (request.to, RECIPIENT_ALL):
                 continue
             if request.thread is not None and message.thread != request.thread:
                 continue
             if request.since is not None and message.sent_at < request.since:
                 continue
-            matched.setdefault(message_event_id(message), message)
+            try:
+                verified = await verifier.verify(message)
+            except AgentMessageVerificationError as exc:
+                rejections.append(
+                    ModelAgentMessageRejection(
+                        reason=exc.reason,
+                        detail=exc.detail,
+                        sender=message.sender,
+                        message_id=message.message_id,
+                    )
+                )
+                continue
+            event_id = message_event_id(message)
+            if event_id not in matched and not verified:
+                unverified += 1
+            matched.setdefault(event_id, message)
         ordered = sorted(matched.values(), key=lambda m: m.sent_at)
         return ModelAgentMessageResult(
-            operation=operation,
+            operation=EnumAgentMessageOperation.READ,
             accepted=True,
             topic=self._topic,
             messages=tuple(ordered[-request.limit :]),
             skipped=skipped,
+            unverified=unverified,
+            rejections=tuple(rejections),
         )
 
     async def _scan(self, bus: ProtocolAgentMessageBus) -> list[bytes]:

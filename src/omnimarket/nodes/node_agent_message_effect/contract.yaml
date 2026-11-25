@@ -11,7 +11,7 @@ description: >
   One declared topic carries messages between agents of different platforms (Claude, Codex, GLM, Hermes,
   Gemini and others). The node owns the topic's I/O. send validates one message (from, to, thread, kind,
   text, sent_at, platform), builds the event the emit effect spools and publishes it on the topic, and
-  refuses an incomplete or unknown message with a typed result and nothing published. read returns the
+  refuses an incomplete or unknown message with a typed result and nothing published. A message carries a sender proof (its message_contract block): send signs with the key this host holds for the declared sender, and read returns a message only when the registered sender's key signed it, refusing a mismatch, an unknown sender and a malformed message with a typed reason. read returns the
   typed messages addressed to one recipient, optionally in one thread, bounded by a count and a since-time,
   oldest first. Both operations use the broker this node's contract overlay declares (event_bus, resolved
   by resolve_dialable_broker); a node with no declaration answers a typed broker_not_declared result.
@@ -62,6 +62,44 @@ caller_subscription:
   group_id_prefix: agent-message-read
   auto_offset_reset: earliest
   read_window_seconds: 5
+
+# The typed message the topic carries: one frozen model, its fields, the proof a sender attaches and the typed reasons a
+# reader refuses with. Kept equal to the model and the refusal enum by test_agent_message_sender_proof.py.
+message_contract:
+  model: omnimarket.models.agent_message.model_agent_message.ModelAgentMessage
+  message_schema_version: 1
+  event_id: "sha256 of message_id when the message has one (stable across retries; sent_at is not part of it), else the content hash of the legacy wire message"
+  fields:
+    - {wire: message_id, attribute: message_id, type: string, required: false, constraint: "1 to 200 chars, chosen once by the sender and kept by every retry", checked_by: "model (send, read)"}
+    - {wire: from, attribute: sender, type: string, required: true, constraint: "1 to 200 chars, an agent name registered in the sender registry", checked_by: "model (send, read); registry (read)"}
+    - {wire: to, attribute: to, type: string, required: true, constraint: "1 to 200 chars, an agent name or all", checked_by: "model (send, read)"}
+    - {wire: thread, attribute: thread, type: string, required: true, constraint: "1 to 200 chars", checked_by: "model (send, read)"}
+    - {wire: kind, attribute: kind, type: enum, required: true, constraint: "message | question | answer | notice", checked_by: "model (send, read)"}
+    - {wire: text, attribute: text, type: string, required: true, constraint: "1 to 8000 chars, stripped", checked_by: "model (send, read); oversize is its own reason"}
+    - {wire: sent_at, attribute: sent_at, type: timestamp, required: true, constraint: "carries a UTC offset (created_at of the message)", checked_by: "model (send, read)"}
+    - {wire: platform, attribute: platform, type: enum, required: true, constraint: "claude | codex | glm | hermes | gemini | other", checked_by: "model (send, read)"}
+    - {wire: message_schema_version, attribute: message_schema_version, type: integer, required: false, constraint: "1 or more; a signed message carries it, and a version the reader does not support is refused", checked_by: "model (send, read); verifier (read)"}
+    - {wire: sender_proof, attribute: sender_proof, type: object, required: false, constraint: "key_id and an Ed25519 signature over every typed field above; absent only in the legacy shape", checked_by: "signer (send); verifier (read)"}
+  # A field is optional only so the legacy wire shape stays readable until every reader is cut over; the settings store
+  # row named below turns the legacy shape off for every reader at once.
+  sender_proof:
+    verified_against: settings_store_registry
+    algorithm: ed25519
+    signed_fields: [message_id, from, to, thread, kind, text, sent_at, platform, message_schema_version]
+    producer_principal: "The broker principal of the producer is compared with the sender's registered principal when the transport exposes it. A Kafka record carries no producer principal to the consumer (ModelEventEnvelope.producer names a node and is attribution only), so the signature with the sender's registered key is the proof."
+  refusal_reasons:
+    - malformed_message
+    - oversize_body
+    - unknown_sender
+    - sender_mismatch
+    - missing_proof
+    - unsupported_schema_version
+  # Every value is a settings store row; nothing about a sender is spelled in code.
+  settings_store:
+    senders_folder: /agent-message/senders
+    keys_folder: /agent-message/keys
+    policy_folder: /agent-message/policy
+    accept_legacy_name: accept_legacy
 
 # The runtime principal holds the grants a sender and a reader need on the topic. Per-host agent logins are declared by the
 # broker permission piece of the agent message bus, not here.
