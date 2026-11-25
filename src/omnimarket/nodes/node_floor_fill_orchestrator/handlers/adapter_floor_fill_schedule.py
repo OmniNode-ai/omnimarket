@@ -22,7 +22,7 @@ from pathlib import Path
 from omnimarket.handlers.rules_unit_roots import refuse_worktree_roots
 from omnimarket.models.overlay_keys.model_overlay_documents import ModelLabHostRow
 from omnimarket.nodes.node_floor_fill_orchestrator.handlers.adapter_floor_fill_unit_environment import (
-    AdapterFloorFillUnitEnvironment,
+    FloorFillUnitEnvironment,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.models import (
     FloorFillConfigError,
@@ -158,7 +158,7 @@ def render_systemd(
     }
     if live is not None:
         unit_variables.update(
-            AdapterFloorFillUnitEnvironment()
+            FloorFillUnitEnvironment()
             .handle(
                 ModelFloorFillUnitEnvironmentRequest(
                     schedule=schedule,

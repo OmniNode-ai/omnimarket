@@ -25,7 +25,7 @@ def _refuse(key: str, why: str) -> FloorFillConfigError:
     return FloorFillConfigError(f"{key}: {why}", (key,))
 
 
-class AdapterFloorFillUnitEnvironment:
+class FloorFillUnitEnvironment:
     """Build the live unit's three variables, or refuse naming the one that is not declared."""
 
     def handle(
@@ -71,4 +71,4 @@ class AdapterFloorFillUnitEnvironment:
         )
 
 
-__all__: list[str] = ["AdapterFloorFillUnitEnvironment"]
+__all__: list[str] = ["FloorFillUnitEnvironment"]
