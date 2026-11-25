@@ -7,9 +7,8 @@ used to print the start URL with its session token and the tenant id. The other
 dashboard tests drive ``dashboard status`` and ``start``, so nothing else read this
 output.
 
-Not covered: AC1's other clause, that the bare loopback address is never presented as
-the thing to open. The serve path still prints that address and nothing here asserts
-on it either way (the owner has not ruled).
+AC1's other clause, that the bare loopback address is never presented as the thing to
+open, is covered for this path in test_dashboard_open_instruction.py.
 
 Failure modes covered:
 - the serve path prints the request's session token, in a start URL or otherwise

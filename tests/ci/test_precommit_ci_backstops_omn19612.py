@@ -31,6 +31,7 @@ from scripts.ci.ci_summary_gate import (
     SOFT_ALLOWLIST,
     STRICT_GATE_JOBS,
 )
+from tests.ci.lint_jobs import job_with_lint_steps
 
 pytestmark = [pytest.mark.unit]
 
@@ -150,7 +151,7 @@ def _job(workflow_path: Path, job_id: str) -> dict:
     workflow = _load_yaml(workflow_path)
     jobs = workflow["jobs"]
     assert job_id in jobs, f"{workflow_path.name} has no `{job_id}` job"
-    return jobs[job_id]
+    return job_with_lint_steps(workflow, job_id)
 
 
 def _commands(workflow_path: Path, job_id: str) -> str:
