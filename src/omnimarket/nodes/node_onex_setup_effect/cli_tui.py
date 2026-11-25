@@ -1491,7 +1491,7 @@ class DelegationScreen(_TabbedScreen[None]):
     #dswitches { display: none; height: 0; }
     .hook { height: 1; text-wrap: nowrap; text-overflow: ellipsis; }
     #dorder-title { color: $text-muted; height: 1; margin-top: 1; }
-    #selected { height: 1fr; }
+    #selected { height: 1fr; border: round $border; padding: 0 1; }
     #selected DataTable { height: auto; max-height: 100%; }
     #claude { height: auto; }
     #dfoot { height: auto; }
@@ -1778,7 +1778,7 @@ class ModelPickScreen(_TabbedScreen[None]):
     #pick { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
     #pick .summary { display: none; }
     #pnow { height: 1; text-style: bold; }
-    #models { height: 1fr; }
+    #models { height: 1fr; border: round $border; padding: 0 1; margin-top: 1; }
     #pnote { color: $text-muted; height: auto; }
     #pkeys { height: 1; }
     #auto { width: auto; height: 1; min-width: 8; border: none; margin: 0; }
@@ -2003,6 +2003,9 @@ class DashboardScreen(_TabbedScreen[None]):
 
         async def go() -> None:
             try:
+                last = app.dashboard_last()
+                if last is not None:  # shown at once, then read again
+                    self._show_state(last)
                 self._show_state(await app.dashboard_state())
             except NoMatches:  # the user left this tab while it was read
                 return
@@ -3068,7 +3071,7 @@ class MeteringScreen(_TabbedScreen[None]):
     .mcard.-tokens { border: round $route-cheap; }
     .mcard.-cost { border: round $accent; }
     .mcard.-saved { border: round $success; }
-    #mmodels { height: 1fr; border: round $border; padding: 0 1; }
+    #mmodels { height: auto; max-height: 100%; border: round $border; padding: 0 1; }
     #mnote { height: 1; margin-top: 1; }
     #mkeys { height: 1; dock: bottom; }
     """
@@ -3363,6 +3366,8 @@ class OnexTui(App[int]):
             c for c in command_tree(root) if not tui_design().replaces(c.path)
         )
         self._runner: ProtocolTuiRunner = runner or HandlerOnexCommand()
+        #: The app made its own runner, the real CLI, which is slow to start.
+        self._own_runner = runner is None
         self._list_models = list_models
         self._load_status = load_status or globals()["load_status"]
         last_known = tui_design().last_known or {}
@@ -3390,6 +3395,10 @@ class OnexTui(App[int]):
         #: the start-up read can be one no tab has shown.
         self._read_at = 0.0
         self._shown = False
+        #: The dashboard state read started with the app (the real CLI takes
+        #: about 2.8 s to answer, measured 2026-11-25), and the last one read.
+        self._dashboard_warm: asyncio.Task[dict[str, object]] | None = None
+        self._dashboard_last: dict[str, object] | None = None
         #: Whether a status read has landed this session. The OMN-26620 AC7
         #: seed shows in the status bar at once, but the /delegation tab still
         #: waits for a read: a state nobody has read is never drawn as OFF
@@ -3445,6 +3454,12 @@ class OnexTui(App[int]):
         self._warming = asyncio.create_task(self.load_selection())
         # A failed start-up read is read again by the first tab; never unretrieved.
         self._warming.add_done_callback(lambda t: t.cancelled() or t.exception())
+        if self._own_runner:
+            # Only the real CLI is slow to start; a given runner is read on demand.
+            self._dashboard_warm = asyncio.create_task(self._read_dashboard())
+            self._dashboard_warm.add_done_callback(
+                lambda t: t.cancelled() or t.exception()
+            )
 
     async def _refresh_status(self) -> None:
         try:
@@ -4319,7 +4334,23 @@ class OnexTui(App[int]):
         return claude_code_state(_last_json_object(out))
 
     async def dashboard_state(self) -> dict[str, object]:
-        """`onex dashboard status --json`: the dashboard's real state."""
+        """`onex dashboard status --json`: the dashboard's real state. The first
+        call takes the read started with the app; later ones read again."""
+        warm, self._dashboard_warm = self._dashboard_warm, None
+        state: dict[str, object] | None = None
+        if warm is not None:
+            with contextlib.suppress(Exception):
+                state = await warm
+        if state is None:
+            state = await self._read_dashboard()
+        self._dashboard_last = state
+        return state
+
+    def dashboard_last(self) -> dict[str, object] | None:
+        """The dashboard state as last read, or ``None`` before any read."""
+        return self._dashboard_last
+
+    async def _read_dashboard(self) -> dict[str, object]:
         _, out, _ = await self._runner.capture(tuple(tui_design().dashboard.status))
         return _last_json_object(out) or {}
 

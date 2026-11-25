@@ -130,7 +130,9 @@ prompt_placeholder: Ask onex to delegate a task, or type / for commands
 help: >-
   Type a task and press Enter to delegate it. /config sets up providers, keys
   and models, /model picks the model tried first, /delegation turns Claude Code
-  delegation on or off, /clear empties this pane. Type / to list the
+  delegation on or off, /dashboard starts the local dashboard, /doctor checks
+  this install, /metering shows usage and cost, /theme picks a colour theme,
+  /clear empties this pane. Type / to list the
   commands; keep typing to filter, Tab to complete, Enter to run, Esc to close.
   Up and Down recall earlier entries.
 
