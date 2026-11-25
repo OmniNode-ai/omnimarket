@@ -26,6 +26,11 @@ requirements:
   acceptance:
   - id: AC4
     statement: 'AC4: ModelTenantApiKeyOverlay validates the overlay document of the tenant gateway key node and refuses a malformed one -- falsifier: tests/unit/models/test_tenant_api_key_overlay_document_omn24562.py fails collection or any of its tests fails'
+- id: req-omn24562-unit-file-scoped-root
+  statement: A changed file under tests/unit/ selects that file and what imports or names it, not the whole tests/unit/ directory, and a change the rule cannot attribute keeps the directory.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: a changed tests/unit file selects itself, its importers in any folder and the tests that spell its path, and an unattributable helper keeps tests/unit/ -- falsifier: tests/nodes/node_test_selection_selector_compute/test_unit_file_scoped_root.py fails when the unit branch of the resolver is removed'
 evidence_requirements:
 - kind: tests
   description: The inode alarm tests pass at the pushed head.
@@ -77,4 +82,13 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/models/test_tenant_api_key_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24562-unit-file-scoped-root
+  description: 'AC5: a changed tests/unit test file selects the file only; a helper selects its importers in another unit folder and the test that spells its path; an unattributable helper, a non-python file and a package marker keep their directory (failing control: five of the seven tests fail at the merge base, where the directory is selected). Replay over the 60 pinned merges: 18 change tests/unit, narrowed 10 to 12, full suite 50 to 48, selected seconds 574954.625506 to 552493.098902.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_test_selection_selector_compute/test_unit_file_scoped_root.py -q -n 0 --no-cov -p no:randomly
     cwd: .

@@ -58,6 +58,7 @@ from omnimarket.nodes.node_test_selection_selector_compute.protocols.protocol_so
 _DEFAULT_SOURCE = SourceTextFile()
 SRC_PREFIX = "src/omnimarket/"
 TEST_PREFIX = "tests/"
+UNIT_PREFIX = "tests/unit/"
 
 PACKAGE = "omnimarket"
 NODE_PREFIX = "node_"
@@ -550,6 +551,49 @@ def _root_level_selection(
     }
 
 
+def _unit_file_selection(
+    paths: list[str],
+    config: ModelAdjacencyMap,
+    repo_root: Path,
+    source: ProtocolSourceText,
+) -> set[str]:
+    """Test paths a change to ``tests/unit/**/*.py`` files can affect (file-scoped root).
+
+    A changed test file selects itself and the tests that import it, transitively, anywhere in the
+    tree (the root-level rule). A changed non-test file also selects every test whose text spells its
+    path, which finds a test that reads a helper by path and imports nothing. A package marker or a
+    conftest runs for every test beneath its directory, so it selects that directory. A deleted file
+    follows the root-level removed rule. A changed helper that nothing imports and no test spells
+    cannot be attributed, so it keeps the whole ``tests/unit/`` directory it used to select.
+    """
+    selected: set[str] = set()
+    attributable: list[str] = []
+    for path in paths:
+        directory, name = path.rsplit("/", 1)
+        if name in ("__init__.py", "conftest.py"):
+            selected.add(f"{directory}/")
+        else:
+            attributable.append(path)
+    if not attributable:
+        return selected
+    selected.update(_root_level_selection(attributable, config, repo_root, source))
+    graph = _import_graph(repo_root, frozenset(config.node_scoped_modules), source)
+    for path in attributable:
+        if not _is_test_file(path) and (repo_root / path).is_file():
+            spelled = {
+                known
+                for known in graph.paths.values()
+                if known != path and path in source.read_text(repo_root / known)
+            }
+            selected.update(spelled)
+            owned = spelled or any(
+                dependent for dependent in graph.dependents.get(_dotted(path), ())
+            )
+            if not owned:
+                selected.add(UNIT_PREFIX)
+    return selected
+
+
 def _resolve(
     changed_files: list[str],
     config: ModelAdjacencyMap,
@@ -561,6 +605,7 @@ def _resolve(
     node_scoped = frozenset(config.node_scoped_modules)
     scoped_test_modules: set[str] = set()
     root_level: list[str] = []
+    unit_files: list[str] = []
 
     reader_files = [p for p in changed_files if config.is_reader_data_file(p)]
     # a fixture under tests/fixtures/ has no tests beside it to select as a directory; its
@@ -585,6 +630,10 @@ def _resolve(
                 # tests/, so it is selected as a file with its dependents below
                 # rather than as a tests/<file>.py/ pseudo-directory (OMN-15277).
                 root_level.append(path)
+            elif path.startswith(UNIT_PREFIX) and path.endswith(".py"):
+                # A changed file under tests/unit/ selects itself and what imports or
+                # names it, never the whole tests/unit/ directory (file-scoped root).
+                unit_files.append(path)
             elif (
                 len(parts) >= 4
                 and parts[1] in node_scoped
@@ -598,6 +647,9 @@ def _resolve(
 
     if root_level:
         selected.update(_root_level_selection(root_level, config, repo_root, source))
+
+    if unit_files:
+        selected.update(_unit_file_selection(unit_files, config, repo_root, source))
 
     expanded: set[str] = set(direct_modules)
     for module in direct_modules:
