@@ -111,6 +111,16 @@ class InMemoryWorkflowStore:
         envelope: ModelWorkflowCommandEnvelope,
     ) -> ModelWorkflowAdmission:
         self._guard("admit")
+        for (tid, _), found in self._rows.items():
+            if (
+                tid == caller.tenant_id
+                and found.correlation_id == envelope.correlation_id
+            ):
+                return ModelWorkflowAdmission(
+                    admitted=False,
+                    quota=ModelWorkflowQuotaStatus(status="ok"),
+                    existing=found,
+                )
         used = self._count_month(caller.tenant_id)
         limit = self._monthly_limit
         status: Literal["ok", "soft_limit", "hard_limit_hit"] = "ok"
