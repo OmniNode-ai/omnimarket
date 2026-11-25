@@ -37,7 +37,7 @@ descriptor:
 runtime_dispatch:
   external_trigger: A person or a lane runs one operation from the command line, in process, on a host whose settings store identity can write.
   on_demand:
-    command: uv run python -m omnimarket.nodes.node_agent_sender_registry_effect register --sender <name> --principal <login> --key-id <id>
+    command: uv run python -m omnimarket.nodes.node_agent_sender_registry_effect.runtime_agent_sender_registry register --sender <name> --principal <login> --key-id <id>
     owner: OmniNode Platform Team
 
 event_bus:

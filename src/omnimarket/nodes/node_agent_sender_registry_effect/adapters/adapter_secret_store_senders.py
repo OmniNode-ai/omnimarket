@@ -26,7 +26,7 @@ from omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_store imp
 )
 
 
-class SecretStoreRegistryAdapter:
+class SecretStoreSenderFolders:
     """Read, create-only put, delete and list one folder of the settings store."""
 
     def __init__(
@@ -109,4 +109,4 @@ class SecretStoreRegistryAdapter:
         return result.keys
 
 
-__all__: list[str] = ["SecretStoreRegistryAdapter"]
+__all__: list[str] = ["SecretStoreSenderFolders"]

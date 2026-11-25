@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Run one registry operation: ``python -m omnimarket.nodes.node_agent_sender_registry_effect register --sender N --principal P --key-id K``.
+"""Run one registry operation: ``python -m omnimarket.nodes.node_agent_sender_registry_effect.runtime_agent_sender_registry register --sender N --principal P --key-id K``.
 
 Prints the typed result as JSON (the public key, never the seed) and exits 0 only when the operation was taken.
 """
@@ -18,8 +18,8 @@ from omnimarket.models.agent_message.model_agent_sender_registry_request import 
 from omnimarket.nodes.node_agent_message_effect.handlers.handler_agent_message import (
     load_contract,
 )
-from omnimarket.nodes.node_agent_sender_registry_effect.adapters.adapter_secret_store_registry import (
-    SecretStoreRegistryAdapter,
+from omnimarket.nodes.node_agent_sender_registry_effect.adapters.adapter_secret_store_senders import (
+    SecretStoreSenderFolders,
 )
 from omnimarket.nodes.node_agent_sender_registry_effect.handlers.handler_agent_sender_registry import (
     HandlerAgentSenderRegistry,
@@ -46,7 +46,7 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"invalid_request: {exc}\n")
         return 2
     layout = load_contract()["message_contract"]["settings_store"]
-    handler = HandlerAgentSenderRegistry(SecretStoreRegistryAdapter(), layout)
+    handler = HandlerAgentSenderRegistry(SecretStoreSenderFolders(), layout)
     result = asyncio.run(handler.handle(request))
     sys.stdout.write(result.model_dump_json(exclude_none=True) + "\n")
     return 0 if result.ok else 1

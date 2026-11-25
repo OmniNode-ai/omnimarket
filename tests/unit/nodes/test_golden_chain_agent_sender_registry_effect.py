@@ -28,8 +28,8 @@ from omnimarket.nodes.node_agent_message_effect.adapters.adapter_settings_store_
 from omnimarket.nodes.node_agent_message_effect.handlers.handler_agent_message import (
     load_contract,
 )
-from omnimarket.nodes.node_agent_sender_registry_effect.adapters.adapter_secret_store_registry import (
-    SecretStoreRegistryAdapter,
+from omnimarket.nodes.node_agent_sender_registry_effect.adapters.adapter_secret_store_senders import (
+    SecretStoreSenderFolders,
 )
 from omnimarket.nodes.node_agent_sender_registry_effect.handlers.handler_agent_sender_registry import (
     HandlerAgentSenderRegistry,
@@ -84,7 +84,7 @@ async def test_register_sign_verify_forge_revoke_through_the_secret_store_node()
     None
 ):
     backing = _DictStore()
-    adapter = SecretStoreRegistryAdapter(
+    adapter = SecretStoreSenderFolders(
         handler=HandlerSecretStore(
             store=backing, overlay=ModelSecretStoreOverlay(provider="local")
         )

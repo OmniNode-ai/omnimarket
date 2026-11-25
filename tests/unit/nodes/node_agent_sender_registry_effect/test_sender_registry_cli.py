@@ -8,7 +8,9 @@ import json
 
 import pytest
 
-from omnimarket.nodes.node_agent_sender_registry_effect import __main__ as cli
+from omnimarket.nodes.node_agent_sender_registry_effect import (
+    runtime_agent_sender_registry as cli,
+)
 from tests.unit.nodes.node_agent_sender_registry_effect.test_sender_registry import (
     MemoryStore,
 )
@@ -17,7 +19,7 @@ from tests.unit.nodes.node_agent_sender_registry_effect.test_sender_registry imp
 @pytest.fixture
 def store(monkeypatch: pytest.MonkeyPatch) -> MemoryStore:
     memory = MemoryStore()
-    monkeypatch.setattr(cli, "SecretStoreRegistryAdapter", lambda: memory)
+    monkeypatch.setattr(cli, "SecretStoreSenderFolders", lambda: memory)
     return memory
 
 
