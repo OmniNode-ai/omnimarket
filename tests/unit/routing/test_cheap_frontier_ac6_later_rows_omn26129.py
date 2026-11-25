@@ -5,7 +5,7 @@
 Two of the three 2026-11-20 cheap_frontier candidates were never measured: OpenRouter answered
 429 when the key was registered for them, so no task ran. A dated later smoke records what
 today's attempts honestly gave. For each of the two, a receipt dated after 2026-11-20 that stores
-all ten task prompts must hold either
+the same ten task prompts as 2026-11-20, each with its text, must hold either
 
 * a measured row: the model, a whole-number accepted count within its ten tasks, an outcome in
   plain words, and a positive p50_seconds only when something was accepted (a zero count carries
@@ -77,14 +77,43 @@ def _unmeasured_entry_ok(entry: dict[str, Any]) -> bool:
     )
 
 
+def _stored_prompts(receipt: dict[str, Any]) -> list[Any]:
+    return list(receipt.get("task_prompts") or [])
+
+
+def _the_first_days_ten(receipt: dict[str, Any], first_day: list[Any]) -> bool:
+    """The receipt stores the ten task prompts of the first day, each with its text."""
+    prompts = _stored_prompts(receipt)
+    return (
+        len(prompts) == 10
+        and prompts == first_day
+        and all(
+            isinstance(entry, dict)
+            and isinstance(entry.get("prompt"), str)
+            and entry["prompt"].strip()
+            for entry in prompts
+        )
+    )
+
+
 def _later_row_problems(receipts: list[dict[str, Any]]) -> list[str]:
     """One problem per candidate with no valid dated later row after the first day."""
+    first_day = next(
+        (
+            _stored_prompts(receipt)
+            for receipt in receipts
+            if receipt.get("measured_on") == FIRST_DAY
+        ),
+        [],
+    )
     problems: list[str] = []
     for model in UNMEASURED_ON_FIRST_DAY:
         found = False
         for receipt in receipts:
-            prompts = len(receipt.get("task_prompts") or [])
-            if str(receipt.get("measured_on") or "") <= FIRST_DAY or prompts != 10:
+            prompts = len(_stored_prompts(receipt))
+            if str(receipt.get("measured_on") or "") <= FIRST_DAY:
+                continue
+            if not _the_first_days_ten(receipt, first_day):
                 continue
             for row in receipt.get("smokes") or []:
                 found = found or (
@@ -146,6 +175,11 @@ def test_a_zero_accepted_row_without_a_p50_is_a_valid_measured_row() -> None:
     [
         ("dated on the first day", lambda r: r.update(measured_on=FIRST_DAY)),
         ("prompts not stored", lambda r: r.update(task_prompts=[])),
+        ("a stored prompt emptied", lambda r: r["task_prompts"][0].update(prompt="")),
+        (
+            "a stored prompt not one of the first day's ten",
+            lambda r: r["task_prompts"][3].update(prompt="Reply with the word yes."),
+        ),
         ("accepted not a number", lambda r: r["smokes"][0].update(accepted=None)),
         ("accepted above the tasks", lambda r: r["smokes"][0].update(accepted=11)),
         ("fewer tasks than prompts", lambda r: r["smokes"][0].update(tasks=9)),
