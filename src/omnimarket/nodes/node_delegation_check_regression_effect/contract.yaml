@@ -23,14 +23,15 @@ description: >
   green, or was red already, raises nothing. A prod target is refused.
 
 handler:
-  module: omnimarket.nodes.node_delegation_check_regression_effect.handlers.handler_setting_set_trigger
-  class: HandlerCheckRegressionOnSettingSet
-  input_model: omnimarket.nodes.node_overlay_setting_set_effect.models.model_overlay_setting_audit.ModelOverlaySettingAudit
+  module: omnimarket.nodes.node_delegation_check_regression_effect.handlers.handler_check_regression
+  class: HandlerCheckRegression
+  input_model: omnimarket.nodes.node_delegation_check_regression_effect.models.model_check_regression.ModelCheckRegressionRequest
 
 # Trigger: a settings-store change reaches the bus as one audit row per set on the topic below, published by
 # node_overlay_setting_set_effect; HandlerCheckRegressionOnSettingSet turns the row into one settings_store change and runs
 # HandlerCheckRegression. The handler takes the settings, the check runner, the check history, the alarm delivery and a clock
-# as constructor parameters, which the deployment supplies; the replay command (runtime_check_regression) runs it from a
+# as constructor parameters, which the deployment supplies (every one is optional on the trigger class, which the runtime builds from
+# the handler_routing entry below; a runner or history left out raises on use); the replay command (runtime_check_regression) runs it from a
 # recorded incident. Each run's result goes out on the completed topic; the alarm delivery owns the ledger's and the channel's.
 handler_routing:
   routing_strategy: payload_type_match
@@ -50,6 +51,9 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.delegation-check-regression-completed.v1
 terminal_event: onex.evt.omnimarket.delegation-check-regression-completed.v1
+# No node contract subscribes to the completed topic; each result leaves the ONEX node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-check-regression-completed.v1
 broker_acl_grants:
   - principal: "${ONEX_ACL_DEV_RUNTIME_EFFECTS_PRINCIPAL}"
     grants:

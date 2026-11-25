@@ -78,3 +78,11 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26652 --kind test --timeout 3000 -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_check_regression_effect/test_setting_set_trigger.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26652-trigger-wires-and-closes-the-graph
+  description: 'The trigger class the contract names builds with no argument through the runtime wiring (nothing quarantined), a handler left without a check runner or history raises on use instead of reading every check unread, the completed topic is declared as leaving the node graph, and the contract topic graph gate closes with no defect.'
+  source: manual
+  binds_ac: []
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_regression_effect/test_setting_set_trigger.py -q --no-cov -n 0 -p no:randomly -k 'real_handler or no_runner or completed_topic'
+    cwd: .

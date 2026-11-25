@@ -253,3 +253,49 @@ async def test_the_audit_row_on_the_bus_fires_the_real_contract_and_raises_the_a
     assert {a.check_id for a in seen[0].alarms} >= {"C14", "C29"}
     assert delivery.requests, "no alarm reached the delivery"
     route_failure.assert_not_awaited()
+
+
+async def test_the_real_handler_class_wires_and_quarantines_nothing() -> None:
+    """The runtime builds the contract's handler from its class, so the class must build with no argument (OMN-26652)."""
+    package = importlib.import_module(
+        "omnimarket.nodes.node_delegation_check_regression_effect"
+    )
+    assert package.__file__ is not None
+    manifest = discover_contracts_from_paths(
+        [Path(package.__file__).parent / "contract.yaml"]
+    )
+    assert not manifest.errors, manifest.errors
+    bus = EventBusInmemory(environment="test", group="omn26652-real-class")
+    await bus.start()
+    try:
+        report = await handler_wiring.wire_from_manifest(
+            manifest, MessageDispatchEngine(), event_bus=bus, environment="local"
+        )
+    finally:
+        await bus.close()
+    assert report.total_wired == 1, report.model_dump()
+    assert not [
+        r.quarantined_handlers for r in report.results if r.quarantined_handlers
+    ]
+
+
+def test_a_handler_built_with_no_runner_fails_loudly_rather_than_reading_unread() -> (
+    None
+):
+    handler = HandlerCheckRegressionOnSettingSet()
+    with pytest.raises(RuntimeError, match="is configured"):
+        handler.handle(_audit())
+
+
+def test_the_completed_topic_is_declared_as_leaving_the_node_graph() -> None:
+    """contract-topic-graph refuses a published topic no contract consumes unless the contract declares who does (OMN-26652)."""
+    from omnimarket.validators.contract_topic_graph import parse_contract
+
+    node = parse_contract(
+        NODES / "node_delegation_check_regression_effect" / "contract.yaml",
+        "omnimarket",
+    )
+    assert node is not None
+    completed = "onex.evt.omnimarket.delegation-check-regression-completed.v1"
+    assert completed in node.publish_topics
+    assert completed in node.externally_consumed
