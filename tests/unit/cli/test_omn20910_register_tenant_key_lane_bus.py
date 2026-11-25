@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import socket
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
@@ -75,7 +76,7 @@ def lane_opens(
         encoding="utf-8",
     )
     monkeypatch.setenv("ONEX_LAB_RUN_HOSTS", str(table))
-    monkeypatch.setattr(cli_secret.socket, "gethostname", lambda: "unlisted.local")
+    monkeypatch.setattr(socket, "gethostname", lambda: "unlisted.local")
     opened: list[str | None] = []
     fake = FakeBus()
 

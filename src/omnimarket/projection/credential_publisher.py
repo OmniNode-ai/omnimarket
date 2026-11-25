@@ -13,12 +13,10 @@ value->ref exchange the secret VALUE ever crosses --
 at the effect boundary, then publishes a **credential-registered** event
 carrying only ``{tenant_id, provider, name, api_key_ref, metadata}`` (no
 value, ever) to the canonical topic. Revocation is the mirror shape: it
-deletes the Infisical store entry FIRST (via
-``ProtocolSecretStore.delete_secret``), then publishes a
-**credential-revoked** event. A failed delete raises
-``CredentialStoreDeleteRejectedError`` with no event and no ``revoked_at``
-write -- the plaintext key must not remain in custody after the customer
-requests removal (OMN-18086).
+publishes the **credential-revoked** event FIRST, then deletes the
+Infisical store entry (via ``ProtocolSecretStore.delete_secret``) once the
+broker has acknowledged. A refused publish deletes nothing; a failed delete
+raises ``CredentialStoreDeleteRejectedError`` and the revoke is retried.
 
 Nothing in this module writes to a database, and nothing beyond the single
 ``set_secret`` call ever holds the plaintext key. The downstream
@@ -731,12 +729,13 @@ async def revoke_inference_credential(
     secret_store: ProtocolSecretStore | None = None,
     event_bus: ProtocolCredentialEventBus | None = None,
 ) -> ModelInferenceCredentialRevokeResponse:
-    """Delete the Infisical store entry, then publish credential-revoked.
+    """Publish credential-revoked, then delete the Infisical store entry.
 
-    Sequencing (OMN-18086 ruling): delete first, publish second. A failed
-    delete raises ``CredentialStoreDeleteRejectedError`` and publishes
-    nothing -- the key may remain in Infisical custody and no revoked event
-    is emitted until the delete succeeds.
+    Sequencing: publish first, delete once the broker has acknowledged. A
+    refused publish raises and deletes nothing, so the row is never left
+    unrevoked with its secret gone. A failed delete after the publish raises
+    ``CredentialStoreDeleteRejectedError``; the revoke is idempotent, so a
+    retry republishes and deletes again.
 
     Store ownership mirrors ``register_inference_credential``: a store this
     function constructs is closed in a ``finally``; an injected store is
@@ -754,49 +753,55 @@ async def revoke_inference_credential(
         else _build_secret_store(allow_delete=True)
     )
     try:
-        deleted = await store.delete_secret(api_key_ref)
-        if not deleted:
-            raise CredentialStoreDeleteRejectedError(
-                "BYOK credential revoke did not remove the key: the managed "
-                f"secret store declined the delete for ref {api_key_ref!r} "
-                f"(tenant {tenant_id!r}) by returning False. No "
-                "credential-revoked event was published."
+        event = ModelCredentialRevokedEvent(
+            tenant_id=tenant_id, api_key_ref=api_key_ref
+        )
+        envelope: ModelEventEnvelope[
+            ModelCredentialRegisteredEvent | ModelCredentialRevokedEvent
+        ] = ModelEventEnvelope(
+            payload=event,
+            envelope_timestamp=datetime.now(UTC),
+            source_tool=_SOURCE_TOOL,
+            event_type=CREDENTIAL_REVOKED_TOPIC_V1,
+        )
+
+        owns_bus = event_bus is None
+        bus = event_bus or _build_event_bus()
+        if owns_bus:
+            await bus.start()
+        try:
+            await bus.publish_envelope(
+                envelope,
+                CREDENTIAL_REVOKED_TOPIC_V1,
+                key=api_key_ref.encode("utf-8"),
             )
-    except CredentialStoreDeleteRejectedError:
-        raise
-    except Exception as exc:
-        raise CredentialStoreDeleteRejectedError(
-            "BYOK credential revoke could not delete the managed secret store "
-            f"entry for ref {api_key_ref!r} (tenant {tenant_id!r}). "
-            "No credential-revoked event was published. Underlying error type: "
-            f"{type(exc).__name__}."
-        ) from exc
+        finally:
+            if owns_bus:
+                await bus.close()
+
+        # The broker has acknowledged the revoke: only now is the stored value
+        # removed. A refused publish leaves the secret in place, so the
+        # revoke can be retried against a row that is still whole.
+        try:
+            deleted = await store.delete_secret(api_key_ref)
+            if not deleted:
+                raise CredentialStoreDeleteRejectedError(
+                    "BYOK credential revoke published credential-revoked but "
+                    "did not remove the key: the managed secret store declined "
+                    f"the delete for ref {api_key_ref!r} (tenant "
+                    f"{tenant_id!r}) by returning False. Retry the revoke."
+                )
+        except CredentialStoreDeleteRejectedError:
+            raise
+        except Exception as exc:
+            raise CredentialStoreDeleteRejectedError(
+                "BYOK credential revoke published credential-revoked but could "
+                "not delete the managed secret store entry for ref "
+                f"{api_key_ref!r} (tenant {tenant_id!r}). Retry the revoke. "
+                f"Underlying error type: {type(exc).__name__}."
+            ) from exc
     finally:
         if owns_store:
             await store.close()
-
-    event = ModelCredentialRevokedEvent(tenant_id=tenant_id, api_key_ref=api_key_ref)
-    envelope: ModelEventEnvelope[
-        ModelCredentialRegisteredEvent | ModelCredentialRevokedEvent
-    ] = ModelEventEnvelope(
-        payload=event,
-        envelope_timestamp=datetime.now(UTC),
-        source_tool=_SOURCE_TOOL,
-        event_type=CREDENTIAL_REVOKED_TOPIC_V1,
-    )
-
-    owns_bus = event_bus is None
-    bus = event_bus or _build_event_bus()
-    if owns_bus:
-        await bus.start()
-    try:
-        await bus.publish_envelope(
-            envelope,
-            CREDENTIAL_REVOKED_TOPIC_V1,
-            key=api_key_ref.encode("utf-8"),
-        )
-    finally:
-        if owns_bus:
-            await bus.close()
 
     return ModelInferenceCredentialRevokeResponse(api_key_ref=api_key_ref)

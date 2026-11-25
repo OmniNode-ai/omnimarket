@@ -35,7 +35,6 @@ import contextlib
 import inspect
 import json
 import os
-import socket
 import sys
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, date, datetime
@@ -129,6 +128,7 @@ from omnimarket.projection.credential_publisher import (
     ModelInferenceCredentialCreateRequest,
     ProtocolCredentialEventBus,
     register_inference_credential,
+    revoke_inference_credential,
 )
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 
@@ -364,9 +364,6 @@ async def _register_on_declared_bus[T](
 #: the lab placement read). Without it this machine is off the lab and a key
 #: is registered with no host binding.
 _LAB_HOSTS_ENV = "ONEX_LAB_RUN_HOSTS"
-#: A remote lane declares its host because its namespace may not carry the
-#: host's own name (the same two variables ``onex delegate`` reads).
-_LANE_HOST_ENVS = ("ONEX_LANE_HOST", "ONEX_REMOTE_LANE_HOST")
 
 
 def _lab_host_table() -> Path | None:
@@ -396,12 +393,11 @@ def _lab_host_rows(table: Path) -> list[tuple[str, str]]:
 def _resolve_bound_host(declared: str | None) -> str | None:
     """The lab host a registered key is bound to (OMN-21012), or ``None``.
 
-    Operator ruling 2026-10-11T17:58:45Z: each Claude account's key is bound to
-    the machine the account lives on. ``--host`` names that machine and must be
-    a row of the lab host table. Without it, the registering machine's own row
-    is used: the declared lane host first, else the short hostname matched to a
-    row's name or target. Off the lab (no table), or on a machine no row names,
-    the key is unbound and usable from any host, as before.
+    Operator ruling 2026-10-11T17:58:45Z: a Claude account's key may be bound
+    to the machine the account lives on. ``--host`` names that machine and must
+    be a row of the lab host table. Without it the key is unbound: the routing
+    pool skips a host-bound key, so binding to the registering machine by
+    default routed a customer's key to nothing. Binding is always explicit.
     """
     table = _lab_host_table()
     if declared is not None:
@@ -418,22 +414,7 @@ def _resolve_bound_host(declared: str | None) -> str | None:
                 f"({', '.join(names)}); nothing was stored."
             )
         return host
-    if table is None:
-        return None
-    rows = _lab_host_rows(table)
-    row_names = {name for name, _target in rows}
-    for env in _LANE_HOST_ENVS:
-        lane_host = os.environ.get(env, "").strip()
-        if lane_host:
-            if lane_host not in row_names:
-                raise click.ClickException(
-                    f"{env}={lane_host!r} is not a host in the lab host table; "
-                    "pass --host or fix the declaration. Nothing was stored."
-                )
-            return lane_host
-    hostname = socket.gethostname().split(".")[0]
-    matches = [name for name, target in rows if hostname in (name, target)]
-    return matches[0] if len(matches) == 1 else None
+    return None
 
 
 @secret_group.command("register-tenant-key")
@@ -473,8 +454,8 @@ def _resolve_bound_host(declared: str | None) -> str | None:
     help=(
         "The lab host whose Claude account owns this key (a lab host table row, "
         "a name from that table). Work sent from that host is the only work that spends it. "
-        "Defaults to this machine's row in the ONEX_LAB_RUN_HOSTS table; off "
-        "the lab the key is unbound."
+        "Omit it and the key is unbound and usable from any host; the routing "
+        "pool skips a host-bound key, so bind only a key that must stay on one machine."
     ),
 )
 @click.option(
@@ -578,6 +559,51 @@ def register_tenant_key(
     if not central:
         _fold_registered_tenant_key(response, tenant)
     click.echo(json.dumps(shown))
+
+
+@secret_group.command("revoke-tenant-key")
+@click.argument("api_key_ref")
+@click.option("--tenant", required=True, help="Tenant that owns this provider key.")
+@click.option(
+    "--host",
+    default=None,
+    help="The lab host whose bus lane carries the revoke (a lab host table row).",
+)
+@click.option(
+    "--store",
+    "store_choice",
+    type=click.Choice(["local", "central"]),
+    default="local",
+    show_default=True,
+    help="Where the value is held: this machine's store, or the shared tenant folder.",
+)
+def revoke_tenant_key(
+    api_key_ref: str, tenant: str, host: str | None, store_choice: str
+) -> None:
+    """Revoke a tenant's provider key: publish credential-revoked, then delete it."""
+    if not tenant.strip():
+        raise click.ClickException("--tenant must not be empty; nothing was revoked.")
+    lane_host = _resolve_bound_host(host)
+    secret_store = (
+        _CentralTenantKeyStore(_central_secret_handler())
+        if store_choice == "central"
+        else _tenant_key_store()
+    )
+    try:
+        response = asyncio.run(
+            _register_on_declared_bus(
+                lambda event_bus: revoke_inference_credential(
+                    api_key_ref,
+                    tenant_id=tenant,
+                    secret_store=secret_store,
+                    event_bus=event_bus,
+                ),
+                lane=_lab_host_bus_lane(lane_host),
+            )
+        )
+    except CredentialStoreError as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(response.model_dump_json())
 
 
 def _fold_registered_tenant_key(response: Any, tenant: str) -> None:
