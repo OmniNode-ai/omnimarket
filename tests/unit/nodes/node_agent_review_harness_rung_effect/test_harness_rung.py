@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from importlib.resources import files
 from pathlib import Path
 from typing import Any
@@ -20,7 +21,7 @@ import pytest
 import yaml
 
 from omnimarket.nodes.node_agent_review_harness_rung_effect.adapters.adapter_harness_runner import (
-    HarnessDelegateCaller,
+    HarnessBackendCaller,
     HarnessNotBoundError,
 )
 from omnimarket.nodes.node_agent_review_harness_rung_effect.handlers.handler_harness_rung import (
@@ -43,7 +44,8 @@ CONFIG = ModelHarnessRungConfig(
     task_class="code_review",
     effort="high",
     call_budget_seconds=60,
-    harness_script="skills/harness-delegate/scripts/harness_delegate.py",
+    backend_id="harness-codex-backend",
+    delegate_lane="lane-x",
     run_dir_leaf="codex",
 )
 CLAUDE_CONFIG = ModelHarnessRungConfig(
@@ -53,7 +55,8 @@ CLAUDE_CONFIG = ModelHarnessRungConfig(
     task_class="review-class",
     effort="high",
     call_budget_seconds=60,
-    harness_script="skills/harness-delegate/scripts/harness_delegate.py",
+    backend_id="harness-claude-backend",
+    delegate_lane="lane-x",
     run_dir_leaf="claude",
 )
 REQUEST = ModelHarnessVoteRequest(
@@ -199,78 +202,132 @@ def test_the_contract_names_no_harness_config() -> None:
     assert "config" not in contract
 
 
-@pytest.mark.parametrize("absent", ["OMNI_PLUGIN_ROOT", "ONEX_STATE_DIR"])
+def delegate_document(backend: str, model: str, **overrides: Any) -> dict[str, Any]:
+    """What ``onex delegate --json`` prints for one accepted harness attempt."""
+    attempt: dict[str, Any] = {
+        "tier": "harness",
+        "backend_id": backend,
+        "model_used": model,
+        "acceptance_decision": "accept",
+        "cost_usd": 0.12,
+        "usage_source": "measured",
+    }
+    result: dict[str, Any] = {
+        "status": "completed",
+        "correlation_id": "11111111-1111-1111-1111-111111111111",
+        "response": ANSWER,
+        "attempts": [attempt],
+    }
+    result.update(overrides)
+    return {"receipt": {"result": result}}
+
+
+def bind_onex(tmp_path: Path, body: str) -> dict[str, str]:
+    """A stand-in ``onex`` where the registry puts it; ``body`` is the python it runs."""
+    onex = tmp_path / "registry" / "omnibase_infra" / "scripts" / "onex"
+    onex.parent.mkdir(parents=True)
+    onex.write_text(f"#!{sys.executable}\n{body}", encoding="utf-8")
+    onex.chmod(0o755)
+    return {
+        "OMNI_HOME": str(tmp_path / "registry"),
+        "ONEX_STATE_DIR": str(tmp_path / "state"),
+    }
+
+
+def printing(document: dict[str, Any]) -> str:
+    return f"import json, sys\nprint(json.dumps({document!r}))\n"
+
+
+@pytest.mark.parametrize("absent", ["OMNI_HOME", "ONEX_STATE_DIR"])
 def test_the_runner_refuses_an_absent_environment(tmp_path: Path, absent: str) -> None:
-    environ = {"OMNI_PLUGIN_ROOT": str(tmp_path), "ONEX_STATE_DIR": str(tmp_path)}
+    environ = bind_onex(tmp_path, "")
     del environ[absent]
     with pytest.raises(HarnessNotBoundError) as caught:
-        asyncio.run(HarnessDelegateCaller(environ).run("p", "model-x", CONFIG))
+        asyncio.run(HarnessBackendCaller(environ).run("p", "model-x", CONFIG))
     assert absent in str(caught.value)
 
 
-def test_the_runner_reads_the_one_receipt_the_harness_wrote(tmp_path: Path) -> None:
-    """A stand-in harness script writes a receipt and an answer where it is told."""
-    script = tmp_path / "plugin" / CONFIG.harness_script
-    script.parent.mkdir(parents=True)
-    script.write_text(
-        "import json, sys, pathlib\n"
-        "args = sys.argv\n"
-        "out = pathlib.Path(args[args.index('--out-dir') + 1]) / 'run-1'\n"
-        "out.mkdir(parents=True)\n"
-        f"(out / 'receipt.json').write_text({json.dumps(receipt())!r})\n"
-        f"(out / 'answer.md').write_text({ANSWER!r})\n",
-        encoding="utf-8",
+def test_the_runner_reads_the_receipt_the_delegation_left(tmp_path: Path) -> None:
+    """A stand-in onex prints one accepted harness attempt; the run is a vote's proof."""
+    environ = bind_onex(
+        tmp_path, printing(delegate_document("harness-codex-backend", "model-x"))
     )
-    environ = {
-        "OMNI_PLUGIN_ROOT": str(tmp_path / "plugin"),
-        "ONEX_STATE_DIR": str(tmp_path / "state"),
-    }
-    run = asyncio.run(HarnessDelegateCaller(environ).run("p", "model-x", CONFIG))
-    assert run.field("event", "event_id") == "evt-1"
+    run = asyncio.run(HarnessBackendCaller(environ).run("p", "model-x", CONFIG))
+    assert run.field("harness") == "codex"
+    assert run.field("login") == "codex ChatGPT login"
+    assert run.field("model") == "model-x"
+    assert run.field("outcome") == "done"
+    assert run.field("event", "published") is True
+    assert run.field("event", "event_id") == "11111111-1111-1111-1111-111111111111"
     assert run.answer == ANSWER
+    vote = vote_from_run(REQUEST, run)
+    assert vote.delegation_event_id == "11111111-1111-1111-1111-111111111111"
     assert [p.parent.name for p in (tmp_path / "state").glob("agent_review/*/*")] == [
         "codex"
     ]
 
 
-def test_the_runner_passes_the_rungs_harness_and_leaf(tmp_path: Path) -> None:
-    """The claude config's harness, model, task class and run-directory leaf reach argv."""
-    script = tmp_path / "plugin" / CLAUDE_CONFIG.harness_script
-    script.parent.mkdir(parents=True)
-    script.write_text(
+def test_the_runner_passes_the_task_class_backend_and_lane_to_onex_delegate(
+    tmp_path: Path,
+) -> None:
+    """The claude config's task class, backend pin and lane reach argv; no script is run."""
+    body = (
         "import json, sys, pathlib\n"
-        "args = sys.argv\n"
-        "out = pathlib.Path(args[args.index('--out-dir') + 1]) / 'run-1'\n"
-        "out.mkdir(parents=True)\n"
-        "(out / 'argv.json').write_text(json.dumps(args[1:]))\n"
-        f"(out / 'receipt.json').write_text({json.dumps(claude_receipt())!r})\n"
-        f"(out / 'answer.md').write_text({ANSWER!r})\n",
-        encoding="utf-8",
+        "args = sys.argv[1:]\n"
+        "pathlib.Path(args[args.index('--state-root') + 1], 'argv.json')"
+        ".write_text(json.dumps(args))\n"
+        f"print(json.dumps({delegate_document('harness-claude-backend', 'model-s')!r}))\n"
     )
-    environ = {
-        "OMNI_PLUGIN_ROOT": str(tmp_path / "plugin"),
-        "ONEX_STATE_DIR": str(tmp_path / "state"),
-    }
-    asyncio.run(HarnessDelegateCaller(environ).run("p", "model-s", CLAUDE_CONFIG))
-    [argv_file] = (tmp_path / "state" / "agent_review" / "claude").glob("*/*/argv.json")
+    environ = bind_onex(tmp_path, body)
+    asyncio.run(HarnessBackendCaller(environ).run("p", "model-s", CLAUDE_CONFIG))
+    [argv_file] = (tmp_path / "state" / "agent_review" / "claude").glob("*/argv.json")
     argv = json.loads(argv_file.read_text())
+    assert argv[0] == "delegate"
     pairs = dict(zip(argv[1::2], argv[2::2], strict=False))
-    assert pairs["--harness"] == "claude"
-    assert pairs["--model"] == "model-s"
-    assert pairs["--task-class"] == "review-class"
-    assert pairs["--effort"] == "high"
+    assert pairs["--task-type"] == "review-class"
+    assert pairs["--backend-id"] == "harness-claude-backend"
+    assert pairs["--lane"] == "lane-x"
+    assert pairs["--bus"] == "kafka"
+    assert pairs["--locus"] == "deployed-lane"
+    assert not any("harness_delegate" in part for part in argv)
 
 
-def test_a_harness_that_wrote_no_receipt_is_unbound(tmp_path: Path) -> None:
-    script = tmp_path / "plugin" / CONFIG.harness_script
-    script.parent.mkdir(parents=True)
-    script.write_text("raise SystemExit(3)\n", encoding="utf-8")
-    environ = {
-        "OMNI_PLUGIN_ROOT": str(tmp_path / "plugin"),
-        "ONEX_STATE_DIR": str(tmp_path / "state"),
-    }
+@pytest.mark.parametrize(
+    ("document", "refused"),
+    [
+        (delegate_document("some-other-backend", "model-x"), "harness"),
+        (
+            delegate_document("harness-codex-backend", "model-x", attempts=[]),
+            "outcome",
+        ),
+        (delegate_document("harness-codex-backend", "another-model"), "model"),
+    ],
+    ids=["other-backend", "no-attempt", "other-model"],
+)
+def test_a_delegation_that_does_not_prove_the_rung_is_no_vote(
+    tmp_path: Path, document: dict[str, Any], refused: str
+) -> None:
+    environ = bind_onex(tmp_path, printing(document))
+    run = asyncio.run(HarnessBackendCaller(environ).run("p", "model-x", CONFIG))
+    with pytest.raises(HarnessRungRefusedError):
+        vote_from_run(REQUEST, run)
+
+
+def test_a_delegation_that_left_no_receipt_is_unbound(tmp_path: Path) -> None:
+    environ = bind_onex(tmp_path, "raise SystemExit(3)\n")
     with pytest.raises(HarnessNotBoundError):
-        asyncio.run(HarnessDelegateCaller(environ).run("p", "model-x", CONFIG))
+        asyncio.run(HarnessBackendCaller(environ).run("p", "model-x", CONFIG))
+
+
+def test_the_node_source_never_runs_the_plugin_script() -> None:
+    """AC2 falsifier: no module of the rung node names harness_delegate."""
+    root = Path(str(files("omnimarket.nodes.node_agent_review_harness_rung_effect")))
+    named = [
+        str(path.relative_to(root))
+        for path in root.rglob("*.py")
+        if "harness_delegate" in path.read_text("utf-8")
+    ]
+    assert named == []
 
 
 def test_the_contract_declares_the_command_and_the_vote_cast_topics() -> None:

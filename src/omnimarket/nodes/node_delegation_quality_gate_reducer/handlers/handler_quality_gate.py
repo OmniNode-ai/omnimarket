@@ -142,6 +142,7 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.code_artifac
     _YAML_FENCE_LANG_TAGS,
     _block_is_code_artifact,
     _compiles_without_errors_is_evaluable,
+    _declared_artifact_blocks,
     _extract_fenced_code_blocks,
     _extract_fenced_code_blocks_with_lang,
     _is_json_edit_artifact,
@@ -162,6 +163,12 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.operator_voi
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.prompt_artifact_language import (
     parse_as_requested_language,
     prompt_requested_artifact_language,
+)
+from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.prose_sentence_count import (
+    count_prose_sentences as _count_prose_sentences,
+)
+from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.response_contract_class_checks import (
+    with_executed_class_checks,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_identifier_grounding import (
     ModelIdentifierGroundingVerdict,
@@ -1102,10 +1109,9 @@ def _check_compiles_without_errors(
     """
     if _is_search_replace_artifact(content) or _is_json_edit_artifact(content):
         return None
-
     content = _remove_search_replace_blocks(content)
     requested = prompt_requested_artifact_language(task_prompt)
-    tagged_blocks = _extract_fenced_code_blocks_with_lang(content)
+    tagged_blocks = _declared_artifact_blocks(content, requested)
     if not tagged_blocks:
         candidate = _strip_markdown_code_fence(content)
         if requested is not None:
@@ -1117,8 +1123,7 @@ def _check_compiles_without_errors(
         return None
 
     for lang, body in tagged_blocks:
-        if not lang and requested is not None:
-            lang = requested
+        lang = lang or requested or ""
         if lang in _YAML_FENCE_LANG_TAGS:
             try:
                 yaml.safe_load(body)
@@ -1496,15 +1501,6 @@ _SENTENCE_LIMIT_RE = re.compile(
     r"\s+sentences?\b",
     re.IGNORECASE,
 )
-_CODE_SPAN_RE = re.compile(r"`[^`\n]*`")
-_LIST_ITEM_RE = re.compile(r"^\s*(?:[-*+•]|\d+[.)])\s+")
-# A sentence ends at . ! or ? (plus closing quotes or brackets), then whitespace,
-# then the start of another sentence. A dot inside a version, a file name or a
-# number is not followed by whitespace, and "e.g. foo" continues in lower case.
-_SENTENCE_BOUNDARY_RE = re.compile(
-    r"""(?<=[.!?])["')\]*_]*\s+(?=["'(\[`*_]*[A-Z0-9])"""
-)
-_SENTENCE_ABBREVIATION_RE = re.compile(r"(?:\be\.g|\bi\.e|\bvs|\bcf|\betc)\.$", re.I)
 
 
 def _sentence_limit(prompt: str | None) -> int | None:
@@ -1516,43 +1512,6 @@ def _sentence_limit(prompt: str | None) -> int | None:
         return None
     raw = match.group(1).lower()
     return int(raw) if raw.isdigit() else _SENTENCE_LIMIT_WORDS[raw]
-
-
-def _count_prose_sentences(content: str) -> int:
-    """Count sentences the way the limit is read: a list item is one sentence.
-
-    A semicolon run-on is one sentence, a soft-wrapped line continues its
-    paragraph, and code spans never end one. This is a count for a ceiling, not
-    a parser: the 120-answer calibration set agrees with a careful reading on
-    every answer's side of its limit.
-    """
-    text = _CODE_SPAN_RE.sub("X", content)
-    items: list[str] = []
-    for block in re.split(r"\n\s*\n", text):
-        current: str | None = None
-        for line in block.splitlines():
-            if not line.strip():
-                continue
-            if _LIST_ITEM_RE.match(line) or line.lstrip().startswith("#"):
-                if current is not None:
-                    items.append(current)
-                current = _LIST_ITEM_RE.sub("", line).strip().lstrip("#").strip()
-            else:
-                current = (
-                    line.strip() if current is None else f"{current} {line.strip()}"
-                )
-        if current is not None:
-            items.append(current)
-    count = 0
-    for item in items:
-        if not item:
-            continue
-        count += 1 + sum(
-            1
-            for match in _SENTENCE_BOUNDARY_RE.finditer(item)
-            if not _SENTENCE_ABBREVIATION_RE.search(item[: match.start()])
-        )
-    return count
 
 
 def _check_within_sentence_limit(
@@ -3739,7 +3698,12 @@ def _delta_over_answer_segment(
         A quality gate result with pass/fail, fail_category, score, and reasons.
     """
     if response_contract is not None:
-        result = _evaluate_response_contract(gate_input, response_contract)
+        result = with_executed_class_checks(
+            _evaluate_response_contract(gate_input, response_contract),
+            gate_input,
+            named_test_run,
+            named_tests_requested,
+        )
         if (
             not result.passed
             or "required_input_content" not in gate_input.dod_deterministic

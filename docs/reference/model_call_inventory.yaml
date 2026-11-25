@@ -18,9 +18,9 @@ customer_paths:
 - metering
 baseline: .onex_ratchets/direct_model_call_baseline.yaml
 counts:
-  files: 40
+  files: 42
   real_direct_call: 9
-  declared_route: 19
+  declared_route: 21
   mention: 12
 rows:
 - path: src/omnimarket/cli/cli_ab_compare_suite.py
@@ -70,6 +70,11 @@ rows:
   class: declared_route
   sends_via: src/omnimarket/nodes/node_llm_delegation_call_effect
   note: Builds a registered endpoint's backend entry with the chat route; the call effect posts it.
+- path: src/omnimarket/handlers/routing/vllm_input_token_meter.py
+  class: declared_route
+  sends_via: src/omnimarket/nodes/node_llm_delegation_call_effect
+  note: Derives the server's tokenize address from the chat route; the POST goes through the call effect's
+    post_chat_completion.
 - path: src/omnimarket/inference/adapter_inference_bridge.py
   class: real_direct_call
   scope: internal
@@ -136,6 +141,11 @@ rows:
   - src/omnimarket/nodes/node_delegation_ab_runner/contract.yaml::onex.cmd.omnimarket.delegation-ab-run-requested.v1
   note: The A/B harness posts both its baseline and its delegated leg with httpx, outside the delegation
     call effect; a measurement harness, not the delegation path.
+- path: src/omnimarket/nodes/node_delegation_check_probe_effect/handlers/clean_dashboard_driver.py
+  class: declared_route
+  sends_via: 'none: writes the endpoint into the local override file and sends no request to it'
+  note: Declares the model server's chat route for both local rungs; its only HTTP request is a loopback
+    read of the dashboard.
 - path: src/omnimarket/nodes/node_delegation_escalation_decision_compute/tests/test_handler_escalation_decision.py
   class: mention
   kind: test_fixture

@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_thermal_guard_effect
+version: 0.1.0
+description: >
+  Reads a host's CPU and GPU temperature once per tick; above the overlay's hold threshold it writes the host's declared hold file (the thermal hold lab placement reads) and a ledger HOLD row, and below the overlay's lower release threshold, after the minimum hold time, it removes the file and writes a RELEASE row. It never changes the mode of any folder.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_host_thermal_guard_effect: omnimarket.nodes.node_host_thermal_guard_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: filesystem
+dependencies: []
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- effect
+- lab
+pack: operator_tooling
+display_name: Host Thermal Guard Effect
+node_role: effect

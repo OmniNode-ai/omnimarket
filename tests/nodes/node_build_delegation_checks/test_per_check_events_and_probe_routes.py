@@ -75,7 +75,11 @@ def _handler(
     sink = RecordingSink()
     handler = HandlerBuildDelegationChecks(
         settings=settings,
-        runner=CommandCheckExecutor(settings.check_routes, registry_root=tmp_path),
+        runner=CommandCheckExecutor(
+            settings.check_routes,
+            registry_root=tmp_path,
+            state_root=tmp_path / "state",
+        ),
         store=InMemoryBuildStore(),
         merges=InMemoryMergeSource({}),
         sink=sink,
@@ -111,6 +115,10 @@ def test_a_rebuild_completed_runs_the_probe_node_and_never_a_workflow_dispatch(
         assert command[1:3] == ["-m", PROBE_MODULE]
         assert command[0] != "{python}"
         assert str(tmp_path) in command  # --omni-home
+        # the probe's own state dir is under the declared state root, not under the registry root
+        assert command[command.index("--state-dir") + 1] == str(
+            tmp_path / "state" / "delegation-check-probe"
+        )
     readings = {r.check_id: r.reading for r in result.records}
     for check in OUR_NODE_CHECKS:
         assert readings[check] is EnumCheckReading.PASS

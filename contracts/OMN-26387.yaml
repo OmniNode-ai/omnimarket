@@ -14,10 +14,15 @@ requirements:
     acceptance:
       - id: AC6
         statement: "AC6: the guard's reader subprocess is given a timeout longer than the 253 second read recorded on h051 at a load of 46 on 2026-11-21 -- falsifier: uv run pytest of the loaded-host test fails when the guard keeps the reader adapter's 120 second default"
+      - id: AC7
+        statement: "AC7: a claims read that fails is asked once more as the same bounded read and never as the every-row read of 168 hours -- falsifier: uv run pytest of the retry and budget tests fails when the guard falls back to the every-row read"
 evidence_requirements:
   - kind: tests
     description: "The guard's reader-host tests, replaying the recorded reader answers through the production adapter."
     command: "uv run pytest tests/unit/handlers/scm/test_scm_duplicate_guard_reader_hosts.py -q --no-cov"
+  - kind: tests
+    description: "A read the answerer answers late is asked once more as the same bounded read, never as the every-row read of 168 hours, inside the declared budget."
+    command: "uv run pytest tests/unit/handlers/scm/test_scm_duplicate_guard_reader_timeout.py -q --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -46,4 +51,19 @@ dod_evidence:
       - check_type: command
         check_value: >-
           onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26387 --kind test -- uv run --frozen pytest tests/unit/handlers/scm/test_scm_duplicate_guard_reader_hosts.py -q --no-cov
+        cwd: .
+  - id: dod-omn26387-bounded-retry
+    description: "A late first answer is retried once as the same bounded read and never as the 168 hour every-row read; the waits and the total budget come from the snapshot node contract and the clock is injected. These tests fail at origin/dev, which fell back to the every-row read."
+    source: manual
+    binds_ac: [AC7]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/unit/handlers/scm/test_scm_duplicate_guard_reader_timeout.py -q --no-cov -k "late or retry or budget or fallback"
+  - id: dod-omn26387-retry-contract
+    description: "Deploy assessment: the snapshot node contract declares retry_timeout_s in place of fallback_timeout_s and no every-row fallback. No migration, no prod mutation, no new topic. The check fails when the contract still declares the fallback."
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "grep -q 'retry_timeout_s:' src/omnimarket/nodes/node_pr_duplicate_snapshot_effect/contract.yaml && ! grep -q 'fallback_timeout_s:' src/omnimarket/nodes/node_pr_duplicate_snapshot_effect/contract.yaml"
         cwd: .
