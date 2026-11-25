@@ -100,7 +100,6 @@ files:
     contracts/OMN-22777.yaml: 1
     contracts/OMN-25723.yaml: 1
     src/omnimarket/handlers/ledger_row_grammar.py: 1
-    src/omnimarket/nodes/node_branch_claim_check_effect/contract.yaml: 1
     src/omnimarket/nodes/node_compaction_cost_compute/data/recovery_call_patterns.yaml: 2
     src/omnimarket/nodes/node_friction_rollup_compute/tests/fixtures/recorded_day_unit_output.json: 3
     src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml: 5
@@ -173,7 +172,6 @@ files:
     tests/test_golden_chain_relay_effect.py: 1
     tests/test_golden_chain_work_ledger_query.py: 1
     tests/test_host_reconcile_effect.py: 1
-    tests/test_omn20708_branch_claim_check_handler.py: 1
     tests/test_omn22468_session_files_port.py: 1
     tests/unit/clone_dirty_converge/test_canonical_clone_dirty_converge.py: 2
     tests/unit/handlers/test_work_ledger_roll_boundary.py: 4
@@ -200,5 +198,5 @@ ratchet:
   omniclaude: 45
   omnidash: 0
   omniintelligence: 0
-  omnimarket: 104
+  omnimarket: 102
   omnimemory: 1
