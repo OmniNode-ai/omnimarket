@@ -73,7 +73,7 @@ branch_claim:
     relation: omninode_internal.work_ledger_rows
     binding_ref: omninode_runtime_service
     dsn_env: OMNINODE_INTERNAL_DB_URL
-  parity_witness: {ledger_path_env: ONEX_LEDGER_PATH, archive_dir_name: archive}
+  parity_witness: {reader: branch-claim-check}
   max_lane_length: 64
   short_sha_length: 12
   max_finding_chars: 160

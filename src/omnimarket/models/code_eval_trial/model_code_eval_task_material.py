@@ -47,6 +47,8 @@ class ModelCodeEvalTaskMaterial(BaseModel):
     check_commands: tuple[str, ...] = ()
     #: The check files at the merge revision, written into the worktree for the loop's check.
     seed_files: tuple[ModelSeedFile, ...] = ()
+    #: The contract items whose checks are the score, as the committed suite records them; empty is every item.
+    check_item_ids: tuple[str, ...] = ()
     #: The merged change's diff with the contract and check files taken out; the control's draft.
     held_diff: str
     band: str = Field(min_length=1)
