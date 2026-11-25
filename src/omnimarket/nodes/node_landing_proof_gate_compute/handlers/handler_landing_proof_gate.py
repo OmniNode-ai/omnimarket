@@ -134,14 +134,22 @@ class HandlerLandingProofGate:
     ) -> str:
         lab = re.compile(self._policy.lab_line)
         sha = re.compile(self._policy.sha)
+        failed = re.compile(self._policy.lab_failed)
+        lab_lines = [
+            ln for ln in self._all_lines(text) if lab.match(ln) and sha.search(ln)
+        ]
         shas = sorted(
-            {
-                x
-                for ln in self._all_lines(text)
-                if lab.match(ln)
-                for x in sha.findall(ln)
-            }
+            {x for ln in lab_lines if not failed.search(ln) for x in sha.findall(ln)}
         )
+        if lab_lines and not shas:
+            reasons.append(
+                ModelProofReason(
+                    code=EnumProofCode.LAB_RUN_FAILED,
+                    item="a Lab line recording a run that passed",
+                    detail="every Lab line records a refused or failed run",
+                )
+            )
+            return ""
         if not shas:
             reasons.append(
                 ModelProofReason(

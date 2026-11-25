@@ -162,6 +162,37 @@ def test_no_lab_line_is_draft_naming_the_missing_item() -> None:
     assert "Lab line naming a commit" in r.reasons[0].item
 
 
+@pytest.mark.parametrize(
+    "line",
+    [
+        f"Lab: head={LAB_HEAD} host h051 command ran, exit 3",
+        f"Lab: head={LAB_HEAD} host h051 PUBLISH REFUSED, nothing ran",
+        f"Lab: head={LAB_HEAD} host h051 the run was refused",
+        f"Lab: head={LAB_HEAD} host h051 pytest 2 failed, exit code 1",
+    ],
+)
+def test_a_lab_line_recording_a_refused_or_failed_run_is_not_proof(line: str) -> None:
+    r = gate(text_of(comments=(GOOD_BAD, line), body="x")).handle(
+        request(head=LAB_HEAD)
+    )
+    assert r.answer is EnumProofAnswer.DRAFT
+    assert EnumProofCode.LAB_RUN_FAILED in codes(r)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        f"Lab: head={LAB_HEAD} host h051 exit 0, 259 passed",
+        f"Lab: head={LAB_HEAD} host h051 exit 0, 259 passed, 0 failed",
+    ],
+)
+def test_control_a_lab_line_recording_a_passing_run_is_proven(line: str) -> None:
+    r = gate(text_of(comments=(GOOD_BAD, line), body="x")).handle(
+        request(head=LAB_HEAD)
+    )
+    assert r.answer is EnumProofAnswer.PROVEN
+
+
 def test_a_lab_heading_with_no_commit_is_not_proof() -> None:
     assert "## Lab" in REAL["body"]
     r = gate(text_of(comments=(), files=(PLAIN,))).handle(request())
