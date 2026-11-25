@@ -961,6 +961,8 @@ class HandlerDodVerify:
             failed_count=state.failed_count,
             skipped_count=state.skipped_count,
             superseded_count=state.superseded_count,
+            budget_checks_run=state.budget_checks_run,
+            budget_checks_not_run=state.budget_checks_not_run,
             non_probative_count=state.non_probative_count,
             behavior_proving_count=state.behavior_proving_count,
             readback_proving_count=state.readback_proving_count,
