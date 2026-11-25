@@ -88,11 +88,8 @@ def _safe_sentence(message: Any, status: str) -> str:
     if status == "healthy":
         return text or "ok"
     if unsafe or not text:
-        return (
-            "needs attention"
-            if status in ("unhealthy", "degraded")
-            else "not set up (optional)"
-        )
+        # the row's mark already says needs attention; do not say it twice
+        return "" if status in ("unhealthy", "degraded") else "not set up"
     return text
 
 
@@ -167,6 +164,8 @@ def render_doctor_page(
         status = str(check.get("status", "")).lower()
         mark = _mark_for(status)
         name = str(check.get("name", "")).strip()
+        if "_" in name:  # a raw identifier becomes plain words
+            name = name.replace("_", " ").capitalize()
         sentence = _safe_sentence(check.get("message"), status)
         row = f"{mark}  {name:<14} {sentence}".rstrip()
         if status != "healthy":

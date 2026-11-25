@@ -3330,8 +3330,12 @@ class OnexTui(App[int]):
         return outcome
 
     async def _run(self, entry: ModelTuiCommand, argv: tuple[str, ...]) -> None:
-        self._write(Text(f"$ onex {shlex.join(argv)}", style=_style("muted")))
-        if entry.path in (("doctor",), ("metering",)) and not entry.needs_terminal:
+        is_page = (
+            entry.path in (("doctor",), ("metering",)) and not entry.needs_terminal
+        )
+        if not is_page:  # a page is the answer; the command echo is noise
+            self._write(Text(f"$ onex {shlex.join(argv)}", style=_style("muted")))
+        if is_page:
             json_argv = argv if "--json" in argv else (*argv, "--json")
             collected: list[str] = []
             code = 0
@@ -3365,7 +3369,8 @@ class OnexTui(App[int]):
             else:
                 code = await runner.stream(chosen_argv, collected.append)
                 raw_output = "\n".join(collected)
-            width = max(getattr(self.size, "width", 0) or 0, 80)
+            # leave room for the output's padding so a title row never wraps
+            width = max((getattr(self.size, "width", 0) or 0) - 6, 74)
             if entry.path == ("doctor",):
                 parsed = DoctorPage.parse(raw_output)
             else:
@@ -3390,9 +3395,7 @@ class OnexTui(App[int]):
                 _LOG.warning("raw page output hidden: %s", raw_output)
             for line in lines:
                 self._write(Text(str(line)))
-            if code:
-                self._write(_say("exit_code", code=code))
-            return
+            return  # the page's own summary says what failed; no exit line
         if entry.needs_terminal:
             code = self._in_terminal(argv)
         else:
