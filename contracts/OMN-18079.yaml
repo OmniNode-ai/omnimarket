@@ -19,8 +19,9 @@ dod_evidence:
     description: "Receipt names the answering model: a different served model, missing metadata and a retry landing on another model are each covered by a test that fails on the base head."
     source: "manual"
     checks:
-      - check_type: "command"
-        check_value: "uv run pytest tests/test_omn18079_receipt_names_answering_model.py -q"
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn18079_receipt_names_answering_model.py -q --no-cov -n 0 -p no:randomly"
+        cwd: .
   - id: "dod-omn18079-integration-proof"
     description: "The answering-model tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check"
     source: "manual"
@@ -28,4 +29,11 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-18079 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_omn18079_receipt_names_answering_model.py -q --no-cov'
+        cwd: .
+  - id: "dod-omn18079-evidence-item-shape"
+    description: "The answering-model evidence item is a test_passes check with --no-cov; as it stood (a command check without --no-cov) the shape test fails, and with the change it passes."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -n 0 -p no:randomly -k omn18079"
         cwd: .

@@ -941,3 +941,23 @@ def test_accepted_pytest_bindings_use_test_passes(ticket: str) -> None:
         and check.get("check_type") != "test_passes"
     ]
     assert not offenders, "\n".join(offenders)
+
+
+def test_omn18079_answering_model_test_binds_through_test_passes_without_coverage() -> (
+    None
+):
+    """OMN-18079: the hosted verifier runs the answering-model test as a bound, coverage-free test_passes check.
+
+    A `command` check binds no test file, and a single-file run that keeps the
+    repo's coverage plugin on measures the whole tree, so the hosted gate is not
+    a reading of the test alone. The item is a test_passes check with --no-cov,
+    the shape the other repo contracts use.
+    """
+    path = REPO_ROOT / "contracts" / "OMN-18079.yaml"
+    contract = yaml.load(path.read_text(encoding="utf-8"), Loader=_CONTRACT_LOADER)
+    item = next(
+        i for i in contract["dod_evidence"] if i["id"] == "dod-answering-model-receipt"
+    )
+    checks = item["checks"]
+    assert [c.get("check_type") for c in checks] == ["test_passes"], checks
+    assert all("--no-cov" in str(c.get("check_value")) for c in checks), checks
