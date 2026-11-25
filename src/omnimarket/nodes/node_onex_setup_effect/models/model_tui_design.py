@@ -524,6 +524,53 @@ class ModelTuiMessages(BaseModel):
     next_step: str = Field(default="Run /doctor.", min_length=1)
 
 
+class ModelTuiWelcomeCard(BaseModel):
+    """One card on the welcome screen."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str = Field(pattern=r"^[a-z]+$")
+    icon: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    text: str = Field(min_length=1)
+    #: delegate (focus the prompt), model or config (open the tab), or a command name.
+    action: str = Field(min_length=1)
+
+
+class ModelTuiWelcome(BaseModel):
+    """The welcome screen of a roomy terminal."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    min_width: int = Field(ge=60)
+    min_height: int = Field(ge=20)
+    tagline: str = Field(min_length=1)
+    brand: str = Field(min_length=1)
+    brand_rule: str = Field(min_length=1)
+    pixel: str = Field(min_length=1)
+    letter_gap: int = Field(ge=0, le=6)
+    order: str = Field(min_length=1)
+    letter_styles: tuple[str, ...]
+    letters: dict[str, tuple[str, ...]]
+    cards: tuple[ModelTuiWelcomeCard, ...] = Field(min_length=1, max_length=4)
+
+    @model_validator(mode="after")
+    def _letters_are_complete(self) -> ModelTuiWelcome:
+        if len(self.letter_styles) != len(self.order):
+            raise ValueError("letter_styles needs one style per letter of order")
+        heights = set()
+        widths = set()
+        for char in self.order:
+            rows = self.letters.get(char)
+            if not rows:
+                raise ValueError(f"letter {char!r} has no pixel rows")
+            heights.add(len(rows))
+            widths.update(len(row) for row in rows)
+        if len(heights) != 1 or len(widths) != 1:
+            raise ValueError("the letters differ in height or width")
+        return self
+
+
 class ModelTuiDesign(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -531,6 +578,7 @@ class ModelTuiDesign(BaseModel):
     #: Optional additional themes selectable via /theme (OMN-26620 AC5).
     themes: dict[str, ModelTuiTheme] = Field(default_factory=dict)
     header: ModelTuiHeader
+    welcome: ModelTuiWelcome
     task_card: ModelTuiTaskCard
     footer: ModelTuiFooter
     doctor_page: ModelTuiDoctorPage = Field(default_factory=ModelTuiDoctorPage)

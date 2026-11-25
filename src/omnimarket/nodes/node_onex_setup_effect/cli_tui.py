@@ -2784,6 +2784,50 @@ class OutputPane(VerticalScroll):
             event.prevent_default()
 
 
+def welcome_renderable() -> Text:
+    """The large pixel wordmark, the brand line and the tagline, centred."""
+    design = tui_design()
+    welcome = design.welcome
+    letter_rows = len(next(iter(welcome.letters.values())))
+    text = Text(justify="center", no_wrap=True)
+    for row in range(letter_rows):
+        for position, char in enumerate(welcome.order):
+            style = _style(welcome.letter_styles[position], "bold")
+            for cell in welcome.letters[char][row]:
+                text.append(
+                    welcome.pixel if cell == "#" else " " * len(welcome.pixel), style
+                )
+            if position < len(welcome.order) - 1:
+                text.append(" " * welcome.letter_gap)
+        text.append("\n")
+    text.append("\n")
+    text.append(
+        f"{welcome.brand_rule}  {welcome.brand}  {welcome.brand_rule}\n",
+        _style("muted"),
+    )
+    text.append(welcome.tagline, _style("foreground"))
+    return text
+
+
+class WelcomeCard(Static):
+    """One clickable card: an icon, a title and two lines of what it does."""
+
+    def __init__(self, spec: Any, *, selected: bool = False) -> None:
+        body = Text()
+        body.append(f"{icon(spec.icon)}  ", _style("primary", "bold"))
+        body.append(spec.title + "\n", _style("foreground", "bold"))
+        body.append(spec.text, _style("muted"))
+        super().__init__(
+            body,
+            id=f"card-{spec.id}",
+            classes="welcome-card -selected" if selected else "welcome-card",
+        )
+        self.spec = spec
+
+    def on_click(self) -> None:
+        self.app.run_worker(cast("OnexTui", self.app).welcome_action(self.spec.action))
+
+
 class OnexTui(App[int]):
     """The onex terminal UI."""
 
@@ -2791,6 +2835,13 @@ class OnexTui(App[int]):
     CSS = """
     Screen { layout: vertical; }
     #header { height: 2; padding: 0 1; margin-top: 1; }
+    #welcome { display: none; height: auto; margin-top: 1; }
+    #bigmark { width: 100%; height: auto; text-align: center; }
+    #cards { width: 100%; height: auto; margin-top: 1; align-horizontal: center; }
+    .welcome-card { width: 1fr; max-width: 34; height: 5; border: round $border; padding: 0 1; margin: 0 1; }
+    .welcome-card.-selected { border: round $primary; }
+    .welcome-card:hover { border: round $accent; }
+    Screen.-roomy #promptrow { height: 3; border: round $primary; }
     #summary { height: 2; padding: 0 1; margin-top: 1; }
     #conversation { height: 1fr; }
     #output { height: auto; max-height: 100%; padding: 0 1; }
@@ -2871,6 +2922,7 @@ class OnexTui(App[int]):
             delegation=last_known.get("delegation"),
         )
         self._last_run = ""
+        self._welcome_dismissed = False
         self._active_task: Worker[None] | None = None
         self._task_started = 0.0
         self._ticker: Timer | None = None
@@ -2903,6 +2955,11 @@ class OnexTui(App[int]):
         # OMN-23413: the log grows with what it holds and the live line sits
         # right under its last line, as in a coding agent's CLI, not at the
         # bottom of the window (operator 2026-11-13: "why too much gap").
+        with Vertical(id="welcome"):
+            yield Static(id="bigmark")
+            with Horizontal(id="cards"):
+                for position, card in enumerate(tui_design().welcome.cards):
+                    yield WelcomeCard(card, selected=position == 0)
         yield Static(id="header")
         yield Static(id="summary")
         with Vertical(id="conversation"):
@@ -2920,6 +2977,8 @@ class OnexTui(App[int]):
     async def on_mount(self) -> None:
         if tips_visible(LaunchStore.bump()):
             self._write(Text(_say("tips_first_launch"), style=_style("muted")))
+        self.query_one("#bigmark", Static).update(welcome_renderable())
+        self._layout()
         self._render_status()
         self.query_one("#prompt", Input).focus()
         self.run_worker(self._refresh_status(), exclusive=True, group="status")
@@ -3160,7 +3219,36 @@ class OnexTui(App[int]):
             else "100%"
         )
 
+    def _layout(self) -> None:
+        """A roomy terminal gets the rounded prompt and, until the reader submits
+        something, the welcome; a small one keeps the compact header."""
+        welcome = tui_design().welcome
+        roomy = (
+            self.size.width >= welcome.min_width
+            and self.size.height >= welcome.min_height
+        )
+        showing = roomy and not self._welcome_dismissed
+        main = self._main()
+        main.set_class(roomy, "-roomy")
+        main.query_one("#welcome").display = showing
+        main.query_one("#header").display = not showing
+        main.query_one("#summary").display = not showing
+
+    def _dismiss_welcome(self) -> None:
+        self._welcome_dismissed = True
+        self._layout()
+
+    async def welcome_action(self, action: str) -> None:
+        """A welcome card was clicked."""
+        if action == "delegate":
+            self.query_one("#prompt", Input).focus()
+        elif action in ("model", "config"):
+            await self.open_tab(action)
+        else:
+            await self._palette_run(f"/{action}")
+
     def on_resize(self) -> None:
+        self._layout()
         self._render_status()  # the hint line is fitted to the width
         if self._active_task is not None:
             self._fit_log()
@@ -3272,6 +3360,7 @@ class OnexTui(App[int]):
             return
         self._history.append(text)
         self._recall = len(self._history)
+        self._dismiss_welcome()
         self._main().query_one("#output", OutputPane).follow()
         if not text.startswith("/"):
             if self._active_task is not None:

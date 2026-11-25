@@ -34,6 +34,30 @@ wordmark:
   rows: ["▄▀▄ █▄ █ █▀▀ ▀▄▀", "▀▄▀ █ ▀█ ██▄ █ █"]
   style: primary
 
+# The welcome screen shown in a roomy terminal (operator's reference image, 2026-11-25):
+# a large pixel wordmark, the brand line, the tagline and four cards. A smaller terminal
+# keeps the compact header. Each pixel of a letter is drawn with `pixel`.
+welcome:
+  min_width: 100
+  min_height: 30
+  tagline: "Delegate tasks to the right model, at the lowest cost."
+  brand: "O N E X   C L I"
+  brand_rule: "──────"
+  pixel: "██"
+  letter_gap: 2
+  order: "ONEX"
+  letter_styles: [foreground, foreground, primary, primary]
+  letters:
+    O: [".###.", "#...#", "#...#", "#...#", ".###."]
+    N: ["#...#", "##..#", "#.#.#", "#..##", "#...#"]
+    E: ["#####", "#....", "####.", "#....", "#####"]
+    X: ["#...#", ".#.#.", "..#..", ".#.#.", "#...#"]
+  cards:
+    - {id: delegate, icon: welcome_delegate, title: Delegate, text: "Run a task with the best model and cost", action: delegate}
+    - {id: models, icon: welcome_models, title: Models, text: "View and manage available models", action: model}
+    - {id: config, icon: welcome_config, title: Config, text: "Add providers, keys and models", action: config}
+    - {id: history, icon: welcome_history, title: History, text: "See past runs, cost and usage", action: metering}
+
 # Shortcuts are the TUI's own commands; customer_commands below picks what / lists.
 shortcuts:
   - {path: [config], action: config, help: "Manage providers, keys and models or run guided setup."}
@@ -583,6 +607,26 @@ icons:
   mode: plain
   enabled: false
   glyphs:
+    welcome_delegate:
+      lucide: zap
+      nerd: "\uf0e7"
+      fallback: "ϟ"
+      ascii: "*"
+    welcome_models:
+      lucide: layers
+      nerd: "\uf24d"
+      fallback: "≣"
+      ascii: "="
+    welcome_config:
+      lucide: sliders-horizontal
+      nerd: "\uf1de"
+      fallback: "⚙"
+      ascii: "*"
+    welcome_history:
+      lucide: bar-chart-3
+      nerd: "\uf080"
+      fallback: "▂▄▆"
+      ascii: "|||"
     done:
       lucide: check
       nerd: "\uf00c"
