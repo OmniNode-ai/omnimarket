@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.326"
+version = "0.4.327"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -340,6 +340,12 @@ Repository = "https://github.com/OmniNode-ai/omnimarket"
 # (node_pr_arm_gate_compute + node_pr_lifecycle_merge_effect). Handler source
 # remains, hard-gated fail-closed (contract.yaml lifecycle: deprecated).
 # Weekly retrospective chain, scaffolded from its design (contracts and seams first).
+# OMN-26638: the overlay-store kinds, selected by one wiring function from the bootstrap inputs.
+[project.entry-points."onex.backends"]
+store_in_memory = "omnimarket.handlers.overlay_store.backend_in_memory:BackendInMemory"
+store_postgres = "omnimarket.handlers.overlay_store.backend_postgres:BackendPostgres"
+store_valkey = "omnimarket.handlers.overlay_store.backend_valkey:BackendValkey"
+
 [project.entry-points."onex.nodes"]
 node_ab_compare_orchestrator = "omnimarket.nodes.node_ab_compare_orchestrator"
 node_ab_compare_reducer = "omnimarket.nodes.node_ab_compare_reducer"
@@ -586,6 +592,7 @@ node_delegation_admission_compute = "omnimarket.nodes.node_delegation_admission_
 node_delegation_answer_gate_compute = "omnimarket.nodes.node_delegation_answer_gate_compute"
 node_delegation_arm_compare_compute = "omnimarket.nodes.node_delegation_arm_compare_compute"
 node_delegation_availability_report_compute = "omnimarket.nodes.node_delegation_availability_report_compute"
+node_delegation_check_probe_effect = "omnimarket.nodes.node_delegation_check_probe_effect"
 node_delegation_check_regression_effect = "omnimarket.nodes.node_delegation_check_regression_effect"
 node_delegation_client_verdict_compute = "omnimarket.nodes.node_delegation_client_verdict_compute"
 node_delegation_code_budget_compute = "omnimarket.nodes.node_delegation_code_budget_compute"
@@ -811,6 +818,7 @@ node_hook_delegate_effect = "omnimarket.nodes.node_hook_delegate_effect"
 node_hook_drain_probe_compute = "omnimarket.nodes.node_hook_drain_probe_compute"
 node_hook_event_capture = "omnimarket.nodes.node_hook_event_capture"
 node_hook_events_by_correlation_read_effect = "omnimarket.nodes.node_hook_events_by_correlation_read_effect"
+node_hook_install_emission_compute = "omnimarket.nodes.node_hook_install_emission_compute"
 node_hook_lane_join_compute = "omnimarket.nodes.node_hook_lane_join_compute"
 node_hook_lane_trace_compute = "omnimarket.nodes.node_hook_lane_trace_compute"
 node_hook_parse_probe_compute = "omnimarket.nodes.node_hook_parse_probe_compute"
@@ -867,6 +875,7 @@ node_host_table_compute = "omnimarket.nodes.node_host_table_compute"
 node_host_table_copies_drift_compute = "omnimarket.nodes.node_host_table_copies_drift_compute"
 node_host_table_keys_ingest_effect = "omnimarket.nodes.node_host_table_keys_ingest_effect"
 node_host_table_keys_read_effect = "omnimarket.nodes.node_host_table_keys_read_effect"
+node_host_thermal_guard_effect = "omnimarket.nodes.node_host_thermal_guard_effect"
 node_host_thermal_hold_report_effect = "omnimarket.nodes.node_host_thermal_hold_report_effect"
 node_host_thermal_observe_effect = "omnimarket.nodes.node_host_thermal_observe_effect"
 node_host_tree_install_effect = "omnimarket.nodes.node_host_tree_install_effect"
@@ -963,6 +972,7 @@ node_landing_not_started_effect = "omnimarket.nodes.node_landing_not_started_eff
 node_landing_placement_wait_effect = "omnimarket.nodes.node_landing_placement_wait_effect"
 node_landing_policy_compute = "omnimarket.nodes.node_landing_policy_compute"
 node_landing_private_reads_effect = "omnimarket.nodes.node_landing_private_reads_effect"
+node_landing_proof_gate_compute = "omnimarket.nodes.node_landing_proof_gate_compute"
 node_landing_stall_expectation_compute = "omnimarket.nodes.node_landing_stall_expectation_compute"
 node_landing_tick_bounds_compute = "omnimarket.nodes.node_landing_tick_bounds_compute"
 node_landing_tick_speed_effect = "omnimarket.nodes.node_landing_tick_speed_effect"
@@ -997,6 +1007,7 @@ node_lane_parent_notice_recovery_effect = "omnimarket.nodes.node_lane_parent_not
 node_lane_pin_fallback_compute = "omnimarket.nodes.node_lane_pin_fallback_compute"
 node_lane_placement_recovery_effect = "omnimarket.nodes.node_lane_placement_recovery_effect"
 node_lane_process_effect = "omnimarket.nodes.node_lane_process_effect"
+node_lane_push_effect = "omnimarket.nodes.node_lane_push_effect"
 node_lane_queue_argv_compute = "omnimarket.nodes.node_lane_queue_argv_compute"
 node_lane_queue_start_decision_compute = "omnimarket.nodes.node_lane_queue_start_decision_compute"
 node_lane_reader_provision_effect = "omnimarket.nodes.node_lane_reader_provision_effect"
@@ -1462,6 +1473,7 @@ node_skill_tree_read_effect = "omnimarket.nodes.node_skill_tree_read_effect"
 node_slack_publish_effect = "omnimarket.nodes.node_slack_publish_effect"
 node_source_read_cache_effect = "omnimarket.nodes.node_source_read_cache_effect"
 node_sprint_closer_effect = "omnimarket.nodes.node_sprint_closer_effect"
+node_stability_gateway_key_provision_effect = "omnimarket.nodes.node_stability_gateway_key_provision_effect"
 node_stability_lane_refresh_effect = "omnimarket.nodes.node_stability_lane_refresh_effect"
 node_stability_stack_compose_effect = "omnimarket.nodes.node_stability_stack_compose_effect"
 node_stability_stack_plan_compute = "omnimarket.nodes.node_stability_stack_plan_compute"
@@ -1834,7 +1846,8 @@ omnimarket = "omnimarket.handlers.bus_binding.node_contract_overlay_resolver:Nod
 # OMN-26115: infra moves to dev-20261119220033-b6f27747506c (omnibase_infra#6063, OMN-25545), newer than the dev tag dev-20261119055404-a679b44e2cfe; it locks the core tag below, so the two tags move together.
 # OMN-26286: infra moves to dev-20261120235610-e1c7b1f075d2 (omnibase_infra#6116 merged: the infra and omnimemory dev tags now name one omnibase-core tag, dev-20261120075721-2a9efbda3548).
 # OMN-25103: infra moves to dev-20261121195628-0f7f2b730399, which carries omnibase_infra#6129 (the runtime account's grant on floor_integration_pass); the core pin is unchanged.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261121195628-0f7f2b730399" }
+# OMN-26495: infra moves to dev-20261124065450-0ecba67c8fee, which carries omnibase_infra#6201 (the vendored overlay store migration 0002_add_operator_paths.sql); the core pin is unchanged.
+omnibase-infra ={ git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261124065450-0ecba67c8fee" }
 # OMN-21478, RULINGs 2026-10-16T07:34:18Z and 2026-10-16T09:35:49Z: core, spi and
 # memory are read from their dev merge tags too, as infra is, and the
 # Internal Sibling Pins check (internal-sibling-pins.yml) refuses any other form.
