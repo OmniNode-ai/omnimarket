@@ -96,6 +96,13 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest -q tests/unit/nodes/node_local_dashboard_serve_effect/test_dashboard_command_output.py
         cwd: .
+  - id: dod-omn26226-lab-item-allowed-program
+    description: The integration-proof item's command, and the command it sends to the lab after --, each start with a program a lab host runs (DEFAULT_ALLOWED_EXECUTABLES), so a lab host does not refuse the work unit.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/contracts/test_omn26226_lab_item_allowed_program.py
+        cwd: .
   # Not bound as a check: tests/unit/nodes/node_onex_setup_effect/test_dashboard_token_not_in_argv.py
   # guards a regression made and fixed inside this branch (a token on the child's
   # command line). Dev never put the token in argv, so on the merge base it can
