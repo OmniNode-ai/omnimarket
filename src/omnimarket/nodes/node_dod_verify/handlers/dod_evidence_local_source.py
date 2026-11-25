@@ -45,6 +45,7 @@ import os
 import re
 import subprocess
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Final
 
@@ -868,8 +869,8 @@ class DodEvidenceLocalSource:
         return out, f"pr-watcher read_at={ci.get('read_at')}"
 
 
-def parse_repo_contract(text: str) -> ModelRepoContractRead:
-    """A contract file's text as a read: FOUND for a mapping, else ERROR."""
+@lru_cache(maxsize=32)
+def _parse_repo_contract_cached(text: str) -> ModelRepoContractRead:
     try:
         parsed = yaml.safe_load(text)
     except yaml.YAMLError as exc:
@@ -885,6 +886,19 @@ def parse_repo_contract(text: str) -> ModelRepoContractRead:
         status=EnumRepoContractReadStatus.FOUND,
         contract={str(key): value for key, value in parsed.items()},
     )
+
+
+def parse_repo_contract(text: str) -> ModelRepoContractRead:
+    """A contract file's text as a read: FOUND for a mapping, else ERROR.
+
+    The text of a file at a commit never changes and the gate reads the same
+    contract again for every merged PR of a ticket and every sweep tick, so one
+    parse serves every read of the same text (OMN-26152: 37 percent of a 60 s
+    GIL sample of the shared dev runtime was this parse). The cached parse is
+    never handed out: each caller gets its own deep copy, so a mutation cannot
+    reach the next read.
+    """
+    return _parse_repo_contract_cached(text).model_copy(deep=True)
 
 
 __all__ = [
