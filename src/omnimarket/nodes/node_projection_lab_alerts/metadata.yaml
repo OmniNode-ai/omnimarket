@@ -1,0 +1,25 @@
+name: projection_lab_alerts
+version: "1.0.0"
+description: "One row per lab alert, per source and subject, open or cleared, folded from lab alert transitions."
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags: [projection, lab, alerts, reducer]
+ownership:
+  lab_alerts:
+    ddl_owner: omnimarket.nodes.node_projection_lab_alerts
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_lab_alerts.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos: [omnibase_infra]
+    rationale: "Omnimarket owns the lab alerts read model; infra vendors its migration."
+pack: "data"
+display_name: "Projection: Lab Alerts"
+node_role: "effect"

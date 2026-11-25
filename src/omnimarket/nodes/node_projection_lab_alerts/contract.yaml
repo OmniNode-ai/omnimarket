@@ -1,0 +1,118 @@
+---
+name: projection_lab_alerts
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.models.model_lab_alert_transitioned.ModelLabAlertTransitioned
+description: >
+  Folds each lab alert transition (raised or cleared) into one row per source and
+  subject, open or cleared, with its severity, owner and times, and serves those rows
+  to the dashboard through the bus-backed projection exposure below. A row is a
+  function of the newest transition for its key: a replayed transition (same derived
+  id) or an older one writes nothing, so a repeated condition updates one row and a
+  replay changes none. An alert clears only from a later transition published by the
+  source that raised it; nothing the browser sends raises or clears one. A transition
+  with no owner, no detail, no severity or a time without a zone is refused to the DLQ.
+
+handler:
+  module: omnimarket.nodes.node_projection_lab_alerts.handlers.handler_projection_lab_alerts
+  class: HandlerProjectionLabAlerts
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    # Only the writer is routed: a routed pure fold is handed the raw event beside the
+    # writer, fails to validate it as its wrapped request, and dead-letters it. The
+    # writer calls the fold in process.
+    - operation: lab_alerts_projection_writer
+      handler:
+        name: LabAlertsProjectionWriter
+        module: omnimarket.nodes.node_projection_lab_alerts.handlers.handler_lab_alerts_writer
+      handler_module: omnimarket.nodes.node_projection_lab_alerts.handlers.handler_lab_alerts_writer
+terminal_event: onex.evt.omnimarket.projection-lab-alerts-applied.v1
+golden_path:
+  - "Validate a transition whose id matches its source, subject, direction and time"
+  - "Lock the alert's key and read its stored row"
+  - "Plan the row from the newest transition; a replay or an older transition plans nothing"
+  - "Upsert the planned row under alert_id"
+  - "Publish the written row to the bus-backed projection exposure"
+  - "Emit onex.evt.omnimarket.projection-lab-alerts-applied.v1"
+dod_evidence:
+  - test: tests/test_omn26663_lab_alerts_projection.py::test_a_raised_test_alert_is_written_and_published_to_the_snapshot_topic
+    description: "A raised test alert is written and published to the snapshot topic the dashboard reads"
+  - test: tests/test_omn26663_lab_alerts_projection.py::test_a_clear_updates_the_raised_row_in_place
+    description: "A clear updates the one row for its source and subject and carries the clear time"
+  - test: tests/test_omn26663_lab_alerts_projection.py::test_replaying_every_transition_in_any_order_changes_no_row
+    description: "Replaying the same transitions, in any order, leaves the same rows"
+  - test: tests/test_omn26663_lab_alerts_projection.py::test_the_shape_document_states_a_meaning_for_every_exposed_column
+    description: "The read's shape document states a meaning for every exposed column"
+db_io:
+  db_tables:
+    - name: lab_alerts
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_lab_alerts.sql"
+      access: read_write
+      role: lab_alerts
+  dedupe_key: [alert_id]
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.lab-alert-transitioned.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-lab-alerts-applied.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-lab-alerts-malformed.v1
+externally_produced_topics:
+  - topic: onex.evt.omnimarket.lab-alert-transitioned.v1
+    producer: "an alert source publishing ModelLabAlertTransitioned; no alarm node does yet, so a raised test alert is published by the onex node dispatcher (`onex run-node`) directly -- not a node contract"
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-lab-alerts-applied.v1
+# The broker grants of the node's two topics (the broker ACL coverage gate): the runtime login reads the transition
+# and writes the applied event.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-alert-transitioned.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-alert-transitioned.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.projection-lab-alerts-applied.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.projection-lab-alerts-applied.v1, operation: DESCRIBE}
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.lab.alerts.v1" # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention
+  topic_config:
+    kafka_config:
+      "cleanup.policy": "compact"
+  key_grain: "mutable"
+  table: "lab_alerts"
+  # The physical relation is omninode_internal.lab_alerts, declared that way in db_io, in the migration
+  # and in the writer's SQL. On a bus_backed exposure the serving path reads bus_backed + key_columns
+  # and never this pair, and projection discovery's ALLOWED_SCHEMAS admits only public/omnidash_analytics.
+  schema: "omnidash_analytics"
+  columns:
+    - alert_id
+    - source
+    - subject
+    - state
+    - severity
+    - owner
+    - detail
+    - raised_at
+    - cleared_at
+    - last_transition_id
+    - last_transition_at
+    - projected_at
+  order_by: "raised_at DESC, alert_id ASC"
+  # alert_id is the primary key, so it is unique and stable, which is what a cursor needs.
+  cursor_column: alert_id
+  freshness_column: projected_at
+  limit: 500
+  bus_backed: true
+  key_columns: [alert_id]
+  # The reader is the dashboard's alerts panel, which is the dashboard owner's. This opt-out is
+  # self-expiring: the gate fails a `consumers: none` left standing once a reader exists, so the panel's
+  # change deletes both keys.
+  consumers: none
+  consumers_reason: >-
+    The renderer is the dashboard owner's, deliberately split from this data node; the reader declares
+    this topic in its data bindings when it lands and this opt-out is deleted then.
+metadata:
+  transport_type: kafka

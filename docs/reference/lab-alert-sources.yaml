@@ -1,0 +1,151 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# The alert sources the lab declares, and whether each one's alerts reach the bus as a lab alert transition.
+#
+# One entry per source declared in node_lab_alarm's alarm_sources table, in the table's order; a test fails
+# when a declared source is missing here. `publishes_transition` is true only when the source publishes
+# onex.evt.omnimarket.lab-alert-transitioned.v1, the event node_projection_lab_alerts folds into the lab
+# alerts read (lab-alerts-projection-read.yaml). A source with false has its alerts delivered by its
+# `posts_via` path and does not appear in that read. Set it to true in the change that makes the source
+# publish the transition.
+name: lab-alert-sources
+reader: node_projection_lab_alerts
+transition_topic: onex.evt.omnimarket.lab-alert-transitioned.v1
+
+sources:
+  - condition: consumer_group_lag
+    posts_via: router
+    publishes_transition: false
+  - condition: effects_held_behind_runtime
+    posts_via: router
+    publishes_transition: false
+  - condition: broker_listener
+    posts_via: router
+    publishes_transition: false
+  - condition: dev_tag_heartbeat
+    posts_via: router
+    publishes_transition: false
+  - condition: delegation_chain_canary
+    posts_via: router
+    publishes_transition: false
+  - condition: work_ledger_projection_stale
+    posts_via: router
+    publishes_transition: false
+  - condition: lane_drift
+    posts_via: router
+    publishes_transition: false
+  - condition: container_unhealthy
+    posts_via: router
+    publishes_transition: false
+  - condition: lab_pass_receipt
+    posts_via: router
+    publishes_transition: false
+  - condition: stale_indeterminate
+    posts_via: router
+    publishes_transition: false
+  - condition: container_restarts
+    posts_via: router
+    publishes_transition: false
+  - condition: loaded_code_sha
+    posts_via: direct
+    publishes_transition: false
+  - condition: lab_alarm_daily_digest
+    posts_via: direct
+    publishes_transition: false
+  - condition: clone_local_work_refused
+    posts_via: deliver-effect
+    publishes_transition: false
+  - condition: test_selector_miss
+    posts_via: deliver-effect
+    publishes_transition: false
+  - condition: capture_source_stale
+    posts_via: direct
+    publishes_transition: false
+  - condition: quiet_host
+    posts_via: direct
+    publishes_transition: false
+  - condition: lab_host_disk_nearly_full
+    posts_via: direct
+    publishes_transition: false
+  - condition: dev_deploy_agent_failing
+    posts_via: direct
+    publishes_transition: false
+  - condition: runner_fleet_canary
+    posts_via: direct
+    publishes_transition: false
+  - condition: private_hosted_actions_minutes
+    posts_via: direct
+    publishes_transition: false
+  - condition: system_digest_hourly
+    posts_via: direct
+    publishes_transition: false
+  - condition: lane_over_budget
+    posts_via: direct
+    publishes_transition: false
+  - condition: nonrequired_check_failing
+    posts_via: direct
+    publishes_transition: false
+  - condition: merge_without_override
+    posts_via: direct
+    publishes_transition: false
+  - condition: runner_group_alarm
+    posts_via: direct
+    publishes_transition: false
+  - condition: job_exit_no_claim
+    posts_via: direct
+    publishes_transition: false
+  - condition: hook_emit_drainer_dead
+    posts_via: direct
+    publishes_transition: false
+  - condition: throughput_results
+    posts_via: direct
+    publishes_transition: false
+  - condition: capture_silent
+    posts_via: direct
+    publishes_transition: false
+  - condition: host_drift_venv_behind
+    posts_via: direct
+    publishes_transition: false
+  - condition: host_drift_plugin_behind
+    posts_via: direct
+    publishes_transition: false
+  - condition: consumer_group_lag_script
+    posts_via: direct
+    publishes_transition: false
+  - condition: lab_host_cpu_load
+    posts_via: direct
+    publishes_transition: false
+  - condition: static_state
+    posts_via: direct
+    publishes_transition: false
+  - condition: empty_body_post
+    posts_via: direct
+    publishes_transition: false
+  - condition: hook_emit_blocked
+    posts_via: direct
+    publishes_transition: false
+  - condition: host_drift_clone_drift
+    posts_via: direct
+    publishes_transition: false
+  - condition: host_drift_unit_failed
+    posts_via: direct
+    publishes_transition: false
+  - condition: hook_capture_not_delivering
+    posts_via: direct
+    publishes_transition: false
+  - condition: consumer_health
+    posts_via: direct
+    publishes_transition: false
+  - condition: floor_stoppage_lab_idle
+    posts_via: direct
+    publishes_transition: false
+  - condition: fix_failed_after_3
+    posts_via: direct
+    publishes_transition: false
+  - condition: workspace_reconcile_failed
+    posts_via: direct
+    publishes_transition: false
+  - condition: always_red_digest_lines
+    posts_via: direct
+    publishes_transition: false

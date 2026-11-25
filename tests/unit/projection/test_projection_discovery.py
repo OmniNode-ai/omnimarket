@@ -1036,7 +1036,11 @@ class TestOmn15800ExposureParity:
         # 86 after OMN-25103: onex.snapshot.projection.floor-integration-rows.v1,
         # the newest integration pass behind the dashboard's Running figure,
         # bus-backed with its writer in the same change.
-        assert len(topic_map) == 86
+        # 87 after OMN-26663: onex.snapshot.projection.lab.alerts.v1, one row
+        # per lab alert source and subject, bus-backed with its writer in the
+        # same change.
+        assert len(topic_map) == 87
+        assert "onex.snapshot.projection.lab.alerts.v1" in topic_map
         assert "onex.snapshot.projection.done-items.v1" in topic_map
         assert "onex.snapshot.projection.floor-integration-rows.v1" in topic_map
         for liveness_topic in (
