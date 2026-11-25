@@ -214,8 +214,13 @@ def dashboard_command(ctx: click.Context, overlay_path: Path | None) -> None:
     # an owner-only file; a direct run mints its own. The token is never
     # announced here; `onex dashboard open` builds the authenticated URL.
     request = ModelLocalDashboardServeRequest(host=host, port=port, tenant_id=tenant)
+    # The address stays first on this line: the setup lifecycle reads its port
+    # from it (handler_setup_dashboard). The rest of the line says it needs
+    # this start's token, so the address is never offered as the thing to open.
     click.echo(
-        f"onex dashboard: http://{host}:{port}/\nPress Enter in the TUI, use the Open button, or run `onex dashboard open` to open it."
+        f"onex dashboard: http://{host}:{port}/ is serving and needs this start's token;"
+        " to open the dashboard, press Enter in the TUI, use the Open button,"
+        " or run `onex dashboard open`."
     )
     asyncio.run(HandlerLocalDashboardServe(pages=pages).handle(request))
 
