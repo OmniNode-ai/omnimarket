@@ -98,6 +98,14 @@ requirements:
         statement: "AC21288302: a coroutine on the refresh's loop keeps ticking, its largest gap under the test's constant, while a refresh folds a 40,000-run store -- falsifier: uv run pytest tests/nodes/node_projection_metering_summary/test_omn21288_incremental_refresh.py -q --no-cov -k does_not_hold_the_loop fails, or passes on origin/dev"
       - id: "AC21288303"
         statement: "AC21288303: the rows an incremental history stores equal the rows a rebuild on demand writes over the same runs, and the rebuild picks up a run older than the watermark -- falsifier: uv run pytest tests/nodes/node_projection_metering_summary/test_omn21288_incremental_refresh.py -q --no-cov -k 'equals_a_full_rebuild or older_than_the_watermark' fails"
+  - id: "req-omn21288-window-over-text-freshness"
+    statement: >-
+      A windowed projection read over a TEXT freshness column (metering_summary.as_of)
+      answers by instant, and a row whose text is not an instant is counted in the page's
+      window body, never dropped silently and never a 503.
+    acceptance:
+      - id: "AC21288401"
+        statement: "AC21288401: on real Postgres built from the node's migrations, window=1d, 7d and 30d of the metering-summary projection answer 200 with the rows inside each window only, and window.undated_rows names the malformed rows -- falsifier: uv run pytest tests/test_omn21288_metering_window_text_column_real_postgres.py -q --no-cov fails, or fails at origin/dev with operator does not exist: text >= timestamp with time zone"
 evidence_requirements:
   - kind: "tests"
     description: "Retention tests pass"
@@ -464,4 +472,12 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_projection_metering_summary/test_omn21288_incremental_refresh.py -q --no-cov -k 'equals_a_full_rebuild or older_than_the_watermark'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21288-metering-window-text"
+    description: "AC21288401: a window read over metering_summary.as_of (TEXT) serves the rows inside 1d, 7d and 30d and names the undated rows. The test fails at origin/dev with operator does not exist: text >= timestamp with time zone."
+    source: "manual"
+    binds_ac: ["AC21288401"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn21288_metering_window_text_column_real_postgres.py -q --no-cov -p no:cacheprovider"
         cwd: "${OMNI_HOME}/omnimarket"

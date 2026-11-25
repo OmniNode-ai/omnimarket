@@ -653,5 +653,14 @@ async def read_projection_page(
         "tenant": scope_tenant,
     }
     if window_seconds is not None:
-        body["window"] = window_body(window, window_seconds, len(all_rows))
+        counter = getattr(source, "undated_window_rows", None)
+        try:
+            undated = (
+                await counter(cfg, tenant_id=scope_tenant)
+                if counter is not None
+                else None
+            )
+        except ProjectionReadError as exc:
+            return ProjectionPage(exc.status_code, read_refusal(topic, exc))
+        body["window"] = window_body(window, window_seconds, len(all_rows), undated)
     return ProjectionPage(200, body)

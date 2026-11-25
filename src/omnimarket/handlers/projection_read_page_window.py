@@ -34,13 +34,23 @@ def window_read_kwargs(window_seconds: int | None, limit: int) -> dict[str, int]
 
 
 def window_body(
-    window: str | None, window_seconds: int | None, rows_read: int
+    window: str | None,
+    window_seconds: int | None,
+    rows_read: int,
+    undated_rows: int | None = None,
 ) -> dict[str, Any] | None:
-    """What the page says about its window: the request, the bound and the rows the store read."""
+    """What the page says about its window: the request, the bound and the rows the store read.
+
+    ``undated_rows`` names the rows a text freshness column left out of the window
+    because their value is not an instant; it is absent when the source cannot count them.
+    """
     if window is None or window_seconds is None:
         return None
-    return {
+    body: dict[str, Any] = {
         "requested": window,
         "seconds": window_seconds,
         "rows_read": rows_read,
     }
+    if undated_rows is not None:
+        body["undated_rows"] = undated_rows
+    return body
