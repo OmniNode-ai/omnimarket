@@ -11,6 +11,11 @@ page_size: 200
 # rows line, so its pages are smaller); absent, every read uses page_size.
 # page_size_by_query: {open-claims: 400}
 max_pages: 50
+# range_max_pages is the page bound of a history range read (a rows read naming since); a
+# range of a fortnight or more is far more pages than max_pages, so it pages to the end of
+# its range under this bound and is refused (open-set-longer-than-N-pages) past it. Absent,
+# a range read keeps max_pages.
+range_max_pages: 3000
 # The real overlay sets true once the query node serves lines-only pages.
 rows_lines_only: false
 route:

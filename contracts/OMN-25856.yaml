@@ -11,11 +11,13 @@ requirements:
   acceptance:
   - id: AC1
     statement: 'AC1: after a command check times out, every process the check started is gone -- falsifier: a process started by the timed-out check is still running 3 s later'
+  - id: AC2
+    statement: 'AC2: local Inkling-2-Mini has a zero marginal api cost row in cost_pricing.yaml and an unlisted local model still raises MissingCostPricingError -- falsifier: pricing Inkling-2-Mini raises, or an unlisted local model prices without error'
 - id: req-omn25856-gateway-marker-rules
   statement: The delegation quality gate refuses a code_generation or refactor answer on its tests and its compile and artifact checks, not on whether the answer text contains tooling words.
   acceptance:
-  - id: AC2
-    statement: 'AC2: a correct trivial code_generation or refactor answer passes with no TASK_MISMATCH for lacking pytest, ruff, typing, regression or compatibility words, while an answer that breaks a named interface or deletes the tests is refused -- falsifier: a correct short answer fails TASK_MISMATCH on follows_codebase_conventions or no_obvious_regressions, or a test-deleting answer passes'
+  - id: AC3
+    statement: 'AC3: a correct trivial code_generation or refactor answer passes with no TASK_MISMATCH for lacking pytest, ruff, typing, regression or compatibility words, while an answer that breaks a named interface or deletes the tests is refused -- falsifier: a correct short answer fails TASK_MISMATCH on follows_codebase_conventions or no_obvious_regressions, or a test-deleting answer passes'
 evidence_requirements:
 - kind: tests
   description: The focused regression, failing first with the surviving child process, then passing.
@@ -38,7 +40,7 @@ dod_evidence:
   description: The two marker rules apply only when the prompt asks for tests, typing, lint, compatibility or no regression. A correct trivial answer passes with no marker rule evaluated, an answer that breaks a named interface or empties the test file is refused by passes_existing_tests, and a prompt that asks for the rule keeps it. The test fails on a contract that keeps the rules unconditional.
   source: manual
   binds_ac:
-  - AC2
+  - AC3
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/delegation/test_code_class_markers_waived_unless_asked_omn25856.py -q --no-cov -n 0 -p no:randomly
@@ -57,3 +59,12 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25856 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_25856_timed_out_check_leaves_no_orphan.py -q --no-cov -n 0 -p no:randomly
+- id: dod-omn25856-inkling-priced-local
+  description: 'Inkling-2-Mini carries a zero marginal api cost row in the omnimarket cost pricing contract, and an unlisted local model stays unpriced (positive control). The test fails on a contract with no Inkling row.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/cost/test_inkling_local_priced_omn25856.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

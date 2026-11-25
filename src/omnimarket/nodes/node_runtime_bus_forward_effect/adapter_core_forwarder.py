@@ -32,6 +32,9 @@ from omnimarket.nodes.node_runtime_bus_forward_effect.models.model_runtime_bus_f
     ModelRuntimeBusForwardCommand,
     ModelRuntimeBusLocalRecordCommand,
 )
+from omnimarket.nodes.node_runtime_bus_forward_effect.models.model_workspace_roots import (
+    ModelWorkspaceRoots,
+)
 from omnimarket.nodes.node_runtime_bus_forward_effect.overlay import (
     NODE_NAME,
     ModelRuntimeBusForwardOverlay,
@@ -82,15 +85,18 @@ class CoreRuntimeBusForwarder:
         self._environ = os.environ if environ is None else environ
 
     def _make_publisher(
-        self, overlay: ModelRuntimeBusForwardOverlay
+        self,
+        overlay: ModelRuntimeBusForwardOverlay,
+        environ: Mapping[str, str] | None = None,
     ) -> ProtocolRuntimeBusPublisher:
+        environ = self._environ if environ is None else environ
         if isinstance(overlay.event_bus, ModelHttpsEventBus):
             from omnimarket.nodes.node_runtime_bus_forward_effect.publishers.publisher_https import (
                 PublisherHttps,
             )
 
-            return PublisherHttps.from_overlay(overlay.event_bus, self._environ)
-        broker = broker_for_lane(overlay.event_bus.lane, self._environ)
+            return PublisherHttps.from_overlay(overlay.event_bus, environ)
+        broker = broker_for_lane(overlay.event_bus.lane, environ)
         return self._publisher_for_broker(broker)
 
     def _keep_locally(
@@ -143,6 +149,7 @@ class CoreRuntimeBusForwarder:
         and that is not a failure. A declared hosted bus that cannot be reached is still a failure that
         names the hosted bus.
         """
+        roots: ModelWorkspaceRoots | None = None
         try:
             overlay = self._overlay or load_overlay(self._environ)
         except NodeOverlayNotFoundError:
@@ -152,10 +159,17 @@ class CoreRuntimeBusForwarder:
                 f"runtime bus forwarder could not reach the hosted bus: {type(exc).__name__}: {exc}"
             ) from exc
         try:
-            publisher = self._make_publisher(overlay)
+            roots = ModelWorkspaceRoots.resolve(self._environ)
+            environ = {**self._environ, **roots.declared}
+            if self._environ is os.environ:
+                # The lane declaration reader resolves the config root from the process environment.
+                os.environ.update(roots.declared)
+            publisher = self._make_publisher(overlay, environ)
         except Exception as exc:
+            unresolved = roots.describe_unresolved() if roots is not None else None
             raise RuntimeError(
                 f"runtime bus forwarder could not reach the hosted bus: {type(exc).__name__}: {exc}"
+                + (f". Workspace roots: {unresolved}" if unresolved else "")
             ) from exc
         command = ModelRuntimeBusForwardCommand(
             run_id=f"runtime-local-{uuid.uuid4()}",
