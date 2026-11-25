@@ -276,3 +276,21 @@ def test_a_check_value_with_a_shell_word_is_not_a_loop_check(tmp_path: Path) -> 
     (material,) = reader(root).read((candidate,))
     assert material.excluded_reason is None
     assert material.check_commands == ()
+
+
+def test_a_command_check_with_no_shell_word_is_a_loop_check(tmp_path: Path) -> None:
+    root, candidate = build_repo(
+        tmp_path,
+        check_type="command",
+        check_value="uv run pytest tests/test_a.py -q -k greeting",
+    )
+    (material,) = reader(root).read((candidate,))
+    assert material.excluded_reason is None
+    assert material.check_commands == ("uv run pytest tests/test_a.py -q -k greeting",)
+
+
+def test_a_quoted_word_stays_one_word_in_a_loop_check(tmp_path: Path) -> None:
+    value = "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/test_a.py -q -k 'a or b'"
+    root, candidate = build_repo(tmp_path, check_value=value)
+    (material,) = reader(root).read((candidate,))
+    assert material.check_commands == (value,)

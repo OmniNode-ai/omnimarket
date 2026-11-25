@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shlex
 from datetime import datetime
 from uuid import UUID, uuid5
 
@@ -106,7 +107,10 @@ def build_unit_request(
     commands = overlay.draft_checks
     context_paths: tuple[str, ...] = ()
     seed_files: tuple[ModelSeedFile, ...] = ()
-    if overlay.real_check_in_loop and material.check_commands:
+    if overlay.real_check_in_loop:
+        if not material.check_commands:
+            msg = f"real_check_in_loop: task {material.task_key} has no loop check"
+            raise ValueError(msg)
         commands = material.check_commands
         context_paths = material.context_paths
         seed_files = material.seed_files
@@ -127,7 +131,7 @@ def build_unit_request(
             seed_files=seed_files,
             checks=tuple(
                 ModelDeclaredCheck(
-                    name=f"draft_check_{index}", argv=tuple(command.split())
+                    name=f"draft_check_{index}", argv=tuple(shlex.split(command))
                 )
                 for index, command in enumerate(commands, start=1)
             ),

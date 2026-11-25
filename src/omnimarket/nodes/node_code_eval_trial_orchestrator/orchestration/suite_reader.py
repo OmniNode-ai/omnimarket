@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import shlex
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
@@ -48,8 +49,21 @@ from omnimarket.nodes.node_delegation_size_band_compute.handlers.handler_delegat
     HandlerDelegationSizeBand,
 )
 
-# a shell-free command word list: the loop runs a check as argv, never through a shell
-_LOOP_COMMAND = re.compile(r"^[A-Za-z0-9_.+/=%:@,-]+( [A-Za-z0-9_.+/=%:@,-]+)*$")
+# a command the loop runs as argv, never through a shell: a quoted word stays one word,
+# and a word that is a shell operator, a substitution or a redirect is refused
+_SHELL_WORD = re.compile(r"^(?:[&|;<>()]+|.*[$`].*)$")
+
+
+def _runs_as_argv(command: str) -> bool:
+    try:
+        words = shlex.split(command)
+    except ValueError:
+        return False
+    return bool(words) and not any(_SHELL_WORD.match(word) for word in words)
+
+
+# the contract check types whose value is a command the loop can run as argv
+_LOOP_CHECK_TYPES = frozenset({"test_passes", "command"})
 
 # the delegated code edit loop request's task limit (ModelLabCodeDraft.task max_length)
 LOOP_REQUEST_TASK_MAX_CHARS = 20000
@@ -240,13 +254,13 @@ class GitCodeEvalSuiteReader:
 
     @staticmethod
     def _loop_commands(bound: list[tuple[str, str, str]]) -> tuple[str, ...]:
-        """The contract's test commands the loop may run: shell-free word lists, in order, once."""
+        """The contract's test commands the loop may run as argv: no shell operator, once each, in order."""
         commands: list[str] = []
         for _item_id, check_type, check_value in bound:
-            command = " ".join(check_value.split())
+            command = check_value.strip()
             if (
-                check_type == "test_passes"
-                and _LOOP_COMMAND.fullmatch(command) is not None
+                check_type in _LOOP_CHECK_TYPES
+                and _runs_as_argv(command)
                 and command not in commands
             ):
                 commands.append(command)
