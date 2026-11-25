@@ -20,6 +20,11 @@ requirements:
         statement: 'AC3: on h053 and h051 the run directories of lanes that have a TERMINAL and no live process are removed and the bytes freed are reported, with every live lane''s directory untouched -- falsifier: df of the run filesystem before and after, and a listing showing each live lane''s directory still present'
       - id: AC5
         statement: 'AC5: pre-commit passes on each branch -- falsifier: uv run pre-commit run --all-files rc 0 at each head'
+  - id: req-omn21954-saved-git-work
+    statement: Retention archives the bundles and patches a lane saved under its run trees before it removes them, and keeps a run whose clone holds a commit on no remote.
+    acceptance:
+      - id: AC6
+        statement: 'AC6: a bundle and a patch a lane saved under its run or context tree, named by no receipt or ledger row, are in the archive manifest before the trees are removed, and no link is followed -- falsifier: uv run pytest tests/nodes/node_remote_lane_effect/test_run_retention_saved_git_work.py -q --no-cov fails on the base and passes on the fix'
 evidence_requirements:
   - kind: tests
     description: The run retention suite runs at the pushed head on a lab host.
@@ -71,6 +76,8 @@ dod_evidence:
   - id: dod-omn21954-saved-git-work
     description: Retention archives every bundle and patch under the run trees (no link followed, git directories skipped) with the file named in the archive manifest before removal, through the typed function and the inlined host payload, and keeps a run whose clone holds a commit on no remote with the unpushed-commits keep reason. The archive tests fail at the merge base; the keep and remove tests hold there already.
     source: manual
+    binds_ac:
+      - AC6
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/nodes/node_remote_lane_effect/test_run_retention_saved_git_work.py -q --no-cov --tb=line
