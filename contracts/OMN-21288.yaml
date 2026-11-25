@@ -98,6 +98,8 @@ requirements:
         statement: "AC21288302: a coroutine on the refresh's loop keeps ticking, its largest gap under the test's constant, while a refresh folds a 40,000-run store -- falsifier: uv run pytest tests/nodes/node_projection_metering_summary/test_omn21288_incremental_refresh.py -q --no-cov -k does_not_hold_the_loop fails, or passes on origin/dev"
       - id: "AC21288303"
         statement: "AC21288303: the rows an incremental history stores equal the rows a rebuild on demand writes over the same runs, and the rebuild picks up a run older than the watermark -- falsifier: uv run pytest tests/nodes/node_projection_metering_summary/test_omn21288_incremental_refresh.py -q --no-cov -k 'equals_a_full_rebuild or older_than_the_watermark' fails"
+      - id: "AC21288304"
+        statement: "AC21288304: the loop-hold test takes the quietest of three rounds, a fold made synchronous on the loop still reads as a hold in every round, and one stalled round with clean work does not -- falsifier: uv run pytest tests/nodes/node_projection_metering_summary/test_omn21288_incremental_refresh.py -q --no-cov -k 'synchronous_on_the_loop or one_off_runner_stall' fails"
   - id: "req-omn21288-window-over-text-freshness"
     statement: >-
       A windowed projection read over a TEXT freshness column (metering_summary.as_of)
@@ -472,6 +474,14 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_projection_metering_summary/test_omn21288_incremental_refresh.py -q --no-cov -k 'equals_a_full_rebuild or older_than_the_watermark'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn21288-metering-loop-quietest-round"
+    description: "AC21288304: the loop-hold test takes the quietest of three rounds. The fold run synchronously on the loop reads as a hold in every round, and a single stalled round over clean work passes. Measured on lab h053 at one CPU: longest loop gap 0.06 s, 0.22 s with three busy loops on the same CPU, no step over 100 ms."
+    source: "manual"
+    binds_ac: ["AC21288304"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_projection_metering_summary/test_omn21288_incremental_refresh.py -q --no-cov -k 'synchronous_on_the_loop or one_off_runner_stall'"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn21288-metering-window-text"
     description: "AC21288401: a window read over metering_summary.as_of (TEXT) serves the rows inside 1d, 7d and 30d and names the undated rows. The test fails at origin/dev with operator does not exist: text >= timestamp with time zone."
