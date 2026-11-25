@@ -87,6 +87,30 @@ def passes_executed_checks(
     )
 
 
+def checks_in_force_under_response_contract(
+    class_deterministic: Iterable[str],
+    authority: RequiredBarAuthority,
+    *,
+    response_contract_governed: bool,
+) -> tuple[str, ...]:
+    """The declared deterministic checks a decision is judged against (OMN-26656).
+
+    A response contract governs the SHAPE of an answer, so for a class accepted
+    by executed tests it adds to the class's executed checks and never empties
+    them: the score-verifying checks (``passes_existing_tests``) stay in force,
+    and the gate evaluates them beside the schema. A class not accepted by
+    executed tests keeps what a contract has always meant for it: the schema
+    decides, and no class check is in force. With no contract the whole class
+    set is returned.
+    """
+    declared = tuple(class_deterministic)
+    if not response_contract_governed:
+        return declared
+    if not authority.acceptance_by_executed_tests:
+        return ()
+    return tuple(check for check in declared if check in SCORE_VERIFYING_CHECKS)
+
+
 def with_executed_check_verdict(
     result: ModelQualityGateResult,
     authority: RequiredBarAuthority,
@@ -281,6 +305,7 @@ def _bar_value(raw: Any, field_name: str) -> float:
 __all__ = [
     "RequiredBarAuthority",
     "RequiredBarAuthorityError",
+    "checks_in_force_under_response_contract",
     "is_quality_accepted",
     "meets_required_bar",
     "passes_executed_checks",
