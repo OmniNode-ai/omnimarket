@@ -174,6 +174,7 @@ from omnimarket.handlers.routing.delegation_backend_resolution import (
     resolve_declared_local_model,
     resolve_effective_max_tokens,
     resolve_timeout_seconds,
+    with_backend_reasoning_effort,
 )
 from omnimarket.handlers.routing.delegation_backend_resolution import (
     resolve_delegation_backend as _resolve_delegation_backend_uncustomized,
@@ -5471,6 +5472,11 @@ class LocalDelegationDispatchPort:
         # answer room.
         provider_request_options = bound_thinking_budget_to_answer_room(
             provider_request_options, max_tokens=effective_max_tokens
+        )
+        # OMN-26365: the backend row's own reasoning effort goes to this backend
+        # only; a row that declares none sends none.
+        provider_request_options = with_backend_reasoning_effort(
+            provider_request_options, backend.reasoning_effort
         )
         # OMN-19432: the profile's prescribed temperature is a default for a
         # caller that sent none, never a competing writer of the wire key.
