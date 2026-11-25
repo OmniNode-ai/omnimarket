@@ -245,38 +245,49 @@ def test_omn24874_contract_r8_reading_means_cost_above_zero_on_a_real_writer_row
     assert reading() != 0
 
 
-_ALARM_HEAD = "d65bc516360e8a0324f044cb0d637c9309665874"  # the head the watcher state records for the alarm pull request
+_FIX_PR_HEAD = "69c9e2f889453255a687420d5b93e50f7509721e"
+_ALARM_HEAD = "5f3e31e8293fdf7e9b93cbc828d99cbd52d2b4bb"
+_EARLIER_FIX_HEAD = "12df04bfd75f"
+
+# The three CLEAN STATUS row shapes from the 2026-11-17 ledger roll.
+# Keep the actor, verdict, head and PR cells as recorded and omit unrelated metadata.
+_ARCHIVED_CLEAN_ROWS = (
+    "2026-11-17T04:53:43Z | STATUS | lane=fable-omnimarket-6335-0450 | "
+    "verdict=CLEAN | head=12df04bfd75f | pr=omnimarket#6335",
+    "2026-11-17T04:55:10Z | STATUS | lane=fable-omnimarket-6335-0450 | "
+    "actor=claude:sonnet:fable-review-poster | model=claude-sonnet-5-5 | "
+    "pr=omnimarket#6335 | verdict=CLEAN | head=12df04bfd75f",
+    "2026-11-17T05:28:16Z | STATUS | lane=fable-omnimarket-6335-0517 | "
+    "actor=claude:sonnet:fable-review-post | model=claude-sonnet | "
+    "verdict=CLEAN | head=12df04bfd75f | pr=omnimarket#6335",
+)
 
 
 def _plugin_with_ledger_rows(
-    tmp_path: Path, rows: list[str], *, head: str, alarm_pr_state: str | None
+    tmp_path: Path, rows: list[str], *, pr_heads: Mapping[str, str | None]
 ) -> Path:
-    """A plugin root whose lane_brief.py prints ``rows`` (``<HEAD>`` and ``<ALARM>`` filled in) and whose pr_state_local.py
-    prints the watcher record of the alarm pull request (``alarm_pr_state`` None: the watcher cannot read it, exit 3)."""
+    """Stub the ledger reader and the PR watcher. A None head simulates an unreadable PR."""
     plugin = tmp_path / "plugin"
     script = plugin / "skills/lane-brief/scripts/lane_brief.py"
     script.parent.mkdir(parents=True)
     script.write_text(
-        "import sys\nfor row in "
-        + repr(rows)
-        + ":\n    print(row.replace('<HEAD>', "
-        + repr(head)
-        + ").replace('<ALARM>', "
-        + repr(_ALARM_HEAD)
-        + "))\n",
+        "import sys\n"
+        "assert sys.argv[1:3] == ['grep', 'verdict=CLEAN'], sys.argv\n"
+        f"for n, row in enumerate({rows!r}, 1):\n"
+        "    print(f'archive/ROLLING_WORK_LEDGER_2026-11-17-split.md:{n}:{row}')\n",
         encoding="utf-8",
     )
     state = plugin / "skills/merge-drain/scripts/pr_state_local.py"
     state.parent.mkdir(parents=True)
-    if alarm_pr_state is None:
-        state.write_text("import sys\nsys.exit(3)\n", encoding="utf-8")
-    else:
-        state.write_text(
-            "import sys\n"
-            "assert sys.argv[1:] == ['--pr', 'OmniNode-ai/omnimarket#6353', '--json'], sys.argv\n"
-            f"print({json.dumps(json.dumps({'facts': {'head_sha': alarm_pr_state}}))})\n",
-            encoding="utf-8",
-        )
+    state.write_text(
+        "import json, sys\n"
+        "assert len(sys.argv) == 4 and sys.argv[1] == '--pr' and sys.argv[3] == '--json', sys.argv\n"
+        f"head = {dict(pr_heads)!r}[sys.argv[2]]\n"
+        "if head is None:\n"
+        "    sys.exit(3)\n"
+        "print(json.dumps({'facts': {'head_sha': head}}))\n",
+        encoding="utf-8",
+    )
     return plugin
 
 
@@ -289,11 +300,21 @@ def _checkout_head(tmp_path: Path) -> tuple[Path, str]:
 
 
 def _run_ac5(
-    tmp_path: Path, rows: list[str], *, alarm_pr_state: str | None = _ALARM_HEAD
+    tmp_path: Path,
+    rows: list[str],
+    *,
+    fix_pr_state: str | None = _FIX_PR_HEAD,
+    alarm_pr_state: str | None = _ALARM_HEAD,
 ) -> int:
     repo, head = _checkout_head(tmp_path)
+    assert head[:12] not in {_FIX_PR_HEAD[:12], _ALARM_HEAD[:12]}
     plugin = _plugin_with_ledger_rows(
-        tmp_path, rows, head=head, alarm_pr_state=alarm_pr_state
+        tmp_path,
+        rows,
+        pr_heads={
+            "OmniNode-ai/omnimarket#6335": fix_pr_state,
+            "OmniNode-ai/omnimarket#6353": alarm_pr_state,
+        },
     )
     command = str(
         _items()["dod-omn24874-ac5-clean-verdict-row"]["checks"][0]["check_value"]
@@ -308,38 +329,78 @@ def _run_ac5(
     ).returncode
 
 
-_CLEAN = "2026-11-16T21:00:00Z | STATUS | lane=fable-omnimarket-{pr}-2100 | actor=fable-reviewer | model=fable | pr=OmniNode-ai/omnimarket#{pr} | head={head} | verdict=CLEAN"
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "archived_clean",
+    _ARCHIVED_CLEAN_ROWS,
+    ids=("no-actor", "review-poster", "review-post"),
+)
+def test_omn24874_contract_ac5_check_needs_a_clean_row_at_the_head_of_each_pull_request(
+    tmp_path: Path,
+    archived_clean: str,
+) -> None:
+    # Model review evidence at the heads in the watcher, independently of the checkout.
+    this = archived_clean.replace(_EARLIER_FIX_HEAD, _FIX_PR_HEAD[:12])
+    alarm = (
+        "2026-11-17T14:03:20Z | STATUS | lane=fable-omnimarket-6353-1345 | "
+        f"pr=omnimarket#6353 | verdict=CLEAN | head={_ALARM_HEAD}"
+    )
+    assert _run_ac5(tmp_path / "both", [archived_clean, this, alarm]) == 0
+    assert _run_ac5(tmp_path / "stale", [archived_clean, alarm]) != 0
+    assert _run_ac5(tmp_path / "no-alarm-row", [this]) != 0
+    old_alarm = alarm.replace(_ALARM_HEAD, "0123456789ab")
+    assert _run_ac5(tmp_path / "old-alarm-head", [this, old_alarm]) != 0
+    wrong = alarm.replace(_ALARM_HEAD, _FIX_PR_HEAD[:12])
+    assert _run_ac5(tmp_path / "wrong-head", [this, wrong]) != 0
+    assert _run_ac5(tmp_path / "unreadable-fix", [this, alarm], fix_pr_state=None) != 0
+    assert (
+        _run_ac5(tmp_path / "unreadable-alarm", [this, alarm], alarm_pr_state=None) != 0
+    )
+    for pr, clean, kept in ((6335, this, alarm), (6353, alarm, this)):
+        other = clean.replace(f"lane=fable-omnimarket-{pr}-", "lane=fix6335-")
+        assert _run_ac5(tmp_path / f"other-lane-{pr}", [other, kept]) != 0
+        assert (
+            _run_ac5(
+                tmp_path / f"other-verdict-{pr}",
+                [clean.replace("verdict=CLEAN", "verdict=CLEANUP"), kept],
+            )
+            != 0
+        )
 
 
 @pytest.mark.unit
-def test_omn24874_contract_ac5_check_needs_a_clean_row_at_the_head_of_each_pull_request(
+def test_omn24874_contract_ac5_check_selects_on_lane_verdict_and_head_not_on_the_actor(
     tmp_path: Path,
 ) -> None:
-    older = "2026-11-16T19:44:33Z | STATUS | lane=x | pr=omnimarket#6335 | head=32e9b16c909d | verdict=CLEAN"
-    this = _CLEAN.format(pr=6335, head="<HEAD>")
-    alarm = _CLEAN.format(pr=6353, head="<ALARM>")
-    # Both pull requests have a CLEAN row naming their current head: passes.
-    assert _run_ac5(tmp_path / "both", [older, this, alarm]) == 0
-    # The row of a head this checkout is not at (an older CLEAN row after a new push) passes nothing.
-    assert _run_ac5(tmp_path / "stale", [older, alarm]) != 0
-    # A CLEAN row for #6335 alone does not pass: the alarm pull request has none (the Done gate read passed with #6353 unmerged).
-    assert _run_ac5(tmp_path / "no-alarm-row", [older, this]) != 0
-    # A CLEAN row for an older head of #6353 is not its head.
-    old_alarm = _CLEAN.format(pr=6353, head="0123456789ab")
-    assert _run_ac5(tmp_path / "old-alarm-head", [this, old_alarm]) != 0
-    # The row that names the other pull request's head does not stand in for #6353's own.
-    wrong = _CLEAN.format(pr=6353, head="<HEAD>")
-    assert _run_ac5(tmp_path / "wrong-head", [this, wrong]) != 0
-    # A head the watcher cannot read fails closed.
-    assert _run_ac5(tmp_path / "unreadable", [this, alarm], alarm_pr_state=None) != 0
-    # Review finding 8 (OMN-25411): a CLEAN row another lane wrote (not the review lane of
-    # that pull request) at the right head passes nothing.
-    for pr, head, kept in ((6335, "<HEAD>", alarm), (6353, "<ALARM>", this)):
-        other = (
-            f"2026-11-16T21:00:00Z | STATUS | lane=fix6335-2005 | pr=omnimarket#{pr} "
-            f"| head={head} | verdict=CLEAN"
-        )
-        assert _run_ac5(tmp_path / f"other-lane-{pr}", [other, kept]) != 0, pr
+    # Real row shapes of the Fable review lane: the actor cell varies and a CLEAN row need not carry actor=fable-reviewer.
+    alarm = (
+        "2026-11-17T14:03:20Z | STATUS | lane=fable-omnimarket-6353-1345 | "
+        f"pr=omnimarket#6353 | verdict=CLEAN | head={_ALARM_HEAD}"
+    )
+    poster = (
+        "2026-11-18T04:15:42Z | STATUS | lane=fable-omnimarket-6335-0400 | "
+        "actor=claude:subagent:review-poster | verdict=CLEAN | "
+        f"head={_FIX_PR_HEAD[:12]} | pr=omnimarket#6335"
+    )
+    assert _run_ac5(tmp_path / "poster", [poster, alarm]) == 0
+    full_head = poster.replace(_FIX_PR_HEAD[:12], _FIX_PR_HEAD)
+    assert _run_ac5(tmp_path / "full-head", [full_head, alarm]) == 0
+    # A CLEAN row of another head fails.
+    other_head = poster.replace(_FIX_PR_HEAD[:12], _EARLIER_FIX_HEAD)
+    assert _run_ac5(tmp_path / "other-head", [other_head, alarm]) != 0
+    # A CHANGES-NEEDED row at the right head fails, in either spelling.
+    for verdict in ("CHANGES-NEEDED", "CHANGES_NEEDED"):
+        needs = poster.replace("verdict=CLEAN", f"verdict={verdict}")
+        assert _run_ac5(tmp_path / verdict, [needs, alarm]) != 0
+    # An actor=fable-reviewer row with the wrong lane prefix fails, at the right head.
+    reviewer = (
+        "2026-11-17T15:54:03Z | STATUS | lane=fix6335-1544 | actor=fable-reviewer | "
+        f"verdict=CLEAN | head={_FIX_PR_HEAD[:12]} | pr=omnimarket#6335"
+    )
+    assert _run_ac5(tmp_path / "wrong-lane", [reviewer, alarm]) != 0
+    # A CLEAN row that is not a STATUS row fails.
+    message = poster.replace("| STATUS |", "| MSG |")
+    assert _run_ac5(tmp_path / "not-status", [message, alarm]) != 0
 
 
 _RUNTIME_CONTAINER = "omninode-runtime"
