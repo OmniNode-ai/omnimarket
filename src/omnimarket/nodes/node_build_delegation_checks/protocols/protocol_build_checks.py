@@ -21,6 +21,11 @@ class BuildStoreUnwritableError(OSError):
     """The build store cannot write its history where it was told to: the refusal names the path and the cause."""
 
 
+class MergeHistoryUnavailableError(OSError):
+    """The merge history between two builds cannot be read where the node runs (the runtime image carries no git history for the
+    clone): the refusal names the clone and the cause, and the node reports the suspects as unknown, never as none."""
+
+
 class ProtocolCheckRunner(Protocol):
     """Runs one check's probe against one build. A probe that cannot run answers UNAVAILABLE, never FAIL."""
 
@@ -69,6 +74,7 @@ class ProtocolRegressionSink(Protocol):
 
 __all__ = [
     "BuildStoreUnwritableError",
+    "MergeHistoryUnavailableError",
     "ProtocolBuildStore",
     "ProtocolCheckRunner",
     "ProtocolMergeSource",

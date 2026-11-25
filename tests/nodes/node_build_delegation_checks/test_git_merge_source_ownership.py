@@ -20,6 +20,7 @@ def test_the_git_log_names_only_the_clone_it_reads_as_a_safe_directory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     clone = tmp_path / "omnimarket"
+    (clone / ".git").mkdir(parents=True)
     seen: list[list[str]] = []
 
     def fake_run(

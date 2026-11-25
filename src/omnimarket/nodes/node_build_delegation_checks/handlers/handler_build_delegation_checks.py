@@ -70,6 +70,7 @@ from omnimarket.nodes.node_build_delegation_checks.models.model_build_delegation
 from omnimarket.nodes.node_build_delegation_checks.overlay import load_overlay
 from omnimarket.nodes.node_build_delegation_checks.protocols.protocol_build_checks import (
     BuildStoreUnwritableError,
+    MergeHistoryUnavailableError,
     ProtocolBuildStore,
     ProtocolCheckRunner,
     ProtocolMergeSource,
@@ -127,7 +128,8 @@ class _BuildChecksRun:
         now = self._clock()
         previous = self._store.previous_build(request.runtime_lane, build_id)
         previous_id = previous.build_id if previous else ""
-        added = self._between(previous_id, build_id)
+        unknown: list[ModelRefusedAlarm] = []
+        added = self._between(previous_id, build_id, unknown)
         begun = ModelBuildRecord(
             build_id=build_id,
             runtime_lane=request.runtime_lane,
@@ -189,11 +191,13 @@ class _BuildChecksRun:
             suspects = (
                 added
                 if last.build_id == previous_id
-                else self._between(last.build_id, build_id)
+                else self._between(last.build_id, build_id, unknown)
             )
-            event = self._event(check_id, build_id, record, last, suspects, owner, now)
+            event = self._event(
+                check_id, build_id, record, last, suspects, owner, now, bool(unknown)
+            )
             events.append(event)
-            alarms.append(self._alarm(event))
+            alarms.append(self._alarm(event, bool(unknown)))
 
         result = ModelBuildChecksResult(
             build_id=build_id,
@@ -202,7 +206,7 @@ class _BuildChecksRun:
             records=tuple(records),
             regressions=tuple(events),
             alarms=tuple(alarms),
-            refused=tuple(refused),
+            refused=tuple(refused) + tuple(unknown[:1]),
         )
         self._store.finish(
             begun.model_copy(update={"checks": tuple(records), "complete": True})
@@ -265,10 +269,19 @@ class _BuildChecksRun:
             build_id=build_id, status=EnumBuildChecksStatus.SKIPPED, reason=reason
         )
 
-    def _between(self, base_id: str, head_id: str) -> tuple[ModelSuspectMerge, ...]:
+    def _between(
+        self, base_id: str, head_id: str, unknown: list[ModelRefusedAlarm]
+    ) -> tuple[ModelSuspectMerge, ...]:
         if not base_id:
             return ()
-        return tuple(_suspect(c) for c in self._merges.merges_between(base_id, head_id))
+        try:
+            found = self._merges.merges_between(base_id, head_id)
+        except MergeHistoryUnavailableError as exc:
+            # Attribution is the only thing the history is for: the checks still run and a red still alarms, with the
+            # suspects reported as unknown and the refusal named on the result.
+            unknown.append(ModelRefusedAlarm(check_id="*", reason=str(exc)))
+            return ()
+        return tuple(_suspect(c) for c in found)
 
     def _run(self, check_id: str, build_id: str) -> ModelCheckOutcome:
         try:
@@ -290,6 +303,7 @@ class _BuildChecksRun:
         suspects: tuple[ModelSuspectMerge, ...],
         owner: str,
         now: datetime,
+        history_unknown: bool = False,
     ) -> ModelRegressionEvent:
         latency = max(0.0, (now - red.at).total_seconds())
         return ModelRegressionEvent(
@@ -308,7 +322,7 @@ class _BuildChecksRun:
                     kind=EnumChangeKind.DEV_BUILD,
                     at=now,
                     ref=build_id,
-                    summary=f"dev build {build_id[:12]} over {green.build_id[:12]}, {len(suspects)} merge(s) added",
+                    summary=f"dev build {build_id[:12]} over {green.build_id[:12]}, {'merge history unavailable' if history_unknown else f'{len(suspects)} merge(s) added'}",
                 ),
             ),
             owner=owner,
@@ -322,10 +336,13 @@ class _BuildChecksRun:
             suspects=suspects,
         )
 
-    def _alarm(self, event: ModelRegressionEvent) -> ModelLabAlarmDeliveryRequest:
-        names = (
-            ", ".join(_name(m) for m in event.suspects)
-            or "none (the build added no merge)"
+    def _alarm(
+        self, event: ModelRegressionEvent, history_unknown: bool = False
+    ) -> ModelLabAlarmDeliveryRequest:
+        names = ", ".join(_name(m) for m in event.suspects) or (
+            "unknown (the merge history is unavailable in this runtime)"
+            if history_unknown
+            else "none (the build added no merge)"
         )
         detail = (
             f"{event.check_id} passed on build {event.previous_build_id[:12]} and fails on build {event.build_id[:12]}; "
