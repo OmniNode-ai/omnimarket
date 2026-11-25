@@ -14,11 +14,15 @@ still stored with no cost. The price comes from
 
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 from uuid import uuid4
 
 import pytest
 
+from omnimarket.handlers.routing.byok_provider_backends import (
+    resolve_byok_backend_by_id,
+)
 from omnimarket.nodes.node_projection_delegation.handlers import byok_actual_cost
 from omnimarket.projection.runner import MessageMeta
 from tests.test_omn15909_real_postgres_projection_write_path_gate import (
@@ -29,6 +33,10 @@ from tests.test_omn15909_real_postgres_projection_write_path_gate import (
 # glm-5.3-flash on the general API plan is declared at 0.15 in / 0.50 out USD per 1M tokens:
 # (231 * 0.15 + 277 * 0.50) / 1_000_000.
 _DECLARED_COST_USD = 0.00017315
+
+# The price key is the catalogue's own first priced model of the backend, never spelled in a test (OMN-26651).
+_BACKEND = "byok-glm-general"
+_PRICED_MODEL = resolve_byok_backend_by_id(_BACKEND).model_prices[0].model_name
 
 
 def _byok_payload(*, correlation_id: str, model: str) -> dict[str, object]:
@@ -54,7 +62,7 @@ class TestByokPricedCostLandsInRealRow:
     async def test_declared_model_row_carries_cost_above_zero(self) -> None:
         async with _provisioned_runner() as (runner, admin_conn, _schema):
             correlation_id = str(uuid4())
-            data = _byok_payload(correlation_id=correlation_id, model="glm-5.3-flash")
+            data = _byok_payload(correlation_id=correlation_id, model=_PRICED_MODEL)
             meta = MessageMeta(partition=0, offset=0, fallback_id=correlation_id)
 
             ok = await runner.project_event(
@@ -133,3 +141,41 @@ class TestByokPricedCostLandsInRealRow:
             # (231 * 0.2 + 277 * 0.4) / 1_000_000
             assert float(row["cost_usd"]) == pytest.approx(0.000157)
             assert row["cost_measurement_source"] == "metered"
+
+    async def test_the_priced_row_write_logs_the_source_that_priced_it(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """OMN-26594: the write path that books the cost also names where the price came from.
+
+        A reading of a running dev runtime holds this line to tell the catalogue leg of
+        the price lookup from the models.dev leg; the row it priced lands beside it.
+        """
+        caplog.set_level(logging.INFO, logger=byok_actual_cost.logger.name)
+        async with _provisioned_runner() as (runner, admin_conn, _schema):
+            correlation_id = str(uuid4())
+            data = _byok_payload(correlation_id=correlation_id, model=_PRICED_MODEL)
+            meta = MessageMeta(partition=0, offset=0, fallback_id=correlation_id)
+
+            ok = await runner.project_event(
+                runner._topic_delegation_completed, data, meta
+            )
+
+            assert ok is True
+            row = await admin_conn.fetchrow(
+                "SELECT cost_usd FROM delegation_events WHERE correlation_id = $1",
+                correlation_id,
+            )
+            assert row is not None, "the write must have landed a real row"
+            assert float(row["cost_usd"]) == pytest.approx(_DECLARED_COST_USD)
+        lines = [
+            r.getMessage()
+            for r in caplog.records
+            if r.name == byok_actual_cost.logger.name
+            and "BYOK call priced" in r.getMessage()
+        ]
+        assert any(
+            "backend_id=byok-glm-general" in line
+            and f"model={_PRICED_MODEL}" in line
+            and "price_source=byok_provider_backends" in line
+            for line in lines
+        ), lines

@@ -61,6 +61,10 @@ event_bus:
   - onex.evt.omnimarket.lab-daemon-sync-completed.v1
 runtime_dispatch:
   external_trigger: true
+  # A host timer on each lab host runs the module by hand-off outside this repository; no registry unit names it.
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_lab_daemon_sync_effect --host <host>
+    owner: OmniNode Platform Team
 externally_consumed_topics:
 - onex.evt.omnimarket.lab-daemon-install-refused.v1
 - onex.evt.omnimarket.lab-daemon-sync-completed.v1

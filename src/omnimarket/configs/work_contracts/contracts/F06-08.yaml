@@ -22,7 +22,7 @@ acceptance:
     - '{answer}'
     environment:
       path: uv.lock
-      sha256: e42a8d131a3e2027e7149f84725cd47341d8f41f4452accc58bf42038ab5656e
+      sha256: e0d682fdf9c377d475d1817b7158f3f9927d0cdad4c2b116e7732d874c3575ac
     expected_exit: 0
     target: src/omnibase_core/models/security/model_signature_chain.py
     patch:

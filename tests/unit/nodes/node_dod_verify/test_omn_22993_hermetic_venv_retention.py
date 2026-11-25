@@ -60,7 +60,7 @@ def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         (target / "bin" / "python").write_text("")
         return subprocess.CompletedProcess(argv, 0, "", "")
 
-    monkeypatch.setattr(subprocess, "run", fake_sync)
+    monkeypatch.setattr(ec_mod, "_run_in_process_group", fake_sync)
     return envs
 
 

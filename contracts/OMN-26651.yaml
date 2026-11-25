@@ -87,3 +87,10 @@ dod_evidence:
   - check_type: command
     check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26651 --kind test -- uv run --frozen pytest tests/nodes/node_lab_daemon_sync_effect -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26651-merged-tree-guard-clean
+  description: With dev merged, the guard reads no new finding; the pricing and brief model ids sit in the contract overlay tree and the reader answers from it, the hook install model takes its tool from the request, and the lab daemon sync contract declares its trigger.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/test_pricing_model_bindings_in_overlay_omn26651.py tests/nodes/node_hook_install_emission_compute/test_tool_declared_by_request_omn26651.py tests/nodes/node_lab_daemon_sync_effect/test_lab_daemon_sync_trigger_declared_omn26651.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

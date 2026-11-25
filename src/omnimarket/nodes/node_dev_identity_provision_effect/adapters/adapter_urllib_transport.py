@@ -47,9 +47,11 @@ class UrllibIdentityTransport:
         def _do() -> ModelIdentityHttpResponse:
             req = _build_request(request)
             try:
-                with urllib.request.urlopen(
-                    req, timeout=request.timeout_seconds
-                ) as response:
+                with (
+                    urllib.request.urlopen(  # no-contract-check: the dev identity transport boundary; the handler takes it as ProtocolDevIdentityTransport and tests inject a fake
+                        req, timeout=request.timeout_seconds
+                    ) as response
+                ):
                     body = response.read()
                     try:
                         decoded = json.loads(body)

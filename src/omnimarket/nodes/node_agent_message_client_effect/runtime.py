@@ -25,6 +25,7 @@ from omnimarket.nodes.node_agent_message_client_effect.handlers.handler_agent_me
 from omnimarket.nodes.node_agent_message_client_effect.models.model_agent_message import (
     ModelAgentMessage,
     ModelAgentMessageQuery,
+    ModelAgentMessageReadReport,
 )
 from omnimarket.nodes.node_agent_message_client_effect.models.model_agent_message_request import (
     ModelAgentMessageReadRequest,
@@ -87,10 +88,10 @@ class _LazyNode:
             self._node = self._stack.enter_context(self._opener())
         return self._node
 
-    def send(self, message: ModelAgentMessage) -> None:
-        self._open().send(message)
+    def send(self, message: ModelAgentMessage) -> str | None:
+        return self._open().send(message)
 
-    def read(self, query: ModelAgentMessageQuery) -> tuple[ModelAgentMessage, ...]:
+    def read(self, query: ModelAgentMessageQuery) -> ModelAgentMessageReadReport:
         return self._open().read(query)
 
 

@@ -674,6 +674,51 @@ def _is_local_target(delegated_to: str | None) -> bool:
     return any(marker in target for marker in local_markers)
 
 
+# OMN-25827: a failed case names the cause the row recorded. The probe used to
+# score a failed row and drop the part that said why it failed, so a red night
+# read as "terminal failed, tokens 0/0" and four lanes could not name the cause
+# of cases I1, I3, I5 and I7 on run 45237936306 (three HTTP 401 answers from
+# backend byok-anthropic, ending every_rung_failed). The line is bounded: a
+# provider body can be arbitrarily long.
+_CAUSE_ERROR_CHARS = 300
+
+
+def _attempts_of(row: dict[str, Any]) -> list[dict[str, Any]]:
+    history = row.get("attempt_history")
+    if isinstance(history, str):
+        try:
+            history = json.loads(history)
+        except ValueError:
+            return []
+    if not isinstance(history, list):
+        return []
+    return [a for a in history if isinstance(a, dict)]
+
+
+def describe_failure_cause(row: dict[str, Any]) -> str | None:
+    """One line naming why a failed row failed, from the row itself, or None."""
+    cause = str(row.get("terminal_failure_cause") or "").strip()
+    attempts = _attempts_of(row)
+    if not cause and not attempts:
+        return None
+    parts = [f"delegation failure cause: {cause or 'not recorded'}"]
+    if attempts:
+        last = attempts[-1]
+        parts.append(f"attempts={len(attempts)}")
+        for key, label in (
+            ("tier", "tier"),
+            ("backend_id", "backend"),
+            ("model_id", "model"),
+            ("failure_class", "failure_class"),
+        ):
+            if last.get(key):
+                parts.append(f"last {label}={last[key]}")
+        error = str(last.get("error_message") or "").strip()
+        if error:
+            parts.append(f"last error: {error[:_CAUSE_ERROR_CHARS]}")
+    return "; ".join(parts)
+
+
 def evaluate_row(case: ModelCorpusCase, row: dict[str, Any]) -> list[str]:
     """Return a list of behavioral assertion failures for one case (empty == pass).
 
@@ -786,6 +831,11 @@ def evaluate_row(case: ModelCorpusCase, row: dict[str, Any]) -> list[str]:
                 f"cross_cutting: completed row has zero tokens "
                 f"(input={tokens_in} output={tokens_out})"
             )
+
+    if failures and terminal == "failed":
+        cause_line = describe_failure_cause(row)
+        if cause_line is not None:
+            failures.append(cause_line)
 
     return failures
 

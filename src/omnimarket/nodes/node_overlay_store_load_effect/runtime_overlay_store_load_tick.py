@@ -172,6 +172,35 @@ def _stale_alarms(
     return list(result.alarms)
 
 
+def _raise_alarms(
+    overlay: ModelOverlayStoreLoadOverlay,
+    ids: list[str],
+    state_dir: Path,
+    now: datetime,
+) -> list[ModelOverlayAssertionStaleAlarm]:
+    """Name every listed id whose newest assertion is older than the bound, on stderr and on the alarm topic.
+
+    The tick runs this on every way it can end, because the ways it loads nothing (a clone that is not at the head of
+    its branch, a run the overlay refuses, a broker that does not answer) are the ways an id goes unasserted: an alarm
+    reached only after a successful load would stay silent exactly when nothing was loaded."""
+    held = {i: v for i, v in _published(state_dir).items() if i in ids}
+    alarms = _stale_alarms(overlay, ids, held, now)
+    for alarm in alarms:
+        sys.stderr.write(f"{NODE}: ALARM {alarm.model_dump_json()}\n")
+    if alarms:
+        try:
+            asyncio.run(_alarm(overlay, alarms, None))
+        except Exception as exc:  # the stderr line above already names each id
+            sys.stderr.write(f"{NODE}: alarm bus: {type(exc).__name__}: {exc}\n")
+    return alarms
+
+
+def _alarm_rows(
+    alarms: list[ModelOverlayAssertionStaleAlarm],
+) -> list[dict[str, Any]]:
+    return [a.model_dump(mode="json") for a in alarms]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog=f"{NODE}.tick", description=__doc__)
     parser.add_argument("--omni-home", dest="registry_root", required=True, type=Path)
@@ -197,7 +226,18 @@ def main(argv: list[str] | None = None) -> int:
         reason = stale_reason(state, overlay.clone_branch)
         if reason is not None:
             sys.stderr.write(f"{NODE}: nothing loaded: {reason}\n")
-            _record(args.state_dir, {"loaded": [], "refused": reason, **state})
+            stale = _raise_alarms(
+                overlay, list(overlay.overlay_ids), args.state_dir, _utc_now()
+            )
+            _record(
+                args.state_dir,
+                {
+                    "loaded": [],
+                    "refused": reason,
+                    "alarms": _alarm_rows(stale),
+                    **state,
+                },
+            )
             return EXIT_STALE_CLONE
         now = _utc_now()
         ids = list(overlay.overlay_ids)
@@ -211,14 +251,30 @@ def main(argv: list[str] | None = None) -> int:
                 batch = asyncio.run(_run(overlay, clone, due, None))
             except (NodeOverlayError, ValueError) as exc:
                 sys.stderr.write(f"{NODE}: {type(exc).__name__}: {exc}\n")
-                _record(args.state_dir, {"loaded": [], "refused": str(exc), **state})
+                failed = _raise_alarms(overlay, ids, args.state_dir, now)
+                _record(
+                    args.state_dir,
+                    {
+                        "loaded": [],
+                        "refused": str(exc),
+                        "alarms": _alarm_rows(failed),
+                        **state,
+                    },
+                )
                 return EXIT_REFUSED
             except (
                 Exception
             ) as exc:  # a broker that does not answer is a reading, not a crash
                 sys.stderr.write(f"{NODE}: bus: {type(exc).__name__}: {exc}\n")
+                failed = _raise_alarms(overlay, ids, args.state_dir, now)
                 _record(
-                    args.state_dir, {"loaded": [], "refused": f"bus: {exc}", **state}
+                    args.state_dir,
+                    {
+                        "loaded": [],
+                        "refused": f"bus: {exc}",
+                        "alarms": _alarm_rows(failed),
+                        **state,
+                    },
                 )
                 return EXIT_BUS
             loaded = [result.model_dump(mode="json") for result in batch.results]
@@ -241,14 +297,7 @@ def main(argv: list[str] | None = None) -> int:
             _write_atomically(
                 args.state_dir / _LAST_LOAD_FILE, json.dumps(held, sort_keys=True)
             )
-        alarms = _stale_alarms(overlay, ids, held, now)
-        for alarm in alarms:
-            sys.stderr.write(f"{NODE}: ALARM {alarm.model_dump_json()}\n")
-        if alarms:
-            try:
-                asyncio.run(_alarm(overlay, alarms, None))
-            except Exception as exc:  # the stderr line above already names each id
-                sys.stderr.write(f"{NODE}: alarm bus: {type(exc).__name__}: {exc}\n")
+        alarms = _raise_alarms(overlay, ids, args.state_dir, now)
         _record(
             args.state_dir,
             {
@@ -256,7 +305,7 @@ def main(argv: list[str] | None = None) -> int:
                 "unchanged": unchanged,
                 "refused": "; ".join(f"{i}: {r}" for i, r in refused.items()),
                 "refused_ids": refused,
-                "alarms": [a.model_dump(mode="json") for a in alarms],
+                "alarms": _alarm_rows(alarms),
                 **state,
             },
         )

@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Model ids of the pricing module and the lane dispatch brief builder (OMN-21805).
+# They sit in the contract overlay tree, the sanctioned home of model ids, and not in
+# product source (OMN-26651). model_binding_reader merges this file over
+# src/omnimarket/configs/model_bindings.v1.yaml; the wheel ships it beside that file.
+
+# Frontier models the pricing module compares delegated work against (OMN-21805). Each
+# name is a key of the pricing manifest, in the order the estimates are reported.
+frontier_comparison_models:
+  - "claude-opus-4-6"
+  - "claude-sonnet-4-20250514"
+  - "claude-haiku-3-5"
+  - "gpt-4o"
+
+bindings:
+  pricing_baseline_model: "claude-sonnet-5-5"
+  lane_dispatch_brief_model: "claude-sonnet-5-5"

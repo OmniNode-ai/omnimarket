@@ -819,9 +819,6 @@ entries:
   - path: src/omnimarket/configs/byok_provider_backends.v1.yaml
     family: T
     content_sha1: db373a22f1618ec645f14270efc088d6b05cac95
-  - path: src/omnimarket/configs/code_eval_suite.v1.json
-    family: M
-    content_sha1: a4be2f65597408608a094e475b8f7d013d321ea0
   - path: src/omnimarket/configs/delegation_class_rubrics.v1.yaml
     family: M
     content_sha1: c4ba7ce7c41a04441c2cf3bc071ccf763cb99f42
@@ -2448,12 +2445,6 @@ entries:
   - path: src/omnimarket/nodes/node_adr_segmentation_llm_effect/tests/test_handler_segmentation.py
     family: M
     content_sha1: b917ecd7617e773bb59854a0c6c6a5dd061d2a89
-  - path: src/omnimarket/nodes/node_agent_message_client_effect/models/model_agent_message.py
-    family: N
-    content_sha1: 21ec371f3088f6ca94f531cbd84dc90246bef7a1
-  - path: src/omnimarket/nodes/node_agent_message_client_effect/models/model_agent_message.py
-    family: N
-    content_sha1: 621b12d1bb45ac04910fa3a04a010540982b5355
   - path: src/omnimarket/nodes/node_architecture_discovery_orchestrator/contract.yaml
     family: T
     content_sha1: 561f736b218024a4636310837dde9aeb8ee99e73
@@ -2953,9 +2944,6 @@ entries:
     family: T
     content_sha1: fb3b3f7491128475cf29844c9d2a61d214f2e790
   - path: src/omnimarket/nodes/node_lane_dispatch_intake_effect/handlers/adapter_lane_dispatch.py
-    family: M
-    content_sha1: f327848090a1a8acd4741af0f62490c256f24799
-  - path: src/omnimarket/nodes/node_lane_dispatch_intake_effect/handlers/adapter_lane_dispatch.py
     family: T
     content_sha1: c52004d951aff207bdf3ee2470d0f1a181608274
   - path: src/omnimarket/nodes/node_lane_model_policy_compute/contract.yaml
@@ -2982,9 +2970,6 @@ entries:
   - path: src/omnimarket/nodes/node_lane_model_policy_compute/handlers/handler_lane_model_policy.py
     family: N
     content_sha1: 7e6379440c58246505df2cd0daedea19326c0652
-  - path: src/omnimarket/nodes/node_lane_placement_recovery_effect/handlers/handler_lane_engine_failover.py
-    family: M
-    content_sha1: 5234c3559bcffa65766fb76d767ad45b3130675b
   - path: src/omnimarket/nodes/node_lane_placement_recovery_effect/handlers/handler_lane_engine_failover.py
     family: N
     content_sha1: 602de497a1db977c7b0194dc00ed834f55b22829
@@ -3345,21 +3330,6 @@ entries:
   - path: src/omnimarket/nodes/node_triage_fences_compute/tests/test_triage_fences_child_claims_omn24248.py
     family: M
     content_sha1: 0113ea3b99029f2fe52f5a00d790ae69c9eb3ec2
-  - path: src/omnimarket/pricing.py
-    family: M
-    content_sha1: 3b919a9a1376de06761383b33b095144142a0a12
-  - path: src/omnimarket/pricing.py
-    family: M
-    content_sha1: 493919e0dfce5a39eaa0dea31e6270335b0f12a7
-  - path: src/omnimarket/pricing.py
-    family: M
-    content_sha1: 8675a97b673c108cce26c9044136bec049289c47
-  - path: src/omnimarket/pricing.py
-    family: M
-    content_sha1: 98a084c901e07c25941b5bf85981527c0b136fcd
-  - path: src/omnimarket/pricing.py
-    family: M
-    content_sha1: c1c8d442558f29c8067897b52ece32c83d849473
   - path: src/omnimarket/routing/generated_llm_routing_constants.py
     family: M
     content_sha1: 45aa29a9997a27eb692db4e056c24ab29bfac2f6
@@ -12015,9 +11985,6 @@ entries:
   - path: tests/test_omn24615_refused_run_saving_real_postgres.py
     family: M
     content_sha1: 38a78407cba6976fee88e28e40659dd419983341
-  - path: tests/test_omn24859_byok_projection_cost_real_postgres.py
-    family: M
-    content_sha1: fe35370a6ad8bf1aace227dcccb5726f5d0195bb
   - path: tests/test_omn24874_tenant_overlay_cost_real_postgres.py
     family: M
     content_sha1: 86afe8b8273202e5415090b8fb7d038e5a3449c5

@@ -60,7 +60,7 @@ class FakeLedgerReader:
     delivered: str | None = None
     fail: str = ""
 
-    def status_row_time(self, ledger_path: str, run_key: str) -> str | None:
+    def status_row_time(self, run_key: str) -> str | None:
         if self.fail:
             raise LabFillPortError(self.fail)
         return self.delivered
@@ -121,9 +121,7 @@ class FakeMerged:
             raise LabFillPortError(self.fail)
         return self.by_ticket.get(ticket, ())
 
-    def built_reports(
-        self, ticket: str, ledger_path: str
-    ) -> Sequence[ModelLabFillBuiltReport]:
+    def built_reports(self, ticket: str) -> Sequence[ModelLabFillBuiltReport]:
         return tuple(r for r in self.built if r.ticket == ticket)
 
 

@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_host_thermal_guard_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Holds a hot lab host out of placement and releases it when it has cooled (OMN-24562). One run reads the host's CPU package and
+  GPU temperatures once. Above the overlay's hold threshold it writes the host's declared hold file, which lab placement reads from
+  the host and names in its refusal as a thermal hold, and queues one ledger HOLD row; below the overlay's lower release threshold,
+  once the minimum hold time has passed, it removes the file and queues one RELEASE row (a reading between the two changes
+  nothing, so a host that oscillates around the hold threshold is held once). Above the overlay's stop threshold it also cuts the
+  remote lanes' own scopes and tagged processes, as the guard it replaces did. It never changes the mode of any folder. A row leaves
+  the queue only when the declared ledger bus append command reports it accepted; one that was not delivered stays queued, the run
+  is not ok, and the next run sends it again under the same request id. A host that cannot be read, a hold file or episode file
+  that cannot be read are typed errors that change nothing and never read as a release. Every setting is the overlay's.
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  side_effects:
+    - writes and removes the declared hold file in the guard's state directory
+    - replaces the node's own episode file
+    - stops the lane scopes and tagged lane processes above the stop threshold
+    - appends ledger rows through the declared bus append command
+  runtime_profiles:
+    - effects
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: [onex.evt.omnimarket.host-thermal-guard-ran.v1]
+
+handler:
+  module: omnimarket.nodes.node_host_thermal_guard_effect.handlers.handler_host_thermal_guard
+  class: HandlerHostThermalGuard
+  input_model: omnimarket.nodes.node_host_thermal_guard_effect.models.model_host_thermal_guard.ModelHostThermalGuardRequest
+  output_model: omnimarket.nodes.node_host_thermal_guard_effect.models.model_host_thermal_guard.ModelHostThermalGuardResult
+
+# Not a runtime-dispatched handler: it takes the sensor, hold, episode, cutter and ledger ports and the clock as constructor
+# parameters, so the tick main builds it and the contract declares no handler_routing.
+
+runtime_dispatch:
+  external_trigger: true
+  # Every 60 s and at load, the host timer of node_host_installer_registry_units runs runtime_host_thermal_guard_tick.
+  host_unit:
+    unit: host-thermal-guard-systemd
+
+terminal_event: onex.evt.omnimarket.host-thermal-guard-ran.v1
+externally_consumed_topics: [onex.evt.omnimarket.host-thermal-guard-ran.v1]
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-thermal-guard-ran.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-thermal-guard-ran.v1, operation: DESCRIBE}
+
+metadata:
+  ticket: OMN-24562
+  transport_type: cli
+lifecycle: experimental

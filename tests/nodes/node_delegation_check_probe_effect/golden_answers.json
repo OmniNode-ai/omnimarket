@@ -1,0 +1,419 @@
+{
+ "checks": [
+  "C11",
+  "C12",
+  "C13",
+  "C14",
+  "C15",
+  "C16",
+  "C17",
+  "C28",
+  "C29",
+  "C30"
+ ],
+ "gateway": {
+  "answers": {
+   "absent_key": {
+    "body": {
+     "code": "auth.credential.absent",
+     "detail": "Unauthorized"
+    },
+    "source": {
+     "captured_at": "2026-11-24T07:51:11Z",
+     "kind": "recorded status and code",
+     "note": "status and code as the run's STATUS row read 2026-11-24T07:52:00Z; body text from the real in-process gateway handler",
+     "run": "C11 run 45351153694"
+    },
+    "status": 401
+   },
+   "contracts": {
+    "body": {
+     "contracts": [
+      {
+       "contract_id": "node_delegate_skill_orchestrator:1.2.0",
+       "payload_schema": {
+        "additionalProperties": false,
+        "properties": {
+         "max_tokens": {
+          "minimum": 1,
+          "type": "integer"
+         },
+         "prompt": {
+          "maxLength": 32768,
+          "minLength": 1,
+          "type": "string"
+         },
+         "source": {
+          "pattern": "^(claude-code|codex|external-client)$",
+          "type": "string"
+         },
+         "task_type": {
+          "description": "Delegation task class. Declared as a bare string on purpose: the class universe is registry-owned (see the block above), and this gateway does not re-declare it. Note that the length bounds are absent too, and that is the same decision rather than an omission - the discovery scanner treats ANY constraint on a task-taxonomy key as a task-class declaration to reconcile, so a minLength/maxLength pair here would re-enrol this locator as a seventh copy of the universe while constraining nothing anyone cares about. The consumer's closed Literal is the real bound.",
+          "type": "string"
+         }
+        },
+        "required": [
+         "prompt",
+         "task_type",
+         "source"
+        ],
+        "type": "object"
+       },
+       "workflow_type": "delegate-skill"
+      },
+      {
+       "contract_id": "node_delegation_orchestrator:0.6.0",
+       "payload_schema": {
+        "additionalProperties": false,
+        "properties": {
+         "context_pack": {
+          "maxLength": 65536,
+          "type": "string"
+         },
+         "max_tokens": {
+          "minimum": 1,
+          "type": "integer"
+         },
+         "prompt": {
+          "maxLength": 65536,
+          "minLength": 1,
+          "type": "string"
+         },
+         "task_type": {
+          "pattern": "^(test|document|research|code_generation|refactor|reasoning|complex_reasoning|planning|review|summarization)$",
+          "type": "string"
+         }
+        },
+        "required": [
+         "prompt",
+         "task_type"
+        ],
+        "type": "object"
+       },
+       "workflow_type": "delegation-inference"
+      }
+     ]
+    },
+    "source": {
+     "kind": "constructed from the declared response models",
+     "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name fixture-local-model as recorded for delegation-inference run ed59cb81"
+    },
+    "status": 200
+   },
+   "health": {
+    "body": {
+     "status": "ok"
+    },
+    "source": {
+     "captured_at": "2026-11-24T07:51:11Z",
+     "kind": "recorded status and code",
+     "note": "status and code as the run's STATUS row read 2026-11-24T07:52:00Z; body text from the real in-process gateway handler",
+     "run": "C11 run 45351153694"
+    },
+    "status": 200
+   },
+   "malformed": {
+    "body": {
+     "detail": [
+      {
+       "input": null,
+       "loc": [
+        "query",
+        "runner_identity"
+       ],
+       "msg": "Field required",
+       "type": "missing"
+      }
+     ]
+    },
+    "source": {
+     "captured_at": "2026-11-24T07:51:11Z",
+     "kind": "recorded status and code",
+     "note": "status and code as the run's STATUS row read 2026-11-24T07:52:00Z; body text from the real in-process gateway handler",
+     "run": "C11 run 45351153694"
+    },
+    "status": 422
+   },
+   "receipt_dying": {
+    "body": {
+     "completed_at": "2026-11-13T12:00:00Z",
+     "correlation_id": "00000000-0000-0000-0000-000000000004",
+     "credential_source": null,
+     "event_count": 1,
+     "projection_row_hash": "d2d8b6e198e49c3543f280520dc0383a7d0cd84c2646b93d0a039476c5284d43",
+     "provider": null,
+     "result_content": null,
+     "route": null,
+     "rule_evaluations": [],
+     "status": "failed",
+     "submitted_at": "2026-11-13T12:00:00Z",
+     "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+     "terminal_event_hash": "5eabd065de31b42f83348f9dfa0661a2bb3565e80255f6fe6ca715e46e3a163d",
+     "terminal_failure_class": "ValidationError",
+     "terminal_failure_code": "ONEX_TASK_CLASS_UNKNOWN",
+     "terminal_failure_reason": "task_type is not a delegation task class",
+     "terminal_latency_ms": 12,
+     "terminal_model_used": "none",
+     "terminal_remediation": "send a task class the registry declares",
+     "terminal_total_tokens": 0,
+     "verifier": "probe",
+     "workflow_id": "00000000-0000-0000-0000-000000000006",
+     "workflow_type": "delegate-skill"
+    },
+    "source": {
+     "kind": "constructed from the declared response models",
+     "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name fixture-local-model as recorded for delegation-inference run ed59cb81"
+    },
+    "status": 200
+   },
+   "receipt_healthy": {
+    "body": {
+     "completed_at": "2026-11-13T12:00:00Z",
+     "correlation_id": "00000000-0000-0000-0000-000000000001",
+     "credential_source": "customer_key",
+     "event_count": 1,
+     "projection_row_hash": "33e531e5cde6913d31446922486b83d4dc4980279de1ac118c5868a1fba6f38e",
+     "provider": "lab",
+     "result_content": "alive",
+     "route": "local",
+     "rule_evaluations": [
+      {
+       "detail": null,
+       "enforcement": "blocking",
+       "passed": true,
+       "rule": "non_empty",
+       "threshold": 1,
+       "threshold_unit": "chars"
+      }
+     ],
+     "status": "completed",
+     "submitted_at": "2026-11-13T12:00:00Z",
+     "tenant_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+     "terminal_event_hash": "86116590d2e3a3a4256b51b30058d8e8c2f4dcfb3a6272376b00ca4a2849b83f",
+     "terminal_failure_class": null,
+     "terminal_failure_code": null,
+     "terminal_failure_reason": null,
+     "terminal_latency_ms": 1840,
+     "terminal_model_used": "fixture-local-model",
+     "terminal_remediation": null,
+     "terminal_total_tokens": 41,
+     "verifier": "probe",
+     "workflow_id": "00000000-0000-0000-0000-000000000003",
+     "workflow_type": "delegate-skill"
+    },
+    "source": {
+     "kind": "constructed from the declared response models",
+     "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name fixture-local-model as recorded for delegation-inference run ed59cb81"
+    },
+    "status": 200
+   },
+   "status_dying": {
+    "body": {
+     "command_topic": "onex.cmd.omnimarket.delegate-skill.v1",
+     "correlation_id": "00000000-0000-0000-0000-000000000004",
+     "envelope_id": "00000000-0000-0000-0000-000000000005",
+     "rule_evaluations": [],
+     "status": "failed",
+     "submitted_at": "2026-11-13T12:00:00Z",
+     "terminal_failure_class": "ValidationError",
+     "terminal_failure_code": "ONEX_TASK_CLASS_UNKNOWN",
+     "terminal_failure_reason": "task_type is not a delegation task class",
+     "terminal_latency_ms": 12,
+     "terminal_model_used": "none",
+     "terminal_remediation": "send a task class the registry declares",
+     "terminal_total_tokens": 0,
+     "updated_at": "2026-11-13T12:00:00Z",
+     "workflow_id": "00000000-0000-0000-0000-000000000006",
+     "workflow_type": "delegate-skill"
+    },
+    "source": {
+     "kind": "constructed from the declared response models",
+     "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name fixture-local-model as recorded for delegation-inference run ed59cb81"
+    },
+    "status": 200
+   },
+   "status_healthy": {
+    "body": {
+     "command_topic": "onex.cmd.omnimarket.delegate-skill.v1",
+     "correlation_id": "00000000-0000-0000-0000-000000000001",
+     "envelope_id": "00000000-0000-0000-0000-000000000002",
+     "rule_evaluations": [
+      {
+       "detail": null,
+       "enforcement": "blocking",
+       "passed": true,
+       "rule": "non_empty",
+       "threshold": 1,
+       "threshold_unit": "chars"
+      }
+     ],
+     "status": "completed",
+     "submitted_at": "2026-11-13T12:00:00Z",
+     "terminal_failure_class": null,
+     "terminal_failure_code": null,
+     "terminal_failure_reason": null,
+     "terminal_latency_ms": 1840,
+     "terminal_model_used": "fixture-local-model",
+     "terminal_remediation": null,
+     "terminal_total_tokens": 41,
+     "updated_at": "2026-11-13T12:00:00Z",
+     "workflow_id": "00000000-0000-0000-0000-000000000003",
+     "workflow_type": "delegate-skill"
+    },
+    "source": {
+     "kind": "constructed from the declared response models",
+     "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name fixture-local-model as recorded for delegation-inference run ed59cb81"
+    },
+    "status": 200
+   },
+   "submit_dying": {
+    "body": {
+     "accepted_at": "2026-11-13T12:00:00Z",
+     "correlation_id": "00000000-0000-0000-0000-000000000004",
+     "envelope_id": "00000000-0000-0000-0000-000000000005",
+     "status": "published",
+     "workflow_id": "00000000-0000-0000-0000-000000000006",
+     "workflow_type": "delegate-skill"
+    },
+    "source": {
+     "kind": "constructed from the declared response models",
+     "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name fixture-local-model as recorded for delegation-inference run ed59cb81"
+    },
+    "status": 202
+   },
+   "submit_healthy": {
+    "body": {
+     "accepted_at": "2026-11-13T12:00:00Z",
+     "correlation_id": "00000000-0000-0000-0000-000000000001",
+     "envelope_id": "00000000-0000-0000-0000-000000000002",
+     "status": "published",
+     "workflow_id": "00000000-0000-0000-0000-000000000003",
+     "workflow_type": "delegate-skill"
+    },
+    "source": {
+     "kind": "constructed from the declared response models",
+     "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name fixture-local-model as recorded for delegation-inference run ed59cb81"
+    },
+    "status": 202
+   },
+   "submit_invalid_key": {
+    "body": {
+     "code": "auth.credential.invalid",
+     "detail": "Unauthorized"
+    },
+    "source": {
+     "kind": "constructed from the declared response models",
+     "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name fixture-local-model as recorded for delegation-inference run ed59cb81"
+    },
+    "status": 401
+   },
+   "submit_unknown_source": {
+    "body": {
+     "contract_id": "node_delegate_skill_orchestrator:1.2.0",
+     "detail": "payload does not conform to the workflow contract",
+     "errors": [
+      {
+       "field": "source",
+       "message": "'not-a-source' does not match '^(claude-code|codex|external-client)$'"
+      }
+     ],
+     "workflow_type": "delegate-skill"
+    },
+    "source": {
+     "kind": "constructed from the declared response models",
+     "note": "produced by the real in-process workflow gateway app (in-memory adapters); model name fixture-local-model as recorded for delegation-inference run ed59cb81"
+    },
+    "status": 400
+   },
+   "wrong_key": {
+    "body": {
+     "code": "auth.credential.invalid",
+     "detail": "Unauthorized"
+    },
+    "source": {
+     "captured_at": "2026-11-24T07:51:11Z",
+     "kind": "recorded status and code",
+     "note": "status and code as the run's STATUS row read 2026-11-24T07:52:00Z; body text from the real in-process gateway handler",
+     "run": "C11 run 45351153694"
+    },
+    "status": 401
+   },
+   "wrong_tenant": {
+    "body": {
+     "code": "resource.not_found",
+     "detail": "workflow not found"
+    },
+    "source": {
+     "captured_at": "2026-11-24T07:51:11Z",
+     "kind": "recorded status and code",
+     "note": "status and code as the run's STATUS row read 2026-11-24T07:52:00Z; body text from the real in-process gateway handler",
+     "run": "C11 run 45351153694"
+    },
+    "status": 404
+   }
+  },
+  "ids": {
+   "dying": "00000000-0000-0000-0000-000000000006",
+   "healthy": "00000000-0000-0000-0000-000000000003"
+  }
+ },
+ "machine": {
+  "delegation": {
+   "accepted_last": true,
+   "attempt_tiers": [
+    "local"
+   ],
+   "control_external_classified": true,
+   "cost_usd": 0.0,
+   "egress_external": [],
+   "egress_recorded": true,
+   "entry_is_install_own": true,
+   "entry_path": "/srv/customer-install/bin/onex",
+   "escalated": false,
+   "model_connects": 3,
+   "no_checkout": true,
+   "rc": 0,
+   "receipt_endpoint": "http://127.0.0.12:8000",
+   "receipt_model": "fixture-local-model",
+   "receipt_tier": "local",
+   "runner_entry_path": "/opt/runner/bin/onex",
+   "three_files_agree": true,
+   "token_counter_moved": true
+  },
+  "routing": {
+   "closed_port_control_classified_unreachable": true,
+   "judge_endpoint_private": true,
+   "judge_needs_credential": false,
+   "judge_serves_model": true,
+   "unbindable": [],
+   "undeclared_control_classified_deleted": true
+  },
+  "source": {
+   "kind": "constructed from the declared response models",
+   "note": "ModelDelegateObservation, ModelRoutingCollection and ModelSurfaceObservation; no stored real observation was found"
+  },
+  "surface": {
+   "broken_after_rc": 0,
+   "broken_before_rc": 0,
+   "broken_cases": [
+    {
+     "entry_point": "c17-broken",
+     "output": "Error: entry point c17-broken failed to load: ImportError",
+     "rc": 1
+    }
+   ],
+   "broken_ran_with_switch": true,
+   "guides_lead_with_local": true,
+   "help_answers": true,
+   "install_interpreter_matches": true,
+   "install_rc": 0,
+   "operator_switch_env": "ONEX_SHOW_ALL_COMMAND_GROUPS",
+   "parameter_controls_caught": true,
+   "parameter_findings": []
+  }
+ },
+ "responder_base": "http://127.0.0.12:8000",
+ "schema_version": 1,
+ "served_model": "fixture-local-model",
+ "ticket": "OMN-26652"
+}

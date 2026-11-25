@@ -46,4 +46,4 @@ def read_spread_load_snapshot(
     return snapshot
 
 
-__all__: list[str] = ["read_spread_load_snapshot"]
+__all__: list[str] = ["read_spread_load_snapshot", "spread_load_targets"]

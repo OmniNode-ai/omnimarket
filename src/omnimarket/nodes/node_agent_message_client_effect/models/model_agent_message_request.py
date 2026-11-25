@@ -10,6 +10,9 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
+from omnimarket.models.agent_message.model_agent_message_rejection import (
+    ModelAgentMessageRejection,
+)
 from omnimarket.nodes.node_agent_message_client_effect.models.model_agent_message import (
     ModelAgentMessage,
 )
@@ -45,3 +48,5 @@ class ModelAgentMessageReadResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     messages: tuple[ModelAgentMessage, ...]
+    unverified: int = 0
+    rejections: tuple[ModelAgentMessageRejection, ...] = ()
