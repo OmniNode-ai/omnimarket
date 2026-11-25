@@ -31,11 +31,16 @@ requirements:
   acceptance:
   - id: AC4
     statement: 'AC4: ModelTenantApiKeyOverlay validates the overlay document of the tenant gateway key node and refuses a malformed one -- falsifier: tests/unit/models/test_tenant_api_key_overlay_document_omn24562.py fails collection or any of its tests fails'
+- id: req-omn24562-lint-split-parallel
+  statement: The required lint context is an aggregate of parallel group jobs, every old lint step still runs in exactly one group, and the Direct Model Call Gate positive control judges each planted case on a scratch repository holding only that file.
+  acceptance:
+  - id: AC6
+    statement: 'AC6: ci.yml carries lint-group-1 to lint-group-6 and a lint aggregate that needs all of them, each of the 128 steps listed in tests/ci/lint_steps_before_omn24562.txt runs in one group, and the Direct Model Call Gate positive control runs with --repo-root on a scratch repository -- falsifier: uv run pytest tests/ci/test_lint_split_omn24562.py tests/ci/test_direct_model_call_ci_gate.py fails when a step is dropped from every group or the control scans the whole tree'
 - id: req-omn24562-responder-reader
   statement: The delegation check responder reader answers a llama.cpp listing without max_model_len, advances past a dead responder and prefers the least busy one.
   acceptance:
-  - id: AC6
-    statement: 'AC6: the live reader chooses a responder whose listing carries meta.n_ctx only, skips a dead one and orders by load -- falsifier: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_http_responder_reader_live_shapes.py -q fails'
+  - id: AC7
+    statement: 'AC7: the live reader chooses a responder whose listing carries meta.n_ctx only, skips a dead one and orders by load -- falsifier: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_http_responder_reader_live_shapes.py -q fails'
 evidence_requirements:
 - kind: tests
   description: The inode alarm tests pass at the pushed head.
@@ -97,11 +102,20 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/models/test_tenant_api_key_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
     cwd: .
-- id: dod-omn24562-responder-reader-ac6
-  description: 'AC6: four tests over real loopback sockets pass; they fail if the reader raises on a listing with no max_model_len, stops at a dead first responder, or ignores load.'
+- id: dod-omn24562-lint-split-parallel
+  description: 'AC6: the lint job is split into six parallel group jobs behind a lint aggregate with the same name; the test lists every old step and refuses a missing one (failing control: before the split the test fails on 128 missing steps, dropping Ruff check from every group fails test_dropping_a_step_is_refused), and the Direct Model Call Gate positive control runs each plant on a scratch repository.'
   source: manual
   binds_ac:
   - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_lint_split_omn24562.py tests/ci/test_direct_model_call_ci_gate.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24562-responder-reader-ac7
+  description: 'AC7: four tests over real loopback sockets pass; they fail if the reader raises on a listing with no max_model_len, stops at a dead first responder, or ignores load.'
+  source: manual
+  binds_ac:
+  - AC7
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_http_responder_reader_live_shapes.py -q --no-cov -n 0 -p no:randomly

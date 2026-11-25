@@ -17,6 +17,8 @@ from typing import Any
 import pytest
 import yaml
 
+from tests.ci.lint_jobs import lint_steps
+
 pytestmark = pytest.mark.unit
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -56,7 +58,7 @@ def test_privacy_lint_step_runs_the_guarding_test() -> None:
     )
     steps = [
         step
-        for step in workflow["jobs"]["lint"]["steps"]
+        for step in lint_steps(workflow)
         if _GUARD_TEST in str(step.get("run", ""))
         and "pytest" in str(step.get("run", ""))
         and "-k privacy" in str(step.get("run", ""))
