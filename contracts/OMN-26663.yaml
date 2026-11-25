@@ -81,3 +81,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/projection/test_projection_discovery.py -q --no-cov -n 0 -p no:randomly -k 'test_live_topic_count'
     cwd: .
+- id: dod-omn26663-infra-pin-carries-grant
+  description: The omnibase-infra pin names the published dev tag dev-20261125133557-bf6b0f1856c3, which carries omnibase_infra#6258 (the lab_alerts grant and the vendored lab_alerts migrations); the lock agrees with the pin.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: grep -q 'tag = "dev-20261125133557-bf6b0f1856c3"' pyproject.toml
+    cwd: .
+  - check_type: command
+    check_value: grep -q 'omnibase_infra.git?tag=dev-20261125133557-bf6b0f1856c3#bf6b0f1856c35a58d4a3238873425b0986412f70' uv.lock
+    cwd: .

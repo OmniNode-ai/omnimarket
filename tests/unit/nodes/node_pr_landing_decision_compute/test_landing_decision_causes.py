@@ -64,6 +64,7 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_fact
 from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_state import (
     ModelLandingControllerState,
 )
+from tests.ci.lint_jobs import lint_steps
 
 FIXTURE = Path(__file__).parent / "fixtures" / "replay_2026_10_03_omnimarket.json"
 OMNIMARKET = "OmniNode-ai/omnimarket"
@@ -1891,7 +1892,7 @@ def test_park_ladder_wiring_required_lint_runs_the_full_causes_file() -> None:
     workflow = yaml.safe_load((root / ".github/workflows/ci.yml").read_text())
     steps = [
         step
-        for step in workflow["jobs"]["lint"]["steps"]
+        for step in lint_steps(workflow)
         if step.get("name", "").startswith("Landing decision park ladder")
     ]
     assert len(steps) == 1
