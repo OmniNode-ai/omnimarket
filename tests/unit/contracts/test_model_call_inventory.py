@@ -138,6 +138,14 @@ def test_every_file_naming_the_chat_route_has_one_classified_row() -> None:
     assert problems == []
 
 
+def test_every_real_direct_call_names_scope_and_callers_that_exist() -> None:
+    rows = _load(INVENTORY)["rows"]
+    real = [r for r in rows if r["class"] == "real_direct_call"]
+    assert real, "the committed inventory lists no real direct call"
+    problems = [p for r in real for p in _caller_problems(r, REPO_ROOT)]
+    assert problems == []
+
+
 def test_scan_finds_the_forty_files_the_inventory_covers() -> None:
     assert len(_source_files_naming_the_route()) == _load(INVENTORY)["counts"]["files"]
 
