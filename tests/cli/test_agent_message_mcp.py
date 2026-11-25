@@ -94,3 +94,16 @@ def test_refusals_come_back_as_tool_errors(
         asyncio.run(server.call_tool(tool, arguments))
     assert node.sends == 0
     assert node.reads == 0
+
+
+def test_read_tool_returns_the_typed_refusals_and_the_legacy_count() -> None:
+    from tests.cli.test_agent_message_cli import _node_with_refusals
+
+    node = _node_with_refusals()
+    server = build_server(make_runtime(node, {"ONEX_LANE": "mcp-caller"}))
+    result = asyncio.run(server.call_tool(READ_TOOL, {"to": "codex:review"}))
+    assert result.structured_content is not None
+    assert result.structured_content["unverified"] == 2
+    assert [r["reason"] for r in result.structured_content["rejections"]] == [
+        "sender_mismatch"
+    ]
