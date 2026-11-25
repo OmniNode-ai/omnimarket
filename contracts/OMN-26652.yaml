@@ -78,3 +78,11 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26652 --kind test --timeout 3000 -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_check_regression_effect/test_setting_set_trigger.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26652-trigger-auto-wires
+  description: The settings-change trigger handler builds with no arguments so infra auto-wiring resolves it from the real contract, fails with a RuntimeError naming the missing settings, runner or history when an audit row reaches it, the contract handler block names HandlerCheckRegression, and the completed topic is declared in externally_consumed_topics.
+  source: manual
+  binds_ac: []
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_regression_effect/test_setting_set_trigger.py tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q --no-cov -n 0 -p no:randomly -k 'real_class or constructs_with_no_arguments or missing_dependency or canonical_handler or externally_consumed or type_ignore or delegation_check_regression'
+    cwd: .

@@ -187,9 +187,53 @@ def test_the_target_is_a_setting_and_a_prod_target_is_refused() -> None:
     assert handler.handle(_audit()).outcome is EnumCheckRegressionOutcome.REFUSED
 
 
-async def test_the_audit_row_on_the_bus_fires_the_real_contract_and_raises_the_alarms() -> (
-    None
-):
+def test_the_handler_constructs_with_no_arguments_and_fails_loudly_on_use() -> None:
+    """Auto-wiring builds the handler with no arguments; a missing dependency is a RuntimeError at use, never a silent skip."""
+    handler = HandlerCheckRegressionOnSettingSet()
+    with pytest.raises(RuntimeError, match="settings"):
+        handler.handle(_audit())
+
+
+@pytest.mark.parametrize("missing", ["settings", "runner", "history"])
+def test_each_missing_dependency_is_named_by_the_runtime_error(missing: str) -> None:
+    kwargs: dict[str, Any] = {
+        "settings": load_settings(DEFAULTS_PATH),
+        "runner": _source(),
+        "history": _source(),
+    }
+    del kwargs[missing]
+    handler = HandlerCheckRegressionOnSettingSet(**kwargs)
+    with pytest.raises(RuntimeError, match=missing):
+        handler.handle(_audit())
+
+
+def test_the_contract_handler_block_names_the_canonical_handler() -> None:
+    block = _contract()["handler"]
+    assert block["class"] == "HandlerCheckRegression"
+    assert block["module"].endswith(".handlers.handler_check_regression")
+
+
+def test_the_completed_topic_is_declared_externally_consumed() -> None:
+    contract = _contract()
+    assert (
+        "onex.evt.omnimarket.delegation-check-regression-completed.v1"
+        in contract["externally_consumed_topics"]
+    )
+
+
+def test_the_trigger_handler_adds_no_type_ignore() -> None:
+    source = (
+        NODES
+        / "node_delegation_check_regression_effect"
+        / "handlers"
+        / "handler_setting_set_trigger.py"
+    ).read_text(encoding="utf-8")
+    assert "type: ignore" not in source
+
+
+async def test_the_real_class_wires_from_the_real_contract_and_an_audit_row_without_dependencies_fails_loudly(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     package = importlib.import_module(
         "omnimarket.nodes.node_delegation_check_regression_effect"
     )
@@ -198,38 +242,12 @@ async def test_the_audit_row_on_the_bus_fires_the_real_contract_and_raises_the_a
         [Path(package.__file__).parent / "contract.yaml"]
     )
     assert not manifest.errors, manifest.errors
-    assert len(manifest.contracts) == 1
-    delivery = _Delivery()
-    seen: list[Any] = []
-
-    class Injected(HandlerCheckRegressionOnSettingSet):
-        def __init__(self) -> None:
-            super().__init__(
-                settings=load_settings(DEFAULTS_PATH),
-                runner=_source(),
-                history=_source(),
-                delivery=delivery,
-                clock=lambda: SET_AT,
-            )
-
-        def handle(self, request: Any) -> Any:
-            result = super().handle(request)
-            seen.append(result)
-            return result
-
-    real_import = handler_wiring._import_handler_class
-
-    def import_handler(module_path: str, class_name: str) -> type:
-        if class_name == "HandlerCheckRegressionOnSettingSet":
-            return Injected
-        return real_import(module_path, class_name)
-
     bus = EventBusInmemory(environment="test", group="omn26652-trigger")
     await bus.start()
     try:
         engine = MessageDispatchEngine()
         with (
-            patch.object(handler_wiring, "_import_handler_class", import_handler),
+            caplog.at_level("ERROR"),
             patch.object(
                 handler_wiring, "_route_apply_publish_failure", new_callable=AsyncMock
             ) as route_failure,
@@ -238,6 +256,7 @@ async def test_the_audit_row_on_the_bus_fires_the_real_contract_and_raises_the_a
                 manifest, engine, event_bus=bus, environment="local"
             )
             assert report.total_wired == 1, report.model_dump()
+            assert not report.total_failed, report.model_dump()
             engine.freeze()
             envelope: ModelEventEnvelope[object] = ModelEventEnvelope(
                 payload=_audit().model_dump(mode="json"),
@@ -249,7 +268,9 @@ async def test_the_audit_row_on_the_bus_fires_the_real_contract_and_raises_the_a
             )
     finally:
         await bus.close()
-    assert len(seen) == 1, "the audit row did not reach the handler"
-    assert {a.check_id for a in seen[0].alarms} >= {"C14", "C29"}
-    assert delivery.requests, "no alarm reached the delivery"
-    route_failure.assert_not_awaited()
+    del route_failure
+    assert any(
+        "RuntimeError: HandlerCheckRegressionOnSettingSet was built without"
+        in r.getMessage()
+        for r in caplog.records
+    ), "the missing dependencies did not fail loudly"

@@ -23,9 +23,9 @@ description: >
   green, or was red already, raises nothing. A prod target is refused.
 
 handler:
-  module: omnimarket.nodes.node_delegation_check_regression_effect.handlers.handler_setting_set_trigger
-  class: HandlerCheckRegressionOnSettingSet
-  input_model: omnimarket.nodes.node_overlay_setting_set_effect.models.model_overlay_setting_audit.ModelOverlaySettingAudit
+  module: omnimarket.nodes.node_delegation_check_regression_effect.handlers.handler_check_regression
+  class: HandlerCheckRegression
+  input_model: omnimarket.nodes.node_delegation_check_regression_effect.models.model_check_regression.ModelCheckRegressionRequest
 
 # Trigger: a settings-store change reaches the bus as one audit row per set on the topic below, published by
 # node_overlay_setting_set_effect; HandlerCheckRegressionOnSettingSet turns the row into one settings_store change and runs
@@ -50,6 +50,8 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.delegation-check-regression-completed.v1
 terminal_event: onex.evt.omnimarket.delegation-check-regression-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-check-regression-completed.v1
 broker_acl_grants:
   - principal: "${ONEX_ACL_DEV_RUNTIME_EFFECTS_PRINCIPAL}"
     grants:
