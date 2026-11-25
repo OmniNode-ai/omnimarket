@@ -3,3 +3,5 @@
 # false from L15 on, when a non-ok node answer is UNREADABLE with no file read at all.
 file_fallback_allowed: true
 journal_env: ONEX_LEDGER_ROWS_LOADER_JOURNAL
+# How many days back the store holds rows; a --since earlier than this is refused.
+store_history_days: 365

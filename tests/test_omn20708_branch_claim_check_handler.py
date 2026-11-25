@@ -342,7 +342,6 @@ def test_policy_fails_closed(tmp_path):
 def test_real_defaults_filter_without_credentials_or_database(monkeypatch):
     for name in (
         POLICY.ledger_source.dsn_env,
-        POLICY.parity_witness.ledger_path_env,
         "ONEXBOT_OCC_APP_ID",
         "ONEXBOT_OCC_PRIVATE_KEY",
     ):
@@ -354,46 +353,59 @@ def test_real_defaults_filter_without_credentials_or_database(monkeypatch):
     )
 
 
-def test_file_witness_reads_bounded_archives_oldest_first(tmp_path, monkeypatch):
+def test_bus_witness_reads_the_window_through_the_injected_rows_reader():
     from omnimarket.nodes.node_branch_claim_check_effect.handlers.ledger_witness_reader import (
-        FileLedgerWitness,
+        BusLedgerWitness,
     )
 
-    live = tmp_path / "ROLLING_WORK_LEDGER.md"
-    archive = tmp_path / POLICY.parity_witness.archive_dir_name
-    archive.mkdir()
-    old, first, second, current = (
-        row(hours=80),
-        row(hours=40),
-        row(hours=20),
-        row(hours=1),
+    asked = []
+    rows = (row(hours=40), "", row(hours=1))
+
+    def rows_reader(reader, window_hours):
+        asked.append((reader, window_hours))
+        return rows
+
+    witness = BusLedgerWitness(
+        POLICY.parity_witness,
+        since=NOW - timedelta(hours=POLICY.read_window_hours),
+        now=NOW,
+        rows_reader=rows_reader,
     )
-    live.write_text(current + "\n")
-    (archive / "ROLLING_WORK_LEDGER_2026-09-10-split.md").write_text(old)
-    (archive / "ROLLING_WORK_LEDGER_2026-09-12-split.md").write_text(second)
-    (archive / "ROLLING_WORK_LEDGER_2026-09-11-split.md").write_text(
-        first + "\n  continued scope\n"
-    )
-    monkeypatch.setenv(POLICY.parity_witness.ledger_path_env, str(live))
-    reader = FileLedgerWitness(
-        POLICY.parity_witness, since=NOW - timedelta(hours=POLICY.read_window_hours)
-    )
-    assert reader.read_rows() == [first + "\n  continued scope", second, current]
+    assert witness.read_rows() == [row(hours=40), row(hours=1)]
+    assert asked == [(POLICY.parity_witness.reader, POLICY.read_window_hours + 2)]
 
 
-def test_file_witness_absent_fails_closed(tmp_path, monkeypatch):
+def test_bus_witness_unreadable_fails_closed_with_no_file_fallback():
+    from omnimarket.handlers.ledger_rows_unreadable_error import (
+        LedgerRowsUnreadableError,
+    )
     from omnimarket.nodes.node_branch_claim_check_effect.handlers.ledger_witness_reader import (
-        FileLedgerWitness,
+        BusLedgerWitness,
     )
 
-    monkeypatch.setenv(
-        POLICY.parity_witness.ledger_path_env, str(tmp_path / "missing.md")
-    )
+    def refused(reader, window_hours):
+        raise LedgerRowsUnreadableError("the rows loader exited 69")
+
     result = handler(
-        witness=FileLedgerWitness(POLICY.parity_witness, since=NOW)
+        witness=BusLedgerWitness(
+            POLICY.parity_witness, since=NOW, now=NOW, rows_reader=refused
+        )
     ).handle(request())
     assert result.outcome.value == "did-not-run"
     assert "parity witness unreadable" in result.cause
+
+
+def test_the_witness_holds_no_ledger_file_read():
+    import inspect
+
+    from omnimarket.nodes.node_branch_claim_check_effect.handlers import (
+        ledger_witness_reader,
+    )
+
+    source = inspect.getsource(ledger_witness_reader)
+    assert not hasattr(ledger_witness_reader, "FileLedgerWitness")
+    for token in ("read_text", "iterdir", "os.environ", "ledger_path_env"):
+        assert token not in source
 
 
 def test_a_transition_the_database_cannot_carry_fails_closed():

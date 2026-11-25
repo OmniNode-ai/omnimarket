@@ -204,7 +204,14 @@ class HandlerWorkLedgerReader:
         cursor: str | None = None
         is_rows = request.query in (EnumReaderQuery.ROWS, EnumReaderQuery.ROW_AT)
         since, until = self._range(request, now)
-        for _ in range(self._overlay.max_pages):
+        max_pages = self._overlay.max_pages
+        if (
+            request.query is EnumReaderQuery.ROWS
+            and request.since is not None
+            and self._overlay.range_max_pages is not None
+        ):
+            max_pages = self._overlay.range_max_pages
+        for _ in range(max_pages):
             page = self._read.read(
                 ModelPointQuery(
                     query="rows" if is_rows else request.query.value,
@@ -237,9 +244,7 @@ class HandlerWorkLedgerReader:
             cursor = page.next_cursor
             if cursor is None:
                 return merge_pages(request.query, pages)
-        return ModelPointAnswer(
-            error=f"open-set-longer-than-{self._overlay.max_pages}-pages"
-        )
+        return ModelPointAnswer(error=f"open-set-longer-than-{max_pages}-pages")
 
     @staticmethod
     def _range(
