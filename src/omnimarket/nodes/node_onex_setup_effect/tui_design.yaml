@@ -127,14 +127,9 @@ glyphs:
   cancelled: "⊘"
 
 prompt_placeholder: Ask onex to delegate a task, or type / for commands
-help: >-
-  Type a task and press Enter to delegate it. /config sets up providers, keys
-  and models, /model picks the model tried first, /delegation turns Claude Code
-  delegation on or off, /dashboard starts the local dashboard, /doctor checks
-  this install, /metering shows usage and cost, /theme picks a colour theme,
-  /clear empties this pane. Type / to list the
-  commands; keep typing to filter, Tab to complete, Enter to run, Esc to close.
-  Up and Down recall earlier entries.
+# /help: this sentence, then each command as the / menu shows it, then
+# words.help_keys (each pair is a key and its word).
+help: Type a task and press Enter to delegate it, or run one of these commands.
 
 # /config loads a provider's models this long after the key or URL stops
 # changing; a key shorter than min_key_length is never sent.
@@ -388,6 +383,7 @@ words:
   cannot_be_first: "{model} cannot be tried first: {reason}"
   nothing_set_up: "No model is set up yet. Open the Config tab (Shift+Tab) to connect one."
   tab_too_small: "This window is {width}×{height}. The tabs need at least {min_width}×{min_height}: make the window bigger, or press Esc to go back."
+  help_keys: "/ commands · ↑↓ history · tab complete · ctrl+p palette · esc close · ctrl+c quit"
   task_no_model: "No model is set up yet, so there is nothing to delegate to. Run /config to add a provider key or a local server."
   now_first: "{model} is now tried first ({provider})"
   # The model tried first, and the server it runs on when it was added by URL.

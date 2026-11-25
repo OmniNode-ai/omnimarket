@@ -13,6 +13,8 @@ and nice - no mistake". Failure modes seen on the real screens:
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import tui_design
@@ -27,10 +29,15 @@ _SIZES = [(140, 46), (100, 34)]
 
 
 async def _rows(
-    command: str, size: tuple[int, int], panel: str = "", probe: str = ""
+    command: str,
+    size: tuple[int, int],
+    panel: str = "",
+    probe: str = "",
+    rows_by_command: dict[tuple[str, ...], str] | None = None,
 ) -> tuple[list[str], int, bool]:
     """The screen's rows, the panel's last inner row, and whether ``probe`` is empty-marked."""
-    app = _app(_Runner([], by_command=_selected_rows(connection=False)))
+    listing = rows_by_command or _selected_rows(connection=False)
+    app = _app(_Runner([], by_command=listing))
     async with app.run_test(size=size) as pilot:
         await _type(pilot, command)
         await pilot.press("enter")
@@ -76,8 +83,19 @@ async def test_config_none_yet_is_not_green() -> None:
 
 @pytest.mark.parametrize("size", _SIZES)
 async def test_model_hints_and_auto_share_the_bottom_row(size: tuple[int, int]) -> None:
-    """L3."""
-    rows, last, _ = await _rows("/model", size, "#pick")
+    """L3. Use Auto shows only with a model pinned first, so one is pinned."""
+    pinned = json.dumps(
+        {
+            "provider": "local",
+            "set_up": True,
+            "models": ["llama3.2"],
+            "tried_first": True,
+            "first_model": "llama3.2",
+        }
+    )
+    rows, last, _ = await _rows(
+        "/model", size, "#pick", rows_by_command={("models", "list"): pinned}
+    )
     row = _row_with(rows, "esc close", "Auto")
     assert row is not None, "\n".join(rows)
     assert row == last, (row, last)

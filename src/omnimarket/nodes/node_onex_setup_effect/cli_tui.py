@@ -154,6 +154,34 @@ def _palette_row(entry: ModelTuiCommand) -> Text:
     return row
 
 
+#: The widest line of /help's keys: narrower than any window onex is laid
+#: out for, so the line never wraps.
+_HELP_KEYS_WIDTH = 44
+
+
+def help_renderable(entries: Iterable[ModelTuiCommand]) -> Text:
+    """/help: one sentence, each command as the / menu shows it, then the
+    keys, bold, with their words muted (mockups v2, page 10)."""
+    design = tui_design()
+    lines = [Text(design.help, style=_style("foreground")), Text()]
+    lines += [_palette_row(entry) for entry in entries]
+    # The pairs are packed into short lines, so a line never breaks inside
+    # one (H2: Rich breaks even at a no-break space).
+    rows: list[Text] = [Text()]
+    for pair in design.words["help_keys"].split(" · "):
+        key, _, word = pair.partition(" ")
+        row = rows[-1]
+        if row and row.cell_len + len(pair) + 3 > _HELP_KEYS_WIDTH:
+            row = Text()
+            rows.append(row)
+        if row:
+            row.append(" · ", style=_style("muted"))
+        row.append(key, style=_style("foreground", "bold"))
+        row.append(f" {word}", style=_style("muted"))
+    lines += [Text(), *rows]
+    return Text("\n").join(lines)
+
+
 def _is_customer_command(path: tuple[str, ...]) -> bool:
     """Whether ``path`` is one of the customer commands or a subcommand of one.
 
@@ -2024,6 +2052,7 @@ class ModelPickScreen(_TabbedScreen[None]):
         table.set_first(self._first_key())
         table.set_entries(self._selection.entries)
         table.query_one("DataTable").focus()
+        self._fit_auto()
         if not self.reading:
             self._empty_note()
 
@@ -2050,6 +2079,11 @@ class ModelPickScreen(_TabbedScreen[None]):
         table.set_first(self._first_key())
         table.set_entries(self._selection.entries)
         self.query_one("#pnow", Static).update(self._now())
+        self._fit_auto()
+
+    def _fit_auto(self) -> None:
+        """Use Auto is offered only when a model is pinned first."""
+        self.query_one("#auto").display = self._selection.first is not None
 
     @on(ModelTable.Chosen)
     def _chosen(self, event: ModelTable.Chosen) -> None:
@@ -4538,7 +4572,7 @@ class OnexTui(App[int]):
         if action == "quit":
             self.exit(0)
         elif action == "help":
-            self._write(Text(tui_design().help, style=_style("foreground")))
+            self._write(help_renderable(self._matches("")))
         elif action == "clear":
             self.query_one("#output", OutputPane).clear()
         elif action in (

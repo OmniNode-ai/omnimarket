@@ -149,6 +149,6 @@ async def test_model_names_auto_once() -> None:
         await _open(pilot, "/model")
         label = tui_design().model_table.auto_label
         texts = [_shown(app.screen.query_one(i)) for i in ("#pnow", "#auto")]
-        # never twice; the button is short so the key hints keep their row
+        # never twice; with Auto already on there is no button to choose it
         assert sum(label in " ".join(t.split()) for t in texts) <= 1
-        assert tui_design().words["auto_button"] in texts[1]
+        assert not app.screen.query_one("#auto").display
