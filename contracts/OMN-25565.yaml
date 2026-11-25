@@ -63,6 +63,13 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_ledger_outbox_drain_effect/test_publisher_sender.py tests/nodes/node_ledger_outbox_drain_effect/test_golden_chain_outbox_drain.py -q --no-cov -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn25565-no-delegation-health-row-on-pr-head"
+    description: "A pull request head carries no delegation-health row: the caller workflow runs on schedule and push to dev only. The old head ran it on pull_request and merge_group, so its red row held the branch; the merged head fails the old file and passes the new."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_delegation_health_caller_no_pr_row_omn25565.py -q --no-cov -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn25565-deploy-outbox-drain-probe"
     description: "Deploy probe. GitHub serves the outbox drain handler at the checked-out HEAD with the clock-guard restamp and the retry ordering. It fails at the merge base, which has no such handler, and needs only GitHub access and Python on the hosted runner."
     source: "manual"
