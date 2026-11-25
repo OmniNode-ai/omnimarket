@@ -22,7 +22,7 @@ requirements:
 evidence_requirements:
 - kind: tests
   description: The swap tests, failing on the code before the change and passing on it.
-  command: uv run pytest -k delegation_probe_model_swap -q --no-cov -n 0 -p no:randomly
+  command: uv run pytest tests/handlers/routing/test_delegation_probe_model_swap.py -k delegation_probe_model_swap -q --no-cov -n 0 -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
@@ -37,7 +37,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest -k delegation_probe_model_swap -q --no-cov -n 0 -p no:randomly
+    check_value: uv run pytest tests/handlers/routing/test_delegation_probe_model_swap.py -k delegation_probe_model_swap -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn26628-recorded-listing
   description: The listing the second lab GPU host answered on 2026-11-24 (tests/handlers/routing/fixtures/llamacpp_models_listing_pc2.json) carries each of C13, C14 and C17 to PASS with that listing's own window and capabilities on the record; the test fails on the code before the change, whose record holds neither. The 2026-11-23 catalog before the Qwen to Inkling swap is not held in this repository.

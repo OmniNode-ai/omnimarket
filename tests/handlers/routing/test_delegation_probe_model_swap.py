@@ -418,3 +418,36 @@ def test_delegation_probe_model_swap_no_probe_source_holds_a_window_or_price() -
         str(p.relative_to(ROOT)): hits for p in _sources() if (hits := _constants(p))
     }
     assert offenders == {}
+
+
+def _contract_items() -> list[dict[str, Any]]:
+    import yaml
+
+    document = yaml.safe_load(
+        (ROOT / "contracts" / "OMN-26628.yaml").read_text(encoding="utf-8")
+    )
+    return list(document["dod_evidence"])
+
+
+def test_delegation_probe_model_swap_contract_binds_no_criterion_to_a_local_item() -> (
+    None
+):
+    # The hosted repo-evidence check refuses a criterion bound to an item scoped to the local Done gate, and the change
+    # needs one such item (the integration proof on a lab host) that binds nothing; the lab reading is the PR's Lab line.
+    items = _contract_items()
+    scoped = [i for i in items if i.get("execution_scope") == "local_done_gate"]
+    assert [i["id"] for i in scoped] == ["dod-omn26628-integration-proof-lab-run"]
+    assert not any(i.get("binds_ac") for i in scoped)
+    assert any(i.get("binds_ac") for i in items)
+
+
+def test_delegation_probe_model_swap_contract_commands_name_the_test_file() -> None:
+    # A bare `pytest -k` collects the whole repository and overruns the verifier's per-check ceiling; naming the file
+    # keeps the check inside it (the criterion's own falsifier text is unchanged).
+    for item in _contract_items():
+        for check in item["checks"]:
+            if check["check_type"] == "test_passes":
+                assert (
+                    "tests/handlers/routing/test_delegation_probe_model_swap.py"
+                    in check["check_value"]
+                ), item["id"]
