@@ -4,26 +4,26 @@ ticket_id: OMN-25070
 title: The customer package omninode-onex declares the customer launchers and pins its distributions
 summary: >-
   omnimarket now holds the customer package omninode-onex under packages/omninode-onex. It carries
-  no code, declares onex and omni-agent with omnibase_core's CLI as their target, and pins
+  no code, declares only onex with omnibase_core's CLI as its target, and pins
   omnibase-core, omnibase-infra, omnibase-spi, omnimarket and omninode-memory with ==. A customer runs uv tool install
-  omninode-onex, which links only the named package's launchers, so exactly onex and omni-agent
-  land on PATH. During the testing phase omnibase-core keeps declaring the same two launchers.
+  omninode-onex, which links only the named package's launchers, so exactly onex
+  lands on PATH; omni-agent is not a customer command (operator ruling, 2026-11-25).
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
   - id: req-omn25070-customer-package
-    statement: The customer package declares exactly onex and omni-agent, pins each distribution with ==,
+    statement: The customer package declares exactly onex, pins each distribution with ==,
       and its wheel carries no code.
     acceptance:
       - id: AC2
         statement: >-
-          AC2 (testing-phase form, package part): the package declares exactly onex and omni-agent with
+          AC2 (package part): the package declares exactly onex, and not omni-agent, with
           omnibase_core's target, pins omnibase-core, omnibase-infra, omnibase-spi, omnimarket and omninode-memory with ==, pins
           omnimarket no newer than this repository's version, and its built wheel holds only its dist-info --
-          falsifier: uv run pytest tests/ci/test_omninode_onex_package_omn25070.py fails on omnimarket
-          dev, where packages/omninode-onex does not exist. The install part (uv tool install puts
-          exactly onex and omni-agent on PATH and onex runs) is the opt-in
+          falsifier: uv run pytest tests/ci/test_omninode_onex_package_omn25070.py -k "declares_exactly_the_customer_launchers or leaked_omni_agent" fails on omnimarket
+          dev, where the package still declares omni-agent. The install part (uv tool install puts
+          exactly onex on PATH and onex runs) is the opt-in
           tests/e2e/test_setup_packaged_journey.py -k customer_launchers_only, run with
           ONEX_TEST_ONEX_WHEEL set.
   - id: req-omn25070-curl-installer
@@ -38,7 +38,7 @@ requirements:
           anything, every platform not supported yet (Intel macOS, Windows, musl Linux, any other CPU or
           system); never builds from source; never runs a uv archive whose sha256 differs from the value in the script; refuses,
           naming the file and leaving it unchanged, when a launcher it did not install is in uv's bin
-          directory; and installs, reinstalls and upgrades leaving exactly onex and omni-agent on PATH --
+          directory; and installs, reinstalls and upgrades leaving exactly onex on PATH --
           falsifier: uv run pytest tests/ci/test_omninode_onex_install_sh_omn25070.py fails on omnimarket
           dev, where neither the node nor its request exists; the real install cases run with ONEX_TEST_ONEX_WHEEL set,
           on each platform in .github/workflows/onex-installer.yml.
@@ -72,17 +72,27 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
   - id: dod-omn25070-customer-package
-    description: The customer package declares the two launchers, pins its distributions with == and
-      ships no code. The bound test fails on dev, where the package does not exist.
+    description: The customer package declares the onex launcher only, pins its distributions with == and
+      ships no code. The bound tests include the launcher checks that fail on dev, where the package still
+      declares omni-agent.
     source: manual
     binds_ac: [AC2]
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/ci/test_omninode_onex_package_omn25070.py -q --no-cov
         cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn25070-onex-only-launcher
+    description: The customer package declares only onex, and a re-added omni-agent launcher is refused. Both
+      bound tests fail on dev, where the package still declares omni-agent.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest -q --no-cov tests/ci/test_omninode_onex_package_omn25070.py -k "declares_exactly_the_customer_launchers or leaked_omni_agent"
+        cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn25070-curl-installer
-    description: The installer's platform, checksum and conflict cases, run through bash from stdin. The bound
-      test fails on dev, where the script does not exist.
+    description: The installer's platform, checksum and conflict cases, run through bash from stdin, with onex
+      the only launcher it installs or expects.
     source: manual
     binds_ac: [AC4]
     checks:

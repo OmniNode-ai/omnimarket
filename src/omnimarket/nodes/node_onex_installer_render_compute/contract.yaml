@@ -42,6 +42,10 @@ event_bus:
   publish_topics: []
 runtime_dispatch:
   external_trigger: The release workflow pipes packages/omninode-onex/installer.json into runtime_onex_installer_render.
+  # Run on demand by .github/workflows/release-omninode-onex.yml (step "Render the installer") before anything is published.
+  on_demand:
+    command: python -m omnimarket.nodes.node_onex_installer_render_compute.runtime_onex_installer_render < packages/omninode-onex/installer.json > dist/install.sh
+    owner: OmniNode Platform Team
 
 descriptor:
   node_archetype: compute
