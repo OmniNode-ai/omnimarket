@@ -11,6 +11,7 @@ from typing import Any
 
 import yaml
 
+from omnimarket.handlers.ledger_rows_via_node import read_ledger_rows_range_via_node
 from omnimarket.models.process_health import (
     ModelProcessHealthConfig,
     ModelProcessHealthRequest,
@@ -20,6 +21,7 @@ from omnimarket.nodes.node_process_health_compute.handlers.handler_process_healt
     HandlerProcessHealth,
 )
 from omnimarket.nodes.node_process_health_effect.handlers.source_readers import (
+    ProtocolRowsReader,
     Sources,
     UnsetEnvError,
     expand,
@@ -76,6 +78,7 @@ def read_sources(
     config: ModelProcessHealthConfig,
     runtime_io: Mapping[str, Any],
     request: ModelProcessHealthRunRequest,
+    rows_reader: ProtocolRowsReader = read_ledger_rows_range_via_node,
 ) -> Sources:
     """Read every source; keep the series window plus the summary's look-back."""
     environ = request.environ
@@ -92,7 +95,7 @@ def read_sources(
         keep_from, generated_at - timedelta(days=int(runtime_io["git"]["since_days"]))
     )
     out = Sources()
-    read_ledger(runtime_io["ledger"], environ, keep_from, out)
+    read_ledger(runtime_io["ledger"], keep_from, generated_at, out, rows_reader)
     read_landing(
         runtime_io["landing"],
         environ,
@@ -155,6 +158,11 @@ def write_output(path: Path, text: str) -> None:
 class HandlerProcessHealthRun:
     """Effect: read the named sources, call the pure compute, write the JSON."""
 
+    def __init__(
+        self, rows_reader: ProtocolRowsReader = read_ledger_rows_range_via_node
+    ) -> None:
+        self._rows_reader = rows_reader
+
     def handle(
         self, request: ModelProcessHealthRunRequest
     ) -> ModelProcessHealthRunResult:
@@ -162,7 +170,7 @@ class HandlerProcessHealthRun:
         overlay = request.environ.get(runtime_io["config_overlay"]["env_var"], "")
         config = load_config(overlay_path=Path(overlay) if overlay else None)
         output = resolve_output(runtime_io, request)
-        sources = read_sources(config, runtime_io, request)
+        sources = read_sources(config, runtime_io, request, self._rows_reader)
         result = HandlerProcessHealth().handle(build_request(config, sources, request))
         write_output(output, result.model_dump_json(indent=2) + "\n")
         return ModelProcessHealthRunResult(
