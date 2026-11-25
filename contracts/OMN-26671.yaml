@@ -80,6 +80,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/ci/test_auto_merge_proof_gate.py tests/ci/test_auto_merge_hold_omn18179.py tests/ci/test_auto_merge_ready_for_review_omn19216.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26671-lab-run-failed
+  description: 'AC1: a Lab line recording a refused or failed run (PUBLISH REFUSED exit 3, refused, FAILED, exit code 1) answers DRAFT with lab_run_failed; the real failed lines of 2026-11-24 answer DRAFT and passing lines still answer PROVEN.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_landing_proof_gate.py -q --no-cov -n 0 -p no:randomly -k "refused_or_failed_run or real_failed_proof_lines or real_good_lines or passing_run"
+    cwd: .
 - id: dod-omn26671-integration-proof
   description: the gate tests, the arming tests and the command run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
   source: manual

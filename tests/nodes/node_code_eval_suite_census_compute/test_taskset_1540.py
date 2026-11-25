@@ -77,4 +77,15 @@ def test_the_two_dropped_tasks_are_one_counted_exclusion() -> None:
 def test_the_suite_carries_the_rebuilt_set_not_the_earlier_one() -> None:
     request = load_committed_suite()
     assert request.suite_id.endswith("2026-11-21")
-    assert len(request.tasks) == 316
+    assert len(request.tasks) == 298
+
+
+def test_the_eighteen_network_naming_rows_are_a_counted_exclusion_not_tasks() -> None:
+    request = load_committed_suite()
+    reasons = {e.reason: e.count for e in request.pre_control_exclusions}
+    suffix = "check_names_network_or_live_host_not_runnable_in_a_worktree"
+    assert reasons[f"omnimarket:{suffix}"] == 16
+    assert reasons[f"omnibase_infra:{suffix}"] == 2
+    ids = {(t.repository, t.contract_id) for t in request.tasks}
+    assert ("omnibase_infra", "OMN-21950") not in ids
+    assert ("omnimarket", "OMN-18339") not in ids

@@ -109,6 +109,7 @@ def test_the_no_argument_handler_publishes_each_output_topic_once(
         encoding="utf-8",
     )
     monkeypatch.setenv(OMNI_HOME_ENV, str(tmp_path))
+    monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "state"))
     monkeypatch.setenv(REPLAY_ENV, str(replay))
     monkeypatch.setenv(FILE_ENV, str(overlay))
     sent: list[tuple[str, str]] = []

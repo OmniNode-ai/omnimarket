@@ -9,6 +9,8 @@ from typing import Literal
 
 from omnimarket.nodes.node_metering_summary_compute import (
     HandlerMeteringSummary,
+    ModelCounterfactualBaseline,
+    ModelMeteringSummary,
     ModelMeteringSummaryRequest,
     ModelMeteringWindow,
 )
@@ -61,6 +63,56 @@ def savings_pct_of_counterfactual(
     return str(share)
 
 
+def summary_row(
+    summary: ModelMeteringSummary,
+    *,
+    tenant_id: str,
+    baseline_model: str,
+    baseline: ModelCounterfactualBaseline | None,
+    kind: Literal["all", "day"],
+    key: str,
+    as_of: datetime,
+) -> ModelMeteringSummaryRow:
+    """The stored row of one window's summary (OMN-21288: shared by whole and incremental folds)."""
+    # Individual figures are for the run projection, not a copy of every
+    # run embedded in each aggregate window or in onex metering's JSON.
+    payload = summary.model_dump(mode="json", exclude={"by_run"})
+    return ModelMeteringSummaryRow(
+        tenant_id=tenant_id,
+        window_kind=kind,
+        window_start=key,
+        window_end=summary.window.end.isoformat(),
+        as_of=as_of.isoformat(),
+        baseline_model=baseline_model,
+        pricing_manifest_version=baseline.pricing_manifest_version
+        if baseline
+        else None,
+        baseline_state=summary.baseline_state,
+        runs_total=summary.runs_total,
+        runs_measured=summary.runs_measured,
+        runs_unknown_tokens=summary.runs_unknown_tokens,
+        runs_unknown_spend=summary.runs_unknown_spend,
+        tokens_in=summary.tokens_in,
+        tokens_out=summary.tokens_out,
+        spend_usd=payload["spend_usd"],
+        counterfactual_usd=payload["counterfactual_usd"],
+        savings_usd=payload["savings_usd"],
+        savings_per_measured_run_usd=savings_per_measured_run(
+            summary.savings_usd, summary.runs_measured
+        ),
+        savings_pct_of_counterfactual=savings_pct_of_counterfactual(
+            summary.savings_usd, summary.counterfactual_usd
+        ),
+        # OMN-20226: no metering record carries a raw or compressed
+        # token count or a semantic-cache answer, so there is
+        # nothing to divide: null, never 0 or 1.00x.
+        compression_ratio=None,
+        cache_hit_rate=None,
+        runs_cache_answered=None,
+        summary_json=json.dumps(payload, sort_keys=True, separators=(",", ":")),
+    )
+
+
 class HandlerProjectionMeteringSummary:
     """Fold a complete recorded snapshot into daily and all-time rows."""
 
@@ -102,45 +154,15 @@ class HandlerProjectionMeteringSummary:
                     top_models=max(1, len(selected)),
                 )
             )
-            # Individual figures are for the run projection, not a copy of every
-            # run embedded in each aggregate window or in onex metering's JSON.
-            payload = summary.model_dump(mode="json", exclude={"by_run"})
             rows.append(
-                ModelMeteringSummaryRow(
+                summary_row(
+                    summary,
                     tenant_id=request.tenant_id,
-                    window_kind=kind,
-                    window_start=key,
-                    window_end=end.isoformat(),
-                    as_of=as_of.isoformat(),
                     baseline_model=request.baseline_model,
-                    pricing_manifest_version=request.baseline.pricing_manifest_version
-                    if request.baseline
-                    else None,
-                    baseline_state=summary.baseline_state,
-                    runs_total=summary.runs_total,
-                    runs_measured=summary.runs_measured,
-                    runs_unknown_tokens=summary.runs_unknown_tokens,
-                    runs_unknown_spend=summary.runs_unknown_spend,
-                    tokens_in=summary.tokens_in,
-                    tokens_out=summary.tokens_out,
-                    spend_usd=payload["spend_usd"],
-                    counterfactual_usd=payload["counterfactual_usd"],
-                    savings_usd=payload["savings_usd"],
-                    savings_per_measured_run_usd=savings_per_measured_run(
-                        summary.savings_usd, summary.runs_measured
-                    ),
-                    savings_pct_of_counterfactual=savings_pct_of_counterfactual(
-                        summary.savings_usd, summary.counterfactual_usd
-                    ),
-                    # OMN-20226: no metering record carries a raw or compressed
-                    # token count or a semantic-cache answer, so there is
-                    # nothing to divide: null, never 0 or 1.00x.
-                    compression_ratio=None,
-                    cache_hit_rate=None,
-                    runs_cache_answered=None,
-                    summary_json=json.dumps(
-                        payload, sort_keys=True, separators=(",", ":")
-                    ),
+                    baseline=request.baseline,
+                    kind=kind,
+                    key=key,
+                    as_of=as_of,
                 )
             )
         return ModelMeteringSummaryFoldResult(rows=tuple(rows))
