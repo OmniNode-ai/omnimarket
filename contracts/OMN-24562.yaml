@@ -36,6 +36,11 @@ requirements:
   acceptance:
   - id: AC6
     statement: 'AC6: ci.yml carries lint-group-1 to lint-group-6 and a lint aggregate that needs all of them, each of the 128 steps listed in tests/ci/lint_steps_before_omn24562.txt runs in one group, and the Direct Model Call Gate positive control runs with --repo-root on a scratch repository -- falsifier: uv run pytest tests/ci/test_lint_split_omn24562.py tests/ci/test_direct_model_call_ci_gate.py fails when a step is dropped from every group or the control scans the whole tree'
+- id: req-omn24562-guard-exit69-retry
+  statement: A lane's duplicate guard that reads its claims through a reader that exits 69 once is judged on the retry's answer, so the lane opens its own pull request; two refused reads leave it unchecked.
+  acceptance:
+  - id: AC8
+    statement: 'AC8: a first claims read that exits 69 is retried once and the guard judges the answer on each of h053, h201 and h202, and two reads that exit 69 leave the guard unchecked with nothing sent -- falsifier: uv run pytest tests/unit/handlers/scm/test_scm_duplicate_guard_exit69_retry_omn24562.py fails when the retry is removed or a refused pair of reads clears the guard'
 evidence_requirements:
 - kind: tests
   description: The inode alarm tests pass at the pushed head.
@@ -105,4 +110,13 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/ci/test_lint_split_omn24562.py tests/ci/test_direct_model_call_ci_gate.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24562-guard-exit69-retry
+  description: 'AC8: one read that exits 69 is retried and judged, two leave the guard unchecked with nothing sent (failing control: the two-refusal test fails if the guard clears unread, the one-refusal test fails if the retry is dropped).'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/scm/test_scm_duplicate_guard_exit69_retry_omn24562.py -q -n 0 --no-cov -p no:randomly
     cwd: .
