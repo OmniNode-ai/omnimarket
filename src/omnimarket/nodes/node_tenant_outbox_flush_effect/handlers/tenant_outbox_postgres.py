@@ -27,8 +27,13 @@ _DRIVER_ERRORS = (
     TimeoutError,
 )
 
+_TRACKING_COLUMNS = """
+SELECT column_name FROM information_schema.columns
+WHERE table_name = 'tenant_event_outbox' AND table_schema = ANY (current_schemas(false))
+AND column_name IN ('attempts', 'last_error')
+"""
 _FETCH_UNPUBLISHED = """
-SELECT id::text AS id, envelope, attempts
+SELECT id::text AS id, envelope, {attempts} AS attempts
 FROM tenant_event_outbox
 WHERE published_at IS NULL
 ORDER BY created_at, id
@@ -36,7 +41,7 @@ LIMIT $1
 """
 _MARK_PUBLISHED = """
 UPDATE tenant_event_outbox
-SET published_at = $2, last_error = NULL
+SET published_at = $2{clear_error}
 WHERE id::text = $1 AND published_at IS NULL
 """
 _RECORD_FAILURE = """
@@ -76,6 +81,7 @@ class TenantOutboxPostgres:
         self._dsn_resolver = dsn_resolver
         self._max_pool_size = max_pool_size
         self._timeout = query_timeout_seconds
+        self._tracks_failures: bool | None = None
 
     async def _get_pool(self) -> asyncpg.Pool:
         if self._pool is None:
@@ -91,6 +97,17 @@ class TenantOutboxPostgres:
             )
         return self._pool
 
+    async def _tracking(self, pool: asyncpg.Pool) -> bool:
+        """Whether the table has the ``attempts`` and ``last_error`` columns.
+
+        The dev table ``node_tenant_provision_effect`` writes has neither; naming them there is an UndefinedColumnError on
+        every statement. Without them a failure is reported in the flush result only and every row reads as zero attempts.
+        """
+        if self._tracks_failures is None:
+            found = {r["column_name"] for r in await pool.fetch(_TRACKING_COLUMNS)}
+            self._tracks_failures = found == {"attempts", "last_error"}
+        return self._tracks_failures
+
     async def close(self) -> None:
         if self._pool is not None:
             await self._pool.close()
@@ -100,7 +117,11 @@ class TenantOutboxPostgres:
         """Unpublished rows, oldest first; a row marked published is never returned."""
         try:
             pool = await self._get_pool()
-            records = await pool.fetch(_FETCH_UNPUBLISHED, limit)
+            tracking = await self._tracking(pool)
+            records = await pool.fetch(
+                _FETCH_UNPUBLISHED.format(attempts="attempts" if tracking else "0"),
+                limit,
+            )
         except TenantOutboxStoreUnavailableError:
             raise
         except _DRIVER_ERRORS as exc:
@@ -117,7 +138,14 @@ class TenantOutboxPostgres:
     async def mark_published(self, row_id: str, published_at: datetime) -> None:
         try:
             pool = await self._get_pool()
-            await pool.execute(_MARK_PUBLISHED, row_id, published_at)
+            tracking = await self._tracking(pool)
+            await pool.execute(
+                _MARK_PUBLISHED.format(
+                    clear_error=", last_error = NULL" if tracking else ""
+                ),
+                row_id,
+                published_at,
+            )
         except TenantOutboxStoreUnavailableError:
             raise
         except _DRIVER_ERRORS as exc:
@@ -126,7 +154,8 @@ class TenantOutboxPostgres:
     async def record_failure(self, row_id: str, error: str) -> None:
         try:
             pool = await self._get_pool()
-            await pool.execute(_RECORD_FAILURE, row_id, error)
+            if await self._tracking(pool):
+                await pool.execute(_RECORD_FAILURE, row_id, error)
         except TenantOutboxStoreUnavailableError:
             raise
         except _DRIVER_ERRORS as exc:

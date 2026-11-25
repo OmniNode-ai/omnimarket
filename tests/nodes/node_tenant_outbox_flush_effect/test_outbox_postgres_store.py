@@ -30,6 +30,10 @@ class RecordingPool:
         self._fail = fail
 
     async def fetch(self, sql: str, *args: Any) -> list[dict[str, Any]]:
+        if "information_schema.columns" in sql:
+            self._record(sql, args)
+            self.calls.pop()
+            return [{"column_name": "attempts"}, {"column_name": "last_error"}]
         self._record(sql, args)
         return self._rows
 
