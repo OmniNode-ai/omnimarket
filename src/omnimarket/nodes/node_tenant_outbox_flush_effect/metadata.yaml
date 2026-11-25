@@ -17,6 +17,8 @@ capabilities:
   requires_docker: false
   side_effect_class: write
 dependencies:
+- aiokafka
+- asyncpg>=0.30.0
 - pydantic>=2.0
 - pyyaml>=6.0
 authors:
