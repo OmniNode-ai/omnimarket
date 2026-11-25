@@ -47,6 +47,9 @@ class ModelCodeEvalRunnerOverlay(BaseModel):
     unit_lane_prefix: str
     onex_executable: str = Field(min_length=1)
     caller_ticket: str | None = Field(pattern=r"^OMN-[0-9]+$")
+    #: True: the loop's check is the contract's own test command, its test file is in the
+    #: worktree and the touched files are shown as context. False: the overlay's draft checks only.
+    real_check_in_loop: bool = False
     #: Times an infrastructure-unscorable try is scored again or regenerated (OMN-24173); 0 retries none.
     infra_retries: int = Field(default=0, ge=0)
     #: A run closes void when more than this percent of its first tries were infrastructure-unscorable.

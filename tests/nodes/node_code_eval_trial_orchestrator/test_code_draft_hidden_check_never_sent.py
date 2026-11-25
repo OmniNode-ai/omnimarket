@@ -80,3 +80,29 @@ def test_break_leak_a_contract_check_into_the_draft(
     bus.reader_candidates = tuple(run_request(2, 2).candidates)
     with pytest.raises(AssertionError):
         assert_nothing_hidden_is_sent(bus)
+
+
+def test_a_real_check_overlay_puts_the_context_test_and_command_in_the_draft() -> None:
+    from tests.nodes.node_code_eval_trial_orchestrator.orchestrator_support import (
+        leg_config,
+    )
+
+    bus = make_bus(config=leg_config(real_check_in_loop=True))
+    bus.send(run_request(2, 2))
+    bus.drain()
+    bus.reader_candidates = tuple(run_request(2, 2).candidates)
+    assert bus.units
+    materials = {m.task_key: m for m in bus.reader.read(bus.reader_candidates)}
+    for unit in bus.units:
+        draft = unit.code_draft
+        assert draft is not None
+        material = next(iter(materials.values()))
+        assert material.check_commands
+        assert [" ".join(c.argv) for c in draft.checks] == list(material.check_commands)
+        assert draft.context_paths == material.context_paths
+        assert [s.path for s in draft.seed_files] == [
+            f.path for f in material.check_files
+        ]
+        wire = unit.model_dump_json()
+        assert material.held_diff not in wire, "the held answer is never sent"
+        assert material.contract.path not in wire

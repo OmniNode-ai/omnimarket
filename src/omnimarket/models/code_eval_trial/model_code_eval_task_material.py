@@ -19,6 +19,7 @@ from omnimarket.models.model_code_score import (
     ModelCodeScoreCheckFile,
     ModelCodeScoreContractRef,
 )
+from omnimarket.models.model_lab_work_unit import ModelSeedFile
 
 
 def task_key_for(candidate: ModelCodeEvalCandidate) -> str:
@@ -40,6 +41,12 @@ class ModelCodeEvalTaskMaterial(BaseModel):
     writable_globs: tuple[str, ...]
     contract: ModelCodeScoreContractRef
     check_files: tuple[ModelCodeScoreCheckFile, ...] = ()
+    #: Files shown to the model as context: the held paths the base has, and the check files.
+    context_paths: tuple[str, ...] = ()
+    #: The contract's own test commands as shell-free word lists; the loop's real check.
+    check_commands: tuple[str, ...] = ()
+    #: The check files at the merge revision, written into the worktree for the loop's check.
+    seed_files: tuple[ModelSeedFile, ...] = ()
     #: The merged change's diff with the contract and check files taken out; the control's draft.
     held_diff: str
     band: str = Field(min_length=1)

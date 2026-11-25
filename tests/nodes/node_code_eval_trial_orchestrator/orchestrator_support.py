@@ -67,6 +67,7 @@ from omnimarket.models.model_lab_work_unit import (
     EnumLabWorkUnitStatus,
     ModelLabWorkUnitReceipt,
     ModelLabWorkUnitRequest,
+    ModelSeedFile,
 )
 from omnimarket.nodes.node_code_eval_trial_orchestrator.handlers.handler_code_eval_trial_orchestrator import (
     HandlerCodeEvalTrialOrchestrator,
@@ -198,6 +199,13 @@ class InMemorySuiteReader:
                         ),
                     ),
                     held_diff=held,
+                    context_paths=("src/x.py", "tests/test_x.py"),
+                    check_commands=("uv run pytest tests/test_x.py -q",),
+                    seed_files=(
+                        ModelSeedFile(
+                            path="tests/test_x.py", content="def test_x(): ...\n"
+                        ),
+                    ),
                     band="S",
                     material_hash=hashlib.sha256(held.encode()).hexdigest(),
                     excluded_reason=self._excluded.get(key),

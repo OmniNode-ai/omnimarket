@@ -74,6 +74,28 @@ class EnumLabWorkUnitStatus(StrEnum):
 MAX_DRAFT_DIFF_BYTES: int = 5_000_000
 
 
+class ModelSeedFile(BaseModel):
+    """One file the runner writes into the unit's worktree before the loop starts.
+
+    The loop's own check reads it (a graded test) and the model sees it as
+    context; the unit's diff leaves it out, so the score step restores it from
+    the contract's revision instead of taking it from the draft.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    path: str = Field(..., min_length=1)
+    content: str
+
+    @field_validator("path")
+    @classmethod
+    def _inside_the_tree(cls, value: str) -> str:
+        pure = PurePosixPath(value)
+        if pure.is_absolute() or ".." in pure.parts or "." in pure.parts:
+            raise ValueError(f"a seed file path stays inside the tree: {value!r}")
+        return value
+
+
 class ModelLabCodeDraft(BaseModel):
     """What a ``code_draft`` unit asks the delegated code edit loop to do.
 
@@ -90,6 +112,8 @@ class ModelLabCodeDraft(BaseModel):
     writable_globs: tuple[str, ...] = Field(..., min_length=1)
     context_paths: tuple[str, ...] = ()
     file_list: tuple[str, ...] = ()
+    #: Files written into the worktree before the loop (a graded test); never in the diff.
+    seed_files: tuple[ModelSeedFile, ...] = ()
     checks: tuple[ModelDeclaredCheck, ...] = Field(..., min_length=1)
     formatter: tuple[tuple[str, ...], ...] = ()
     max_turns: int = Field(..., ge=1, le=40)

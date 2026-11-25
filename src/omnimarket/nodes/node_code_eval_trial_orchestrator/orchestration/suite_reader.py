@@ -12,6 +12,7 @@ a task that is merely not admitted carries its ``excluded_reason`` and never rai
 from __future__ import annotations
 
 import hashlib
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
@@ -39,12 +40,16 @@ from omnimarket.models.model_code_score import (
     ModelCodeScoreContractRef,
     ModelCodeScoreOverlay,
 )
+from omnimarket.models.model_lab_work_unit import ModelSeedFile
 from omnimarket.nodes.node_code_contract_score_effect.handlers.adapter_git_workspace import (
     _git,
 )
 from omnimarket.nodes.node_delegation_size_band_compute.handlers.handler_delegation_size_band import (
     HandlerDelegationSizeBand,
 )
+
+# a shell-free command word list: the loop runs a check as argv, never through a shell
+_LOOP_COMMAND = re.compile(r"^[A-Za-z0-9_.+/=%:@,-]+( [A-Za-z0-9_.+/=%:@,-]+)*$")
 
 # the delegated code edit loop request's task limit (ModelLabCodeDraft.task max_length)
 LOOP_REQUEST_TASK_MAX_CHARS = 20000
@@ -60,6 +65,9 @@ class _MaterialState:
     writable_globs: tuple[str, ...] = ()
     check_files: tuple[ModelCodeScoreCheckFile, ...] = ()
     held_diff: str = ""
+    context_paths: tuple[str, ...] = ()
+    check_commands: tuple[str, ...] = ()
+    seed_files: tuple[ModelSeedFile, ...] = ()
     band: str = "S"
 
 
@@ -165,6 +173,12 @@ class GitCodeEvalSuiteReader:
             root, base_commit, candidate.merge_commit, held
         )
 
+        state.check_commands = self._loop_commands(bound)
+        state.context_paths = tuple(
+            path for path in held if self._exists_at(root, base_commit, path)
+        ) + tuple(path for path in sorted(check_paths))
+        state.seed_files = self._seed_files(root, candidate.merge_commit, check_files)
+
         descriptions = tuple(item.description for item in contract.dod_evidence)
         state.task_text = "\n".join(
             [contract.title, "", contract.description, *descriptions]
@@ -212,6 +226,9 @@ class GitCodeEvalSuiteReader:
             ),
             check_files=state.check_files,
             held_diff=state.held_diff,
+            context_paths=state.context_paths,
+            check_commands=state.check_commands,
+            seed_files=state.seed_files,
             band=state.band,
             material_hash=material_hash,
             excluded_reason=excluded_reason,
@@ -220,6 +237,42 @@ class GitCodeEvalSuiteReader:
     def _show_blob(self, root: str, revision: str, path: str) -> bytes | None:
         done = _git(root, "show", f"{revision}:{path}")
         return done.stdout if done.returncode == 0 else None
+
+    @staticmethod
+    def _loop_commands(bound: list[tuple[str, str, str]]) -> tuple[str, ...]:
+        """The contract's test commands the loop may run: shell-free word lists, in order, once."""
+        commands: list[str] = []
+        for _item_id, check_type, check_value in bound:
+            command = " ".join(check_value.split())
+            if (
+                check_type == "test_passes"
+                and _LOOP_COMMAND.fullmatch(command) is not None
+                and command not in commands
+            ):
+                commands.append(command)
+        return tuple(commands)
+
+    def _exists_at(self, root: str, revision: str, path: str) -> bool:
+        return _git(root, "cat-file", "-e", f"{revision}:{path}").returncode == 0
+
+    def _seed_files(
+        self,
+        root: str,
+        merge_commit: str,
+        check_files: tuple[ModelCodeScoreCheckFile, ...],
+    ) -> tuple[ModelSeedFile, ...]:
+        seeds: list[ModelSeedFile] = []
+        for file in check_files:
+            data = self._show_blob(root, merge_commit, file.path)
+            if data is None:
+                continue
+            try:
+                seeds.append(
+                    ModelSeedFile(path=file.path, content=data.decode("utf-8"))
+                )
+            except UnicodeDecodeError:  # a binary check file is not seeded as text
+                continue
+        return tuple(seeds)
 
     def _base_commit(self, root: str, merge_commit: str) -> str | None:
         """The merge's first parent; None when the merge has none."""

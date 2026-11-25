@@ -63,6 +63,7 @@ from omnimarket.models.model_delegated_code_edit import ModelDeclaredCheck
 from omnimarket.models.model_lab_work_unit import (
     ModelLabCodeDraft,
     ModelLabWorkUnitRequest,
+    ModelSeedFile,
 )
 
 _ROW_NAMESPACE = UUID("6f0b6f0e-3f55-4a53-9a39-23627e1c0de1")
@@ -102,6 +103,13 @@ def build_unit_request(
 ) -> ModelLabWorkUnitRequest:
     """The work unit for one try: the draft carries the overlay's checks, never a contract check."""
     lane = f"{overlay.unit_lane_prefix}{run_id}"
+    commands = overlay.draft_checks
+    context_paths: tuple[str, ...] = ()
+    seed_files: tuple[ModelSeedFile, ...] = ()
+    if overlay.real_check_in_loop and material.check_commands:
+        commands = material.check_commands
+        context_paths = material.context_paths
+        seed_files = material.seed_files
     return ModelLabWorkUnitRequest(
         work_unit_id=place.unit_id,
         target_host=place.host,
@@ -115,11 +123,13 @@ def build_unit_request(
         code_draft=ModelLabCodeDraft(
             task=material.task_text,
             writable_globs=material.writable_globs,
+            context_paths=context_paths,
+            seed_files=seed_files,
             checks=tuple(
                 ModelDeclaredCheck(
                     name=f"draft_check_{index}", argv=tuple(command.split())
                 )
-                for index, command in enumerate(overlay.draft_checks, start=1)
+                for index, command in enumerate(commands, start=1)
             ),
             max_turns=overlay.max_turns,
             caller_lane=lane,
@@ -143,6 +153,7 @@ def generation_settings(
         ("try_timeout_seconds", str(overlay.try_timeout_seconds)),
         ("max_diff_bytes", str(overlay.max_diff_bytes)),
         ("draft_checks", "\n".join(overlay.draft_checks)),
+        ("real_check_in_loop", str(overlay.real_check_in_loop)),
     )
 
 

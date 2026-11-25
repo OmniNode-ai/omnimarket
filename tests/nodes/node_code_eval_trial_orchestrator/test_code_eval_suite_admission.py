@@ -244,3 +244,35 @@ def test_a_task_text_over_the_loop_limit_is_excluded(tmp_path: Path) -> None:
     )
     (material,) = small.read((candidate,))
     assert material.excluded_reason == "task_too_long"
+
+
+def test_an_admitted_task_carries_the_repository_context_and_its_real_check(
+    tmp_path: Path,
+) -> None:
+    root, candidate = build_repo(tmp_path)
+    (material,) = reader(root).read((candidate,))
+    assert material.context_paths == ("src/a.py", "tests/test_a.py")
+    assert material.check_commands == ("uv run pytest tests/test_a.py -q",)
+    assert [(s.path, s.content) for s in material.seed_files] == [
+        ("tests/test_a.py", "changed tests/test_a.py\n")
+    ]
+
+
+def test_context_leaves_out_a_held_path_the_base_does_not_have(
+    tmp_path: Path,
+) -> None:
+    root, candidate = build_repo(
+        tmp_path, changed=("src/a.py", "src/new.py", "tests/test_a.py")
+    )
+    (material,) = reader(root).read((candidate,))
+    assert "src/new.py" in material.writable_globs
+    assert "src/new.py" not in material.context_paths
+
+
+def test_a_check_value_with_a_shell_word_is_not_a_loop_check(tmp_path: Path) -> None:
+    root, candidate = build_repo(
+        tmp_path, check_value="uv run pytest tests/test_a.py -q && true"
+    )
+    (material,) = reader(root).read((candidate,))
+    assert material.excluded_reason is None
+    assert material.check_commands == ()
