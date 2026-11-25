@@ -42,4 +42,18 @@ def schedule_run_topic() -> str:
     raise ValueError(f"schedule-run topic not found in publish topics: {topics}")
 
 
-__all__: list[str] = ["max_hosts", "run_completed_topic", "schedule_run_topic"]
+def lab_work_command_topic() -> str:
+    """The lab work command topic the tick route publishes its units on, by name from the contract."""
+    topics = _contract()["event_bus"]["publish_topics"]
+    for topic in topics:
+        if "lab-work-unit-requested" in topic:
+            return str(topic)
+    raise ValueError(f"lab-work command topic not found in publish topics: {topics}")
+
+
+__all__: list[str] = [
+    "lab_work_command_topic",
+    "max_hosts",
+    "run_completed_topic",
+    "schedule_run_topic",
+]

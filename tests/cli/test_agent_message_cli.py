@@ -22,7 +22,7 @@ _SEND = [
     "--thread",
     "t-1",
     "--kind",
-    "request",
+    "question",
     "--platform",
     "claude",
     "--text",
@@ -103,7 +103,7 @@ def test_sender_defaults_to_platform_identity_without_a_lane() -> None:
                 "--thread",
                 "t",
                 "--kind",
-                "request",
+                "question",
                 "--platform",
                 "claude",
                 "--text",
@@ -121,7 +121,7 @@ def test_sender_defaults_to_platform_identity_without_a_lane() -> None:
                 "--thread",
                 "t",
                 "--kind",
-                "request",
+                "question",
                 "--platform",
                 "claude",
             ],
@@ -168,8 +168,13 @@ def test_undeclared_broker_is_a_typed_refusal(monkeypatch: pytest.MonkeyPatch) -
     assert "Traceback" not in result.output
 
 
-def test_missing_agent_message_node_is_a_typed_refusal() -> None:
+def test_a_node_with_no_declared_broker_is_a_typed_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The node dials the broker its own overlay declares; with none declared the client answers undeclared_broker, never a trace.
+    monkeypatch.delenv("ONEX_EMIT_EFFECT_SPOOL_ONLY", raising=False)
+    monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
     result = CliRunner().invoke(agent_message_group, [*_SEND, "--bus", "inmemory"])
     assert result.exit_code == 3, result.output
-    assert "refused: node_unavailable:" in result.output
+    assert "refused: undeclared_broker:" in result.output
     assert "Traceback" not in result.output

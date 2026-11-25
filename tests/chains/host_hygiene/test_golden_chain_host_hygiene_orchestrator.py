@@ -40,6 +40,9 @@ from omnimarket.nodes.node_host_hygiene_orchestrator.handlers import (
 from omnimarket.nodes.node_host_hygiene_orchestrator.handlers import (
     handler_host_hygiene_scheduled as scheduled_module,
 )
+from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.pending_runs import (
+    PENDING_HOST_HYGIENE_RUNS,
+)
 from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.sender_in_memory import (
     InMemoryHostHygieneSender,
 )
@@ -55,7 +58,13 @@ ROUTES = {r["operation"]: r["topic"] for r in CONTRACT["handler_routing"]["handl
 READ_TOPIC = ROUTES["record_host_disk_read"]
 FAILED_TOPIC = ROUTES["record_host_disk_read_failed"]
 TICK_TOPIC = ROUTES["host_hygiene.scheduled_run"]
-RUN_TOPIC, SCHEDULE_TOPIC = CONTRACT["event_bus"]["publish_topics"]
+# The lab work command topic is the tick route's own output; the run and schedule topics are the two these chains read.
+RUN_TOPIC, SCHEDULE_TOPIC = (
+    topic
+    for topic in CONTRACT["event_bus"]["publish_topics"]
+    if "lab-work-unit-requested" not in topic
+)
+
 OVERLAY = yaml.safe_load((NODE_DIR / "overlays" / "in_memory.yaml").read_text())
 HOST = OVERLAY["hosts"][0]["name"]
 VOLUME = OVERLAY["hosts"][0]["pressure_volume"]
@@ -69,8 +78,10 @@ def _overlay_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[N
     (root / "overlay.yaml").write_text(yaml.safe_dump(OVERLAY))
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "overlays"))
     HOST_DISK_READINGS._entries.clear()
+    PENDING_HOST_HYGIENE_RUNS.clear()
     yield
     HOST_DISK_READINGS._entries.clear()
+    PENDING_HOST_HYGIENE_RUNS.clear()
 
 
 def _wire(event: object, event_type: str) -> bytes:
@@ -176,6 +187,9 @@ def test_the_contract_names_the_topics_the_chain_uses() -> None:
         READ_TOPIC,
         FAILED_TOPIC,
         TICK_TOPIC,
+        # The receipts of the units the tick route published (lab_work backend).
+        "onex.evt.omnimarket.lab-work-unit-completed.v1",
+        "onex.evt.omnimarket.lab-work-unit-failed.v1",
     }
 
 

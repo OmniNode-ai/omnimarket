@@ -93,7 +93,8 @@ def harness_rung(name: str, endpoint: str) -> dict[str, Any]:
         "task_class": "review-class",
         "effort": "high",
         "call_budget_seconds": 60.0,
-        "harness_script": "skills/harness-delegate/scripts/harness_delegate.py",
+        "backend_id": f"harness-{name}-backend",
+        "delegate_lane": "lane-x",
         "run_dir_leaf": name,
     }
 
@@ -125,7 +126,6 @@ def bound_environ(tmp_path: Path) -> dict[str, str]:
         "OMNI_HOME": str(registry),
         "ONEX_OMNIINTELLIGENCE_CHECKOUT": str(checkout),
         HOST_ENV_FILE_ENV: str(tmp_path / "host.env"),
-        "OMNI_PLUGIN_ROOT": str(tmp_path / "plugin"),
         "PATH": "/usr/bin",
         **dict.fromkeys(STORE_IDENTITY_ENV_NAMES, "store-identity-value"),
     }
@@ -166,16 +166,16 @@ def test_a_harness_rung_the_overlay_does_not_name_has_no_binding(
     assert "'claude'" in str(caught.value)
 
 
-def test_a_harness_rung_needs_the_plugin_root(tmp_path: Path) -> None:
+def test_a_harness_rung_needs_no_plugin_root(tmp_path: Path) -> None:
+    """The rung runs ``onex delegate`` from the registry root; no plugin is bound."""
     environ = bound_environ(tmp_path)
-    del environ["OMNI_PLUGIN_ROOT"]
-    with pytest.raises(PortNotBoundError) as caught:
-        build_production_ports(
-            ModelAgentReviewConfig.model_validate(three_rung_overlay()),
-            environ=environ,
-            key_store=FakeKeyStore(KEY_VALUE),
-        )
-    assert "OMNI_PLUGIN_ROOT" in str(caught.value)
+    assert "OMNI_PLUGIN_ROOT" not in environ
+    ports = build_production_ports(
+        ModelAgentReviewConfig.model_validate(three_rung_overlay()),
+        environ=environ,
+        key_store=FakeKeyStore(KEY_VALUE),
+    )
+    assert isinstance(ports.lab._rungs["codex"], HarnessRungVoter)
 
 
 # -- counting ---------------------------------------------------------------------------

@@ -65,13 +65,20 @@ http_mount:
   path_prefix: "/projection-api"
 
 # The page cache (OMN-24458): a served projection page is held in the shared
-# Valkey for ttl_seconds; a read past that recomputes the page from the windowed
-# store read. The Valkey address and password are read from the environment
-# variables named here, never written here. A Valkey that does not answer makes
-# the page come from the store with cache.fallback set in the answer.
+# Valkey. It is fresh for ttl_seconds. A read after that and inside the next
+# stale_seconds is answered at once from the held page, marked cache.state
+# "stale" with its age, and the page is recomputed from the windowed store read
+# behind the response by one runtime (the claim lasts refresh_lock_seconds in
+# the Valkey), so a viewer polling inside the window never waits for a store
+# read. A read after ttl_seconds + stale_seconds finds nothing and recomputes
+# the page before answering. The Valkey address and password are read from the
+# environment variables named here, never written here. A Valkey that does not
+# answer makes the page come from the store with cache.fallback set in the answer.
 page_cache:
   ttl_seconds: 30
-  key_prefix: "projection-page:v1"
+  stale_seconds: 300
+  refresh_lock_seconds: 30
+  key_prefix: "projection-page:v2"
   valkey:
     host_env: VALKEY_HOST
     port_env: VALKEY_PORT

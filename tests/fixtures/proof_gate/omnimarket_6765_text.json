@@ -1,0 +1,7 @@
+{
+ "body": "## Summary\n\nThe check node grades all ten delegation checks through requests to the dev gateway.\n\n## Lab\n\nSee the lab comment below.",
+ "comments": [
+  "Architectural review: no errors, one warning.",
+  "Lab: head=3e2244543ddaf3ddbf2b16f0ea0af58837fceb7f\n\nRan the focused tests at the pushed head."
+ ]
+}

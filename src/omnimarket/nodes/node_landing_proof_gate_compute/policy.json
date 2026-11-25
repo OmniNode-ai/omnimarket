@@ -1,0 +1,37 @@
+{
+  "lab_line": "^\\W*Lab\\b",
+  "sha": "\\b[0-9a-f]{9,40}\\b",
+  "lab_failed": "(?i)\\bexit(?:\\s+code)?\\s*[=:]?\\s*[1-9]\\d*\\b|\\brc\\s*[=:]\\s*[1-9]\\d*\\b|publish refused|\\brefused\\b|(?<!\\b0 )\\bfailed\\b|(?<!\\b0 )\\bfailures?\\b|\\bnot proven\\b|\\bpublished\\s*=\\s*false\\b",
+  "gated_words": [
+    "grader",
+    "check",
+    "gate",
+    "judge"
+  ],
+  "test_path_markers": [
+    "tests/",
+    "/test_",
+    "conftest.py",
+    "_test.py"
+  ],
+  "doc_path_markers": [
+    "docs/"
+  ],
+  "doc_extensions": [
+    ".md",
+    ".rst",
+    ".txt"
+  ],
+  "duration_path_markers": [
+    "test_file_durations"
+  ],
+  "known_good": "(?i)known[- ]good\\b.*\\bpass",
+  "known_bad": "(?i)known[- ]bad\\b.*\\bfail",
+  "do_not_land": "(?i)\\bdo[ -]not[ -](?:land|merge)\\b|\\bdon't (?:land|merge)\\b|\\bnot to (?:land|merge)\\b",
+  "pr_ref": "(?i)(?<![\\w])(?:omninode-ai/)?{repo}(?:#|\\s+(?:pr\\s*)?#?)\\s*{number}(?!\\d)",
+  "ledger_days": 7,
+  "lab_clause_split": ";|,|\\(|\\)|\\.(?:\\s|$)",
+  "lab_known_bad": "(?i)\\bknown[- ]bad\\b",
+  "lab_known_good": "(?i)\\bknown[- ]good\\b",
+  "lab_baseline": "(?i)\\b(?:merge base|base|before|baseline|red first)\\b"
+}

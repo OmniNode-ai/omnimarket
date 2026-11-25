@@ -98,7 +98,6 @@ STORE_IDENTITY_ENV_NAMES = (
 STATE_DIR_ENV = "ONEX_STATE_DIR"
 REGISTRY_ROOT_ENV = "OMNI_HOME"
 OMNIINTELLIGENCE_ENV = "ONEX_OMNIINTELLIGENCE_CHECKOUT"
-PLUGIN_ROOT_ENV = "OMNI_PLUGIN_ROOT"
 #: Every environment name the signer reads; none reaches a voter's child process.
 SIGNER_ENV_NAMES = (SECRET_ENV, HOST_ENV_FILE_ENV, *STORE_IDENTITY_ENV_NAMES)
 RUNG_LAB = "lab"
@@ -744,7 +743,6 @@ class HarnessRungVoter:
         withheld: Sequence[str],
         timeout_seconds: float,
     ) -> None:
-        _required(environ, PLUGIN_ROOT_ENV, "harness rung (harness-delegate)")
         self._rung = rung
         self._diffs = diffs
         self._environ = environ

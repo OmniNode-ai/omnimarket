@@ -5,28 +5,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
-class EnumAgentMessagePlatform(StrEnum):
-    """Agent platforms that can send and read messages."""
-
-    CLAUDE = "claude"
-    CODEX = "codex"
-    GLM = "glm"
-    HERMES = "hermes"
-    GEMINI = "gemini"
-
-
-class EnumAgentMessageKind(StrEnum):
-    """What a message asks of its reader."""
-
-    REQUEST = "request"
-    REPLY = "reply"
-    STATUS = "status"
-    HANDOFF = "handoff"
+from omnimarket.enums.enum_agent_message_kind import EnumAgentMessageKind
+from omnimarket.enums.enum_agent_message_platform import EnumAgentMessagePlatform
 
 
 class ModelAgentMessage(BaseModel):
@@ -53,3 +36,11 @@ class ModelAgentMessageQuery(BaseModel):
     thread: str | None = None
     since: datetime | None = None
     limit: int = Field(default=50, ge=1, le=1000)
+
+
+__all__: list[str] = [
+    "EnumAgentMessageKind",
+    "EnumAgentMessagePlatform",
+    "ModelAgentMessage",
+    "ModelAgentMessageQuery",
+]
