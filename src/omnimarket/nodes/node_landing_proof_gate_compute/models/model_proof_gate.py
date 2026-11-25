@@ -31,6 +31,7 @@ class ModelProofGatePolicy(BaseModel):
 
     lab_line: str  # a regex; a line that matches is a Lab line
     sha: str  # a regex; a commit a Lab line names
+    lab_failed: str  # a regex; a Lab line that matches records a refused or failed run, which is no proof
     gated_words: tuple[
         str, ...
     ]  # a changed non-test path holding one touches a grader, check, gate or judge

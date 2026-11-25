@@ -1,6 +1,7 @@
 {
   "lab_line": "^\\W*Lab\\b",
   "sha": "\\b[0-9a-f]{9,40}\\b",
+  "lab_failed": "(?i)\\bexit(?:\\s+code)?\\s*[=:]?\\s*[1-9]\\d*\\b|publish refused|\\brefused\\b|(?<!0 )\\bfailed\\b|(?<!0 )\\bfailures?\\b",
   "gated_words": ["grader", "check", "gate", "judge"],
   "test_path_markers": ["tests/", "/test_", "conftest.py", "_test.py"],
   "doc_path_markers": ["docs/"],
