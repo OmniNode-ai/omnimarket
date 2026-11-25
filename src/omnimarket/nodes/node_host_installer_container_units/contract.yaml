@@ -33,6 +33,11 @@ handler:
 entrypoint:
   name: NodeHostInstallerContainerUnits
   module: omnimarket.nodes.node_host_installer_container_units.node
+runtime_dispatch:
+  # An operator, or the host observability installer node for each unit it declares, runs it for one host and unit; there is no schedule, the command below is the whole trigger.
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_host_installer_container_units install --host <host_name> --unit <unit_name>
+    owner: OmniNode Platform Team
 execution:
   deterministic: false
   side_effects: true

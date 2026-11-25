@@ -10,6 +10,7 @@ empty ``== 1`` filter shows nothing), no per process CPU series, and no alert fo
 from __future__ import annotations
 
 import json
+import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -47,7 +48,7 @@ EXAMPLE = (
 
 
 def _document(tmp_path: Path) -> dict[str, Any]:
-    document = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
+    document: dict[str, Any] = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
     document["config_root"] = str(tmp_path / "config")
     document["exporter"]["textfile_directory"] = str(tmp_path / "textfile")
     return document
@@ -134,14 +135,15 @@ def test_process_exporter_unit_is_a_valid_container_unit_on_every_host_that_take
             render_container_units_overlay(overlay, host)
         )
         process = next(u for u in parsed.units if u.name == "example-process-exporter")
-        command = process.create.command  # type: ignore[union-attr]
+        assert process.create is not None
+        command = process.create.command
         assert "-procfs=/host/proc" in command
         assert (
             f"-web.listen-address={process.probe_address}:{process.probe_port}"
             in command
         )
         assert any(c.startswith("-config.path=") for c in command)
-        volumes = process.create.volumes  # type: ignore[union-attr]
+        volumes = process.create.volumes
         assert "/proc:/host/proc:ro" in volumes
         assert process.probe_port == 9256
 
@@ -214,9 +216,7 @@ def test_install_writes_the_process_config_on_a_non_observer_host(
 ) -> None:
     calls: list[list[str]] = []
 
-    def run(command: Sequence[str]):  # type: ignore[no-untyped-def]
-        import subprocess
-
+    def run(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
         calls.append(list(command))
         return subprocess.CompletedProcess(list(command), 0, "ok\n", "")
 

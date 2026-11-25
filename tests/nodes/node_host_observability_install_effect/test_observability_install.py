@@ -6,8 +6,9 @@ from __future__ import annotations
 
 import json
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -44,8 +45,8 @@ EXAMPLE = (
 )
 
 
-def _document(tmp_path: Path) -> dict[str, object]:
-    document = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
+def _document(tmp_path: Path) -> dict[str, Any]:
+    document: dict[str, Any] = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
     document["config_root"] = str(tmp_path / "config")
     document["exporter"]["textfile_directory"] = str(tmp_path / "textfile")
     return document
@@ -61,7 +62,7 @@ def _table(names: Sequence[str]) -> ModelLabHostsTable:
     )
 
 
-def _write_overlay(tmp_path: Path, document: dict[str, object]) -> str:
+def _write_overlay(tmp_path: Path, document: dict[str, Any]) -> str:
     path = tmp_path / "overlay.yaml"
     path.write_text(yaml.safe_dump(document), encoding="utf-8")
     return str(path)
@@ -78,9 +79,11 @@ class Recorder:
 
 
 def _handler(
-    names: Sequence[str], run: Recorder | None = None, get: object = None
+    names: Sequence[str],
+    run: Recorder | None = None,
+    get: Callable[[str], str] | None = None,
 ) -> HandlerObservabilityInstall:
-    kwargs: dict[str, object] = {
+    kwargs: dict[str, Any] = {
         "run": run or Recorder(),
         "hosts": lambda _file: _table(names),
         "python": "/usr/bin/python-test",
@@ -88,7 +91,7 @@ def _handler(
     }
     if get is not None:
         kwargs["get"] = get
-    return HandlerObservabilityInstall(**kwargs)  # type: ignore[arg-type]
+    return HandlerObservabilityInstall(**kwargs)
 
 
 def test_rules_carry_the_declared_thresholds_and_a_changed_setting_changes_them(
@@ -110,8 +113,8 @@ def test_rules_carry_the_declared_thresholds_and_a_changed_setting_changes_them(
     assert by_name["LabHostLoadAboveCores"]["for"] == "10m"
     # Positive control: the threshold is a setting, not a literal.
     document = _document(tmp_path)
-    document["alerts"]["disk_percent"] = 70  # type: ignore[index]
-    document["alerts"]["load_minutes"] = 3  # type: ignore[index]
+    document["alerts"]["disk_percent"] = 70
+    document["alerts"]["load_minutes"] = 3
     changed = ModelObservabilityOverlay.model_validate(document)
     rules2 = yaml.safe_load(render_files(changed)[PROMETHEUS_RULES])
     by2 = {r["alert"]: r for r in rules2["groups"][0]["rules"]}
@@ -160,14 +163,12 @@ def test_container_unit_overlay_is_accepted_by_the_container_unit_installer_mode
     ]
     prom = parsed.units[2]
     assert prom.published_ports[0].host_address == "host-a.example.test"
-    assert any(
-        c == "--storage.tsdb.retention.size=20GB"
-        for c in prom.create.command  # type: ignore[union-attr]
-    )
+    assert prom.create is not None
+    assert any(c == "--storage.tsdb.retention.size=20GB" for c in prom.create.command)
     # host-b has an existing node exporter: the installer puts only the process exporter there.
     assert units_for_host(overlay, "host-b") == ["example-process-exporter"]
     document = _document(tmp_path)
-    document["targets"]["host-b"]["processes"] = False  # type: ignore[index]
+    document["targets"]["host-b"]["processes"] = False
     bare = ModelObservabilityOverlay.model_validate(document)
     assert units_for_host(bare, "host-b") == []
     assert render_container_units_overlay(bare, "host-b") == {"units": []}
@@ -251,7 +252,7 @@ def test_a_target_that_is_not_a_lab_hosts_row_is_refused_with_nothing_done(
 
 def test_a_host_with_no_unit_is_refused(tmp_path: Path) -> None:
     document = _document(tmp_path)
-    document["targets"]["host-b"]["processes"] = False  # type: ignore[index]
+    document["targets"]["host-b"]["processes"] = False
     result = _handler(["host-a", "host-b"]).handle(
         ModelObservabilityInstallRequest(
             host_name="host-b",
@@ -276,7 +277,9 @@ def test_dry_run_prints_files_and_writes_nothing(tmp_path: Path) -> None:
     assert not (tmp_path / "config").exists()
 
 
-def _prometheus_answer(up: dict[str, float], age: dict[str, float]):  # type: ignore[no-untyped-def]
+def _prometheus_answer(
+    up: dict[str, float], age: dict[str, float]
+) -> Callable[[str], str]:
     def get(url: str) -> str:
         data = age if "last_over_time" in url else up
         return json.dumps(
@@ -296,7 +299,7 @@ def _prometheus_answer(up: dict[str, float], age: dict[str, float]):  # type: ig
 
 def test_readback_names_fresh_stale_down_and_untargeted_hosts(tmp_path: Path) -> None:
     document = _document(tmp_path)
-    document["targets"]["host-c"] = {  # type: ignore[index]
+    document["targets"]["host-c"] = {
         "address": "host-c.example.test",
         "exporter": "existing",
         "port": 9100,
@@ -375,7 +378,8 @@ def test_node_source_holds_no_address_or_host_path_literal() -> None:
         / "src/omnimarket/nodes/node_host_observability_install_effect"
     )
     ipv4 = re.compile(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b")
-    host_path = re.compile(r"[\"'](?:/home/|/Users/|/data/|/mnt/|/srv/|/opt/)")
+    roots = ("home", "Users", "data", "mnt", "srv", "opt")
+    host_path = re.compile("[\"']/(?:" + "|".join(roots) + ")/")
     for source in sorted(root.rglob("*.py")):
         text = source.read_text(encoding="utf-8")
         assert not ipv4.search(text), source

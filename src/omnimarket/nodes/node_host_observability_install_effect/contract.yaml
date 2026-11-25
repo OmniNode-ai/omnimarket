@@ -26,6 +26,11 @@ handler:
 entrypoint:
   name: NodeHostObservabilityInstallEffect
   module: omnimarket.nodes.node_host_observability_install_effect.node
+runtime_dispatch:
+  # An operator or a lane runs the installer for one lab host; there is no schedule, the command below is the whole trigger.
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_host_observability_install_effect install --host <host_name> --overlay <overlay.yaml>
+    owner: OmniNode Platform Team
 execution:
   deterministic: false
   side_effects: true
