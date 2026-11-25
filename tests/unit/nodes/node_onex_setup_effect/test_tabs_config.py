@@ -158,8 +158,11 @@ async def test_model_rows_show_context_price_in_words_and_capabilities(
     assert "1M" in gemini, gemini
     assert "$0.08 in · $0.30 out" in gemini, gemini
     assert "tools, vision" in gemini, gemini
-    for old in ("READY", "UNTESTED", "Search models", "▍"):
+    # Operator feedback (2026-11-25) added the column names and a search box to this list,
+    # so "Search models" is now expected here.
+    for old in ("READY", "UNTESTED", "▍"):
         assert old not in text, (old, text)
+    assert "Search models" in text, text
     if size[0] > 100:
         qwen = _line(text, "qwen3-27b")
         assert "32k" in qwen, qwen

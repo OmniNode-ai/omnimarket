@@ -292,7 +292,7 @@ class ModelTable(Widget):
             spec = _table().tab_table.layouts[self._layout]
             rows.show_header = spec.header
             rows.zebra_stripes = False
-            self.query_one("#mt-search").display = False
+            self.query_one("#mt-search").display = spec.search
             self.query_one("#mt-bar").display = False
             for tab_column in spec.columns:
                 if tab_column.key == "pick" and not self._selectable:

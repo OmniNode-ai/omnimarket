@@ -86,7 +86,7 @@ async def test_start_screen_is_a_compact_header_not_the_banner(
         text = _screen_text(app)
         welcome = tui_design().welcome
         if width >= welcome.min_width and height >= welcome.min_height:
-            assert "Welcome To OmniNode Delegation" in text
+            assert "Build more. Spend less." in text
             assert app.query_one("#header").display is False
             assert app.query_one("#prompt", Input).region.bottom <= height
             return

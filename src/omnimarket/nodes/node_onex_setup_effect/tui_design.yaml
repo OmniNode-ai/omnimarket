@@ -26,6 +26,7 @@ theme:
   panel: "#0a0a0a"
   boost: "#FFFFFF08"
   border: "#6c6c6c"
+  chip: "#2c313c"
   route_cheap: "#79b8ff"
   route_fallback: "#ffea7f"
 
@@ -40,23 +41,44 @@ wordmark:
 welcome:
   min_width: 100
   min_height: 34
-  tagline: "Delegate tasks to the right model, at the lowest cost."
-  brand: "Welcome To OmniNode Delegation"
+  headline: "Build more. Spend less."
+  subline: "The right intelligence, at the right cost."
+  brand: "OmniNode Delegation · {version}"
   brand_rule: "──────"
   pixel: "██"
   letter_gap: 2
   order: "ONEX"
   letter_styles: [foreground, foreground, primary, primary]
+  # The routing diagram: your task goes through ONEX and comes out as three outcomes.
+  diagram:
+    task: "Your Task"
+    hub_title: "ONEX"
+    hub_subtitle: "Smart Routing"
+    hub_tagline: "cost · speed · fit"
+    outcome_icons: ["$", "ϟ", "◎"]
+    outcomes: ["Lower Cost", "Faster Results", "Right Model"]
+    # The dots on the connectors travel slowly; false keeps them still.
+    pulse: true
+    pulse_seconds: 0.2
+  # The Setup Guide under the diagram: where you are in setup, and what to do next.
+  guide:
+    title: "Setup Guide"
+    min_height: 40
+    all_set: "✓ All set. Type a task below."
+    next_line: "▸ Next: press {key} to {action}"
+    step_hint: "{mark} press {key}"
+    reading: "… reading"
+    unknown: "? Unknown"
+    steps:
+      - {id: config, key: "1", title: Config, done: "✓ {count} ready", todo: "○ No models yet", action: "add a model"}
+      - {id: model, key: "2", title: Model, done: "✓ {model}", todo: "○ None picked", action: "pick the first model"}
+      - {id: delegation, key: "3", title: Delegation, done: "✓ On", todo: "○ Off", action: "turn delegation on"}
+      - {id: dashboard, key: "4", title: Dashboard, done: "● Running", todo: "○ Optional", action: "open the dashboard", optional: true}
   letters:
     O: [".###.", "#...#", "#...#", "#...#", ".###."]
     N: ["#...#", "##..#", "#.#.#", "#..##", "#...#"]
     E: ["#####", "#....", "####.", "#....", "#####"]
     X: ["#...#", ".#.#.", "..#..", ".#.#.", "#...#"]
-  cards:
-    - {id: delegate, icon: welcome_delegate, title: Delegate, text: "Run a task with the best model and cost", action: delegate}
-    - {id: models, icon: welcome_models, title: Models, text: "View and manage available models", action: model}
-    - {id: config, icon: welcome_config, title: Config, text: "Add providers, keys and models", action: config}
-    - {id: history, icon: welcome_history, title: History, text: "See past runs, cost and usage", action: metering}
 
 # Shortcuts are the TUI's own commands; customer_commands below picks what / lists.
 shortcuts:
@@ -102,6 +124,7 @@ glyphs:
   dot_on: "●"
   dot_off: "○"
   prompt: "❯"
+  cancelled: "⊘"
 
 prompt_placeholder: Ask onex to delegate a task, or type / for commands
 help: >-
@@ -118,8 +141,8 @@ auto_find_seconds: 0.8
 # 2026-11-13: "like coding agents cli: spinner verb ... can cancel esc"). The
 # frames are braille dots, which every terminal font draws.
 activity:
-  frames: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-  frame_seconds: 0.1
+  frames: ["◐", "◓", "◑", "◒"]
+  frame_seconds: 0.15
   verbs: ["Delegating", "Working", "Thinking", "Reasoning", "Composing"]
   verb_seconds: 3
   line: "{frame} {verb}… {seconds}s · esc to cancel"
@@ -238,12 +261,13 @@ model_table:
           - {key: model_mark, title: Model}
           - {key: status, title: Status}
       found:
-        header: false
+        header: true
+        search: true
         columns:
           - {key: pick, title: " "}
           - {key: model, title: Model}
           - {key: context, title: Context}
-          - {key: price_words, title: Price}
+          - {key: price_words, title: "Price per 1M tokens"}
           - {key: capabilities, title: Capabilities}
       pick:
         header: true
@@ -549,7 +573,7 @@ task_card:
 
 # Spinner (OMN-26620 AC11).
 spinner:
-  frames: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+  frames: ["◐", "◓", "◑", "◒"]
   fallback_frames: ["|", "/", "-", "\\"]
   ascii_frames: ["|", "/", "-", "\\"]
   frame_seconds: 0.1
@@ -597,6 +621,7 @@ themes:
     panel: "#e3ddd2"
     boost: "#00000008"
     border: "#b8b0a2"
+    chip: "#e3ddd2"
     route_cheap: "#1b6f8a"
     route_fallback: "#8a6a00"
 
@@ -607,26 +632,16 @@ icons:
   mode: plain
   enabled: false
   glyphs:
-    welcome_delegate:
-      lucide: zap
-      nerd: "\uf0e7"
-      fallback: "ϟ"
+    ask:
+      lucide: command
+      nerd: "\uf120"
+      fallback: "⌘"
+      ascii: ">"
+    answer:
+      lucide: sparkles
+      nerd: "\uf005"
+      fallback: "✦"
       ascii: "*"
-    welcome_models:
-      lucide: layers
-      nerd: "\uf24d"
-      fallback: "≣"
-      ascii: "="
-    welcome_config:
-      lucide: sliders-horizontal
-      nerd: "\uf1de"
-      fallback: "⚙"
-      ascii: "*"
-    welcome_history:
-      lucide: bar-chart-3
-      nerd: "\uf080"
-      fallback: "▂▄▆"
-      ascii: "|||"
     done:
       lucide: check
       nerd: "\uf00c"

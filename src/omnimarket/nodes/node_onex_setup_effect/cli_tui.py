@@ -22,6 +22,7 @@ import signal
 import time
 from collections import Counter
 from collections.abc import Awaitable, Callable, Iterable, Mapping
+from dataclasses import dataclass, replace
 from functools import partial
 from pathlib import Path
 from typing import Any, ClassVar, Literal, Protocol, TypeVar, cast
@@ -32,6 +33,7 @@ from omnibase_core.cli.cli_user_config import user_config_path
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from rich.console import Group
 from rich.markdown import Markdown
+from rich.table import Table
 from rich.text import Text
 from textual import events, on
 from textual.app import (
@@ -2666,6 +2668,15 @@ class PromptInput(Input):
             event.prevent_default()
             await cast("OnexTui", self.app).action_show_help()
             return
+        if (
+            not self.value
+            and event.character
+            and event.character in "0123456789"
+            and await cast("OnexTui", self.app).guide_key(event.character)
+        ):
+            event.stop()
+            event.prevent_default()
+            return
         await super()._on_key(event)
 
 
@@ -2690,8 +2701,8 @@ def _plain_words(content: object) -> str:
 class OutputBlock(Static):
     """One written item of the output; its plain words are kept for copying."""
 
-    def __init__(self, content: object, plain: str) -> None:
-        super().__init__(content, markup=False)  # type: ignore[arg-type]
+    def __init__(self, content: object, plain: str, classes: str = "") -> None:
+        super().__init__(content, markup=False, classes=classes)  # type: ignore[arg-type]
         self.plain = plain
 
 
@@ -2722,8 +2733,18 @@ class OutputPane(VerticalScroll):
             _Line(line) for block in self.blocks for line in block.plain.split("\n")
         ]
 
-    def write(self, content: object) -> None:
-        self.mount(OutputBlock(content, _plain_words(content)))
+    def write(
+        self, content: object, *, kind: str = "", plain: str | None = None
+    ) -> None:
+        """Add a block. ``kind`` (user, answer, facts) sets how it is spaced and shaded;
+        ``plain`` is what copying gives when the block is drawn with a layout."""
+        self.mount(
+            OutputBlock(
+                content,
+                plain if plain is not None else _plain_words(content),
+                f"-{kind}" if kind else "",
+            )
+        )
 
     def clear(self) -> None:
         self.cursor = None
@@ -2784,8 +2805,126 @@ class OutputPane(VerticalScroll):
             event.prevent_default()
 
 
-def welcome_renderable() -> Text:
-    """The large pixel wordmark, the brand line and the tagline, centred."""
+def _draw_diagram(design: Any, tick: int = 0) -> Text:
+    """Your task, through the ONEX hub, out to three outcomes, drawn with box characters.
+
+    While pulsing, a dot travels from the task into the hub, out to the junction and
+    along the line into one outcome box, which then lights up in the brand colour; the
+    next cycle goes to the next outcome."""
+    words = design.welcome.diagram
+    line, edge, accent = _style("muted"), _style("muted"), _style("primary", "bold")
+    task_w = len(words.task) + 4
+    hub_w = (
+        max(len(words.hub_title), len(words.hub_subtitle), len(words.hub_tagline)) + 4
+    )
+    out_w = max(len(o) for o in words.outcomes) + 6  # an icon, a space and padding
+    left_gap, mid_gap, branch_steps, lit_steps = 9, 6, 5, 4
+    x_task = 0
+    x_hub = x_task + task_w + left_gap
+    x_bracket = x_hub + hub_w + mid_gap
+    x_out = x_bracket + 2
+    width = x_out + out_w
+    height = 11
+    middle = 5
+    grid: list[list[tuple[str, str]]] = [[(" ", "")] * width for _ in range(height)]
+
+    def put(x: int, y: int, char: str, style: str = "") -> None:
+        grid[y][x] = (char, style)
+
+    def text_at(x: int, y: int, value: str, style: str) -> None:
+        for offset, char in enumerate(value):
+            put(x + offset, y, char, style)
+
+    def box(x: int, y: int, w: int, h: int, style: str, chars: str = "╭╮╰╯─│") -> None:
+        tl, tr, bl, br, across, down = chars
+        put(x, y, tl, style)
+        put(x + w - 1, y, tr, style)
+        put(x, y + h - 1, bl, style)
+        put(x + w - 1, y + h - 1, br, style)
+        for i in range(1, w - 1):
+            put(x + i, y, across, style)
+            put(x + i, y + h - 1, across, style)
+        for j in range(1, h - 1):
+            put(x, y + j, down, style)
+            put(x + w - 1, y + j, down, style)
+
+    def centred(x: int, y: int, w: int, value: str, style: str) -> None:
+        text_at(x + (w - len(value)) // 2, y, value, style)
+
+    cycle = left_gap + mid_gap + branch_steps + lit_steps
+    local = tick % cycle
+    target = (tick // cycle) % 3  # the outcome this cycle goes to
+    lit = target if words.pulse and local >= cycle - lit_steps else None
+
+    def branch_cells(index: int) -> list[tuple[int, int]]:
+        """From the junction, up or down the line to the outcome's row, then into the box."""
+        row = 1 + 4 * index
+        step = -1 if row < middle else 1
+        cells = (
+            [(x_bracket, y) for y in range(middle + step, row + step, step)]
+            if row != middle
+            else []
+        )
+        return [*cells, (x_bracket + 1, row)]
+
+    box(x_task, middle - 1, task_w, 3, edge)
+    centred(x_task, middle, task_w, words.task, _style("foreground", "bold"))
+    box(x_hub, middle - 2, hub_w, 5, accent, "┏┓┗┛━┃")
+    centred(x_hub, middle - 1, hub_w, words.hub_title, accent)
+    centred(x_hub, middle, hub_w, words.hub_subtitle, _style("foreground"))
+    centred(x_hub, middle + 1, hub_w, words.hub_tagline, _style("muted"))
+    for x in range(x_task + task_w, x_hub):
+        put(x, middle, "─", line)
+    put(x_hub - 1, middle, "▶", line)
+    for x in range(x_hub + hub_w, x_bracket):
+        put(x, middle, "─", line)
+    for y in range(1, 10):
+        put(x_bracket, y, "│", line)
+    put(x_bracket, 1, "┌", line)
+    put(x_bracket, 9, "└", line)
+    put(x_bracket, middle, "┼" if words.pulse else "●", line if words.pulse else accent)
+    rest_text = (
+        accent.replace("bold", "").strip(),
+        _style("foreground"),
+        _style("foreground"),
+    )
+    for index, outcome in enumerate(words.outcomes):
+        top = index * 4
+        mid = top + 1
+        for x in range(x_bracket + 1, x_out):
+            put(x, mid, "▶", line)
+        is_lit = lit == index
+        label = f"{words.outcome_icons[index]} {outcome}"
+        box(x_out, top, out_w, 3, accent if is_lit else edge)
+        if words.pulse:
+            centred(
+                x_out, mid, out_w, label, accent if is_lit else _style("foreground")
+            )
+        else:
+            centred(x_out, mid, out_w, label, rest_text[index])
+    if words.pulse:
+        if local < left_gap:
+            put(x_task + task_w + local, middle, "●", accent)
+        elif local < left_gap + mid_gap:
+            put(x_hub + hub_w + (local - left_gap), middle, "●", accent)
+        elif local < left_gap + mid_gap + branch_steps:
+            cells = branch_cells(target)
+            x, y = cells[min(local - left_gap - mid_gap, len(cells) - 1)]
+            put(x, y, "●", accent)
+    else:
+        put(x_task + task_w + left_gap // 2, middle, "●", accent)
+    text = Text(no_wrap=True)
+    for row in grid:
+        for char, style in row:
+            text.append(char, style or None)
+        text.append("\n")
+    text.rstrip()
+    return text
+
+
+def welcome_renderable(tick: int = 0, *, diagram: bool = True) -> Text:
+    """The pixel wordmark, the brand line with the version, the headline and the
+    subline, then the routing diagram; all centred."""
     design = tui_design()
     welcome = design.welcome
     letter_rows = len(next(iter(welcome.letters.values())))
@@ -2801,32 +2940,177 @@ def welcome_renderable() -> Text:
                 text.append(" " * welcome.letter_gap)
         text.append("\n")
     text.append("\n")
+    public = _version().split("+")[0]  # the build label is internal
+    brand = welcome.brand.format(version=design.header.version.format(version=public))
     text.append(
-        f"{welcome.brand_rule}  {welcome.brand}  {welcome.brand_rule}\n",
-        _style("muted"),
+        f"{welcome.brand_rule}  {brand}  {welcome.brand_rule}\n", _style("muted")
     )
-    text.append(welcome.tagline + "\n", _style("foreground"))
-    text.append(design.header.version.format(version=_version()), _style("muted"))
+    text.append("\n")
+    text.append(welcome.headline + "\n", _style("foreground", "bold"))
+    text.append(welcome.subline, _style("muted"))
+    if diagram:
+        text.append("\n\n")
+        text.append_text(_draw_diagram(design, tick))
     return text
 
 
-class WelcomeCard(Static):
-    """One clickable card: an icon, a title and two lines of what it does."""
+def activity_renderable(frame: str, verb: str, seconds: int) -> Text:
+    """The live line: the spinner in the brand colour, the verb bold, the rest muted."""
+    line = tui_design().activity.line.format(frame=frame, verb=verb, seconds=seconds)
+    head = f"{frame} {verb}…"
+    text = Text()
+    if line.startswith(head):
+        text.append(frame, _style("primary", "bold"))
+        text.append(line[len(frame) : len(head)], _style("foreground", "bold"))
+        text.append(line[len(head) :], _style("muted"))
+    else:
+        text.append(line, _style("accent", "bold"))
+    return text
 
-    def __init__(self, spec: Any, *, selected: bool = False) -> None:
-        body = Text()
-        body.append(f"{icon(spec.icon)}  ", _style("primary", "bold"))
-        body.append(spec.title + "\n", _style("foreground", "bold"))
-        body.append(spec.text, _style("muted"))
-        super().__init__(
-            body,
-            id=f"card-{spec.id}",
-            classes="welcome-card -selected" if selected else "welcome-card",
+
+def answer_renderable(markdown_text: str) -> Table:
+    """An answer: its own icon in the margin, the text beside it."""
+    grid = Table.grid(expand=True, padding=(0, 1))
+    grid.add_column(width=1, no_wrap=True)
+    grid.add_column(ratio=1)
+    grid.add_row(
+        Text(icon("answer"), style=_style("primary", "bold")),
+        Markdown(markdown_text),
+    )
+    return grid
+
+
+def task_echo_renderable(task: str) -> Text:
+    """The task you typed: the prompt mark in the brand colour, the task in white."""
+    text = Text()
+    text.append(f"{icon('ask')} ", _style("primary", "bold"))
+    text.append(task, _style("foreground", "bold"))
+    return text
+
+
+_FACT_ROLES: dict[str, tuple[str, ...]] = {
+    "model": ("accent", "bold"),
+    "detail": ("muted",),
+    "cost": ("foreground",),
+    "saved": ("success",),
+}
+
+
+def facts_renderable(parts: list[tuple[str, str]], run_label: str = "") -> Text:
+    """The line under an answer: the model, tokens and time, the cost, and what was saved,
+    each in its own colour."""
+    text = Text()
+    separator = "  ·  "
+    for index, (value, kind) in enumerate(parts):
+        if index:
+            text.append(separator, _style("muted"))
+        text.append(value, _style(*_FACT_ROLES.get(kind, ("muted",))))
+    if run_label:
+        text.append(separator + run_label, _style("muted"))
+    return text
+
+
+@dataclass(frozen=True)
+class GuideStepState:
+    """A step of the Setup Guide as it stands now."""
+
+    id: str
+    key: str
+    title: str
+    status: str
+    done: bool
+    next: bool
+    action: str
+
+
+def guide_steps(status: ModelTuiStatus | None) -> list[GuideStepState]:
+    """The four steps from the status the TUI already reads. A status that is unknown, or not
+    read yet, says so and is never guessed; only a known, unfinished step is "next"."""
+    guide = tui_design().welcome.guide
+    states: list[GuideStepState] = []
+    for spec in guide.steps:
+        known = status is not None
+        done = False
+        text = guide.reading
+        if status is not None:
+            text = spec.todo
+            if spec.id == "config":
+                done = bool(status.models)
+                text = (
+                    spec.done.format(count=_count(status.models or 0, "model"))
+                    if done
+                    else spec.todo
+                )
+            elif spec.id == "model":
+                done = bool(status.model)
+                text = spec.done.format(model=status.model) if done else spec.todo
+            elif spec.id == "delegation":
+                if status.delegation == "hook":
+                    done, text = True, spec.done
+                elif status.delegation == "off":
+                    text = spec.todo
+                else:
+                    known, text = (
+                        False,
+                        guide.unknown
+                        if status.delegation == "unknown"
+                        else guide.reading,
+                    )
+        states.append(
+            GuideStepState(
+                spec.id, spec.key, spec.title, text, done, False, spec.action
+            )
         )
-        self.spec = spec
+        if not known:
+            states[-1] = replace(states[-1], next=False)
+    # the first known, unfinished, required step is next
+    for index, (spec, state) in enumerate(zip(guide.steps, states, strict=True)):
+        if (
+            not state.done
+            and not spec.optional
+            and state.status not in (guide.unknown, guide.reading)
+        ):
+            states[index] = replace(state, next=True)
+            break
+    return states
+
+
+def guide_arrow_text() -> Text:
+    """An arrow between two steps: a still line with a head, no moving dot."""
+    return Text("─────▶", style=_style("muted"), no_wrap=True)
+
+
+def guide_step_text(step: GuideStepState) -> Text:
+    """A step box: its number and name, its state, and the key to press when it is next."""
+    text = Text(no_wrap=True, overflow="ellipsis")
+    text.append(f"{step.key}  ", _style("primary", "bold"))
+    text.append(step.title + "\n", _style("foreground", "bold"))
+    if step.done:
+        role = "success"
+    elif step.status in (tui_design().welcome.guide.unknown,):
+        role = "warning"
+    else:
+        role = "muted"
+    text.append(step.status + "\n", _style(role))
+    if step.next:
+        text.append(
+            tui_design().welcome.guide.step_hint.format(
+                mark=tui_design().glyphs.tip, key=step.key
+            ),
+            _style("primary", "bold"),
+        )
+    return text
+
+
+class GuideStep(Static):
+    """One clickable box of the Setup Guide."""
+
+    def __init__(self, step_id: str) -> None:
+        super().__init__(id=f"guide-{step_id}", classes="guide-step")
+        self.step_id = step_id
 
     def on_click(self) -> None:
-        self.app.run_worker(cast("OnexTui", self.app).welcome_action(self.spec.action))
+        self.app.run_worker(cast("OnexTui", self.app).open_tab(self.step_id))
 
 
 class OnexTui(App[int]):
@@ -2838,16 +3122,24 @@ class OnexTui(App[int]):
     #header { height: 2; padding: 0 1; margin-top: 1; }
     #welcome { display: none; height: auto; margin-top: 1; }
     #bigmark { width: 100%; height: auto; text-align: center; }
-    #cards { width: 100%; height: auto; margin-top: 1; align-horizontal: center; }
-    .welcome-card { width: 1fr; max-width: 34; height: 5; border: round $border; padding: 0 1; margin: 0 1; }
-    .welcome-card.-selected { border: round $primary; }
-    .welcome-card:hover { border: round $accent; }
+    #diagram { width: 100%; height: auto; margin-top: 1; text-align: center; }
+    #guide-wrap { display: none; height: auto; margin-top: 1; }
+    #guide-title { width: 100%; text-align: center; text-style: bold; color: $primary; }
+    #guide { width: 100%; height: 5; margin-top: 1; align-horizontal: center; }
+    .guide-step { width: 1fr; max-width: 24; height: 5; border: round $border; padding: 0 1; }
+    .guide-step.-next { border: round $primary; }
+    .guide-step:hover { border: round $accent; }
+    .guide-arrow { width: 6; height: 5; content-align: center middle; }
+    #guide-next { width: 100%; text-align: center; margin-top: 1; }
     Screen.-roomy #promptrow { height: 3; border: round $primary; }
     #summary { height: 2; padding: 0 1; margin-top: 1; }
     #conversation { height: 1fr; }
     #output { height: auto; max-height: 100%; padding: 0 1; }
     OutputBlock { height: auto; padding-left: 1; }
     OutputBlock.-cursor { border-left: heavy $accent; padding-left: 0; background: $boost; }
+    OutputBlock.-user { background: $chip; padding: 0 1; margin-top: 1; }
+    OutputBlock.-answer { margin-top: 1; padding-left: 1; }
+    OutputBlock.-facts { margin-top: 1; margin-bottom: 1; padding-left: 4; }
     #palette { height: auto; max-height: 12; border: round $accent; display: none; }
     #promptrow { height: 1; margin-top: 1; }
     #promptmark { width: 2; color: $primary; text-style: bold; }
@@ -2900,6 +3192,7 @@ class OnexTui(App[int]):
                     boost=tokens.boost,
                     variables={
                         "border": tokens.border,
+                        "chip": tokens.chip,
                         "route-cheap": tokens.route_cheap,
                         "route-fallback": tokens.route_fallback,
                     },
@@ -2923,6 +3216,8 @@ class OnexTui(App[int]):
             delegation=last_known.get("delegation"),
         )
         self._last_run = ""
+        self._started = False
+        self._welcome_tick = 0
         self._active_task: Worker[None] | None = None
         self._task_started = 0.0
         self._ticker: Timer | None = None
@@ -2957,9 +3252,15 @@ class OnexTui(App[int]):
         # bottom of the window (operator 2026-11-13: "why too much gap").
         with Vertical(id="welcome"):
             yield Static(id="bigmark")
-            with Horizontal(id="cards"):
-                for position, card in enumerate(tui_design().welcome.cards):
-                    yield WelcomeCard(card, selected=position == 0)
+            with Vertical(id="guide-wrap"):
+                yield Static(tui_design().welcome.guide.title, id="guide-title")
+                with Horizontal(id="guide"):
+                    for position, step in enumerate(tui_design().welcome.guide.steps):
+                        if position:
+                            yield Static(classes="guide-arrow")
+                        yield GuideStep(step.id)
+                yield Static(id="guide-next")
+            yield Static(id="diagram")
         yield Static(id="header")
         yield Static(id="summary")
         with Vertical(id="conversation"):
@@ -2977,8 +3278,12 @@ class OnexTui(App[int]):
     async def on_mount(self) -> None:
         if tips_visible(LaunchStore.bump()):
             self._write(Text(_say("tips_first_launch"), style=_style("muted")))
-        self.query_one("#bigmark", Static).update(welcome_renderable())
+        self.query_one("#bigmark", Static).update(welcome_renderable(diagram=False))
+        self.query_one("#diagram", Static).update(_draw_diagram(tui_design(), 0))
         self._layout()
+        diagram = tui_design().welcome.diagram
+        if diagram.pulse:
+            self.set_interval(diagram.pulse_seconds, self._pulse_welcome)
         self._render_status()
         self.query_one("#prompt", Input).focus()
         self.run_worker(self._refresh_status(), exclusive=True, group="status")
@@ -3022,6 +3327,7 @@ class OnexTui(App[int]):
         )
 
     def _render_status(self) -> None:
+        self._render_guide()
         sep = ("  ·  ", _style("muted"))
         status = self._status
         main = self._main()
@@ -3093,9 +3399,9 @@ class OnexTui(App[int]):
         """A streamed command's output line, into the main log."""
         self._write(line)
 
-    def _write(self, text: str | Text) -> Text | str:
+    def _write(self, text: str | Text, kind: str = "") -> Text | str:
         """Write one line to the main log, and return it so a tab can show it too."""
-        self._main().query_one("#output", OutputPane).write(text)
+        self._main().query_one("#output", OutputPane).write(text, kind=kind)
         return text
 
     def get_system_commands(self, screen: Screen[object]) -> Iterable[SystemCommand]:
@@ -3141,6 +3447,7 @@ class OnexTui(App[int]):
         palette = self.query_one("#palette", OptionList)
         if not event.value.startswith("/"):
             palette.display = False
+            self._layout()
             return
         palette.clear_options()
         palette.add_options(
@@ -3148,6 +3455,7 @@ class OnexTui(App[int]):
             for entry in self._matches(event.value[1:])[:50]
         )
         palette.display = palette.option_count > 0
+        self._layout()
         if palette.option_count:
             palette.highlighted = 0
 
@@ -3166,6 +3474,7 @@ class OnexTui(App[int]):
         palette = self.query_one("#palette", OptionList)
         if palette.display:
             palette.display = False
+            self._layout()
         elif self._active_task is not None:
             self._active_task.cancel()
 
@@ -3195,7 +3504,11 @@ class OnexTui(App[int]):
         except asyncio.CancelledError:
             seconds = int(time.monotonic() - self._task_started)
             self._write(
-                Text(_say("task_cancelled", seconds=seconds), style=_style("muted"))
+                Text(
+                    f"{tui_design().glyphs.cancelled} "
+                    + _say("task_cancelled", seconds=seconds),
+                    style=_style("warning"),
+                )
             )
             raise
         finally:
@@ -3219,6 +3532,69 @@ class OnexTui(App[int]):
             else "100%"
         )
 
+    def _render_guide(self) -> None:
+        """Draw the Setup Guide from the status as it stands."""
+        main = self._main()
+        if not main.query_one("#guide-wrap").display:
+            return
+        guide = tui_design().welcome.guide
+        steps = guide_steps(self._status if self._status_read else None)
+        for step in steps:
+            box = main.query_one(f"#guide-{step.id}", GuideStep)
+            box.update(guide_step_text(step))
+            box.set_class(step.next, "-next")
+        for arrow in main.query(".guide-arrow").results(Static):
+            arrow.update(guide_arrow_text())
+        upcoming = next((s for s in steps if s.next), None)
+        required_done = all(
+            s.done
+            for s, spec in zip(steps, guide.steps, strict=True)
+            if not spec.optional
+        )
+        line = (
+            guide.next_line.format(key=upcoming.key, action=upcoming.action)
+            if upcoming
+            else (guide.all_set if self._status_read and required_done else "")
+        )
+        main.query_one("#guide-next", Static).update(
+            Text(line, style=_style("primary", "bold" if upcoming else ""))
+        )
+
+    async def guide_key(self, key: str) -> bool:
+        """A number on an empty prompt opens that step while the guide is showing."""
+        if (
+            self.screen is not self._main()
+            or not self._main().query_one("#guide-wrap").display
+        ):
+            return False
+        for step in tui_design().welcome.guide.steps:
+            if step.key == key:
+                await self.open_tab(step.id)
+                return True
+        return False
+
+    def get_css_variables(self) -> dict[str, str]:
+        """Our themes define the chip fill; a built-in theme gets the same default."""
+        variables = super().get_css_variables()
+        variables.setdefault("chip", tui_design().theme.chip)
+        return variables
+
+    def _pulse_welcome(self) -> None:
+        """Move the dots on the diagram one step while the welcome is showing."""
+        if self._started or not self._main().query_one("#welcome").display:
+            return
+        self._welcome_tick += 1
+        self._main().query_one("#diagram", Static).update(
+            _draw_diagram(tui_design(), self._welcome_tick)
+        )
+
+    def _finish_welcome(self) -> None:
+        """Something was submitted: the diagram gives the room to the conversation."""
+        if self._started:
+            return
+        self._started = True
+        self._layout()
+
     def _layout(self) -> None:
         """A roomy terminal gets the rounded prompt and, until the reader submits
         something, the welcome; a small one keeps the compact header."""
@@ -3231,17 +3607,17 @@ class OnexTui(App[int]):
         main = self._main()
         main.set_class(roomy, "-roomy")
         main.query_one("#welcome").display = showing
+        main.query_one("#diagram").display = showing and not self._started
+        palette_open = main.query_one("#palette", OptionList).display
+        main.query_one("#guide-wrap").display = (
+            showing
+            and not self._started
+            and not palette_open
+            and self.size.height >= welcome.guide.min_height
+        )
+        self._render_guide()
         main.query_one("#header").display = not showing
         main.query_one("#summary").display = not showing
-
-    async def welcome_action(self, action: str) -> None:
-        """A welcome card was clicked."""
-        if action == "delegate":
-            self.query_one("#prompt", Input).focus()
-        elif action in ("model", "config"):
-            await self.open_tab(action)
-        else:
-            await self._palette_run(f"/{action}")
 
     def on_resize(self) -> None:
         self._layout()
@@ -3258,9 +3634,8 @@ class OnexTui(App[int]):
         verb = activity.verbs[
             int(elapsed / activity.verb_seconds) % len(activity.verbs)
         ]
-        line = activity.line.format(frame=frame, verb=verb, seconds=int(elapsed))
         self._main().query_one("#activity", Static).update(
-            Text(line, style=_style("accent", "bold"))
+            activity_renderable(frame, verb, int(elapsed))
         )
 
     async def action_show_help(self) -> None:
@@ -3268,6 +3643,7 @@ class OnexTui(App[int]):
 
     def action_close_palette(self) -> None:
         self.query_one("#palette", OptionList).display = False
+        self._layout()
 
     def _in_dialog(self, key: str) -> bool:
         """A form or picker is open: its own widgets get the arrow and Tab keys."""
@@ -3356,6 +3732,7 @@ class OnexTui(App[int]):
             return
         self._history.append(text)
         self._recall = len(self._history)
+        self._finish_welcome()
         self._main().query_one("#output", OutputPane).follow()
         if not text.startswith("/"):
             if self._active_task is not None:
@@ -3876,11 +4253,7 @@ class OnexTui(App[int]):
         return outcome
 
     async def _delegate(self, task: str) -> None:
-        self._write(
-            Text(
-                f"{tui_design().glyphs.task} {task}", style=_style("secondary", "bold")
-            )
-        )
+        self._write(task_echo_renderable(task), kind="user")
         code, out, err = await self._runner.capture(("delegate", task, "--json"))
         document = _last_json_object(out)
         result = document.get("result") if document else None
@@ -3901,46 +4274,66 @@ class OnexTui(App[int]):
         metrics = metrics if isinstance(metrics, dict) else {}
         model = str(result.get("model_name") or _say("run_unknown_model"))
         cost = _measured_cost(metrics)
-        facts = [model]
+        facts: list[tuple[str, str]] = [(model, "model")]
         tokens_in, tokens_out = (
             metrics.get("input_tokens"),
             metrics.get("output_tokens"),
         )
         if tokens_in or tokens_out:
             facts.append(
-                _say(
-                    "run_tokens_in_out",
-                    tokens_in=f"{int(tokens_in or 0):,}",
-                    tokens_out=f"{int(tokens_out or 0):,}",
+                (
+                    _say(
+                        "run_tokens_in_out",
+                        tokens_in=f"{int(tokens_in or 0):,}",
+                        tokens_out=f"{int(tokens_out or 0):,}",
+                    ),
+                    "detail",
                 )
             )
         elif metrics.get("total_tokens"):
-            facts.append(_say("run_tokens", tokens=f"{int(metrics['total_tokens']):,}"))
+            facts.append(
+                (
+                    _say("run_tokens", tokens=f"{int(metrics['total_tokens']):,}"),
+                    "detail",
+                )
+            )
         if metrics.get("latency_ms"):
             facts.append(
-                _say("run_seconds", seconds=f"{int(metrics['latency_ms']) / 1000:.1f}")
+                (
+                    _say(
+                        "run_seconds",
+                        seconds=f"{int(metrics['latency_ms']) / 1000:.1f}",
+                    ),
+                    "detail",
+                )
             )
         facts.append(
-            _say("run_cost", cost=f"{cost:.4f}")
-            if cost is not None
-            else _say("run_cost_unmeasured")
+            (
+                _say("run_cost", cost=f"{cost:.4f}")
+                if cost is not None
+                else _say("run_cost_unmeasured"),
+                "cost",
+            )
         )
         if cost is not None and metrics.get("cost_savings_usd"):
             facts.append(
-                _say("run_saved", saved=f"{float(metrics['cost_savings_usd']):.4f}")
+                (
+                    _say(
+                        "run_saved", saved=f"{float(metrics['cost_savings_usd']):.4f}"
+                    ),
+                    "saved",
+                )
             )
         elif cost is None:
-            facts.append(_say("run_saved_unmeasured"))
+            facts.append((_say("run_saved_unmeasured"), "detail"))
         run_id = str(document.get("run_id") or "") if document else ""
+        answer = str(result["response"]).strip()
         self._main().query_one("#output", OutputPane).write(
-            Markdown(str(result["response"]).strip())
+            answer_renderable(answer), kind="answer", plain=answer
         )
         self._write(
-            Text(
-                "  ·  ".join(facts)
-                + (f"  ·  {_say('run_id', run=run_id[:8])}" if run_id else ""),
-                style=_style("muted"),
-            )
+            facts_renderable(facts, _say("run_id", run=run_id[:8]) if run_id else ""),
+            kind="facts",
         )
         # The model that answered is the last run's, not the one tried first.
         self._last_run = (

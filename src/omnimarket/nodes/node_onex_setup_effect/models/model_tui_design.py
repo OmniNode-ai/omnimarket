@@ -65,6 +65,8 @@ class ModelTuiTheme(BaseModel):
     #: A faint lift over a surface, with alpha (#rrggbbaa).
     boost: str
     border: str
+    #: The fill behind a question in the conversation.
+    chip: str = "#2c313c"
     #: A task card's bar for a cheap model, and for the Claude fallback.
     route_cheap: str
     route_fallback: str
@@ -83,6 +85,7 @@ class ModelTuiTheme(BaseModel):
         "surface",
         "panel",
         "border",
+        "chip",
         "route_cheap",
         "route_fallback",
     )
@@ -148,6 +151,7 @@ class ModelTuiGlyphs(BaseModel):
     dot_on: str = Field(min_length=1)
     dot_off: str = Field(min_length=1)
     prompt: str = Field(min_length=1)
+    cancelled: str = "⊘"
 
 
 class ModelTuiTableColumn(BaseModel):
@@ -193,6 +197,8 @@ class ModelTuiLayout(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     header: bool
+    #: Show the search box above the table (the Config tab's found list).
+    search: bool = False
     columns: tuple[ModelTuiLayoutColumn, ...] = Field(min_length=1)
 
 
@@ -524,17 +530,49 @@ class ModelTuiMessages(BaseModel):
     next_step: str = Field(default="Run /doctor.", min_length=1)
 
 
-class ModelTuiWelcomeCard(BaseModel):
-    """One card on the welcome screen."""
+class ModelTuiDiagram(BaseModel):
+    """The routing diagram on the welcome screen."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    task: str = Field(min_length=1)
+    hub_title: str = Field(min_length=1)
+    hub_subtitle: str = Field(min_length=1)
+    hub_tagline: str = Field(min_length=1)
+    outcome_icons: tuple[str, str, str]
+    outcomes: tuple[str, str, str]
+    pulse: bool = True
+    pulse_seconds: float = Field(default=0.3, gt=0.05, le=2.0)
+
+
+class ModelTuiGuideStep(BaseModel):
+    """One step of the Setup Guide."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     id: str = Field(pattern=r"^[a-z]+$")
-    icon: str = Field(min_length=1)
+    key: str = Field(pattern=r"^[0-9]$")
     title: str = Field(min_length=1)
-    text: str = Field(min_length=1)
-    #: delegate (focus the prompt), model or config (open the tab), or a command name.
+    done: str = Field(min_length=1)
+    todo: str = Field(min_length=1)
     action: str = Field(min_length=1)
+    #: An optional step is never "next": it is there to be found, not required.
+    optional: bool = False
+
+
+class ModelTuiGuide(BaseModel):
+    """The Setup Guide: four steps and what to do next."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    title: str = Field(min_length=1)
+    min_height: int = Field(ge=30)
+    all_set: str = Field(min_length=1)
+    next_line: str = Field(min_length=1)
+    step_hint: str = Field(min_length=1)
+    reading: str = Field(min_length=1)
+    unknown: str = Field(min_length=1)
+    steps: tuple[ModelTuiGuideStep, ...] = Field(min_length=4, max_length=4)
 
 
 class ModelTuiWelcome(BaseModel):
@@ -544,15 +582,17 @@ class ModelTuiWelcome(BaseModel):
 
     min_width: int = Field(ge=60)
     min_height: int = Field(ge=20)
-    tagline: str = Field(min_length=1)
+    headline: str = Field(min_length=1)
+    subline: str = Field(min_length=1)
     brand: str = Field(min_length=1)
     brand_rule: str = Field(min_length=1)
     pixel: str = Field(min_length=1)
     letter_gap: int = Field(ge=0, le=6)
     order: str = Field(min_length=1)
+    diagram: ModelTuiDiagram
+    guide: ModelTuiGuide
     letter_styles: tuple[str, ...]
     letters: dict[str, tuple[str, ...]]
-    cards: tuple[ModelTuiWelcomeCard, ...] = Field(min_length=1, max_length=4)
 
     @model_validator(mode="after")
     def _letters_are_complete(self) -> ModelTuiWelcome:
