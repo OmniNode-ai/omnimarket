@@ -602,8 +602,8 @@ class ModelTuiWelcome(BaseModel):
     def _letters_are_complete(self) -> ModelTuiWelcome:
         if len(self.letter_styles) != len(self.order):
             raise ValueError("letter_styles needs one style per letter of order")
-        heights = set()
-        widths = set()
+        heights: set[int] = set()
+        widths: set[int] = set()
         for char in self.order:
             rows = self.letters.get(char)
             if not rows:
@@ -630,7 +630,6 @@ class ModelTuiDesign(BaseModel):
     messages: ModelTuiMessages = Field(default_factory=ModelTuiMessages)
     icons: ModelTuiIcons = Field(default_factory=ModelTuiIcons)
     palette: ModelTuiPalette
-    last_known: dict[str, str] = Field(default_factory=dict)
     wordmark: ModelTuiWordmark
     shortcuts: tuple[ModelTuiShortcut, ...] = Field(min_length=1)
     aliases: dict[str, str]

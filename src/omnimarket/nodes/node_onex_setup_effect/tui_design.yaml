@@ -456,7 +456,7 @@ words:
   themes_preview_title: "Preview"
   themes_sample_heading: "Build more. Spend less."
   themes_sample_text: "The right intelligence, at the right cost."
-  themes_kept: "{name} kept."
+  themes_kept: "{theme} kept."
   # Config tab (mockup page 4).
   add_title: Add models
   step_of: "step {step} of 3"
@@ -723,11 +723,6 @@ palette:
     clear: clear the screen
     help: keys and how commands work
     quit: leave onex
-
-# Last known status for seeding (OMN-26620 AC7).
-last_known:
-  model: "Last-Model"
-  delegation: "off"
 
 # /doctor page (OMN-26620 pages worker).
 doctor_page:

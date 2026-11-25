@@ -132,7 +132,11 @@ async def test_a_number_on_an_empty_prompt_opens_the_step_and_in_a_task_it_is_te
 
 async def test_the_guide_and_the_diagram_go_away_once_you_start() -> None:
     welcome = tui_design().welcome
-    text = await _screen(OnexTui(load_status=_ready), (140, 46), (*"/clear", "enter"))
+    text = await _screen(
+        OnexTui(load_status=_ready, runner=_Quiet()),  # type: ignore[arg-type]
+        (140, 46),
+        (*"hello", "enter"),
+    )
     assert welcome.guide.title not in text
     assert welcome.diagram.heading not in text
     assert "Smart Routing" not in text

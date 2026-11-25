@@ -52,3 +52,4 @@ def _tui_state_in_a_throwaway_folder(
     monkeypatch.setattr(cli_tui.ThemeStore, "_value", None)
     monkeypatch.setattr(cli_tui.ThemeStore, "_path", tmp_path / "tui-theme")
     monkeypatch.setattr(cli_tui.LaunchStore, "_path", tmp_path / "tui-launches")
+    monkeypatch.setattr(cli_tui.StatusStore, "_path", tmp_path / "tui-status.json")

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import importlib
 import importlib.metadata
 import json
 import logging
@@ -24,7 +25,7 @@ from collections import Counter
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from functools import partial
 from pathlib import Path
-from typing import Any, ClassVar, Literal, Protocol, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Protocol, TypeVar, cast
 from urllib.parse import urlparse
 
 import click
@@ -65,22 +66,6 @@ from textual.widgets._tabs import Underline
 from textual.widgets.option_list import Option
 from textual.worker import Worker
 
-from omnimarket.handlers.local_model_details import read_local_details
-from omnimarket.handlers.model_catalog import (
-    EMPTY_INDEX,
-    ModelsDevIndex,
-    catalog_config,
-    catalog_entry,
-    list_and_remember_models,
-    listed_catalog_entry,
-    load_models_dev,
-    stored_entries,
-)
-from omnimarket.handlers.models_cli_output import connection_rows, model_status_rows
-from omnimarket.handlers.routing.byok_model_listing import (
-    ModelByokListedModel,
-    ModelByokModelListing,
-)
 from omnimarket.models.model_catalog_entry import Deployment, ModelCatalogEntry
 from omnimarket.models.model_local_server_details import ModelLocalServerDetails
 from omnimarket.nodes.node_onex_setup_effect.cli_model_table import (
@@ -110,6 +95,39 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
 from omnimarket.nodes.node_onex_setup_effect.plain_messages import (
     plain_message,
 )
+
+if TYPE_CHECKING:
+    from omnimarket.handlers.model_catalog import ModelsDevIndex
+    from omnimarket.handlers.routing.byok_model_listing import (
+        ModelByokListedModel,
+        ModelByokModelListing,
+    )
+
+#: Loaded on first use, not at start: importing them pulls in the inference stack,
+#: about 1.6 s of the TUI's 2.1 s start (measured 2026-11-25), and the first screen
+#: needs none of it. ``_preload`` loads them in a thread once the screen is up.
+_CATALOG = "omnimarket.handlers.model_catalog"
+_ROWS = "omnimarket.handlers.models_cli_output"
+_LOCAL = "omnimarket.handlers.local_model_details"
+
+
+def _lazy(module: str) -> Any:
+    """A module imported the first time it is needed."""
+    return importlib.import_module(module)
+
+
+def _preload() -> None:
+    """Import the slow modules off the event loop, so the first tab never waits."""
+    for module in (_CATALOG, _ROWS, _LOCAL):
+        _lazy(module)
+
+
+def _list_and_remember_models(provider: str, api_key: str) -> ModelByokModelListing:
+    listing: ModelByokModelListing = _lazy(_CATALOG).list_and_remember_models(
+        provider, api_key
+    )
+    return listing
+
 
 _PROMPTING_OPTIONS = frozenset(("interactive", "yes"))
 
@@ -422,11 +440,13 @@ async def load_status() -> ModelTuiStatus:
     if connected_code != 0:
         raise RuntimeError("models connections could not be read")
     try:
-        rows = model_status_rows(lines)
+        rows = _lazy(_ROWS).model_status_rows(lines)
     except ValueError as error:
         raise RuntimeError("models list returned invalid model status") from error
     try:
-        connection_status, connection_list = connection_rows("\n".join(connected))
+        connection_status, connection_list = _lazy(_ROWS).connection_rows(
+            "\n".join(connected)
+        )
     except ValueError as error:
         raise RuntimeError(
             "models connections returned invalid configuration"
@@ -438,7 +458,7 @@ async def load_status() -> ModelTuiStatus:
     selection = selected_models(
         rows,
         connection_list,
-        EMPTY_INDEX,
+        _lazy(_CATALOG).EMPTY_INDEX,
     )
     hook: list[str] = []
     # The hook read asks Claude Code (about 3 s, 7 s measured 2026-11-15).
@@ -629,13 +649,15 @@ def _discovered_models(text: str) -> tuple[str | None, list[str]]:
     return (None if found else str(message or _say("none_found"))), found
 
 
-ListModels = Callable[[str, str], ModelByokModelListing]
+type ListModels = Callable[[str, str], ModelByokModelListing]
 #: Reads the models.dev index (cached under the ONEX home); tests pass a fixture.
-LoadIndex = Callable[[], ModelsDevIndex]
+type LoadIndex = Callable[[], ModelsDevIndex]
 
 
 def _default_index() -> ModelsDevIndex:
-    return load_models_dev(user_config_path().parent)
+    return cast(
+        "ModelsDevIndex", _lazy(_CATALOG).load_models_dev(user_config_path().parent)
+    )
 
 
 #: Asks the server at a base URL about its models; tests pass a fixture.
@@ -645,7 +667,10 @@ ReadServer = Callable[[str, tuple[str, ...]], dict[str, ModelLocalServerDetails]
 def _default_read_server(
     base: str, models: tuple[str, ...]
 ) -> dict[str, ModelLocalServerDetails]:
-    return read_local_details(base, models)
+    return cast(
+        "dict[str, ModelLocalServerDetails]",
+        _lazy(_LOCAL).read_local_details(base, models),
+    )
 
 
 def _safe_server(
@@ -663,14 +688,19 @@ def _safe_index(load: LoadIndex) -> ModelsDevIndex:
     try:
         return load()
     except Exception:  # the provider's own list still shows without it
-        return EMPTY_INDEX
+        return cast("ModelsDevIndex", _lazy(_CATALOG).EMPTY_INDEX)
 
 
 def _listed_entry(
     provider: str, model: ModelByokListedModel, index: ModelsDevIndex
 ) -> ModelCatalogEntry:
     """A hosted provider's model: the provider's own context and price first."""
-    return listed_catalog_entry(provider, model, index, provider_label=_label(provider))
+    return cast(
+        "ModelCatalogEntry",
+        _lazy(_CATALOG).listed_catalog_entry(
+            provider, model, index, provider_label=_label(provider)
+        ),
+    )
 
 
 def _server_entry(
@@ -681,7 +711,7 @@ def _server_entry(
 ) -> ModelCatalogEntry:
     """A model a user-run server listed: local, so no API price applies; what the
     server itself said names it and states its context and capabilities."""
-    return catalog_entry(
+    entry: ModelCatalogEntry = _lazy(_CATALOG).catalog_entry(
         provider,
         model_id,
         deployment="local",
@@ -690,6 +720,7 @@ def _server_entry(
         context_tokens=said.context_tokens if said else None,
         capabilities=said.capabilities if said else None,
     )
+    return entry
 
 
 _ResultT = TypeVar("_ResultT")
@@ -936,7 +967,7 @@ class SetupScreen(_TabbedScreen[None]):
         super().__init__()
         self._runner = runner
         self._selection = selection or ModelTuiSelection()
-        self._list_models: ListModels = list_models or list_and_remember_models
+        self._list_models: ListModels = list_models or _list_and_remember_models
         self._load: LoadIndex = load_index or _default_index
         self._read_server: ReadServer = read_server or _default_read_server
         self._basket: dict[str, ModelTuiSetupChoice] = {}
@@ -1371,7 +1402,7 @@ def selected_models(
     model, server URL); a model two servers run is two rows (OMN-23413).
     """
     entries = list(
-        stored_entries(
+        _lazy(_CATALOG).stored_entries(
             rows,
             index=index,
             deployment_of=_deployment,
@@ -1389,7 +1420,7 @@ def selected_models(
         provider = str(connection.get("provider") or "")
         models = connection.get("models")
         for model in models if isinstance(models, list) else ():
-            entry = catalog_entry(
+            entry = _lazy(_CATALOG).catalog_entry(
                 provider,
                 str(model),
                 deployment=_deployment(provider),
@@ -2260,6 +2291,34 @@ class ThemeStore:
             return None
 
 
+class StatusStore:
+    """The model and delegation state as last read, kept for the next start
+    (OMN-26620 AC7): the status bar shows it at once, never a made-up name,
+    and says it is reading when nothing was saved yet."""
+
+    _path = Path.home() / ".cache" / "onex-tui-status.json"
+
+    @classmethod
+    def save(cls, status: ModelTuiStatus) -> None:
+        document = {"model": status.model, "delegation": status.delegation}
+        try:
+            cls._path.parent.mkdir(parents=True, exist_ok=True)
+            cls._path.write_text(json.dumps(document))
+        except OSError:
+            _LOG.warning("could not remember the status", exc_info=True)
+
+    @classmethod
+    def load(cls) -> ModelTuiStatus:
+        """The saved state, or an empty one (the bar then says it is reading)."""
+        try:
+            document = json.loads(cls._path.read_text())
+            return ModelTuiStatus(
+                model=document.get("model"), delegation=document.get("delegation")
+            )
+        except (OSError, ValueError, AttributeError):
+            return ModelTuiStatus()
+
+
 class LaunchStore:
     """How many times the TUI has started on this machine (OMN-26620 AC2)."""
 
@@ -2839,7 +2898,7 @@ def _draw_diagram(design: Any, tick: int = 0) -> Text:
             put(x + offset, y, char, style)
 
     def box(x: int, y: int, w: int, h: int, style: str, chars: str = "╭╮╰╯─│") -> None:
-        tl, tr, bl, br, across, down = chars
+        tl, tr, bl, br, across, down = list(chars)
         put(x, y, tl, style)
         put(x + w - 1, y, tr, style)
         put(x, y + h - 1, bl, style)
@@ -3300,7 +3359,9 @@ class ThemeScreen(_TabbedScreen[None]):
             await apply_theme(self.app, event.option.id)
             self._before = event.option.id  # kept: Esc no longer puts the old one back
             self._note(
-                Text(_say("themes_kept", name=event.option.id), style=_style("success"))
+                Text(
+                    _say("themes_kept", theme=event.option.id), style=_style("success")
+                )
             )
 
     def action_cancel(self) -> None:
@@ -3407,11 +3468,7 @@ class OnexTui(App[int]):
         self._own_runner = runner is None
         self._list_models = list_models
         self._load_status = load_status or globals()["load_status"]
-        last_known = tui_design().last_known or {}
-        self._status = ModelTuiStatus(
-            model=last_known.get("model"),
-            delegation=last_known.get("delegation"),
-        )
+        self._status = StatusStore.load()
         self._last_run = ""
         self._started = False
         self._welcome_tick = 0
@@ -3488,6 +3545,8 @@ class OnexTui(App[int]):
         self._render_status()
         self.query_one("#prompt", Input).focus()
         self.run_worker(self._refresh_status(), exclusive=True, group="status")
+        # The model catalogue loads in a thread now the screen is up (see _lazy).
+        self.run_worker(_preload, thread=True, group="preload")
         self._warming = asyncio.create_task(self.load_selection())
         # A failed start-up read is read again by the first tab; never unretrieved.
         self._warming.add_done_callback(lambda t: t.cancelled() or t.exception())
@@ -3513,6 +3572,8 @@ class OnexTui(App[int]):
         else:
             if status.problem:  # a failed read is said plainly, its cause logged
                 _LOG.warning("the delegation status was unreadable: %s", status.problem)
+            else:
+                StatusStore.save(status)
         self._show_status(status)
 
     def _show_status(self, status: ModelTuiStatus) -> None:
@@ -3776,7 +3837,9 @@ class OnexTui(App[int]):
 
     def _pulse_welcome(self) -> None:
         """Move the dots on the diagram one step while the welcome is showing."""
-        if self._started or not self._main().query_one("#welcome").display:
+        found = self._main().query("#welcome")
+        # The pulse timer can fire while the app closes and the widgets are gone.
+        if self._started or not found or not found.first().display:
             return
         self._welcome_tick += 1
         self._main().query_one("#diagram", Static).update(
@@ -3784,7 +3847,7 @@ class OnexTui(App[int]):
         )
 
     def _finish_welcome(self) -> None:
-        """Something was submitted: the diagram gives the room to the conversation."""
+        """A task was sent: the diagram gives the room to the conversation."""
         if self._started:
             return
         self._started = True
@@ -3800,6 +3863,8 @@ class OnexTui(App[int]):
         )
         showing = roomy  # the welcome stays; results appear below it
         main = self._main()
+        if not main.query("#welcome"):  # a resize while the app closes
+            return
         main.set_class(roomy, "-roomy")
         main.query_one("#welcome").display = showing
         main.query_one("#diagram").display = showing and not self._started
@@ -3936,9 +4001,10 @@ class OnexTui(App[int]):
             return
         self._history.append(text)
         self._recall = len(self._history)
-        self._finish_welcome()
         self._main().query_one("#output", OutputPane).follow()
         if not text.startswith("/"):
+            # A task ends the welcome; a /command that opens a screen keeps it.
+            self._finish_welcome()
             if self._active_task is not None:
                 self._write(
                     Text(
@@ -3965,6 +4031,8 @@ class OnexTui(App[int]):
             return
         shortcut = tui_design().shortcut_for(words)
         if shortcut is not None:
+            if shortcut.action == "help":  # printed text needs the room
+                self._finish_welcome()
             await self._shortcut(shortcut.action)
             return
         entry = self._resolve(words)
@@ -3974,6 +4042,7 @@ class OnexTui(App[int]):
         if not _is_customer_command(entry.path):
             self._write(_say("not_a_tui_command", command=" ".join(words)))
             return
+        self._finish_welcome()  # /doctor and the like print a page: it needs the room
         await self._run(entry, tuple(words))
 
     def _in_terminal(self, argv: tuple[str, ...]) -> int:
@@ -4320,7 +4389,9 @@ class OnexTui(App[int]):
         """What a server says about its models, asked again only after a while."""
         key = (base, models)
         remembered = self._said.get(key)
-        keep = float(catalog_config()["local_servers"]["remember_seconds"])
+        keep = float(
+            _lazy(_CATALOG).catalog_config()["local_servers"]["remember_seconds"]
+        )
         if remembered is not None and time.monotonic() - remembered[0] < keep:
             return remembered[1]
         said = await asyncio.to_thread(_safe_server, self._read_server, base, models)

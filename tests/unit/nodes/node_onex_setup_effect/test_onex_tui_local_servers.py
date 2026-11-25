@@ -204,8 +204,11 @@ async def test_the_status_bar_says_reading_until_the_setup_is_read() -> None:
         await gate.wait()
         return ModelTuiStatus(models=0)
 
+    from omnimarket.nodes.node_onex_setup_effect.cli_tui import StatusStore
+
     design = tui_design()
-    saved = design.last_known or {}
+    StatusStore.save(ModelTuiStatus(model="Saved-Model", delegation="off"))
+    saved = {"model": "Saved-Model"}
     app = OnexTui(root=_root, runner=_Runner([]), load_status=slow)
     async with app.run_test() as pilot:
         await pilot.pause()
