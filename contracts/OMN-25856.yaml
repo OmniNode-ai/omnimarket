@@ -26,6 +26,11 @@ requirements:
     statement: 'AC11: a tenant whose overlay row names no usable credential is refused locally and makes no outbound provider call -- falsifier: a withdrawn credential reaches the vendor with no Authorization header'
   - id: AC2
     statement: 'AC2: local Inkling-2-Mini has a zero marginal api cost row in cost_pricing.yaml and an unlisted local model still raises MissingCostPricingError -- falsifier: pricing Inkling-2-Mini raises, or an unlisted local model prices without error'
+- id: req-omn25856-lab-customer-identity
+  statement: The dev identity node can sign in two separate lab customers, because the secret store declares one generated password id per lab customer.
+  acceptance:
+  - id: AC12
+    statement: 'AC12: the secret store contract declares dev_lab_customer_a_password and dev_lab_customer_b_password, each under its own secret name in /shared/env -- falsifier: the identity node answers password_unavailable (invalid_request) for either id'
 evidence_requirements:
 - kind: tests
   description: The focused regression, failing first with the surviving child process, then passing.
@@ -118,4 +123,13 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/cost/test_inkling_local_priced_omn25856.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-ac12-lab-customer-password-ids
+  description: The secret store contract declares both lab customer password ids under distinct names, and an undeclared id stays absent.
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_dev_identity_provision_effect/test_lab_customer_password_keys.py -q --no-cov -n 0 -p no:randomly
     cwd: .
