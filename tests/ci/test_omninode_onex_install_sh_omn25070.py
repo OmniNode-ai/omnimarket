@@ -146,6 +146,17 @@ def test_pins_match_the_package_and_every_target_has_a_checksum() -> None:
 
 
 @pytest.mark.unit
+def test_the_rendered_installer_expects_only_onex() -> None:
+    """The customer install exposes only onex (OMN-25070 ruling 2026-11-25).
+
+    The launcher list the script verifies, and every word it prints, name onex
+    alone: a script that still expects or mentions omni-agent fails here.
+    """
+    assert _script_value("ONEX_LAUNCHERS") == "onex"
+    assert "omni-agent" not in SCRIPT_TEXT
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     ("system", "machine", "translated", "expected"),
     [
