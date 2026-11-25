@@ -96,11 +96,14 @@ data_reader_overrides: {}
 # enumerate its directory with glob, rglob or iterdir, the tests that import a helper among those, the tests
 # that import a src/ file naming it, and data_reader_overrides. Adding, changing, renaming and deleting are the
 # same, and a rename or delete looks up the old path. A file with no reader selects the always set only: a path
-# built at run time with no literal part is the nightly's to catch. This is the stage 2 entry, so it stays off
-# until a stage advance turns it on. Off, a fixture keeps the full-suite escalation it had
-# (data_reader_gated_infrastructure_paths); on, a Python file under those paths and every path in
-# test_infrastructure_paths still takes the full suite, a changed uv.lock beside a fixture included.
-data_file_readers_enabled: false
+# built at run time with no literal part is the nightly's to catch. Off, a fixture keeps the full-suite
+# escalation it had (data_reader_gated_infrastructure_paths); on, a Python file under those paths and every
+# path in test_infrastructure_paths still takes the full suite, a changed uv.lock beside a fixture included.
+# On (OMN-24562): test_infrastructure was the reason that stopped most recorded merges (22 of 60 in the stage 0
+# replay, 18 of them pyproject.toml, which the section rule below decides, and the 4 fixture-only merges
+# tests/fixtures/ alone stopped). The replay of those 4 narrows all four with no test that names a changed
+# file left out of the selection; the two merges that also change uv.lock stay full.
+data_file_readers_enabled: true
 data_reader_roots:
   - tests/
   - contracts/
