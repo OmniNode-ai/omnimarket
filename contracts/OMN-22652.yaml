@@ -51,9 +51,9 @@ dod_evidence:
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22652 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_omn22652_live_events_qualified_insert_real_postgres.py -q --no-cov
     cwd: .
 - id: dod-omn22652-ac1-accepted-20261125t1945z-c2
-  description: "AC1 binding (accepted 2026-11-25T1945Z, proposed by lane=dod-closeout-bind-2026-11-25T1945Z-c2, accepted by lane=dod-closeout-accept-2026-11-25T1945Z-c2). On a disposable PostgreSQL holding both relations and a login with INSERT only on omninode_internal.live_events, the runner writes its row to omninode_internal.live_events and none to public.live_events, and the issued statement starts with INSERT INTO omninode_internal.live_events. Re-run at origin/dev 411c2626e1 PASSED (2 passed, no SKIPPED); with the handler of the parent of cac1d31ae5 both tests fail (permission denied for table live_events; unqualified statement). Needs local initdb and pg_ctl, so it runs at the local done gate."
+  description: "AC1 binding (accepted 2026-11-25T1945Z, proposed by lane=dod-closeout-bind-2026-11-25T1945Z-c2, accepted by lane=dod-closeout-accept-2026-11-25T1945Z-c2). On a disposable PostgreSQL holding both relations and a login with INSERT only on omninode_internal.live_events, the runner writes its row to omninode_internal.live_events and none to public.live_events, and the issued statement starts with INSERT INTO omninode_internal.live_events. Re-run at origin/dev 411c2626e1 PASSED (2 passed, no SKIPPED); with the handler of the parent of cac1d31ae5 both tests fail (permission denied for table live_events; unqualified statement). Needs initdb and pg_ctl on the runner."
   source: manual
-  execution_scope: local_done_gate
+  execution_scope: hosted_and_local
   binds_ac:
   - AC1
   checks:
@@ -61,9 +61,9 @@ dod_evidence:
     check_value: "bash -c 'D=$(mktemp -d) && printf pw > \"$D/pw\" && initdb -D \"$D/data\" -U postgres --auth=scram-sha-256 --pwfile=\"$D/pw\" >/dev/null && pg_ctl -D \"$D/data\" -o \"-p 55432 -k $D -c listen_addresses=localhost\" -l \"$D/log\" start -w >/dev/null && INTEGRATION_POSTGRES_HOST=localhost INTEGRATION_POSTGRES_PORT=55432 POSTGRES_PASSWORD=pw env -u PYTHONPATH uv run --frozen pytest tests/test_omn22652_live_events_qualified_insert_real_postgres.py::test_runner_writes_the_row_to_the_declared_schema src/omnimarket/nodes/node_projection_live_events/tests/test_handler_live_events.py::TestHandlerLiveEventsProjectionRunnerConstruction::test_unqualified_relation_is_never_issued -q --no-cov -rs -p no:cacheprovider; rc=$?; pg_ctl -D \"$D/data\" stop -m fast >/dev/null; rm -rf \"$D\"; exit $rc'"
     cwd: .
 - id: dod-omn22652-ac2-accepted-20261125t1945z-c2
-  description: "AC2 binding (accepted 2026-11-25T1945Z, proposed by lane=dod-closeout-bind-2026-11-25T1945Z-c2, accepted by lane=dod-closeout-accept-2026-11-25T1945Z-c2). The bare INSERT INTO live_events by the same login on the same database raises InsufficientPrivilegeError, permission denied for table live_events. Re-run at origin/dev 411c2626e1 PASSED (1 passed, no SKIPPED). Needs local initdb and pg_ctl, so it runs at the local done gate."
+  description: "AC2 binding (accepted 2026-11-25T1945Z, proposed by lane=dod-closeout-bind-2026-11-25T1945Z-c2, accepted by lane=dod-closeout-accept-2026-11-25T1945Z-c2). The bare INSERT INTO live_events by the same login on the same database raises InsufficientPrivilegeError, permission denied for table live_events. Re-run at origin/dev 411c2626e1 PASSED (1 passed, no SKIPPED). Needs initdb and pg_ctl on the runner."
   source: manual
-  execution_scope: local_done_gate
+  execution_scope: hosted_and_local
   binds_ac:
   - AC2
   checks:
