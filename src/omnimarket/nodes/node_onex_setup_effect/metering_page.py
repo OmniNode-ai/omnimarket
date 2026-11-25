@@ -200,7 +200,10 @@ def render_metering_page(
     task_h = _g("tasks", "Tasks")
     token_h = _g("tokens", "Tokens")
     cost_h = _g("cost", "Cost")
-    lines.append(f"  {model_h:<16} {task_h:>6} {token_h:>8} {cost_h:>10}".rstrip())
+    name_w = 30
+    lines.append(
+        f"  {model_h:<{name_w}} {task_h:>6} {token_h:>8} {cost_h:>12}".rstrip()
+    )
     for row in report.get("by_model", summary.get("by_model", [])) or []:
         if not isinstance(row, Mapping):
             continue
@@ -215,7 +218,8 @@ def render_metering_page(
         )
         row_cost = _money(row.get("spend_usd", row.get("cost")), unmeasured)
         lines.append(
-            f"  {name:<16} {row_tasks:>6} {_compact_tokens(row_tokens):>8} {row_cost:>10}".rstrip()
+            f"  {(name if len(name) <= name_w else name[: name_w - 1] + '…'):<{name_w}} "
+            f"{row_tasks:>6} {_compact_tokens(row_tokens):>8} {row_cost:>12}".rstrip()
         )
     lines.append("")
     lines.append(_g("savings_line", "Savings are modelled, not billed."))

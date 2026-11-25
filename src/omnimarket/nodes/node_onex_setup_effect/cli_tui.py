@@ -1594,6 +1594,12 @@ class DelegationScreen(_TabbedScreen[None]):
             "signed_out": (_say("claude_signed_out"), "warning"),
             "not_installed": (_say("claude_missing"), "error"),
         }.get(state, (_say("claude_unknown"), "muted"))
+        # While Claude Code is only installed, Save adds the plugin (the line says so);
+        # the CLI's repair sentence is a developer command, so it goes to the log.
+        # Every other state keeps the CLI's plain next step (OMN-26617).
+        if fix and state == "installed":
+            _LOG.info("claude code hint hidden: %s", fix)
+            fix = ""
         rendered = line if not fix else f"{line}\n{fix}"
         shown = self._calm(Text(rendered, style=_style(colour)))
         widget = self.query_one("#claude", Static)
