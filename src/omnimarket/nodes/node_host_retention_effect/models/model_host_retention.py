@@ -275,7 +275,7 @@ class ModelUvCache(_Frozen):
     min_gib: float | None = Field(default=None, ge=0)
     ci_prune: bool = False
     timeout_seconds: float = Field(
-        gt=0
+        gt=0, allow_inf_nan=False
     )  # `uv cache size` walks every file of the cache and can take minutes; also the bucket scan's deadline
     cap: ModelUvCacheCap | None = None
     free_disk: ModelUvFreeDiskRule | None = None
@@ -389,6 +389,9 @@ class ModelRetentionBounds(_Frozen):
     terminal_loader: ModelTerminalLoaderBound | None = (
         None  # the one ledger rows loader a terminal guard may run
     )
+    uv_cache_max_timeout_seconds: float = Field(
+        gt=0, allow_inf_nan=False
+    )  # the most a uv cache row's timeout_seconds may declare: `uv cache size` is never run without a bound
     uv_evictable_buckets: dict[NonEmptyStr, ModelUvBucketBound] = Field(
         default_factory=dict
     )  # bucket path relative to a uv cache -> how its whole entries are found and guarded
