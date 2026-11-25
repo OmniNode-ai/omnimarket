@@ -117,6 +117,7 @@ class ModelTuiGlyphs(BaseModel):
     failed: str = Field(min_length=1)
     dot_on: str = Field(min_length=1)
     dot_off: str = Field(min_length=1)
+    prompt: str = Field(min_length=1)
 
 
 class ModelTuiTableColumn(BaseModel):

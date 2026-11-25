@@ -74,8 +74,9 @@ glyphs:
   failed: "✗"
   dot_on: "●"
   dot_off: "○"
+  prompt: "❯"
 
-prompt_placeholder: Ask ONEX to delegate a task, or type / for commands
+prompt_placeholder: Ask onex to delegate a task, or type / for commands
 help: >-
   Type a task and press Enter to delegate it. /config sets up providers, keys
   and models, /model picks the model tried first, /delegation turns Claude Code
@@ -433,8 +434,9 @@ footer:
         - {label: "/", words: commands}
         - {label: "↑↓", words: history}
         - {label: ctrl+p, words: palette}
+        - {label: "?", words: help}
         - {label: ctrl+c, words: quit}
-      drop_order: [ctrl+p, "↑↓", "/"]
+      drop_order: [ctrl+p, "?", "↑↓", "/"]
     config:
       keys:
         - {label: Space}

@@ -33,7 +33,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from rich.console import Group
 from rich.markdown import Markdown
 from rich.text import Text
-from textual import on
+from textual import events, on
 from textual.app import App, ComposeResult, SuspendNotSupported, SystemCommand
 from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -2324,6 +2324,18 @@ class ThemePickScreen(ModalScreen[None]):
         self.dismiss()
 
 
+class PromptInput(Input):
+    """The task prompt: ? on an empty prompt is the help key, in a task it is text."""
+
+    async def _on_key(self, event: events.Key) -> None:
+        if event.key == "question_mark" and not self.value:
+            event.stop()
+            event.prevent_default()
+            await cast("OnexTui", self.app).action_show_help()
+            return
+        await super()._on_key(event)
+
+
 class OnexTui(App[int]):
     """The onex terminal UI."""
 
@@ -2335,7 +2347,9 @@ class OnexTui(App[int]):
     #conversation { height: 1fr; }
     #output { height: auto; max-height: 100%; padding: 0 1; }
     #palette { height: auto; max-height: 12; border: round $accent; display: none; }
-    #prompt { border: round $accent; }
+    #promptrow { height: 1; margin-top: 1; }
+    #promptmark { width: 2; color: $primary; text-style: bold; }
+    #prompt { border: none; height: 1; padding: 0; background: $background; }
     #status { height: 1; padding: 0 1; background: $panel; color: $text-muted; }
     #activity { height: 1; padding: 0 1; display: none; }
     """
@@ -2441,10 +2455,12 @@ class OnexTui(App[int]):
             yield RichLog(id="output", wrap=True, markup=False, highlight=False)
             yield Static(id="activity")
         yield OptionList(id="palette")
-        yield Input(
-            id="prompt",
-            placeholder=tui_design().prompt_placeholder,
-        )
+        with Horizontal(id="promptrow"):
+            yield Static(tui_design().glyphs.prompt, id="promptmark")
+            yield PromptInput(
+                id="prompt",
+                placeholder=tui_design().prompt_placeholder,
+            )
         yield Static(id="status")
 
     async def on_mount(self) -> None:
@@ -2705,6 +2721,9 @@ class OnexTui(App[int]):
         self._main().query_one("#activity", Static).update(
             Text(line, style=_style("accent", "bold"))
         )
+
+    async def action_show_help(self) -> None:
+        await self._shortcut("help")
 
     def action_close_palette(self) -> None:
         self.query_one("#palette", OptionList).display = False
