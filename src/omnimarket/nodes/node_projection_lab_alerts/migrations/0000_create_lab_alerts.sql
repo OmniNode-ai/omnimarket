@@ -35,5 +35,34 @@ CREATE TABLE IF NOT EXISTS omninode_internal.lab_alerts (
     )
 );
 
+-- COLUMN RECONCILIATION (OMN-15376 class). CREATE TABLE IF NOT EXISTS no-ops against a
+-- pre-existing table of the same name whatever its shape, so each declared column is
+-- re-asserted. NOT NULL and the checks are left to the CREATE: Postgres refuses a NOT NULL
+-- column added without a default to a table with rows.
+ALTER TABLE omninode_internal.lab_alerts
+    ADD COLUMN IF NOT EXISTS alert_id TEXT;
+ALTER TABLE omninode_internal.lab_alerts
+    ADD COLUMN IF NOT EXISTS source TEXT;
+ALTER TABLE omninode_internal.lab_alerts
+    ADD COLUMN IF NOT EXISTS subject TEXT;
+ALTER TABLE omninode_internal.lab_alerts
+    ADD COLUMN IF NOT EXISTS state TEXT;
+ALTER TABLE omninode_internal.lab_alerts
+    ADD COLUMN IF NOT EXISTS severity TEXT;
+ALTER TABLE omninode_internal.lab_alerts
+    ADD COLUMN IF NOT EXISTS owner TEXT;
+ALTER TABLE omninode_internal.lab_alerts
+    ADD COLUMN IF NOT EXISTS detail TEXT;
+ALTER TABLE omninode_internal.lab_alerts
+    ADD COLUMN IF NOT EXISTS raised_at TIMESTAMPTZ;
+ALTER TABLE omninode_internal.lab_alerts
+    ADD COLUMN IF NOT EXISTS cleared_at TIMESTAMPTZ;
+ALTER TABLE omninode_internal.lab_alerts
+    ADD COLUMN IF NOT EXISTS last_transition_id UUID;
+ALTER TABLE omninode_internal.lab_alerts
+    ADD COLUMN IF NOT EXISTS last_transition_at TIMESTAMPTZ;
+ALTER TABLE omninode_internal.lab_alerts
+    ADD COLUMN IF NOT EXISTS projected_at TIMESTAMPTZ DEFAULT NOW();
+
 CREATE INDEX IF NOT EXISTS idx_lab_alerts_state_raised
     ON omninode_internal.lab_alerts (state, raised_at DESC);

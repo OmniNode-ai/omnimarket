@@ -459,6 +459,32 @@ def test_the_table_is_declared_in_db_io_and_the_ownership_registry() -> None:
     assert "migrations/0000_create_lab_alerts.sql" in registry
 
 
+def test_every_column_the_create_declares_is_reasserted_by_an_add_column_guard() -> (
+    None
+):
+    """CREATE TABLE IF NOT EXISTS no-ops against a drifted pre-existing table, so the
+    platform's migration shape gate needs each declared column re-asserted by an
+    ``ALTER TABLE ... ADD COLUMN IF NOT EXISTS`` in the same file."""
+    sql = (NODE_DIR / "migrations" / "0000_create_lab_alerts.sql").read_text()
+    body = sql.split("CREATE TABLE IF NOT EXISTS omninode_internal.lab_alerts (", 1)[1]
+    body = body.split("\n);", 1)[0]
+    declared = [
+        match.group(1)
+        for line in body.splitlines()
+        if (match := re.match(r"^    ([a-z_]+) [A-Z]", line))
+        and match.group(1) not in {"PRIMARY", "CONSTRAINT"}
+    ]
+    assert declared[0] == "alert_id"
+    assert len(declared) == 12
+    guarded = set(
+        re.findall(
+            r"ALTER TABLE omninode_internal\.lab_alerts\s+ADD COLUMN IF NOT EXISTS ([a-z_]+) ",
+            sql,
+        )
+    )
+    assert set(declared) - guarded == set()
+
+
 def test_the_node_is_registered_as_an_entry_point() -> None:
     pyproject = (ROOT / "pyproject.toml").read_text()
     assert (
