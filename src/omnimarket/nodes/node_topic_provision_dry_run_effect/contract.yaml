@@ -21,7 +21,8 @@ description: >
   many are declared by no contract. The broker is read with list calls only.
 
   With --apply (python -m ...runtime_topic_provision_dry_run, the one write this node makes) it creates each service writer topic the
-  plan names and the broker does not hold: for every contract that declares a writer_topics template,
+  plan names and the broker does not hold, and each publish topic a host-timer contract declares
+  (runtime_dispatch.host_unit; a timer is no runtime node, so no boot creates them): for every contract that declares a writer_topics template,
   one topic per declared service login (the service writers overlay, and a broker scope overlay's
   WRITE grant on the topic the template composes), 1 partition and 1 replica. An existing topic is
   accepted; a second run creates nothing.
@@ -59,3 +60,7 @@ output_model:
 
 runtime_dispatch:
   external_trigger: true
+  # An operator or a service login with create rights runs the apply from the command line; nothing on the bus starts this node.
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_topic_provision_dry_run_effect.runtime_topic_provision_dry_run --apply
+    owner: OmniNode Platform Team
