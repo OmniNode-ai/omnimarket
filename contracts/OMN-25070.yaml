@@ -119,6 +119,16 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run --frozen pytest -q --no-cov tests/ci/test_omninode_onex_package_omn25070.py -k carries_the_onex_setup_fix
         cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn25070-pin-carries-setup-field-crash-fix
+    description: The customer package pins an omnimarket release in which typing in the setup key or URL
+      field no longer crashes the TUI (0.4.327 or later, OMN-26613). The bound test fails on the merge base,
+      where the pin is 0.4.324, a release without the fix.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest -q --no-cov tests/ci/test_omninode_onex_package_omn25070.py -k carries_the_setup_field_crash_fix
+        cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn25070-installer-integration-proof
     description: The render node and the rendered installer run on a lab host at the pushed head. Hosted CI runs
       the same tests per platform; only the local Done gate runs this unbound check on the lab.

@@ -12,7 +12,8 @@ Failure modes each test catches: a launcher missing or an extra one added; a
 launcher whose target differs from the one omnibase_core declares; a range pin
 that lets a customer resolve an unreviewed version; a wheel that copies another
 distribution's code; built wheel metadata that drifts from pyproject.toml; an omnimarket
-pin older than the first release carrying the onex setup fix.
+pin older than the first release carrying the onex setup fix, or older than the first
+release in which typing in the setup key or URL field no longer crashes the TUI.
 
 AC5 (amended 2026-11-18): T1 removes no console script marked ``run_by_lane``.
 omnibase_infra's ``config/validation/stack_shape.yaml`` lists every omnimarket
@@ -205,6 +206,23 @@ def test_omnimarket_pin_carries_the_onex_setup_fix() -> None:
     }
     pinned = Version(next(iter(pins["omnimarket"].specifier)).version)
     assert pinned >= ONEX_SETUP_FIX_RELEASE, pinned
+
+
+# omnimarket 0.4.327 is the first release in which typing in the setup key or
+# URL field no longer crashes the TUI (OMN-26613, omnimarket#6735); a customer
+# install pinned below it gets the crash.
+SETUP_FIELD_CRASH_FIX_RELEASE = Version("0.4.327")
+
+
+@pytest.mark.unit
+def test_omnimarket_pin_carries_the_setup_field_crash_fix() -> None:
+    dependencies = _project()["dependencies"]
+    assert isinstance(dependencies, list)
+    pins = {
+        Requirement(str(item)).name: Requirement(str(item)) for item in dependencies
+    }
+    pinned = Version(next(iter(pins["omnimarket"].specifier)).version)
+    assert pinned >= SETUP_FIELD_CRASH_FIX_RELEASE, pinned
 
 
 @pytest.mark.unit

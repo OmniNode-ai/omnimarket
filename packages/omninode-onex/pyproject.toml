@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omninode-onex"
-version = "0.0.1.post1"
+version = "0.0.1.post2"
 description = "Installs the onex command line for customers, pinning every OmniNode distribution it installs exactly."
 readme = { text = "The OmniNode onex command line for customers. Install it with `uv tool install --python 3.12 omninode-onex`; it carries no code of its own, installs omnibase-core, omnibase-infra and omnimarket at exactly the versions it pins, and puts one command on your PATH: onex.", content-type = "text/markdown" }
 authors = [{ name = "OmniNode.ai", email = "contact@omninode.ai" }]
@@ -22,7 +22,7 @@ dependencies = [
     "omnibase-core==0.47.76",
     "omnibase-infra==0.38.79",
     "omnibase-spi==0.23.16",
-    "omnimarket==0.4.324",
+    "omnimarket==0.4.327",
     "omninode-memory==0.18.16",
 ]
 
