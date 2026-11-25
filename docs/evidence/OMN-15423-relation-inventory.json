@@ -9011,7 +9011,7 @@
         "node_projection_overlay_store"
       ],
       "authoritative_sources": [
-        "src/omnimarket/nodes/node_projection_overlay_store/migrations/0002_overlay_store_revision_provenance_audit.sql"
+        "src/omnimarket/nodes/node_projection_overlay_store/migrations/0003_overlay_store_revision_provenance_audit.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "contract.yaml -> db_io.db_tables schema",
@@ -9061,7 +9061,7 @@
         "node_projection_overlay_store"
       ],
       "authoritative_sources": [
-        "src/omnimarket/nodes/node_projection_overlay_store/migrations/0002_overlay_store_revision_provenance_audit.sql"
+        "src/omnimarket/nodes/node_projection_overlay_store/migrations/0003_overlay_store_revision_provenance_audit.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "contract.yaml -> db_io.db_tables schema",
@@ -9109,7 +9109,7 @@
         "node_projection_overlay_store"
       ],
       "authoritative_sources": [
-        "src/omnimarket/nodes/node_projection_overlay_store/migrations/0002_overlay_store_revision_provenance_audit.sql"
+        "src/omnimarket/nodes/node_projection_overlay_store/migrations/0003_overlay_store_revision_provenance_audit.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "contract.yaml -> db_io.db_tables schema",
@@ -9157,7 +9157,7 @@
         "node_projection_overlay_store"
       ],
       "authoritative_sources": [
-        "src/omnimarket/nodes/node_projection_overlay_store/migrations/0002_overlay_store_revision_provenance_audit.sql"
+        "src/omnimarket/nodes/node_projection_overlay_store/migrations/0003_overlay_store_revision_provenance_audit.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "contract.yaml -> db_io.db_tables schema",

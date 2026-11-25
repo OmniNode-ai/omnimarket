@@ -96,3 +96,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/test_omn26635_overlay_store_migration_vendor_parity.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26635-infra-pin-records-current
+  description: 'The infra pin move to dev-20261125090037-c2bc2ccf8f10 is recorded in the pin tests (the lock names the build, INFRA_CORE_TAGS carries its core tag) and the checked-in relation inventory is regenerated from the migrations that pin vendors. This binds no criterion by itself.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_infra_pin_aa87c2dd6abe_work_contracts_omn23865.py tests/ci/test_sibling_core_pin_pair_omn17427.py tests/unit/scripts/test_application_relation_inventory.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
