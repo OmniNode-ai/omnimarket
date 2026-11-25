@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Result model for ``node_agent_message_effect``."""
+"""Result model shared by ``node_agent_message_effect`` and its client."""
 
 from __future__ import annotations
 

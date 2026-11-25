@@ -3,12 +3,14 @@
 """The dev identity provision node's command and result (OMN-24115).
 
 The result carries names and ids only: never a token, a secret or a password, and never the response's
-``bootstrap_token``.
+``bootstrap_token``. A bound run also names the audience and the claims it read back from the token (``token_audience``,
+``claims_verified``), never the token.
 """
 
 from __future__ import annotations
 
 from enum import StrEnum
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
@@ -35,6 +37,12 @@ class EnumDevIdentityOutcome(StrEnum):
     USER_ABSENT = "user_absent"
     USER_DELETED = "user_deleted"
     USER_DELETE_FAILED = "user_delete_failed"
+    BOUND = "bound"
+    TENANT_NOT_FOUND = "tenant_not_found"
+    TENANT_NOT_ACTIVE = "tenant_not_active"
+    TENANT_BINDING_UNCONFIGURED = "tenant_binding_unconfigured"
+    USER_ATTRIBUTES_FAILED = "user_attributes_failed"
+    TOKEN_CLAIMS_MISMATCH = "token_claims_mismatch"
 
 
 class EnumDevIdentityCleanup(StrEnum):
@@ -61,6 +69,10 @@ class ModelDevIdentityProvisionCommand(BaseModel):
     reads one named user (``write`` false) and ``delete_user`` deletes one named user and reads it gone (``write``
     true); both need ``username``, exclude each other, and a delete refuses the overlay user and every protected
     username.
+
+    ``tenant_id`` (OMN-26476) binds the named user to that EXISTING tenant instead of creating a probe tenant: the run reads
+    the tenant over the bus, sets the user's tenant attributes and reads the audience and tenant claims back from the
+    token the user signs in with. It needs a username and a write, and excludes the lookup and delete verbs.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -75,6 +87,7 @@ class ModelDevIdentityProvisionCommand(BaseModel):
     disposable: bool = False
     lookup_user: bool = False
     delete_user: bool = False
+    tenant_id: UUID | None = None
 
     @model_validator(mode="after")
     def _user_verbs_name_one_user(self) -> ModelDevIdentityProvisionCommand:
@@ -86,6 +99,15 @@ class ModelDevIdentityProvisionCommand(BaseModel):
             raise ValueError("lookup_user reads only: write must be false")
         if self.delete_user and not self.write:
             raise ValueError("delete_user writes: write must be true")
+        if self.tenant_id is not None:
+            if self.lookup_user or self.delete_user:
+                raise ValueError(
+                    "tenant_id binds a user: it excludes lookup_user and delete_user"
+                )
+            if not self.username:
+                raise ValueError("tenant_id needs a username to bind")
+            if not self.write:
+                raise ValueError("tenant_id writes: write must be true")
         return self
 
 
@@ -105,6 +127,8 @@ class ModelDevIdentityProvisionResult(BaseModel):
     user_id: str | None = None
     cleanup: EnumDevIdentityCleanup | None = None
     expected_secret: str | None = None
+    token_audience: str | None = None
+    claims_verified: list[str] | None = None
 
 
 __all__ = [

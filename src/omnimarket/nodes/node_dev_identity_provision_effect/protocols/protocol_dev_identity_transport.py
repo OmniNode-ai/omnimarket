@@ -22,6 +22,8 @@ from omnimarket.models.secret_store.model_generate_key_result import (
 from omnimarket.nodes.node_dev_identity_provision_effect.models.model_tenant_provision_wire import (
     ModelTenantProvisionAnswer,
     ModelTenantProvisionRequest,
+    ModelTenantReadAnswer,
+    ModelTenantReadRequest,
 )
 
 
@@ -54,9 +56,17 @@ class ProtocolTenantProvisioner(Protocol):
     ) -> ModelTenantProvisionAnswer: ...
 
 
+@runtime_checkable
+class ProtocolTenantReader(Protocol):
+    """The runtime's tenant read command: one request, its typed answer, or ``TenantProvisionUnavailableError``."""
+
+    async def read(self, request: ModelTenantReadRequest) -> ModelTenantReadAnswer: ...
+
+
 __all__ = [
     "ProtocolDevIdentityTransport",
     "ProtocolKeyGenerator",
     "ProtocolTenantProvisioner",
+    "ProtocolTenantReader",
     "TenantProvisionUnavailableError",
 ]
