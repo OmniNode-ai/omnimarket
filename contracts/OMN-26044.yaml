@@ -22,6 +22,11 @@ requirements:
     acceptance:
       - id: AC6
         statement: "AC6: the C17 collector installs the guide's own line in a clean tool environment and its observation grades guides_lead_with_local_path, clean_install_named_interpreter, parameter_audit and broken_command_named_error true on the published install, and false for a run that did not take the operator switch -- falsifier: tests/nodes/node_delegation_check_probe_effect/test_c17_surface_collector.py fails any test, or a collector run on a clean install of the published packages grades a clause false"
+  - id: req-omn26044-c30-dashboard-collector
+    statement: The delegation check probe node walks the customer path to the local dashboard for C30 on a clean profile (install, local init, the model declared, onex dashboard start, one delegation, a Bearer read on loopback with the token the credential store holds) and grades it. A bare dashboard, whose token nobody can learn, reads PRECONDITION-ABSENT with the reason; a started one passes; a wrong token fails; no token value reaches an observation, a clause or a run record.
+    acceptance:
+      - id: AC7
+        statement: "AC7: C30 reads PRECONDITION-ABSENT with the reason for a bare dashboard, PASS for a dashboard started with onex dashboard start whose run is on the /projections read made with the store token, and FAIL for a wrong token -- falsifier: tests/nodes/node_delegation_check_probe_effect/test_c30_dashboard_collector.py fails any test, or the token value appears in a record"
 evidence_requirements:
   - kind: tests
     description: The customer-surface test fails at origin/dev and passes at the pushed head.
@@ -86,4 +91,12 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26044-c17 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_check_probe_effect -q --no-cov
+        cwd: .
+  - id: dod-omn26044-c30-dashboard-collector-tests
+    description: "AC7: the grader (bare dashboard PRECONDITION-ABSENT with its reason, a started one PASS, a wrong or absent token FAIL, a group-readable store FAIL, a failed start or setup FAIL), the in-machine driver record (never carries the token), the collector over a fake runner (clean profile, failed install reads FAIL, no record reads absent) and the handler (a machine with a dashboard collector adds the clauses to C30, one without keeps the gateway reading)."
+    source: manual
+    binds_ac: [AC7]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_c30_dashboard_collector.py -q --no-cov -n 0 -p no:randomly
         cwd: .
