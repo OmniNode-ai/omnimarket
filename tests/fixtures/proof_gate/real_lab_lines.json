@@ -1,0 +1,28 @@
+{
+ "draft": [
+  {
+   "pr": "census",
+   "why": "census tick printed CENSUS-PUBLISHED published=false, exit 69, no record published; another command exited 0",
+   "line": "Lab: host h051 (placed by onex_lab_run.py --via bus, lane censusrep-0145), sha 43a86080abfced2b16a01508dcff73facdb8e8fe, command `pytest tests/unit/nodes/node_work_ledger_file_census_effect tests/unit/contracts tests/nodes/node_host_job_claim_compute tests/test_golden_chain_emit_daemon.py tests/test_capture_topic_registry_contract.py tests/test_golden_chain_emitter_wiring.py` plus the runtime sweep import check and check_node_metadata_dependencies, exit 0, 518 passed. Host h053 at the same sha: the tick (python -m omnimarket.nodes.node_work_ledger_file_census_effect.runtime_file_census_tick --omni-home <registry root> --state-dir <scratch>) read total=202 runtime=28 with omnibase_compat absent, printed CENSUS-PUBLISHED published=false partial=true basis=no-previous-record, exit 69; the dev broker refused the write with TopicAuthorizationFailedError for the new topic, so no event could be read back from the bus yet (read-back of the event pending the ACL and overlay)."
+  },
+  {
+   "pr": "hook-timing",
+   "why": "its own named test within_half_budget FAILED at 240 s on h202 although other commands passed",
+   "line": "Lab: head=aea8fe743e90b047ad7c35608a859ba1bd77df77 hosts=h053,h202,h051 lane=hook2071-0215 command=onex_lab_run.py --via bus at the pushed branch, pytest test_hook_preflight.py: whole file 73 passed in 299.41 s on h053; -k lane_kind_model_within_half_budget plus lane_kind_model_same_tests_same_budget 2 passed in 63.07 s on h053; the same -k lane_kind_model run on h202 had 3 passed and within_half_budget FAILED at 240 s (hook entry over 240 s on h202, 241.45 s run); hook-preflight on a staged .pre-commit-config.yaml change on h051: lane-kind-model=126.948s (round 1) and 161.71s (round 2), both rounds ended exit 4 continue, round 3 exit 3 BLOCKED hook=remote-lane-github-budget (unrelated hook, tests/test_pr_handoff_reads_node.py inbox test failed), the lane-kind-model hook did not fail; known bad pytest test_lane_brief.py::test_no_such_test_id_hook2071 refused exit 4 (not found) and known good -k kind collected 14/128 exit 0, on h053; staged change reset, nothing committed or pushed"
+  }
+ ],
+ "proven": [
+  {
+   "pr": "docs-checkers",
+   "line": "Lab: host h051, lane kbapi-1410, head 297e324a90e66923b5fbc9df38dd1145a528f70b, command: uv run python scripts/validate.py and scripts/check_*.py through onex_lab_run (bus), work units lw-17638fa6b5f6436e and lw-65c7d03e9eca44b3. Observed: validate.py printed All checks passed, exit 0; both checkers exit 0. Documents only, so nothing is installed."
+  },
+  {
+   "pr": "docs-register",
+   "line": "Lab: host h051, lane kbapi-1410, work unit lw-646cddbe7e164199 at head 8d4f64345ed7b2bcfcb9334e2d6220df369a36d7, command: every scripts/check_*.py in the repository followed by scripts/scrub_register.py --check, through onex_lab_run (bus). Observed: all 14 checkers exit 0 and the register check exits 0; exit code of the unit 0. Documents only, so nothing is installed."
+  },
+  {
+   "pr": "deploy-agent-suite",
+   "line": "- Lab: deploy-agent unit suite on h051 at 1ce2b423c916c5e6c1bfa0069f3c527607deea01, 2834 passed, exit 0, work unit lw-463f2c54b13e41ad."
+  }
+ ]
+}
