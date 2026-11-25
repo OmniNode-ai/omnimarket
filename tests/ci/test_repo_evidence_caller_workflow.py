@@ -920,3 +920,24 @@ def test_no_repo_contract_hides_a_pytest_run_behind_uv_run_frozen_command() -> N
                 ):
                     offenders.append(f"{path.name}:{item.get('id')}")
     assert not offenders, "\n".join(offenders)
+
+
+@pytest.mark.parametrize("ticket", ["OMN-22621", "OMN-22623"])
+def test_accepted_pytest_bindings_use_test_passes(ticket: str) -> None:
+    """OMN-19998: the pytest runs that bind OMN-22621 AC1 and OMN-22623 AC2 are test_passes.
+
+    A `command` check binds no test file, so the verifier cannot tie the
+    criterion to the test that proves it.
+    """
+    path = REPO_ROOT / "contracts" / f"{ticket}.yaml"
+    contract = yaml.load(path.read_text(encoding="utf-8"), Loader=_CONTRACT_LOADER)
+    wanted = {"OMN-22621": "AC1", "OMN-22623": "AC2"}[ticket]
+    offenders = [
+        str(item.get("id"))
+        for item in contract.get("dod_evidence") or []
+        if wanted in (item.get("binds_ac") or [])
+        for check in item.get("checks") or []
+        if "pytest" in str(check.get("check_value", ""))
+        and check.get("check_type") != "test_passes"
+    ]
+    assert not offenders, "\n".join(offenders)

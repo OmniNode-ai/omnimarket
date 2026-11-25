@@ -17,6 +17,7 @@ class EnumProofAnswer(StrEnum):
 class EnumProofCode(StrEnum):
     PROOF_UNREADABLE = "proof_unreadable"
     LAB_LINE_MISSING = "lab_line_missing"
+    LAB_RUN_FAILED = "lab_run_failed"
     LAB_PROOF_OTHER_CHANGE = "lab_proof_other_change"
     KNOWN_GOOD_MISSING = "known_good_missing"
     KNOWN_BAD_MISSING = "known_bad_missing"

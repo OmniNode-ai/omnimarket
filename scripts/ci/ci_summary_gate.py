@@ -736,7 +736,9 @@ def dedup_latest(
         conclusion = raw.get("conclusion")
         current = JobState(
             name=name,
-            status=str(raw.get("status") or ""),
+            # OMN-26563: a row whose conclusion is set is done, even while the
+            # API still reads status in_progress beside it.
+            status=str(raw.get("status") or "") if conclusion is None else "completed",
             conclusion=None if conclusion is None else str(conclusion),
             run_attempt=attempt,
             completed_at=(

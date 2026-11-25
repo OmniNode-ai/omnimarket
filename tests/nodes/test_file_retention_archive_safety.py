@@ -14,6 +14,7 @@ import pytest
 from omnimarket.nodes.node_retention_cleanup.handlers import (
     handler_file_retention as mod,
 )
+from tests.ci.lint_jobs import lint_steps
 
 NOW = dt.datetime(2026, 10, 26, tzinfo=dt.UTC)
 
@@ -264,4 +265,4 @@ def test_safety_check_is_wired_in_hook_and_ci():
         "src/omnimarket/nodes/node_retention_cleanup/handlers/handler_file_retention.py",
     )
     ci = yaml.safe_load((root / ".github/workflows/ci.yml").read_text())
-    assert any(target in s.get("run", "") for s in ci["jobs"]["lint"]["steps"])
+    assert any(target in s.get("run", "") for s in lint_steps(ci))
