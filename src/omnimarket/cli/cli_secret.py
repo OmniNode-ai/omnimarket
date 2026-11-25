@@ -638,12 +638,14 @@ def revoke_tenant_key(
         )
     except CredentialStoreDeleteRejectedError as exc:
         if store_choice == "central":
-            raise click.ClickException(
+            click.echo(
                 "credential-revoked was published, so the credential is revoked "
-                "and no longer routes; the central tenant store is create-only, "
-                "so its stored value stays there until the store's operator "
-                "removes it. A retry cannot remove it."
-            ) from exc
+                "and no longer routes. The stored value cannot be deleted from "
+                "here: the central tenant store is create-only, so it stays "
+                "there until the store's operator removes it. A retry cannot "
+                "remove it."
+            )
+            return
         raise click.ClickException(str(exc)) from exc
     except CredentialStoreError as exc:
         raise click.ClickException(str(exc)) from exc

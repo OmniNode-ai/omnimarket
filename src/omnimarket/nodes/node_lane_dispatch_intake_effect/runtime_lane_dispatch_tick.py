@@ -18,6 +18,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from omnimarket.handlers.model_binding_reader import model_binding
 from omnimarket.nodes.node_lane_dispatch_intake_effect.handlers.adapter_lane_dispatch import (
     BusRowWriter,
     RemoteLanePlacer,
@@ -101,7 +102,12 @@ def main(argv: list[str] | None = None) -> int:
     plugin_root = Path(os.environ[PLUGIN_ROOT_ENV])
     ledger = args.registry_root / NOMINAL_LEDGER
     handler = HandlerLaneDispatchIntake(
-        ScriptBriefBuilder(plugin_root, args.state_dir / "briefs", ledger),
+        ScriptBriefBuilder(
+            plugin_root,
+            args.state_dir / "briefs",
+            ledger,
+            model=model_binding("lane_dispatch_brief_model"),
+        ),
         RemoteLanePlacer(
             plugin_root / RUNNER_RELATIVE,
             os.environ.get("ONEX_LANE_DISPATCH_PARENT", "labdispatch"),
