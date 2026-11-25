@@ -37,6 +37,7 @@ from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
 from omnimarket.handlers.rules_overlay_root_declared import declared_overlay_root
 from omnimarket.handlers.rules_unit_roots import (
+    UnitProjectWorktreeError,
     UnitRootPinnedError,
     UnitRootRefusedError,
     pinned_plugin_cache_version,
@@ -469,7 +470,34 @@ class HandlerRegistryUnits:
         # OMN-26549: a unit that runs a worktree dies when the worktree is removed (uv exits 2 on every fire).
         if under_worktrees(str(project)):
             raise UnitRootRefusedError(request.unit, [str(project)])
+        # A lane's tree outside omni_worktrees (a remote lane's run directory) is removed the same way: the
+        # silent-failure alarm unit on a lab host died on 2026-11-16 from one, so git is asked, not the path.
+        if self.is_linked_worktree(project):
+            raise UnitProjectWorktreeError(request.unit, str(project))
         return project, project.resolve() == canonical.resolve()
+
+    def is_linked_worktree(self, project: Path) -> bool:
+        """True when ``project`` is a linked worktree: its git directory is not the common one of its repository.
+
+        A path that is not a git checkout is not one; ``checkout_revision`` refuses it with its own reason.
+        """
+        found = self.run(
+            [
+                "git",
+                "-C",
+                str(project),
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-dir",
+                "--git-common-dir",
+            ]
+        )
+        directories = found.stdout.split()
+        return (
+            found.returncode == 0
+            and len(directories) == 2
+            and Path(directories[0]).resolve() != Path(directories[1]).resolve()
+        )
 
     def checkout_revision(
         self, project: Path, unit: dict[str, Any], expected: str
@@ -531,6 +559,25 @@ class HandlerRegistryUnits:
                     f"{name} names {left.group(0)}, which this request does not set"
                 )
             filled[str(name)] = request.path_overrides.get(str(name), text)
+        for name, tails in (unit.get("environment_append_roots") or {}).items():
+            if str(name) not in filled:
+                raise ValueError(
+                    f"{request.unit} appends roots to {name}, which it does not declare"
+                )
+            if str(name) in request.path_overrides:
+                continue
+            appended: list[str] = []
+            for tail in tails:
+                text = str(tail)
+                for key, value in values.items():
+                    text = text.replace("{" + key + "}", value)
+                left = PLACEHOLDER.search(text)
+                if left is not None:
+                    raise ValueError(
+                        f"{name} appends {left.group(0)}, which this request does not set"
+                    )
+                appended.append(text)
+            filled[str(name)] = os.pathsep.join([filled[str(name)], *appended])
         for name, field in (unit.get("environment_inputs") or {}).items():
             if not NAME.fullmatch(str(name)):
                 raise ValueError(f"invalid unit environment name {name!r}")

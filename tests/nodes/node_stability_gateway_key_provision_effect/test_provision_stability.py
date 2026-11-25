@@ -119,6 +119,7 @@ def test_result_model_has_no_field_that_can_hold_a_value() -> None:
         "key_name",
         "secret_folder",
         "secret_key",
+        "expires_at",
     }
 
 
