@@ -127,6 +127,7 @@ class ProtocolRowsReader(Protocol):
         until: datetime | None = None,
         *,
         kinds: tuple[str, ...] = ...,
+        timeout_s: float | None = ...,
     ) -> tuple[str, ...]: ...
 
 
@@ -148,6 +149,7 @@ def read_ledger(
     reader = str(io["reader"])
     locator = f"bus rows reader {reader}"
     history = timedelta(days=int(io["hold_history_days"]))
+    timeout = float(io["read_timeout_seconds"])
     hold_from = max(
         generated_at - history,
         clock().astimezone(UTC)
@@ -155,8 +157,13 @@ def read_ledger(
         + timedelta(seconds=int(io["hold_floor_margin_seconds"])),
     )
     try:
-        window = rows_reader(reader, keep_from)
-        holds = rows_reader(reader, hold_from, kinds=tuple(sorted(_KEEP_ALWAYS)))
+        window = rows_reader(reader, keep_from, timeout_s=timeout)
+        holds = rows_reader(
+            reader,
+            hold_from,
+            kinds=tuple(sorted(_KEEP_ALWAYS)),
+            timeout_s=timeout,
+        )
     except LedgerRowsUnreadableError as exc:
         out.reads.append(_unread(EnumSourceName.LEDGER, locator, str(exc)))
         return

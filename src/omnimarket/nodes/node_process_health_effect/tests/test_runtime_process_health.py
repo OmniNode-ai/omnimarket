@@ -42,6 +42,7 @@ class RecordedRows:
         until: datetime | None = None,
         *,
         kinds: tuple[str, ...] = (),
+        timeout_s: float | None = None,
     ) -> tuple[str, ...]:
         self.calls.append((reader, since, until, kinds))
         floor = since.strftime("%Y-%m-%dT%H:%M:%SZ")

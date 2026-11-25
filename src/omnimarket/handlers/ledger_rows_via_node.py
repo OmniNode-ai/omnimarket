@@ -48,7 +48,7 @@ def read_ledger_rows_range_via_node(
     *,
     kinds: tuple[str, ...] = (),
     runner: ProtocolRunner = _default_runner,
-    timeout_s: float = DEFAULT_TIMEOUT_S,
+    timeout_s: float | None = None,
 ) -> tuple[str, ...]:
     """The rows from ``since`` to ``until`` (inclusive; open means now) at any age the store holds.
 
@@ -61,7 +61,9 @@ def read_ledger_rows_range_via_node(
         argv += ["--until", _stamp(until)]
     for kind in kinds:
         argv += ["--kind", kind]
-    return _run(argv, reader, runner, timeout_s)
+    return _run(
+        argv, reader, runner, DEFAULT_TIMEOUT_S if timeout_s is None else timeout_s
+    )
 
 
 def _stamp(moment: datetime) -> str:

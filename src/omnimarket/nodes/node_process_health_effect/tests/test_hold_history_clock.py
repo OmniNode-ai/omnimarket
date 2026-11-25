@@ -33,6 +33,7 @@ class StoreFloorReader:
 
     def __init__(self) -> None:
         self.calls: list[datetime] = []
+        self.timeouts: list[float | None] = []
 
     def __call__(
         self,
@@ -41,7 +42,9 @@ class StoreFloorReader:
         until: datetime | None = None,
         *,
         kinds: tuple[str, ...] = (),
+        timeout_s: float | None = None,
     ) -> tuple[str, ...]:
+        self.timeouts.append(timeout_s)
         self.calls.append(since)
         if since < CLOCK - timedelta(days=STORE_DAYS):
             raise LedgerRowsUnreadableError(
@@ -90,3 +93,13 @@ def test_a_later_generated_at_keeps_its_own_full_declared_history() -> None:
         clock=lambda: CLOCK,
     )
     assert rows.calls[-1] == generated_at - timedelta(days=365)
+
+
+def test_each_range_read_runs_under_the_contract_declared_timeout() -> None:
+    rows = StoreFloorReader()
+    io = load_runtime_io()["ledger"]
+    read_ledger(
+        io, CLOCK - timedelta(days=63), CLOCK, Sources(), rows, clock=lambda: CLOCK
+    )
+    assert io["read_timeout_seconds"] > 300
+    assert rows.timeouts == [float(io["read_timeout_seconds"])] * 2

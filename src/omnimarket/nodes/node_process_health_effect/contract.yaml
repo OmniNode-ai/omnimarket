@@ -66,6 +66,9 @@ runtime_io:
     # before it starts this much inside it instead, so a report generated earlier than the clock
     # (or a loader that starts a moment later) is never refused range-wider-than-store.
     hold_floor_margin_seconds: 3600
+    # A history range of the whole series window is some 500000 rows over the bus (202 to 317 seconds
+    # measured on a lab host); the rows loader subprocess is given this long, not the 300 second default.
+    read_timeout_seconds: 1800
   landing:
     dir_env_var: "LANDING_STATE_DIR"
     dir_default: "~/.local/state/omni/landing"
