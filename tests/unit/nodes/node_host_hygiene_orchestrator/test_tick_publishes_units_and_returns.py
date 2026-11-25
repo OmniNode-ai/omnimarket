@@ -138,7 +138,10 @@ def _handlers(
 ]:
     overlay = _overlay()
     pending = PendingHostHygieneRuns()
-    clock = lambda: T0 + dt.timedelta(seconds=5)  # noqa: E731
+
+    def clock() -> dt.datetime:
+        return T0 + dt.timedelta(seconds=5)
+
     common: dict[str, Any] = {
         "gate": ScheduleGate(NODE_NAME, declaration=overlay),
         "store": _store_under_pressure(),

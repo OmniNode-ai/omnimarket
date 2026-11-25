@@ -38,6 +38,9 @@ from omnimarket.nodes.node_host_hygiene_orchestrator.handlers import (
 from omnimarket.nodes.node_host_hygiene_orchestrator.handlers import (
     handler_host_hygiene_run_requested as run_requested_module,
 )
+from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.pending_runs import (
+    PENDING_HOST_HYGIENE_RUNS,
+)
 from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.sender_in_memory import (
     InMemoryHostHygieneSender,
 )
@@ -60,9 +63,6 @@ RUN_TOPIC, SCHEDULE_TOPIC = (
     topic
     for topic in CONTRACT["event_bus"]["publish_topics"]
     if "lab-work-unit-requested" not in topic
-)
-from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.pending_runs import (  # noqa: E402
-    PENDING_HOST_HYGIENE_RUNS,
 )
 
 OVERLAY = yaml.safe_load((NODE_DIR / "overlays" / "in_memory.yaml").read_text())
