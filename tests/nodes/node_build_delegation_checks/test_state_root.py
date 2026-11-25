@@ -193,10 +193,12 @@ def test_a_permission_error_on_the_state_root_is_refused_by_name_not_raised(
     _green, red = _shas(home)
     real_mkdir = Path.mkdir
 
-    def deny(self: Path, *args: object, **kwargs: object) -> None:
+    def deny(
+        self: Path, mode: int = 0o777, parents: bool = False, exist_ok: bool = False
+    ) -> None:
         if state in self.parents or self == state:
             raise PermissionError(13, "Permission denied", str(self))
-        real_mkdir(self, *args, **kwargs)  # type: ignore[arg-type]
+        real_mkdir(self, mode, parents, exist_ok)
 
     monkeypatch.setattr(Path, "mkdir", deny)
 
