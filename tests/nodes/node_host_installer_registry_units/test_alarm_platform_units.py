@@ -129,7 +129,10 @@ def test_linux_host_dry_run_renders_the_service_timer_and_configuration(
     assert result.exit_code == 0, result.stderr
     assert "[Timer]" in result.rendered
     assert "<plist" not in result.rendered
-    assert json.loads(result.config)["ledger_lock"].endswith("/.venv/bin/onex-ledger")
+    document = json.loads(result.config)
+    assert document["registry_root"] == str(tmp_path / "omni")
+    assert "ledger_lock" not in document
+    assert document["python"].endswith("/.venv/bin/python")
     assert run.commands("launchctl") == []
     assert run.commands("systemctl") == []
     assert not (tmp_path / "home/.config/systemd/user").exists(), (
