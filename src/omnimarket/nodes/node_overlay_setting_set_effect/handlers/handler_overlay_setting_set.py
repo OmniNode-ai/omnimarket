@@ -21,14 +21,14 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel, JsonValue, ValidationError
 
+from omnimarket.events.overlay_setting_audit import (
+    ModelOverlaySettingAudit,
+)
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.overlay_store.setting_paths import escape_key
 from omnimarket.models.overlay_store import (
     ModelOverlaySettingRecord,
     document_digest,
-)
-from omnimarket.nodes.node_overlay_setting_set_effect.models.model_overlay_setting_audit import (
-    ModelOverlaySettingAudit,
 )
 from omnimarket.nodes.node_overlay_setting_set_effect.models.model_overlay_setting_set_request import (
     ModelOverlaySettingSetRequest,

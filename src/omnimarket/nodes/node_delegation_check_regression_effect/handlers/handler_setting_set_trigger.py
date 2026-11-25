@@ -13,6 +13,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import UTC, datetime
 
+from omnimarket.events.overlay_setting_audit import (
+    ModelOverlaySettingAudit,
+)
 from omnimarket.nodes.node_delegation_check_regression_effect.handlers.handler_check_regression import (
     HandlerCheckRegression,
 )
@@ -28,9 +31,6 @@ from omnimarket.nodes.node_delegation_check_regression_effect.protocols import (
     ProtocolAlarmDelivery,
     ProtocolCheckHistory,
     ProtocolCheckRunner,
-)
-from omnimarket.nodes.node_overlay_setting_set_effect.models.model_overlay_setting_audit import (
-    ModelOverlaySettingAudit,
 )
 
 

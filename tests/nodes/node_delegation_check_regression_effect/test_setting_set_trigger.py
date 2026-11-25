@@ -23,6 +23,9 @@ from omnibase_infra.runtime.auto_wiring import handler_wiring
 from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts_from_paths
 from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
 
+from omnimarket.events.overlay_setting_audit import (
+    ModelOverlaySettingAudit,
+)
 from omnimarket.models.lab_alarm_delivery import (
     EnumDeliveryOutcome,
     EnumDeliveryStep,
@@ -42,9 +45,6 @@ from omnimarket.nodes.node_delegation_check_regression_effect.models.model_check
 from omnimarket.nodes.node_delegation_check_regression_effect.overlay import (
     DEFAULTS_PATH,
     load_settings,
-)
-from omnimarket.nodes.node_overlay_setting_set_effect.models.model_overlay_setting_audit import (
-    ModelOverlaySettingAudit,
 )
 
 pytestmark = pytest.mark.unit

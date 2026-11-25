@@ -9,10 +9,10 @@ from typing import Any
 
 import pytest
 
-from omnimarket.models.overlay_store import ModelOverlayStoreRecord
-from omnimarket.nodes.node_overlay_setting_set_effect.models.model_overlay_setting_audit import (
+from omnimarket.events.overlay_setting_audit import (
     ModelOverlaySettingAudit,
 )
+from omnimarket.models.overlay_store import ModelOverlayStoreRecord
 from omnimarket.nodes.node_overlay_setting_set_effect.models.model_overlay_setting_set_request import (
     ModelOverlaySettingSetRequest,
 )
