@@ -35,6 +35,7 @@ import contextlib
 import inspect
 import json
 import os
+import socket
 import sys
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, date, datetime
@@ -124,6 +125,7 @@ from omnimarket.nodes.node_secret_store_effect.models import (
 from omnimarket.projection.credential_publisher import (
     CredentialKeyRefusedError,
     CredentialPlanUndeterminedError,
+    CredentialStoreDeleteRejectedError,
     CredentialStoreError,
     ModelInferenceCredentialCreateRequest,
     ProtocolCredentialEventBus,
@@ -313,9 +315,38 @@ def _environment_names_broker() -> bool:
     return bool(Settings().get_effective_kafka_bootstrap_servers())
 
 
+def _registering_host() -> str | None:
+    """This machine's row name in the lab host table, or ``None`` (OMN-24562).
+
+    The declared lane host first, else the short hostname matched to a row's
+    name or target. Used only to find the publish lane; never to bind a key.
+    """
+    table = _lab_host_table()
+    if table is None:
+        return None
+    try:
+        rows = _lab_host_rows(table)
+    except click.ClickException:
+        return None
+    names = {name for name, _target in rows}
+    for env in _LANE_HOST_ENVS:
+        declared = os.environ.get(env, "").strip()
+        if declared in names:
+            return declared
+    hostname = socket.gethostname().split(".")[0]
+    matches = [name for name, target in rows if hostname in (name, target)]
+    return matches[0] if len(matches) == 1 else None
+
+
 def _lab_host_bus_lane(bound_host: str | None) -> str | None:
-    """The bound host's declared ``ledger_bus_lane`` in the lab host table."""
-    return lane_reader.lab_host_bus_lane(_lab_host_table(), bound_host)
+    """The ``ledger_bus_lane`` of the bound host, else of this machine's own row.
+
+    An unbound key (the default, OMN-24562) still publishes from this machine,
+    so with no ``--host`` the lane comes from the registering machine's row.
+    """
+    return lane_reader.lab_host_bus_lane(
+        _lab_host_table(), bound_host or _registering_host()
+    )
 
 
 async def _register_on_declared_bus[T](
@@ -364,6 +395,10 @@ async def _register_on_declared_bus[T](
 #: the lab placement read). Without it this machine is off the lab and a key
 #: is registered with no host binding.
 _LAB_HOSTS_ENV = "ONEX_LAB_RUN_HOSTS"
+#: A remote lane declares its host because its namespace may not carry the
+#: host's own name (the same two variables ``onex delegate`` reads). Read only to
+#: find the bus lane an unbound key publishes on; it never binds the key.
+_LANE_HOST_ENVS = ("ONEX_LANE_HOST", "ONEX_REMOTE_LANE_HOST")
 
 
 def _lab_host_table() -> Path | None:
@@ -601,6 +636,15 @@ def revoke_tenant_key(
                 lane=_lab_host_bus_lane(lane_host),
             )
         )
+    except CredentialStoreDeleteRejectedError as exc:
+        if store_choice == "central":
+            raise click.ClickException(
+                "credential-revoked was published, so the credential is revoked "
+                "and no longer routes; the central tenant store is create-only, "
+                "so its stored value stays there until the store's operator "
+                "removes it. A retry cannot remove it."
+            ) from exc
+        raise click.ClickException(str(exc)) from exc
     except CredentialStoreError as exc:
         raise click.ClickException(str(exc)) from exc
     click.echo(response.model_dump_json())

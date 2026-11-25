@@ -85,3 +85,18 @@ def test_revoke_tenant_key_refused_publish_keeps_the_secret(
     assert result.exit_code != 0
     assert asyncio.run(stored.get_secret(_REF)) == _VALUE
     assert _VALUE not in result.output
+
+
+def test_central_revoke_says_the_central_store_is_create_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The central tenant store is create-only: a retry can never delete, so say so."""
+    bus = FakeBus()
+    monkeypatch.setattr(cli_secret, "_tenant_key_event_bus", lambda: bus)
+    monkeypatch.setattr(cli_secret, "_central_secret_handler", lambda: object())
+    result = _revoke("--store", "central")
+    assert result.exit_code != 0
+    assert len(bus.events) == 1
+    assert "create-only" in result.output
+    assert "Retry the revoke" not in result.output
+    assert "no longer routes" in result.output

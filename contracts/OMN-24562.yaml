@@ -91,7 +91,7 @@ dod_evidence:
   - AC5
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/cli/test_omn21012_register_tenant_key_host.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run pytest tests/unit/cli/test_omn21012_register_tenant_key_host.py tests/unit/cli/test_omn20910_register_tenant_key_lane_bus.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24562-ck3-refusal-text
   description: The lab-backend and house-key refusal text names its reason on the typed and boundary lines; INV-068 still refuses.

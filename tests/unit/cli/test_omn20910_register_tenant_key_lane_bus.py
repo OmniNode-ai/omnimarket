@@ -167,3 +167,30 @@ def test_an_unopenable_lane_is_refused_by_name(
     assert result.exit_code != 0
     assert "declared bus lane 'dev' could not be opened" in result.output
     assert _VALUE not in result.output
+
+
+def test_no_host_flag_stays_unbound_and_publishes_on_the_declared_host_lane(
+    lane_opens: tuple[list[str | None], FakeBus], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-24562: no binding by default, yet the publish still finds its lane."""
+    opened, bus = lane_opens
+    monkeypatch.setenv("ONEX_LANE_HOST", "h202")
+    result = _register()
+    assert result.exit_code == 0, result.output
+    assert opened == ["dev"]
+    assert json.loads(bus.events[0])["payload"]["bound_host"] is None
+    assert _VALUE not in result.output
+
+
+def test_no_host_flag_off_the_declared_table_keeps_the_publisher_refusal(
+    lane_opens: tuple[list[str | None], FakeBus], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    opened, _lane = lane_opens
+
+    def refuse() -> FakeBus:
+        raise RuntimeError("KAFKA_BOOTSTRAP_SERVERS (or KAFKA_BROKER) is required")
+
+    monkeypatch.setattr(credential_publisher, "_build_event_bus", refuse)
+    result = _register()
+    assert result.exit_code != 0
+    assert opened == []
