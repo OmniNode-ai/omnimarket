@@ -63,6 +63,12 @@ from omnimarket.handlers.projection_table_page_view import (
 from omnimarket.handlers.projection_table_page_view import (
     TablePageView as TablePageView,
 )
+from omnimarket.handlers.projection_window_instant import (
+    freshness_column_type,
+    log_undated_rows,
+    undated_rows_sql,
+    window_instant_sql,
+)
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.tenant_isolation import TENANT_GUC
 from omnimarket.projection.tenant_registry_resolution import (
@@ -345,47 +351,6 @@ def key_is_unique_per_row(
     return any(index and index <= physical for index in unique_keys)
 
 
-_TEXT_TYPES = ("text", "character varying", "character", "varchar", "bpchar")
-
-# An ISO-8601 instant, range-checked so the cast below cannot raise: a text
-# freshness column holds whatever its writer put there, and one malformed row
-# must not fail the read of every other row (OMN-21288). Every shape the cast
-# refuses is excluded here: a day the month lacks (Feb 30 and 31, day 31 of a
-# 30-day month, Feb 29 of a year that is not a leap year), year 0000, and a zone
-# offset past the +-15:59 the database accepts. Digits are [0-9], never \d, so a
-# non-ASCII digit under a Unicode locale cannot pass.
-_LEAP_YEAR = r"([0-9][0-9](0[48]|[2468][048]|[13579][26])|([02468][048]|[13579][26])00)"
-_ISO_INSTANT_PATTERN = (
-    rf"^(?!0000)(?!(?!{_LEAP_YEAR}-)[0-9]{{4}}-02-29)[0-9]{{4}}"
-    r"-(?!02-3|(04|06|09|11)-31)"
-    r"(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])"
-    r"[T ]([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9](\.[0-9]+)?)?"
-    r"(Z|[+-](0[0-9]|1[0-5])(:?[0-5][0-9])?)?$"
-)
-
-
-def is_text_type(column_type: str | None) -> bool:
-    """Whether a catalogue type (``format_type``) is a text type."""
-    return column_type is not None and column_type.lower().startswith(_TEXT_TYPES)
-
-
-def window_instant_sql(column: str, column_type: str | None) -> str:
-    """The SQL expression that reads a freshness column as an instant.
-
-    A timestamp column is its own instant. A text column (``metering_summary.as_of``
-    holds ISO-8601 text) is cast, and a value that is not an ISO-8601 instant is
-    NULL, so the comparison drops it from the window; the read names those rows
-    in ``window.undated_rows`` instead of failing (OMN-21288).
-    """
-    quoted = quote_identifier(column)
-    if not is_text_type(column_type):
-        return quoted
-    return (
-        f"(CASE WHEN {quoted} ~ '{_ISO_INSTANT_PATTERN}' "
-        f"THEN {quoted}::timestamptz END)"
-    )
-
-
 def build_window_query(
     cfg: ProjectionTableConfig,
     *,
@@ -478,7 +443,9 @@ def build_window_query(
                 status_code=422,
             )
         params.append(float(window_seconds))
-        window_instant = window_instant_sql(window_column, window_type)
+        window_instant = window_instant_sql(
+            quote_identifier(window_column), window_type
+        )
         where.append(
             f"{window_instant} >= "
             f"now() - (${len(params)}::double precision * interval '1 second')"
@@ -747,17 +714,7 @@ class TableRowSource:
         self, connection: asyncpg.Connection, cfg: ProjectionTableConfig
     ) -> str:
         assert cfg.cursor_column is not None
-        return await self._column_type(connection, cfg, cfg.cursor_column, "cursor")
-
-    async def _column_type(
-        self,
-        connection: asyncpg.Connection,
-        cfg: ProjectionTableConfig,
-        column: str,
-        role: str,
-    ) -> str:
-        """The catalogue type of one declared column, read once."""
-        key = (qualified_relation(cfg), column)
+        key = (qualified_relation(cfg), cfg.cursor_column)
         cached = self._column_types.get(key)
         if cached is not None:
             return cached
@@ -765,12 +722,12 @@ class TableRowSource:
             "SELECT format_type(atttypid, atttypmod) FROM pg_attribute "
             "WHERE attrelid = to_regclass($1) AND attname = $2 AND NOT attisdropped",
             key[0],
-            column.strip('"'),
+            cfg.cursor_column.strip('"'),
         )
         if not isinstance(found, str):
             raise ProjectionReadError(
                 "projection_column_missing",
-                f"{key[0]} has no {role} column {column!r}",
+                f"{key[0]} has no cursor column {cfg.cursor_column!r}",
             )
         self._column_types[key] = found
         return found
@@ -924,8 +881,8 @@ class TableRowSource:
                     else None
                 )
                 window_type = (
-                    await self._column_type(
-                        connection, cfg, cfg.freshness_column, "freshness"
+                    await freshness_column_type(
+                        connection, relation, cfg.freshness_column
                     )
                     if window_seconds is not None and cfg.freshness_column is not None
                     else None
@@ -966,49 +923,29 @@ class TableRowSource:
     async def undated_window_rows(
         self, cfg: ProjectionTableConfig, *, tenant_id: str | None
     ) -> int:
-        """How many rows a windowed read leaves out because their freshness
-        value is not an instant (NULL, or text that is not ISO-8601).
-
-        Zero for a freshness column that is itself a timestamp. A text
-        freshness column cannot be compared as time for these rows, so they
-        are counted and named here rather than dropped silently (OMN-21288).
-        """
-        if cfg.freshness_column is None:
+        """Rows a windowed read leaves out because the freshness value is no instant."""
+        if cfg.freshness_column is None or (cfg.tenant_column and tenant_id is None):
             return 0
-        pool = await self._pool(cfg)
         relation = qualified_relation(cfg)
-        params: list[Any] = []
-        tenant_where = ""
-        if cfg.tenant_column is not None:
-            if tenant_id is None:
-                return 0
-            params.append(tenant_id)
-            tenant_where = f" WHERE {quote_identifier(cfg.tenant_column)}::text = $1"
+        scope = (
+            f" WHERE {quote_identifier(cfg.tenant_column)}::text = $1"
+            if cfg.tenant_column
+            else ""
+        )
         try:
-            async with _tenant_scoped_read(pool, tenant_id) as connection:
-                column_type = await self._column_type(
-                    connection, cfg, cfg.freshness_column, "freshness"
+            async with _tenant_scoped_read(await self._pool(cfg), tenant_id) as conn:
+                kind = await freshness_column_type(conn, relation, cfg.freshness_column)
+                sql = undated_rows_sql(
+                    relation, quote_identifier(cfg.freshness_column), kind, scope
                 )
-                if not is_text_type(column_type):
-                    return 0
-                instant = window_instant_sql(cfg.freshness_column, column_type)
-                found = await connection.fetchval(
-                    f"SELECT count(*) FROM {relation}{tenant_where}"
-                    f"{' AND' if tenant_where else ' WHERE'} {instant} IS NULL",
-                    *params,
+                count = (
+                    int(await conn.fetchval(sql, *([tenant_id] if scope else [])) or 0)
+                    if sql
+                    else 0
                 )
-        except ProjectionReadError:
-            raise
         except (OSError, TimeoutError, asyncpg.PostgresError) as exc:
             raise _read_failure(cfg, relation, exc) from exc
-        count = int(found or 0)
-        if count:
-            log.warning(
-                "projection window read of %s leaves out %d row(s) whose %s is not an ISO-8601 instant",
-                relation,
-                count,
-                cfg.freshness_column,
-            )
+        log_undated_rows(relation, cfg.freshness_column, count)
         return count
 
     async def _newest_freshness(

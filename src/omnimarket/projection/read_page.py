@@ -30,7 +30,7 @@ from omnimarket.handlers.projection_read_page_ordering import (
 from omnimarket.handlers.projection_read_page_window import (
     InvalidWindowError,
     parse_window_seconds,
-    window_body,
+    window_page_body,
     window_read_kwargs,
 )
 from omnimarket.handlers.projection_serving import (
@@ -653,14 +653,7 @@ async def read_projection_page(
         "tenant": scope_tenant,
     }
     if window_seconds is not None:
-        counter = getattr(source, "undated_window_rows", None)
-        try:
-            undated = (
-                await counter(cfg, tenant_id=scope_tenant)
-                if counter is not None
-                else None
-            )
-        except ProjectionReadError as exc:
-            return ProjectionPage(exc.status_code, read_refusal(topic, exc))
-        body["window"] = window_body(window, window_seconds, len(all_rows), undated)
+        body["window"] = await window_page_body(
+            source, cfg, scope_tenant, window, window_seconds, len(all_rows)
+        )
     return ProjectionPage(200, body)

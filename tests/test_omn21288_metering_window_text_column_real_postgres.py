@@ -30,8 +30,8 @@ from omnimarket.projection.table_reader import TableRowSource
 from tests.test_omn21970_daily_and_cursor_real_postgres import (
     _ROLES_SQL,
     _Postgres,
-    postgres,  # noqa: F401  (module fixture)
 )
+from tests.test_omn21970_daily_and_cursor_real_postgres import postgres as postgres
 
 pytestmark = pytest.mark.integration
 
@@ -98,7 +98,7 @@ async def _window(pg: _Postgres, schema: str, window: str) -> dict[str, object]:
 
 @pytest.mark.asyncio
 async def test_window_reads_text_timestamps_and_names_undated_rows(
-    postgres: _Postgres,  # noqa: F811
+    postgres: _Postgres,
 ) -> None:
     now = datetime.now(UTC)
     ages_days = {"d0": 0.5, "d3": 3.0, "d6": 6.5, "d8": 8.0, "d20": 20.0, "d40": 40.0}
@@ -129,7 +129,7 @@ async def test_window_reads_text_timestamps_and_names_undated_rows(
 
 @pytest.mark.asyncio
 async def test_window_survives_values_that_match_the_shape_but_are_not_instants(
-    postgres: _Postgres,  # noqa: F811
+    postgres: _Postgres,
 ) -> None:
     """A text value that looks like an instant but is not one is undated, never a 503.
 
@@ -163,7 +163,7 @@ async def test_window_survives_values_that_match_the_shape_but_are_not_instants(
 
 @pytest.mark.asyncio
 async def test_pattern_admits_exactly_the_calendar_dates_the_cast_accepts(
-    postgres: _Postgres,  # noqa: F811
+    postgres: _Postgres,
 ) -> None:
     """Every MM-DD of every year in a span: the guarded cast never raises, and the
     pattern passes a date exactly when the calendar has it."""

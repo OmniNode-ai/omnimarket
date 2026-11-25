@@ -4,7 +4,10 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 
 class InvalidWindowError(ValueError):
@@ -54,3 +57,26 @@ def window_body(
     if undated_rows is not None:
         body["undated_rows"] = undated_rows
     return body
+
+
+async def window_page_body(
+    source: Any,
+    cfg: Any,
+    tenant_id: str | None,
+    window: str | None,
+    window_seconds: int | None,
+    rows_read: int,
+) -> dict[str, Any] | None:
+    """:func:`window_body` with the rows the source left out as no instant.
+
+    A source that cannot count them, or whose count fails after the page was
+    read, leaves ``undated_rows`` absent and says so in the log.
+    """
+    counter = getattr(source, "undated_window_rows", None)
+    undated = None
+    if counter is not None:
+        try:
+            undated = await counter(cfg, tenant_id=tenant_id)
+        except Exception as exc:  # the page was read; its count is advisory
+            log.warning("window undated-row count unavailable: %r", exc)
+    return window_body(window, window_seconds, rows_read, undated)
