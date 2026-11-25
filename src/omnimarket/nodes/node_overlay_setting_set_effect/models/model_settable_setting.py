@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import re
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 from omnimarket.models.overlay_store.model_overlay_store import OverlayId
 
@@ -28,6 +28,11 @@ class ModelSettableSetting(BaseModel):
     key: str = Field(min_length=1)
     path: str = Field(min_length=1)
     document_model: str = Field(min_length=1)
+    # The document a first record starts from when the store holds none of this overlay. Absent: the overlay's first
+    # record is not created through the store and a set on an empty store is refused.
+    first_document: dict[str, JsonValue] | None = None
+    # True: the value is the whole document (a mapping), not one key of it; each top-level key is marked as set.
+    whole_document: bool = False
 
     @model_validator(mode="after")
     def _placeholders_agree(self) -> ModelSettableSetting:

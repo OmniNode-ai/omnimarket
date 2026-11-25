@@ -44,6 +44,10 @@ class GitMergeSource:
         done = subprocess.run(
             [
                 "git",
+                # The runtime mounts the clone read-only under another owner, where git refuses it as dubious ownership; the
+                # clone is named safe for this one read only, never through a global or wildcard setting.
+                "-c",
+                f"safe.directory={self._clone}",
                 "-C",
                 str(self._clone),
                 "log",

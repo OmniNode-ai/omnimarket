@@ -31,6 +31,11 @@ class ModelProofGatePolicy(BaseModel):
 
     lab_line: str  # a regex; a line that matches is a Lab line
     sha: str  # a regex; a commit a Lab line names
+    lab_failed: str  # a regex; a clause that matches records a refused or failed run, or a result that is not proven
+    lab_clause_split: str  # a regex; a Lab line is read clause by clause, so one clause's pass never clears another's failure
+    lab_known_bad: str  # a regex; a clause naming the known-bad control: its refusal or failure is the control working
+    lab_known_good: str  # a regex; a clause naming the known-good control, which must itself carry no failure
+    lab_baseline: str  # a regex; a clause about the base or the state before the change: the red of a red-first proof
     gated_words: tuple[
         str, ...
     ]  # a changed non-test path holding one touches a grader, check, gate or judge
