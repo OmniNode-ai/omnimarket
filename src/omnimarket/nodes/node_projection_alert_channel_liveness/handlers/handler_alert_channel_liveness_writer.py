@@ -27,6 +27,10 @@ from typing import Any
 
 import yaml
 
+from omnimarket.enums.enum_projection_noop_reason import (
+    NOOP_REASON_KEY,
+    EnumProjectionNoopReason,
+)
 from omnimarket.models.model_projection_request import ModelProjectionRequest
 from omnimarket.nodes.node_projection_alert_channel_liveness.handlers.handler_projection_alert_channel_liveness import (
     HandlerProjectionAlertChannelLiveness,
@@ -134,16 +138,22 @@ class AlertChannelLivenessProjectionWriter(BaseProjectionRunner):
         """Project one runtime-dispatched message and report proven writes."""
         await self.db.connect()
         try:
-            written = await self._project_verdict(data, meta)
+            written, skipped = await self._fold_and_persist(data, meta)
         finally:
             await self._stop_producer()
             await self.db.close()
         # The runtime's write-path guard reads this exact row-count key. An
         # explicit zero is necessary for throttled ticks and empty DB results.
-        return {
+        outcome: dict[str, Any] = {
             "rows_upserted": 0 if written is None else 1,
             "alert_channel_liveness_rows": [] if written is None else [written],
         }
+        if skipped:
+            # A throttled tick carries no measurement: the zero is designed, so
+            # say so and the runtime logs it at INFO, not as a lost write. An
+            # empty database result is not attested and keeps the ERROR.
+            outcome[NOOP_REASON_KEY] = EnumProjectionNoopReason.SKIPPED.value
+        return outcome
 
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
@@ -156,6 +166,13 @@ class AlertChannelLivenessProjectionWriter(BaseProjectionRunner):
         self, data: dict[str, Any], meta: MessageMeta
     ) -> dict[str, Any] | None:
         """Fold and persist one measured verdict, or report no write."""
+        written, _ = await self._fold_and_persist(data, meta)
+        return written
+
+    async def _fold_and_persist(
+        self, data: dict[str, Any], meta: MessageMeta
+    ) -> tuple[dict[str, Any] | None, bool]:
+        """Return the written row and whether the fold skipped a throttled tick."""
         event = ModelAlertChannelLivenessResultWire.model_validate(data)
         result = self._fold.handle(
             ModelAlertChannelLivenessProjectionRequest.model_validate(
@@ -169,7 +186,7 @@ class AlertChannelLivenessProjectionWriter(BaseProjectionRunner):
         )
         row = result.row
         if row is None:
-            return None
+            return None, result.skipped
 
         projected_at = datetime.now(UTC)
         written = await self.db.execute(
@@ -186,7 +203,7 @@ class AlertChannelLivenessProjectionWriter(BaseProjectionRunner):
             projected_at,
         )
         if not written:
-            return None
+            return None, False
 
         accepted = dict(written[0])
         return {
@@ -198,7 +215,7 @@ class AlertChannelLivenessProjectionWriter(BaseProjectionRunner):
             "probe_interval_seconds": accepted["probe_interval_seconds"],
             "failure_surfaced": bool(accepted["failure_surfaced"]),
             "checked_at": accepted["checked_at"].isoformat(),
-        }
+        }, False
 
 
 __all__ = ["AlertChannelLivenessProjectionWriter"]
