@@ -42,3 +42,11 @@ def lint_job_with_step(
         if any(step.get("name") == step_name for step in job.get("steps", [])):
             return job
     return None
+
+
+def job_with_lint_steps(workflow: Mapping[str, Any], job_id: str) -> dict[str, Any]:
+    """``workflow["jobs"][job_id]``; for ``lint`` the aggregate carrying every group's steps."""
+    job: dict[str, Any] = workflow["jobs"][job_id]
+    if job_id != LINT_AGGREGATE:
+        return job
+    return {**job, "steps": lint_steps(workflow)}
