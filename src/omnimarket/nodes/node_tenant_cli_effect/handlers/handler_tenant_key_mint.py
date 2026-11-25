@@ -57,11 +57,11 @@ class HandlerTenantKeyMint:
     def __init__(
         self,
         dispatch: ProtocolTenantDispatch,
-        overlays: ProtocolGatewayKeyOverlays,
+        key_settings: ProtocolGatewayKeyOverlays,
         dev_store: ProtocolDevSecretStore,
     ) -> None:
         self._dispatch = dispatch
-        self._overlays = overlays
+        self._overlays = key_settings
         self._dev_store = dev_store
 
     def _dev_guard_refusal(self) -> ModelTenantCliResult | None:

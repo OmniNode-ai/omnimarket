@@ -163,12 +163,12 @@ class World:
         self.bus = FakeBus(
             self.calls, {KEY_NODE: command_lane, PROVISION_NODE: command_lane}
         )
-        self.overlays = FakeOverlays(self.calls, lane=overlay_lane, dev_env=dev_env)
+        self.key_settings = FakeOverlays(self.calls, lane=overlay_lane, dev_env=dev_env)
         self.store = FakeStore(self.calls, environment=store_env, held=held or set())
         self.handlers = TenantHandlers(
             create=HandlerTenantCreate(self.bus),
             show=HandlerTenantShow(self.bus),
-            key_mint=HandlerTenantKeyMint(self.bus, self.overlays, self.store),
+            key_mint=HandlerTenantKeyMint(self.bus, self.key_settings, self.store),
             key_revoke=HandlerTenantKeyRevoke(self.bus),
         )
 
