@@ -1094,6 +1094,11 @@ class SetupScreen(_TabbedScreen[None]):
         self._add_current()
         if not self._basket:
             warning = tui_design().delegation.nothing_ticked
+            # The refusal is the latest word: a find that is pending or still
+            # running must not replace it with its own note a moment later.
+            if self._find_timer is not None:
+                self._find_timer.stop()
+            self.workers.cancel_group(self, "find")
             self.query_one("#note", Static).update(
                 Text(warning, style=_style("warning"))
             )

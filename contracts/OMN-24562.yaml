@@ -34,8 +34,18 @@ requirements:
 - id: req-omn24562-unit-file-scoped-root
   statement: A changed file under tests/unit/ selects that file and what imports or names it, not the whole tests/unit/ directory, and a change the rule cannot attribute keeps the directory.
   acceptance:
-  - id: AC5
-    statement: 'AC5: a changed tests/unit file selects itself, its importers in any folder and the tests that spell its path, and an unattributable helper keeps tests/unit/ -- falsifier: tests/nodes/node_test_selection_selector_compute/test_unit_file_scoped_root.py fails when the unit branch of the resolver is removed'
+  - id: AC7
+    statement: 'AC7: a changed tests/unit file selects itself, its importers in any folder and the tests that spell its path, and an unattributable helper keeps tests/unit/ -- falsifier: tests/nodes/node_test_selection_selector_compute/test_unit_file_scoped_root.py fails when the unit branch of the resolver is removed'
+- id: req-omn24562-lint-split-parallel
+  statement: The required lint context is an aggregate of parallel group jobs, every old lint step still runs in exactly one group, and the Direct Model Call Gate positive control judges each planted case on a scratch repository holding only that file.
+  acceptance:
+  - id: AC6
+    statement: 'AC6: ci.yml carries lint-group-1 to lint-group-6 and a lint aggregate that needs all of them, each of the 128 steps listed in tests/ci/lint_steps_before_omn24562.txt runs in one group, and the Direct Model Call Gate positive control runs with --repo-root on a scratch repository -- falsifier: uv run pytest tests/ci/test_lint_split_omn24562.py tests/ci/test_direct_model_call_ci_gate.py fails when a step is dropped from every group or the control scans the whole tree'
+- id: req-omn24562-tui-refusal-note-stable
+  statement: The setup screen's refusal to save with nothing chosen is not replaced by a later model find, so the full suite does not fail on a loaded runner.
+  acceptance:
+  - id: AC8
+    statement: 'AC8: after Save is refused with no model chosen, the pending or running auto-find does not replace the refusal note -- falsifier: tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py::test_config_refusal_note_survives_the_late_auto_find fails when the find is not cancelled on refusal'
 evidence_requirements:
 - kind: tests
   description: The inode alarm tests pass at the pushed head.
@@ -98,20 +108,38 @@ dod_evidence:
     check_value: uv run pytest tests/unit/models/test_tenant_api_key_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24562-unit-file-scoped-root
-  description: 'AC5: a changed tests/unit test file selects the file only; a helper selects its importers in another unit folder and the test that spells its path; an unattributable helper, a non-python file and a package marker keep their directory (failing control: most of the new tests fail at the merge base, where the directory is selected; the rule is the adjacency switch unit_file_selection_enabled, on in the shipped adjacency and off in the frozen replay snapshot, so the stage 0 receipts are unchanged). Replay over the 60 pinned merges: 18 change tests/unit, narrowed 10 to 12, full suite 50 to 48, selected seconds 574954.625506 to 552493.098902.'
+  description: 'AC7: a changed tests/unit test file selects the file only; a helper selects its importers in another unit folder and the test that spells its path; an unattributable helper, a non-python file and a package marker keep their directory (failing control: most of the new tests fail at the merge base, where the directory is selected; the rule is the adjacency switch unit_file_selection_enabled, on in the shipped adjacency and off in the frozen replay snapshot, so the stage 0 receipts are unchanged). Replay over the 60 pinned merges: 18 change tests/unit, narrowed 10 to 12, full suite 50 to 48, selected seconds 574954.625506 to 552493.098902.'
   source: manual
   binds_ac:
-  - AC5
+  - AC7
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_test_selection_selector_compute/test_unit_file_scoped_root.py -q -n 0 --no-cov -p no:randomly
     cwd: .
 - id: dod-omn24562-unit-file-scoped-root-detect-paths
-  description: 'AC5: the detect_test_paths fixtures that pin the old behaviour run with the unit file-scoped switch off in a copy of the shipped adjacency, and a new test shows the same tests/unit change narrowing with the switch on (failing control: with the switch on, the four old-behaviour tests see a narrowed selection and fail).'
+  description: 'AC7: the detect_test_paths fixtures that pin the old behaviour run with the unit file-scoped switch off in a copy of the shipped adjacency, and a new test shows the same tests/unit change narrowing with the switch on (failing control: with the switch on, the four old-behaviour tests see a narrowed selection and fail).'
   source: manual
   binds_ac:
-  - AC5
+  - AC7
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/scripts/test_detect_test_paths.py -q -n 0 --no-cov -p no:randomly -k "unit_rule or unit_test_change_is_not_a_protected_surface or unit_tree_takes_the_full_suite_matrix or heavy_selection_is_the_planned_matrix"
+    cwd: .
+- id: dod-omn24562-lint-split-parallel
+  description: 'AC6: the lint job is split into six parallel group jobs behind a lint aggregate with the same name; the test lists every old step and refuses a missing one (failing control: before the split the test fails on 128 missing steps, dropping Ruff check from every group fails test_dropping_a_step_is_refused), and the Direct Model Call Gate positive control runs each plant on a scratch repository.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_lint_split_omn24562.py tests/ci/test_direct_model_call_ci_gate.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24562-tui-refusal-note-stable
+  description: 'AC8: the refusal note stays after the auto-find window passes (failing control: at the merge base the same test fails with the note reading no models found, the text the find writes).'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py -q -n 0 --no-cov -p no:randomly -k "refusal_note_survives or refuses_to_save_with_no_model_selected"
     cwd: .

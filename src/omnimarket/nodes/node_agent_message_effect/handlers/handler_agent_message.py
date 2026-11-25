@@ -72,6 +72,11 @@ RECIPIENT_ALL = "all"
 _QUIET_GAP_SECONDS = 1.0
 
 
+def _principal_name(principal: str) -> str:
+    """A broker principal without its ``User:`` prefix, so ``User:x`` and ``x`` name the same login."""
+    return principal.removeprefix("User:")
+
+
 def load_contract() -> dict[str, Any]:
     loaded = yaml.safe_load(
         resources.files("omnimarket.nodes.node_agent_message_effect")
@@ -139,6 +144,7 @@ class HandlerAgentMessage:
         bus_factory: Callable[[], ProtocolAgentMessageBus] | None = None,
         registry: ProtocolAgentSenderRegistry | None = None,
         signing_keys: ProtocolAgentSigningKeys | None = None,
+        login_principal: Callable[[], str | None] | None = None,
         read_window_seconds: float | None = None,
         quiet_gap_seconds: float = _QUIET_GAP_SECONDS,
     ) -> None:
@@ -160,6 +166,7 @@ class HandlerAgentMessage:
         self._bus_factory = bus_factory
         self._registry = registry
         self._signing_keys = signing_keys
+        self._login_principal = login_principal
         self._directory_owned = registry is None
 
     async def handle(
@@ -197,6 +204,36 @@ class HandlerAgentMessage:
             reason=reason,
         )
 
+    def _authenticated_login(self) -> str | None:
+        """The broker principal this login publishes as: injected, else the declared broker's SASL user."""
+        if self._login_principal is not None:
+            return self._login_principal()
+        from omnimarket.nodes.node_agent_message_effect.container.container_agent_message_effect import (
+            declared_login_principal,
+        )
+
+        return declared_login_principal()
+
+    async def _check_login_owns_sender(self, message: ModelAgentMessage) -> None:
+        """Refuse a declared sender whose registered principal is not the login that is sending.
+
+        The registry row (settings store) names the broker principal each agent name publishes as; the login's own
+        principal is the one its broker credential authenticates as. A sender with no registry row is left to the
+        existing unknown-sender path, and a login that declares no principal (no SASL user) cannot be compared.
+        """
+        login = self._authenticated_login()
+        if login is None:
+            return
+        registered = await self._resolve_directory().lookup(message.sender)
+        if registered is None:
+            return
+        if _principal_name(registered.principal) != _principal_name(login):
+            raise AgentMessageVerificationError(
+                EnumAgentMessageVerificationReason.SENDER_MISMATCH,
+                f"{message.sender!r} is registered to {registered.principal!r}; "
+                f"this login publishes as {login!r}",
+            )
+
     async def _sign(self, message: ModelAgentMessage) -> ModelAgentMessage:
         """Fix the id and version, then sign with the key this host holds for the declared sender.
 
@@ -215,6 +252,7 @@ class HandlerAgentMessage:
         )
         if message.sender_proof is not None:
             return message
+        await self._check_login_owns_sender(message)
         registry = self._resolve_directory()
         keys = self._signing_keys
         key = await keys.signing_key(message.sender) if keys is not None else None
