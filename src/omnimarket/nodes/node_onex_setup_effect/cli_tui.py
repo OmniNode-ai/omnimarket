@@ -24,7 +24,7 @@ from collections import Counter
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from functools import partial
 from pathlib import Path
-from typing import ClassVar, Literal, Protocol, TypeVar, cast
+from typing import Any, ClassVar, Literal, Protocol, TypeVar, cast
 from urllib.parse import urlparse
 
 import click
@@ -1997,8 +1997,58 @@ async def apply_theme(app: App[int], name: str) -> None:
     app.theme = name
 
 
+def _braille_supported() -> bool:
+    import locale
+    import sys
+
+    for stream in (sys.stdout, sys.stderr):
+        encoding = getattr(stream, "encoding", None)
+        if not encoding:
+            continue
+        try:
+            "⠋".encode(encoding)
+            return True
+        except (UnicodeEncodeError, LookupError):
+            return False
+    try:
+        "⠋".encode(locale.getpreferredencoding(False))
+        return True
+    except (UnicodeEncodeError, LookupError):
+        return False
+
+
+def _spinner_frames() -> tuple[str, ...]:
+    from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
+        tui_design,
+    )
+
+    design = tui_design()
+    spinner = getattr(design, "spinner", None)
+    if spinner is None:
+        spinner = design.activity
+    if _braille_supported():
+        frames = getattr(spinner, "frames", None)
+        if frames:
+            return tuple(frames)
+    for attr in ("fallback_frames", "ascii_frames", "fallback", "ascii"):
+        frames = getattr(spinner, attr, None)
+        if frames:
+            return tuple(frames)
+    activity = design.activity
+    if _braille_supported():
+        return tuple(activity.frames)
+    return ("|", "/", "-", "\\")
+
+
+def _spinner_frame() -> str:
+    frames = _spinner_frames()
+    return frames[0] if frames else "|"
+
+
 class TaskCard:
-    """A delegated task as a card (OMN-26620 AC3)."""
+    """A delegated task as a card (OMN-26620 AC3, AC9, AC10)."""
+
+    _STATES = ("running", "done", "fallback", "failed")
 
     def __init__(self, recorded: Mapping[str, object]) -> None:
         self._recorded = dict(recorded)
@@ -2007,34 +2057,163 @@ class TaskCard:
     def from_recorded(cls, recorded: Mapping[str, object]) -> TaskCard:
         return cls(recorded)
 
+    @property
+    def state(self) -> str:
+        raw = str(self._recorded.get("state", "done")).strip().lower()
+        aliases = {
+            "run": "running",
+            "running": "running",
+            "ok": "done",
+            "done": "done",
+            "success": "done",
+            "fallback": "fallback",
+            "claude": "fallback",
+            "failed": "failed",
+            "error": "failed",
+            "fail": "failed",
+        }
+        return aliases.get(raw, "done")
+
+    @property
+    def model(self) -> str:
+        return str(self._recorded.get("model", ""))
+
+    @property
+    def route(self) -> str:
+        raw = str(self._recorded.get("route", "")).strip().lower()
+        if raw in ("cheap", "route_cheap"):
+            return "cheap"
+        if raw in ("fallback", "route_fallback", "claude"):
+            return "fallback"
+        state = self.state
+        if state == "fallback":
+            return "fallback"
+        if state == "failed":
+            return "failed"
+        return "cheap"
+
+    def _design(self) -> Any:
+        return tui_design()
+
+    def _glyphs(self) -> dict[str, str]:
+        design = self._design()
+        task_card = getattr(design, "task_card", None)
+        raw = getattr(task_card, "glyphs", None) if task_card is not None else None
+        if isinstance(raw, dict):
+            return raw
+        if hasattr(raw, "model_dump"):
+            try:
+                return dict(raw.model_dump())  # type: ignore[union-attr]
+            except Exception:  # pragma: no cover
+                pass
+        card = getattr(design, "task_card", None)
+        result: dict[str, str] = {}
+        for state, key in {
+            "running": "running",
+            "done": "done",
+            "fallback": "fallback",
+            "failed": "failed",
+        }.items():
+            if isinstance(card, dict):
+                value = card.get(key)
+            else:
+                value = getattr(card, key, None)
+            if value is not None:
+                result[state] = str(value)
+        return result
+
+    def _bar_colours(self) -> dict[str, str]:
+        design = self._design()
+        task_card = getattr(design, "task_card", None)
+        raw = getattr(task_card, "bar_colours", None) if task_card is not None else None
+        if isinstance(raw, dict):
+            return raw
+        if hasattr(raw, "model_dump"):
+            try:
+                return dict(raw.model_dump())  # type: ignore[union-attr]
+            except Exception:  # pragma: no cover
+                pass
+        return {}
+
+    def mark(self) -> str:
+        glyphs = self._glyphs()
+        spinner = _spinner_frame()
+        if self.state == "running":
+            return str(glyphs.get("running", spinner))
+        return str(
+            glyphs.get(
+                self.state,
+                {
+                    "done": "✓",
+                    "fallback": "◐",
+                    "failed": "✗",
+                }.get(self.state, "✓"),
+            )
+        )
+
+    def bar_colour_token(self) -> str:
+        colours = self._bar_colours()
+        if self.state in colours:
+            return str(colours[self.state])
+        if self.state == "running":
+            return "route_cheap"
+        if self.state == "done":
+            return "success"
+        if self.state == "fallback":
+            return "route_fallback"
+        if self.state == "failed":
+            return "error"
+        return getattr(
+            getattr(self._design(), "task_card", object()),
+            "state_bar_colour",
+            "success",
+        )
+
+    def bar_colour(self) -> str:
+        design = self._design()
+        theme = design.theme
+        token = self.bar_colour_token()
+        return str(getattr(theme, token, token))
+
     def facts_line(self) -> str:
-        design = tui_design()
-        template = getattr(getattr(design, "task_card", None), "facts_template", "")
+        design = self._design()
+        task_card = getattr(design, "task_card", None)
+        template = getattr(task_card, "facts_template", "")
+        failure_template = getattr(task_card, "failure_template", "")
+        if self.state == "failed" and failure_template:
+            try:
+                return str(failure_template).format(**self._recorded)
+            except (KeyError, ValueError, IndexError):
+                return str(failure_template).format(model=self.model)
         if template:
             try:
                 return str(template).format(**self._recorded)
             except (KeyError, ValueError, IndexError):
                 pass
         record = self._recorded
+        tokens = record.get("tokens")
+        if tokens is None:
+            tokens = record.get("total_tokens")
+        if tokens is None:
+            tokens = int(str(record.get("tokens_in") or 0)) + int(
+                str(record.get("tokens_out") or 0)
+            )
         return (
-            f"{record.get('model')} · ↓{record.get('tokens_in')} in · "
-            f"↑{record.get('tokens_out')} out · {record.get('seconds')} s · "
-            f"${record.get('cost')}"
+            f"{record.get('model')} · {tokens} tokens · "
+            f"{record.get('seconds')} s · ${record.get('cost')}"
         )
 
     def render(self) -> object:
         from rich.text import Text
 
-        design = tui_design()
-        theme = design.theme
-        token = design.task_card.state_bar_colour
-        colour = getattr(theme, token, token)
-        state = str(self._recorded.get("state", "done"))
-        glyphs = tui_design().glyphs
-        mark = glyphs.done if state.lower() == "done" else state
-        model = str(self._recorded.get("model", ""))
-        header = Text(f"{mark} {state} · {model}", style=colour)
-        return Group(header, Text(self.facts_line()))
+        colour = self.bar_colour()
+        state = self.state
+        mark = self.mark()
+        label = state.capitalize()
+        return Group(
+            Text(f"┃ {mark} {label}   {self.model}", style=colour),
+            Text(f"┃   {self.facts_line()}"),
+        )
 
 
 class KeyFooter:
@@ -2523,10 +2702,9 @@ class OnexTui(App[int]):
     def _render_activity(self) -> None:
         """The live line: a spinner frame, a verb and the seconds so far."""
         activity = tui_design().activity
+        frames = _spinner_frames()
         elapsed = time.monotonic() - self._task_started
-        frame = activity.frames[
-            int(elapsed / activity.frame_seconds) % len(activity.frames)
-        ]
+        frame = frames[int(elapsed / activity.frame_seconds) % len(frames)]
         verb = activity.verbs[
             int(elapsed / activity.verb_seconds) % len(activity.verbs)
         ]

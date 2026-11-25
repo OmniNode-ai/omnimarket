@@ -401,6 +401,28 @@ header:
 task_card:
   state_bar_colour: success
   facts_template: "{model} · ↓{tokens_in} in · ↑{tokens_out} out · {seconds} s · ${cost}"
+  failure_template: "Could not reach {model}. Check its key with /config."
+  glyphs:
+    running: "⠋"
+    done: "✓"
+    fallback: "◐"
+    failed: "✗"
+  bar_colours:
+    running: route_cheap
+    done: success
+    fallback: route_fallback
+    failed: error
+
+# Spinner (OMN-26620 AC11).
+spinner:
+  frames: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+  fallback_frames: ["|", "/", "-", "\\"]
+  ascii_frames: ["|", "/", "-", "\\"]
+  frame_seconds: 0.1
+  text: "Thinking… (ctrl+c to interrupt)"
+  wording: "Thinking… (ctrl+c to interrupt)"
+  message: "Thinking… (ctrl+c to interrupt)"
+  line: "Thinking… (ctrl+c to interrupt)"
 
 # Key footer (OMN-26620 AC4): per-screen keys and drop order.
 footer:
