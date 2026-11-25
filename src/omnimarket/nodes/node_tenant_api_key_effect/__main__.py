@@ -70,7 +70,7 @@ def _client_kwargs(broker: ModelNodeBroker) -> dict[str, str]:
     return kwargs
 
 
-async def _publish(topic: str, request: BaseModel) -> None:
+async def publish_command(topic: str, request: BaseModel) -> None:
     from aiokafka import AIOKafkaProducer
 
     broker = resolve_dialable_broker(NODE_NAME)
@@ -98,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
         args = parser.parse_args(argv)
         operation, model = _OPERATIONS[args.operation]
         request = model.model_validate_json(args.input)
-        asyncio.run(_publish(_topic_for(operation), request))
+        asyncio.run(publish_command(_topic_for(operation), request))
     except (ValueError, NodeBrokerResolutionError, NodeOverlayError, OSError) as exc:
         sys.stderr.write(f"INDETERMINATE: {type(exc).__name__}\n")
         return 3

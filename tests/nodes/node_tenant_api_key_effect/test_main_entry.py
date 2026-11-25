@@ -24,7 +24,7 @@ def test_register_is_published_to_the_register_requested_topic(
     async def fake_publish(topic: str, request: BaseModel) -> None:
         sent.append((topic, request))
 
-    monkeypatch.setattr(entry, "_publish", fake_publish)
+    monkeypatch.setattr(entry, "publish_command", fake_publish)
     command = json.dumps(
         {
             "correlation_id": str(uuid4()),
