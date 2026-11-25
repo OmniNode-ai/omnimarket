@@ -55,7 +55,16 @@ READ_TOPIC = ROUTES["record_host_disk_read"]
 REQUEST_TOPIC = _resolve_node_topics(NODE)[1]
 assert ROUTES["host_hygiene.run_requested"] == REQUEST_TOPIC
 assert CONTRACT["event_bus"]["subscribe_topics"][0] == REQUEST_TOPIC
-RUN_TOPIC, SCHEDULE_TOPIC = CONTRACT["event_bus"]["publish_topics"]
+# The lab work command topic is the tick route's own output; the run and schedule topics are the two these chains read.
+RUN_TOPIC, SCHEDULE_TOPIC = (
+    topic
+    for topic in CONTRACT["event_bus"]["publish_topics"]
+    if "lab-work-unit-requested" not in topic
+)
+from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.pending_runs import (  # noqa: E402
+    PENDING_HOST_HYGIENE_RUNS,
+)
+
 OVERLAY = yaml.safe_load((NODE_DIR / "overlays" / "in_memory.yaml").read_text())
 HOST = OVERLAY["hosts"][0]["name"]
 VOLUME = OVERLAY["hosts"][0]["pressure_volume"]
@@ -109,8 +118,10 @@ def _overlay_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[N
     (root / "overlay.yaml").write_text(yaml.safe_dump(OVERLAY))
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "overlays"))
     HOST_DISK_READINGS._entries.clear()
+    PENDING_HOST_HYGIENE_RUNS.clear()
     yield
     HOST_DISK_READINGS._entries.clear()
+    PENDING_HOST_HYGIENE_RUNS.clear()
 
 
 async def _drive(

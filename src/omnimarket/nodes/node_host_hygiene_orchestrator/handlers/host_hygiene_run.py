@@ -28,13 +28,13 @@ from omnimarket.handlers.schedule_gate import ScheduleGate
 from omnimarket.handlers.scheduled_overlay_refusal import ScheduledOverlayRefusalLatch
 from omnimarket.models.model_host_hygiene import (
     ModelHostHygieneCleanupPolicy,
+    ModelHostHygieneDecision,
     ModelHostHygieneDecisionRequest,
     ModelHostHygieneHostFacts,
     ModelHostHygieneLastDispatch,
 )
 from omnimarket.models.model_host_hygiene_orchestrator import (
     EnumHostHygieneRunTrigger,
-    EnumHostHygieneUnitOutcome,
     ModelHostHygieneOrchestratorOverlay,
     ModelHostHygieneRunCompleted,
     run_outcome,
@@ -54,6 +54,11 @@ from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.hold_reader import
 from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.host_disk_readings import (
     HostDiskReadingStore,
 )
+from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.pending_runs import (
+    PENDING_HOST_HYGIENE_RUNS,
+    RAN,
+    PendingHostHygieneRuns,
+)
 from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.protocols import (
     ProtocolHostHoldReader,
     ProtocolHostHygieneLabWorkSender,
@@ -61,14 +66,7 @@ from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.protocols import (
 
 NODE_NAME = "node_host_hygiene_orchestrator"
 
-#: The outcomes that mean the command ran on the host, so the cleanup waits its interval.
-_RAN = frozenset(
-    {
-        EnumHostHygieneUnitOutcome.COMPLETED,
-        EnumHostHygieneUnitOutcome.FAILED,
-        EnumHostHygieneUnitOutcome.TIMED_OUT,
-    }
-)
+_RAN = RAN
 
 
 def _utc_now() -> dt.datetime:
@@ -79,6 +77,7 @@ class HostHygieneRunBase:
     """The body both host hygiene routes run: overlay in, decisions and units out."""
 
     HANDLER_ID: str
+    SHARES_PENDING_RUNS: bool = True
 
     def __init__(
         self,
@@ -87,6 +86,7 @@ class HostHygieneRunBase:
         store: HostDiskReadingStore | None = None,
         sender: ProtocolHostHygieneLabWorkSender | None = None,
         hold_reader: ProtocolHostHoldReader | None = None,
+        pending: PendingHostHygieneRuns | None = None,
         environ: Mapping[str, str] | None = None,
         clock: Callable[[], dt.datetime] = _utc_now,
     ) -> None:
@@ -100,7 +100,14 @@ class HostHygieneRunBase:
             InMemoryHostHoldReader() if hold_reader is None else hold_reader
         )
         self._refusals = ScheduledOverlayRefusalLatch(NODE_NAME)
-        self._dispatched: dict[tuple[str, str], dt.datetime] = {}
+        self._pending = PENDING_HOST_HYGIENE_RUNS if pending is None else pending
+        # The tick route and the receipt routes share one last-ran ledger, since a receipt arrives in another
+        # handler; the on-demand route keeps its own, as it always has.
+        self._dispatched = (
+            self._pending.dispatched
+            if self.SHARES_PENDING_RUNS
+            else dict[tuple[str, str], dt.datetime]()
+        )
 
     def _output(
         self, correlation_id: uuid.UUID, events: tuple[ModelEventEnvelope[object], ...]
@@ -158,17 +165,10 @@ class HostHygieneRunBase:
             for row in overlay.hosts
         )
 
-    async def _run(
-        self,
-        *,
-        overlay: ModelHostHygieneOrchestratorOverlay,
-        now: dt.datetime,
-        sender: ProtocolHostHygieneLabWorkSender,
-        run_id: str,
-        tick_id: str,
-        trigger: EnumHostHygieneRunTrigger,
-    ) -> ModelHostHygieneRunCompleted:
-        decision = decide_host_hygiene(
+    def _decide(
+        self, overlay: ModelHostHygieneOrchestratorOverlay, now: dt.datetime
+    ) -> ModelHostHygieneDecision:
+        return decide_host_hygiene(
             ModelHostHygieneDecisionRequest(
                 now=now,
                 max_reading_age_seconds=overlay.max_reading_age_seconds,
@@ -184,6 +184,18 @@ class HostHygieneRunBase:
                 hosts=self._facts(overlay, self._held(overlay, now)),
             )
         )
+
+    async def _run(
+        self,
+        *,
+        overlay: ModelHostHygieneOrchestratorOverlay,
+        now: dt.datetime,
+        sender: ProtocolHostHygieneLabWorkSender,
+        run_id: str,
+        tick_id: str,
+        trigger: EnumHostHygieneRunTrigger,
+    ) -> ModelHostHygieneRunCompleted:
+        decision = self._decide(overlay, now)
         # sender.send blocks until the host's receipt; the runtime calls handle on its loop, so run the dispatch off it.
         units = await asyncio.to_thread(
             DispatchHostHygieneUnits(overlay, sender).dispatch, decision.due_items()
