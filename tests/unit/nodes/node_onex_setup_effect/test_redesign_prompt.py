@@ -13,12 +13,13 @@ Failure modes:
 from __future__ import annotations
 
 import pytest
-from textual.widgets import Input, RichLog, Static
+from textual.widgets import Input, Static
 
 from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
     KeyFooter,
     ModelTuiStatus,
     OnexTui,
+    OutputPane,
 )
 from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import tui_design
 
@@ -37,7 +38,9 @@ async def _settle(pilot: object) -> None:
 
 
 def _log(app: OnexTui) -> str:
-    return " ".join(str(line.text) for line in app.query_one("#output", RichLog).lines)
+    return " ".join(
+        str(line.text) for line in app.query_one("#output", OutputPane).lines
+    )
 
 
 @pytest.mark.parametrize(("width", "height"), _SIZES)

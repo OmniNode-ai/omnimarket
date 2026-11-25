@@ -42,7 +42,7 @@ from textual.app import (
     SystemCommand,
 )
 from textual.binding import Binding, BindingType
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.content import Content
 from textual.css.query import NoMatches
 from textual.screen import ModalScreen, Screen
@@ -55,7 +55,6 @@ from textual.widgets import (
     OptionList,
     RadioButton,
     RadioSet,
-    RichLog,
     Static,
     Switch,
     Tab,
@@ -2664,6 +2663,121 @@ class PromptInput(Input):
         await super()._on_key(event)
 
 
+class _Line(str):
+    """One line of the output, readable as text and as ``.text`` (as a log line was)."""
+
+    @property
+    def text(self) -> str:
+        return str(self)
+
+
+def _plain_words(content: object) -> str:
+    """The words of something written to the output, without styling or markup."""
+    if isinstance(content, Text):
+        return content.plain
+    markup = getattr(content, "markup", None)  # a rich Markdown keeps its source
+    if isinstance(markup, str):
+        return markup
+    return str(content)
+
+
+class OutputBlock(Static):
+    """One written item of the output; its plain words are kept for copying."""
+
+    def __init__(self, content: object, plain: str) -> None:
+        super().__init__(content, markup=False)  # type: ignore[arg-type]
+        self.plain = plain
+
+
+class OutputPane(VerticalScroll):
+    """The output: a stack of blocks that follows the end, with a block cursor.
+
+    alt+up and alt+down walk the blocks, c copies the selected one, any other
+    typing goes back to the prompt. The view follows new output until the reader
+    scrolls away, and follows again when they submit or return to the prompt.
+    """
+
+    can_focus = True
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.cursor: int | None = None
+
+    def on_mount(self) -> None:
+        self.anchor()
+
+    @property
+    def blocks(self) -> list[OutputBlock]:
+        return list(self.query(OutputBlock))
+
+    @property
+    def lines(self) -> list[_Line]:
+        return [
+            _Line(line) for block in self.blocks for line in block.plain.split("\n")
+        ]
+
+    def write(self, content: object) -> None:
+        self.mount(OutputBlock(content, _plain_words(content)))
+
+    def clear(self) -> None:
+        self.cursor = None
+        self.remove_children()
+
+    def select(self, index: int | None) -> None:
+        blocks = self.blocks
+        self.cursor = index
+        for position, block in enumerate(blocks):
+            block.set_class(position == index, "-cursor")
+        if index is not None and 0 <= index < len(blocks):
+            self.release_anchor()
+            self.scroll_to_widget(blocks[index], animate=False)
+
+    def follow(self) -> None:
+        """Clear the cursor and follow the end of the output again."""
+        self.select(None)
+        self.anchor()
+        self.scroll_end(animate=False)
+
+    def step(self, delta: int) -> None:
+        """Move the cursor; past the last block returns to the prompt."""
+        blocks = self.blocks
+        if not blocks:
+            return
+        if self.cursor is None:
+            if delta > 0:
+                return
+            target = len(blocks) - 1
+        else:
+            target = self.cursor + delta
+        if target >= len(blocks):
+            self.leave()
+            return
+        self.select(max(target, 0))
+        self.focus()
+
+    def leave(self) -> None:
+        self.follow()
+        self.app.query_one("#prompt", Input).focus()
+
+    def on_key(self, event: events.Key) -> None:
+        if self.cursor is None:
+            return
+        blocks = self.blocks
+        if event.key == "c" and 0 <= self.cursor < len(blocks):
+            self.app.copy_to_clipboard(blocks[self.cursor].plain)
+            event.stop()
+            event.prevent_default()
+        elif event.key == "escape":
+            self.leave()
+            event.stop()
+            event.prevent_default()
+        elif event.is_printable and event.character:
+            self.leave()
+            self.app.query_one("#prompt", Input).insert_text_at_cursor(event.character)
+            event.stop()
+            event.prevent_default()
+
+
 class OnexTui(App[int]):
     """The onex terminal UI."""
 
@@ -2674,6 +2788,8 @@ class OnexTui(App[int]):
     #summary { height: 2; padding: 0 1; margin-top: 1; }
     #conversation { height: 1fr; }
     #output { height: auto; max-height: 100%; padding: 0 1; }
+    OutputBlock { height: auto; padding-left: 1; }
+    OutputBlock.-cursor { border-left: heavy $accent; padding-left: 0; background: $boost; }
     #palette { height: auto; max-height: 12; border: round $accent; display: none; }
     #promptrow { height: 1; margin-top: 1; }
     #promptmark { width: 2; color: $primary; text-style: bold; }
@@ -2683,6 +2799,8 @@ class OnexTui(App[int]):
     """
     BINDINGS = [
         Binding("ctrl+c", "interrupt", "Cancel or quit", priority=True),
+        Binding("alt+up", "block_up", "Previous block", show=False, priority=True),
+        Binding("alt+down", "block_down", "Next block", show=False, priority=True),
         Binding("escape", "escape", "Close or cancel", show=False),
         Binding("tab", "complete", "Complete", show=False, priority=True),
         Binding("down", "palette_down", show=False),
@@ -2782,7 +2900,7 @@ class OnexTui(App[int]):
         yield Static(id="header")
         yield Static(id="summary")
         with Vertical(id="conversation"):
-            yield RichLog(id="output", wrap=True, markup=False, highlight=False)
+            yield OutputPane(id="output")
             yield Static(id="activity")
         yield OptionList(id="palette")
         with Horizontal(id="promptrow"):
@@ -2912,7 +3030,7 @@ class OnexTui(App[int]):
 
     def _write(self, text: str | Text) -> Text | str:
         """Write one line to the main log, and return it so a tab can show it too."""
-        self._main().query_one("#output", RichLog).write(text)
+        self._main().query_one("#output", OutputPane).write(text)
         return text
 
     def get_system_commands(self, screen: Screen[object]) -> Iterable[SystemCommand]:
@@ -2968,6 +3086,16 @@ class OnexTui(App[int]):
         if palette.option_count:
             palette.highlighted = 0
 
+    def _block_step(self, delta: int) -> None:
+        if self.screen is self._main():  # a tab owns the keys while it is open
+            self._main().query_one("#output", OutputPane).step(delta)
+
+    def action_block_up(self) -> None:
+        self._block_step(-1)
+
+    def action_block_down(self) -> None:
+        self._block_step(1)
+
     def action_escape(self) -> None:
         """Esc closes the palette, or else cancels the running task."""
         palette = self.query_one("#palette", OptionList)
@@ -3020,7 +3148,7 @@ class OnexTui(App[int]):
         """Leave one row under a full log for the live line while it shows."""
         main = self._main()
         live = main.query_one("#activity", Static).display
-        main.query_one("#output", RichLog).styles.max_height = (
+        main.query_one("#output", OutputPane).styles.max_height = (
             max(1, main.query_one("#conversation").content_region.height - 1)
             if live
             else "100%"
@@ -3138,6 +3266,7 @@ class OnexTui(App[int]):
             return
         self._history.append(text)
         self._recall = len(self._history)
+        self._main().query_one("#output", OutputPane).follow()
         if not text.startswith("/"):
             if self._active_task is not None:
                 self._write(
@@ -3352,7 +3481,7 @@ class OnexTui(App[int]):
         elif action == "help":
             self._write(Text(tui_design().help, style=_style("foreground")))
         elif action == "clear":
-            self.query_one("#output", RichLog).clear()
+            self.query_one("#output", OutputPane).clear()
         elif action in ("config", "model", "delegation", "dashboard"):
             # A tab stays open until Esc; its actions run while it is open.
             await self.push_screen(await self.tab_screen(action))
@@ -3710,7 +3839,7 @@ class OnexTui(App[int]):
         elif cost is None:
             facts.append(_say("run_saved_unmeasured"))
         run_id = str(document.get("run_id") or "") if document else ""
-        self._main().query_one("#output", RichLog).write(
+        self._main().query_one("#output", OutputPane).write(
             Markdown(str(result["response"]).strip())
         )
         self._write(

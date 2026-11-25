@@ -18,10 +18,14 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 import pytest
-from textual.widgets import Input, RichLog, Static
+from textual.widgets import Input, Static
 
 from omnimarket.nodes.node_onex_setup_effect import cli_tui
-from omnimarket.nodes.node_onex_setup_effect.cli_tui import ModelTuiStatus, OnexTui
+from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
+    ModelTuiStatus,
+    OnexTui,
+    OutputPane,
+)
 from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import tui_design
 
 pytestmark = pytest.mark.unit
@@ -43,7 +47,7 @@ def _broken(path: Path) -> Callable[[], Awaitable[ModelTuiStatus]]:
 
 
 def _screen_text(app: OnexTui) -> str:
-    out = app.query_one("#output", RichLog)
+    out = app.query_one("#output", OutputPane)
     lines = [str(line) for line in out.lines]
     for widget in app.query(Static):
         lines.append(str(widget.render()))
