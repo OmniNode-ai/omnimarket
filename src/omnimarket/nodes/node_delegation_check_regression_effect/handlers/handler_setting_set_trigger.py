@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import UTC, datetime
 
-from omnimarket.events.overlay_setting_audit import (
+from omnimarket.models.overlay_store.model_overlay_setting_audit import (
     ModelOverlaySettingAudit,
 )
 from omnimarket.nodes.node_delegation_check_regression_effect.handlers.handler_check_regression import (

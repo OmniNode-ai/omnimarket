@@ -41,7 +41,7 @@ handler_routing:
         module: omnimarket.nodes.node_delegation_check_regression_effect.handlers.handler_setting_set_trigger
       event_model:
         name: ModelOverlaySettingAudit
-        module: omnimarket.events.overlay_setting_audit
+        module: omnimarket.models.overlay_store.model_overlay_setting_audit
       topic: onex.evt.omnimarket.overlay-setting-set.v1
 
 event_bus:

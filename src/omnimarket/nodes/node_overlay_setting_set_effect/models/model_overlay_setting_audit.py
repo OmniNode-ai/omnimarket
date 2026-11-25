@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
-from omnimarket.events.overlay_setting_audit import ModelOverlaySettingAudit
+from omnimarket.models.overlay_store.model_overlay_setting_audit import (
+    ModelOverlaySettingAudit,
+)
 
 __all__ = ["ModelOverlaySettingAudit"]

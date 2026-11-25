@@ -93,3 +93,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_check_regression_effect/test_setting_set_trigger.py tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q --no-cov -n 0 -p no:randomly -k 'real_class or constructs_with_no_arguments or missing_dependency or canonical_handler or externally_consumed or type_ignore or delegation_check_regression'
     cwd: .
+- id: dod-omn26652-audit-model-canonical-location
+  description: The settings audit row shared by the overlay setting node and the regression trigger lives under omnimarket/models/overlay_store (a canonical-file-shape location), no code file stands in omnimarket/events for it, and both nodes use the one class.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_regression_effect/test_audit_model_location.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

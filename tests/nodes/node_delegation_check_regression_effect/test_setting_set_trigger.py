@@ -23,15 +23,15 @@ from omnibase_infra.runtime.auto_wiring import handler_wiring
 from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts_from_paths
 from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
 
-from omnimarket.events.overlay_setting_audit import (
-    ModelOverlaySettingAudit,
-)
 from omnimarket.models.lab_alarm_delivery import (
     EnumDeliveryOutcome,
     EnumDeliveryStep,
     ModelAlarmDelivery,
     ModelLabAlarmDeliveryRequest,
     ModelLabAlarmDeliveryResult,
+)
+from omnimarket.models.overlay_store.model_overlay_setting_audit import (
+    ModelOverlaySettingAudit,
 )
 from omnimarket.nodes.node_delegation_check_regression_effect.adapters.replay_source import (
     ReplayCheckSource,
