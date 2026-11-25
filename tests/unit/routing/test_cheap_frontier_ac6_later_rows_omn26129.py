@@ -159,6 +159,19 @@ def _later_receipt() -> dict[str, Any]:
     return later
 
 
+def test_a_later_receipt_must_store_the_first_days_ten_prompts() -> None:
+    """The 2026-11-24 receipt stores the 2026-11-20 prompts, and a changed prompt is refused."""
+    first = _first_day()
+    stored = next(r for r in _dated_receipts() if r.get("measured_on") == "2026-11-24")
+    assert _the_first_days_ten(stored, _stored_prompts(first))
+    emptied = _later_receipt()
+    emptied["task_prompts"][0]["prompt"] = ""
+    assert _later_row_problems([first, emptied])
+    replaced = _later_receipt()
+    replaced["task_prompts"][3]["prompt"] = "Reply with the word yes."
+    assert _later_row_problems([first, replaced])
+
+
 def test_the_check_passes_on_a_later_receipt_covering_both() -> None:
     assert _later_row_problems([_first_day(), _later_receipt()]) == []
 
