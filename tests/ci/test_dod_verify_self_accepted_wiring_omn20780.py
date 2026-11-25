@@ -11,6 +11,8 @@ from typing import Any
 import pytest
 import yaml
 
+from tests.ci.lint_jobs import lint_steps
+
 pytestmark = pytest.mark.unit
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -47,7 +49,7 @@ def test_required_lint_job_runs_the_guarding_tests(guard_test: str) -> None:
     workflow = yaml.safe_load(
         (_ROOT / ".github" / "workflows" / "ci.yml").read_text("utf-8")
     )
-    runs = [str(step.get("run", "")) for step in workflow["jobs"]["lint"]["steps"]]
+    runs = [str(step.get("run", "")) for step in lint_steps(workflow)]
     assert any(guard_test in run and "pytest" in run for run in runs)
 
 
