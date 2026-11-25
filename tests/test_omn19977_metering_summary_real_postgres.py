@@ -340,3 +340,66 @@ async def test_omn24615_the_writer_counts_failed_runs_and_books_no_saving_for_th
             await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
         finally:
             await conn.close()
+
+
+@pytest.mark.integration
+async def test_omn21288_the_stored_day_read_runs_on_the_real_table() -> None:
+    """The incremental refresh's stored-day read binds its parameters on Postgres."""
+    from omnimarket.nodes.node_projection_metering_summary.metering_incremental_refresh import (
+        STORED_DAYS_SQL,
+    )
+
+    conn = await _connect_or_skip()
+    try:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.execute(f"CREATE SCHEMA {_SCHEMA}")
+        for migration in _MIGRATIONS:
+            await conn.execute(_scoped(migration.read_text(encoding="utf-8")))
+        writer = _scoped_writer(conn)
+        request = ModelMeteringSummaryFoldRequest(
+            tenant_id="local",
+            baseline_model="unresolved-model",
+            as_of=datetime(2026, 9, 28, 12, tzinfo=UTC),
+        )
+        assert (await writer._project(request))["rows_upserted"] == 1
+        # The fold of an empty snapshot stores the all row only: no day row matches.
+        rows = await conn.fetch(
+            _scoped(STORED_DAYS_SQL), "local", "unresolved-model", ["2026-09-28"]
+        )
+        assert rows == []
+    finally:
+        try:
+            await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        finally:
+            await conn.close()
+
+
+@pytest.mark.integration
+async def test_omn21288_the_stored_all_row_comes_from_the_shared_summary_row() -> None:
+    """The writer's stored all row, built by summary_row, reads back on Postgres."""
+    conn = await _connect_or_skip()
+    try:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.execute(f"CREATE SCHEMA {_SCHEMA}")
+        for migration in _MIGRATIONS:
+            await conn.execute(_scoped(migration.read_text(encoding="utf-8")))
+        writer = _scoped_writer(conn)
+        request = ModelMeteringSummaryFoldRequest(
+            tenant_id="local",
+            baseline_model="unresolved-model",
+            as_of=datetime(2026, 9, 28, 12, tzinfo=UTC),
+        )
+        assert (await writer._project(request))["rows_upserted"] == 1
+        row = await conn.fetchrow(
+            f"SELECT window_kind, runs_total FROM {_SCHEMA}.metering_summary"
+            " WHERE tenant_id = $1",
+            "local",
+        )
+        assert row is not None
+        assert row["window_kind"] == "all"
+        assert row["runs_total"] == 0
+    finally:
+        try:
+            await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        finally:
+            await conn.close()
