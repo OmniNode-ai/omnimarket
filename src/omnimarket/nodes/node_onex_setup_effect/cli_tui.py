@@ -99,11 +99,13 @@ def _shortcut_paths() -> dict[tuple[str, ...], str]:
 
 
 def _is_customer_command(path: tuple[str, ...]) -> bool:
-    """Whether ``path`` belongs to one of the TUI's customer shortcuts."""
-    if not path:
-        return False
-    customer_tops = {s.path[0] for s in tui_design().shortcuts if s.path}
-    return path[0] in customer_tops
+    """Whether ``path`` is one of the customer commands or a subcommand of one.
+
+    `/delegation on` runs because `delegation` is a customer command.
+    """
+    return any(
+        path[: len(command)] == command for command in tui_design().customer_commands
+    )
 
 
 def _alias_paths() -> set[tuple[str, ...]]:
@@ -2156,11 +2158,11 @@ class OnexTui(App[int]):
             ModelTuiCommand(path=path, help=text, needs_terminal=False)
             for path, text in _shortcut_paths().items()
         ]
-        return [
-            entry
-            for entry in local
-            if all(word in " ".join(entry.path) for word in words)
+        by_path = {c.path: c for c in (*self._commands, *local)}
+        pool = [
+            by_path[path] for path in tui_design().customer_commands if path in by_path
         ]
+        return [e for e in pool if all(word in " ".join(e.path) for word in words)]
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id != "prompt":  # #key and #url bubble up from a tab
@@ -2385,12 +2387,7 @@ class OnexTui(App[int]):
             self._write(_say("no_match", command=" ".join(words)))
             return
         if not _is_customer_command(entry.path):
-            self._write(
-                Text(
-                    _say("not_a_tui_command", command=" ".join(words)),
-                    style=_style("warning"),
-                )
-            )
+            self._write(_say("not_a_tui_command", command=" ".join(words)))
             return
         if entry.needs_terminal:
             await self._run(entry, tuple(words))

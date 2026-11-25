@@ -129,6 +129,17 @@ def _connect(yes: bool) -> None:
     """Connect a model server."""
 
 
+@_root.command("doctor")
+def _doctor() -> None:
+    """Check this install."""
+
+
+@_root.command("metering")
+@click.option("--key", prompt=True)
+def _metering(key: str) -> None:
+    """Show metering (prompts, so it runs in the real terminal)."""
+
+
 @_root.command("setup")
 @click.option("--interactive/--no-interactive", default=True)
 def _setup(interactive: bool) -> None:
@@ -138,7 +149,14 @@ def _setup(interactive: bool) -> None:
 def test_command_tree_lists_every_leaf_with_help_and_terminal_need() -> None:
     """F1, F5."""
     tree = {entry.path: entry for entry in command_tree(_root)}
-    assert set(tree) == {("models", "connections"), ("models", "connect"), ("setup",)}
+    assert set(tree) == {
+        ("models", "connections"),
+        ("models", "connect"),
+        ("doctor",),
+        ("metering",),
+        ("setup",),
+    }
+    assert tree[("metering",)].needs_terminal
     assert tree[("models", "connections")].help == "List named model connections."
     assert not tree[("models", "connections")].needs_terminal
     assert tree[("models", "connect")].needs_terminal
@@ -261,7 +279,7 @@ async def test_slash_opens_a_filtered_palette_and_escape_closes_it() -> None:
         palette = app.query_one("#palette")
         assert palette.display
         shown = [str(option.prompt) for option in palette.options]
-        assert any("doctor" in text for text in shown)
+        assert [text.split()[0] for text in shown] == ["/doctor"]
         assert not any(text.startswith("/setup") for text in shown)
         await pilot.press("escape")
         assert not palette.display
@@ -273,7 +291,7 @@ async def test_enter_runs_the_named_cli_command_and_shows_its_output() -> None:
     app = _app(runner)
     async with app.run_test() as pilot:
         for key in "/doctor":
-            await pilot.press("slash" if key == "/" else key)
+            await pilot.press("space" if key == " " else "slash" if key == "/" else key)
         await pilot.press("enter")
         await pilot.pause()
         assert _commands(runner) == [("doctor",)]
@@ -378,15 +396,13 @@ async def test_a_prompting_command_runs_in_the_real_terminal() -> None:
     runner = _Runner([])
     app = _app(runner)
     async with app.run_test() as pilot:
-        for key in "/models connect":
+        for key in "/metering":
             await pilot.press("space" if key == " " else "slash" if key == "/" else key)
         await pilot.press("enter")
         await pilot.pause()
+        # OMN-26611 AC1: a customer command runs inside the TUI, not in a new terminal
         assert runner.terminal_calls == []
-        assert _commands(runner) == []
-        assert "Not a TUI command: run onex models connect in a terminal" in _log_text(
-            app
-        )
+        assert _commands(runner) == [("metering",)]
 
 
 async def test_status_bar_shows_the_model_and_delegation() -> None:
@@ -442,15 +458,14 @@ async def test_shortcuts_lead_the_palette_like_coding_agent_tuis() -> None:
     async with app.run_test() as pilot:
         await pilot.press("slash")
         shown = [str(option.prompt) for option in app.query_one("#palette").options]
-        assert [text.split()[0] for text in shown[:6]] == [
+        assert [text.split()[0] for text in shown[:4]] == [
             "/config",
             "/model",
             "/delegation",
             "/dashboard",
-            "/doctor",
-            "/metering",
         ]
         assert not any(text.split()[0] == "/setup" for text in shown)
+        assert not any(text.startswith("/models connections") for text in shown)
 
 
 async def _press[T](pilot: Pilot[T], app: OnexTui, button_id: str) -> None:

@@ -1,35 +1,44 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The onex TUI's `/` list shows the commands a customer needs, driven headless.
+"""The TUI's `/` palette lists only the commands a customer needs (OMN-26610).
 
+Driven headless against the real `onex` command tree, not a fixture root.
 Failure modes:
-  F1. `/` lists every CLI command, so a customer sees internal team tools
-      (AC1).
-  F2. A typed internal command runs instead of saying it is not a TUI command
-      (AC2).
-  F3. The operator switch ONEX_CLI_SHOW_ALL_COMMANDS=1 no longer lists every
-      command (AC3).
-  F4. /doctor or /metering is missing from the list or does not run its CLI
-      command in the TUI (AC4).
+
+  C1  `/` lists every CLI command (hundreds of team-internal ones) instead of
+      the customer list, or lists the nine in another order, or the list is
+      kept somewhere other than tui_design.yaml (AC1).
+  C2  A typed command the TUI does not list still runs, or is told "no match"
+      as if it did not exist, or says something other than the one sentence (AC2).
+  C3  The TUI honours a list-everything switch: ONEX_CLI_SHOW_ALL_COMMANDS=1
+      lists more than the nine, or lets a typed hidden command run (AC3).
+  C4  /doctor or /metering is listed but does not run its CLI command and show
+      what it printed in the TUI (AC4).
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
-import click
 import pytest
-from textual.pilot import Pilot
+from omnibase_core.cli.cli_commands import cli
 
-from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
-    ModelTuiStatus,
-    OnexTui,
+from omnimarket.nodes.node_onex_setup_effect.cli_tui import OnexTui
+from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
+    tui_design,
+)
+from tests.unit.nodes.node_onex_setup_effect.test_onex_tui import (
+    _commands,
+    _log_text,
+    _Runner,
+    _status,
+    _type,
 )
 
 pytestmark = pytest.mark.unit
 
-#: Typing `/` lists these, in this order (OMN-26610 AC1).
-_CUSTOMER = (
+_SWITCH = "ONEX_CLI_SHOW_ALL_COMMANDS"
+
+#: What the operator chose (OMN-26610), in the order a customer sees them.
+_CUSTOMER = [
     "/config",
     "/model",
     "/delegation",
@@ -39,183 +48,110 @@ _CUSTOMER = (
     "/clear",
     "/help",
     "/quit",
-)
-
-
-@click.group()
-def _root() -> None:
-    """Fixture root."""
-
-
-@_root.command("doctor")
-def _doctor() -> None:
-    """Run diagnostic checks."""
-
-
-@_root.command("metering")
-def _metering() -> None:
-    """Read delegation metering."""
-
-
-@_root.command("dashboard")
-def _dashboard() -> None:
-    """Dashboard."""
-
-
-@_root.command("setup")
-def _setup() -> None:
-    """Set up ONEX."""
-
-
-@_root.group("scm")
-def _scm() -> None:
-    """Internal source control tools."""
-
-
-@_scm.command("pr-list")
-def _pr_list() -> None:
-    """List pull requests."""
-
-
-@_root.group("auth")
-def _auth() -> None:
-    """Internal auth tools."""
-
-
-@_auth.command("lane-login")
-def _lane_login() -> None:
-    """Log a lane in."""
-
-
-@_root.group("models")
-def _models() -> None:
-    """Model servers."""
-
-
-@_models.command("connections")
-def _connections() -> None:
-    """List named model connections."""
-
-
-#: The setup read the TUI starts with, which these tests leave out.
-_SETUP_READS = {("models", "list", "--json"), ("models", "connections", "--json")}
-
-
-class _Runner:
-    def __init__(self) -> None:
-        self._all: list[tuple[str, ...]] = []
-        self.terminal_calls: list[tuple[str, ...]] = []
-
-    @property
-    def calls(self) -> list[tuple[str, ...]]:
-        return [c for c in self._all if c not in _SETUP_READS]
-
-    async def capture(
-        self, argv: tuple[str, ...], stdin: str | None = None
-    ) -> tuple[int, str, str]:
-        self._all.append(argv)
-        return 0, "", ""
-
-    async def stream(
-        self,
-        argv: tuple[str, ...],
-        emit: Callable[[str], None],
-        stdin: str | None = None,
-    ) -> int:
-        self._all.append(argv)
-        emit(f"output of {' '.join(argv)}")
-        return 0
-
-    def in_terminal(self, argv: tuple[str, ...]) -> int:
-        self.terminal_calls.append(argv)
-        return 0
-
-
-async def _status() -> ModelTuiStatus:
-    return ModelTuiStatus(model="Qwen3.8-27B", delegation="off")
-
-
-def _app(runner: _Runner) -> OnexTui:
-    return OnexTui(root=_root, runner=runner, load_status=_status)
-
-
-async def _type[T](pilot: Pilot[T], text: str) -> None:
-    names = {" ": "space", "/": "slash", "-": "minus"}
-    for key in text:
-        await pilot.press(names.get(key, key))
-
-
-def _listed(app: OnexTui) -> list[str]:
-    return [f"/{o.id}" for o in app.query_one("#palette").options]
-
-
-def _log_text(app: OnexTui) -> str:
-    return "\n".join(str(line) for line in app.query_one("#output").lines)
+]
 
 
 @pytest.fixture(autouse=True)
 def _customer_view(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("ONEX_CLI_SHOW_ALL_COMMANDS", raising=False)
+    """Every test starts as a customer; the switch test turns it on itself."""
+    monkeypatch.delenv(_SWITCH, raising=False)
 
 
-async def test_slash_lists_exactly_the_customer_commands_in_order() -> None:
-    """AC1 / F1."""
-    app = _app(_Runner())
+def _app(runner: _Runner) -> OnexTui:
+    return OnexTui(root=cli, runner=runner, load_status=_status)
+
+
+def _palette(app: OnexTui) -> list[str]:
+    options = app.query_one("#palette").options
+    return [str(option.prompt).split()[0] for option in options]
+
+
+async def test_slash_lists_exactly_the_nine_customer_commands_in_order() -> None:
+    """C1, AC1."""
+    app = _app(_Runner([]))
     async with app.run_test() as pilot:
         await pilot.press("slash")
-        assert tuple(_listed(app)) == _CUSTOMER
+        assert _palette(app) == _CUSTOMER
 
 
-async def test_a_typed_internal_command_runs_nothing_and_says_where_to_run_it() -> None:
-    """AC2 / F2."""
-    runner = _Runner()
+def test_the_customer_list_is_declared_once_in_tui_design_yaml() -> None:
+    """C1, AC1: the list is data in the design file, not a list in code."""
+    declared = ["/" + " ".join(path) for path in tui_design().customer_commands]
+    assert declared == _CUSTOMER
+
+
+async def test_a_typed_hidden_command_runs_nothing_and_says_so() -> None:
+    """C2, AC2."""
+    runner = _Runner(["this must never be printed"])
     app = _app(runner)
     async with app.run_test() as pilot:
-        for typed in ("/scm pr-list", "/auth lane-login"):
-            await _type(pilot, typed)
-            await pilot.press("enter")
-            await pilot.pause()
-        text = _log_text(app)
-        assert "Not a TUI command: run onex scm pr-list in a terminal" in text
-        assert "Not a TUI command: run onex auth lane-login in a terminal" in text
-        assert runner.calls == []
+        await _type(pilot, "/models list")
+        await pilot.press("enter")
+        await pilot.pause()
+        assert _commands(runner) == []
         assert runner.terminal_calls == []
+        assert "Not a TUI command: run onex models list in a terminal" in _log_text(app)
+        assert "this must never be printed" not in _log_text(app)
+
+
+async def test_a_command_that_does_not_exist_is_still_no_match() -> None:
+    """C2: the hidden sentence is for real commands only."""
+    app = _app(_Runner([]))
+    async with app.run_test() as pilot:
+        await _type(pilot, "/nosuchcommand")
+        await pilot.press("enter")
+        await pilot.pause()
+        assert "Not a TUI command" not in _log_text(app)
+        assert "no onex command matches '/nosuchcommand'" in _log_text(app)
 
 
 async def test_no_environment_switch_widens_the_list_or_runs_hidden_commands(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC3 / F3: setting the old switch changes nothing."""
-    monkeypatch.setenv("ONEX_CLI_SHOW_ALL_COMMANDS", "1")
-    runner = _Runner()
+    """C3, AC3: the TUI has no list-everything switch, so setting the old one changes nothing."""
+    monkeypatch.setenv(_SWITCH, "1")
+    runner = _Runner(["this must never be printed"])
     app = _app(runner)
     async with app.run_test() as pilot:
         await pilot.press("slash")
-        assert tuple(_listed(app)) == _CUSTOMER
+        assert _palette(app) == _CUSTOMER
     app = _app(runner)
     async with app.run_test() as pilot:
-        await _type(pilot, "/scm pr-list")
+        await _type(pilot, "/models connections")
         await pilot.press("enter")
         await pilot.pause()
-        assert runner.calls == []
-        assert "Not a TUI command: run onex scm pr-list in a terminal" in _log_text(app)
+        assert _commands(runner) == []
+        assert "Not a TUI command: run onex models connections in a terminal" in (
+            _log_text(app)
+        )
 
 
-@click.group()
-def _bare_root() -> None:
-    """A root that registers neither doctor nor metering."""
-
-
-@pytest.mark.parametrize("command", ["doctor", "metering"])
-async def test_doctor_and_metering_run_their_cli_command_and_show_output(
-    command: str,
-) -> None:
-    """AC4 / F4: the entries are the design file's, not whatever the CLI lists."""
-    runner = _Runner()
-    app = OnexTui(root=_bare_root, runner=runner, load_status=_status)
+@pytest.mark.parametrize("name", ["doctor", "metering"])
+async def test_doctor_and_metering_run_and_show_their_output(name: str) -> None:
+    """C4, AC4: through the real command tree, in the customer view."""
+    runner = _Runner([f"{name} output line"])
+    app = _app(runner)
     async with app.run_test() as pilot:
-        await _type(pilot, f"/{command}")
+        await pilot.press("slash")
+        assert f"/{name}" in _palette(app)
+        await _type(pilot, name)
         await pilot.press("enter")
         await pilot.pause()
-        assert runner.calls == [(command,)]
-        assert f"output of {command}" in _log_text(app)
+        assert _commands(runner) == [(name,)]
+        assert f"{name} output line" in _log_text(app)
+        assert "Not a TUI command" not in _log_text(app)
+
+
+@pytest.mark.parametrize(
+    "typed",
+    ["/delegation on", "/delegation off", "/model set"],
+)
+async def test_typed_subcommands_of_a_customer_command_still_run(typed: str) -> None:
+    """C2, AC2: the sentence is for commands outside the nine, not for their subcommands."""
+    runner = _Runner(["subcommand ran"])
+    app = _app(runner)
+    async with app.run_test() as pilot:
+        await _type(pilot, typed)
+        await pilot.press("enter")
+        await pilot.pause()
+        assert "Not a TUI command" not in _log_text(app)

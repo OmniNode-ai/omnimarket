@@ -274,6 +274,9 @@ class ModelTuiDesign(BaseModel):
     #: CLI command paths the TUI runs inside itself instead of starting a new
     #: onex program (OMN-26611); a path covers every command under it.
     in_process: tuple[tuple[str, ...], ...] = ()
+    #: The only commands `/` lists and the TUI runs, in this order; every other
+    #: CLI command stays in the CLI; the TUI has no list-everything switch.
+    customer_commands: tuple[tuple[str, ...], ...] = Field(min_length=1)
     model_table: ModelTuiModelTable
     delegation: ModelTuiDelegation
     dashboard: ModelTuiDashboard
@@ -317,6 +320,11 @@ class ModelTuiDesign(BaseModel):
         names = {s.path for s in self.shortcuts}
         if len(names) != len(self.shortcuts):
             raise ValueError("two shortcuts share a path")
+        if len(set(self.customer_commands)) != len(self.customer_commands):
+            raise ValueError("two customer commands share a path")
+        for path in self.customer_commands:
+            if self.replaces(path) and path not in names:
+                raise ValueError(f"customer command {path} is a replaced command")
         for alias, target in self.aliases.items():
             if (target,) not in names:
                 raise ValueError(f"alias {alias!r} names no shortcut {target!r}")
