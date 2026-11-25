@@ -146,6 +146,8 @@ class ModelTuiLayoutColumn(BaseModel):
         "pick",
         "model",
         "model_marked",
+        "position",
+        "model_mark",
         "context",
         "price_words",
         "price_in",
@@ -291,6 +293,18 @@ class ModelTuiDashboard(BaseModel):
     opened: str
     stopped: str
     failed: str
+    state_running: str
+    state_running_nopid: str
+    state_stopped: str
+    state_reading: str
+    state_unread: str
+    dot_on: str = Field(min_length=1)
+    dot_off: str = Field(min_length=1)
+    dot_reading: str = Field(min_length=1)
+    button_open: str
+    note_opened: str
+    could_not: str
+    could_not_read: str
 
 
 class ModelTuiActivity(BaseModel):

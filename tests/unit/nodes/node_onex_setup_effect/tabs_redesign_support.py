@@ -75,11 +75,14 @@ def selection() -> ModelTuiSelection:
 def app(
     run: _Runner | None = None,
     hooks: dict[str, str] | None = None,
+    delegation: str = "hook",
     **extra: Any,
 ) -> OnexTui:
     async def status() -> ModelTuiStatus:
         return ModelTuiStatus(
-            models=3, delegation="hook", hooks=hooks or {"prompt_hook": "installed"}
+            models=3,
+            delegation=delegation,  # type: ignore[arg-type]
+            hooks=hooks or {"prompt_hook": "installed"},
         )
 
     return OnexTui(root=_root, runner=run or _Runner([]), load_status=status, **extra)

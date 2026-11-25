@@ -203,6 +203,12 @@ model_table:
       failed: {text: "✗ not working", colour: error}
       unavailable: {text: "! needs a key", colour: warning}
     layouts:
+      order:
+        header: false
+        columns:
+          - {key: position, title: " "}
+          - {key: model_mark, title: Model}
+          - {key: status, title: Status}
       found:
         header: false
         columns:
@@ -280,6 +286,20 @@ dashboard:
   opened: "Opened in your browser. Press Enter, use the Open button, or run onex dashboard open to open it again."
   stopped: "Dashboard stopped"
   failed: "Dashboard {action} did not work: {reason}"
+  # The Dashboard tab (OMN-26620 mockup page 7): state beside the title, the
+  # address under it, one footer line; a failure is one plain sentence.
+  state_running: "{dot} Running · pid {pid}"
+  state_running_nopid: "{dot} Running"
+  state_stopped: "{dot_off} Stopped"
+  state_reading: "{dot_reading} checking…"
+  state_unread: "{dot_reading} status unknown"
+  dot_on: "●"
+  dot_off: "○"
+  dot_reading: "◌"
+  button_open: Open in browser
+  note_opened: "Opened in your browser."
+  could_not: "Could not {action} the dashboard. Run /doctor."
+  could_not_read: "Could not read the dashboard. Run /doctor."
 
 # /config, /model and /delegation are three tabs of one place: Tab and
 # Shift+Tab move between them, and a click on a tab opens it.
@@ -375,6 +395,18 @@ words:
   # Model tab (mockup page 5).
   tried_first: "Tried first: {mark} {model}"
   tried_first_auto: "Tried first: {mark} Auto picks per task"
+  # Delegation tab (mockup page 6).
+  delegation_about: "Prompts go to your models first. Claude Code is the fallback."
+  turn_on: "Turn on"
+  turn_off: "Turn off"
+  hook_label: Hook
+  hook_state_installed: "✓ installed in Claude Code"
+  hook_state_missing: "! not installed"
+  hook_state_paused: "! paused"
+  hook_state_unknown: "– not read yet"
+  hook_state_unread: "! could not be read"
+  order_title: "Tried in this order"
+  order_none: "No models yet. Run /config."
   tab_hint_config: "tab next · space tick · ctrl+s save · esc close"
   tab_hint_model: "↑↓ move · enter make first · d details · esc close"
   tab_hint_delegation: "space switch · ctrl+s save · esc close"

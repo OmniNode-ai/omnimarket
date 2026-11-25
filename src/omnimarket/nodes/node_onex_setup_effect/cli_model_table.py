@@ -367,7 +367,7 @@ class ModelTable(Widget):
             return shown
         return sorted(shown, key=lambda e: _sort_key(e, self._sort))
 
-    def _tab_cells(self, entry: ModelCatalogEntry) -> list[object]:
+    def _tab_cells(self, entry: ModelCatalogEntry, position: int) -> list[object]:
         """A row of a tab layout: plain words, no coloured pills."""
         words = _table().tab_table
         cells: list[object] = []
@@ -384,6 +384,14 @@ class ModelTable(Widget):
                     )
             elif key == "model":
                 named = Text(_named(entry), style=_colour("foreground"))
+                _say_expired(named, entry)
+                cells.append(named)
+            elif key == "position":
+                cells.append(Text(str(position), style=_colour("muted")))
+            elif key == "model_mark":
+                mark = tui_design().words["model_glyph"]
+                named = Text(f"{mark} ", style=_colour("primary"))
+                named.append(_named(entry), style=_colour("foreground"))
                 _say_expired(named, entry)
                 cells.append(named)
             elif key == "model_marked":
@@ -410,9 +418,9 @@ class ModelTable(Widget):
                 cells.append(Text(word.text, style=_colour(word.colour)))
         return cells
 
-    def _cells(self, entry: ModelCatalogEntry) -> list[object]:
+    def _cells(self, entry: ModelCatalogEntry, position: int = 0) -> list[object]:
         if self._layout is not None:
-            return self._tab_cells(entry)
+            return self._tab_cells(entry, position)
         words = _table()
         cells: list[object] = []
         for column in words.columns:
@@ -447,8 +455,8 @@ class ModelTable(Widget):
         keep = self.current()
         rows.clear()
         visible = self._visible()
-        for entry in visible:
-            rows.add_row(*self._cells(entry), key=entry_key(entry))
+        for position, entry in enumerate(visible, start=1):
+            rows.add_row(*self._cells(entry, position), key=entry_key(entry))
         words = _table()
         ticked = (
             words.bar_ticked.format(count=len(self._ticked)) if self._selectable else ""

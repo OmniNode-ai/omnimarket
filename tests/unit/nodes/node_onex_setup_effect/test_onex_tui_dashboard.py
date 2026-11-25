@@ -123,7 +123,7 @@ async def test_a_running_dashboard_shows_its_url_and_process() -> None:
     async with app.run_test(size=(160, 44)) as pilot:
         await _open_dashboard(pilot)
         assert isinstance(app.screen, DashboardScreen)
-        assert "Running (process 35653)" in _state(app)
+        assert "● Running · pid 35653" in _state(app)
 
 
 async def test_a_stopped_dashboard_shows_the_clis_fix() -> None:
@@ -131,8 +131,9 @@ async def test_a_stopped_dashboard_shows_the_clis_fix() -> None:
     app = _app(_Dashboard(running=False))
     async with app.run_test(size=(160, 44)) as pilot:
         await _open_dashboard(pilot)
-        assert "Not running." in _state(app)
-        assert "onex setup --action repair --component dashboard" in _state(app)
+        assert "○ Stopped" in _state(app)
+        # OMN-26620: the CLI's fix (a command with flags) is not printed.
+        assert "onex setup --action repair" not in _state(app)
 
 
 async def test_s_starts_it_keeps_the_tab_and_reads_the_state_again() -> None:
@@ -145,11 +146,7 @@ async def test_s_starts_it_keeps_the_tab_and_reads_the_state_again() -> None:
         await _settle(pilot, 16)
         assert ("dashboard", "start", "--json") in runner.calls
         assert isinstance(app.screen, DashboardScreen)
-        assert (
-            "Dashboard running. Press Enter, use the Open button, or run onex dashboard open to open it."
-            in str(app.screen.query_one("#bnote").render())
-        )
-        assert "Running (process 35653)" in _state(app)
+        assert "● Running · pid 35653" in _state(app)
 
 
 async def test_enter_opens_it_and_x_stops_it() -> None:
@@ -165,8 +162,7 @@ async def test_enter_opens_it_and_x_stops_it() -> None:
         await _settle(pilot, 16)
         assert ("dashboard", "stop", "--json") in runner.calls
         assert isinstance(app.screen, DashboardScreen)
-        assert "Dashboard stopped" in str(app.screen.query_one("#bnote").render())
-        assert "Not running." in _state(app)
+        assert "○ Stopped" in _state(app)
 
 
 async def test_a_failed_start_shows_the_fix_and_pops_up_failed(
@@ -187,6 +183,6 @@ async def test_a_failed_start_shows_the_fix_and_pops_up_failed(
         await pilot.press("s")
         await _settle(pilot, 16)
         note = str(app.screen.query_one("#bnote").render())
-        assert "Dashboard start did not work" in note
-        assert "onex setup --action repair --component dashboard" in note
+        assert "Could not start the dashboard. Run /doctor." in note
+        assert "onex setup --action repair" not in note
         assert ("Failed", "error") in shown

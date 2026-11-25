@@ -35,7 +35,7 @@ from rich.text import Text
 from textual import on
 from textual.app import App, ComposeResult, RenderResult, SuspendNotSupported
 from textual.binding import Binding, BindingType
-from textual.containers import Container, Horizontal, Vertical, VerticalScroll
+from textual.containers import Container, Horizontal, Vertical
 from textual.content import Content
 from textual.css.query import NoMatches
 from textual.screen import ModalScreen, Screen
@@ -45,7 +45,6 @@ from textual.widgets import (
     Button,
     DataTable,
     Input,
-    Label,
     OptionList,
     RadioButton,
     RadioSet,
@@ -1450,27 +1449,26 @@ class DelegationScreen(_TabbedScreen[None]):
     DelegationScreen { align: center middle; }
     #deleg { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
     #deleg .summary { display: none; }
-    .hook-switch { height: auto; }
-    .hook-switch Label { width: 24; padding: 1 1 0 0; }
-    .hook-switch Switch { width: 12; border: tall $primary; background: $surface; }
-    .hook-switch Switch .switch--slider { color: $error 70%; background: $boost; }
-    .hook-switch Switch.-on .switch--slider { color: $success; }
-    .hook-text { width: 1fr; height: 3; padding: 0 0 0 2; }
-    .hook, .hook-what { height: 1; text-wrap: nowrap; text-overflow: ellipsis; }
-    .hook { margin-top: 1; }
-    .hook-what { color: $text-muted; }
-    #on-state { height: auto; padding: 0 0 0 2; text-style: bold; }
-    #hooks-title { margin-bottom: 1; }
-    #hooks-end { height: 1; }
-    #dbody { height: 1fr; scrollbar-size-vertical: 1; }
-    #selected { min-height: 4; }
+    #dhead { height: 1; }
+    #dtitle { width: 1fr; text-style: bold; color: $primary; }
+    #on-state { width: auto; text-style: bold; }
+    #hooks-title { color: $text-muted; height: 1; }
+    #dturn { width: auto; min-width: 12; height: 1; border: none; margin: 1 0; }
+    #dswitches { display: none; height: 0; }
+    .hook { height: 1; text-wrap: nowrap; text-overflow: ellipsis; }
+    #dorder-title { color: $text-muted; height: 1; margin-top: 1; }
+    #selected { height: 1fr; }
+    #selected DataTable { height: auto; max-height: 100%; }
+    #claude { height: auto; }
     #dfoot { height: auto; }
     #dnote { color: $text-muted; height: auto; }
-    #dkeys { color: $text-muted; height: auto; }
-    #dbuttons { height: 3; align-horizontal: right; }
+    #dkeys { height: 1; }
+    #dbuttons { height: 1; align-horizontal: right; }
+    #dbuttons Button { height: 1; min-width: 8; border: none; margin: 0 0 0 2; }
     """
     TAB = "delegation"
     NOTE = "#dnote"
+    PROBLEM = "problem_delegation"
     BINDINGS = [
         Binding("escape", "cancel", _say("button_cancel")),
         Binding("ctrl+s", "save", _say("button_save"), priority=True),
@@ -1502,48 +1500,45 @@ class DelegationScreen(_TabbedScreen[None]):
         with Vertical(id="deleg"):
             yield _tab_strip(self.TAB)
             yield _summary(self._selection)
-            # Review 2026-11-15: at 80x24 the parts above the buttons need more
-            # rows than there are, so they scroll; the note, the key line and
-            # the buttons always show under them.
-            with VerticalScroll(id="dbody"):
-                yield Label(Text(words.title, style=_style("primary", "bold")))
-                yield Label(
-                    Text(words.hooks_title, style=_style("muted")), id="hooks-title"
-                )
+            with Horizontal(id="dhead"):
+                yield Static(Text(words.title), id="dtitle")
+                yield Static(self._state_text(), id="on-state")
+            yield Static(
+                Text(_say("delegation_about"), style=_style("muted")), id="hooks-title"
+            )
+            yield Button(
+                _say("turn_off" if any(self._saved_boxes().values()) else "turn_on"),
+                id="dturn",
+            )
+            # The switches hold the pending state; the button and Space move them.
+            with Horizontal(id="dswitches"):
                 saved = self._saved_boxes()
                 for hook in words.hooks:
-                    # Operator 2026-11-15: one switch per hook; both off removes
-                    # the hooks, one off pauses that hook.
                     with Horizontal(classes="hook-switch"):
-                        yield Label(hook.label)
                         yield Switch(value=saved[hook.key], id=f"use-{hook.key}")
-                        # Two lines beside the switch, so 80 columns keep the
-                        # state word: the hook and its state, then what it does.
-                        with Vertical(classes="hook-text"):
-                            yield Static(
-                                self._hook_text(hook.key),
-                                id=f"hook-{hook.key}",
-                                classes="hook",
-                            )
-                            yield Static(hook.what, classes="hook-what")
-                yield Static(self._state_text(), id="on-state")
-                yield Static("", id="hooks-end")
-                # OMN-23413: is Claude Code there? Read from setup's own check.
+            for hook in words.hooks:
                 yield Static(
-                    Text(_say("claude_checking"), style=_style("muted")), id="claude"
+                    self._hook_text(hook.key), id=f"hook-{hook.key}", classes="hook"
                 )
-                yield Label(Text(words.table_title, style=_style("muted")))
-                yield ModelTable(
-                    selectable=False,
-                    provider_labels={e.provider: e.label for e in _picker()},
-                    id="selected",
-                )
+            # OMN-23413: is Claude Code there? Read from setup's own check.
+            yield Static(
+                Text(_say("claude_checking"), style=_style("muted")), id="claude"
+            )
+            yield Static(
+                Text(_say("order_title"), style=_style("muted")), id="dorder-title"
+            )
+            yield ModelTable(
+                selectable=False,
+                provider_labels={e.provider: e.label for e in _picker()},
+                id="selected",
+                layout="order",
+            )
             with Vertical(id="dfoot"):
                 yield Static("", id="dnote")
-                yield Static(_tab_hint("tab_hint_delegation"), id="dkeys")
                 with Horizontal(id="dbuttons"):
                     yield Button(_say("button_save"), variant="primary", id="dsave")
                     yield Button(_say("button_cancel"), id="dcancel")
+                yield Static(_tab_hint("tab_hint_delegation"), id="dkeys")
 
     def on_mount(self) -> None:
         self.run_worker(self._check_claude(), group="claude", exclusive=True)
@@ -1557,7 +1552,7 @@ class DelegationScreen(_TabbedScreen[None]):
             note.update(Text(words.no_models, style=_style("warning")))
 
     async def _check_claude(self) -> None:
-        """Fill the Claude Code line: ready, installed, signed out or missing."""
+        """Fill the Claude Code line: shown only when Claude Code is not ready."""
         state, fix = await cast("OnexTui", self.app).claude_code()
         self._claude_state = state
         self._claude_fix = fix
@@ -1568,7 +1563,10 @@ class DelegationScreen(_TabbedScreen[None]):
             "not_installed": (_say("claude_missing"), "error"),
         }.get(state, (_say("claude_unknown"), "muted"))
         rendered = line if not fix else f"{line}\n{fix}"
-        self.query_one("#claude", Static).update(Text(rendered, style=_style(colour)))
+        shown = self._calm(Text(rendered, style=_style(colour)))
+        widget = self.query_one("#claude", Static)
+        widget.update(shown)
+        widget.display = state != "ready"
 
     def action_flip(self) -> None:
         """Space switches both: on when any is off, otherwise off."""
@@ -1628,21 +1626,19 @@ class DelegationScreen(_TabbedScreen[None]):
         return {key: drawn.get(f"use-{key}", saved[key]) for key in saved}
 
     def _hook_text(self, key: str) -> Text:
-        """One hook's line: its name and whether Claude Code has it; what it
-        does is the line under it (review 2026-11-15, 80 columns)."""
-        words = tui_design().delegation
-        hook = next(h for h in words.hooks if h.key == key)
+        """The hook line: its label, then whether Claude Code has the hook."""
         state = self._hooks.get(key)
-        unread = words.hook_unread if self._saved == "unknown" else words.hook_unknown
-        word, colour, glyph = {
-            "installed": (words.hook_installed, "success", words.glyph_on),
-            "missing": (words.hook_missing, "warning", words.glyph_off),
-            "paused": (words.hook_paused, "warning", words.glyph_off),
-        }.get(state or "", (unread, "muted", words.glyph_off))
+        unread = (
+            "hook_state_unread" if self._saved == "unknown" else "hook_state_unknown"
+        )
+        word, colour = {
+            "installed": ("hook_state_installed", "success"),
+            "missing": ("hook_state_missing", "warning"),
+            "paused": ("hook_state_paused", "warning"),
+        }.get(state or "", (unread, "muted"))
         return Text.assemble(
-            (f"{glyph} ", _style(colour)),
-            (f"{hook.name}  ", _style("primary", "bold")),
-            (word, _style(colour, "bold")),
+            (f"{_say('hook_label')}   ", _style("primary", "bold")),
+            (_say(word), _style(colour)),
         )
 
     def show_state(
@@ -1665,9 +1661,17 @@ class DelegationScreen(_TabbedScreen[None]):
             for key, value in self._saved_boxes().items():
                 self.query_one(f"#use-{key}", Switch).value = value
         self.query_one("#on-state", Static).update(self._state_text())
+        self._show_turn()
 
     def on_switch_changed(self, _event: Switch.Changed) -> None:
         self.query_one("#on-state", Static).update(self._state_text())
+        self._show_turn()
+
+    def _show_turn(self) -> None:
+        """The button names what pressing it does: switch off while on, else on."""
+        self.query_one("#dturn", Button).label = _say(
+            "turn_off" if self.any_on() else "turn_on"
+        )
 
     def action_save(self) -> None:
         """Switch here and stay; the outcome shows on this tab."""
@@ -1713,6 +1717,8 @@ class DelegationScreen(_TabbedScreen[None]):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "dcancel":
             self._close()
+        elif event.button.id == "dturn":
+            self.action_flip()
         else:
             self.action_save()
 
@@ -1869,19 +1875,24 @@ class DashboardScreen(_TabbedScreen[None]):
 
     TAB = "dashboard"
     NOTE = "#bnote"
+    PROBLEM = "problem_dashboard"
 
     CSS = """
     DashboardScreen { align: center middle; }
     #board { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
     #board .summary { display: none; }
-    #bstate { height: auto; margin: 1 0; }
+    #bhead { height: 1; }
+    #btitle { width: 1fr; text-style: bold; color: $primary; }
+    #bstate { width: auto; text-style: bold; }
+    #baddr { height: 1; color: $accent; }
+    #bbuttons { height: 1; margin: 1 0; }
+    #bbuttons Button { height: 1; min-width: 8; width: auto; border: none; margin: 0 2 0 0; }
     #bnote { height: auto; }
-    #bkeys { color: $text-muted; height: 1; }
-    #bbuttons { height: 3; dock: bottom; align-horizontal: right; }
+    #bkeys { height: 1; dock: bottom; }
     """
     BINDINGS = [
         Binding("escape", "cancel", _say("button_cancel")),
-        Binding("s", "start", _say("button_start"), show=False),
+        Binding("s", "start_or_stop", "Start or stop", show=False),
         Binding("enter", "open", _say("button_open"), show=False),
         Binding("x", "stop", _say("button_stop"), show=False),
     ]
@@ -1889,37 +1900,61 @@ class DashboardScreen(_TabbedScreen[None]):
     def __init__(self, selection: ModelTuiSelection) -> None:
         super().__init__()
         self._selection = selection
+        #: Whether the dashboard runs, once its state was read; ``None`` before.
+        self._dash_running: bool | None = None
 
     def compose(self) -> ComposeResult:
         words = tui_design().dashboard
         with Vertical(id="board"):
             yield _tab_strip(self.TAB)
             yield _summary(self._selection)
-            yield Label(Text(words.title, style=_style("primary", "bold")))
-            yield Static(
-                Text(_say("status_reading"), style=_style("muted")), id="bstate"
-            )
-            yield Static("", id="bnote")
-            yield Static(_tab_hint("tab_hint_dashboard_stopped"), id="bkeys")
+            with Horizontal(id="bhead"):
+                yield Static(Text(words.title), id="btitle")
+                yield Static(self._state_line(None), id="bstate")
+            yield Static("", id="baddr")
             with Horizontal(id="bbuttons"):
                 # The keys are S, Enter and X; a focused button would take Enter
-                # for itself and start instead of open. They stay clickable.
+                # for itself. The buttons stay clickable.
                 for label, button_id in (
-                    ("button_start", "bstart"),
-                    ("button_open", "bopen"),
-                    ("button_stop", "bstop"),
-                    ("button_cancel", "bcancel"),
+                    (_say("button_start"), "bstart"),
+                    (words.button_open, "bopen"),
+                    (_say("button_stop"), "bstop"),
                 ):
                     button = Button(
-                        _say(label),
+                        label,
                         variant="primary" if button_id == "bstart" else "default",
                         id=button_id,
                     )
                     button.can_focus = False
+                    button.display = False
                     yield button
+            yield Static("", id="bnote")
+            yield Static(_tab_hint("tab_hint_dashboard_stopped"), id="bkeys")
 
     def on_mount(self) -> None:
         self._read_state()
+
+    def _state_line(self, state: Mapping[str, object] | None) -> Text:
+        """The word beside the title: running with its pid, stopped, or not read."""
+        words = tui_design().dashboard
+        if state is None:
+            return Text(
+                words.state_reading.format(dot_reading=words.dot_reading),
+                style=_style("muted", "bold"),
+            )
+        evidence = state.get("evidence")
+        found = evidence if isinstance(evidence, Mapping) else {}
+        if state.get("status") == "success" and found.get("url"):
+            pid = found.get("pid")
+            sentence = words.state_running if pid else words.state_running_nopid
+            return Text(
+                sentence.format(dot=words.dot_on, pid=pid),
+                style=_style("success", "bold"),
+            )
+        return Text(
+            words.state_stopped.format(dot_off=words.dot_off),
+            style=_style("muted", "bold"),
+        )
 
     def _read_state(self) -> None:
         app = self.app
@@ -1927,47 +1962,102 @@ class DashboardScreen(_TabbedScreen[None]):
             return
 
         async def go() -> None:
-            self._show_state(await app.dashboard_state())
+            try:
+                self._show_state(await app.dashboard_state())
+            except NoMatches:  # the user left this tab while it was read
+                return
+            except Exception as error:
+                self._read_failed(error)
 
         self.run_worker(go(), exclusive=True, group="dashboard-state")
 
-    def _show_state(self, state: Mapping[str, object]) -> None:
+    def _read_failed(self, error: BaseException) -> None:
+        _LOG.warning("dashboard state could not be read: %r", error)
         words = tui_design().dashboard
+        self._dash_running = None
+        with contextlib.suppress(NoMatches):
+            self.query_one("#bstate", Static).update(
+                Text(
+                    words.state_unread.format(dot_reading=words.dot_reading),
+                    style=_style("warning", "bold"),
+                )
+            )
+            self._note(Text(words.could_not_read, style=_style("warning")))
+
+    def _show_state(self, state: Mapping[str, object]) -> None:
         evidence = state.get("evidence")
         found = evidence if isinstance(evidence, Mapping) else {}
-        if state.get("status") == "success" and found.get("url"):
-            line = Text(
-                f"{tui_design().model_table.status_pill} "
-                + words.running.format(url=found.get("url"), pid=found.get("pid", "")),
-                style=_style("success", "bold"),
+        running = state.get("status") == "success" and bool(found.get("url"))
+        self._dash_running = running
+        self.query_one("#bstate", Static).update(self._state_line(state))
+        self.query_one("#baddr", Static).update(
+            Text(str(found.get("url")), style=_style("accent")) if running else ""
+        )
+        self.query_one("#bstart").display = not running
+        self.query_one("#bopen").display = running
+        self.query_one("#bstop").display = running
+        self.query_one("#bkeys", Static).update(
+            _tab_hint(
+                "tab_hint_dashboard_running"
+                if running
+                else "tab_hint_dashboard_stopped"
             )
-        else:
-            line = Text(
-                f"{tui_design().model_table.status_pill} "
-                + words.not_running.format(fix=state.get("fix") or ""),
-                style=_style("warning"),
-            )
-        self.query_one("#bstate", Static).update(line)
+        )
 
     def _show_selection(self) -> None:
         super()._show_selection()
         self._read_state()
 
+    async def _act(self, app: OnexTui, name: str) -> Text | str | None:
+        """Run one dashboard command; a failure is one plain sentence, the raw
+        cause goes to the log (OMN-26620 AC9)."""
+        words = tui_design().dashboard
+        argv = {"start": words.start, "open": words.open, "stop": words.stop}[name]
+        code, out, err = await app._runner.capture(  # noqa: SLF001 - the screen and the app are one module
+            tuple(argv)
+        )
+        document = _last_json_object(out) or {}
+        if code or document.get("status") != "success":
+            _LOG.warning(
+                "dashboard %s failed: %s",
+                name,
+                document.get("fix") or _last_line(out, err),
+            )
+            line = Text(words.could_not.format(action=name), style=_style("error"))
+            self.app.notify(
+                line.plain,
+                title=_say("toast_failed"),
+                severity="error",
+                timeout=tui_design().toast_seconds,
+            )
+            return line
+        if name == "open":
+            return Text(words.note_opened, style=_style("success"))
+        return ""
+
+    def action_start_or_stop(self) -> None:
+        if self._dash_running is None:
+            return
+        if self._dash_running:
+            self.action_stop()
+        else:
+            self.action_start()
+
     def action_start(self) -> None:
-        self._run(lambda app: app.dashboard_action("start"))
+        self._run(lambda app: self._act(app, "start"))
 
     def action_open(self) -> None:
-        self._run(lambda app: app.dashboard_action("open"))
+        if self._dash_running:
+            self._run(lambda app: self._act(app, "open"))
 
     def action_stop(self) -> None:
-        self._run(lambda app: app.dashboard_action("stop"))
+        self._run(lambda app: self._act(app, "stop"))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         pressed = {
             "bstart": self.action_start,
             "bopen": self.action_open,
             "bstop": self.action_stop,
-            "bcancel": self.action_cancel,
         }.get(event.button.id or "")
         if pressed is not None:
             pressed()

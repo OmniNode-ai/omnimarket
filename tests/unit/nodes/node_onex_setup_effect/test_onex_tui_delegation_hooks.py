@@ -89,7 +89,7 @@ async def test_the_hook_is_shown_with_its_installed_state() -> None:
         prompt = _text(app, "#hook-prompt_hook")
         rows = len(app.screen.query(".hook"))
     assert rows == 1
-    assert words.hooks[0].name in prompt
+    assert tui_design().words["hook_label"] in prompt  # OMN-26620: "Hook"
     assert _state(prompt) == words.hook_missing
 
 
