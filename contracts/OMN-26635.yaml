@@ -89,3 +89,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/test_work_contract_pins_current.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26635-migration-vendor-parity
+  description: 'The overlay store migrations 0003 and 0004 are byte-identical (git blob ids spelled in the test) to the copies omnibase_infra v0.38.84 vendors, so the Sibling Release Compatibility Gate finds them in the pinned release. This binds no criterion by itself.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn26635_overlay_store_migration_vendor_parity.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
