@@ -279,8 +279,10 @@ async def test_slash_opens_a_filtered_palette_and_escape_closes_it() -> None:
         palette = app.query_one("#palette")
         assert palette.display
         shown = [str(option.prompt) for option in palette.options]
-        assert [text.split()[0] for text in shown] == ["/doctor"]
-        assert not any(text.startswith("/setup") for text in shown)
+        assert [next(w for w in t.split() if w.startswith("/")) for t in shown] == [
+            "/doctor"
+        ]
+        assert not any("/setup" in text for text in shown)
         await pilot.press("escape")
         assert not palette.display
 
@@ -457,14 +459,15 @@ async def test_shortcuts_lead_the_palette_like_coding_agent_tuis() -> None:
     async with app.run_test() as pilot:
         await pilot.press("slash")
         shown = [str(option.prompt) for option in app.query_one("#palette").options]
-        assert [text.split()[0] for text in shown[:4]] == [
+        names = [next(w for w in t.split() if w.startswith("/")) for t in shown]
+        assert names[:4] == [
             "/config",
             "/model",
             "/delegation",
             "/dashboard",
         ]
-        assert not any(text.split()[0] == "/setup" for text in shown)
-        assert not any(text.startswith("/models connections") for text in shown)
+        assert "/setup" not in names
+        assert not any("/models connections" in text for text in shown)
 
 
 async def _press[T](pilot: Pilot[T], app: OnexTui, button_id: str) -> None:

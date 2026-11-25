@@ -21,7 +21,8 @@ import shlex
 import signal
 import time
 from collections import Counter
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
+from functools import partial
 from pathlib import Path
 from typing import ClassVar, Literal, Protocol, TypeVar, cast
 from urllib.parse import urlparse
@@ -33,7 +34,7 @@ from rich.console import Group
 from rich.markdown import Markdown
 from rich.text import Text
 from textual import on
-from textual.app import App, ComposeResult, SuspendNotSupported
+from textual.app import App, ComposeResult, SuspendNotSupported, SystemCommand
 from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
@@ -97,6 +98,20 @@ _PROMPTING_OPTIONS = frozenset(("interactive", "yes"))
 def _shortcut_paths() -> dict[tuple[str, ...], str]:
     """The design file's shortcuts, in order: path -> one-line help."""
     return {s.path: s.help for s in tui_design().shortcuts}
+
+
+def _palette_row(entry: ModelTuiCommand) -> Text:
+    """One palette row: icon, /name, short hint (all from the design)."""
+    design = tui_design()
+    name = entry.path[0]
+    row = Text(no_wrap=True, overflow="ellipsis")
+    row.append(f"{icon(f'cmd_{name}'):<2} ", style=_style("primary"))
+    row.append(
+        f"/{' '.join(entry.path)}".ljust(design.palette.name_width),
+        style=_style("foreground", "bold"),
+    )
+    row.append(design.palette.hints.get(name, entry.help), style=_style("muted"))
+    return row
 
 
 def _is_customer_command(path: tuple[str, ...]) -> bool:
@@ -1894,30 +1909,17 @@ def tips_visible(launch_count: int = 0) -> bool:
 
 
 def icon(name: str) -> str:
-    """Resolve an optional icon to its glyph, plain fallback unless enabled (AC6)."""
-    design = tui_design()
-    icons = getattr(design, "icons", None)
-    if icons is None:
-        return str(name)
-    mode = getattr(icons, "mode", None)
-    if mode is None and isinstance(icons, dict):
-        mode = icons.get("mode")
-    enabled = getattr(icons, "enabled", None)
-    if enabled is None and isinstance(icons, dict):
-        enabled = icons.get("enabled", False)
-    glyphs = getattr(icons, "glyphs", None)
-    if glyphs is None and isinstance(icons, dict):
-        glyphs = icons.get("glyphs", {})
-    spec = glyphs[name] if isinstance(glyphs, dict) else getattr(glyphs, name)
-    nerd = getattr(spec, "nerd", None)
-    if nerd is None and isinstance(spec, dict):
-        nerd = spec.get("nerd")
-    fallback = getattr(spec, "fallback", None)
-    if fallback is None and isinstance(spec, dict):
-        fallback = spec.get("fallback")
-    if mode == "nerd" or enabled is True or enabled == "true":
-        return str(nerd)
-    return str(fallback)
+    """An icon's glyph: Unicode by default, Nerd Font or ASCII when the design says
+    so (AC6); empty when the design has no icon of that name."""
+    icons = tui_design().icons
+    spec = icons.glyphs.get(name)
+    if spec is None:
+        return ""
+    if icons.mode == "nerd":
+        return spec.nerd
+    if icons.mode == "ascii":
+        return spec.ascii
+    return spec.fallback
 
 
 def literal_scan(source: str) -> list[str]:
@@ -2064,6 +2066,50 @@ class KeyFooter:
         while len(current) > 1 and len(rendered(current)) > width:
             current.pop()
         return rendered(current)
+
+
+class ThemePickScreen(ModalScreen[None]):
+    """Themes from ctrl+p: each highlighted theme is shown at once (a live
+    preview), Enter keeps it and remembers it, Esc puts the old one back."""
+
+    DEFAULT_CSS = """
+    ThemePickScreen { align: center middle; }
+    ThemePickScreen > OptionList { width: 40; height: auto; max-height: 20; }
+    """
+    BINDINGS = [Binding("escape", "cancel", show=False)]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._before = ""
+
+    def compose(self) -> ComposeResult:
+        yield OptionList(id="themes")
+
+    def on_mount(self) -> None:
+        self._before = str(self.app.theme)
+        themes = self.query_one("#themes", OptionList)
+        names = sorted(self.app.available_themes)
+        themes.add_options(Option(name, id=name) for name in names)
+        themes.border_title = tui_design().palette.themes_title
+        themes.highlighted = names.index(self._before) if self._before in names else 0
+        themes.focus()
+
+    def on_option_list_option_highlighted(
+        self, event: OptionList.OptionHighlighted
+    ) -> None:
+        if event.option.id:
+            self.app.theme = event.option.id
+
+    async def on_option_list_option_selected(
+        self, event: OptionList.OptionSelected
+    ) -> None:
+        if event.option.id:
+            await apply_theme(self.app, event.option.id)
+        self.dismiss()
+
+    def action_cancel(self) -> None:
+        self.app.theme = self._before
+        self.dismiss()
 
 
 class OnexTui(App[int]):
@@ -2304,6 +2350,31 @@ class OnexTui(App[int]):
         self._main().query_one("#output", RichLog).write(text)
         return text
 
+    def get_system_commands(self, screen: Screen[object]) -> Iterable[SystemCommand]:
+        """ctrl+p lists the customer commands and Themes, nothing of Textual's own."""
+        design = tui_design()
+        for path in design.customer_commands:
+            name = " ".join(path)
+            yield SystemCommand(
+                f"/{name}",
+                design.palette.hints.get(path[0], ""),
+                partial(self._palette_run, f"/{name}"),
+            )
+        yield SystemCommand(
+            design.palette.themes_title,
+            design.palette.themes_help,
+            self.action_change_theme,
+        )
+
+    def action_change_theme(self) -> None:
+        """Themes: a list that previews each theme as it is highlighted."""
+        self.push_screen(ThemePickScreen())
+
+    async def _palette_run(self, text: str) -> None:
+        """A command chosen from ctrl+p runs as if it had been typed."""
+        prompt = self.query_one("#prompt", Input)
+        await self.on_input_submitted(Input.Submitted(prompt, text))
+
     def _matches(self, query: str) -> list[ModelTuiCommand]:
         words = query.lower().split()
         local = [
@@ -2325,7 +2396,7 @@ class OnexTui(App[int]):
             return
         palette.clear_options()
         palette.add_options(
-            Option(f"{entry.label}  {entry.help}", id=" ".join(entry.path))
+            Option(_palette_row(entry), id=" ".join(entry.path))
             for entry in self._matches(event.value[1:])[:50]
         )
         palette.display = palette.option_count > 0

@@ -435,17 +435,71 @@ themes:
     route_cheap: "#1b6f8a"
     route_fallback: "#8a6a00"
 
-# Nerd Font icons (OMN-26620 AC6): off by default (plain).
+# Icons (OMN-26620 AC6): Unicode symbols by default, Nerd Font glyphs only when
+# mode is nerd, plain ASCII when mode is ascii. Each icon carries all three, and
+# the Lucide icon it matches where one exists (terminals cannot draw Lucide).
 icons:
   mode: plain
   enabled: false
   glyphs:
     done:
-      nerd: ""
+      lucide: check
+      nerd: "\uf00c"
       fallback: "✓"
+      ascii: "v"
     task:
-      nerd: ""
+      lucide: chevron-right
+      nerd: "\uf054"
       fallback: "›"
+      ascii: ">"
+    cmd_config:
+      lucide: settings
+      nerd: "\uf013"
+      fallback: "⚙"
+      ascii: "*"
+    cmd_model:
+      lucide: cpu
+      nerd: "\uf2db"
+      fallback: "◈"
+      ascii: "+"
+    cmd_delegation:
+      lucide: arrow-left-right
+      nerd: "\uf0ec"
+      fallback: "⇄"
+      ascii: "<>"
+    cmd_dashboard:
+      lucide: layout-dashboard
+      nerd: "\uf0e4"
+      fallback: "▦"
+      ascii: "#"
+    cmd_doctor:
+      lucide: stethoscope
+      nerd: "\uf0f1"
+      fallback: "✚"
+      ascii: "+"
+    cmd_metering:
+      lucide: chart-no-axes-column
+      nerd: "\uf080"
+      fallback: "≋"
+      ascii: "="
+
+# The / palette and ctrl+p (OMN-26620): a short hint per customer command, the
+# commands that carry an icon, the width of the name column, and Themes.
+palette:
+  name_width: 14
+  themes_title: Themes
+  themes_help: Pick a colour theme
+  icon_commands: [config, model, delegation, dashboard, doctor, metering]
+  hints:
+    config: providers, keys and models
+    model: pick the model to try first
+    delegation: Claude Code on or off
+    dashboard: open the local dashboard
+    doctor: check your setup
+    metering: usage and cost
+    clear: clear the screen
+    help: keys and how commands work
+    quit: leave onex
 
 # Last known status for seeding (OMN-26620 AC7).
 last_known:

@@ -63,7 +63,10 @@ def _app(runner: _Runner) -> OnexTui:
 
 def _palette(app: OnexTui) -> list[str]:
     options = app.query_one("#palette").options
-    return [str(option.prompt).split()[0] for option in options]
+    return [
+        next(word for word in str(option.prompt).split() if word.startswith("/"))
+        for option in options
+    ]
 
 
 async def test_slash_lists_exactly_the_nine_customer_commands_in_order() -> None:

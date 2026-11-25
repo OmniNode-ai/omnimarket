@@ -305,18 +305,42 @@ class ModelTuiFooter(BaseModel):
 
 
 class ModelTuiIcon(BaseModel):
+    """One icon in every form: Nerd Font, Unicode (the default), ASCII."""
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    #: The Lucide icon this one matches, by name (a terminal cannot draw Lucide).
+    lucide: str = Field(min_length=1)
     nerd: str = Field(min_length=1)
     fallback: str = Field(min_length=1)
+    ascii: str = Field(min_length=1)
+
+    @field_validator("ascii")
+    @classmethod
+    def _is_ascii(cls, value: str) -> str:
+        if not value.isascii():
+            raise ValueError(f"{value!r} is not plain ASCII")
+        return value
 
 
 class ModelTuiIcons(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    mode: Literal["nerd", "plain"] = "plain"
+    mode: Literal["nerd", "plain", "ascii"] = "plain"
     enabled: bool = False
     glyphs: dict[str, ModelTuiIcon] = Field(default_factory=dict)
+
+
+class ModelTuiPalette(BaseModel):
+    """What the / palette and ctrl+p show for the customer commands."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name_width: int = Field(ge=8)
+    themes_title: str = Field(min_length=1)
+    themes_help: str = Field(min_length=1)
+    icon_commands: tuple[str, ...]
+    hints: dict[str, str]
 
 
 class ModelTuiTabSpec(BaseModel):
@@ -336,6 +360,7 @@ class ModelTuiDesign(BaseModel):
     task_card: ModelTuiTaskCard
     footer: ModelTuiFooter
     icons: ModelTuiIcons = Field(default_factory=ModelTuiIcons)
+    palette: ModelTuiPalette
     last_known: dict[str, str] = Field(default_factory=dict)
     wordmark: ModelTuiWordmark
     shortcuts: tuple[ModelTuiShortcut, ...] = Field(min_length=1)
@@ -382,6 +407,12 @@ class ModelTuiDesign(BaseModel):
                 raise ValueError(f"alias {alias!r} names no shortcut {target!r}")
             if (alias,) in self.replaced_commands:
                 raise ValueError(f"alias {alias!r} is a replaced command")
+        for path in self.customer_commands:
+            if path[0] not in self.palette.hints:
+                raise ValueError(f"palette has no hint for {path[0]!r}")
+        for name in self.palette.icon_commands:
+            if f"cmd_{name}" not in self.icons.glyphs:
+                raise ValueError(f"palette command {name!r} has no icon")
         table = self.model_table
         tokens = set(ModelTuiTheme.model_fields)
         for name, shown in (*table.status.items(), *table.deployment.items()):
