@@ -70,3 +70,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_c13_c14_routing_collector.py -q --no-cov -n 0 -p no:randomly -k "reads_no_process_environment or no_suppression_comment or environment_reaches_the_driver"
     cwd: .
+- id: dod-omn26046-merged-dev-evidence-tests
+  description: With dev merged into the branch, the two contract-evidence tests that read red at the earlier head (every repo contract binds every criterion, and no contract hides a pytest run behind a command check) pass over the branch's contract tree. This binds no criterion by itself.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -n 0 -p no:randomly -k "every_repo_contract_binds_every_criterion or hides_a_pytest_run"
+    cwd: .
