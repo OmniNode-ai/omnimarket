@@ -9,6 +9,9 @@ import json
 from omnimarket.nodes.node_agent_message_client_effect.models.model_agent_message import (
     ModelAgentMessage,
 )
+from omnimarket.nodes.node_agent_message_client_effect.models.model_agent_message_request import (
+    ModelAgentMessageReadResult,
+)
 from omnimarket.nodes.node_agent_message_client_effect.models.refusal import (
     AgentMessageRefusalError,
 )
@@ -34,14 +37,28 @@ def render_sent(message: ModelAgentMessage, *, as_json: bool) -> str:
     return f"sent {message.message_id} to {message.to} on thread {message.thread}"
 
 
-def render_read(messages: tuple[ModelAgentMessage, ...], *, as_json: bool) -> str:
+def read_json(result: ModelAgentMessageReadResult) -> dict[str, object]:
+    """The read answer: the accepted messages, the legacy count and every refused record with its typed reason."""
+    return {
+        "messages": [message_json(m) for m in result.messages],
+        "unverified": result.unverified,
+        "rejections": [r.model_dump(mode="json") for r in result.rejections],
+    }
+
+
+def render_read(result: ModelAgentMessageReadResult, *, as_json: bool) -> str:
     if as_json:
-        return json.dumps(
-            {"messages": [message_json(m) for m in messages]}, sort_keys=True
+        return json.dumps(read_json(result), sort_keys=True)
+    lines = [message_text(m) for m in result.messages] or ["no messages"]
+    if result.unverified:
+        lines.append(
+            f"{result.unverified} message(s) carry no sender proof (legacy shape)"
         )
-    if not messages:
-        return "no messages"
-    return "\n".join(message_text(m) for m in messages)
+    lines.extend(
+        f"refused: {r.reason.value}: sender={r.sender or '-'} id={r.message_id or '-'}"
+        for r in result.rejections
+    )
+    return "\n".join(lines)
 
 
 def render_refusal(refusal: AgentMessageRefusalError, *, as_json: bool) -> str:
