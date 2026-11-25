@@ -30,9 +30,7 @@ the distribution that owns the store, and it is deliberately the only one.
 from __future__ import annotations
 
 import asyncio
-import json
 import socket
-import urllib.parse
 from pathlib import Path
 from uuid import UUID
 
@@ -40,15 +38,12 @@ import click
 import yaml
 
 from omnimarket.local_deployment.tenant_identity import (
-    LOCAL_TENANT_IDENTITY_KEY,
     LocalTenantIdentityError,
-    ModelLocalTenantIdentity,
     mint_local_tenant_identity,
     read_local_tenant_identity,
 )
 from omnimarket.models.model_local_runtime_lane import (
     LocalRuntimeLaneError,
-    ModelLocalRuntimeLane,
     declare_local_runtime_lane,
 )
 from omnimarket.nodes.node_local_dashboard_serve_effect.bundle import (
@@ -56,7 +51,6 @@ from omnimarket.nodes.node_local_dashboard_serve_effect.bundle import (
     ensure_bundle,
 )
 from omnimarket.nodes.node_local_dashboard_serve_effect.handlers.handler_local_dashboard_serve import (
-    DASHBOARD_TOKEN_PARAM,
     HandlerLocalDashboardServe,
 )
 from omnimarket.nodes.node_local_dashboard_serve_effect.models import (
@@ -64,50 +58,15 @@ from omnimarket.nodes.node_local_dashboard_serve_effect.models import (
     ModelLocalDashboardServeRequest,
     resolve_dashboard_bind,
 )
+from omnimarket.nodes.node_onex_setup_effect.cli_dashboard import (
+    attach_dashboard_lifecycle,
+)
+from omnimarket.nodes.node_onex_setup_effect.cli_local_view import (
+    render_local_identity as _render,
+)
 from omnimarket.projection.sqlite_database import default_evidence_db_path
 
 __all__ = ["dashboard_command", "identity_command", "init_command", "local_group"]
-
-
-def _render(
-    identity: ModelLocalTenantIdentity,
-    *,
-    store: Path,
-    as_json: bool,
-    lane: ModelLocalRuntimeLane | None = None,
-) -> None:
-    if as_json:
-        payload: dict[str, object] = {
-            "key": LOCAL_TENANT_IDENTITY_KEY,
-            "tenant_id": str(identity.tenant_uuid),
-            "tenant_slug": identity.tenant_slug,
-            "recorded_at": identity.recorded_at.isoformat(),
-            "newly_minted": identity.newly_minted,
-            "store": str(store),
-        }
-        if lane is not None:
-            payload["runtime_lane"] = {
-                "lane_id": lane.lane_id,
-                "environment": lane.environment,
-                "path": str(lane.path),
-                "sha256": lane.sha256,
-                "newly_written": lane.newly_written,
-            }
-        click.echo(json.dumps(payload, indent=2, sort_keys=True))
-        return
-    verb = "minted" if identity.newly_minted else "already present"
-    click.echo(f"local deployment tenant identity ({verb})")
-    click.echo(f"  tenant_id:   {identity.tenant_uuid}")
-    click.echo(f"  tenant_slug: {identity.tenant_slug}")
-    click.echo(f"  key:         {LOCAL_TENANT_IDENTITY_KEY}")
-    click.echo(f"  store:       {store}")
-    if lane is not None:
-        verb = "written" if lane.newly_written else "already present"
-        click.echo(f"local runtime lane ({verb})")
-        click.echo(f"  lane_id:     {lane.lane_id}")
-        click.echo(f"  environment: {lane.environment}")
-        click.echo(f"  document:    {lane.path}")
-        click.echo(f"  sha256:      {lane.sha256}")
 
 
 @click.group("local")
@@ -204,7 +163,7 @@ def _free_port(host: str) -> int:
         return int(probe.getsockname()[1])
 
 
-@click.command("dashboard")
+@click.group("dashboard", invoke_without_command=True)
 @click.option(
     "--overlay",
     "overlay_path",
@@ -212,7 +171,8 @@ def _free_port(host: str) -> int:
     default=None,
     help="Overlay document carrying dashboard.bind (host:port, loopback only).",
 )
-def dashboard_command(overlay_path: Path | None) -> None:
+@click.pass_context
+def dashboard_command(ctx: click.Context, overlay_path: Path | None) -> None:
     """Serve this install's projection exposures to the local dashboard (OMN-19976).
 
     ``onex dashboard`` is a top-level command (plan T2.3) registered from this
@@ -220,6 +180,12 @@ def dashboard_command(overlay_path: Path | None) -> None:
     (canonical file shape, OMN-20304). node_local_dashboard_serve_effect owns
     the serving.
     """
+    if ctx.invoked_subcommand is not None:
+        if overlay_path is not None:
+            raise click.ClickException(
+                "--overlay configures foreground serving; omit it for lifecycle commands."
+            )
+        return
     loaded = (
         yaml.safe_load(overlay_path.read_text(encoding="utf-8"))
         if overlay_path is not None
@@ -244,14 +210,17 @@ def dashboard_command(overlay_path: Path | None) -> None:
         ) from exc
     identity = read_local_tenant_identity()
     tenant = None if identity is None else str(identity.tenant_uuid)
-    # OMN-19916: the request mints this start's token. The start URL is the one
-    # place it is handed out; every request without it is refused.
+    # OMN-26226: the canonical setup lifecycle may mint a start token into
+    # an owner-only file; a direct run mints its own. The token is never
+    # announced here; `onex dashboard open` builds the authenticated URL.
     request = ModelLocalDashboardServeRequest(host=host, port=port, tenant_id=tenant)
-    start_url = f"http://{host}:{port}/?" + urllib.parse.urlencode(
-        {DASHBOARD_TOKEN_PARAM: request.access_token.get_secret_value()}
-    )
+    # The address stays first on this line: the setup lifecycle reads its port
+    # from it (handler_setup_dashboard). The rest of the line says it needs
+    # this start's token, so the address is never offered as the thing to open.
     click.echo(
-        f"onex dashboard: {start_url} "
-        f"(tenant {tenant or 'not configured: run `onex local init`'})"
+        f"onex dashboard: http://{host}:{port}/ is serving and needs this start's token; to open the dashboard, press Enter in the TUI, use the Open button, or run `onex dashboard open`."
     )
     asyncio.run(HandlerLocalDashboardServe(pages=pages).handle(request))
+
+
+attach_dashboard_lifecycle(dashboard_command)

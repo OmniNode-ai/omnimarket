@@ -109,6 +109,22 @@ class ModelLagGrowthRule(BaseModel):
     streak_path: str = Field(min_length=1)
 
 
+class ModelLagCeiling(BaseModel):
+    """A bound on a group's lag as a state, with the owner who answers for it (OMN-26609).
+
+    The growth rule never alarms on a lag that holds or drains, so a backlog of requests whose callers gave
+    up passes as long as it shrinks. A ceiling alarms on any watched group whose lag is above ``max_lag``,
+    at once and without a previous sample, and names ``owner`` in the alarm.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: Lag above this many messages, on any watched group, alarms.
+    max_lag: int = Field(ge=1)
+    #: Who answers for the bound; the alarm line carries it.
+    owner: str = Field(min_length=1)
+
+
 class ModelLagSettings(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -121,6 +137,8 @@ class ModelLagSettings(BaseModel):
     record_condition: str = Field(min_length=1)
     #: Absent means the rule before OMN-19998: any growth between two samples alarms at once. Declare it to turn the persistence on.
     growth: ModelLagGrowthRule | None = None
+    #: Absent means no lag bound: only growth and vanished offsets alarm. Declare it to alarm on a high lag that does not grow.
+    ceiling: ModelLagCeiling | None = None
 
 
 class ModelLabAlarmScheduleHost(BaseModel):
@@ -166,8 +184,10 @@ SCHEDULABLE_VERBS = (
     "work-ledger-projection-stale",
     "lane-drift",
     "container-unhealthy",
+    "container-restarts",
     "lab-pass-receipt",
     "stale-indeterminate",
+    "alarm-digest",
 )
 
 
@@ -184,6 +204,21 @@ class ModelEscalationSettings(BaseModel):
     settle_seconds: float = Field(gt=0)
     #: Where the briefs and dispatch logs are kept.
     brief_dir: str = Field(min_length=1)
+
+
+class ModelContainerRestartsSettings(BaseModel):
+    """The container-restarts condition (OMN-23934): which lane's containers, whose bounds, reached how."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The lane manifest holding each container's ``restart_bound``; may name ``${ONEX_WORKSPACE_CONFIG_ROOT}``.
+    lane_manifest: str = Field(min_length=1)
+    #: The manifest lane whose services are read.
+    census_lane: str = Field(min_length=1)
+    #: The argv prefix that reaches docker on the lane's host.
+    docker_command: tuple[str, ...] = Field(min_length=1)
+    #: The bound on one ``docker inspect``, held here as data.
+    timeout_seconds: float = Field(gt=0)
 
 
 class ModelEffectsHeldSettings(BaseModel):
@@ -223,6 +258,20 @@ class ModelConditionPersistence(BaseModel):
     streak_path: str = Field(min_length=1)
 
 
+class ModelDeployAgentUnitSettings(BaseModel):
+    """The dev deploy agent's systemd USER unit the heartbeat condition also reads (OMN-26316)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: The unit file name on the host, e.g. ``deploy-agent-dev.service``. The scope is not a
+    #: setting: the adapter always reads USER scope, where the agent lives.
+    name: str = Field(min_length=1)
+    #: The argv prefix that reaches a shell on the host the unit runs on, e.g. ``ssh -o BatchMode=yes <host>``.
+    host_command: tuple[str, ...] = Field(min_length=1)
+    #: The bound on one ``systemctl --user show``.
+    timeout_seconds: float = Field(gt=0)
+
+
 class ModelDevTagHeartbeatSettings(BaseModel):
     """The dev-tag heartbeat condition (OMN-24400): the agent to read, the repositories it must beat for, how old a beat may be."""
 
@@ -238,6 +287,10 @@ class ModelDevTagHeartbeatSettings(BaseModel):
     max_age_seconds: float = Field(gt=0)
     timeout_seconds: float = Field(gt=0)
     persistence: ModelConditionPersistence
+    #: The agent's systemd USER unit, read before the heartbeat so a stopped unit breaches on its
+    #: own streak instead of waiting out the beat-age bound. Absent, the condition reads the
+    #: heartbeat alone (the behaviour before OMN-26316), so every older overlay still loads.
+    unit: ModelDeployAgentUnitSettings | None = None
 
 
 class ModelDelegationChainCanarySettings(BaseModel):
@@ -384,6 +437,8 @@ class ModelLabAlarmOverlay(BaseModel):
     #: Read by the work-ledger-projection-stale verbs alone; absent, the overlay still loads and the other verbs run.
     work_ledger_projection_stale: ModelWorkLedgerProjectionStaleSettings | None = None
     #: Read by the lane-drift and container-unhealthy verbs alone; absent, the overlay still loads and the other verbs run.
+    #: Read by the container-restarts verbs alone; absent, the other verbs run and these refuse it themselves.
+    container_restarts: ModelContainerRestartsSettings | None = None
     lane_census: ModelLaneCensusSettings | None = None
     #: Read by the lab-pass-receipt verbs alone; absent, the overlay still loads and the other verbs run.
     lab_pass_receipt: ModelLabPassReceiptSettings | None = None
@@ -429,8 +484,10 @@ __all__ = [
     "ModelAlarmDeliveryWiring",
     "ModelBrokerListenerSettings",
     "ModelConditionPersistence",
+    "ModelContainerRestartsSettings",
     "ModelDeclaredNode",
     "ModelDelegationChainCanarySettings",
+    "ModelDeployAgentUnitSettings",
     "ModelDevTagHeartbeatSettings",
     "ModelEffectsHeldSettings",
     "ModelEscalationSettings",

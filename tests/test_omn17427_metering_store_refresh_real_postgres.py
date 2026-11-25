@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, cast
@@ -30,6 +30,9 @@ from omnimarket.nodes.node_metering_summary_compute import metering_record_from_
 from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_summary_writer import (
     MeteringSummaryProjectionWriter,
     store_refresh_command_topic,
+)
+from omnimarket.nodes.node_projection_metering_summary.metering_refresh_coalescer import (
+    MeteringRefreshCoalescer,
 )
 from omnimarket.projection.sqlite_metering_summary import (
     refresh_metering_summary_topic,
@@ -222,6 +225,91 @@ async def test_a_run_returned_to_its_caller_is_stored_as_zero_savings() -> None:
             await conn.close()
 
 
+@pytest.mark.integration
+async def test_a_burst_of_terminal_refreshes_folds_once_and_the_held_back_one_lands_in_the_next_run() -> (
+    None
+):
+    """OMN-24563: a burst of terminal refreshes folds once; the held-back run lands in the next run."""
+    conn = await _connect_or_skip()
+    try:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.execute(f"CREATE SCHEMA {_SCHEMA}")
+        for migration in _MIGRATIONS:
+            await conn.execute(_scoped(migration.read_text(encoding="utf-8")))
+        await conn.execute(_DELEGATION_EVENTS)
+        await conn.execute(
+            f"INSERT INTO {_SCHEMA}.delegation_events (correlation_id, tenant_id, "
+            "created_at, delegated_to, task_type, tokens_input, tokens_output, "
+            "cost_usd, cost_savings_usd, data_source) "
+            "VALUES ('a', $1::uuid, $2, 'qwen', 'document', 100, 50, 0.0001, 0.01, 'real')",
+            _TENANT,
+            datetime(2026, 10, 19, 9, tzinfo=UTC),
+        )
+        writer = MeteringSummaryProjectionWriter.__new__(
+            MeteringSummaryProjectionWriter
+        )
+        writer._db = cast(Any, _ScopedConnectionAdapter(conn))
+        writer._standalone_bindings = None
+        writer._coalescer = MeteringRefreshCoalescer(timedelta(seconds=300))
+        clock = [datetime(2026, 10, 19, 10, 0, tzinfo=UTC)]
+        writer._clock = lambda: clock[0]
+
+        def _request(refresh_id: str) -> ModelMeteringSummaryRefreshRequested:
+            return ModelMeteringSummaryRefreshRequested(
+                refresh_id=refresh_id,
+                reason=EnumMeteringRefreshReason.DELEGATION_TERMINAL,
+                tenant_ids=(_TENANT,),
+                days=frozenset({date(2026, 10, 19)}),
+                requested_at=clock[0],
+            )
+
+        first = await writer._refresh(_request("burst-first"))
+        assert first["refresh_coalesced"] is False
+        row = await conn.fetchrow(
+            f"SELECT runs_total, tokens_in FROM {_SCHEMA}.metering_summary "
+            "WHERE window_kind = 'all'"
+        )
+        assert row is not None
+        assert row["runs_total"] == 1
+
+        await conn.execute(
+            f"INSERT INTO {_SCHEMA}.delegation_events (correlation_id, tenant_id, "
+            "created_at, delegated_to, task_type, tokens_input, tokens_output, "
+            "cost_usd, cost_savings_usd, data_source) "
+            "VALUES ('b', $1::uuid, $2, 'qwen', 'document', 100, 50, 0.0001, 0.01, 'real')",
+            _TENANT,
+            datetime(2026, 10, 19, 10, 0, 30, tzinfo=UTC),
+        )
+        clock[0] = clock[0] + timedelta(seconds=30)
+        second = await writer._refresh(_request("burst-held"))
+        assert second["refresh_coalesced"] is True
+        assert second["refresh_coalesced_total"] == 1
+        assert second["refresh_pending_tenants"] == [_TENANT]
+        row = await conn.fetchrow(
+            f"SELECT runs_total FROM {_SCHEMA}.metering_summary "
+            "WHERE window_kind = 'all'"
+        )
+        assert row is not None
+        assert row["runs_total"] == 1
+
+        clock[0] = clock[0] + timedelta(seconds=400)
+        third = await writer._refresh(_request("burst-lands"))
+        assert third["refresh_coalesced"] is False
+        assert third["refresh_pending_tenants"] == []
+        row = await conn.fetchrow(
+            f"SELECT runs_total, tokens_in FROM {_SCHEMA}.metering_summary "
+            "WHERE window_kind = 'all'"
+        )
+        assert row is not None
+        assert row["runs_total"] == 2
+        assert row["tokens_in"] == 200
+    finally:
+        try:
+            await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        finally:
+            await conn.close()
+
+
 class _DispatchConnectionAdapter(_ScopedConnectionAdapter):
     """Open the real connection on the synchronous dispatch's event loop."""
 
@@ -311,6 +399,100 @@ async def test_runtime_envelope_context_persists_summary(command: str) -> None:
             assert row["tokens_in"] == 100
             assert row["tokens_out"] == 50
             assert row["as_of"] == "2026-10-19T09:00:00.000001+00:00"
+    finally:
+        try:
+            await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        finally:
+            await conn.close()
+
+
+@pytest.mark.integration
+async def test_an_incremental_refresh_continues_from_the_watermark_and_equals_a_rebuild() -> (
+    None
+):
+    """OMN-21288: the continuation SQL (watermark read, stored-day read) on real Postgres.
+
+    A refresh after one new run reads and folds that run only, through the
+    typed ``created_at >= $2`` and ``window_start = ANY($3::text[])`` statements,
+    and leaves the rows a rebuild on demand writes.
+    """
+    conn = await _connect_or_skip()
+    try:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.execute(f"CREATE SCHEMA {_SCHEMA}")
+        for migration in _MIGRATIONS:
+            await conn.execute(_scoped(migration.read_text(encoding="utf-8")))
+        await conn.execute(_DELEGATION_EVENTS)
+        insert = (
+            f"INSERT INTO {_SCHEMA}.delegation_events (correlation_id, tenant_id, "
+            "created_at, delegated_to, task_type, tokens_input, tokens_output, "
+            "cost_usd, cost_savings_usd) "
+            "VALUES ($1, $2::uuid, $3, 'qwen', 'document', 100, 50, 0.0001, 0.01)"
+        )
+        await conn.executemany(
+            insert,
+            [
+                ("a", _TENANT, datetime(2026, 10, 18, 9, tzinfo=UTC)),
+                ("b", _TENANT, datetime(2026, 10, 19, 9, tzinfo=UTC)),
+            ],
+        )
+        writer = MeteringSummaryProjectionWriter.__new__(
+            MeteringSummaryProjectionWriter
+        )
+        writer._db = cast(Any, _ScopedConnectionAdapter(conn))
+        writer._standalone_bindings = None
+
+        first = await writer._refresh(
+            ModelMeteringSummaryRefreshRequested(
+                refresh_id="bootstrap",
+                reason=EnumMeteringRefreshReason.SCHEDULE,
+                requested_at=datetime(2026, 10, 19, 10, tzinfo=UTC),
+            )
+        )
+        assert first["tenants_rebuilt_in_full"] == [_TENANT]
+
+        await conn.execute(insert, "c", _TENANT, datetime(2026, 10, 19, 11, tzinfo=UTC))
+        second = await writer._refresh(
+            ModelMeteringSummaryRefreshRequested(
+                refresh_id="terminal-c",
+                reason=EnumMeteringRefreshReason.DELEGATION_TERMINAL,
+                tenant_ids=(_TENANT,),
+                days=frozenset({date(2026, 10, 19)}),
+                requested_at=datetime(2026, 10, 19, 11, tzinfo=UTC),
+            )
+        )
+        assert second["tenants_rebuilt_in_full"] == []
+        assert second["records_folded"] == 1
+
+        select = (
+            f"SELECT * FROM {_SCHEMA}.metering_summary "
+            "ORDER BY window_kind, window_start"
+        )
+
+        def comparable(rows: list[Any]) -> list[dict[str, Any]]:
+            # A day row's as_of is when that day was last folded; a rebuild
+            # folds every day, an incremental refresh only the days it touched.
+            return [
+                {
+                    k: v
+                    for k, v in dict(r).items()
+                    if not (r["window_kind"] == "day" and k == "as_of")
+                }
+                for r in rows
+            ]
+
+        incremental = comparable(await conn.fetch(select))
+        assert [r["runs_total"] for r in incremental] == [3, 1, 2]
+        assert incremental[0]["as_of"] == "2026-10-19T11:00:00.000001+00:00"
+
+        await writer._refresh(
+            ModelMeteringSummaryRefreshRequested(
+                refresh_id="rebuild",
+                reason=EnumMeteringRefreshReason.BACKFILL,
+                requested_at=datetime(2026, 10, 19, 12, tzinfo=UTC),
+            )
+        )
+        assert comparable(await conn.fetch(select)) == incremental
     finally:
         try:
             await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")

@@ -1,0 +1,399 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Typed setup plan intake and workflow invocation shared by CLI choices."""
+
+from __future__ import annotations
+
+import json
+import sys
+from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
+
+import click
+from pydantic import SecretStr, ValidationError
+
+from omnimarket.handlers.handler_endpoint_connections import (
+    HandlerModelConnections,
+    ModelEndpointConnectionRequest,
+)
+from omnimarket.nodes.node_onex_setup_effect.cli_choices import (
+    stored_key_for_unchanged_provider,
+)
+from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_setup import (
+    URL_PROVIDERS,
+)
+from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_configuration import (
+    HandlerSetupConfiguration,
+)
+from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_plugins import (
+    HandlerSetupPlugins,
+)
+from omnimarket.nodes.node_onex_setup_effect.handlers.handler_setup_workflow import (
+    HandlerSetupWorkflow,
+)
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_plan import (
+    ModelSetupPlan,
+)
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider import (
+    ModelSetupProvider,
+)
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
+    setup_provider_traits,
+)
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_shell import (
+    ModelSetupShellConflict,
+)
+
+
+def _credential_key(selection: Mapping[str, object]) -> str:
+    """The credential identity of an inline selection, as the setup plan keys it."""
+    connection = selection.get("connection_id")
+    return f"connection:{connection}" if connection else str(selection["provider"])
+
+
+def _refuse_a_shared_credential_slot(
+    selections: Sequence[Mapping[str, object]],
+) -> None:
+    """Name the slot when a configure re-run would put two keys in one (OMN-23825).
+
+    The plan refuses keyed providers that share a credential slot; without this the
+    participant saw only the generic refusal and no way out.
+    """
+    owners: dict[str, str] = {}
+    for raw in selections:
+        selection = ModelSetupProvider.model_validate(raw)
+        if not selection.needs_key or selection.connection_id:
+            continue
+        slot = str(selection.registration_provider)
+        name = selection.provider + (f" ({selection.url})" if selection.url else "")
+        if slot in owners:
+            raise click.ClickException(
+                f"{owners[slot]} and {name} would share the {slot} credential slot, "
+                "which holds one key. Run setup again and give the server you are "
+                "adding a new named connection with --connection NEW_NAME, a name "
+                "no saved connection uses (it becomes the default route), or "
+                "choose a provider that does not use this slot."
+            )
+        owners[slot] = name
+
+
+def shell_conflict_lines(value: object) -> list[str] | None:
+    """Render a shell-safety conflicts evidence value as one plain line per conflict.
+
+    The handler stores this evidence as a JSON string of structured
+    ``ModelSetupShellConflict`` objects (the machine surface, kept verbatim for
+    ``--json``). The human loop renders it here instead of printing the blob. Any
+    value that is not that structured list (malformed JSON, unknown kind, empty,
+    unexpected shape) returns ``None`` so the caller prints it verbatim and never
+    crashes the walk (OMN-26614).
+    """
+    try:
+        parsed = (
+            json.loads(value) if isinstance(value, (str, bytes, bytearray)) else None
+        )
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return None
+    if not isinstance(parsed, list) or not parsed:
+        return None
+    conflicts: list[ModelSetupShellConflict] = []
+    for row in parsed:
+        if not isinstance(row, dict):
+            return None
+        try:
+            conflicts.append(ModelSetupShellConflict.model_validate(row))
+        except Exception:
+            return None
+    rendered: list[str] = []
+    for conflict in conflicts:
+        if conflict.kind == "profile":
+            where = (
+                f"{conflict.location} line {conflict.line}"
+                if conflict.line is not None
+                else conflict.location
+            )
+            remedy = (
+                "--set-aside preserves and disables it when setup runs again."
+                if conflict.recoverable
+                else "resolve it by hand."
+            )
+            rendered.append(
+                f"{where}: {conflict.name} is set by this profile line; {remedy}"
+            )
+        elif conflict.kind == "environment":
+            rendered.append(
+                f"{conflict.location}: {conflict.name} is inherited from the current "
+                "environment; resolve it by hand."
+            )
+        elif conflict.kind == "executable":
+            rendered.append(
+                f"{conflict.location}: another onex executable resolves first on "
+                "PATH; resolve it by hand."
+            )
+        elif conflict.kind == "unsafe-profile":
+            rendered.append(
+                f"{conflict.location}: this profile is not a regular readable file; "
+                "resolve it by hand."
+            )
+        else:
+            return None
+    return rendered
+
+
+def run_workflow_cli(
+    ctx: click.Context,
+    *,
+    workflow_factory: type[HandlerSetupWorkflow],
+    onex_home: Path,
+    read_key: Callable[[str | None, bool], SecretStr | None],
+    workspace: Path | None,
+    action: str | None,
+    components: tuple[str, ...],
+    plan_file: Path | None,
+    provider: str | None,
+    model: str | None,
+    url: str | None,
+    json_output: bool,
+    yes: bool,
+    interactive: bool,
+    developer: bool,
+    saved: ModelSetupPlan | None,
+    endpoint_auth: str | None,
+    prepared_credentials: dict[str, SecretStr] | None = None,
+    connection_id: str | None = None,
+    native_messages: bool | None = None,
+    compose_file: Path | None = None,
+    topology_file: Path | None = None,
+    completion_name: str | None = None,
+    set_aside: bool = False,
+    added_to: ModelSetupPlan | None = None,
+) -> None:
+    if plan_file is None:
+        if provider and not model:
+            raise click.ClickException(
+                "--model is missing. Name the selected provider's ordered models."
+            )
+        if not provider and (model or url):
+            raise click.ClickException(
+                "--provider is missing. Name the provider for these model selections."
+            )
+        if provider in URL_PROVIDERS and not url:
+            raise click.ClickException(f"--url is missing for --provider {provider}.")
+    try:
+        if plan_file is not None:
+            if (
+                workspace is not None
+                or action is not None
+                or components
+                or provider
+                or model
+                or url
+                or developer
+                or endpoint_auth
+                or connection_id
+                or native_messages is not None
+                or compose_file is not None
+                or topology_file is not None
+                or completion_name is not None
+            ):
+                raise ValueError("Plan and inline selections conflict")
+            plan = HandlerSetupConfiguration.load_plan(plan_file)
+            if set_aside:
+                plan = plan.model_copy(update={"set_aside": True})
+        else:
+            providers = [
+                {
+                    "provider": name.strip(),
+                    "models": tuple(
+                        item.strip()
+                        for item in (model or "").split(",")
+                        if item.strip()
+                    ),
+                    "url": url,
+                    "api_key_required": endpoint_auth == "api-key",
+                    "connection_id": connection_id,
+                    "native_messages": native_messages,
+                    "make_default": connection_id is not None,
+                }
+                for name in (provider or "").split(",")
+                if name.strip()
+            ]
+            if not provider and (model or url):
+                raise ValueError("Name the provider for inline model selections")
+            # A configure re-run (added_to) keeps every saved choice; otherwise
+            # the saved choices apply only to the same workspace.
+            reuse = saved is not None and (
+                added_to is not None or workspace == saved.workspace
+            )
+            if added_to is not None and providers:
+                # OMN-23825: a configure re-run adds the chosen provider to the
+                # saved ones: the entry with the same credential identity (the
+                # provider, or a named connection) is replaced in place, a new
+                # one is appended, and every other saved provider is kept,
+                # whatever folder the re-run starts in (the providers are this
+                # machine's).
+                chosen = {_credential_key(p): p for p in providers}
+                had = {s.credential_identity for s in added_to.providers}
+                providers = [
+                    chosen.get(s.credential_identity, s.model_dump())
+                    for s in added_to.providers
+                ] + [p for key, p in chosen.items() if key not in had]
+                _refuse_a_shared_credential_slot(providers)
+            plan = ModelSetupPlan.model_validate(
+                {
+                    "workspace": workspace or Path.home() / "Code" / "omnibase",
+                    "action": action or "install",
+                    "components": components
+                    or (
+                        saved.components
+                        if saved is not None and reuse
+                        else ("delegation",)
+                    ),
+                    "providers": providers
+                    or (
+                        saved.providers
+                        if saved is not None and reuse and provider is None
+                        else ()
+                    ),
+                    "developer": developer
+                    or (saved.developer if saved is not None and reuse else False),
+                    "set_aside": set_aside,
+                    "completion_name": completion_name
+                    if completion_name is not None
+                    else (
+                        saved.completion_name if saved is not None and reuse else None
+                    ),
+                    "local_stack": (
+                        {"compose_file": compose_file, "topology_file": topology_file}
+                        if compose_file is not None or topology_file is not None
+                        else (
+                            saved.local_stack if saved is not None and reuse else None
+                        )
+                    ),
+                }
+            )
+        unsupported = set(plan.components) - workflow_factory.supported_components()
+        if unsupported:
+            raise click.ClickException(
+                "Setup adapters are not integrated yet for: "
+                + ", ".join(sorted(unsupported))
+                + ". Nothing was installed."
+            )
+    except (OSError, ValueError, ValidationError):
+        raise click.ClickException(
+            "Invalid or conflicting setup selections. Use a bounded secret-free JSON plan with supported components; inline flags cannot override --plan."
+        ) from None
+    credentials: dict[str, SecretStr] = dict(prepared_credentials or {})
+    if plan.action != "verify":
+        if not yes and not interactive:
+            raise click.ClickException(
+                "Review the setup destination, selected models and unknown/API billing costs, then repeat with --yes."
+            )
+        keyed = [selection for selection in plan.providers if selection.needs_key]
+        pending_keys = []
+        for selection in keyed:
+            identity = selection.credential_identity
+            if identity in credentials:
+                continue
+            kept = (
+                stored_key_for_unchanged_provider(
+                    added_to, selection.provider, selection.url
+                )
+                if added_to is not None
+                else None
+            )
+            if kept is not None:
+                credentials[identity] = kept
+                continue
+            if selection.connection_id:
+                configured = (
+                    HandlerModelConnections()
+                    .handle(
+                        ModelEndpointConnectionRequest(
+                            operation="list", connection_id=selection.connection_id
+                        )
+                    )
+                    .connections
+                )
+                if (
+                    configured
+                    and configured[0].secret_ref
+                    and configured[0].url
+                    == (selection.url or "").rstrip("/").removesuffix("/v1")
+                    and not interactive
+                ):
+                    continue
+            pending_keys.append(selection)
+        if not sys.stdin.isatty() and len(pending_keys) > 1:
+            raise click.ClickException(
+                "Multiple provider keys require hidden terminal prompts or preconfigured canonical store references."
+            )
+        for selection in pending_keys:
+            name = selection.provider
+            identity = selection.credential_identity
+            key = read_key(setup_provider_traits().key_name(name), interactive)
+            if key is None:
+                raise click.ClickException(
+                    "A selected provider needs a credential on hidden input or stdin. Nothing was installed."
+                )
+            credentials[identity] = key
+        if not yes:
+            click.echo(
+                f"Workspace: {plan.workspace}\nAction: {plan.action}\nComponents: {', '.join(plan.components)}"
+            )
+            for notice in HandlerSetupPlugins(onex_home=onex_home).consent_notices(
+                plan.components
+            ):
+                click.echo(notice)
+            for selection in plan.providers:
+                click.echo(
+                    f"Models: {selection.provider}: {', '.join(selection.models)}; price: unknown"
+                )
+            if not click.confirm(
+                "Apply this setup and run its selected model proofs, accepting any provider API charges?",
+                default=False,
+            ):
+                raise click.Abort()
+    journal = workflow_factory(onex_home=onex_home, credentials=credentials).handle(
+        plan
+    )
+    if json_output:
+        click.echo(journal.model_dump_json())
+    else:
+        for item in journal.observations:
+            if item.status == "skipped" and item.evidence:
+                click.echo(
+                    f"[skipped] {item.step}: {'; '.join(item.evidence.values())}"
+                )
+                continue
+            click.echo(
+                f"[{item.status}] {item.step} ({'changed' if item.changed else 'unchanged'})"
+            )
+            for label, value in item.evidence.items():
+                if item.step == "shell-safety" and label == "conflicts":
+                    rendered = shell_conflict_lines(value)
+                    if rendered is not None:
+                        for line in rendered:
+                            click.echo(f"  {line}")
+                        continue
+                click.echo(f"  {label}: {value}")
+            for receipt in item.receipts:
+                click.echo(
+                    f"Receipt: provider={receipt.provider} model={receipt.model} backend={receipt.backend_id or '-'} tested_at={receipt.tested_at}"
+                )
+            if item.fix:
+                click.echo(f"Fix: {item.fix}", err=True)
+            if item.retry:
+                click.echo(f"Retry: {item.retry}", err=True)
+                if credentials:
+                    click.echo(
+                        "Provide the required key again via hidden input or stdin; it is not saved in the retry command.",
+                        err=True,
+                    )
+        if all(item.status in ("success", "skipped") for item in journal.observations):
+            click.echo("Setup complete.")
+            click.echo("Add another provider any time: onex models add <provider>")
+    ctx.exit(
+        0
+        if all(item.status in ("success", "skipped") for item in journal.observations)
+        else 1
+    )

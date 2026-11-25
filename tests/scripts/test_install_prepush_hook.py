@@ -138,6 +138,68 @@ def test_bootstrap_preserves_precommit_launcher_before_global_python() -> None:
     assert precommit_assignment < fallback_guard < fallback_loop
 
 
+def _versioned_interpreter(path: Path, version: str) -> Path:
+    """An interpreter that reports ``version`` as its pre-commit and otherwise
+    behaves as the test interpreter."""
+    path.write_text(
+        "#!/usr/bin/env bash\n"
+        'case "$*" in\n'
+        f'  *"constants import VERSION"*) echo "{version}";;\n'
+        '  "-c import pre_commit") exit 0;;\n'
+        f'  *) exec "{sys.executable}" "$@";;\n'
+        "esac\n",
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+    return path
+
+
+def test_hook_resolves_the_precommit_interpreter_the_manifest_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Preparation and the hook must read pre-commit's version from one interpreter.
+
+    ``--prepare`` run through ``uv run`` resolves the locked pre-commit (here
+    4.5.1) while the hook, run by a plain ``git push``, resolves the first
+    ``pre-commit`` on PATH (here 4.6.1). Both versions are compared as the
+    manifest check requires; the hook must use the interpreter the manifest names.
+    """
+    repo = _write_fixture_repo(tmp_path)
+    sha = _git(repo, "rev-parse", "HEAD")
+    locked = _versioned_interpreter(tmp_path / "locked-python", "4.5.1")
+    ambient = _versioned_interpreter(tmp_path / "ambient-python", "4.6.1")
+    monkeypatch.setattr(installer, "_precommit_python", lambda: str(locked))
+    cache_root = tmp_path / "cache"
+    _prepared_cache(repo, sha, cache_root)
+    manifest = json.loads((cache_root / sha / "manifest.json").read_text("utf-8"))
+    assert manifest["pre_commit_version"] == "4.5.1"
+    hook = _install(repo)
+    bin_dir = tmp_path / "ambient-bin"
+    bin_dir.mkdir()
+    launcher = bin_dir / "pre-commit"
+    launcher.write_text(f"#!{ambient}\n", encoding="utf-8")
+    launcher.chmod(0o755)
+    record = tmp_path / "record.txt"
+    env = dict(os.environ)
+    env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
+    env["PREPUSH_SNAPSHOT_CACHE_ROOT"] = str(cache_root)
+    env["PREPUSH_RECORD"] = str(record)
+
+    result = subprocess.run(
+        [str(hook), "origin", "https://example.invalid/repo.git"],
+        cwd=repo,
+        input=f"refs/heads/topic {sha} refs/heads/topic {'0' * 40}\n",
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert "does not match committed target" not in result.stderr, result.stderr
+    assert result.returncode == 0, result.stderr
+    assert record.exists(), f"{result.stdout}\n{result.stderr}"
+
+
 def test_committed_sha_is_checked_when_staged_and_unstaged_edits_mask_it(
     tmp_path: Path,
 ) -> None:

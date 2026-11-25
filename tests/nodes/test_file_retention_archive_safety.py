@@ -14,6 +14,7 @@ import pytest
 from omnimarket.nodes.node_retention_cleanup.handlers import (
     handler_file_retention as mod,
 )
+from tests.ci.lint_jobs import lint_steps
 
 NOW = dt.datetime(2026, 10, 26, tzinfo=dt.UTC)
 
@@ -181,8 +182,9 @@ def test_launching_host_outputs_archive_at_seven_days_and_never_plain_delete(
     root = tmp_path / ".local/state/omni/remote-lanes"
     output = old(root / "finished/lane.out")
     receipt = old(root / "finished/lane.json", b"{}")
+    # The contract lists both disabled (node_host_retention_effect owns the folder, OMN-24543); the rule they archive under is what this tests.
     entries = [
-        entry
+        entry.model_copy(update={"enabled": True})
         for entry in mod.load_file_policy().entries
         if entry.name in {"remote-lane-receipts", "remote-lane-outputs"}
     ]
@@ -263,4 +265,4 @@ def test_safety_check_is_wired_in_hook_and_ci():
         "src/omnimarket/nodes/node_retention_cleanup/handlers/handler_file_retention.py",
     )
     ci = yaml.safe_load((root / ".github/workflows/ci.yml").read_text())
-    assert any(target in s.get("run", "") for s in ci["jobs"]["lint"]["steps"])
+    assert any(target in s.get("run", "") for s in lint_steps(ci))

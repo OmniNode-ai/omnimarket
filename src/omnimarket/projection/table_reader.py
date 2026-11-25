@@ -43,20 +43,41 @@ never an empty ``200``.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import time
-from collections.abc import AsyncIterator, Callable, Iterable
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal
 from typing import Any, Protocol
 from uuid import UUID
 
 import asyncpg
 
+from omnimarket.handlers.projection_table_page_view import (
+    ProtocolProjectionPageView as ProtocolProjectionPageView,
+)
+from omnimarket.handlers.projection_table_page_view import (
+    TablePageView as TablePageView,
+)
+from omnimarket.handlers.projection_table_sql import (
+    _dated_first_sql,
+    _latest_per_key_sql,
+    _parse_timestamp,
+    key_is_unique_per_row,
+    order_clause,
+    physical_key_columns,
+    quote_identifier,
+    select_list,
+    serialise_row,
+)
+from omnimarket.handlers.projection_window_instant import (
+    freshness_column_type,
+    log_undated_rows,
+    undated_rows_sql,
+    window_instant_sql,
+)
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.tenant_isolation import TENANT_GUC
 from omnimarket.projection.tenant_registry_resolution import (
@@ -126,12 +147,6 @@ def dsn_env_for(cfg: ProjectionTableConfig) -> str:
     return _RELATION_SCHEMA_DSN_ENV.get(schema, DEFAULT_DSN_ENV)
 
 
-def quote_identifier(name: str) -> str:
-    """Double-quote one SQL identifier taken from a contract."""
-    bare = name.strip().strip('"')
-    return '"' + bare.replace('"', '""') + '"'
-
-
 def qualified_relation(cfg: ProjectionTableConfig) -> str:
     """``"schema"."table"`` for the relation the writer materializes."""
     if cfg.relation_schema is None:
@@ -144,50 +159,9 @@ def qualified_relation(cfg: ProjectionTableConfig) -> str:
     return f"{quote_identifier(cfg.relation_schema)}.{quote_identifier(cfg.table)}"
 
 
-def select_list(cfg: ProjectionTableConfig) -> str:
-    if cfg.columns == ("*",):
-        return "*"
-    return ", ".join(quote_identifier(column) for column in cfg.columns)
-
-
-def order_clause(spec: Iterable[tuple[str, str, str | None]]) -> str:
-    """Render an order spec, keeping the cache's NULLS placement.
-
-    The cache put nulls LAST whenever the contract omitted a NULLS clause,
-    whatever the direction. Postgres defaults DESC to NULLS FIRST, so the
-    clause is always stated.
-    """
-    terms = [
-        f"{quote_identifier(column)} {direction} NULLS {nulls or 'LAST'}"
-        for column, direction, nulls in spec
-    ]
-    return ", ".join(terms)
-
-
 def recency_column(cfg: ProjectionTableConfig) -> str | None:
     """The column whose newest values define the served window."""
     return cfg.cursor_column or cfg.freshness_column
-
-
-def json_value(value: Any, *, decode_json: bool = False) -> Any:
-    """Serialise one column value the way the snapshot writers did."""
-    if isinstance(value, datetime) or hasattr(value, "isoformat"):
-        return value.isoformat()
-    if isinstance(value, UUID | Decimal):
-        return str(value)
-    if decode_json and isinstance(value, str):
-        try:
-            return json.loads(value)
-        except json.JSONDecodeError:
-            return value
-    return value
-
-
-def serialise_row(cfg: ProjectionTableConfig, record: Any) -> dict[str, Any]:
-    return {
-        key: json_value(value, decode_json=key in cfg.json_columns)
-        for key, value in dict(record).items()
-    }
 
 
 @dataclass(frozen=True)
@@ -211,134 +185,6 @@ class UniqueKeyCatalogue:
     not_null_columns: frozenset[str] = frozenset()
 
 
-def _latest_per_key_sql(
-    cfg: ProjectionTableConfig,
-    relation: str,
-    *,
-    key_columns: tuple[str, ...],
-    tenant_where: str,
-    order_column: str,
-) -> str:
-    """The newest row of each key, reached by a skip scan over the key index.
-
-    A mutable-grain exposure serves one row per key -- the latest -- and the
-    snapshot cache it replaced held exactly that. A table can hold every
-    window a key ever had, so a window cut by recency over the table serves a
-    handful of busy keys many times and never reaches the quiet ones
-    (OMN-20327: consumer-flow's 2000 newest rows named 597 of its 976
-    consumer-group/topic pairs). The distinct keys are found one index probe
-    each, and the newest row of each is one more, so the cost follows the key
-    count, not the table's row count.
-
-    ``key_columns`` are the declared key columns the relation carries (see
-    :func:`physical_key_columns`).
-    """
-    keys = ", ".join(quote_identifier(column) for column in key_columns)
-    tenant_and = f" AND {tenant_where}" if tenant_where else ""
-    tenant_only = f" WHERE {tenant_where}" if tenant_where else ""
-    after_key = (
-        "("
-        + ", ".join(f"t.{quote_identifier(column)}" for column in key_columns)
-        + ") > ("
-        + ", ".join(f"k.{quote_identifier(column)}" for column in key_columns)
-        + ")"
-    )
-    same_key = " AND ".join(
-        f"t.{quote_identifier(column)} = k.{quote_identifier(column)}"
-        for column in key_columns
-    )
-    return (
-        "WITH RECURSIVE k AS ("
-        f"(SELECT {keys} FROM {relation}{tenant_only} ORDER BY {keys} LIMIT 1) "
-        f"UNION ALL SELECT {', '.join(f'n.{quote_identifier(c)}' for c in key_columns)} "
-        f"FROM k, LATERAL (SELECT {keys} FROM {relation} AS t "
-        f"WHERE {after_key}{tenant_and} ORDER BY {keys} LIMIT 1) AS n) "
-        f"SELECT l.* FROM k CROSS JOIN LATERAL (SELECT {select_list(cfg)} "
-        f"FROM {relation} AS t WHERE {same_key}{tenant_and} "
-        f"ORDER BY t.{quote_identifier(order_column)} DESC LIMIT 1) AS l"
-    )
-
-
-def _dated_first_sql(
-    columns: str,
-    relation: str,
-    *,
-    scope: list[str],
-    recency: str,
-    retain: int,
-) -> str:
-    """The newest ``retain`` rows of ``relation`` by ``recency``, NULLs last.
-
-    The dated rows are one bounded read through the recency column's index
-    (``IS NOT NULL`` is an index condition); the undated rows only fill what
-    the dated rows leave, and their read is never run when that is nothing.
-    ``scope`` is the window's WHERE list, applied to both reads with the same
-    bound parameters.
-    """
-    column = quote_identifier(recency)
-    where = "".join(f"{clause} AND " for clause in scope)
-    return (
-        f"WITH newest_dated AS (SELECT {columns} FROM {relation} "
-        f"WHERE {where}{column} IS NOT NULL ORDER BY {column} DESC LIMIT {retain}) "
-        "SELECT * FROM newest_dated UNION ALL "
-        f"(SELECT {columns} FROM {relation} WHERE {where}{column} IS NULL "
-        f"LIMIT {retain} - (SELECT count(*) FROM newest_dated))"
-    )
-
-
-def physical_key_columns(
-    cfg: ProjectionTableConfig, relation_columns: frozenset[str] | None
-) -> tuple[str, ...]:
-    """The declared key columns the relation carries, in declared order.
-
-    A key column can be part of the bus compaction key without being a column
-    of the relation: the delegation and savings aggregates key on
-    ``snapshot_grain``, a constant the republish query mints and the view
-    deliberately lacks (OMN-19971). Such a column can never select or order a
-    row, so the latest-row-per-key read keys on the rest. ``None`` means the
-    relation's columns are unknown, and every declared key is kept.
-    """
-    if relation_columns is None:
-        return cfg.key_columns
-    return tuple(
-        column for column in cfg.key_columns if column.strip('"') in relation_columns
-    )
-
-
-def key_is_unique_per_row(
-    cfg: ProjectionTableConfig,
-    key_columns: tuple[str, ...],
-    unique_keys: tuple[frozenset[str], ...],
-    not_null_columns: frozenset[str] | None = None,
-) -> bool:
-    """Whether every row of the relation is the only row of its key.
-
-    Then the latest row of each key is every row, and the recursive per-key
-    scan only walks the whole table to find that out: ``work.events``,
-    ``session.replay`` and ``live-events`` key on an event or snapshot id, so
-    the key count is the row count (OMN-19971). True when the contract
-    declares the key grain immutable (one source event owns the key for its
-    life), or when the relation has a unique index whose columns are all
-    among ``key_columns`` -- an index on part of the key makes the whole key
-    unique too, while one that reaches past it does not.
-
-    The index route also needs every key column ``NOT NULL`` in the relation
-    (``not_null_columns``). A unique index lets any number of rows hold a
-    NULL, and the per-key scan never serves a row with a NULL key column (it
-    matches no key by equality), so on a nullable key a window cut straight
-    from the relation would serve rows the scan never did. ``None`` means the
-    nullability is unknown, and the index route is not taken.
-    """
-    if not key_columns:
-        return False
-    if cfg.key_grain == "immutable":
-        return True
-    physical = frozenset(column.strip('"') for column in key_columns)
-    if not_null_columns is None or not physical <= not_null_columns:
-        return False
-    return any(index and index <= physical for index in unique_keys)
-
-
 def build_window_query(
     cfg: ProjectionTableConfig,
     *,
@@ -351,8 +197,17 @@ def build_window_query(
     relation_columns: frozenset[str] | None = None,
     unique_keys: tuple[frozenset[str], ...] = (),
     not_null_columns: frozenset[str] | None = None,
+    window_seconds: int | None = None,
+    row_cap: int | None = None,
+    window_type: str | None = None,
 ) -> WindowQuery:
     """The SQL for one exposure's served window.
+
+    ``window_seconds`` bounds the read to the rows whose freshness column lies
+    inside the last that many seconds, newest first, and ``row_cap`` bounds how
+    many of them are read (never more than the ``limit * 4`` the cache kept). A
+    windowed read never runs the ascending walk over the whole history: the
+    window predicate and the cap are part of the one statement.
 
     Every identifier comes from the contract; every caller value is a bound
     parameter. ``since_type`` is the cursor column's catalogue type, read from
@@ -378,6 +233,8 @@ def build_window_query(
     relation = qualified_relation(cfg)
     columns = select_list(cfg)
     retain = cfg.limit * RETAINED_WINDOW_FACTOR
+    if window_seconds is not None and row_cap is not None:
+        retain = max(1, min(retain, row_cap))
     params: list[Any] = []
     tenant_where = ""
 
@@ -411,8 +268,29 @@ def build_window_query(
         )
 
     recency = recency_column(cfg)
+    window_column = cfg.freshness_column if window_seconds is not None else None
+    if window_seconds is not None:
+        if window_column is None:
+            raise ProjectionReadError(
+                "unsupported_filter",
+                f"exposure {cfg.topic!r} declares no freshness_column to window by",
+                status_code=422,
+            )
+        params.append(float(window_seconds))
+        window_instant = window_instant_sql(
+            quote_identifier(window_column), window_type
+        )
+        where.append(
+            f"{window_instant} >= "
+            f"now() - (${len(params)}::double precision * interval '1 second')"
+        )
     newest_by_recency = False
-    if since is not None or (selection == "walk" and cfg.cursor_column is not None):
+    if window_seconds is not None and since is None:
+        # A windowed read is the newest rows inside the window, never the
+        # ascending walk from the oldest row of the table.
+        assert window_column is not None
+        window_order = f"{window_instant} DESC"
+    elif since is not None or (selection == "walk" and cfg.cursor_column is not None):
         window_order = (
             f"{quote_identifier(recency)} ASC"
             if recency is not None
@@ -451,7 +329,7 @@ def build_window_query(
         if tenant_where:
             where.insert(0, tenant_where)
         source = relation
-    if newest_by_recency and not latest_per_key:
+    if newest_by_recency and not latest_per_key and window_seconds is None:
         assert recency is not None
         inner = _dated_first_sql(
             columns, relation, scope=where, recency=recency, retain=retain
@@ -461,77 +339,14 @@ def build_window_query(
         inner_order = f" ORDER BY {window_order}" if window_order else ""
         inner = f"SELECT {columns} FROM {source}{where_sql}{inner_order} LIMIT {retain}"
     outer_order = order_clause(order_spec)
+    if window_seconds is not None and since is None:
+        # The page cuts its first rows, so a windowed page must hand it the newest first.
+        assert window_column is not None
+        outer_order = f"{quote_identifier(window_column)} DESC"
     sql = f"SELECT * FROM ({inner}) AS served_window" + (
         f" ORDER BY {outer_order}" if outer_order else ""
     )
     return WindowQuery(sql=sql, params=tuple(params))
-
-
-class ProtocolProjectionPageView(Protocol):
-    """The synchronous read surface the status page renders from."""
-
-    def unavailable_reason(self, topic: str) -> tuple[str, str] | None: ...
-
-    def get_rows(
-        self,
-        topic: str,
-        *,
-        limit: int | None = None,
-        tenant_column: str | None = None,
-        tenant_id: str | None = None,
-    ) -> list[dict[str, Any]]: ...
-
-    def latest_event_at(self, topic: str) -> datetime | None: ...
-
-    def row_count(self, topic: str) -> int: ...
-
-
-@dataclass
-class TablePageView:
-    """A prefetched, synchronous view for the status page (``GET /``).
-
-    The page renders from a fixed set of reads with the same interface the
-    cache offered (``is_bootstrapped``/``get_rows``/``latest_event_at``/
-    ``row_count``), so the route awaits every read first and the page code
-    stays synchronous.
-    """
-
-    rows: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
-    latest: dict[str, datetime | None] = field(default_factory=dict)
-    tenants: dict[str, str | None] = field(default_factory=dict)
-    failures: dict[str, tuple[str, str]] = field(default_factory=dict)
-
-    def unavailable_reason(self, topic: str) -> tuple[str, str] | None:
-        if topic in self.failures:
-            return self.failures[topic]
-        if topic not in self.rows:
-            return ("projection_not_read", "the page did not read this exposure")
-        return None
-
-    def is_bootstrapped(self, topic: str) -> bool:
-        return self.unavailable_reason(topic) is None
-
-    def get_rows(
-        self,
-        topic: str,
-        *,
-        limit: int | None = None,
-        tenant_column: str | None = None,
-        tenant_id: str | None = None,
-    ) -> list[dict[str, Any]]:
-        if tenant_column is not None and tenant_id != self.tenants.get(topic):
-            raise ValueError(
-                f"page view for {topic!r} was read as tenant "
-                f"{self.tenants.get(topic)!r}, not {tenant_id!r}"
-            )
-        rows = self.rows.get(topic, [])
-        return rows if limit is None else rows[:limit]
-
-    def latest_event_at(self, topic: str) -> datetime | None:
-        return self.latest.get(topic)
-
-    def row_count(self, topic: str) -> int:
-        return len(self.rows.get(topic, []))
 
 
 def _read_failure(
@@ -575,17 +390,6 @@ def _read_failure(
     )
 
 
-def _parse_timestamp(value: Any) -> datetime | None:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value
-    try:
-        return datetime.fromisoformat(str(value))
-    except ValueError:
-        return None
-
-
 class ProtocolProjectionRowSource(Protocol):
     """What the projection API's routes read an exposure through."""
 
@@ -613,6 +417,8 @@ class ProtocolProjectionRowSource(Protocol):
         since: str | None = None,
         correlation_id: str | None = None,
         selection: str = "newest",
+        window_seconds: int | None = None,
+        row_cap: int | None = None,
     ) -> list[dict[str, Any]]: ...
 
     async def walk_origin(
@@ -884,6 +690,8 @@ class TableRowSource:
         since: str | None = None,
         correlation_id: str | None = None,
         selection: str = "newest",
+        window_seconds: int | None = None,
+        row_cap: int | None = None,
     ) -> list[dict[str, Any]]:
         """The exposure's served window, ordered by ``order_spec``."""
         pool = await self._pool(cfg)
@@ -893,6 +701,13 @@ class TableRowSource:
                 since_type = (
                     await self._cursor_type(connection, cfg)
                     if since is not None and cfg.cursor_column is not None
+                    else None
+                )
+                window_type = (
+                    await freshness_column_type(
+                        connection, relation, cfg.freshness_column
+                    )
+                    if window_seconds is not None and cfg.freshness_column is not None
                     else None
                 )
                 keyed = bool(cfg.key_columns) and recency_column(cfg) is not None
@@ -917,6 +732,9 @@ class TableRowSource:
                     relation_columns=relation_columns,
                     unique_keys=catalogue.unique_keys,
                     not_null_columns=catalogue.not_null_columns,
+                    window_seconds=window_seconds,
+                    row_cap=row_cap,
+                    window_type=window_type,
                 )
                 records = await connection.fetch(query.sql, *query.params)
         except ProjectionReadError:
@@ -924,6 +742,34 @@ class TableRowSource:
         except (OSError, TimeoutError, asyncpg.PostgresError) as exc:
             raise _read_failure(cfg, relation, exc) from exc
         return [serialise_row(cfg, record) for record in records]
+
+    async def undated_window_rows(
+        self, cfg: ProjectionTableConfig, *, tenant_id: str | None
+    ) -> int:
+        """Rows a windowed read leaves out because the freshness value is no instant."""
+        if cfg.freshness_column is None or (cfg.tenant_column and tenant_id is None):
+            return 0
+        relation = qualified_relation(cfg)
+        scope = (
+            f" WHERE {quote_identifier(cfg.tenant_column)}::text = $1"
+            if cfg.tenant_column
+            else ""
+        )
+        try:
+            async with _tenant_scoped_read(await self._pool(cfg), tenant_id) as conn:
+                kind = await freshness_column_type(conn, relation, cfg.freshness_column)
+                sql = undated_rows_sql(
+                    relation, quote_identifier(cfg.freshness_column), kind, scope
+                )
+                count = (
+                    int(await conn.fetchval(sql, *([tenant_id] if scope else [])) or 0)
+                    if sql
+                    else 0
+                )
+        except (OSError, TimeoutError, asyncpg.PostgresError) as exc:
+            raise _read_failure(cfg, relation, exc) from exc
+        log_undated_rows(relation, cfg.freshness_column, count)
+        return count
 
     async def _newest_freshness(
         self, cfg: ProjectionTableConfig, *, tenant_id: str | None

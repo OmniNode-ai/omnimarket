@@ -27,8 +27,9 @@ description: >
   folder and key, creates a secret create-only (an existing key is reported,
   never read or updated), and lists a folder's key names. The machine identity
   resolves at run time from the bootstrap secret store, the endpoint, project
-  and environment from the private overlay. Every failure is a typed outcome;
-  no value, digest or credential is logged, published or put in a detail.
+  and environment from the private overlay. A separate operation writes an
+  overlay-declared host environment file and returns presence and SHA-256
+  readings. No operation publishes or logs a secret value.
 
 input_model:
   name: ModelSecretStoreRequest
@@ -88,6 +89,23 @@ handler_routing:
         name: ModelHouseModelKeyRequest
         module: omnimarket.models.secret_store.model_house_model_key_request
 
+    - operation: write_env_file
+      handler:
+        name: HandlerSecretEnvFile
+        module: omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_env_file
+      event_model:
+        name: ModelSecretEnvFileRequest
+        module: omnimarket.nodes.node_secret_store_effect.models.model_secret_env_file
+      output_model: omnimarket.nodes.node_secret_store_effect.models.model_secret_env_file.ModelSecretEnvFileResult
+
+# Bind each allowed destination to its consumer's overlay and store folder.
+# The request chooses a binding. Only the overlay supplies its path and names.
+secret_env_files:
+  floor_fill_live.store_dsn_env_file:
+    overlay: node_floor_fill_orchestrator
+    names_from: [store_dsn_env]
+    folder: /shared/env
+
 # Keys the node generates itself (OMN-23695): the value is made inside the runtime from the system's random source, stored create-only
 # under `folder`/`key`, and never printed, serialized, logged or put on a command line. A request names only the id.
 generated_keys:
@@ -101,6 +119,11 @@ generated_keys:
   nut_secondary_password: {folder: /shared/env, key: NUT_SECONDARY_PASSWORD, bytes: 24, prefix: ""}
   # (OMN-24115) the dev probe user's password, read by node_dev_identity_provision_effect
   dev_probe_user_password: {folder: /shared/env, key: DEV_PROBE_USER_PASSWORD, bytes: 24, prefix: "Dp1!"}
+  # (OMN-26586) the stability gateway key node_stability_gateway_key_provision_effect hashes into tenant_api_keys; prefix is the gateway's API key prefix.
+  # (OMN-26121) `key` is the name the stability probes (C15, C16, C11) read from the stability Infisical, so it carries their STABILITY_TEST_ name.
+  stability_gateway_api_key: {folder: /shared/env, key: STABILITY_TEST_CHAIN_CANARY_GATEWAY_API_KEY, bytes: 32, prefix: "onxk_"}
+  # (OMN-26566) the stability gateway key of check C16 alone: its own name, so a C16 provision never touches the name C11 reads.
+  stability_gateway_api_key_c16: {folder: /shared/env, key: STABILITY_TEST_C16_GATEWAY_API_KEY, bytes: 32, prefix: "onxk_"}
 
 # A reference's first segment, when it names one of these, maps through it:
 # secret://onex/captured/<digest> is key CAPTURED_<digest> in folder /captured

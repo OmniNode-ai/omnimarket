@@ -1,0 +1,89 @@
+schema_version: 1.0.0
+ticket_id: OMN-26044
+title: The published customer install line gives a CLI that has onex delegate, onex info and onex local, or the C17 customer-surface probe is corrected to match what the line ships
+summary: 'The guide install line gives a CLI with onex delegate, onex info and onex local, each help exiting 0 (read on a clean uv tool install of omnimarket 0.4.324). The C17 probe still fails its parameter_audit clause: onex setup --workspace binds and names OMNI_HOME, and onex repo-state unit install and render name $OMNI_HOME in --omni-root help. The customer option surface drops the registry-root variable; the probe is unchanged.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26044-no-omni-home-surface
+    statement: No parameter on the onex setup and onex repo-state option surface binds or names the internal registry root, the C17 probe is unchanged, and onex setup --workspace still reads OMNIBASE_PATH.
+    acceptance:
+      - id: AC1
+        statement: "AC1: the guide install line run in a clean uv tool environment lists onex delegate, onex info and onex local each with help exit code 0 -- falsifier: the recorded output lacks any of the three help exit codes (recorded in the lane report and the PR body)"
+      - id: AC2
+        statement: "AC2: the cause of the failing parameter_audit clause is named from the installed omnimarket 0.4.324 files -- falsifier: the named files do not contain the flagged option definitions"
+      - id: AC4
+        statement: "AC4: no probe clause is dropped and the probe is not edited -- falsifier: the PR diff touches a probe or driver file, or removes an option instead of its OMNI_HOME binding and wording"
+      - id: AC5
+        statement: "AC5: the probe's own grading functions read parameter_audit true and the other three clauses true against a clean install of this branch -- falsifier: any of the four clauses reads false against the branch install"
+  - id: req-omn26044-c17-collector
+    statement: The delegation check probe node measures the C17 customer surface itself. Its collector reads the guide's one install line, runs it in a clean tool environment, and plants each broken onex.cli entry point with the installed core's own operator switch on, so a published install no longer reads a hidden broken command as a vanished one.
+    acceptance:
+      - id: AC6
+        statement: "AC6: the C17 collector installs the guide's own line in a clean tool environment and its observation grades guides_lead_with_local_path, clean_install_named_interpreter, parameter_audit and broken_command_named_error true on the published install, and false for a run that did not take the operator switch -- falsifier: tests/nodes/node_delegation_check_probe_effect/test_c17_surface_collector.py fails any test, or a collector run on a clean install of the published packages grades a clause false"
+evidence_requirements:
+  - kind: tests
+    description: The customer-surface test fails at origin/dev and passes at the pushed head.
+    command: uv run pytest tests/nodes/node_onex_setup_effect/test_customer_surface_no_omni_home_omn26044.py -q --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26044-ac1
+    description: "AC1: the install-and-help read is recorded in the PR body; the hosted proxy is the walk test reaching the setup and repo-state unit commands."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_onex_setup_effect/test_customer_surface_no_omni_home_omn26044.py -k walk_reaches -q --no-cov -p no:cacheprovider
+        cwd: .
+  - id: dod-omn26044-ac2
+    description: "AC2: the flagged definitions are in node_onex_setup_effect/cli.py and node_repo_state_query_effect/handlers/adapter_repo_state_query_serve.py; the test fails at the merge base on both."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_onex_setup_effect/test_customer_surface_no_omni_home_omn26044.py -k no_omni_home_on_the_customer -q --no-cov -p no:cacheprovider
+        cwd: .
+  - id: dod-omn26044-ac4
+    description: "AC4: the change edits two option definitions, one comment and one test; the seeded-control and walk tests prove the scan is not blind."
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_onex_setup_effect/test_customer_surface_no_omni_home_omn26044.py -k seeded_control -q --no-cov -p no:cacheprovider
+        cwd: .
+  - id: dod-omn26044-ac5
+    description: "AC5: the four probe clauses are graded with the probe's own functions against a clean install of the branch; the hosted proxy is the test that the workspace option still reads OMNIBASE_PATH."
+    source: manual
+    binds_ac: [AC5]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_onex_setup_effect/test_customer_surface_no_omni_home_omn26044.py -k omnibase_path -q --no-cov -p no:cacheprovider
+        cwd: .
+  - id: dod-omn26044-integration-proof
+    description: 'Run the customer-surface test on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. It binds no acceptance criterion: the clean install of the branch and the probe grading are recorded in the PR body.'
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26044 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_onex_setup_effect/test_customer_surface_no_omni_home_omn26044.py -q --no-cov
+        cwd: .
+  - id: dod-omn26044-c17-collector-tests
+    description: "AC6: the collector's guide read, install-line parse, parameter audit with its seeded controls, the in-machine driver against an onex that hides an undeclared group unless the switch is on, and the machine over a fake runner (clean install reads PASS, a run without the switch reads FAIL naming it, a failed install reads FAIL, an unreadable guide or a host without uv reads PRECONDITION-ABSENT and installs nothing)."
+    source: manual
+    binds_ac: [AC6]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_c17_surface_collector.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn26044-c17-collector-live
+    description: "The collector run on a lab host against the published packages (a real uv tool install in a temporary home); hosted CI cannot reach the package index inside a clean machine, so only the local Done gate runs this unbound check. It binds no acceptance criterion; the reading is in the PR body."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26044-c17 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_check_probe_effect -q --no-cov
+        cwd: .

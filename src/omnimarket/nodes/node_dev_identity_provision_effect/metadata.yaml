@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_dev_identity_provision_effect
 version: 1.0.0
-description: Creates one named dev Keycloak user, stores a generated password for it, and provisions one probe tenant for it; dev lanes only, refused elsewhere.
+description: Creates one named dev Keycloak user, stores a generated password for it, and either provisions one probe tenant for it or binds it to an existing tenant (tenant attributes set, audience and tenant claims read back from its token); dev lanes only, refused elsewhere.
 pack: operator_tooling
 node_role: effect
 display_name: Dev Identity Provision Effect
@@ -19,6 +19,7 @@ capabilities:
   requires_docker: false
   side_effect_class: write
 dependencies:
+- omnibase-infra>=0.32.0
 - pydantic>=2.0
 - pyyaml>=6.0
 authors:

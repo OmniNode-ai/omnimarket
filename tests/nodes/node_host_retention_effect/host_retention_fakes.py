@@ -17,11 +17,14 @@ from omnimarket.nodes.node_host_retention_effect.handlers.handler_host_retention
 )
 from omnimarket.nodes.node_host_retention_effect.handlers.host_retention_ports import (
     HostRetentionPorts,
+    LaneLedgerState,
+    ReceiptReading,
 )
 from omnimarket.nodes.node_host_retention_effect.models.model_host_retention import (
     ModelDiskReading,
     ModelHostRetentionRequest,
     ModelHostRetentionResult,
+    ModelLedgerLoader,
     ModelUvArchiveEntry,
 )
 from omnimarket.nodes.node_temp_retention_effect.handlers.handler_temp_retention import (
@@ -147,6 +150,91 @@ class FakeLanes:
         return self.lanes
 
 
+class FakeClosure:
+    """The lane closure port: ``closed`` maps lane -> its newest TERMINAL epoch (a float) or a full
+    ``LaneLedgerState``; ``None`` is an unreadable ledger."""
+
+    def __init__(self, closed: dict[str, float | LaneLedgerState] | None) -> None:
+        self.closed = closed
+        self.calls: list[ModelLedgerLoader] = []
+
+    def lane_states(
+        self, loader: ModelLedgerLoader
+    ) -> dict[str, LaneLedgerState] | None:
+        self.calls.append(loader)
+        if self.closed is None:
+            return None
+        return {
+            lane: value
+            if isinstance(value, LaneLedgerState)
+            else LaneLedgerState(claim=None, terminal=value)
+            for lane, value in self.closed.items()
+        }
+
+
+class FakeReceipts:
+    """The lane receipts port: ``readings`` maps a receipt glob pattern -> what its files say; a
+    pattern it does not list reads as no files at all."""
+
+    def __init__(self, readings: dict[str, ReceiptReading] | None = None) -> None:
+        self.readings = readings or {}
+        self.calls: list[tuple[str, str]] = []
+
+    def read(self, root: str, pattern: str) -> ReceiptReading:
+        self.calls.append((root, pattern))
+        return self.readings.get(
+            pattern,
+            ReceiptReading(files=0, unreadable=0, not_final=0, newest_mtime=0.0),
+        )
+
+
+class FakeArchive:
+    """The archive port: an archive is a one-line file under the declared root (or nowhere when
+    ``root`` is None); ``fail_verify`` fails the read-back, ``synced=False`` holds the entry."""
+
+    def __init__(
+        self,
+        root: Path | None = None,
+        *,
+        synced: bool = True,
+        fail_verify: bool = False,
+    ) -> None:
+        self._root = root
+        self._synced = synced
+        self._fail_verify = fail_verify
+        self.archived: list[tuple[Path, Path]] = []
+        self.verified: list[tuple[Path, Path]] = []
+
+    def root(self) -> Path | None:
+        return self._root
+
+    def archive(self, source: Path, dest: Path) -> int:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        payload = b"archive of " + source.name.encode()
+        dest.write_bytes(payload)
+        self.archived.append((source, dest))
+        return len(payload)
+
+    def verify(self, source: Path, dest: Path) -> None:
+        if self._fail_verify:
+            raise OSError("archive verify failed")
+        self.verified.append((source, dest))
+
+    def synced(self, dest: Path) -> bool:
+        return self._synced
+
+    def archivable(self, source: Path) -> bool:
+        if source.is_symlink():
+            return False
+        if not source.is_dir():
+            return True
+        return not any(
+            name in {".git", "memory", "MEMORY.md"} or (current / name).is_symlink()
+            for current, dirs, files in ((Path(c), d, f) for c, d, f in os.walk(source))
+            for name in (*dirs, *files)
+        )
+
+
 class FakeMounts:
     def __init__(self, sources: set[str] | None) -> None:
         self.sources = sources
@@ -185,14 +273,21 @@ class FakePreCommitStore:
 
 
 class FakeDisk:
-    def __init__(self) -> None:
+    """Used 80 on the first read and 50 after, of 100; ``free`` (bytes), when given, is every reading's free space."""
+
+    def __init__(self, free: int | None = None) -> None:
         self.reads = 0
+        self.free = free
 
     def reading(self, path: str) -> ModelDiskReading:
         self.reads += 1
         used = 80.0 if self.reads == 1 else 50.0
         return ModelDiskReading(
-            path=path, used_bytes=int(used), total_bytes=100, used_percent=used
+            path=path,
+            used_bytes=int(used),
+            total_bytes=100,
+            used_percent=used,
+            free_bytes=int(100 - used) if self.free is None else self.free,
         )
 
 
@@ -206,6 +301,10 @@ def make_ports(
     mounts: Any = None,
     units: Any = None,
     pre_commit: Any = None,
+    closure: Any = None,
+    receipts: Any = None,
+    archive: Any = None,
+    disk: Any = None,
 ) -> HostRetentionPorts:
     return HostRetentionPorts(
         runner_state=runner_state or FakeRunnerState(),
@@ -215,8 +314,12 @@ def make_ports(
         lane_liveness=lanes or FakeLanes(set()),
         container_mounts=mounts or FakeMounts(set()),
         unit_files=units or FakeUnits([]),
-        disk=FakeDisk(),
+        disk=disk or FakeDisk(),
         pre_commit_store=pre_commit or FakePreCommitStore(),
+        # An explicit FakeClosure(None) (an unreadable ledger) must pass through.
+        lane_closure=closure if closure is not None else FakeClosure({}),
+        lane_receipts=receipts or FakeReceipts(),
+        archive=archive or FakeArchive(),
     )
 
 
@@ -258,6 +361,56 @@ def precommit_class(root: Path, keep_days: float = 7, **fields: Any) -> dict[str
         "keep_days": keep_days,
         **fields,
     }
+
+
+LOADER_MODULE = "omnimarket.nodes.node_ledger_rows_loader_effect"
+
+
+def loader_fields(**fields: Any) -> dict[str, Any]:
+    """The overlay fields of the ledger rows loader a terminal guard runs, with the contract's module."""
+    return {
+        "argv": ["python", "-m", LOADER_MODULE],
+        "reader": "host-retention",
+        "window_hours": 720,
+        "timeout_seconds": 5,
+        **fields,
+    }
+
+
+def results_class(
+    root: Path,
+    keep_days: float = 7,
+    *,
+    terminal_keep_days: float = 7,
+    lane_pattern: str = "(?P<lane>.+)",
+    name: str = "receipts-a",
+    loader: dict[str, Any] | None = None,
+    receipt: dict[str, Any] | None = None,
+    archive: bool = False,
+) -> dict[str, Any]:
+    """A lane_results age class held until its lanes go TERMINAL on the rolling work ledger.
+
+    ``root`` must be a lane_results root leaf; the loader is the contract's ledger rows loader.
+    ``receipt`` is the terminal guard's receipt evidence block; ``archive`` archives before removing.
+    """
+    terminal: dict[str, Any] = {
+        "loader": loader if loader is not None else loader_fields(),
+        "terminal_keep_days": terminal_keep_days,
+        "lane_pattern": lane_pattern,
+        "receipt": receipt
+        if receipt is not None
+        else {"root": str(root), "glob": "{lane}/*.json"},
+    }
+    class_fields: dict[str, Any] = {
+        "name": name,
+        "kind": "lane_results",
+        "root": str(root),
+        "keep_days": keep_days,
+        "terminal": terminal,
+    }
+    if archive:
+        class_fields["archive"] = True
+    return class_fields
 
 
 def overlay_file(tmp_path: Path, **host_fields: Any) -> str:

@@ -16,7 +16,10 @@ from typing import Any
 import pytest
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
-from omnimarket.models.overlay_store import ModelOverlayStoreLoadResult
+from omnimarket.models.overlay_store import (
+    ModelOverlayStoreLoadBatch,
+    ModelOverlayStoreLoadResult,
+)
 from omnimarket.nodes.node_overlay_store_load_effect import (
     runtime_overlay_store_load_tick as tick,
 )
@@ -79,19 +82,21 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def fake_run(loaded: list[str]) -> Callable[..., Any]:
     async def run(
         overlay: Any, clone: Path, ids: list[str], bootstrap: Any
-    ) -> list[Any]:
+    ) -> ModelOverlayStoreLoadBatch:
         loaded.extend(ids)
         head = git(clone, "rev-parse", "HEAD")
-        return [
-            ModelOverlayStoreLoadResult(
-                overlay_id=i,
-                digest="d" * 64,
-                source_ref=f"{i}@{head}",
-                topic=LOADED_TOPIC,
-                loaded_at=datetime(2026, 11, 9, tzinfo=UTC),
+        return ModelOverlayStoreLoadBatch(
+            results=tuple(
+                ModelOverlayStoreLoadResult(
+                    overlay_id=i,
+                    digest="d" * 64,
+                    source_ref=f"{i}@{head}",
+                    topic=LOADED_TOPIC,
+                    loaded_at=datetime(2026, 11, 9, tzinfo=UTC),
+                )
+                for i in ids
             )
-            for i in ids
-        ]
+        )
 
     return run
 

@@ -80,3 +80,11 @@ dod_evidence:
       - check_type: test_passes
         check_value: "uv run pytest tests/unit/nodes/node_runtime_bus_forward_effect/test_forward_workspace_roots.py -q --no-cov -o addopts='' -n 0"
         cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn25564-merge-local-keep
+    description: "After merging dev, a forward with no declared hosted bus keeps the events locally and does not demand workspace roots."
+    source: manual
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/unit/nodes/node_runtime_bus_forward_effect/test_forward_workspace_roots.py::test_no_overlay_keeps_events_locally_and_does_not_demand_workspace_roots -q --no-cov -o addopts='' -n 0"
+        cwd: ${OMNI_HOME}/omnimarket

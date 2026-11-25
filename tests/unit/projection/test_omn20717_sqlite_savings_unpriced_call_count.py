@@ -43,13 +43,21 @@ def test_an_unpriced_call_is_counted_beside_unchanged_totals(tmp_path: Path) -> 
     path = _store(
         tmp_path,
         (
-            _delegation("priced", cost_usd=0.25, cost_savings_usd=0.5),
+            _delegation(
+                "priced",
+                model_name="gpt-4o-mini",
+                delegated_to="gpt-4o-mini",
+                cost_usd=0.25,
+                cost_savings_usd=0.5,
+            ),
             _delegation("unpriced", cost_usd=None, cost_savings_usd=0.0),
         ),
         (_call("priced", "measured"),),
     )
     row = _row(path)
-    assert row["unpriced_call_count"] == 1
+    # OMN-26413: the unpriced run has no call row while the store has one, so its usage is unrecorded and the metering
+    # headline does not count it as unknown spend; the savings view now counts the same runs.
+    assert row["unpriced_call_count"] == 0
     assert row["session_count"] == 2
     assert row["cumulative_local_cost_usd"] == pytest.approx(0.25)
     assert row["cumulative_cloud_cost_usd"] == pytest.approx(0.75)
@@ -60,7 +68,12 @@ def test_priced_and_measured_free_calls_count_none(tmp_path: Path) -> None:
     path = _store(
         tmp_path,
         (
-            _delegation("priced", cost_usd=0.1),
+            _delegation(
+                "priced",
+                model_name="gpt-4o-mini",
+                delegated_to="gpt-4o-mini",
+                cost_usd=0.1,
+            ),
             _delegation("free", cost_usd=0.0),
         ),
         (_call("priced", "measured"), _call("free", "measured")),

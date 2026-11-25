@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Packaged models for node_lab_placement_compute."""
 
+from omnimarket.models.model_host_table_verdict import ModelHostTableVerdict
 from omnimarket.models.model_priority_rules import PRIORITY_OTHER, ModelPriorityRules
 
 from .model_lab_lane_priority import (
@@ -15,7 +16,6 @@ from .model_lab_lane_priority import (
 from .model_lab_placement import (
     CAPABILITY_COLUMNS,
     ModelHostDefaults,
-    ModelHostTableVerdict,
     ModelLabPlacementRequest,
     ModelLabPlacementResult,
     ModelPlacementRules,

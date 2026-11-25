@@ -12,8 +12,9 @@
 ``broker-listener``        dial the dev broker's external listener and deliver an alarm when every address refuses.
 ``broker-listener-probe``  the same dial, delivering nothing.
 
-``dev-tag-heartbeat``        read the deploy agent's heartbeat; a repository alarms once its streak of breaching
-                            runs reaches the persistence bound, and the alarms are delivered.
+``dev-tag-heartbeat``        read the deploy agent's heartbeat, and its systemd USER unit first when the overlay declares
+                            it; a breach alarms once its streak of breaching runs reaches the persistence bound,
+                            and the alarms are delivered.
 ``dev-tag-heartbeat-probe``  the same read, keeping no streak and delivering nothing.
 
 ``delegation-chain-canary``        read the canary workflow's newest completed run; a breach alarms once its streak of
@@ -31,6 +32,10 @@
 ``stale-indeterminate``     alarm a watched condition whose last runs all read INDETERMINATE (the overlay's ``stale_indeterminate``).
 Each of these has a ``-probe`` form that keeps nothing and delivers nothing (OMN-24425). The verbs that predate them append each run to the
 overlay's ``verdict_record`` through ``journal_exit`` so the stale-indeterminate verb can read them.
+
+``loaded-code-sha``         read the sha the lane's deploy agent has loaded, with the surface that answered; READ carries the sha and the
+                            surface, UNREAD the reason no surface delivered one. It has no ``-probe`` form and no ``--fault``: it only
+                            reads, so it never alarms and never delivers.
 
 ``schedule ... --condition <verb>``  the same verbs for a condition's own schedule (the overlay's ``condition_schedules``).
 
@@ -70,6 +75,10 @@ from omnimarket.nodes.node_lab_alarm.adapters.inmemory_adapters import (
     InMemoryProjectionNewest,
     InMemoryRunRecords,
     InMemorySamples,
+    InMemoryUnitStateSource,
+)
+from omnimarket.nodes.node_lab_alarm.adapters.routed_delivery_adapters import (
+    build_routed_delivery,
 )
 from omnimarket.nodes.node_lab_alarm.adapters.runtime_adapters import (
     AdminLag,
@@ -84,7 +93,11 @@ from omnimarket.nodes.node_lab_alarm.adapters.runtime_adapters import (
     HttpManifest,
     KafkaEffectsGroups,
     KafkaLag,
+    SshUserUnitStateSource,
     TcpApiVersionsProbe,
+)
+from omnimarket.nodes.node_lab_alarm.handlers.alarm_route import (
+    HandlerAlarmSeverityRoute,
 )
 from omnimarket.nodes.node_lab_alarm.handlers.handler_broker_lag import (
     HandlerBrokerLag,
@@ -184,20 +197,18 @@ from omnimarket.nodes.node_lab_alarm.protocols import (
     ProtocolGroupLagReader,
     ProtocolListenerProbe,
 )
+from omnimarket.nodes.node_lab_alarm.runtime_alarm_digest import (
+    DIGEST_VERBS,
+    run_alarm_digest,
+)
 from omnimarket.nodes.node_lab_alarm.runtime_lab_alarm_conditions import (
     CONDITION_VERBS,
     add_condition_parsers,
     journal_exit,
     run_condition_verb,
 )
-from omnimarket.nodes.node_lab_alarm_deliver_effect.handlers.handler_lab_alarm_deliver import (
-    HandlerLabAlarmDeliver,
-)
 from omnimarket.nodes.node_lab_alarm_deliver_effect.overlay import (
     load_overlay as load_delivery_overlay,
-)
-from omnimarket.nodes.node_lab_alarm_deliver_effect.runtime_lab_alarm_deliver import (
-    build_handler as build_delivery_handler,
 )
 
 _EXIT_RECORD_UNWRITABLE = 4
@@ -230,11 +241,11 @@ def _utc_now() -> datetime:
     return datetime.now(UTC)
 
 
-def _delivery_for(overlay: ModelLabAlarmOverlay) -> HandlerLabAlarmDeliver | None:
+def _delivery_for(overlay: ModelLabAlarmOverlay) -> HandlerAlarmSeverityRoute | None:
     """The alarm delivery the overlay turns on; its own overlay must then load, or the run is refused."""
     if overlay.alarm_delivery is None or not overlay.alarm_delivery.enabled:
         return None
-    return build_delivery_handler(load_delivery_overlay())
+    return build_routed_delivery(load_delivery_overlay(), alarm_overlay=overlay)
 
 
 def _inmemory_handler(overlay: ModelLabAlarmOverlay) -> HandlerBrokerLag:
@@ -562,6 +573,11 @@ def _inmemory_dev_tag_heartbeat_handler(
         streaks=InMemoryGrowthStreaks(),
         delivery=_delivery_for(overlay),
         clock=clock,
+        unit_source=(
+            InMemoryUnitStateSource(load_state="loaded", active_state="active")
+            if settings.unit is not None
+            else None
+        ),
     )
 
 
@@ -579,6 +595,15 @@ def _runtime_dev_tag_heartbeat_handler(
         streaks=FileGrowthStreaks(Path(settings.persistence.streak_path)),
         delivery=_delivery_for(overlay),
         clock=clock,
+        unit_source=(
+            SshUserUnitStateSource(
+                settings.unit.host_command,
+                settings.unit.name,
+                settings.unit.timeout_seconds,
+            )
+            if settings.unit is not None
+            else None
+        ),
     )
 
 
@@ -905,6 +930,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             default="none",
         )
     add_condition_parsers(sub)
+    for verb in DIGEST_VERBS:
+        sub.add_parser(verb)
     schedule = sub.add_parser("schedule")
     schedule.add_argument(
         "action", choices=("install", "uninstall", "status", "run-now")
@@ -947,6 +974,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_broker_listener(
             args.verb, EnumBrokerListenerFault(args.fault), overlay=overlay
         )
+    if args.verb in DIGEST_VERBS:
+        return run_alarm_digest(args.verb, overlay=overlay)
     if args.verb in CONDITION_VERBS:
         return run_condition_verb(args.verb, args.fault, overlay=overlay)
     if args.verb.startswith("delegation-chain-canary"):

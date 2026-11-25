@@ -1,0 +1,103 @@
+schema_version: 1.0.0
+ticket_id: OMN-26275
+title: A pyproject.toml change narrows only when every changed key is on an allowlist, and any other key, an unparseable file or a lock change beyond the version line runs the full suite
+summary: 'The change-aware test selector took the full suite for any pyproject.toml change, because pyproject.toml is test infrastructure. The selector node now compares the base and head text of the file key
+  by key (a git source-diff adapter with an in-memory twin, behind a protocol; the request carries the result as data_file_changes). With pyproject_section_selection_enabled on, only a changed key matching the
+  adjacency key pyproject_narrowable_keys (project.entry-points.onex.nodes.*, project.version, tool.onex.dashboard_bundle.*) narrows, to the tests that read the file (found in test texts and in source files that
+  open it or read entry-point metadata, followed through their importers, plus data_reader_overrides) and the closure of the entry points that were added, removed or repointed (old and new target, read from base and
+  head). A key outside the list, an unknown key, an unparseable or absent side, a missing diff, or a uv.lock change that is not the package''s own version line beside a matching version change answers
+  full_suite_reason test_infrastructure. The switch ships off (the stage 2 entry of the selection record; selection_stage stays 0), so nothing a pull request runs at stage 0 or 1 changes. Not in this change: the
+  T1 replay receipt, the data-file reader rule, the stage gate and ci.yml passing --base-ref.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26275-pyproject-sections
+  statement: A pyproject.toml change narrows by section through reviewed settings in the selector configuration, and fails closed on every key, side or lock change outside them.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the three dependency merges (`cdbc99eb4a`, `d970dcb251`, `c62d5b24d5`) stay full and every other pyproject merge replays to the outcome the T1 receipt expects -- falsifier: `uv run pytest
+      tests/nodes/node_test_selection_selector_compute/test_pyproject_sections.py -q --no-cov -k pyproject_sections` over the receipt lists with real base and head texts fails on any other split'
+  - id: AC2
+    statement: 'AC2: a key the allowlist does not name escalates with reason test_infrastructure -- falsifier: `-k pyproject_unknown_key_escalates` with fixture key `tool.example.setting`; add it to the allowlist
+      and the test must fail'
+  - id: AC3
+    statement: 'AC3: a pyproject whose base text is unparseable escalates -- falsifier: `-k pyproject_unparseable_escalates`'
+  - id: AC4
+    statement: 'AC4: adding `[tool.pytest.ini_options]` addopts in a fixture escalates -- falsifier: the same test with the key moved into an allowlisted section must fail'
+  - id: AC5
+    statement: 'AC5: a repointed entry point selects tests reaching both old and new targets, and a test reading entry points through `importlib.metadata` without naming pyproject is selected -- falsifier: a
+      fixture of each; drop the base-side read or the source-side index and the test must fail'
+evidence_requirements:
+- kind: tests
+  description: The pyproject section tests and the existing selector tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute tests/unit/scripts/test_detect_test_paths.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26275-ac1
+  description: 'AC1: the T1 receipt is on dev (config/test_selection_replay_receipt.json) and lists the 60 merges of the baseline window; 18 of them changed pyproject.toml, the same 18 as the rows of
+    tests/nodes/node_test_selection_selector_compute/pyproject_merges.json. The receipt and its replay input name the changed files but hold no pyproject text, so the test replays the fixture, which keeps
+    the verbatim base and head statements of every changed key (and the differing uv.lock tables); the fixture is the named fallback for the missing base and head texts. A one-off replay of the same 18 merges
+    through the git adapter over the full base and head texts from history (lab host h051, 2026-11-21) gave the same split as the test: cdbc99eb4a, d970dcb251 and c62d5b24d5 stay full (dependency keys, a uv
+    source tag, an override), 79f31e93f5 stays full (its lock changes revision, certifi and more than the own version line), the other 14 narrow (ae69d56977 narrows because its lock change is the own version
+    line alone; 84bd917586 and b28b1c210e narrow in the handler and take the full suite by the .github/ and scripts/ rules). The receipt itself records every one of the 18 as full_suite (the pre-change rule),
+    so the expected split comes from the rule and not from the receipt. Measured on the current dev tree with the switch on, a narrowed pyproject change selects tests/ through tests/conftest.py (its import
+    chain reaches a source file that opens pyproject.toml), so it is too heavy to ship on; the switch stays off and selection_stage stays 0.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_pyproject_sections.py -q --no-cov -n 0 -p no:randomly -k pyproject_sections
+    cwd: .
+- id: dod-omn26275-ac2
+  description: 'AC2: a fixture key tool.example.setting escalates with test_infrastructure, and the test''s own control adds it to the allowlist and sees the change narrow; dependencies, build-system, tool.uv.sources,
+    tool.uv.override-dependencies and tool.setuptools also escalate.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_pyproject_sections.py -q --no-cov -n 0 -p no:randomly -k "pyproject_unknown_key_escalates or outside_the_allowlist"
+    cwd: .
+- id: dod-omn26275-ac3
+  description: 'AC3: an unparseable base text, an unparseable head text, an absent side and an unread diff each escalate with test_infrastructure; an unparseable uv.lock beside a version change does too.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_pyproject_sections.py -q --no-cov -n 0 -p no:randomly -k "pyproject_unparseable_escalates or beyond_the_own_version_line"
+    cwd: .
+- id: dod-omn26275-ac4
+  description: 'AC4: adding addopts under tool.pytest.ini_options escalates; the control moves the same key into tool.onex.dashboard_bundle and the change narrows.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_pyproject_sections.py -q --no-cov -n 0 -p no:randomly -k injected_pytest_addopts
+    cwd: .
+- id: dod-omn26275-ac5
+  description: 'AC5: a repointed entry point selects tests/nodes/node_m1/ and tests/nodes/node_m2/; the control drops the base-side value and node_m1 leaves the selection. A test reading entry points through
+    importlib.metadata without spelling pyproject.toml, a test reaching pyproject.toml through a helper and a test reaching a source reader are selected; the control empties pyproject_reader_globs and the
+    source-reader test leaves the selection. A removed entry point whose module is gone selects the surviving test that still names it.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_pyproject_sections.py -q --no-cov -n 0 -p no:randomly -k "repointed or importlib_metadata or source_reader or base_side_read or removed_entry_point or through_a_helper"
+    cwd: .
+- id: dod-omn26275-integration-proof
+  description: the selector tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26275 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/nodes/node_test_selection_selector_compute/test_pyproject_sections.py -q --no-cov
+    cwd: .

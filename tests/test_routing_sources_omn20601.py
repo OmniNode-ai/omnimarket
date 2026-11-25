@@ -34,6 +34,8 @@ from uuid import uuid4
 import pytest
 import yaml
 
+from tests.ci.lint_jobs import lint_steps
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src" / "omnimarket"
 FIXTURES = REPO_ROOT / "tests" / "fixtures" / "routing_sources"
@@ -195,11 +197,7 @@ def test_routing_sources_inventory_is_enforced_by_the_gate() -> None:
     """The named lint step and the hook run the inventory cases, on every path a new source can arrive by."""
     module = "tests/test_routing_sources_omn20601.py"
     ci = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text("utf-8"))
-    steps = [
-        step["run"]
-        for step in ci["jobs"]["lint"]["steps"]
-        if module in step.get("run", "")
-    ]
+    steps = [step["run"] for step in lint_steps(ci) if module in step.get("run", "")]
     hooks = [
         hook
         for repo in yaml.safe_load(
@@ -561,6 +559,25 @@ def _adr_segmentation_bridge_key(
         segmentation._segmentation_model_key(config.name)
 
 
+def _probe_model_scope_local_tiers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from omnimarket.handlers.delegation_model_scope import (
+        MODEL_SCOPE_CONFIG_PATH_ENV_KEY,
+        local_scope_tiers,
+    )
+
+    monkeypatch.delenv(MODEL_SCOPE_CONFIG_PATH_ENV_KEY, raising=False)
+    assert local_scope_tiers() == frozenset({"local"})
+    pinned = tmp_path / "model_scope.yaml"
+    pinned.write_text(
+        "schema: delegation_model_scope.v1\nlocal_tiers:\n  - deployment_tier\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(MODEL_SCOPE_CONFIG_PATH_ENV_KEY, str(pinned))
+    assert local_scope_tiers() == frozenset({"deployment_tier"})
+
+
 PROBES: dict[str, Probe] = {
     "adr_segmentation_bridge_key": _adr_segmentation_bridge_key,
     "routing_tiers_ladder": _probe_routing_tiers_ladder,
@@ -570,6 +587,7 @@ PROBES: dict[str, Probe] = {
     "tenant_routing_overlay": _probe_tenant_routing_overlay,
     "build_loop_model_policy": _probe_build_loop_model_policy,
     "inference_bridge_endpoints": _probe_inference_bridge_endpoints,
+    "model_scope_local_tiers": _probe_model_scope_local_tiers,
 }
 
 
@@ -630,7 +648,7 @@ def test_overlay_precedence_proofs_are_wired_in_the_gate() -> None:
     ci = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text("utf-8"))
     steps = [
         step
-        for step in ci["jobs"]["lint"]["steps"]
+        for step in lint_steps(ci)
         if "tests/test_routing_sources_omn20601.py" in step.get("run", "")
     ]
     assert len(steps) == 1, "the lint job runs this module in exactly one named step"

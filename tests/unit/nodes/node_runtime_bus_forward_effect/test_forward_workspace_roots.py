@@ -204,3 +204,29 @@ def test_an_unexpanded_value_is_not_taken_as_a_path(tmp_path: Path) -> None:
 
     assert ROOT not in roots.declared
     assert "not an absolute literal path" in (roots.describe_unresolved() or "")
+
+
+def test_no_overlay_keeps_events_locally_and_does_not_demand_workspace_roots(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With no hosted bus declared the forward is a local keep, not a roots failure (merge of dev's local-keep path)."""
+
+    def _no_overlay(_environ: object) -> object:
+        raise adapter.NodeOverlayNotFoundError("no overlay declared")
+
+    monkeypatch.setattr(adapter, "load_overlay", _no_overlay)
+    lanes: list[str] = []
+    monkeypatch.setattr(
+        adapter, "broker_for_lane", lambda lane, _env: lanes.append(lane) or lane
+    )
+    forwarder = adapter.CoreRuntimeBusForwarder(
+        publisher_for_broker=lambda _b: _Publisher(),
+        environ={"XDG_CONFIG_HOME": str(tmp_path / "cfg")},
+        local_record_dir=tmp_path / "record",
+    )
+
+    receipt = forwarder.forward([_recorded()])
+
+    assert receipt["failed"] == 0
+    assert receipt["forwarded"] == 1
+    assert lanes == []

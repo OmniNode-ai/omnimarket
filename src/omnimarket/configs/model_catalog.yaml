@@ -1,0 +1,123 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# model_catalog.yaml (OMN-23413): how the model explorer merges what it knows
+# about a model. Data only: handlers/model_catalog.py holds no provider,
+# capability or source list of its own.
+#
+# Precedence, highest first: the provider's own list (which models exist, their
+# ids, and the provider's published context and price); the canonical pricing
+# contract; models.dev for supplemental metadata; real pinned tests for status.
+# A model that only a catalogue lists is never shown as available.
+
+models_dev:
+  # Key in configs/service_endpoints.yaml; the URL is never a literal in source.
+  endpoint: models_dev.api_url
+  # Cached under the ONEX home folder; the explorer reads it again when it is
+  # older than this, and a failed refetch keeps the cache, shown as stale. A
+  # delegation call never reads models.dev: it prices from this copy whatever its
+  # age, and `onex setup` and `onex models refresh-prices` renew it.
+  cache_file: cache/models_dev.json
+  max_age_hours: 24
+  timeout_seconds: 10
+  # The whole catalogue is read at once (6.7 MB on 2026-11-17); larger is refused.
+  max_bytes: 33554432
+
+# A price list shipped inside the install. A delegation call prices from it only
+# when no models.dev copy is kept under the ONEX home.
+shipped_price_list:
+  file: model_price_list.v1.json
+
+# OMN-23413 AC34: what a provider's own model list said when the explorer last
+# read it. A delegation call prices and limits from this copy and never lists
+# models itself (one call, one provider request). Older than this is ignored.
+provider_listing:
+  cache_file: cache/provider_models_{provider}.json
+  max_age_hours: 24
+  # Only a regular file up to this size is read; anything else is no listing.
+  max_bytes: 33554432
+
+# These routes size the request from the selected model's combined entry.
+# If both sources omit the limit, use this operational request budget. The
+# model table still reports that the provider's output limit is unknown.
+output_budget:
+  providers: [reflection]
+  fallback_tokens: 65536
+
+# ONEX provider id -> models.dev provider id, for the hosted providers /config
+# offers (setup_provider_traits.yaml). Ollama and vLLM run on the user's own
+# server, so models.dev states nothing about them: their unknowns stay unknown.
+provider_ids:
+  openrouter: openrouter
+  openai: openai
+  gemini: google
+  reflection: reflection
+
+# Capability shown in the table -> how models.dev states it. `field`: a boolean
+# on the model; `input`: a value in modalities.input; `cost`: a priced field
+# (present means supported). Absent in models.dev means unknown, never "no".
+# A provider's own list wins where it states one: `provider_parameter` is a
+# value in the row's supported_parameters, `provider_input` a value in its
+# architecture.input_modalities. A value it lists means yes; one it does not
+# list stays unknown, so models.dev can still fill it.
+capabilities:
+  - {label: Tools, field: tool_call, provider_parameter: tools}
+  - {label: Reason, field: reasoning, provider_parameter: reasoning}
+  - {label: Vision, input: image, provider_input: image}
+  - {label: JSON, field: structured_output, provider_parameter: structured_outputs}
+  - {label: Files, field: attachment, provider_input: file}
+  - {label: Cache, cost: cache_read}
+
+# A server the user runs (Ollama, vLLM) is asked directly what it is and what it
+# knows about each model: models.dev states nothing about a local model. Every
+# value is optional; what the server does not say stays unknown ("-").
+local_servers:
+  timeout_seconds: 3
+  max_parallel: 8
+  # The TUI remembers what a server said for this long, so moving between
+  # /config, /model and /delegation does not ask every server again.
+  remember_seconds: 600
+  # Ollama: POST <base><show_path> {"model": id}. The answer names the model's
+  # architecture; its context is model_info["<architecture><context_suffix>"].
+  ollama:
+    server: Ollama
+    show_path: /api/show
+    architecture_key: general.architecture
+    context_suffix: .context_length
+    # Ollama capability -> the table's capability label.
+    capabilities: {tools: Tools, thinking: Reason, vision: Vision}
+  # Any OpenAI-compatible server: GET <base><models_path>; each row's owner
+  # names the server. The context it serves is the first of context_fields the
+  # row states (a dotted name reads a nested field): vLLM says max_model_len,
+  # llama.cpp says meta.n_ctx (meta.n_ctx_train is training, not serving).
+  openai_models:
+    models_path: /v1/models
+    context_fields: [max_model_len, meta.n_ctx]
+    # owned_by -> the server's name, shown beside the provider.
+    owners: {vllm: vLLM, llamacpp: llama.cpp}
+  # A server that states its capabilities on a page of its own: GET <base><path>
+  # once; each dotted field that is true or false sets that capability.
+  server_props:
+    llama.cpp:
+      path: /props
+      capabilities:
+        chat_template_caps.supports_tools: Tools
+        chat_template_caps.supports_reasoning_effort: Reason
+        modalities.vision: Vision
+  # Anthropic Messages: POST <base><path> with an empty JSON body. A server that
+  # has the route refuses the body as invalid; one without it answers one of
+  # absent_statuses. Nothing is generated. A server that has the route can serve
+  # Claude Code through the ONEX gateway.
+  anthropic_messages:
+    path: /v1/messages
+    absent_statuses: [404, 405]
+
+# OMN-23413 AC35: a stored run's price read (the projection read behind the
+# local dashboard and onex metering) waits at most deadline_seconds in total for
+# models.dev, and after a failed read does not read it again for
+# retry_after_seconds; until then those runs stay unknown. The failure marker
+# lives under the ONEX home, so a later process honours it too.
+historical_price_read:
+  deadline_seconds: 2
+  retry_after_seconds: 300
+  failed_marker_file: cache/models_dev_historical_read_failed

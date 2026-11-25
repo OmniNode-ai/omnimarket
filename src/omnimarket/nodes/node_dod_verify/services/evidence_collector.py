@@ -17,6 +17,7 @@ pre-populate evidence_results (tests, event-bus consumers).
 from __future__ import annotations
 
 import atexit
+import contextlib
 import glob
 import hashlib
 import importlib.util
@@ -26,6 +27,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -47,8 +49,10 @@ from omnibase_core.utils.util_safe_yaml_loader import load_yaml_mapping_no_dupli
 from omnibase_core.validation.validator_receipt_gate import (
     compute_contract_entry_sha256,
 )
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 from pydantic import ValidationError
 
+from omnimarket.config.env_flags import env_flag
 from omnimarket.config.service_endpoints import service_endpoint_url
 from omnimarket.delegated_test_loop.must_fail_control import (
     ProtocolMustFailTreeRunner,
@@ -154,6 +158,14 @@ from omnimarket.nodes.node_dod_verify.services.criteria_drift import (
     extract_criteria_pins,
     merge_criteria_pins,
 )
+from omnimarket.nodes.node_dod_verify.services.dispatch_budget import (
+    DISPATCH_BUDGET_MARKER,
+    budget_exhausted,
+    clamp_to_budget,
+)
+from omnimarket.nodes.node_dod_verify.services.dispatch_budget import (
+    exhausted_message as dispatch_budget_exhausted_message,
+)
 from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
     apply_supersessions,
     default_contract_path,
@@ -163,6 +175,7 @@ from omnimarket.nodes.node_dod_verify.services.local_gh_reads import (
     REAL_GH_ENV,
     install_gh_shim,
 )
+from omnimarket.nodes.node_dod_verify.services.product_clone import product_clone_dir
 from omnimarket.nodes.node_dod_verify.services.released_evidence import (
     evaluate_released,
     parse_released_check_value,
@@ -350,6 +363,41 @@ _DEFAULT_CHECK_TIMEOUT_S = 30
 _CHECK_TIMEOUT_ENV = "DOD_VERIFY_CHECK_TIMEOUT_S"
 
 
+def _run_in_process_group(
+    argv: list[str],
+    *,
+    timeout: float,
+    cwd: str | None,
+    env: dict[str, str] | None,
+) -> subprocess.CompletedProcess[str]:
+    """``subprocess.run`` that kills the command's whole process tree on a timeout.
+
+    ``subprocess.run`` kills only the direct child when the timeout trips. A check is
+    ``bash -c "uv run pytest ..."``: ``bash`` dies, ``uv`` and ``pytest`` are
+    reparented to the container init and keep burning CPU. In the dev runtime they
+    shared the container's 3-CPU quota with the event loop, the kernel throttled every
+    thread of the runtime and its ``/health`` answer stalled (OMN-25856). The command
+    gets its own session, and the whole group is killed when the timeout trips.
+    """
+    with subprocess.Popen(
+        argv,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        cwd=cwd,
+        env=env,
+        start_new_session=True,
+    ) as proc:
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+        except BaseException:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGKILL)
+            proc.communicate()
+            raise
+        return subprocess.CompletedProcess(argv, proc.returncode, stdout, stderr)
+
+
 def _check_timeout_s() -> float:
     """Resolve the per-check subprocess ceiling, honouring the operator override.
 
@@ -404,6 +452,9 @@ _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 # path, and any caller that materialises nothing) leaves the OMN-16846
 # live-fetch comparison exactly as it was.
 _PRODUCT_CLONE_PIN_FILE_ENV = "DOD_VERIFY_PRODUCT_CLONE_PIN_FILE"
+# A deployed read-only checkout is bound to its boot snapshot. The sweep
+# keeps its existing upstream-tip containment semantics.
+_REQUIRE_EXACT_PRODUCT_CLONE_PIN_ENV = "DOD_VERIFY_REQUIRE_EXACT_PRODUCT_CLONE_PIN"
 
 # The only pin-file schema this collector can interpret. A file declaring any
 # other version is ignored with a warning rather than read optimistically.
@@ -909,7 +960,7 @@ def _resolve_pinned_pnpm(
                 [*argv, "--version"],
                 capture_output=True,
                 text=True,
-                timeout=_TOOLCHAIN_PROBE_TIMEOUT_S,
+                timeout=clamp_to_budget(_TOOLCHAIN_PROBE_TIMEOUT_S),
                 env=probe_env,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
@@ -928,7 +979,7 @@ def _resolve_pinned_pnpm(
                         ],
                         capture_output=True,
                         text=True,
-                        timeout=_TOOLCHAIN_PROBE_TIMEOUT_S,
+                        timeout=clamp_to_budget(_TOOLCHAIN_PROBE_TIMEOUT_S),
                         cwd=str(project_root),
                         env=probe_env,
                     )
@@ -963,7 +1014,7 @@ def _resolve_pinned_pnpm(
                 [pnpm, "--version"],
                 capture_output=True,
                 text=True,
-                timeout=_TOOLCHAIN_PROBE_TIMEOUT_S,
+                timeout=clamp_to_budget(_TOOLCHAIN_PROBE_TIMEOUT_S),
                 cwd=str(project_root),
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
@@ -4162,7 +4213,20 @@ class EvidenceCollector:
                         proof_class=item_proof_class,
                         product_clones=tuple(clones),
                     )
-                if cwd_err is None and declared and run_cwd is not None:
+                if (
+                    cwd_err is None
+                    and run_cwd is not None
+                    and (
+                        declared
+                        or (
+                            self._governing_product_repository(contract_path)
+                            is not None
+                            and env_flag(
+                                _REQUIRE_EXACT_PRODUCT_CLONE_PIN_ENV, safe_default=False
+                            )
+                        )
+                    )
+                ):
                     resolution = self._assess_product_clone(run_cwd)
                     if (
                         resolution.freshness
@@ -4282,7 +4346,9 @@ class EvidenceCollector:
                             unverifiable_cause=(
                                 EnumEvidenceUnverifiableCause.CHECK_BUDGET_EXCEEDED
                             ),
-                            message=(
+                            message=msg
+                            if msg.startswith(DISPATCH_BUDGET_MARKER)
+                            else (
                                 "CHECK_BUDGET_EXCEEDED: this run killed the "
                                 f"command at its {_check_timeout_s()}s "
                                 "per-check ceiling, so the command reached no "
@@ -4456,6 +4522,8 @@ class EvidenceCollector:
         ticket_id: str,
         own_repository: str | None = None,
         contract_tree: Path | None = None,
+        *,
+        require_contract_tree: bool = False,
     ) -> tuple[str | None, str | None]:
         """Resolve a ``cwd`` template string into an absolute, contained path.
 
@@ -4473,18 +4541,11 @@ class EvidenceCollector:
           paths that escape via symlinks are rejected after ``Path.resolve()``
         - the resolved path must exist and be a directory
 
-        A relative ``cwd`` (``"."``, ``"src"``) names a place in the contract's
-        own repository tree, the same tree a check that omits ``cwd`` runs in
-        (``_infer_occ_cwd``). It is anchored at ``contract_tree`` when the
-        contract sits in one, and at the process cwd otherwise. Anchoring at
-        the process cwd alone made the verdict depend on where the verifier
-        was started: a check read verified from a clone under ``OMNI_HOME``
-        and "cwd escapes OMNI_HOME containment" from a lane clone outside it
-        or from the sweep's contract-roots clone (OMN-22315). The contract's
-        own tree counts as contained for a relative ``cwd`` only; an absolute
-        path or a template that renders outside ``OMNI_HOME`` stays refused,
-        and so does a symlink that leaves both roots, because containment is
-        tested on the resolved path.
+        A relative cwd is anchored at the contract's own repository. A
+        governing product repository must supply that tree. File-backed
+        contracts keep the anchor from their own path (OMN-22315). An
+        absolute path still has to stay within OMNI_HOME, and resolving a
+        symlink in a relative path must keep the result inside its anchor.
         """
         if ".." in Path(cwd_template).parts:
             return None, f"cwd path traversal not allowed: {cwd_template}"
@@ -4512,6 +4573,13 @@ class EvidenceCollector:
             )
 
         relative = not os.path.isabs(rendered)
+        if ".." in Path(rendered).parts:
+            return None, f"cwd path traversal not allowed: {cwd_template}"
+        if relative and require_contract_tree and contract_tree is None:
+            return (
+                None,
+                f"cwd cannot resolve the contract's product clone: {own_repository}",
+            )
         anchor = contract_tree.resolve() if relative and contract_tree else None
         candidate = (anchor / rendered if anchor else Path(rendered)).resolve()
 
@@ -4546,6 +4614,11 @@ class EvidenceCollector:
                         "at the PR's pinned revision or default-branch head at merge time."
                     )
 
+        if anchor is not None and not candidate.is_relative_to(anchor):
+            return (
+                None,
+                f"cwd escapes the contract tree: {cwd_template!r} -> {candidate}",
+            )
         if not candidate.exists():
             return None, f"cwd does not exist: {cwd_template!r} -> {candidate}"
         if not candidate.is_dir():
@@ -4739,8 +4812,22 @@ class EvidenceCollector:
         """Run repository-relative checks against the contract's own tree."""
         return self._resolve_contract_repo_dir(contract_path)
 
+    def _governing_product_repository(self, contract_path: Path | None) -> str | None:
+        subject = self.contract_subject
+        if (
+            contract_path is None
+            and subject is not None
+            and subject.source is EnumDodContractSource.PRODUCT_REPOSITORY
+        ):
+            return subject.repository
+        return None
+
     def _resolve_contract_repo_dir(self, contract_path: Path | None) -> str | None:
         """Resolve check paths inside the repository that owns this contract."""
+        repository = self._governing_product_repository(contract_path)
+        if repository is not None:
+            clone = product_clone_dir(os.environ.get("OMNI_HOME", ""), repository)
+            return str(clone) if clone is not None else None
         explicit = os.environ.get("CONTRACT_REPO_DIR", "").strip()
         if explicit:
             return explicit
@@ -5382,16 +5469,24 @@ class EvidenceCollector:
         by the same containment rules, rather than re-deriving it.
         """
         cwd_template = check.get("cwd")
+        governed_repo = self._governing_product_repository(contract_path)
         if cwd_template is None:
-            # OMN-10476: auto-inject OCC cwd when no explicit cwd is declared.
-            return self._infer_occ_cwd(contract_path), None, False
+            # OMN-10476: use the inferred contract tree when no cwd is declared.
+            inferred = self._infer_occ_cwd(contract_path)
+            if inferred is None and governed_repo is not None:
+                return (
+                    None,
+                    f"cwd cannot resolve the contract's product clone: {governed_repo}",
+                    False,
+                )
+            return inferred, None, False
         if not isinstance(cwd_template, str):
             return (
                 None,
                 f"cwd must be a string, got {type(cwd_template).__name__}",
                 True,
             )
-        own_repository = None
+        own_repository = governed_repo.rsplit("/", 1)[-1] if governed_repo else None
         if contract_path is not None and contract_path.parent.name == "contracts":
             own_repository = contract_path.parent.parent.name
         if own_repository is None:
@@ -5402,6 +5497,7 @@ class EvidenceCollector:
             ticket_id,
             own_repository,
             Path(tree) if tree else None,
+            require_contract_tree=governed_repo is not None,
         )
         if err is not None:
             return None, err, True
@@ -5415,7 +5511,8 @@ class EvidenceCollector:
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=_git_op_timeout_s(),
+                timeout=clamp_to_budget(_git_op_timeout_s()),
+                env=scrub_git_location_env(os.environ),
             )
         except subprocess.TimeoutExpired:
             return 124, "", f"git {' '.join(args)} timed out"
@@ -5460,6 +5557,10 @@ class EvidenceCollector:
 
         Memoised per repository root — one fetch per repo per run.
         """
+        # A host sync can change a mounted checkout between checks in the
+        # same run. Re-read its HEAD when an exact deployment pin is required.
+        if env_flag(_REQUIRE_EXACT_PRODUCT_CLONE_PIN_ENV, safe_default=False):
+            return self._compute_product_clone_resolution(run_cwd)
         cached = self._product_clone_cache.get(run_cwd)
         if cached is not None:
             return cached
@@ -5472,9 +5573,19 @@ class EvidenceCollector:
     ) -> ModelProductCloneResolution:
         """Uncached body of ``_assess_product_clone``."""
         cwd_path = Path(run_cwd)
+        require_exact_pin = env_flag(
+            _REQUIRE_EXACT_PRODUCT_CLONE_PIN_ENV, safe_default=False
+        )
 
         rc, toplevel, stderr = self._run_git(cwd_path, "rev-parse", "--show-toplevel")
         if rc != 0 or not toplevel:
+            # A checkout with unreadable git metadata is not a scratch directory.
+            if require_exact_pin and self._is_deployed_product_clone(cwd_path):
+                return ModelProductCloneResolution(
+                    repo_root=run_cwd,
+                    freshness=EnumProductCloneFreshness.UNKNOWN,
+                    detail=f"cannot resolve product clone root: {stderr or f'exit {rc}'}",
+                )
             # Not a repository at all. ``_resolve_cwd`` has already proven the
             # directory exists and is contained, so this is a scratch or
             # generated directory rather than a typo'd clone path — there is
@@ -5505,6 +5616,33 @@ class EvidenceCollector:
         # made a clone that genuinely contains the work under adjudication read
         # ``behind 1`` and be refused unexecuted.
         pin = self._load_product_clone_pins().get(os.path.realpath(repo_root))
+        if require_exact_pin:
+            if pin is None:
+                return ModelProductCloneResolution(
+                    repo_root=repo_root,
+                    head_sha=head_sha,
+                    freshness=EnumProductCloneFreshness.UNKNOWN,
+                    detail="the deployment pin is missing or unreadable for this clone",
+                )
+            if head_sha != pin.pinned_sha:
+                return ModelProductCloneResolution(
+                    repo_root=repo_root,
+                    head_sha=head_sha,
+                    upstream_ref=pin.upstream_ref,
+                    comparison_sha=pin.pinned_sha,
+                    comparison_pinned=True,
+                    freshness=EnumProductCloneFreshness.STALE,
+                    detail="checkout HEAD differs from the deployment pin",
+                )
+            return self._finalise_product_clone(
+                cwd_path,
+                repo_root=repo_root,
+                head_sha=head_sha,
+                upstream_ref=pin.upstream_ref,
+                comparison_sha=pin.pinned_sha,
+                comparison_pinned=True,
+                behind=0,
+            )
         if pin is not None:
             return self._pinned_product_clone_resolution(
                 cwd_path, repo_root, head_sha, pin
@@ -5570,15 +5708,26 @@ class EvidenceCollector:
             behind=behind,
         )
 
+    def _is_deployed_product_clone(self, cwd: Path) -> bool:
+        owner_tree = (
+            self._resolve_contract_repo_dir(None)
+            if self._governing_product_repository(None) is not None
+            else None
+        )
+        pins = self._load_product_clone_pins()
+        return any(
+            (parent / ".git").exists()
+            or str(parent) in pins
+            or str(parent) == owner_tree
+            for parent in (cwd, *cwd.parents)
+        )
+
     def _load_product_clone_pins(self) -> dict[str, ModelProductClonePin]:
         """Read this run's frozen comparison targets, once, keyed by repo root.
 
         OMN-18117. Absent, unreadable, malformed or unrecognised-version files
-        all resolve to "no pins", which lands every repository back on the
-        OMN-16846 live-fetch comparison. That fallback is the conservative
-        direction: the live comparison is the one that over-refuses, so a pin
-        file this collector cannot interpret costs held candidates, never a
-        laundered verdict.
+        all resolve to "no pins". The read-only deployment refuses checks
+        that require a pin; other callers retain the live-fetch comparison.
         """
         if self._product_clone_pins is not None:
             return self._product_clone_pins
@@ -5592,8 +5741,7 @@ class EvidenceCollector:
             except (OSError, ValueError, ValidationError) as exc:
                 logger.warning(
                     "OMN-18117: %s names %s, which could not be read as a pin "
-                    "file (%s). Falling back to the live upstream comparison "
-                    "for every clone this run touches.",
+                    "file (%s). No product clone pins are available.",
                     _PRODUCT_CLONE_PIN_FILE_ENV,
                     raw_path,
                     exc,
@@ -5603,7 +5751,7 @@ class EvidenceCollector:
                     logger.warning(
                         "OMN-18117: pin file %s declares schema version %d, "
                         "which this collector cannot interpret (expected %d). "
-                        "Falling back to the live upstream comparison.",
+                        "No product clone pins are available.",
                         raw_path,
                         pin_set.version,
                         _PRODUCT_CLONE_PIN_SCHEMA_VERSION,
@@ -5886,7 +6034,7 @@ class EvidenceCollector:
         # non-result as any other build failure, instead of needing a second
         # branch that says the same thing.
         argv = ["uv", "sync", "--frozen", "--project", str(project_root)]
-        timeout_s = _hermetic_sync_timeout_s()
+        timeout_s = clamp_to_budget(_hermetic_sync_timeout_s())
         logger.info(
             "OMN-16846: building lock-exact behaviour-check environment for %s at %s",
             project_root,
@@ -5898,10 +6046,8 @@ class EvidenceCollector:
         self._register_close_at_exit()
         try:
             env_path.parent.mkdir(parents=True, exist_ok=True)
-            proc = subprocess.run(
+            proc = _run_in_process_group(
                 argv,
-                capture_output=True,
-                text=True,
                 timeout=timeout_s,
                 cwd=str(project_root),
                 env=build_env,
@@ -6012,7 +6158,7 @@ class EvidenceCollector:
             self._hermetic_node_envs[project_root] = result
             return result
 
-        timeout_s = _hermetic_sync_timeout_s()
+        timeout_s = clamp_to_budget(_hermetic_sync_timeout_s())
         logger.info(
             "OMN-17863: staging lock-exact behaviour-check tree for %s at %s "
             "(pnpm %s via %s)",
@@ -6051,10 +6197,8 @@ class EvidenceCollector:
                 "--reporter=append-only",
             ]
             try:
-                proc = subprocess.run(
+                proc = _run_in_process_group(
                     argv,
-                    capture_output=True,
-                    text=True,
                     timeout=timeout_s,
                     cwd=str(stage),
                     env=build_env,
@@ -6147,14 +6291,12 @@ class EvidenceCollector:
             return result
 
         if not (stage / "node_modules").is_dir():
-            timeout_s = _hermetic_sync_timeout_s()
+            timeout_s = clamp_to_budget(_hermetic_sync_timeout_s())
             build_env = dict(os.environ)
             build_env["CI"] = "1"
             try:
-                proc = subprocess.run(
+                proc = _run_in_process_group(
                     [npm, "ci"],
-                    capture_output=True,
-                    text=True,
                     timeout=timeout_s,
                     cwd=str(stage),
                     env=build_env,
@@ -6271,6 +6413,13 @@ class EvidenceCollector:
         # can only ever describe THIS invocation.
         self._last_check_budget_exceeded = False
         self._last_command_failure = None
+
+        # OMN-26310: a merge-event dispatch is bounded as a whole. Once its
+        # budget is spent no further command starts (no build, no subprocess);
+        # the caller records the typed CHECK_BUDGET_EXCEEDED non-result.
+        if budget_exhausted():
+            self._last_check_budget_exceeded = True
+            return False, dispatch_budget_exhausted_message()
 
         # Prefer explicit `command` field; fall back to `check_value`
         cmd_str = check.get("command") or check.get("check_value", "")
@@ -6482,17 +6631,15 @@ class EvidenceCollector:
                 run_env if run_env is not None else os.environ
             )
 
-        timeout_s = _check_timeout_s()
+        timeout_s = clamp_to_budget(_check_timeout_s())
         start = time.monotonic()
         try:
             # OMN-15382: list-form + explicit pipefail (not shell=True /
             # plain sh -c) so a failing first stage of a multi-stage pipeline
             # fails the whole check instead of being masked by the last
             # stage's exit code.
-            result = subprocess.run(
+            result = _run_in_process_group(
                 ["bash", "-o", "pipefail", "-c", cmd_str],
-                capture_output=True,
-                text=True,
                 timeout=timeout_s,
                 cwd=run_cwd,
                 env=run_env,
@@ -6502,6 +6649,8 @@ class EvidenceCollector:
             # OMN-17795: record the fact HERE, where it is known first-hand,
             # rather than letting the caller re-derive it from this message.
             self._last_check_budget_exceeded = True
+            if budget_exhausted():
+                return False, dispatch_budget_exhausted_message()
             return False, f"Timed out after {timeout_s}s: {cmd_str}"
         except Exception as exc:
             return False, f"Execution error: {exc}"

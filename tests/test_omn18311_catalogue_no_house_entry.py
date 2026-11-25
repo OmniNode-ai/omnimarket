@@ -115,7 +115,8 @@ class TestThePredicateIsNotTheNaiveIntersection:
         # OMN-17373: openai is customer-only (every row mirrors_house_rung: false),
         # so no house rung can back it. OMN-20990: anthropic likewise.
         # OMN-21263: openai_compatible is the developer's own endpoint.
-        customer_only = {"openai", "anthropic", "openai_compatible"}
+        # OMN-23413: reflection is customer-only; the platform holds no key.
+        customer_only = {"openai", "anthropic", "openai_compatible", "reflection"}
         assert set(customer_provider_catalogue()) - customer_only <= house
         assert not customer_only & house
 

@@ -45,8 +45,11 @@ description: >
   repositories, a beat that is missing, stale or alarmed is a breach; a repository alarms only after its
   streak of consecutive breaching runs reaches the overlay's persistence bound, before that the run is OK
   with a waiting reason. An unreadable source, a document with no heartbeat object, or a malformed beat is
-  INDETERMINATE, never ALARM and never OK. The verdict is handed to the alarm delivery when the overlay's
-  alarm_delivery block turns it on.
+  INDETERMINATE, never ALARM and never OK. When the overlay also declares the agent's unit, the unit's systemd
+  USER state is read first through the overlay's host_command, and a loaded unit whose state is not active is a
+  breach on the same bound under the subject unit:<name>, while a unit not found in that scope (is-active prints
+  inactive for a missing unit too) and a state that cannot be read are INDETERMINATE, never ALARM and never OK.
+  The verdict is handed to the alarm delivery when the overlay's alarm_delivery block turns it on.
 
   The delegation-chain-canary condition (HandlerDelegationChainCanary, verb delegation-chain-canary, OMN-24400) reads the
   runs of the overlay's canary workflow through the GitHub gateway node. The newest completed run of an admitted event
@@ -70,6 +73,22 @@ description: >
 
   The stale-indeterminate condition (HandlerStaleIndeterminate, verb stale-indeterminate) reads the run records of the overlay's
   watched conditions. A condition whose last after_runs runs all read INDETERMINATE, with no OK and no ALARM between them, alarms.
+
+  Severity routing (HandlerAlarmSeverityRoute, OMN-24939): every alarm source carries one declared severity in alarm_sources below, and
+  the delivery of every condition goes through the router, which reads it. PAGE and FIX-CAUSE post once per new condition through
+  the delivery's own episode rule and once when the condition clears; DIGEST is held for the one daily digest message; DROP never
+  posts. Every class still writes its ledger row through the delivery's own ledger step and window. The daily digest
+  (HandlerAlarmDigest, verb alarm-digest) posts one message per held day and appends one STATUS row listing the FIX-CAUSE sources
+  with their causes. A source with no severity, or an operation of this node no source covers, refuses the load.
+  The loaded-code-sha read (HandlerLoadedCodeSha, verb loaded-code-sha) reads the sha the lane's deploy agent has loaded,
+  over the same agent and ready surfaces the lab-pass receipt reads first. READ carries the sha and the surface that
+  answered; UNREAD carries the reason no surface delivered one. It is never an alarm and never delivered.
+
+  The container-restarts condition (HandlerContainerRestarts, verb container-restarts, OMN-23934) reads the restart count of
+  every container the lane manifest gives a restart_bound for the overlay's census lane (docker inspect through the overlay's
+  docker command). It is ALARM for each container whose count is above its own bound, OK when none is, and INDETERMINATE when a
+  container or the manifest cannot be read or the lane declares no bound: an unreadable source never reads as healthy, and it
+  dominates an alarm found on the containers that could be read.
 
 handler:
   module: omnimarket.nodes.node_lab_alarm.handlers.handler_broker_lag
@@ -117,6 +136,18 @@ cli_handlers:
     handler:
       name: HandlerStaleIndeterminate
       module: omnimarket.nodes.node_lab_alarm.handlers.handler_stale_indeterminate
+  - operation: alarm_digest
+    handler:
+      name: HandlerAlarmDigest
+      module: omnimarket.nodes.node_lab_alarm.handlers.handler_alarm_digest
+  - operation: loaded_code_sha
+    handler:
+      name: HandlerLoadedCodeSha
+      module: omnimarket.nodes.node_lab_alarm.handlers.handler_loaded_code_sha
+  - operation: container_restarts
+    handler:
+      name: HandlerContainerRestarts
+      module: omnimarket.nodes.node_lab_alarm.handlers.handler_container_restarts
 
 # HandlerEffectsHeld (omnimarket.nodes.node_lab_alarm.handlers.handler_effects_held, input
 # ModelEffectsHeldCommand) takes its overlay settings, group reader, state store, lane dispatcher and clock
@@ -146,6 +177,10 @@ terminal_event: onex.evt.omnimarket.lab-alarm-broker-lag-completed.v1
 runtime_dispatch:
   external_trigger: true
   command_topic: onex.cmd.omnimarket.lab-alarm-broker-lag-requested.v1
+  # No topic subscription starts this node on a schedule: the lab alarm sweep and a lane run it by hand with a request document.
+  on_demand:
+    command: uv run onex node node_lab_alarm --input <request.json>
+    owner: OmniNode Platform Team
 
 topics:
   broker_lag_requested: onex.cmd.omnimarket.lab-alarm-broker-lag-requested.v1
@@ -191,6 +226,17 @@ topics:
   stale_indeterminate_run_started: onex.evt.omnimarket.lab-alarm-stale-indeterminate-started.v1
   stale_indeterminate_run_completed: onex.evt.omnimarket.lab-alarm-stale-indeterminate-completed.v1
   stale_indeterminate_run_failed: onex.evt.omnimarket.lab-alarm-stale-indeterminate-failed.v1
+  alarm_digest_requested: onex.cmd.omnimarket.lab-alarm-digest-requested.v1
+  alarm_digest_run_completed: onex.evt.omnimarket.lab-alarm-digest-completed.v1
+  alarm_digest_run_failed: onex.evt.omnimarket.lab-alarm-digest-failed.v1
+  loaded_code_sha_requested: onex.cmd.omnimarket.lab-alarm-loaded-code-sha-requested.v1
+  loaded_code_sha_run_started: onex.evt.omnimarket.lab-alarm-loaded-code-sha-started.v1
+  loaded_code_sha_run_completed: onex.evt.omnimarket.lab-alarm-loaded-code-sha-completed.v1
+  loaded_code_sha_run_failed: onex.evt.omnimarket.lab-alarm-loaded-code-sha-failed.v1
+  container_restarts_requested: onex.cmd.omnimarket.lab-alarm-container-restarts-requested.v1
+  container_restarts_run_started: onex.evt.omnimarket.lab-alarm-container-restarts-started.v1
+  container_restarts_run_completed: onex.evt.omnimarket.lab-alarm-container-restarts-completed.v1
+  container_restarts_run_failed: onex.evt.omnimarket.lab-alarm-container-restarts-failed.v1
 
 event_bus:
   subscribe_topics: []
@@ -206,6 +252,9 @@ externally_consumed_topics:
   - onex.evt.omnimarket.lab-alarm-effects-held-lane-dispatched.v1
   - onex.evt.omnimarket.lab-alarm-effects-held-completed.v1
   - onex.evt.omnimarket.lab-alarm-effects-held-failed.v1
+  - onex.evt.omnimarket.lab-alarm-container-restarts-started.v1
+  - onex.evt.omnimarket.lab-alarm-container-restarts-completed.v1
+  - onex.evt.omnimarket.lab-alarm-container-restarts-failed.v1
   - onex.evt.omnimarket.lab-alarm-broker-listener-started.v1
   - onex.evt.omnimarket.lab-alarm-broker-listener-completed.v1
   - onex.evt.omnimarket.lab-alarm-broker-listener-failed.v1
@@ -230,6 +279,11 @@ externally_consumed_topics:
   - onex.evt.omnimarket.lab-alarm-stale-indeterminate-started.v1
   - onex.evt.omnimarket.lab-alarm-stale-indeterminate-completed.v1
   - onex.evt.omnimarket.lab-alarm-stale-indeterminate-failed.v1
+  - onex.evt.omnimarket.lab-alarm-digest-completed.v1
+  - onex.evt.omnimarket.lab-alarm-digest-failed.v1
+  - onex.evt.omnimarket.lab-alarm-loaded-code-sha-started.v1
+  - onex.evt.omnimarket.lab-alarm-loaded-code-sha-completed.v1
+  - onex.evt.omnimarket.lab-alarm-loaded-code-sha-failed.v1
 
 overlay:
   node: node_lab_alarm
@@ -238,3 +292,122 @@ overlay:
 metadata:
   ticket: OMN-23024
   transport_type: inmemory
+
+# The severity router is the delivery port the conditions hand their verdicts to; it is built by the CLI with the delivery
+# it wraps, so it is bound here by module and has no cli operation or handler_routing entry of its own.
+alarm_route_binding:
+  handler:
+    name: HandlerAlarmSeverityRoute
+    module: omnimarket.nodes.node_lab_alarm.handlers.alarm_route
+
+# Severity routing (OMN-24939). Read by omnimarket.nodes.node_lab_alarm.handlers.alarm_route.load_alarm_severity_table;
+# the load refuses a source with no severity, a fix-cause source with no cause, a condition listed twice and a CLI operation of
+# this node that no router source covers. Classes come from the 2026-11-09..16 alarm review (a 12 percent sample); basis says
+# whether the review names the source, the nearest named source gave its class, or none did (digest).
+alarm_routing:
+  digest_state_file: alarm-digest-state.json
+  digest_category: lab-alarm-digest
+  digest_header_template: ":newspaper: lab alarm daily digest {day} UTC - {episodes} new conditions from {sources} sources"
+  digest_line_template: "- {review_name} ({condition}): {episodes} new; latest {subject}: {detail}"
+  digest_line_limit: 20
+  digest_detail_limit: 160
+  clear_category: lab-alarm
+  clear_template: ":white_check_mark: lab alarm cleared - {condition}\n*{subject}*"
+  fix_cause_status:
+    ticket: OMN-24939
+    kind: alarm-fix-cause
+
+alarm_sources:
+  # --- delivered through node_lab_alarm's delivery: routed by this table ---
+  - {condition: consumer_group_lag, severity: drop, review_name: consumer_group_lag lag GREW, basis: named, posts_via: router, operation: broker_lag,
+     raised_at: omnimarket/src/omnimarket/nodes/node_lab_alarm/handlers/handler_broker_lag.py:588}
+  - {condition: effects_held_behind_runtime, severity: fix-cause, review_name: consumer health STARVED, basis: nearest, posts_via: router, operation: effects_held,
+     raised_at: omnimarket/src/omnimarket/nodes/node_lab_alarm/handlers/handler_effects_held.py:43,
+     cause: "consumer health HANDLER ERRORS, STALLED and STARVED (node_dlq_replay_effect, github_repo_gateway_effect, pr_landing_orchestrator, node_floor_simple_scheduled_effect, claude_hook_event_effect)"}
+  - {condition: broker_listener, severity: digest, review_name: none (dev broker external listener unreachable), basis: default, posts_via: router, operation: broker_listener,
+     raised_at: omnimarket/src/omnimarket/nodes/node_lab_alarm/handlers/handler_broker_listener.py:39}
+  - {condition: dev_tag_heartbeat, severity: page, review_name: dev deploy agent failing, basis: nearest, posts_via: router, operation: dev_tag_heartbeat,
+     raised_at: omnimarket/src/omnimarket/nodes/node_lab_alarm/handlers/handler_dev_tag_heartbeat.py:41}
+  - {condition: delegation_chain_canary, severity: digest, review_name: none (delegation chain canary workflow red or old), basis: default, posts_via: router, operation: delegation_chain_canary,
+     raised_at: omnimarket/src/omnimarket/nodes/node_lab_alarm/handlers/handler_delegation_chain_canary.py:42}
+  - {condition: work_ledger_projection_stale, severity: page, review_name: STALE PROJECTION (hook capture feed dead), basis: nearest, posts_via: router, operation: work_ledger_projection_stale,
+     raised_at: omnimarket/src/omnimarket/nodes/node_lab_alarm/handlers/handler_work_ledger_projection_stale.py:47}
+  - {condition: lane_drift, severity: drop, review_name: host-drift other, basis: nearest, posts_via: router, operation: lane_drift,
+     raised_at: omnimarket/src/omnimarket/nodes/node_lab_alarm/models/model_lab_alarm_lane_census.py:15}
+  - {condition: container_unhealthy, severity: fix-cause, review_name: host-drift unit failed, basis: nearest, posts_via: router, operation: container_unhealthy,
+     raised_at: omnimarket/src/omnimarket/nodes/node_lab_alarm/models/model_lab_alarm_lane_census.py:16,
+     cause: "host-drift unit failed (review-gateway, throughput-tick, hourly-tick, lab-fill exit 70, canonical-clone-sync exit 3, mostly on one host)"}
+  - {condition: lab_pass_receipt, severity: page, review_name: no passing lab receipt on an aging dev head (lab-pass/dev-head), basis: named, posts_via: router, operation: lab_pass_receipt,
+     raised_at: omnimarket/src/omnimarket/nodes/node_lab_alarm/handlers/handler_lab_pass_receipt.py:49}
+  - {condition: stale_indeterminate, severity: digest, review_name: none (a watched condition read INDETERMINATE on its last runs), basis: default, posts_via: router, operation: stale_indeterminate,
+     raised_at: omnimarket/src/omnimarket/nodes/node_lab_alarm/handlers/handler_stale_indeterminate.py:42}
+  - {condition: container_restarts, severity: digest, review_name: none (a lane container restarted above its bound), basis: default, posts_via: router, operation: container_restarts,
+     raised_at: omnimarket/src/omnimarket/nodes/node_lab_alarm/handlers/handler_container_restarts.py:206}
+  - {condition: loaded_code_sha, severity: drop, review_name: "none (a read; never an alarm and never delivered)", basis: default, posts_via: direct, operation: loaded_code_sha,
+     raised_at: omnimarket/src/omnimarket/nodes/node_lab_alarm/handlers/handler_loaded_code_sha.py:1}
+  - {condition: lab_alarm_daily_digest, severity: digest, review_name: none (this node's own daily digest), basis: default, posts_via: direct, operation: alarm_digest,
+     raised_at: omnimarket/src/omnimarket/nodes/node_lab_alarm/handlers/handler_alarm_digest.py:1}
+  # --- delivered through node_lab_alarm_deliver_effect by another node: declared, not routed by this table ---
+  - {condition: clone_local_work_refused, severity: fix-cause, review_name: host-drift clone drift, basis: nearest, posts_via: deliver-effect,
+     raised_at: omnimarket/src/omnimarket/nodes/node_canonical_clone_dirty_converge_effect/contract.yaml:101,
+     cause: "host-drift clone drift (stray files on one host in the infra clone, workspace/routing_tiers.yaml; untracked lock files on another host in the registry root)"}
+  - {condition: test_selector_miss, severity: page, review_name: "a nightly red test file attributed to merged pull requests that skipped it, or an incomplete nightly, or no collector result", basis: named, posts_via: deliver-effect,
+     raised_at: omnimarket/src/omnimarket/nodes/node_test_selector_miss_collect_effect/adapters/routed_receiver.py:31}
+  # --- post to the channel by their own path, not through this node: declared, not routed by this table ---
+  - {condition: capture_source_stale, severity: page, review_name: hook capture feed dead (CAPTURE SOURCE STALE), basis: named, posts_via: direct,
+     raised_at: omnimarket/src/omnimarket/nodes/node_capture_silence_watch_effect/handlers/build_slack_command.py:37}
+  - {condition: quiet_host, severity: page, review_name: QUIET HOST escalation (merged into the capture page), basis: named, posts_via: direct,
+     raised_at: omnimarket/src/omnimarket/nodes/node_silent_failure_alarm_compute/handlers/handler_quiet_host_alarm.py:121}
+  - {condition: lab_host_disk_nearly_full, severity: page, review_name: lab host disk nearly full (and operator-mac relay disk free), basis: named, posts_via: direct, raised_at: not found}
+  - {condition: dev_deploy_agent_failing, severity: page, review_name: dev deploy agent failing (deploy-job-failed), basis: named, posts_via: direct, raised_at: not found}
+  - {condition: runner_fleet_canary, severity: page, review_name: CI runner fleet offline (RUNNER FLEET CANARY FAIL), basis: named, posts_via: direct,
+     raised_at: omnibase_infra/scripts/ci/runner_fleet_canary.sh:248}
+  - {condition: private_hosted_actions_minutes, severity: page, review_name: GitHub-hosted Actions minutes on private repositories above zero, basis: named, posts_via: direct,
+     raised_at: omnimarket/src/omnimarket/nodes/node_private_hosted_minutes_watch_effect/handlers/handler_hosted_minutes_tally.py:103}
+  - {condition: system_digest_hourly, severity: digest, review_name: hourly lab host system digest, basis: named, posts_via: direct, raised_at: not found}
+  - {condition: lane_over_budget, severity: digest, review_name: lane over budget, basis: named, posts_via: direct,
+     raised_at: omnimarket/src/omnimarket/models/model_lane_container_budget.py:87}
+  - {condition: nonrequired_check_failing, severity: digest, review_name: NON-REQUIRED CHECK FAILING, basis: named, posts_via: direct,
+     raised_at: omnibase_infra/scripts/ci/nonrequired_check_failure_rate.py:397}
+  - {condition: merge_without_override, severity: digest, review_name: merge without override, basis: named, posts_via: direct,
+     raised_at: omnimarket/src/omnimarket/nodes/node_merge_override_alarm_effect/handlers/handler_merge_override_alarm.py:509}
+  - {condition: runner_group_alarm, severity: digest, review_name: lab alarm for CI runner groups, basis: named, posts_via: direct, raised_at: not found}
+  - {condition: job_exit_no_claim, severity: digest, review_name: JOB EXIT with no CLAIM after 30 minutes, basis: named, posts_via: direct,
+     raised_at: omnimarket/src/omnimarket/nodes/node_silent_failure_alarm_compute/handlers/handler_job_exit_alarm.py:225}
+  - {condition: hook_emit_drainer_dead, severity: digest, review_name: drainer dead, basis: named, posts_via: direct,
+     raised_at: omnimarket/src/omnimarket/nodes/node_silent_failure_alarm_compute/handlers/handler_drainer_alarm.py:132}
+  - {condition: throughput_results, severity: digest, review_name: THROUGHPUT RESULTS, basis: named, posts_via: direct,
+     raised_at: omnimarket/src/omnimarket/nodes/node_silent_failure_alarm_compute/handlers/handler_throughput_results_alarm.py:76}
+  - {condition: capture_silent, severity: digest, review_name: CAPTURE SILENT, basis: named, posts_via: direct,
+     raised_at: omnimarket/src/omnimarket/nodes/node_capture_silence_watch_effect/handlers/build_slack_command.py:43}
+  - {condition: host_drift_venv_behind, severity: drop, review_name: host-drift venv behind target, basis: named, posts_via: direct,
+     raised_at: omnimarket/src/omnimarket/nodes/node_silent_failure_alarm_compute/handlers/handler_running_vs_merged_alarm.py:224}
+  - {condition: host_drift_plugin_behind, severity: drop, review_name: host-drift plugin behind merged and launchd-plist auto-syncing, basis: named, posts_via: direct,
+     raised_at: omnimarket/src/omnimarket/nodes/node_silent_failure_alarm_compute/handlers/handler_running_vs_merged_alarm.py:217}
+  - {condition: consumer_group_lag_script, severity: drop, review_name: consumer_group_lag lag GREW (legacy script), basis: named, posts_via: direct,
+     raised_at: omnibase_infra/scripts/lab_alarm.py:1143}
+  - {condition: lab_host_cpu_load, severity: drop, review_name: lab hosts CPU or load over the bar, basis: named, posts_via: direct, raised_at: not found}
+  - {condition: static_state, severity: drop, review_name: "static states (uv cache config is overridden, newest run 438h old)", basis: named, posts_via: direct, raised_at: not found}
+  - {condition: empty_body_post, severity: drop, review_name: empty-body posts, basis: named, posts_via: direct, raised_at: not found}
+  - {condition: hook_emit_blocked, severity: drop, review_name: hook emit BLOCKED and error-guard hook crashes, basis: named, posts_via: direct, raised_at: not found}
+  - {condition: host_drift_clone_drift, severity: fix-cause, review_name: host-drift clone drift, basis: named, posts_via: direct,
+     raised_at: omnimarket/src/omnimarket/nodes/node_host_drift_fleet/handlers/fold_host_drift_view.py:146,
+     cause: "stray files on one host in the infra clone, workspace/routing_tiers.yaml; untracked lock files on another host in the registry root"}
+  - {condition: host_drift_unit_failed, severity: fix-cause, review_name: host-drift unit failed, basis: named, posts_via: direct,
+     raised_at: omnibase_infra/scripts/monitor_logs.py:2051,
+     cause: "review-gateway, throughput-tick, hourly-tick, lab-fill exit 70, canonical-clone-sync exit 3, mostly on one host"}
+  - {condition: hook_capture_not_delivering, severity: fix-cause, review_name: "hook capture not delivering: 9,699 queued", basis: named, posts_via: direct,
+     raised_at: omniclaude/plugins/onex/hooks/scripts/session_start_bus_mirror.sh:237,
+     cause: "hook capture not delivering: 9,699 queued"}
+  - {condition: consumer_health, severity: fix-cause, review_name: consumer health HANDLER ERRORS STALLED STARVED, basis: named, posts_via: direct,
+     raised_at: omnimarket/src/omnimarket/nodes/node_consumer_flow_stall_alert_effect/handlers/build_slack_command.py:46,
+     cause: "node_dlq_replay_effect, github_repo_gateway_effect, pr_landing_orchestrator, node_floor_simple_scheduled_effect, claude_hook_event_effect"}
+  - {condition: floor_stoppage_lab_idle, severity: fix-cause, review_name: "floor row stoppage:lab-idle", basis: named, posts_via: direct, raised_at: not found,
+     cause: "floor row stoppage:lab-idle"}
+  - {condition: fix_failed_after_3, severity: fix-cause, review_name: FIX-FAILED after 3 attempts, basis: named, posts_via: direct, raised_at: not found,
+     cause: "FIX-FAILED after 3 attempts with no host or check named"}
+  - {condition: workspace_reconcile_failed, severity: fix-cause, review_name: workspace reconcile FAILED DID_NOT_MOVE, basis: named, posts_via: direct,
+     raised_at: omnibase_infra/scripts/reconcile_verify_movement.py:135,
+     cause: "workspace reconcile FAILED DID_NOT_MOVE"}
+  - {condition: always_red_digest_lines, severity: fix-cause, review_name: the always-red digest lines, basis: named, posts_via: direct, raised_at: not found,
+     cause: "runtime-judge HTTP 000; the unreadable lane manifest; the scheduled workflows that have never succeeded; the dod-closeout-sweep zero-flip-over-10 condition that is ledger only"}

@@ -14,6 +14,7 @@ import pytest
 import yaml
 
 from scripts.ci import check_unimported_handlers as gate
+from tests.ci.lint_jobs import lint_steps
 
 pytestmark = pytest.mark.unit
 ROOT = Path(__file__).resolve().parents[2]
@@ -176,18 +177,15 @@ def test_dynamic_import_gate_precommit_ci_wiring(tmp_path: Path) -> None:
             hook["files"], f"src/omnimarket/nodes/node_probe_{kind}/handlers/helper.py"
         )
     workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
-    lint = workflow["jobs"]["lint"]
+    lint = lint_steps(workflow)
     step = next(
-        s
-        for s in lint["steps"]
-        if s.get("name") == "Transport imports (static and dynamic)"
+        s for s in lint if s.get("name") == "Transport imports (static and dynamic)"
     )
     assert step["run"] == hook["entry"]
     assert "if" not in step
     assert not step.get("continue-on-error")
     assert any(
-        s.get("run") == "uv run pytest tests/ci -q -k dynamic_import_gate"
-        for s in lint["steps"]
+        s.get("run") == "uv run pytest tests/ci -q -k dynamic_import_gate" for s in lint
     )
     path = _handler(
         tmp_path, "import importlib\nimportlib.import_module('psycopg2.sql')"

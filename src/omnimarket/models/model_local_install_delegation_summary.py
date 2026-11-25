@@ -30,6 +30,16 @@ DELEGATION_SUMMARY_VIEW_STEPS = (
         "omn24615_delegation_summary_evaluated_runs",
         "sqlite/delegation_summary_view_v3.sql",
     ),
+    # OMN-23413 AC51: the headline savings also keep NULL-data_source runs.
+    (
+        "omn23413_delegation_summary_counts_unclassified",
+        "sqlite/delegation_summary_view_v4.sql",
+    ),
+    # OMN-24615 AC6: each byModel row serves the backends its runs were reached through.
+    (
+        "omn24615_delegation_summary_backends",
+        "sqlite/delegation_summary_view_v5.sql",
+    ),
 )
 
 
@@ -82,5 +92,37 @@ DELEGATION_VIEW_REPLACE_STEPS: tuple[tuple[str, tuple[str, str], str], ...] = (
         "omn24615_daily_store_markers",
         ("projection_delegation_daily", "sqlite/delegation_daily_view_v2.sql"),
         "counted unrecorded runs and unmeasured tokens from the store's markers",
+    ),
+    (
+        "omn24615_model_routing_priced_spend",
+        (
+            "projection_delegation_model_routing",
+            "sqlite/delegation_model_routing_view_v4.sql",
+        ),
+        "served each tier model's cost from a named price only, and each per-model row's backends",
+    ),
+    (
+        "omn24615_quality_gate_backends",
+        (
+            "projection_delegation_quality_gate",
+            "sqlite/delegation_quality_gate_view_v3.sql",
+        ),
+        "served the backends of each model's tokens-to-compliance row",
+    ),
+    (
+        "omn25862_model_routing_one_unpriced_rule",
+        (
+            "projection_delegation_model_routing",
+            "sqlite/delegation_model_routing_view_v5.sql",
+        ),
+        "counted a tier model's unmeasured cost by the metering headline's rule",
+    ),
+    (
+        "omn26413_model_routing_one_unpriced_population",
+        (
+            "projection_delegation_model_routing",
+            "sqlite/delegation_model_routing_view_v6.sql",
+        ),
+        "counted a tier model's unmeasured cost only over the runs the metering headline classes as priced or unknown spend",
     ),
 )

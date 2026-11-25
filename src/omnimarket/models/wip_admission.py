@@ -139,6 +139,8 @@ class ModelWipAdmissionConfig(_Frozen):
     red_classes: tuple[str, ...] = Field(min_length=1)
     # A CLAIM stays live while its lane has written any ledger row inside this many hours.
     claim_quiet_hours: float = Field(gt=0)
+    # How far back the claims reader looks: a CLAIM opened before the window is not seen.
+    claim_window_hours: int = Field(gt=0)
 
 
 class ModelWipFix(_Frozen):

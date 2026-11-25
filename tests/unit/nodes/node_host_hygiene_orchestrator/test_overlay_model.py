@@ -122,11 +122,64 @@ def test_overlay_without_event_bus_leaves_it_none() -> None:
     assert overlay.event_bus is None
 
 
+def test_lab_work_event_bus_lane_matching_bus_lane_is_accepted() -> None:
+    doc = _valid_overlay()
+    doc["backend"] = "lab_work"
+    doc["event_bus"] = {"type": "kafka", "lane": "bus-1"}
+    overlay = ModelHostHygieneOrchestratorOverlay.model_validate(doc)
+    assert overlay.event_bus is not None
+    assert overlay.event_bus.lane == "bus-1"
+
+
+def test_lab_work_event_bus_lane_differing_from_bus_lane_is_refused() -> None:
+    doc = _valid_overlay()
+    doc["backend"] = "lab_work"
+    doc["event_bus"] = {"type": "kafka", "lane": "dev"}
+    with pytest.raises(
+        ValidationError, match="differs from lab_work bus_lane"
+    ) as caught:
+        ModelHostHygieneOrchestratorOverlay.model_validate(doc)
+    message = str(caught.value)
+    assert "dev" in message
+    assert "bus-1" in message
+
+
+def test_in_memory_backend_does_not_tie_the_lanes() -> None:
+    doc = _valid_overlay()
+    doc["event_bus"] = {"type": "kafka", "lane": "dev"}
+    overlay = ModelHostHygieneOrchestratorOverlay.model_validate(doc)
+    assert overlay.backend is EnumHostHygieneBackend.IN_MEMORY
+    assert overlay.event_bus is not None
+    assert overlay.event_bus.lane == "dev"
+
+
+def test_lab_work_kafka_bootstrap_has_no_lane_to_tie() -> None:
+    doc = _valid_overlay()
+    doc["backend"] = "lab_work"
+    del doc["lab_work"]["bus_lane"]
+    doc["lab_work"]["kafka_bootstrap"] = "broker:9092"
+    doc["event_bus"] = {"type": "kafka", "lane": "dev"}
+    overlay = ModelHostHygieneOrchestratorOverlay.model_validate(doc)
+    assert overlay.lab_work.bus_lane is None
+    assert overlay.lab_work.kafka_bootstrap == "broker:9092"
+
+
+def test_lab_work_with_inmemory_event_bus_is_accepted() -> None:
+    doc = _valid_overlay()
+    doc["backend"] = "lab_work"
+    doc["event_bus"] = {"type": "inmemory"}
+    overlay = ModelHostHygieneOrchestratorOverlay.model_validate(doc)
+    assert overlay.backend is EnumHostHygieneBackend.LAB_WORK
+    assert overlay.event_bus is not None
+    assert overlay.event_bus.type == "inmemory"
+
+
 def test_event_bus_unknown_key_refused() -> None:
     doc = _valid_overlay()
     doc["event_bus"] = {"type": "kafka", "lane": "dev", "nonsense": 1}
-    with pytest.raises(ValidationError, match="event_bus"):
+    with pytest.raises(ValidationError) as caught:
         ModelHostHygieneOrchestratorOverlay.model_validate(doc)
+    assert [e["loc"] for e in caught.value.errors()] == [("event_bus", "nonsense")]
 
 
 def test_shared_file_is_read_alike_by_the_model_and_the_bus_reader(

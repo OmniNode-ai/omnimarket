@@ -5,6 +5,7 @@
 from omnimarket.enums.enum_backend_placement_mode import EnumBackendPlacementMode
 from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
+from omnimarket.enums.enum_cost_source import EnumCostSource
 from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
     EnumDelegationAcceptanceReason,
@@ -16,6 +17,9 @@ from omnimarket.enums.enum_delegation_disposition import (
     EnumDelegationDispositionReason,
 )
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
+from omnimarket.enums.enum_delegation_step_order_refusal import (
+    EnumDelegationStepOrderRefusal,
+)
 from omnimarket.enums.enum_deployment_fact_kind import EnumDeploymentFactKind
 from omnimarket.enums.enum_dispatch_queue_phase import (
     IN_FLIGHT_PHASES,
@@ -54,12 +58,14 @@ __all__ = [
     "EnumBackendPlacementMode",
     "EnumCheckProofClass",
     "EnumCostBasis",
+    "EnumCostSource",
     "EnumDelegationAcceptanceDecision",
     "EnumDelegationAcceptanceReason",
     "EnumDelegationArtifactKind",
     "EnumDelegationDisposition",
     "EnumDelegationDispositionReason",
     "EnumDelegationFailureClass",
+    "EnumDelegationStepOrderRefusal",
     "EnumDeploymentFactKind",
     "EnumDispatchQueuePhase",
     "EnumDispatchTerminalDisposition",

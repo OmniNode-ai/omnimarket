@@ -14,7 +14,10 @@
 # runner_groups: per runner, only while its container runs no job; the entries matching disposable_patterns of each mount are
 #   evicted largest first down to keep_gib. The work folder's `_actions`, `_temp` and `_PipelineMapping` are never evicted
 #   (the contract's protected names).
-# uv_caches: `uv cache prune` once the cache holds min_gib; `uv cache size` walks every file, so its timeout is minutes.
+# uv_caches: one rule per cache. `min_gib`: `uv cache prune` once the cache holds min_gib; `uv cache size` walks every file, so its
+#   timeout is minutes (it held a Mac's cores for over half an hour). `free_disk`: no size is ever read; the free space of the cache's
+#   filesystem is read once, and only below min_free_gib are entries untouched for keep_days evicted, oldest first, until the entries'
+#   own bytes bring the free space to target_free_gib.
 # docker_timeout_seconds: the most one docker call may take; past it the runner state or the container mounts read as unreadable.
 hosts:
   - name: pool-a
@@ -32,6 +35,21 @@ hosts:
         kind: lane_results
         root: $OMNI_HOME/.claude_scratch/reports
         keep_days: 7
+        archive: true
+        # Also held until the lane's TERMINAL on the rolling work ledger is old. The loader command is the contract's one ledger reader; the
+        # entry name must name a lane through lane_pattern, or it is kept.
+        terminal:
+          loader:
+            argv: [$OMNI_HOME/.onex-dispatch-venv/bin/python, -m, omnimarket.nodes.node_ledger_rows_loader_effect]
+            reader: host-retention
+            window_hours: 720
+            timeout_seconds: 120
+          terminal_keep_days: 7
+          lane_pattern: "(?P<lane>.+)"
+          receipt:
+            root: ~/.local/state/omni/remote-lanes
+            glob: "{lane}/rlane-*.json"
+            dead_after_days: 30
       - name: delegation-receipts
         kind: lane_results
         root: $OMNI_HOME/.claude_scratch/delegation-receipts
@@ -48,6 +66,7 @@ hosts:
         kind: lane_results
         root: ~/.local/state/omni/remote-lanes
         keep_days: 7
+        archive: true
     runner_groups:
       - ids: ["1", "2", "3", "4", "5"]
         container_template: hp053-ci-runner-{id}
@@ -128,10 +147,49 @@ hosts:
           buckets: [archive-v0, git-v0/checkouts]
           keep_days: 7
   # macOS host with uv cache and pre-commit store
+  # A launching host (a Mac): its receipt store and lab-run runs folder, archived, never plain deleted (node_retention_cleanup's contract keeps the
+  # operator's archive consent for these two folders and lists them as disabled entries: this node is their one owner). A lane the ledger
+  # window holds goes by its TERMINAL; an older lane goes by its own receipt files; whatever neither can say is kept and counted as unknown.
   - name: pool-mac
     docker_timeout_seconds: 5
     docker_mount_guard: false
+    lane_run_roots: [~/lab-run/runs]
+    receipt_roots: [~/.local/state/omni/remote-lanes]
     age_classes:
+      - name: remote-lane-receipts
+        kind: lane_results
+        root: ~/.local/state/omni/remote-lanes
+        keep_days: 14
+        archive: true
+        terminal:
+          loader:
+            argv: [$OMNI_HOME/.onex-dispatch-venv/bin/python, -m, omnimarket.nodes.node_ledger_rows_loader_effect]
+            reader: host-retention
+            window_hours: 48
+            timeout_seconds: 600
+          terminal_keep_days: 1
+          lane_pattern: "(?P<lane>.+)"
+          receipt:
+            root: ~/.local/state/omni/remote-lanes
+            glob: "{lane}/rlane-*.json"
+            dead_after_days: 30
+      - name: lab-run-runs
+        kind: lane_results
+        root: ~/lab-run/runs
+        keep_days: 7
+        archive: true
+        terminal:
+          loader:
+            argv: [$OMNI_HOME/.onex-dispatch-venv/bin/python, -m, omnimarket.nodes.node_ledger_rows_loader_effect]
+            reader: host-retention
+            window_hours: 48
+            timeout_seconds: 600
+          terminal_keep_days: 1
+          lane_pattern: '(?P<run>(?:rlane-)?(?P<lane>.+)-[0-9a-f]{6})(?:\.ctx)?'
+          receipt:
+            root: ~/.local/state/omni/remote-lanes
+            glob: "*/{run}.json"
+            dead_after_days: 30
       - name: pre-commit-store
         kind: pre_commit_store
         root: ~/.cache/pre-commit
@@ -140,6 +198,9 @@ hosts:
     uv_caches:
       - path: ~/.cache/uv
         uv_binary: ~/.local/bin/uv
-        min_gib: 10
-        ci_prune: false
         timeout_seconds: 1800
+        free_disk:
+          min_free_gib: 30
+          target_free_gib: 50
+          buckets: [archive-v0, git-v0/checkouts]
+          keep_days: 14

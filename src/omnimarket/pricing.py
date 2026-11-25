@@ -26,6 +26,8 @@ from omnibase_infra.models.pricing.model_pricing_entry import ModelPricingEntry
 from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.handlers import model_binding_reader as _bindings
+from omnimarket.models import model_tenant_routing_overlay_backend as _overlay
 from omnimarket.models.baseline_fallback import (
     BaselineSelectionCase,
     configured_or_most_used,
@@ -40,12 +42,11 @@ logger = logging.getLogger(__name__)
 # handler currently emits on the durable event.
 ROUTING_TIERS_YAML = Path(__file__).resolve().parent / "configs" / "routing_tiers.yaml"
 
-DEFAULT_BASELINE_MODEL = "claude-sonnet-5-5"
-DEFAULT_FRONTIER_COMPARISON_MODELS: tuple[str, ...] = (
-    "claude-opus-4-6",
-    "claude-sonnet-4-20250514",
-    "claude-haiku-3-5",
-    "gpt-4o",
+# The baseline and the frontier comparison models are declared in
+# configs/model_bindings.v1.yaml (OMN-21805); this module names no model.
+DEFAULT_BASELINE_MODEL = _bindings.model_binding("pricing_baseline_model")
+DEFAULT_FRONTIER_COMPARISON_MODELS: tuple[str, ...] = tuple(
+    _bindings.model_binding_section("frontier_comparison_models")
 )
 
 
@@ -401,14 +402,15 @@ def resolve_tier_cost(tier_name: str) -> ModelTierCost | None:
     """Resolve a tier's typed ModelTierCost by name from the routing registry.
 
     None means the tier is absent from the registry OR has not been migrated to
-    the typed cost model — the caller treats that as ``no_cost_model``.
+    the typed cost model — the caller treats that as ``no_cost_model``, and a
+    ceiling reader as "tier not budgeted" (skip). The tenant overlay tier always
+    resolves to None, whatever the registry declares (OMN-24874).
     """
-    if not tier_name:
+    # OMN-24874: the tenant overlay tier is the customer's own key, never the
+    # platform's spend, so it resolves to None and never draws a ceiling.
+    if not tier_name or tier_name == _overlay.TENANT_OVERLAY_TIER_NAME:
         return None
-    for tier in _load_routing_config().tiers:
-        if tier.name == tier_name:
-            return tier.cost
-    return None
+    return next((t.cost for t in _load_routing_config().tiers if t.name == tier_name), None)  # fmt: skip
 
 
 class ModelActualCostMeasurement(BaseModel):

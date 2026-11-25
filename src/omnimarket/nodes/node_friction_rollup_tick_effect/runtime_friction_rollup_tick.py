@@ -4,8 +4,9 @@
 
 The host installer's ``registry_module_tick`` runs
 ``python -m omnimarket.nodes.node_friction_rollup_tick_effect.runtime_friction_rollup_tick
---omni-home <root> --state-dir <evidence dir>`` with ``ONEX_LEDGER_PATH`` (an absolute path, no default) and
-``ONEX_LEDGER_COMMAND`` (the proven ``onex-ledger`` command line) in the environment. The reports go under the registry
+--omni-home <root> --state-dir <evidence dir>`` with ``ONEX_LEDGER_BUS_READ_COMMAND`` (the paged bus read command),
+``ONEX_LEDGER_BUS_APPEND_COMMAND`` and ``ONEX_LEDGER_HOST_NAME`` (the bus append command and the host it writes as) in the
+environment. The ledger is read and appended over the bus; this module never names the ledger file. The reports go under the registry
 root, where the factory floor reads ``latest.json``; ``--state-dir`` is only where ``last-run.json`` is written.
 ``last-run.json`` is written by every tick that finished (state OK, or done with the class rules unapplied) and never by
 a refused one, a failed append or a dry run, so a stale file is the fault. Exit codes are the timer's: 0 done, 1 append
@@ -17,7 +18,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shlex
 import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -32,12 +32,7 @@ from omnimarket.nodes.node_friction_rollup_tick_effect.handlers.handler_friction
 from omnimarket.nodes.node_friction_rollup_tick_effect.models.model_friction_rollup_tick import (
     ModelFrictionRollupTickRequest,
 )
-from omnimarket.nodes.node_friction_rollup_tick_effect.protocols.protocol_ledger_appender import (
-    SubprocessLedgerAppender,
-)
 
-LEDGER_VARIABLE = "ONEX_LEDGER_PATH"
-LEDGER_COMMAND_VARIABLE = "ONEX_LEDGER_COMMAND"
 EVIDENCE_FILE = "last-run.json"
 
 
@@ -47,8 +42,6 @@ def _parser() -> argparse.ArgumentParser:
         "--omni-home", dest="registry_root", default=os.environ.get("OMNI_HOME")
     )
     parser.add_argument("--state-dir", help="Where last-run.json is written")
-    parser.add_argument("--ledger")
-    parser.add_argument("--archive-dir")
     parser.add_argument("--now", help="UTC timestamp used instead of the clock")
     parser.add_argument("--dry-run", action="store_true")
     return parser
@@ -59,28 +52,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if not args.registry_root:
         parser.error("--omni-home is required when OMNI_HOME is not set")
-    configured = os.environ.get(LEDGER_VARIABLE, "").strip()
-    if not args.ledger and not os.path.isabs(configured):
-        parser.error(
-            f"set {LEDGER_VARIABLE} to the absolute path of the rolling work ledger (no default)"
-        )
-    ledger = args.ledger or configured
     handler = HandlerFrictionRollupTick()
-    command = shlex.split(os.environ.get(LEDGER_COMMAND_VARIABLE, ""))
-    if command:
-        settings = handler.settings
-        handler = HandlerFrictionRollupTick(
-            appender=SubprocessLedgerAppender(
-                command, settings.appender_timeout_seconds
-            )
-        )
     result = handler.handle(
         ModelFrictionRollupTickRequest(
             registry_root=args.registry_root,
-            ledger_path=ledger,
             now=args.now,
             dry_run=args.dry_run,
-            archive_dir=args.archive_dir,
         )
     )
     if args.dry_run and result.status_row:

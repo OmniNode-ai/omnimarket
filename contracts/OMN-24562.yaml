@@ -1,0 +1,108 @@
+schema_version: 1.0.0
+ticket_id: OMN-24562
+title: The lab disk watermark alarms below 15 percent free inodes and names an owner
+summary: 'node_lab_disk_watermark_effect reads the inode use of every volume a pool host declares, beside the byte share it already reads. A volume below the free-inode share its contract declares (15 percent) writes the lab stack reaper''s alarm rows (one FRICTION row and one STATUS row with alarms=1, each naming the owner) through the bus append command, once per declared interval, and the service exits 2 so the journal and the unit state show it. The watermark unit carries the append command in its environment.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24562-inode-alarm
+  statement: A lab host whose root filesystem runs short of inodes alarms on the watermark tick, naming the owner, before placement refuses a lane there.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a reading at 14 percent free inodes produces the alarm rows with owner= in both, and a reading at 16 percent produces none -- falsifier: uv run pytest tests/nodes/node_lab_disk_watermark_effect/test_inode_alarm_omn24562.py -q fails when the threshold or the owner cell is removed'
+- id: req-omn24562-thermal-guard
+  statement: A lab host that runs hot is held out of placement through its declared hold file and released only once it has cooled, with the thresholds, names and texts all read from the overlay.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: node_host_thermal_guard_effect writes the hold file and a HOLD row above the hold threshold, removes it and writes a RELEASE row below the lower release threshold once the minimum hold has passed, and changes nothing between the two -- falsifier: uv run pytest tests/nodes/node_host_thermal_guard_effect -q fails when the release threshold is raised to the hold threshold or the minimum hold is dropped'
+- id: req-omn24562-thermal-guard-overlay-model
+  statement: The thermal guard node's overlay document has a typed model in omnimarket that the overlays repository can pin ahead of the node.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: ModelHostThermalGuardOverlay validates the overlay document of the thermal guard node and refuses a malformed one -- falsifier: tests/unit/models/test_host_thermal_guard_overlay_document_omn24562.py fails collection or any of its tests fails'
+- id: req-omn24562-observability-overlay-model
+  statement: The host observability installer's overlay document has a typed model in omnimarket that its overlay document can be pinned to ahead of the node.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: ModelObservabilityOverlay validates the overlay document of the host observability installer and refuses a malformed one -- falsifier: tests/unit/models/test_observability_overlay_document_omn24562.py fails collection or any of its tests fails'
+- id: req-omn24562-tenant-key-overlay-model
+  statement: The tenant gateway key node's overlay document has a typed model in omnimarket that its overlay document can be pinned to ahead of the node.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: ModelTenantApiKeyOverlay validates the overlay document of the tenant gateway key node and refuses a malformed one -- falsifier: tests/unit/models/test_tenant_api_key_overlay_document_omn24562.py fails collection or any of its tests fails'
+- id: req-omn24562-lint-split-parallel
+  statement: The required lint context is an aggregate of parallel group jobs, every old lint step still runs in exactly one group, and the Direct Model Call Gate positive control judges each planted case on a scratch repository holding only that file.
+  acceptance:
+  - id: AC6
+    statement: 'AC6: ci.yml carries lint-group-1 to lint-group-6 and a lint aggregate that needs all of them, each of the 128 steps listed in tests/ci/lint_steps_before_omn24562.txt runs in one group, and the Direct Model Call Gate positive control runs with --repo-root on a scratch repository -- falsifier: uv run pytest tests/ci/test_lint_split_omn24562.py tests/ci/test_direct_model_call_ci_gate.py fails when a step is dropped from every group or the control scans the whole tree'
+evidence_requirements:
+- kind: tests
+  description: The inode alarm tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_lab_disk_watermark_effect -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24562-ac1
+  description: 'AC1: 14 percent free inodes alarms with owner= in the FRICTION and STATUS rows, 16 percent and exactly 15 percent do not (failing control: the same test fails with the share set to 10).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_disk_watermark_effect/test_inode_alarm_omn24562.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24562-integration-proof
+  description: the watermark tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24562 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lab_disk_watermark_effect -q --no-cov
+- id: dod-omn24562-thermal-guard-ac2
+  description: 'AC2: a hold above the hold threshold, a release only below the release threshold after the minimum hold, nothing between the two (failing control: the same tests refuse to run at the merge base, where node_host_thermal_guard_effect does not exist).'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_thermal_guard_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24562-thermal-guard-overlay-model-tests
+  description: The overlay document model for the thermal guard node accepts a valid document and refuses malformed ones; the test file fails at collection with ModuleNotFoundError before the model module exists and passes after.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_host_thermal_guard_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24562-observability-overlay-model-tests
+  description: The overlay document model for the host observability installer accepts a valid document and refuses malformed ones; the test file fails at collection with ModuleNotFoundError before the model module exists and passes after.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_observability_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24562-tenant-key-overlay-model-tests
+  description: The overlay document model for the tenant gateway key node accepts a valid document and refuses malformed ones; the test file fails at collection with ModuleNotFoundError before the model module exists and passes after.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_tenant_api_key_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24562-lint-split-parallel
+  description: 'AC6: the lint job is split into six parallel group jobs behind a lint aggregate with the same name; the test lists every old step and refuses a missing one (failing control: before the split the test fails on 128 missing steps, dropping Ruff check from every group fails test_dropping_a_step_is_refused), and the Direct Model Call Gate positive control runs each plant on a scratch repository.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_lint_split_omn24562.py tests/ci/test_direct_model_call_ci_gate.py -q -n 0 --no-cov -p no:randomly
+    cwd: .

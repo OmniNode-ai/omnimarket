@@ -46,6 +46,7 @@ from omnimarket.models.delegation.model_bifrost_overlay_provenance import (
 )
 from omnimarket.models.delegation.model_delegation_backend_placement import (
     ModelPlacedDelegationBackend,
+    wire_backend_entry,
 )
 from omnimarket.models.delegation.model_ollama_config import ModelOllamaConfig
 from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
@@ -184,9 +185,7 @@ def _incomplete_fields(entry: Mapping[str, Any]) -> list[str]:
     if problems:
         return problems
     try:
-        ModelDelegationBackendConfig.model_validate(
-            {key: value for key, value in entry.items() if key != "placement"}
-        )
+        ModelDelegationBackendConfig.model_validate(wire_backend_entry(entry))
     except ValidationError as exc:
         for error in exc.errors():
             location = ".".join(str(part) for part in error["loc"]) or "<entry>"
@@ -839,7 +838,7 @@ def load_bifrost_delegation_config_payload(
 
 
 def _without_placements(data: dict[str, Any]) -> dict[str, Any]:
-    """``data`` with each backend's ``placement`` and the ``ollama`` block lifted off.
+    """``data`` with each backend's lifted row fields and the ``ollama`` block lifted off.
 
     The ``ollama`` block (OMN-20326) is read by :func:`load_ollama_config`.
 
@@ -855,9 +854,7 @@ def _without_placements(data: dict[str, Any]) -> dict[str, Any]:
     return {
         **data,
         "backends": [
-            {key: value for key, value in entry.items() if key != "placement"}
-            if isinstance(entry, Mapping)
-            else entry
+            wire_backend_entry(entry) if isinstance(entry, Mapping) else entry
             for entry in backends
         ],
     }
@@ -930,10 +927,14 @@ def _deep_merge(default_value: Any, overlay_value: Any) -> Any:
     if isinstance(default_value, dict) and isinstance(overlay_value, dict):
         merged = copy.deepcopy(default_value)
         for key, value in overlay_value.items():
-            if key in merged:
-                merged[key] = _deep_merge(merged[key], value)
-            else:
-                merged[key] = copy.deepcopy(value)
+            # OMN-23413: a bare ``backends:`` line (YAML null) adds and changes no
+            # backend. Merged as a value it replaced the contract's list with
+            # nothing, so every delegation failed schema validation ("at least 1
+            # item, not 0") after a routes file lost its last local model. The
+            # schema needs at least one backend, so a null never means "none".
+            if not (key == "backends" and value is None):
+                # An absent key merges as None, which returns a copy of value.
+                merged[key] = _deep_merge(merged.get(key), value)
         return merged
 
     if isinstance(default_value, list) and isinstance(overlay_value, list):

@@ -91,7 +91,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from decimal import Decimal
 from functools import lru_cache
 from pathlib import Path
@@ -367,6 +367,10 @@ class ModelByokProviderBackend(BaseModel):
     default_models: tuple[str, ...] = ()
     #: OMN-21215. The key a new developer adds first. Exactly one row sets it.
     first_key: bool = False
+    #: Onboarding guidance only; never a credential destination.
+    key_page: str | None = Field(default=None, pattern=r"^https://[^\s\x00-\x1f\x7f]+$")
+    #: Recognizable prefixes are hints, not a requirement on accepted keys.
+    key_prefixes: tuple[str, ...] = ()
     #: OMN-21263. ``true`` declares the generic OpenAI-compatible row: the
     #: developer names the endpoint's base URL when they register the key, and
     #: ``endpoint_url`` and ``models_url`` here are placeholders that never route
@@ -886,6 +890,25 @@ def first_key_backend() -> ModelByokProviderBackend:
     )
 
 
+def key_provider_hint(value: str, for_provider: str | None = None) -> str | None:
+    """Longest declared prefix hint; unknown or ambiguous key shapes stay valid."""
+    catalog = load_byok_provider_catalog()
+    selected = catalog.get(for_provider) if for_provider is not None else None
+    if selected is not None and selected.endpoint_from_registration:
+        return None
+    matches = [
+        (len(prefix), row.provider)
+        for row in catalog.values()
+        for prefix in row.key_prefixes
+        if prefix and value.startswith(prefix)
+    ]
+    if not matches:
+        return None
+    longest = max(length for length, _ in matches)
+    providers = {provider for length, provider in matches if length == longest}
+    return next(iter(providers)) if len(providers) == 1 else None
+
+
 def customer_provider_catalogue() -> tuple[str, ...]:
     """The customer-facing provider catalogue: every provider id a customer
     may register a key for, sorted.
@@ -1139,18 +1162,37 @@ def byok_backend_provider(backend_id: str | None) -> str | None:
     return None
 
 
-def byok_model_price_per_1m(
-    backend_id: str | None, endpoint_url: str | None, model_name: str
-) -> tuple[Decimal, Decimal] | None:
-    """The ``(input, output)`` USD per 1M tokens of a model on a customer's key.
+#: Reads a model's models.dev ``(input, output)`` USD per 1M tokens and when that
+#: copy was read, given the ONEX provider id and the model. The caller supplies
+#: it (``model_catalog.models_dev_price_with_read_time``) because the model
+#: catalogue imports this module, so this module cannot import it back.
+type ModelsDevPriceLookup = Callable[
+    [str, str], tuple[tuple[Decimal, Decimal], str | None] | None
+]
 
-    The catalogue's declared price for the endpoint and model first, then the
-    model registry's price for the same provider and model. ``None`` means the
-    model has no known price: the call is unpriced, never booked at a tier rate.
+
+def byok_model_price_with_source(
+    backend_id: str | None,
+    endpoint_url: str | None,
+    model_name: str,
+    *,
+    models_dev_price: ModelsDevPriceLookup | None = None,
+) -> tuple[tuple[Decimal, Decimal], str, str | None] | None:
+    """The ``(input, output)`` USD per 1M tokens of a model on a customer's key,
+    with the source and read time of the lookup that priced it (OMN-23413 AC35).
+
+    Returns ``(price, source, read_at)``:
+      - ``(price, "byok_provider_backends", None)`` for the catalogue's declared price
+      - ``(price, "model_registry", None)`` for the model registry's price
+      - ``(price, "models.dev", read_at)`` for models.dev's live price
+
+    ``None`` means the model has no known price: the call is unpriced, never
+    booked at a tier rate. ``models_dev_price=None`` stops before models.dev, for
+    a caller that holds the provider's combined entry (AC34).
     """
     declared = byok_declared_price_per_1m(endpoint_url, model_name)
     if declared is not None:
-        return declared
+        return (declared, "byok_provider_backends", None)
     provider = byok_backend_provider(backend_id)
     if provider is None:
         return None
@@ -1160,8 +1202,44 @@ def byok_model_price_per_1m(
 
     for profile in ModelLlmModelRegistryLoader().load().models.values():
         if profile.provider == provider and profile.model_name == model_name:
-            return (profile.pricing_per_1m_input, profile.pricing_per_1m_output)
-    return None
+            return (
+                (profile.pricing_per_1m_input, profile.pricing_per_1m_output),
+                "model_registry",
+                None,
+            )
+    if models_dev_price is None:
+        return None
+    # OMN-23413 AC35: a model neither the catalogue nor the registry prices is
+    # priced from models.dev, read live (a copy older than its configured age is
+    # read again and never prices a call); still None when it states none.
+    result = models_dev_price(provider, model_name)
+    if result is None:
+        return None
+    price, read_at = result
+    return (price, "models.dev", read_at)
+
+
+def byok_model_price_per_1m(
+    backend_id: str | None,
+    endpoint_url: str | None,
+    model_name: str,
+    *,
+    models_dev_price: ModelsDevPriceLookup | None = None,
+) -> tuple[Decimal, Decimal] | None:
+    """The ``(input, output)`` USD per 1M tokens of a model on a customer's key.
+
+    The catalogue's declared price for the endpoint and model first, then the
+    model registry's price for the same provider and model, then models.dev's
+    (OMN-23413 AC35). ``None`` means the model has no known price: the call is
+    unpriced, never booked at a tier rate. Without ``models_dev_price`` it stops
+    before models.dev, for a caller that holds the provider's combined entry (AC34).
+    """
+    result = byok_model_price_with_source(
+        backend_id, endpoint_url, model_name, models_dev_price=models_dev_price
+    )
+    if result is None:
+        return None
+    return result[0]
 
 
 def byok_limit_counter_key(
@@ -1291,6 +1369,7 @@ __all__: list[str] = [
     "catalogue_prefers_model",
     "customer_provider_catalogue",
     "house_keyed_provider_slugs",
+    "key_provider_hint",
     "load_byok_not_offered_providers",
     "load_byok_plan_catalog",
     "load_byok_provider_catalog",

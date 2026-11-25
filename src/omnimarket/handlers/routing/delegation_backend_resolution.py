@@ -91,6 +91,25 @@ _OVERLAY_PATH = Path.home() / ".omninode" / "delegation" / "bifrost_overrides.ya
 BIFROST_OVERLAY_STORE_KEY: Final[str] = "delegation.bifrost.overlay"
 
 
+def backends_of(document: object) -> list[dict[str, object]]:
+    """The ``backends`` list of a parsed bifrost YAML document.
+
+    A missing key, a null value (a bare ``backends:`` line) and a non-mapping
+    document all mean no backends; a list is returned as a new list. OMN-23413:
+    ``list(doc.get("backends", []))`` raised "'NoneType' object is not
+    iterable" on a null, so every ``onex delegate`` failed once a routes file
+    lost its last local model. Drafted by onex delegate run dfaf2236.
+    """
+    if not isinstance(document, dict):
+        return []
+    value = document.get("backends")
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError(f"backends must be a list, not {type(value).__name__}")
+    return list(value)
+
+
 def _resolve_effective_bifrost_paths(
     config_path: Path | None,
     overlay_path: Path | None,
@@ -187,6 +206,15 @@ class ModelResolvedDelegationBackend(BaseModel):
     )
     extra_headers: dict[str, str] = Field(default_factory=dict)
     inline_reasoning_terminator: str | None = Field(default=None, min_length=1)
+    reasoning_effort: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "OMN-26365: the backend row's own ``reasoning_effort``, sent as a "
+            "request option to this backend only. None: the row declares none "
+            "and the request carries none."
+        ),
+    )
     secret_ref: str | None = Field(
         default=None,
         description=(
@@ -267,7 +295,7 @@ async def _load_store_overlay_async(
     if not raw or not raw.strip():
         return None
     parsed = yaml.safe_load(raw) or {}
-    return list(parsed.get("backends", []))
+    return backends_of(parsed)
 
 
 def _load_store_overlay(store: ProtocolSecretStore) -> list[dict[str, Any]] | None:
@@ -469,7 +497,7 @@ def load_bifrost_backends(
     committed_backends: list[dict[str, Any]] = []
     if config_path.is_file():
         base = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-        backends = list(base.get("backends", []))
+        backends = backends_of(base)
         # OMN-18670: keep the PRE-merge committed rows. After the field-by-field
         # merge below the two authorities are one dict and nothing can tell them
         # apart, which is exactly why the 2026-09-18 refusal could name the
@@ -529,7 +557,7 @@ def load_bifrost_backends(
     # --- Dev-only file fallback (deprecated) ------------------------------------
     if overlay_path is not None and overlay_path.is_file():
         overlay = yaml.safe_load(overlay_path.read_text(encoding="utf-8")) or {}
-        file_overlay_backends = list(overlay.get("backends", []))
+        file_overlay_backends = backends_of(overlay)
         backends = _merge_overlay(
             backends,
             file_overlay_backends,
@@ -647,6 +675,23 @@ def describe_model_name_source(
             if record is not None:
                 return record.describe()
     return None
+
+
+def with_backend_reasoning_effort(
+    request_options: dict[str, Any],
+    reasoning_effort: str | None,
+) -> dict[str, Any]:
+    """The request options with the backend row's own ``reasoning_effort`` (OMN-26365).
+
+    A backend row that declares a value sends it as the ``reasoning_effort``
+    request option, over whatever a protocol profile matched by model name set.
+    A row that declares none leaves the options as the profile built them, so a
+    backend that takes no such option receives none. The options passed in are
+    never changed.
+    """
+    if reasoning_effort is None:
+        return dict(request_options)
+    return {**request_options, "reasoning_effort": reasoning_effort}
 
 
 def resolve_delegation_backend(
@@ -821,6 +866,7 @@ def resolve_delegation_backend(
         timeout_ms=raw_timeout_ms,
         extra_headers=extra_headers,
         inline_reasoning_terminator=backend.get("inline_reasoning_terminator"),
+        reasoning_effort=backend.get("reasoning_effort"),
         secret_ref=secret_ref,
         api_key_env=api_key_env,
         supports_response_format_json_schema=bool(

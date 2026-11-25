@@ -24,23 +24,32 @@ from omnimarket.nodes.node_floor_owner_map_publish_effect.handlers import (
 class HandlerIntegrationReadingPublish:
     """One publication of the projection it is handed, through the injected publisher."""
 
-    def __init__(self, *, publisher: ProtocolEnvelopePublisher, producer: str) -> None:
+    def __init__(
+        self,
+        *,
+        publisher: ProtocolEnvelopePublisher,
+        producer: str,
+        event_publisher: ProtocolEnvelopePublisher | None = None,
+    ) -> None:
         self._publisher = publisher
         self._producer = producer
+        # OMN-25103: the same envelope on the pass event topic, for the projection writer.
+        self._event_publisher = event_publisher
 
     async def handle(
         self, request: ModelIntegrationPublishCommand
     ) -> ModelFloorProjectionPublishResult:
         projection = request.projection
         payload: dict[str, JsonValue] = projection.model_dump(mode="json")
-        await self._publisher.publish(
-            ModelFloorProjectionEnvelope(
-                projection_id=request.projection_id,
-                as_of=projection.as_of,
-                producer=self._producer,
-                payload=payload,
-            )
+        envelope = ModelFloorProjectionEnvelope(
+            projection_id=request.projection_id,
+            as_of=projection.as_of,
+            producer=self._producer,
+            payload=payload,
         )
+        await self._publisher.publish(envelope)
+        if self._event_publisher is not None:
+            await self._event_publisher.publish(envelope)
         return ModelFloorProjectionPublishResult(
             published=True,
             projection_id=request.projection_id,

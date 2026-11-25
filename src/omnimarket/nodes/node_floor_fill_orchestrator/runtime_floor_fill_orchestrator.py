@@ -9,8 +9,9 @@ both run it with the dispatch venv's interpreter. ``J`` is the overlay's ``floor
 The entry holds no I/O of its own: the handler it builds takes every seam in its constructor. The
 default profile is ``inmemory`` (scripted seams over an in-memory conditional store). ``--profile live`` binds the
 store, the floor and plan reads, the ledger file, the process runner and the clock from the overlay's
-``floor_fill_live`` section; the pool, tickets, brake and stop-signal seams have no live source yet and fail closed
-naming what is unbound (see ``container/container_live.py``). Any other profile is refused naming it. The entry ends the process itself at ``floor_fill.command_timeout_seconds``, so a stalled
+``floor_fill_live`` section, and the pool, tickets, brake and stop-signal seams to their live readers (see
+``container/container_live.py``); ``--check-live-binding`` with it builds the handler and refuses (exit 4) when a seam is
+bound to an ``unbound`` stand-in, which the installer runs before the unit starts. Any other profile is refused naming it. The entry ends the process itself at ``floor_fill.command_timeout_seconds``, so a stalled
 command leaves no process behind.
 """
 
@@ -21,6 +22,7 @@ import json
 import os
 import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 from omnimarket.nodes.node_floor_fill_orchestrator.handlers.handler_floor_fill_command import (
@@ -76,6 +78,19 @@ def run_entry(
     )
 
 
+def read_env_file_value(path: str, name: str) -> str:
+    """The value of ``name`` in a KEY=VALUE env file, or an empty string when the file or key is absent."""
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return ""
+    for line in lines:
+        key, separator, value = line.partition("=")
+        if separator and key.strip() == name:
+            return value.strip().strip("\"'")
+    return ""
+
+
 def lab_host_rows(overlay: Mapping[str, Any]) -> list[tuple[str, bool]]:
     """The ``lab_hosts`` rows the caller passes beside the overlay, as ``(name, available)``; none means no host is listed."""
     return [
@@ -83,6 +98,32 @@ def lab_host_rows(overlay: Mapping[str, Any]) -> list[tuple[str, bool]]:
         for row in overlay.get("lab_hosts", [])
         if "name" in row and "available" in row
     ]
+
+
+def check_live_binding(
+    overlay: Mapping[str, Any],
+    build_handler: Callable[[ModelFloorFillConfig], HandlerFloorFillCommand],
+) -> int:
+    """The install-time check of the live profile: build the handler and refuse if any seam is bound to an ``unbound`` stand-in.
+
+    Runs no command and reads no source: it answers whether the live profile can be installed, so an unbound seam is
+    refused when the unit is installed and not at its first tick.
+    """
+    try:
+        config = load_floor_fill_config(overlay.get(OVERLAY_SECTION, {}))
+    except FloorFillConfigError as error:
+        sys.stdout.write(
+            f"UNKNOWN fill-state:overlay:{','.join(error.keys) or error}\n"
+        )
+        return EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED]
+    unbound = build_handler(config).unbound_seams()
+    if unbound:
+        sys.stdout.write(
+            f"UNKNOWN fill-state:live-binding-unbound:{','.join(unbound)}\n"
+        )
+        return EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED]
+    sys.stdout.write("OK live-binding: pool, tickets, brake, stop-signal bound\n")
+    return EXIT_CODE_BY_STATUS[EnumFloorFillStatus.OK]
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -97,6 +138,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--overlay-json", required=True)
     parser.add_argument("--this-host", required=True)
     parser.add_argument("--profile", default="inmemory")
+    parser.add_argument("--check-live-binding", action="store_true")
     known, rest = parser.parse_known_args(arguments)
     if known.profile not in ("inmemory", "live"):
         sys.stdout.write(
@@ -110,6 +152,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not isinstance(overlay, dict):
         sys.stdout.write("UNKNOWN fill-state:overlay:unreadable\n")
         return EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED]
+    if known.check_live_binding and known.profile != "live":
+        sys.stdout.write("UNKNOWN fill-state:check-live-binding:profile-not-live\n")
+        return EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED]
     build_handler: Callable[[ModelFloorFillConfig], HandlerFloorFillCommand]
     if known.profile == "live":
         try:
@@ -122,6 +167,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             return EXIT_CODE_BY_STATUS[EnumFloorFillStatus.FAILED]
         dsn = os.environ.get(live_settings.store_dsn_env, "")
+        if not dsn and live_settings.store_dsn_env_file:
+            dsn = read_env_file_value(
+                live_settings.store_dsn_env_file, live_settings.store_dsn_env
+            )
         if not dsn:
             sys.stdout.write(
                 f"UNKNOWN fill-state:store-dsn-unset:{live_settings.store_dsn_env}\n"
@@ -132,6 +181,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
 
         build_handler = build_live_handler_factory(live_settings, dsn=dsn)
+        if known.check_live_binding:
+            return check_live_binding(overlay, build_handler)
     else:
         from omnimarket.nodes.node_floor_fill_orchestrator.container.container_inmemory import (
             build_inmemory_handler,

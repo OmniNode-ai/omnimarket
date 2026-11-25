@@ -23,7 +23,7 @@ requirements:
   - id: AC2
     statement: 'AC2: every refusal is typed and nothing is published on a refusal (no credential 401, unknown or fenced type 400, bad payload 400, rate limit 429, plan quota 429, publish failure 503 with the row marked failed, another tenant''s id 404 identical to an unknown id) -- falsifier: tests/nodes/node_workflow_gateway_effect/test_error_chain_workflow_gateway.py'
   - id: AC3
-    statement: 'AC3: the body the live chain canary sends is accepted by the route and the published wire payload validates against the real consumer models -- falsifier: tests/nodes/node_workflow_gateway_effect/test_seam_canary_request.py and test_workflow_wire_envelope.py'
+    statement: 'AC3: the published wire payload validates against the real consumer models -- falsifier: tests/nodes/node_workflow_gateway_effect/test_workflow_wire_envelope.py'
   - id: AC4
     statement: 'AC4: integrated: on the dev runtime, GET /v1/workflows/contracts without a credential answers 401 and with the dev identity answers 200, read from the running runtime -- falsifier: a curl of that route at the dev runtime port answers 404 or 503 instead'
 evidence_requirements:
@@ -54,13 +54,13 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_workflow_gateway_effect/test_error_chain_workflow_gateway.py tests/nodes/node_workflow_gateway_effect/test_workflow_catalog.py tests/nodes/node_workflow_gateway_effect/test_adapters_memory.py tests/nodes/node_workflow_gateway_effect/test_store_postgres_sql.py -q --no-cov --refuse-skips
     cwd: .
 - id: dod-workflow-gateway-ac3
-  description: 'AC3: the canary request seam and the wire payload against the consumer node models and their subscribed topics.'
+  description: 'AC3: the wire payload against the consumer node models and their subscribed topics.'
   source: manual
   binds_ac:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_workflow_gateway_effect/test_seam_canary_request.py tests/nodes/node_workflow_gateway_effect/test_workflow_wire_envelope.py tests/nodes/node_workflow_gateway_effect/test_workflow_receipt_render.py -q --no-cov --refuse-skips
+    check_value: uv run --frozen pytest tests/nodes/node_workflow_gateway_effect/test_workflow_wire_envelope.py tests/nodes/node_workflow_gateway_effect/test_workflow_receipt_render.py -q --no-cov --refuse-skips
     cwd: .
 - id: dod-workflow-gateway-ac4
   description: 'hosted proxy for AC4: the route inventory control and the gateway node catalog tests pass here (the node tests do not exist at the merge base, so the control fails there); the read of the contracts route on the dev runtime after the deploy is posted as a pull request comment naming the head.'

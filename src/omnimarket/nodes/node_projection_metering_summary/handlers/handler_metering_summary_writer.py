@@ -5,7 +5,10 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Sequence
+import logging
+import threading
+from collections.abc import Awaitable, Callable, Sequence
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -13,6 +16,7 @@ from typing import Any
 import yaml
 
 from omnimarket.models.model_metering_summary_refresh_requested import (
+    EnumMeteringRefreshReason,
     ModelMeteringSummaryRefreshRequested,
 )
 from omnimarket.models.model_projection_request import ModelProjectionRequest
@@ -22,10 +26,19 @@ from omnimarket.nodes.node_projection_metering_summary import (
 )
 from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_summary_store_refresh import (
     ProtocolMeteringStoreReads,
-    refresh_from_store,
 )
 from omnimarket.nodes.node_projection_metering_summary.handlers.handler_projection_metering_summary import (
     HandlerProjectionMeteringSummary,
+)
+from omnimarket.nodes.node_projection_metering_summary.metering_incremental_refresh import (
+    refresh_incrementally,
+)
+from omnimarket.nodes.node_projection_metering_summary.metering_refresh_coalescer import (
+    MeteringRefreshCoalescer,
+    coalesce_interval_from_overlay,
+)
+from omnimarket.nodes.node_projection_metering_summary.models.model_metering_refresh_coalesce import (
+    ModelMeteringRefreshCoalesceStats,
 )
 from omnimarket.projection.protocol_database import ProtocolProjectionDatabaseSync
 from omnimarket.projection.runner import (
@@ -33,6 +46,8 @@ from omnimarket.projection.runner import (
     MessageMeta,
 )
 from omnimarket.projection.tenant_isolation import resolve_write_tenant
+
+logger = logging.getLogger(__name__)
 
 _CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
 CONFLICT_KEY = "tenant_id,window_kind,window_start,baseline_model"
@@ -60,6 +75,53 @@ def store_refresh_command_topic() -> str:
     return topic
 
 
+@lru_cache(maxsize=1)
+def coalesce_default_seconds() -> int:
+    """The refresh spacing a deployment with no overlay runs at, as the contract names it."""
+    contract = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
+    return int(
+        contract["config"]["metering_summary"]["refresh_coalesce"][
+            "default_min_interval_seconds"
+        ]
+    )
+
+
+@lru_cache(maxsize=1)
+def full_rebuild_reasons() -> frozenset[EnumMeteringRefreshReason]:
+    """The refresh reasons that fold every stored run, as the contract names them (OMN-21288)."""
+    contract = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
+    return frozenset(
+        EnumMeteringRefreshReason(reason)
+        for reason in contract["config"]["metering_summary"]["incremental_refresh"][
+            "full_rebuild_reasons"
+        ]
+    )
+
+
+@lru_cache(maxsize=1)
+def fold_chunk_records() -> int:
+    """How many runs one worker-thread step of a refresh folds, as the contract names it (OMN-21288)."""
+    contract = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
+    return int(
+        contract["config"]["metering_summary"]["incremental_refresh"][
+            "fold_chunk_records"
+        ]
+    )
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _coalesce_cells(stats: ModelMeteringRefreshCoalesceStats) -> dict[str, Any]:
+    """The coalescer's counts as result cells: the visible half of 'never a silent skip'."""
+    return {
+        "refresh_runs_total": stats.runs,
+        "refresh_coalesced_total": stats.coalesced,
+        "refresh_pending_tenants": sorted(stats.pending),
+    }
+
+
 def store_rows(
     db: ProtocolProjectionDatabaseSync, rows: Sequence[ModelMeteringSummaryRow]
 ) -> None:
@@ -72,11 +134,50 @@ class MeteringSummaryProjectionWriter(BaseProjectionRunner):
     """Accept a full snapshot request, fold it, and replace its stored rows."""
 
     onex_runtime_inprocess_dispatch = True
+    # OMN-24492: class-level so a writer built without __init__ (the runtime's
+    # in-process path and the existing tests do) still reads as "no coalescer yet".
+    _coalescer: MeteringRefreshCoalescer | None = None
+    _coalescer_lock = threading.Lock()
+    _clock: Callable[[], datetime] | None = None
+    # OMN-21288: where the CPU-bound steps of a refresh run. None reads as a
+    # worker thread (asyncio.to_thread), so the loop awaiting the refresh keeps serving.
+    _run_blocking: Callable[..., Awaitable[Any]] | None = None
 
-    def __init__(self, contract_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        contract_path: Path | None = None,
+        *,
+        coalescer: MeteringRefreshCoalescer | None = None,
+        clock: Callable[[], datetime] | None = None,
+        run_blocking: Callable[..., Awaitable[Any]] | None = None,
+    ) -> None:
         super().__init__()
         path = contract_path or _CONTRACT_PATH
         self._contract: dict[str, Any] = yaml.safe_load(path.read_text())
+        self._coalescer = coalescer
+        if clock is not None:
+            self._clock = clock
+        if run_blocking is not None:
+            self._run_blocking = run_blocking
+
+    async def _blocking(self, fn: Callable[..., Any], *args: Any) -> Any:
+        """Run CPU-bound ``fn`` off the loop (OMN-21288)."""
+        return await (self._run_blocking or asyncio.to_thread)(fn, *args)
+
+    @property
+    def coalescer(self) -> MeteringRefreshCoalescer:
+        """OMN-24492: the one coalescer of this writer, its spacing read once from the overlay.
+
+        Built on the first refresh, not at construction, so a broken overlay refuses
+        the refresh that needs it and never the contract load. No overlay reads as the
+        contract's default (0: every refresh runs, as before).
+        """
+        with self._coalescer_lock:
+            if self._coalescer is None:
+                self._coalescer = MeteringRefreshCoalescer(
+                    coalesce_interval_from_overlay(coalesce_default_seconds())
+                )
+            return self._coalescer
 
     @property
     def subscribe_topics(self) -> list[str]:
@@ -158,16 +259,72 @@ class MeteringSummaryProjectionWriter(BaseProjectionRunner):
     async def _refresh(
         self, request: ModelMeteringSummaryRefreshRequested
     ) -> dict[str, Any]:
-        return await refresh_from_store(
-            request, reads_for=self._reads_for, fold_and_store=self._project
+        """OMN-24492: run the refresh the coalescer admits, or count the one it holds back.
+
+        Every refresh refolds every stored run of its tenant, so a burst of delegation
+        terminals spent one fold each. A held-back refresh is never dropped silently: its
+        days join the tenant's pending set, the next run carries them, and the held-back
+        count and the tenants still pending ride in the result and the log.
+        """
+        coalescer = self.coalescer
+        decision = coalescer.admit(request, (self._clock or _utc_now)())
+        if decision.request is None:
+            stats = coalescer.stats()
+            logger.info(
+                "metering refresh %s coalesced (%d held back in all, %d run); "
+                "pending tenants: %s",
+                request.refresh_id,
+                stats.coalesced,
+                stats.runs,
+                sorted(stats.pending),
+            )
+            return {
+                "refresh_id": request.refresh_id,
+                "reason": request.reason.value,
+                "refresh_coalesced": True,
+                "rows_upserted": 0,
+                **_coalesce_cells(stats),
+            }
+        try:
+            result = await refresh_incrementally(
+                decision.request,
+                reads_for=self._reads_for,
+                store_rows=self._store_rows,
+                run_blocking=self._blocking,
+                full_rebuild_reasons=full_rebuild_reasons(),
+                chunk_records=fold_chunk_records(),
+            )
+        except BaseException:
+            coalescer.rollback(decision)
+            raise
+        coalescer.complete(decision)
+        stats = coalescer.stats()
+        logger.info(
+            "metering refresh %s ran (%d run, %d held back in all); pending tenants: %s",
+            request.refresh_id,
+            stats.runs,
+            stats.coalesced,
+            sorted(stats.pending),
         )
+        return {**result, "refresh_coalesced": False, **_coalesce_cells(stats)}
 
     async def _project(
         self, request: ModelMeteringSummaryFoldRequest
     ) -> dict[str, Any]:
-        result = HandlerProjectionMeteringSummary().handle(request)
+        result = await self._blocking(
+            HandlerProjectionMeteringSummary().handle, request
+        )
+        count = await self._store_rows(result.rows)
+        return {
+            "rows_upserted": count,
+            "tenant_id": request.tenant_id,
+            "baseline_model": request.baseline_model,
+        }
+
+    async def _store_rows(self, rows: Sequence[ModelMeteringSummaryRow]) -> int:
+        """Upsert the rows under their own tenants; the count the store returned."""
         count = 0
-        for row in result.rows:
+        for row in rows:
             values = row.model_dump(mode="json")
             # OMN-19513: the upsert names tenant_id, so the adapter refuses it
             # without the row's own tenant (OMN-15919). Unbound, every refresh
@@ -184,8 +341,4 @@ class MeteringSummaryProjectionWriter(BaseProjectionRunner):
                 ),
             )
             count += len(returned)
-        return {
-            "rows_upserted": count,
-            "tenant_id": request.tenant_id,
-            "baseline_model": request.baseline_model,
-        }
+        return count

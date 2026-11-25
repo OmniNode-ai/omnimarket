@@ -18,8 +18,11 @@ description: >
   Reading 2 of the no-file ledger: a census of executable readers and writers of the ledger file's
   name and path variable over the registered repositories, held by a ratchet that only shrinks. The
   repositories, names, variables, comment rules and the ratchet file are overlay settings. A repository
-  that is absent or unreadable, one with no ratchet row and an unreadable ratchet file are typed
-  failures, never a pass. Every run is one emission chain (piece 6): a start, then a success or a
+  that is unreadable, one with no ratchet row and an unreadable ratchet file are typed failures, never a
+  pass. A repository with no clone is counted as absent, named in the result and in the daily record
+  (absent_repositories) and never a failure of the run by itself (operator ruling 2026-11-24T16:19:26Z); a run
+  with no repository present fails with repo-absent. The node declares no alert path of its own: the daily
+  record on the declared topic carries the absent list for a consumer to alert on. Every run is one emission chain (piece 6): a start, then a success or a
   typed failure under one correlation id.
 
 handler:
@@ -28,14 +31,26 @@ handler:
   input_model: omnimarket.nodes.node_work_ledger_file_census_effect.models.model_file_census.ModelCensusRequest
 
 # HandlerFileCensus takes the overlay, the repository source, the ratchet store, the emission sink and
-# the clock as constructor parameters, so the node runs through its own CLI, not handler_routing.
+# the clock as constructor parameters, and the daily-record handlers take the history and the publisher, which the
+# runtime's boot-time auto-wiring cannot supply. So the node declares no handler_routing: the census runs through its own
+# CLI and the tick constructs the two daily-record handlers in process, and they are bound here, beside the census
+# handler, so the contract names every handler the node owns.
+in_process_handlers:
+  census_daily_change:
+    handler:
+      module: "omnimarket.nodes.node_work_ledger_file_census_effect.handlers.handler_daily_change"
+      class: "HandlerDailyChange"
+  census_daily_publication:
+    handler:
+      module: "omnimarket.nodes.node_work_ledger_file_census_effect.handlers.handler_daily_publication"
+      class: "HandlerDailyPublication"
 
 descriptor:
   node_archetype: effect
   runtime_profiles: [effects]
   purity: impure
   idempotent: true
-  side_effects: [file-read, event-journal]
+  side_effects: [file-read, file-write, event-journal, bus-publish]
   timeout_ms: 300000
 
 input_model:
@@ -49,10 +64,30 @@ output_model:
 
 runtime_dispatch:
   external_trigger: true
+  # Once a day and at load, the host timer of node_host_installer_registry_units runs runtime_file_census_tick over every
+  # registered repository, which prints and keeps the daily record and publishes it, with the change against the previous
+  # day, on the declared topic.
+  host_unit:
+    unit: ledger-file-census-systemd
 
+# The daily run puts its record on this topic as one typed event (ModelCensusDailyEvent): the per-repository counts, the
+# runtime-code count and the change against the previous day. The tick publishes through the shared declared-broker
+# publisher, on the broker this node's deployment overlay declares in its `event_bus` (never an environment variable).
 event_bus:
   subscribe_topics: []
-  publish_topics: []
+  publish_topics:
+    - onex.evt.omnimarket.ledger-file-census-daily-record.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.ledger-file-census-daily-record.v1
+
+# The host tick publishes as the host reconciler principal (the host's own machine identity, the one the host install
+# nodes use): it writes the daily-record topic and nothing else.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_HOST_RECONCILER_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ledger-file-census-daily-record.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ledger-file-census-daily-record.v1, operation: DESCRIBE}
 
 overlay:
   node: node_work_ledger_file_census_effect

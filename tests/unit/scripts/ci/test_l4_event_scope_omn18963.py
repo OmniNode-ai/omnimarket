@@ -22,6 +22,7 @@ from scripts.ci.ci_summary_gate import (
     MERGE_ADMISSION_EVENTS,
     external_layer_applies,
 )
+from tests.ci.lint_jobs import lint_steps
 
 pytestmark = pytest.mark.unit
 
@@ -129,7 +130,7 @@ def test_pull_request_preserves_the_full_current_tuple(ref_name: str) -> None:
     # estimate contract. OMN-22478 (operator RULING 2026-11-05T20:27:56Z) removes
     # the two automated review contexts. OMN-25514 removes the delegation-health
     # check, a dev signal admitted by a dated sweep exclusion.
-    assert len(resolved) == 58
+    assert len(resolved) == 59
 
 
 @pytest.mark.parametrize("ref_name", [None, "dev", "main"])
@@ -226,11 +227,11 @@ def test_poller_passes_branch_to_every_gate_invocation() -> None:
 def test_trigger_parity_is_wired_to_required_ci_and_pre_commit() -> None:
     root = Path(__file__).resolve().parents[4]
     workflows = _workflows()
-    lint = workflows["ci.yml"]["jobs"]["lint"]
+    lint = lint_steps(workflows["ci.yml"])
     assert "lint" in gate.STRICT_GATE_JOBS
     step = next(
         step
-        for step in lint["steps"]
+        for step in lint
         if step.get("name") == "CI Summary external producer trigger parity"
     )
     assert "if" not in step

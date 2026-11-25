@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""OMN-20070: repo-owned acceptance evidence and its base-branch caller."""
+"""OMN-20070: repo-owned acceptance evidence and its pull request caller."""
 
 from __future__ import annotations
 
@@ -22,6 +22,12 @@ pytestmark = pytest.mark.unit
 
 _DEV_MERGE_TAG = r"dev-[0-9]{14}-[0-9a-f]{12}"
 
+#: libyaml's loader reads the same documents about ten times faster than the pure-Python one. This
+#: file reads every ticket contract, and it is selected for a data-only pull request (OMN-26270).
+_CONTRACT_LOADER: type[yaml.SafeLoader] | type[yaml.CSafeLoader] = getattr(
+    yaml, "CSafeLoader", yaml.SafeLoader
+)
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CALLER_PATH = REPO_ROOT / ".github" / "workflows" / "call-repo-evidence-gate.yml"
 
@@ -32,12 +38,15 @@ def test_caller_workflow_shape() -> None:
     # PyYAML 1.1 resolves the bare `on:` key to the boolean True.
     triggers = data.get("on", data.get(True))
     assert isinstance(triggers, dict), "caller must declare a mapping on: block"
-    assert "pull_request_target" in triggers, "caller must run from the base branch"
-    assert "pull_request" not in triggers, "caller must not use pull_request"
-    assert "workflow_run" not in triggers, "caller must not use workflow_run"
-    target = triggers["pull_request_target"]
-    assert target["branches"] == ["dev", "main"], "caller must target dev and main"
-    assert target["types"] == [
+    assert set(triggers) == {"pull_request"}, "caller must run only on pull_request"
+    assert "pull_request_target" not in text, "caller must not name the old event"
+    event = triggers["pull_request"]
+    assert isinstance(event, dict), "caller must declare pull_request filters"
+    assert set(event) == {"branches", "types"}, (
+        "caller may filter only by base branch and activity type"
+    )
+    assert event["branches"] == ["dev", "main"], "caller must target dev and main"
+    assert event["types"] == [
         "opened",
         "synchronize",
         "reopened",
@@ -83,10 +92,15 @@ def test_caller_workflow_shape() -> None:
 
 
 _ENV_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*")
+# The one `env` option the binding check reads: it drops a variable and runs the
+# same test. Any other option stays unread, so the command binds nothing.
+_ENV_UNSET_OPTIONS = frozenset({"-u", "--unset"})
 
 
 def _pytest_argv(check_value: str) -> list[str]:
-    """The argv of a `uv run pytest` check, after any leading `env VAR=value` prefix.
+    """The argv of a `uv run pytest` check, after any leading `env` prefix.
+
+    The prefix is `VAR=value` assignments and `-u NAME` / `--unset NAME`.
 
     `env PYTHONDONTWRITEBYTECODE=1 uv run pytest ...` runs the same test as
     `uv run pytest ...`; the verifier accepts both (omnimarket#4317), so the
@@ -95,8 +109,17 @@ def _pytest_argv(check_value: str) -> list[str]:
     tokens = shlex.split(check_value)
     if tokens[:1] == ["env"]:
         tokens = tokens[1:]
-        while tokens and _ENV_ASSIGNMENT.fullmatch(tokens[0]):
-            tokens = tokens[1:]
+        while tokens:
+            if tokens[0] in _ENV_UNSET_OPTIONS:
+                # `-u NAME` / `--unset NAME` consumes the next token (the fleet
+                # runs governed tests as `env -u PYTHONPATH ...`).
+                tokens = tokens[2:]
+            elif tokens[0].startswith("--unset=") or _ENV_ASSIGNMENT.fullmatch(
+                tokens[0]
+            ):
+                tokens = tokens[1:]
+            else:
+                break
     if tokens[:2] != ["uv", "run"]:
         return []
     # `uv run --frozen pytest ...` runs the same test: skip uv's own flags.
@@ -311,7 +334,7 @@ def test_every_repo_contract_binds_every_criterion() -> None:
     assert contracts, "expected at least one repo-owned contracts/OMN-*.yaml"
     violations: list[str] = []
     for path in contracts:
-        contract = yaml.safe_load(path.read_text(encoding="utf-8"))
+        contract = yaml.load(path.read_text(encoding="utf-8"), Loader=_CONTRACT_LOADER)
         for violation in contract_binds_violations(path.name, contract):
             violations.append(
                 f"{violation}\n{binds_diagnosis(contract, violation)}"
@@ -406,6 +429,34 @@ def test_contract_binds_accepts_an_unbound_command_only_deploy_probe() -> None:
         ),
         (
             "uv run --frozen python -m pytest tests/ci/test_repo_evidence_caller_workflow.py",
+            False,
+        ),
+        # env's own `-u NAME` / `--unset NAME` consumes the next token; the fleet
+        # runs every governed test as `env -u PYTHONPATH ...`.
+        (
+            "env -u PYTHONPATH PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -p no:cacheprovider",
+            True,
+        ),
+        (
+            "env -u PYTHONPATH uv run pytest tests/ci/test_repo_evidence_caller_workflow.py",
+            True,
+        ),
+        (
+            "env --unset PYTHONPATH -u VIRTUAL_ENV uv run pytest tests/ci/test_repo_evidence_caller_workflow.py",
+            True,
+        ),
+        (
+            "env --unset=PYTHONPATH uv run pytest tests/ci/test_repo_evidence_caller_workflow.py",
+            True,
+        ),
+        (
+            "env -u PYTHONPATH python -m pytest tests/ci/test_repo_evidence_caller_workflow.py",
+            False,
+        ),
+        ("env -u PYTHONPATH uv run pytest tests/ci/no_such_test_file.py", False),
+        # An env option the grammar does not name is not skipped: it binds nothing.
+        (
+            "env -S PYTHONPATH uv run pytest tests/ci/test_repo_evidence_caller_workflow.py",
             False,
         ),
     ],
@@ -788,7 +839,7 @@ def test_no_repo_contract_binds_a_local_done_gate_item() -> None:
     """OMN-22403: no contract on the tree binds an acceptance criterion to a scoped item."""
     violations: list[str] = []
     for path in sorted((REPO_ROOT / "contracts").glob("OMN-*.yaml")):
-        contract = yaml.safe_load(path.read_text(encoding="utf-8"))
+        contract = yaml.load(path.read_text(encoding="utf-8"), Loader=_CONTRACT_LOADER)
         violations.extend(
             violation
             for violation in contract_binds_violations(path.name, contract)
@@ -805,9 +856,88 @@ def test_omn22496_items_bind_their_criterion_to_a_test_passes_check(
 ) -> None:
     """OMN-22702: each OMN-22496 item binds its criterion to pytest evidence."""
     path = REPO_ROOT / "contracts" / "OMN-22496.yaml"
-    contract = yaml.safe_load(path.read_text(encoding="utf-8"))
+    contract = yaml.load(path.read_text(encoding="utf-8"), Loader=_CONTRACT_LOADER)
     item = next(i for i in contract["dod_evidence"] if i["id"] == item_id)
     assert item["binds_ac"], f"{item_id} binds no criterion"
     kinds = [c.get("check_type") for c in item["checks"]]
     assert "test_passes" in kinds, f"{item_id} has no test_passes check: {kinds}"
     assert contract_binds_violations(path.name, contract) == []
+
+
+def test_contract_binds_refuses_a_declared_criterion_with_no_hosted_binding() -> None:
+    """A declared criterion that only an unbound local_done_gate item reads is refused.
+
+    The kept readings of the review contracts (the alarm node's tests, the PR
+    comments) stay unbound, so their criteria are not declared in the contract.
+    """
+    contract: dict[str, Any] = {
+        "requirements": [{"acceptance": [{"id": "AC1"}]}],
+        "dod_evidence": [
+            {
+                "id": "dod-local-only",
+                "execution_scope": "local_done_gate",
+                "checks": [{"check_type": "command", "check_value": "true"}],
+            }
+        ],
+    }
+    assert contract_binds_violations("OMN-0.yaml", contract) == [
+        "OMN-0.yaml: acceptance criteria missing binds_ac: ['AC1']"
+    ]
+    # Positive control: the same criterion bound to an existing hosted test passes.
+    contract["dod_evidence"].append(
+        {
+            "id": "dod-hosted",
+            "binds_ac": ["AC1"],
+            "checks": [
+                {
+                    "check_type": "test_passes",
+                    "check_value": "uv run pytest tests/test_omn24874_contract_checks.py -q",
+                    "cwd": ".",
+                }
+            ],
+        }
+    )
+    assert contract_binds_violations("OMN-0.yaml", contract) == []
+
+
+def test_no_repo_contract_hides_a_pytest_run_behind_uv_run_frozen_command() -> None:
+    """OMN-26488: a `command` check with `uv run --frozen pytest` binds no test file.
+
+    The binder finds a command-type run by the literal substring `uv run pytest`,
+    so a uv flag between `run` and `pytest` leaves the item unbound. Such a run
+    belongs in a `test_passes` check, whose parser skips uv flags.
+    """
+    offenders: list[str] = []
+    for path in sorted((REPO_ROOT / "contracts").glob("OMN-*.yaml")):
+        contract = yaml.load(path.read_text(encoding="utf-8"), Loader=_CONTRACT_LOADER)
+        for item in contract.get("dod_evidence") or []:
+            if not item.get("binds_ac"):
+                continue
+            for check in item.get("checks") or []:
+                value = str(check.get("check_value", ""))
+                if check.get("check_type") == "command" and re.search(
+                    r"^(?:env\s+(?:-u\s+)?\S+\s+)*uv run --frozen pytest", value
+                ):
+                    offenders.append(f"{path.name}:{item.get('id')}")
+    assert not offenders, "\n".join(offenders)
+
+
+@pytest.mark.parametrize("ticket", ["OMN-22621", "OMN-22623"])
+def test_accepted_pytest_bindings_use_test_passes(ticket: str) -> None:
+    """OMN-19998: the pytest runs that bind OMN-22621 AC1 and OMN-22623 AC2 are test_passes.
+
+    A `command` check binds no test file, so the verifier cannot tie the
+    criterion to the test that proves it.
+    """
+    path = REPO_ROOT / "contracts" / f"{ticket}.yaml"
+    contract = yaml.load(path.read_text(encoding="utf-8"), Loader=_CONTRACT_LOADER)
+    wanted = {"OMN-22621": "AC1", "OMN-22623": "AC2"}[ticket]
+    offenders = [
+        str(item.get("id"))
+        for item in contract.get("dod_evidence") or []
+        if wanted in (item.get("binds_ac") or [])
+        for check in item.get("checks") or []
+        if "pytest" in str(check.get("check_value", ""))
+        and check.get("check_type") != "test_passes"
+    ]
+    assert not offenders, "\n".join(offenders)

@@ -39,7 +39,7 @@ if [[ "$(docker ps -q 2>/dev/null | wc -l | tr -d ' ')" != "0" ]]; then
     echo "WARN: docker has running containers (proof is still valid — nothing we run uses them)"
 fi
 
-uv run onex node node_ledger_state_reducer \
+uv run python -m omnibase_core.cli.cli_commands node node_ledger_state_reducer \
     --input "${INPUT}" \
     --state-root "${STATE_DIR}" \
     --timeout 30

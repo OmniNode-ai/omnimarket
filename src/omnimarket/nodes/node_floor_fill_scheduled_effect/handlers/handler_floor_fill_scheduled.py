@@ -4,7 +4,8 @@
 
 handle takes the runtime tick. A tick inside the overlay's interval returns nothing and does not move the last-run
 time; the tick that is due builds the fill handler on the profile the overlay names, runs one fill tick and returns
-the run event. A refused overlay or an unbound profile is a failed run event that names it, never a silent skip.
+the run event. A refused overlay, an unbound profile, or a live profile whose store DSN variable is unset, is a failed
+run event that names it, never a silent skip.
 """
 
 from __future__ import annotations
@@ -14,19 +15,25 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
+from omnibase_spi.protocols.storage import ProtocolOverlayStore
 
 from omnimarket.handlers.floor_fill_scheduled_tick import (
     FloorFillProfileUnboundError,
+    FloorFillStoreDsnUnsetError,
     run_floor_fill_tick,
 )
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     NodeOverlayNotFoundError,
 )
+from omnimarket.handlers.overlay_store.reader_store import StoreOverlayReader
 from omnimarket.handlers.schedule_gate import ScheduleGate
 from omnimarket.handlers.scheduled_overlay_refusal import ScheduledOverlayRefusalLatch
 from omnimarket.models.schedule_trigger.model_schedule_trigger import (
     ModelScheduleRunEvent,
+)
+from omnimarket.nodes.node_floor_fill_orchestrator.orchestration.ports import (
+    ProtocolFloorStateStore,
 )
 from omnimarket.nodes.node_floor_fill_scheduled_effect.models import (
     ModelFloorFillScheduleOverlay,
@@ -45,6 +52,8 @@ class HandlerFloorFillScheduled:
         build_handler: Callable[[Any], Any] | None = None,
         environ: Mapping[str, str] | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        store: ProtocolFloorStateStore | None = None,
+        overlay_store: ProtocolOverlayStore | None = None,
     ) -> None:
         self._gate = gate or ScheduleGate(
             NODE_NAME, model=ModelFloorFillScheduleOverlay, environ=environ
@@ -52,7 +61,14 @@ class HandlerFloorFillScheduled:
         self._build_handler = build_handler
         self._environ = environ
         self._clock = clock
+        self._store = store
+        self._overlay_store = overlay_store
         self._refusals = ScheduledOverlayRefusalLatch(NODE_NAME)
+
+    @property
+    def overlay_store(self) -> ProtocolOverlayStore | None:
+        """The settings store this handler was constructed with; the fill overlay is read through it when given."""
+        return self._overlay_store
 
     def _event(
         self,
@@ -88,12 +104,24 @@ class HandlerFloorFillScheduled:
                 profile=overlay.profile,
                 environ=self._environ,
                 build_handler=self._build_handler,
+                store=self._store,
+                overlay_reader=(
+                    StoreOverlayReader(self._overlay_store)
+                    if self._overlay_store is not None
+                    else None
+                ),
             )
         except NodeOverlayError:
             return self._event(
                 request,
                 "failed",
                 f"the fill overlay {overlay.fill_overlay_id} could not be read",
+            )
+        except FloorFillStoreDsnUnsetError as exc:
+            return self._event(
+                request,
+                "failed",
+                f"UNKNOWN fill-state:store-dsn-unset:{exc.variable}",
             )
         except FloorFillProfileUnboundError:
             return self._event(
