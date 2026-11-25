@@ -27,6 +27,9 @@ from omnimarket.enums.enum_agent_message_operation import EnumAgentMessageOperat
 from omnimarket.enums.enum_agent_message_refusal import (
     EnumAgentMessageRefusal as EnumNodeRefusal,
 )
+from omnimarket.enums.enum_agent_message_verification_reason import (
+    EnumAgentMessageVerificationReason as EnumVerificationReason,
+)
 from omnimarket.handlers.bus_binding.select import positional_opener
 from omnimarket.models.agent_message.model_agent_message_request import (
     MAX_READ_LIMIT,
@@ -167,6 +170,11 @@ def _raise_for_refusal(result: ModelNodeResult) -> None:
     if result.accepted:
         return
     refusal = result.refusal
+    if result.reason is EnumVerificationReason.SENDER_MISMATCH:
+        raise AgentMessageRefusalError(
+            EnumAgentMessageRefusal.SENDER_MISMATCH,
+            f"the declared sender is not this login's: {result.detail}",
+        )
     code = (
         _REFUSAL_FOR_NODE_REFUSAL[refusal]
         if refusal is not None
