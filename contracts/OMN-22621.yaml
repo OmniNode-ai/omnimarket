@@ -63,3 +63,35 @@ dod_evidence:
   - check_type: command
     check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22621 -- uv run pytest tests/nodes/node_integration_sweep_orchestrator -q --no-cov
     cwd: .
+- id: dod-omn22621-ac1-accepted-20261125t1145z
+  description: "AC1 binding (accepted 2026-11-25T1145Z, proposed by lane=dod-closeout-bind-2026-11-25T1145Z-c2, accepted by lane=dod-closeout-accept-2026-11-25T1145Z-c2). Container-health, Kafka and database probes put the host row's ssh_user in the ssh argv, and a row without ssh_user returns status error with no subprocess call. Re-run at origin/dev 526156dd8f PASSED (3 passed, 5 deselected); with surface_probes.py of the parent of 85d47ed4e4 the module fails to import ssh_destination."
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac: [AC1]
+  checks:
+  - check_type: command
+    check_value: uv run pytest tests/nodes/node_integration_sweep_orchestrator/test_ssh_user_from_host_table.py -q --no-cov -k "argv or without_ssh_user"
+    cwd: .
+- id: dod-omn22621-ac2-accepted-20261125t1145z
+  description: "AC2 binding (accepted 2026-11-25T1145Z, proposed by lane=dod-closeout-bind-2026-11-25T1145Z-c2, accepted by lane=dod-closeout-accept-2026-11-25T1145Z-c2). No .py file under src/omnimarket/nodes/node_integration_sweep_orchestrator has a quoted login literal before an at sign and a brace. Re-run at origin/dev 526156dd8f PASSED; the pattern matches two lines of surface_probes.py at the parent of 85d47ed4e4."
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac: [AC2]
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_integration_sweep_orchestrator/test_ssh_user_from_host_table.py::test_no_login_literal_remains_in_the_node_source -q --no-cov
+    cwd: .
+context:
+  ac_binding_provenance:
+    dod-omn22621-ac1-accepted-20261125t1145z:
+    - label: AC1
+      criterion_hash: 51f266742edc1921bed354957190b4f765caa1f7051781ebde3b49cc7dc54c35
+      proposed_by: lane=dod-closeout-bind-2026-11-25T1145Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-25T1145Z-c2
+      accepted_at: "2026-11-25T12:13:17Z"
+    dod-omn22621-ac2-accepted-20261125t1145z:
+    - label: AC2
+      criterion_hash: ca0628c5059cedbb7c095c30f9c685e30eb7d2773e2233a5973f93005e8e8b8f
+      proposed_by: lane=dod-closeout-bind-2026-11-25T1145Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-25T1145Z-c2
+      accepted_at: "2026-11-25T12:13:17Z"

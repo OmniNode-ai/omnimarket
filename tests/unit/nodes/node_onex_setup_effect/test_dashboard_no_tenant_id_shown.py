@@ -75,7 +75,13 @@ async def test_an_unpriced_run_shows_cost_and_savings_as_not_measured() -> None:
         await pilot.pause()
         text = _log_text(app)
         assert "Beam-1.0-501B-A23B" in text
-        assert "not measured" in text
+        # The run line wraps in the log, so read it as one rendered string.
+        flat = " ".join(
+            "".join(segment.text for segment in line).strip()
+            for line in app.screen_stack[0].query_one("#output").lines
+        )
+        assert "cost not measured" in flat
+        assert "savings not measured" in flat
         assert "$0.0000" not in text
         assert "saved" not in text.lower()
         status = str(app.query_one("#status").render())
