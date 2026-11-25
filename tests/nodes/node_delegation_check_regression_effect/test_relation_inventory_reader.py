@@ -30,6 +30,7 @@ def test_trigger_node_is_a_listed_reader_of_overlay_store() -> None:
     relations = _find_relations(json.loads(INVENTORY.read_text()), "overlay_store")
     assert relations
     assert any(
-        "node_delegation_check_regression_effect" in r["readers"]  # type: ignore[operator]
+        isinstance(r["readers"], list)
+        and "node_delegation_check_regression_effect" in r["readers"]
         for r in relations
     )
