@@ -318,6 +318,9 @@ class CleanInstallCustomerMachine:
                 "PATH": os.pathsep.join([str(root / "bin"), env["PATH"]]),
             }
             python = root / "tool" / (usable.package or "") / "bin" / "python"
+            env_file = root / "session_env.json"
+            env_file.write_text(json.dumps(dict(session_env)), encoding="utf-8")
+            env_file.chmod(0o600)
             drove = self._runner.run(
                 [
                     str(python),
@@ -327,6 +330,8 @@ class CleanInstallCustomerMachine:
                     str(root / "bin" / "onex"),
                     "--root",
                     str(root),
+                    "--env-file",
+                    str(env_file),
                     "--base-url",
                     base_url,
                     "--served-model",

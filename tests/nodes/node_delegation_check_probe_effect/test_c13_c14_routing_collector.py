@@ -11,7 +11,10 @@ chain ends) and on known bad ones (a wrong expected model, an external connect r
 from __future__ import annotations
 
 import copy
+import importlib
 import json
+import re
+import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -63,7 +66,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.protocols.protocol_dele
 
 # The responder row of the settings store, as the chain resolved it. Nothing below names a host of its own: the
 # document is built from these values, the way the driver builds its own from the arguments it is handed.
-BASE = "http://192.0.2.7:8000"  # url-authority-ok: a documentation address, the shape the responder row validates
+BASE = "http://192.0.2.7:8000"
 MODEL = "served-model-x"
 WINDOW = 131072
 INSTALL = "uv tool install --python 3.12 --with 'omnibase-infra>=0.38.67' --with 'omnimarket>=0.4.205' 'omnibase-core>=0.46.8'"
@@ -446,7 +449,15 @@ def test_an_install_that_exits_nonzero_reads_fail_not_absent(tmp_path: Path) -> 
 
 def test_a_driver_that_prints_nothing_reads_precondition_absent(tmp_path: Path) -> None:
     class _Silent(_Runner):
-        def run(self, argv: Sequence[str], **kw: Any) -> CommandResult:  # type: ignore[override]
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            env: Mapping[str, str],
+            cwd: Path,
+            timeout_s: float,
+            stdin: str | None = None,
+        ) -> CommandResult:
             if argv[0] == "uv":
                 return CommandResult(0, "", "")
             return CommandResult(1, "", "Traceback")
@@ -465,3 +476,56 @@ def test_the_observation_never_aliases_the_document() -> None:
         delegate_observation_from_document(document, responder_base=BASE),
         ModelDelegateObservation,
     )
+
+
+DRIVER_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "src/omnimarket/nodes/node_delegation_check_probe_effect/handlers"
+    / "clean_machine_routing_driver.py"
+)
+SUPPRESSION = re.compile(
+    r"#\s*(noqa\b|type:\s*ignore\b|pragma:\s*(no\s+cover|allowlist)\b|nosec\b"
+    r"|[A-Za-z][\w-]*-ok\b)"
+)
+
+
+def test_the_driver_reads_no_process_environment() -> None:
+    """The delegation env-read gate refuses os.environ in a delegation node; the driver is handed its environment."""
+    sys.path.insert(0, str(DRIVER_PATH.parents[5] / "scripts" / "ci"))
+    scanner = importlib.import_module("check_delegation_env_reads")
+    source = DRIVER_PATH.read_text(encoding="utf-8")
+    found = scanner._find_env_calls_in_source(source, str(DRIVER_PATH))
+    assert found == []
+
+
+def test_the_driver_carries_no_suppression_comment() -> None:
+    """The canonical-file-shape ratchet counts suppression comments against base 0; fix the code instead."""
+    hits = [
+        line
+        for line in DRIVER_PATH.read_text(encoding="utf-8").splitlines()
+        if SUPPRESSION.search(line)
+    ]
+    assert hits == []
+
+
+def test_the_session_environment_reaches_the_driver_by_file(tmp_path: Path) -> None:
+    seen: dict[str, Any] = {}
+
+    class _Reading(_Runner):
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            env: Mapping[str, str],
+            cwd: Path,
+            timeout_s: float,
+            stdin: str | None = None,
+        ) -> CommandResult:
+            if "--env-file" in argv:
+                seen["env"] = json.loads(
+                    Path(argv[argv.index("--env-file") + 1]).read_text()
+                )
+            return super().run(argv, env=env, cwd=cwd, timeout_s=timeout_s, stdin=stdin)
+
+    _handler(_machine(tmp_path, _Reading(_document()))).handle(_request("C13"))
+    assert seen["env"]["PATH"].split(":")[0].endswith("/bin")

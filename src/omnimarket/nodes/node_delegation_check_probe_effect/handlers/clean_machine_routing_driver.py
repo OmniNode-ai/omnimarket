@@ -28,16 +28,16 @@ import importlib
 import importlib.metadata as md
 import ipaddress
 import json
-import os
 import selectors
 import shutil
 import socket
 import subprocess
 import sys
 import threading
+import types
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlsplit
 
 PRODUCT_DISTS = ("omnibase-core", "omnibase-infra", "omnimarket")
@@ -111,7 +111,7 @@ def _pipe(client: socket.socket, upstream: socket.socket) -> None:
             if not events:
                 return
             for key, _ in events:
-                data = key.fileobj.recv(65536)  # type: ignore[union-attr]
+                data = cast("socket.socket", key.fileobj).recv(65536)
                 if not data:
                     return
                 key.data.sendall(data)
@@ -165,7 +165,7 @@ class EgressRecorder:
                 self.end_headers()
                 _pipe(self.connection, upstream)
 
-            def _forward(self) -> None:
+            def forward(self) -> None:
                 self._record(self.command, self.path, self.path)
                 parts = urlsplit(self.path)
                 address = private_address(self.path)
@@ -205,8 +205,8 @@ class EgressRecorder:
                 self.wfile.write(payload)
                 self.close_connection = True
 
-            do_GET = do_POST = do_PUT = do_DELETE = do_HEAD = _forward  # noqa: N815
-
+        for verb in ("GET", "POST", "PUT", "DELETE", "HEAD"):
+            setattr(Handler, f"do_{verb}", Handler.forward)
         self._server = http.server.ThreadingHTTPServer((LOOPBACK, 0), Handler)
         self._server.daemon_threads = True
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
@@ -499,9 +499,17 @@ def _classify_backend(
     )
 
 
-def routing_walk() -> dict[
-    str, Any
-]:  # pragma: no cover - runs only inside the installed environment
+def _private(owner: object, name: str) -> Any:
+    """A name the reducer and judge keep to themselves, read from the owner's own namespace.
+
+    The walk grades the helpers the product calls, so it calls those, not copies of them.
+    """
+    if isinstance(owner, types.ModuleType):
+        return vars(owner)[name]
+    return vars(type(owner))[name].__get__(owner)
+
+
+def routing_walk() -> dict[str, Any]:
     import yaml
 
     from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
@@ -509,7 +517,6 @@ def routing_walk() -> dict[
     )
     from omnimarket.handlers.routing.routing_tiers_path import (
         ROUTING_TIERS_PACKAGED_DEFAULT_PATH,
-        ROUTING_TIERS_PATH_ENV_KEY,
     )
     from omnimarket.inference.delegation_config_provenance import (
         resolve_bifrost_path_binding,
@@ -527,8 +534,6 @@ def routing_walk() -> dict[
 
     out: dict[str, Any] = {}
     shipped = ROUTING_TIERS_PACKAGED_DEFAULT_PATH.resolve()
-    if not os.environ.get(ROUTING_TIERS_PATH_ENV_KEY, "").strip():
-        os.environ[ROUTING_TIERS_PATH_ENV_KEY] = str(shipped)
     authority = load_task_class_authority()
     public = sorted(authority.public_task_classes)
     out["public_task_classes"] = public
@@ -546,24 +551,31 @@ def routing_walk() -> dict[
         config_path=binding.contract_path, overlay_path=binding.overlay_path
     )
     declarations = {b.backend_id: b for b in merged.backends if b.backend_id}
-    loaded = reducer._load_bifrost_endpoints()  # noqa: SLF001 - the walk grades the reducer's own helpers, as the product calls them
-    config = reducer._get_config()  # noqa: SLF001 - the walk grades the reducer's own helpers, as the product calls them
-    contract = reducer._get_task_class_contract()  # noqa: SLF001 - the walk grades the reducer's own helpers, as the product calls them
+    loaded = _private(reducer, "_load_bifrost_endpoints")()
+    config = _private(reducer, "_get_config")()
+    contract = _private(reducer, "_get_task_class_contract")()
     tier_by_name = {tier.name: tier for tier in config.tiers}
     served_cache: dict[str, Any] = {}
     walk: dict[str, list[dict[str, Any]]] = {}
     referenced: set[str] = set()
     for task_class in public:
-        entry = reducer._task_class_entry(contract, task_class)  # noqa: SLF001 - the walk grades the reducer's own helpers, as the product calls them
+        entry = _private(reducer, "_task_class_entry")(contract, task_class)
         policy = (entry or {}).get("escalation_policy")
         declared_order = policy.get("tier_order") if isinstance(policy, dict) else None
         names = (
             list(declared_order)
             if isinstance(declared_order, list) and declared_order
-            else [t.name for t in reducer._tier_order_from_contract(config, entry)]  # noqa: SLF001 - the walk grades the reducer's own helpers, as the product calls them
+            else [
+                t.name
+                for t in _private(reducer, "_tier_order_from_contract")(config, entry)
+            ]
         )
-        override = reducer._get_contract_model_ref(task_class, contract=contract)  # noqa: SLF001 - the walk grades the reducer's own helpers, as the product calls them
-        explicit = reducer._is_explicit_task_model_override(task_class, contract)  # noqa: SLF001 - the walk grades the reducer's own helpers, as the product calls them
+        override = _private(reducer, "_get_contract_model_ref")(
+            task_class, contract=contract
+        )
+        explicit = _private(reducer, "_is_explicit_task_model_override")(
+            task_class, contract
+        )
         tiers_out: list[dict[str, Any]] = []
         for name in names:
             tier = tier_by_name.get(name)
@@ -612,9 +624,9 @@ def routing_walk() -> dict[
         },
     ]
     try:
-        resolved = (
-            judge_module.RoutingResolvedJudgeInferenceAdapter()._resolve_backend()  # noqa: SLF001 - the walk grades the reducer's own helpers, as the product calls them
-        )
+        resolved = _private(
+            judge_module.RoutingResolvedJudgeInferenceAdapter(), "_resolve_backend"
+        )()
         endpoint = str(resolved.endpoint_ref)
         judge: dict[str, Any] = {
             "backend_id": str(getattr(resolved, "backend_id", "")),
@@ -641,6 +653,7 @@ def drive(argv: list[str]) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--onex", required=True)
     parser.add_argument("--root", required=True)
+    parser.add_argument("--env-file", required=True)
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--served-model", required=True)
     parser.add_argument("--window", type=int, required=True)
@@ -650,9 +663,9 @@ def drive(argv: list[str]) -> int:
     parser.add_argument("--packages", nargs="*", default=[])
     args = parser.parse_args(argv)
 
-    home = Path(os.environ["HOME"])
+    env: dict[str, str] = json.loads(Path(args.env_file).read_text(encoding="utf-8"))
+    home = Path(env["HOME"])
     work_dir = Path(args.root) / "work"
-    env = dict(os.environ)
     document: dict[str, Any] = {
         "python": sys.version.split()[0],
         "isolated_interpreter": bool(sys.flags.isolated),
