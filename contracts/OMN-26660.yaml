@@ -54,3 +54,10 @@ dod_evidence:
   - check_type: command
     check_value: grep -q 'clean_dashboard_driver.py' docs/reference/model_call_inventory.yaml && grep -q 'vllm_input_token_meter.py' docs/reference/model_call_inventory.yaml
     cwd: .
+- id: dod-omn26660-agent-message-test-hermetic
+  description: 'The agent message CLI test for a node with no declared broker names no workspace root, so a host that sets OMNI_HOME no longer reaches a declared broker and the shard that holds it passes there. This binds no criterion by itself.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/cli/test_agent_message_cli.py -q --no-cov -n 0 -p no:randomly -k a_node_with_no_declared_broker
+    cwd: .
