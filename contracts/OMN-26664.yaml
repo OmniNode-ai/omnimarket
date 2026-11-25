@@ -49,9 +49,8 @@ dod_evidence:
         check_value: uv run --frozen pytest src/omnimarket/nodes/node_process_health_effect/tests tests/unit/nodes/node_work_ledger_reader_effect/test_reader_range_max_pages.py -q --no-cov -n 0 -p no:randomly
         cwd: .
   - id: dod-omn26664-no-ledger-file-open
-    description: source_readers.py holds no read of the ledger file.
+    description: source_readers.py holds no read of the ledger file (a grep; the pytest item below binds AC2).
     source: manual
-    binds_ac: [AC2]
     checks:
       - check_type: command
         check_value: "! sed -n '/^def read_ledger(/,/^def read_landing(/p' src/omnimarket/nodes/node_process_health_effect/handlers/source_readers.py | grep -n 'archive_glob\\|is_file\\|\\.open'"
