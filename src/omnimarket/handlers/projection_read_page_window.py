@@ -59,19 +59,15 @@ def window_body(
     return body
 
 
-async def window_page_body(
-    source: Any,
-    cfg: Any,
-    tenant_id: str | None,
-    window: str | None,
-    window_seconds: int | None,
-    rows_read: int,
+async def window_page(
+    source: Any, cfg: Any, tenant_id: str | None, window: str | None, rows: list[Any]
 ) -> dict[str, Any] | None:
     """:func:`window_body` with the rows the source left out as no instant.
 
     A source that cannot count them, or whose count fails after the page was
     read, leaves ``undated_rows`` absent and says so in the log.
     """
+    window_seconds = parse_window_seconds(window) if window is not None else None
     counter = getattr(source, "undated_window_rows", None)
     undated = None
     if counter is not None:
@@ -79,4 +75,4 @@ async def window_page_body(
             undated = await counter(cfg, tenant_id=tenant_id)
         except Exception as exc:  # the page was read; its count is advisory
             log.warning("window undated-row count unavailable: %r", exc)
-    return window_body(window, window_seconds, rows_read, undated)
+    return window_body(window, window_seconds, len(rows), undated)

@@ -30,7 +30,7 @@ from omnimarket.handlers.projection_read_page_ordering import (
 from omnimarket.handlers.projection_read_page_window import (
     InvalidWindowError,
     parse_window_seconds,
-    window_page_body,
+    window_page,
     window_read_kwargs,
 )
 from omnimarket.handlers.projection_serving import (
@@ -653,7 +653,5 @@ async def read_projection_page(
         "tenant": scope_tenant,
     }
     if window_seconds is not None:
-        body["window"] = await window_page_body(
-            source, cfg, scope_tenant, window, window_seconds, len(all_rows)
-        )
+        body["window"] = await window_page(source, cfg, scope_tenant, window, all_rows)
     return ProjectionPage(200, body)
