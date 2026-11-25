@@ -22,6 +22,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.ci.lint_jobs import lint_steps
+
 pytestmark = pytest.mark.unit
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -35,8 +37,7 @@ _BARE = f"x = 1\n# {_MARKER} fix this\n"
 
 
 def _step() -> dict[str, object]:
-    jobs = yaml.safe_load(CI.read_text(encoding="utf-8"))["jobs"]
-    steps = jobs[JOB_KEY]["steps"]
+    steps = lint_steps(yaml.safe_load(CI.read_text(encoding="utf-8")))
     (step,) = [step for step in steps if step.get("name") == STEP_NAME]
     return step
 

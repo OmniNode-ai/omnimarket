@@ -83,6 +83,7 @@ def build_score_request(
         draft_diff=material.held_diff if is_control else send.draft_diff,
         contract=material.contract,
         check_files=material.check_files,
+        check_item_ids=material.check_item_ids,
         try_identity=ModelCodeScoreTry(
             task_key=send.task_key,
             model_arm=send.model_arm,

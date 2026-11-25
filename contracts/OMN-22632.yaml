@@ -9,6 +9,26 @@ summary: >-
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn22632-ac1-accepted-20261125t1545z:
+    - label: AC1
+      criterion_hash: a07391c2881833dd1b687f6f3b49ca99a70aed9f121bb68c5483949bccb1baa1
+      proposed_by: lane=dod-closeout-bind-2026-11-25T1545Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-25T1545Z-c2
+      accepted_at: '2026-11-25T16:14:20Z'
+    dod-omn22632-ac2-accepted-20261125t1545z:
+    - label: AC2
+      criterion_hash: 8094fffeeadd1ea3215d5c7b2e1a0d874ab0959ef633f8ac4e2b732d00021876
+      proposed_by: lane=dod-closeout-bind-2026-11-25T1545Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-25T1545Z-c2
+      accepted_at: '2026-11-25T16:14:20Z'
+    dod-omn22632-ac3-accepted-20261125t1545z:
+    - label: AC3
+      criterion_hash: 9ecaf9586c0bdd4d09cbdc0a4fbe0ae5c8bc35f70cea8c8bccb79bd4714e0db8
+      proposed_by: lane=dod-closeout-bind-2026-11-25T1545Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-25T1545Z-c2
+      accepted_at: '2026-11-25T16:14:20Z'
 requirements:
   - id: req-omn22632-runtime-lane-env-overlay-model
     statement: A runtime_lane_env overlay loads whole through one typed model, closed to stray keys, with per-lane env whose names are environment names and whose values are not blank and on one line.
@@ -44,4 +64,28 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22632 -- uv run --frozen pytest tests/unit/models/test_runtime_lane_env_overlay_omn22632.py -q --no-cov'
+        cwd: .
+  - id: dod-omn22632-ac1-accepted-20261125t1545z
+    description: 'Accepted binding (2026-11-25T1545Z): a runtime_lane_env document with a schema_version and a lane env of two settings, loaded through load_structured_overlay the way the overlay home loads it, returns exactly that env. The test file does not exist at the merge base.'
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/models/test_runtime_lane_env_overlay_omn22632.py::test_golden_loads_the_way_the_overlay_home_loads_it -q --no-cov
+        cwd: .
+  - id: dod-omn22632-ac2-accepted-20261125t1545z
+    description: 'Accepted binding (2026-11-25T1545Z): a stray key, an unknown schema_version, an empty lane id, an empty or blank value, a multi-line value and a non-string value each raise ValidationError naming the field.'
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/models/test_runtime_lane_env_overlay_omn22632.py::test_error_a_malformed_document_refuses_by_field -q --no-cov
+        cwd: .
+  - id: dod-omn22632-ac3-accepted-20261125t1545z
+    description: 'Accepted binding (2026-11-25T1545Z): a subprocess import of the model module loads only pydantic and the standard library, and the same probe with yaml imported first exits nonzero naming yaml.'
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/models/test_runtime_lane_env_overlay_omn22632.py::test_golden_the_model_imports_with_pydantic_alone tests/unit/models/test_runtime_lane_env_overlay_omn22632.py::test_control_an_extra_import_turns_the_import_check_red -q --no-cov
         cwd: .

@@ -30,6 +30,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.ci.lint_jobs import lint_steps
+
 pytestmark = pytest.mark.unit
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -224,5 +226,5 @@ def test_scan_is_wired_as_hook_and_lint_step() -> None:
     workflow = yaml.safe_load(
         (_REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text()
     )
-    lint_runs = [step.get("run", "") for step in workflow["jobs"]["lint"]["steps"]]
+    lint_runs = [step.get("run", "") for step in lint_steps(workflow)]
     assert any(_SCAN_COMMAND in run for run in lint_runs)
