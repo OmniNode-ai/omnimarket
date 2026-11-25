@@ -40,6 +40,8 @@ class ModelCodeEvalTaskMaterial(BaseModel):
     writable_globs: tuple[str, ...]
     contract: ModelCodeScoreContractRef
     check_files: tuple[ModelCodeScoreCheckFile, ...] = ()
+    #: The contract items whose checks are the score, as the committed suite records them; empty is every item.
+    check_item_ids: tuple[str, ...] = ()
     #: The merged change's diff with the contract and check files taken out; the control's draft.
     held_diff: str
     band: str = Field(min_length=1)

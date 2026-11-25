@@ -203,3 +203,36 @@ def test_replay_over_the_recorded_merges_narrows_two_more_with_the_rule_on() -> 
     }
     assert len(changed) == 2
     assert all(d.kind == "narrowed" for d in on.decisions if d.sha in changed)
+
+
+def test_a_second_deleted_file_does_not_reparse_the_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every deleted-file lookup used to parse every test file again (about 22 s on the real tree).
+
+    The shard-duration test makes dozens of such lookups in one process, so the repeated parse took
+    the shard past its timeout. The parsed references are kept per file text: the first lookup
+    parses, the next ones parse nothing.
+    """
+    from omnimarket.nodes.node_test_selection_selector_compute.handlers import (
+        handler_test_path_resolution as handler,
+    )
+
+    _resolve(tmp_path, ["tests/unit/a/test_gone.py"])
+    parses: list[int] = []
+    real_parse = handler.ast.parse
+
+    def counting_parse(*args: object, **kwargs: object) -> object:
+        parses.append(1)
+        return real_parse(*args, **kwargs)  # type: ignore[call-overload]
+
+    monkeypatch.setattr(handler.ast, "parse", counting_parse)
+    result = HandlerTestPathResolution().handle(
+        ModelPathResolutionRequest(
+            changed_files=("tests/unit/a/test_other_gone.py",),
+            adjacency=_config(),
+            repo_root=str(tmp_path),
+        )
+    )
+    assert ALWAYS in result.selected_paths
+    assert parses == []

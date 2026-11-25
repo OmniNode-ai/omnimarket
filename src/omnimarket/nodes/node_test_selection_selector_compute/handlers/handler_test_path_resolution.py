@@ -86,8 +86,12 @@ def _dotted(path: str) -> str:
     return ".".join(parts)
 
 
-def _references(text: str, module: str, is_package: bool) -> set[str]:
+@cache
+def _references(text: str, module: str, is_package: bool) -> frozenset[str]:
     """Dotted names a file imports or spells in a string (importlib, patch targets).
+
+    Kept per file text: a deleted-file lookup reads every test file again, and one process makes
+    dozens of them, so the parse is done once per distinct text.
 
     Parsed with ast so ``from omnimarket.handlers import adapter_x`` and relative
     imports resolve; a file that does not parse falls back to the dotted names its
@@ -97,7 +101,7 @@ def _references(text: str, module: str, is_package: bool) -> set[str]:
     try:
         tree = ast.parse(text)
     except (SyntaxError, ValueError):
-        return found
+        return frozenset(found)
     package = module.split(".") if is_package else module.split(".")[:-1]
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -113,7 +117,7 @@ def _references(text: str, module: str, is_package: bool) -> set[str]:
             if target:
                 found.add(target)
                 found.update(f"{target}.{alias.name}" for alias in node.names)
-    return found
+    return frozenset(found)
 
 
 @dataclass(frozen=True)
@@ -1076,3 +1080,4 @@ graph_vertex = _vertex
 def clear_import_graph_cache() -> None:
     """Forget the import graphs built so far (one per checkout read)."""
     _import_graph.cache_clear()
+    _references.cache_clear()

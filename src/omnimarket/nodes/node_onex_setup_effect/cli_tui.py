@@ -924,6 +924,8 @@ class SetupScreen(_TabbedScreen[None]):
         self.query_one("#url").display = not hosted
 
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
+        # A key belongs to the provider it was typed for: never offer it to the next.
+        self.query_one("#key", Input).value = ""
         self._show_fields()
         self.query_one("#key" if _hosted(self._provider()) else "#url", Input).focus()
         self.query_one("#note", Static).update(_hint(self._provider()))
