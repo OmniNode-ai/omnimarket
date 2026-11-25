@@ -34,8 +34,18 @@ requirements:
 - id: req-omn24562-tenant-outbox-flush
   statement: The TENANT_CREATED rows node_tenant_provision_effect leaves unpublished in tenant_event_outbox are published to the tenant events topic by one node, each marked published only after the broker acknowledges.
   acceptance:
-  - id: AC5
-    statement: 'AC5: node_tenant_outbox_flush_effect publishes each unpublished outbox row once, leaves a row whose publish failed unmarked for the next pass, and never reads a row already marked published -- falsifier: uv run pytest tests/nodes/node_tenant_outbox_flush_effect -q fails when the mark is moved before the publish or a failed row is marked'
+  - id: AC8
+    statement: 'AC8: node_tenant_outbox_flush_effect publishes each unpublished outbox row once, leaves a row whose publish failed unmarked for the next pass, and never reads a row already marked published -- falsifier: uv run pytest tests/nodes/node_tenant_outbox_flush_effect -q fails when the mark is moved before the publish or a failed row is marked'
+- id: req-omn24562-lint-split-parallel
+  statement: The required lint context is an aggregate of parallel group jobs, every old lint step still runs in exactly one group, and the Direct Model Call Gate positive control judges each planted case on a scratch repository holding only that file.
+  acceptance:
+  - id: AC6
+    statement: 'AC6: ci.yml carries lint-group-1 to lint-group-6 and a lint aggregate that needs all of them, each of the 128 steps listed in tests/ci/lint_steps_before_omn24562.txt runs in one group, and the Direct Model Call Gate positive control runs with --repo-root on a scratch repository -- falsifier: uv run pytest tests/ci/test_lint_split_omn24562.py tests/ci/test_direct_model_call_ci_gate.py fails when a step is dropped from every group or the control scans the whole tree'
+- id: req-omn24562-suite-admission-both-ways
+  statement: A code eval suite task is kept only if its known-good answer passes and an empty answer fails, both through the grader's own score handler.
+  acceptance:
+  - id: AC7
+    statement: 'AC7: the suite admission helper admits a task whose known-good answer passes and whose empty answer fails, and refuses one whose empty answer passes, whose known good fails, or whose check needs the network -- falsifier: tests/nodes/node_code_eval_trial_orchestrator/test_suite_admission_both_ways.py fails collection or any of its tests fails'
 evidence_requirements:
 - kind: tests
   description: The inode alarm tests pass at the pushed head.
@@ -98,29 +108,47 @@ dod_evidence:
     check_value: uv run pytest tests/unit/models/test_tenant_api_key_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn24562-tenant-outbox-flush-ac5
-  description: 'AC5: a published row is not sent twice, a failed publish leaves the row and records the error, a mark follows only an ack, a store that cannot be read is a typed outcome (failing control: the tests fail at the merge base, where the node does not exist).'
+  description: 'AC8: a published row is not sent twice, a failed publish leaves the row and records the error, a mark follows only an ack, a store that cannot be read is a typed outcome (failing control: the tests fail at the merge base, where the node does not exist).'
   source: manual
   binds_ac:
-  - AC5
+  - AC8
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_tenant_outbox_flush_effect -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn24562-outbox-flush-store-scratch-pg
-  description: 'AC5: the Postgres store reads, marks and records failures against a scratch PostgreSQL 16 holding the dev tenant_event_outbox shape (no attempts or last_error column), and against the same table with both columns added (failing control: before the store checked for the columns the first test failed with UndefinedColumnError).'
+  description: 'AC8: the Postgres store reads, marks and records failures against a scratch PostgreSQL 16 holding the dev tenant_event_outbox shape (no attempts or last_error column), and against the same table with both columns added (failing control: before the store checked for the columns the first test failed with UndefinedColumnError).'
   source: manual
   binds_ac:
-  - AC5
+  - AC8
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_tenant_outbox_flush_effect/test_outbox_postgres_scratch.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn24562-outbox-flush-autowires-bare
-  description: 'AC5: the runtime builds HandlerTenantOutboxFlush with no arguments and the infra auto-wiring wires the node in process without quarantining its handler, the way node_tenant_provision_effect wires (failing control: with the handler requiring store, publisher and topic, the auto-wiring test fails naming node_tenant_outbox_flush_effect and the bare-construction test fails with TypeError).'
+  description: 'AC8: the runtime builds HandlerTenantOutboxFlush with no arguments and the infra auto-wiring wires the node in process without quarantining its handler, the way node_tenant_provision_effect wires (failing control: with the handler requiring store, publisher and topic, the auto-wiring test fails naming node_tenant_outbox_flush_effect and the bare-construction test fails with TypeError).'
   source: manual
   binds_ac:
-  - AC5
+  - AC8
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_tenant_outbox_flush_effect/test_flush_handler.py -q -n 0 --no-cov -p no:cacheprovider -k bare
+    cwd: .
+- id: dod-omn24562-lint-split-parallel
+  description: 'AC6: the lint job is split into six parallel group jobs behind a lint aggregate with the same name; the test lists every old step and refuses a missing one (failing control: before the split the test fails on 128 missing steps, dropping Ruff check from every group fails test_dropping_a_step_is_refused), and the Direct Model Call Gate positive control runs each plant on a scratch repository.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_lint_split_omn24562.py tests/ci/test_direct_model_call_ci_gate.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24562-suite-admission-both-ways
+  description: A code eval suite task is kept only if its known-good answer passes and an empty answer fails, both run through the grader's own score handler; a recorded task whose merge carries another ticket's contract or a deploy-time check is read by the suite's recorded held paths and check items (the test file fails at collection before the admission helper exists and passes after).
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_code_eval_trial_orchestrator/test_suite_admission_both_ways.py -q --no-cov -n 0 -p no:randomly
     cwd: .

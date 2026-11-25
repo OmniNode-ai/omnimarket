@@ -33,6 +33,10 @@
    "reason": "omnibase_core:over_40_files_or_binary"
   },
   {
+   "count": 2,
+   "reason": "omnibase_infra:check_names_network_or_live_host_not_runnable_in_a_worktree"
+  },
+  {
    "count": 523,
    "reason": "omnibase_infra:check_names_no_touched_path"
   },
@@ -163,6 +167,10 @@
   {
    "count": 29,
    "reason": "omniintelligence:over_40_files_or_binary"
+  },
+  {
+   "count": 16,
+   "reason": "omnimarket:check_names_network_or_live_host_not_runnable_in_a_worktree"
   },
   {
    "count": 1090,
@@ -3042,60 +3050,6 @@
   },
   {
    "band": "M",
-   "base_commit": "4d6ec05e0d5fc9dd17decfa7cc88cfb35b5ab7af",
-   "check_files": [
-    "docs/decisions/omn-21950-stage1-read.yaml",
-    "tests/integration/nodes/node_bus_forwarder_effect/test_forwarder_container_source_omn21950.py",
-    "tests/unit/nodes/node_bus_forwarder_effect/test_forwarder_source_bus_container_omn21950.py",
-    "tests/unit/nodes/node_bus_forwarder_effect/test_lane_mirror_tenant_topic_omn21950.py"
-   ],
-   "checks": [
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run --frozen pytest tests/unit/nodes/node_bus_forwarder_effect -q --no-cov -k \"in_memory_source or source_bus_container\"",
-     "item_id": "dod-omn21950-ac1-in-memory-source"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run --frozen pytest tests/unit/nodes/node_bus_forwarder_effect -q --no-cov -k tenant_topic",
-     "item_id": "dod-omn21950-ac2-tenant-topic"
-    },
-    {
-     "check_type": "command",
-     "check_value": "grep -q 'validator_event_chain_walker.py' docs/decisions/omn-21950-stage1-read.yaml && grep -q 'validate-no-direct-io.py' docs/decisions/omn-21950-stage1-read.yaml && grep -q 'Result: none of these fails' docs/decisions/omn-21950-stage1-read.yaml",
-     "item_id": "dod-omn21950-ac3-stage1-read"
-    },
-    {
-     "check_type": "command",
-     "check_value": "uv run --frozen pytest tests/integration/nodes/node_bus_forwarder_effect/test_forwarder_container_source_omn21950.py -q --no-cov && gh api \"repos/OmniNode-ai/omnibase_infra/contents/src/omnibase_infra/nodes/node_bus_forwarder_effect/models/model_gateway_forwarder_runtime_config.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -F 'def lane_mirror_source_from_container' > /dev/null",
-     "item_id": "dod-omn21950-deploy-source-from-container"
-    }
-   ],
-   "contract_id": "OMN-21950",
-   "control": "fail_check",
-   "control_source": null,
-   "files_changed": 16,
-   "held_paths": [
-    "src/omnibase_infra/nodes/node_bus_forwarder_effect/contract.yaml",
-    "src/omnibase_infra/nodes/node_bus_forwarder_effect/models/__init__.py",
-    "src/omnibase_infra/nodes/node_bus_forwarder_effect/models/model_gateway_container_source_bus.py",
-    "src/omnibase_infra/nodes/node_bus_forwarder_effect/models/model_gateway_forwarder_runtime_config.py",
-    "src/omnibase_infra/nodes/node_bus_forwarder_effect/models/model_gateway_lane_mirror_config.py",
-    "src/omnibase_infra/nodes/node_bus_forwarder_effect/services/service_gateway_delivery.py",
-    "src/omnibase_infra/nodes/node_bus_forwarder_effect/services/service_lane_mirror.py",
-    "src/omnibase_infra/nodes/node_bus_forwarder_effect/services/service_lane_mirror_bus_source.py",
-    "src/omnibase_infra/nodes/node_bus_forwarder_effect/services/service_lane_mirror_guard.py",
-    "src/omnibase_infra/runtime/gateway_forwarder.py",
-    "tests/integration/nodes/node_bus_forwarder_effect/__init__.py"
-   ],
-   "lines_changed": 1387,
-   "merge_commit": "3636a4bcf44d72dd98f21af07c336523b55b8841",
-   "merged_at": "2026-11-03T00:58:19Z",
-   "repository": "omnibase_infra",
-   "subject": "feat(OMN-21950): the forwarder takes its lane-mirror source bus from the container and writes the tenant topic (#5567)"
-  },
-  {
-   "band": "M",
    "base_commit": "9a050949f12e807840bd590ae23a51c3f45d7079",
    "check_files": [
     "tests/ci/test_core_validators_wired_omn21538.py"
@@ -3612,39 +3566,6 @@
    "merged_at": "2026-10-13T00:57:59Z",
    "repository": "omnibase_infra",
    "subject": "chore(OMN-13912): post-release dev version bump to 0.38.72 (#4908)"
-  },
-  {
-   "band": "S",
-   "base_commit": "3126443c039ea67718d679c0148dda69d1d318c8",
-   "check_files": [
-    "docker/migrations/forward/nodes/node_projection_delegation/0064_delegation_events_data_source_experiment.sql",
-    "tests/unit/migrations/test_omn19448_data_source_experiment_vendored.py"
-   ],
-   "checks": [
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run --frozen pytest tests/unit/migrations/test_omn19448_data_source_experiment_vendored.py -q",
-     "item_id": "dod-omn19448-vendored-0064-test"
-    },
-    {
-     "check_type": "command",
-     "check_value": "bash -eu -o pipefail <<'PROBE'\nmigrations=docker/migrations/forward/nodes/node_projection_delegation\nname=\"omn19448-readback-$$\"\ndocker run --detach --name \"$name\" -e POSTGRES_HOST_AUTH_METHOD=trust postgres:16-alpine >/dev/null\ntrap 'docker rm -f \"$name\" >/dev/null' EXIT\nready=0\nfor _ in $(seq 1 60); do\n  if docker exec \"$name\" pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1; then ready=1; break; fi\n  sleep 1\ndone\ntest \"$ready\" = 1\npsql() { docker exec \"$name\" psql -X -h 127.0.0.1 -U postgres -v ON_ERROR_STOP=1 -qAt \"$@\" </dev/null; }\napply() { docker exec -i \"$name\" psql -X -h 127.0.0.1 -U postgres -v ON_ERROR_STOP=1 -q < \"$migrations/$1\"; }\npsql -c \"CREATE TABLE delegation_events (id serial PRIMARY KEY)\"\napply 0049_delegation_events_data_source.sql\npsql -c \"INSERT INTO delegation_events (data_source) VALUES ('real'), ('fixture')\"\nif psql -c \"INSERT INTO delegation_events (data_source) VALUES ('experiment')\" 2>/dev/null; then echo \"experiment accepted before 0064\"; exit 1; fi\napply 0064_delegation_events_data_source_experiment.sql\npsql -c \"INSERT INTO delegation_events (data_source) VALUES ('experiment')\"\nif psql -c \"INSERT INTO delegation_events (data_source) VALUES ('bogus')\" 2>/dev/null; then echo \"bogus accepted after 0064\"; exit 1; fi\ntest \"$(psql -c \"SELECT string_agg(data_source, ',' ORDER BY id) FROM delegation_events\")\" = \"real,fixture,experiment\"\ntest \"$(psql -c \"SELECT convalidated FROM pg_constraint WHERE conname = 'delegation_events_data_source_check'\")\" = \"f\"\necho \"READBACK PASS\"\nPROBE\n",
-     "item_id": "dod-omn19448-postgres-0064-readback"
-    }
-   ],
-   "contract_id": "OMN-19448",
-   "control": "pass",
-   "control_source": null,
-   "files_changed": 5,
-   "held_paths": [
-    "config/migration_classes.yaml",
-    "docker/migrations/forward/_ledger/application-migrations.tsv"
-   ],
-   "lines_changed": 160,
-   "merge_commit": "7e969fd8c88ba393db4b5dcbcb680a397a785a7f",
-   "merged_at": "2026-10-24T11:31:11Z",
-   "repository": "omnibase_infra",
-   "subject": "feat(OMN-19448): vendor delegation_events 0064, data_source admits experiment (#5326)"
   },
   {
    "band": "S",
@@ -5425,145 +5346,6 @@
   },
   {
    "band": "M",
-   "base_commit": "fe2bc80f4e6d8eb43d89806415abb7c3f757915b",
-   "check_files": [
-    "benchmarks/delegation_ladder/tests/test_workflow_request_scorer.py",
-    "src/omnimarket/handlers/workflow_request_score.py",
-    "src/omnimarket/nodes/node_routing_complexity_compute/contracts/task_complexity_rubric.v1.yaml"
-   ],
-   "checks": [
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest benchmarks/delegation_ladder/tests/test_workflow_request_scorer.py -k \"ac1 or complete_type_correct or catalogue_parameter_for_parameter\" -q -n 0 -p no:randomly --no-cov",
-     "item_id": "dod-omn18339-ac1"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest benchmarks/delegation_ladder/tests/test_workflow_request_scorer.py -k ac2 -q -n 0 -p no:randomly --no-cov",
-     "item_id": "dod-omn18339-ac2"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest benchmarks/delegation_ladder/tests/test_workflow_request_scorer.py -k ac3 -q -n 0 -p no:randomly --no-cov",
-     "item_id": "dod-omn18339-ac3"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest benchmarks/delegation_ladder/tests/test_workflow_request_scorer.py -k ac5 -q -n 0 -p no:randomly --no-cov",
-     "item_id": "dod-omn18339-ac5"
-    },
-    {
-     "check_type": "command",
-     "check_value": "set -eu;\nreadback_dir=\"$(mktemp -d)\";\ntrap 'rm -rf \"$readback_dir\"' EXIT;\nrevision=\"$(git rev-parse HEAD)\";\nhandler=src/omnimarket/handlers/workflow_request_score.py;\nrubric=src/omnimarket/nodes/node_routing_complexity_compute/contracts/task_complexity_rubric.v1.yaml;\ncurl --fail --silent --show-error --location --max-time 30 \\\n  \"https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$handler\" \\\n  --output \"$readback_dir/handler.py\";\ncurl --fail --silent --show-error --location --max-time 30 \\\n  \"https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$rubric\" \\\n  --output \"$readback_dir/rubric.yaml\";\ncmp \"$handler\" \"$readback_dir/handler.py\";\ngrep -F 'def score_workflow_request(' \"$readback_dir/handler.py\";\ngrep -F '  workflow_request: exact_match' \"$readback_dir/rubric.yaml\";\nprintf 'workflow request scorer source readback matched %s\\n' \"$revision\"\n",
-     "item_id": "deploy-probe"
-    }
-   ],
-   "contract_id": "OMN-18339",
-   "control": "fail_check",
-   "control_source": null,
-   "files_changed": 28,
-   "held_paths": [
-    "benchmarks/delegation_ladder/build_bundles.py",
-    "benchmarks/delegation_ladder/bundles/R3b-01.json",
-    "benchmarks/delegation_ladder/bundles/R3b-02.json",
-    "benchmarks/delegation_ladder/bundles/R3b-03.json",
-    "benchmarks/delegation_ladder/bundles/R3b-04.json",
-    "benchmarks/delegation_ladder/fixtures/r3b_04_patch_applies.diff",
-    "benchmarks/delegation_ladder/fixtures/r3b_04_patch_does_not_apply.diff",
-    "benchmarks/delegation_ladder/fixtures/r3b_04_usage_normalizer.txt",
-    "benchmarks/delegation_ladder/fixtures/r3b_patch_check.json",
-    "benchmarks/delegation_ladder/fixtures/r3b_review_counterexamples.json",
-    "benchmarks/delegation_ladder/fixtures/workflow_request_schemas.json",
-    "benchmarks/delegation_ladder/models.py",
-    "benchmarks/delegation_ladder/results/local-r3b-04-second-attempt-20261109.json",
-    "benchmarks/delegation_ladder/results/local-r3b-workflow-request-20261109.json",
-    "benchmarks/delegation_ladder/results/r3b-superseded.json",
-    "benchmarks/delegation_ladder/results/responses/local-r3b-workflow-request/R3b-01.json",
-    "benchmarks/delegation_ladder/results/responses/local-r3b-workflow-request/R3b-02.json",
-    "benchmarks/delegation_ladder/results/responses/local-r3b-workflow-request/R3b-03.json",
-    "benchmarks/delegation_ladder/results/responses/local-r3b-workflow-request/R3b-04.json",
-    "benchmarks/delegation_ladder/run_ladder.py",
-    "benchmarks/delegation_ladder/scorers.py",
-    "benchmarks/delegation_ladder/tests/test_delegate_timeout_argv.py",
-    "src/omnimarket/models/model_workflow_request_score.py",
-    "tests/unit/delegation/test_omn20844_line_citation_needs_numbered_input.py"
-   ],
-   "lines_changed": 2057,
-   "merge_commit": "0c4619863e559824bc1a9c048c70bf00982b8451",
-   "merged_at": "2026-11-10T13:36:12Z",
-   "repository": "omnimarket",
-   "subject": "feat(OMN-18339): R3b scores workflow requests against the catalogue request schemas (#5612)"
-  },
-  {
-   "band": "M",
-   "base_commit": "ab46433ae031f1a5df8e96fd5e8e079cff85085f",
-   "check_files": [
-    "src/omnimarket/nodes/node_lab_fill_effect/contract.yaml",
-    "src/omnimarket/nodes/node_lab_fill_effect/handlers/__init__.py",
-    "src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_launch.py",
-    "src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_send.py",
-    "src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_send_gate.py",
-    "src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_tick.py",
-    "src/omnimarket/nodes/node_lab_fill_effect/models/model_lab_fill_effect.py",
-    "src/omnimarket/nodes/node_lab_fill_effect/models/model_lab_fill_send.py",
-    "src/omnimarket/nodes/node_lab_fill_effect/models/model_lab_fill_send_gate.py",
-    "src/omnimarket/nodes/node_lab_fill_effect/models/model_lab_fill_tick.py",
-    "src/omnimarket/nodes/node_lab_fill_effect/protocols/__init__.py",
-    "src/omnimarket/nodes/node_lab_fill_effect/protocols/local_lab_fill_adapters.py",
-    "src/omnimarket/nodes/node_lab_fill_effect/protocols/protocol_lab_fill_effect.py",
-    "tests/nodes/node_lab_fill_effect/test_lab_fill_send.py"
-   ],
-   "checks": [
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_lab_fill_effect/test_lab_fill_send.py -k lab_fill_send -q --no-cov --tb=line",
-     "item_id": "dod-omn23277-ac1"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_lab_fill_effect/test_lab_fill_send.py -k merged_ticket_skip -q --no-cov --tb=line",
-     "item_id": "dod-omn23277-ac2"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_lab_fill_effect/test_lab_fill_send.py -k h200_bound -q --no-cov --tb=line",
-     "item_id": "dod-omn23277-ac3"
-    },
-    {
-     "check_type": "command",
-     "check_value": "set -eu\nreadback_dir=\"$(mktemp -d)\"\ntrap 'rm -rf \"$readback_dir\"' EXIT\nrevision=\"$(git rev-parse HEAD)\"\nfor module in handlers/handler_lab_fill_send.py handlers/handler_lab_fill_send_gate.py; do\n  path=\"src/omnimarket/nodes/node_lab_fill_effect/$module\"\n  curl --fail --silent --show-error --location --max-time 10 \\\n    \"https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path\" \\\n    --output \"$readback_dir/source.py\"\n  cmp \"$path\" \"$readback_dir/source.py\"\ndone\ngrep -c '^class HandlerLabFillSendGate' src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_send_gate.py\nprintf 'lab-fill send gate source readback matched %s\\n' \"$revision\"\n",
-     "item_id": "dod-omn23277-deploy-source-readback"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_lab_fill_effect/test_lab_fill_send.py -q --no-cov --tb=line",
-     "item_id": "dod-omn23277-deploy-source-readback"
-    }
-   ],
-   "contract_id": "OMN-23277",
-   "control": "fail_check",
-   "control_source": null,
-   "files_changed": 25,
-   "held_paths": [
-    "src/omnimarket/nodes/node_lab_fill_plan_compute/handlers/handler_lab_fill_lane_render.py",
-    "tests/nodes/node_internal_release_path_guard_compute/test_internal_release_path_guard.py",
-    "tests/nodes/node_lab_fill_effect/fakes.py",
-    "tests/nodes/node_lab_fill_effect/test_cycle_chain_lab_fill.py",
-    "tests/nodes/node_lab_fill_effect/test_error_chain_lab_fill_effect.py",
-    "tests/nodes/node_lab_fill_effect/test_error_chain_lab_fill_tick.py",
-    "tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_effect.py",
-    "tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_tick.py",
-    "tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_zero_placement.py",
-    "tests/unit/nodes/node_lab_fill_effect/test_lab_fill_cloud_placement.py"
-   ],
-   "lines_changed": 748,
-   "merge_commit": "0ca5b77b2ab6f7a04f6ec83a4f9f260bcb1b7d6b",
-   "merged_at": "2026-11-09T14:37:38Z",
-   "repository": "omnimarket",
-   "subject": "feat(OMN-23277): lab fill send gate skips merged tickets and keeps lab-bound briefs off unreachable hosts (#5565)"
-  },
-  {
-   "band": "M",
    "base_commit": "d6a2ab2204dc91b6dd642da9c4890bd0374f9167",
    "check_files": [
     "tests/unit/nodes/node_floor_simple_effect/test_customer_health_line_tick.py",
@@ -6941,61 +6723,6 @@
   },
   {
    "band": "M",
-   "base_commit": "1f6c2951e2a8d03ae461ae382cbef67b6ad7629f",
-   "check_files": [
-    "src/omnimarket/nodes/node_work_ledger_query_effect/handlers/handler_work_ledger_query.py",
-    "src/omnimarket/nodes/node_work_ledger_query_effect/handlers/work_ledger_query_reader.py",
-    "src/omnimarket/nodes/node_work_ledger_query_effect/handlers/work_ledger_query_replay.py",
-    "src/omnimarket/nodes/node_work_ledger_query_effect/handlers/work_ledger_state_answer.py",
-    "tests/test_work_ledger_point_query_postgres.py",
-    "tests/unit/nodes/node_work_ledger_query_effect/test_point_query_state.py"
-   ],
-   "checks": [
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/test_work_ledger_point_query_postgres.py -k timed_loop -q --no-cov --tb=line",
-     "item_id": "dod-omn21948-ac1-latency"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_point_query_state.py -k \"point_query or fault\" -q --no-cov --tb=line",
-     "item_id": "dod-omn21948-ac2-fault"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_point_query_state.py -k \"page or watermark\" -q --no-cov --tb=line",
-     "item_id": "dod-omn21948-ac3-page-watermark"
-    },
-    {
-     "check_type": "command",
-     "check_value": "set -eu;\nreadback_dir=\"$(mktemp -d)\";\ntrap 'rm -rf \"$readback_dir\"' EXIT;\nrevision=\"$(git rev-parse HEAD)\";\nfor module in handler_work_ledger_query work_ledger_query_reader; do\n  path=\"src/omnimarket/nodes/node_work_ledger_query_effect/handlers/$module.py\";\n  curl --fail --silent --show-error --location --max-time 30 \\\n    \"https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path\" \\\n    --output \"$readback_dir/$module.py\";\n  cmp \"$path\" \"$readback_dir/$module.py\";\n  grep -F 'read_state_page' \"$readback_dir/$module.py\";\ndone;\nenv PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_point_query_state.py -q --no-cov --tb=line\n",
-     "item_id": "dod-omn21948-deploy-probe-point-query-state"
-    }
-   ],
-   "contract_id": "OMN-21948",
-   "control": "fail_check",
-   "control_source": null,
-   "files_changed": 17,
-   "held_paths": [
-    "config/test_file_durations.json",
-    "docs/evidence/OMN-15423-relation-inventory.json",
-    "src/omnimarket/models/work_ledger_query/__init__.py",
-    "src/omnimarket/models/work_ledger_query/model_work_ledger_query.py",
-    "src/omnimarket/models/work_ledger_query/model_work_ledger_state.py",
-    "src/omnimarket/nodes/node_work_ledger_query_effect/contract.yaml",
-    "src/omnimarket/nodes/node_work_ledger_query_effect/metadata.yaml",
-    "tests/unit/nodes/node_work_ledger_query_effect/__init__.py",
-    "tests/unit/nodes/node_work_ledger_query_effect/state_fixtures.py",
-    "tests/unit/nodes/node_work_ledger_query_effect/test_point_query_postgres_reader.py"
-   ],
-   "lines_changed": 2095,
-   "merge_commit": "2a2e2fe04b8b403c3f222568139961a2e095d94b",
-   "merged_at": "2026-11-02T18:17:17Z",
-   "repository": "omnimarket",
-   "subject": "OMN-21948 state-backed point queries for the work ledger read node (#4813)"
-  },
-  {
-   "band": "M",
    "base_commit": "8ee3d6103e22f92ef25c7794252681822de1d520",
    "check_files": [
     "tests/unit/nodes/node_delegate_skill_orchestrator/test_delegation_reaper_omn19441.py"
@@ -7429,83 +7156,6 @@
    "subject": "feat(OMN-22914): J5 join handler and golden and error join tests for a ledger append under a store-resolved identity (#5286)"
   },
   {
-   "band": "M",
-   "base_commit": "94917dc5138dbda6d117d0ab8889c58130debd35",
-   "check_files": [
-    "src/omnimarket/nodes/node_network_graph_compute/__init__.py",
-    "src/omnimarket/nodes/node_network_graph_compute/container/__init__.py",
-    "src/omnimarket/nodes/node_network_graph_compute/container/container_network_graph_compute.py",
-    "src/omnimarket/nodes/node_network_graph_compute/contract.yaml",
-    "src/omnimarket/nodes/node_network_graph_compute/handlers/__init__.py",
-    "src/omnimarket/nodes/node_network_graph_compute/handlers/contract_reader.py",
-    "src/omnimarket/nodes/node_network_graph_compute/handlers/dialect_table.py",
-    "src/omnimarket/nodes/node_network_graph_compute/handlers/handler_network_graph_compute.py",
-    "src/omnimarket/nodes/node_network_graph_compute/metadata.yaml",
-    "src/omnimarket/nodes/node_network_graph_compute/models/__init__.py",
-    "src/omnimarket/nodes/node_network_graph_compute/node.py",
-    "tests/nodes/node_network_graph_compute/__init__.py",
-    "tests/nodes/node_network_graph_compute/support.py",
-    "tests/nodes/node_network_graph_compute/test_dialect.py",
-    "tests/nodes/node_network_graph_compute/test_edges.py",
-    "tests/nodes/node_network_graph_compute/test_node_rule.py",
-    "tests/nodes/node_network_graph_compute/test_profile_parity.py",
-    "tests/nodes/node_network_graph_compute/test_registration.py",
-    "tests/nodes/node_network_graph_compute/test_vertex.py"
-   ],
-   "checks": [
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_network_graph_compute -q --no-cov -k dialect --tb=line",
-     "item_id": "dod-001"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_network_graph_compute -q --no-cov -k vertex --tb=line",
-     "item_id": "dod-002"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_network_graph_compute -q --no-cov -k edges --tb=line",
-     "item_id": "dod-003"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_network_graph_compute -q --no-cov -k node_rule --tb=line",
-     "item_id": "dod-004"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_network_graph_compute -q --no-cov -k profile_parity --tb=line",
-     "item_id": "dod-005"
-    },
-    {
-     "check_type": "command",
-     "check_value": "set -eu;\nreadback_dir=\"$(mktemp -d)\";\ntrap 'rm -rf \"$readback_dir\"' EXIT;\nrevision=\"$(git rev-parse HEAD)\";\nnode_path=src/omnimarket/nodes/node_network_graph_compute;\nfor relative_path in handlers/handler_network_graph_compute.py handlers/dialect_table.py contract.yaml; do\n  target=\"$readback_dir/$(basename \"$relative_path\")\";\n  curl --fail --silent --show-error --location --max-time 30 \\\n    \"https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$node_path/$relative_path\" \\\n    --output \"$target\";\n  cmp \"$node_path/$relative_path\" \"$target\";\ndone;\ngrep -F 'class HandlerNetworkGraphCompute:' \"$readback_dir/handler_network_graph_compute.py\";\ngrep -F 'read_declared_topics(parsed, DIALECT_TABLE)' \"$readback_dir/handler_network_graph_compute.py\";\ngrep -F 'command_topic: onex.cmd.omnimarket.network-graph-compute-requested.v1' \"$readback_dir/contract.yaml\";\nprintf 'network graph compute source readback matched %s\\n' \"$revision\"\n",
-     "item_id": "dod-omn22255-deploy-source-readback"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_network_graph_compute/test_registration.py tests/nodes/node_network_graph_compute/test_profile_parity.py -q --no-cov -m \"not kafka\" --tb=line",
-     "item_id": "dod-omn22255-deploy-source-readback"
-    }
-   ],
-   "contract_id": "OMN-22255",
-   "control": "fail_check",
-   "control_source": null,
-   "files_changed": 24,
-   "held_paths": [
-    "pyproject.toml",
-    "src/omnimarket/models/network_graph/__init__.py",
-    "src/omnimarket/models/network_graph/enum_network_graph.py",
-    "src/omnimarket/models/network_graph/model_network_graph.py"
-   ],
-   "lines_changed": 1632,
-   "merge_commit": "389da871642f8349c567709a71cff60459b3f1f7",
-   "merged_at": "2026-11-04T03:45:00Z",
-   "repository": "omnimarket",
-   "subject": "feat(OMN-22255): network graph compute node reads every topic dialect and returns vertices keyed repo/name with exact topic edges (#4977)"
-  },
-  {
    "band": "S",
    "base_commit": "8455a05816c4260a511b68e12fd07b01d8144606",
    "check_files": [
@@ -7540,50 +7190,6 @@
    "merged_at": "2026-10-22T03:44:40Z",
    "repository": "omnimarket",
    "subject": "fix(OMN-21300): import the Kafka transport before the emit publish timeout starts (#4300)"
-  },
-  {
-   "band": "M",
-   "base_commit": "7a96f247f42956b771bb12b9d3c882e0d6c8fd97",
-   "check_files": [
-    "src/omnimarket/nodes/node_host_reconcile_effect/handlers/handler_host_reconcile_effect.py",
-    "tests/test_host_reconcile_compute.py",
-    "tests/test_host_reconcile_effect.py"
-   ],
-   "checks": [
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/test_host_reconcile_effect.py -q --no-cov --tb=line -k dangling_shadow_is_reported_in_check_mode",
-     "item_id": "dod-omn22146-ac1"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/test_host_reconcile_effect.py -q --no-cov --tb=line -k dangling_shadow_repair_links_the_wrapper",
-     "item_id": "dod-omn22146-ac2"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/test_host_reconcile_effect.py tests/test_host_reconcile_compute.py -q --no-cov --tb=line -k \"dangling or remedies or path_shadow\"",
-     "item_id": "dod-omn22146-ac3"
-    },
-    {
-     "check_type": "command",
-     "check_value": "set -eu;\nreadback_dir=\"$(mktemp -d)\";\ntrap 'rm -rf \"$readback_dir\"' EXIT;\nrevision=\"$(git rev-parse HEAD)\";\npath=src/omnimarket/nodes/node_host_reconcile_effect/handlers/handler_host_reconcile_effect.py;\ncurl --fail --silent --show-error --location --max-time 30 \\\n  \"https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path\" \\\n  --output \"$readback_dir/handler.py\";\ncmp \"$path\" \"$readback_dir/handler.py\";\ngrep -F 'def replace_dangling_shadow(' \"$readback_dir/handler.py\";\ngrep -F 'self.replace_dangling_shadow(shadow, wrapper)' \"$readback_dir/handler.py\";\nif grep -En '\\bh[0-9]{3}\\b' \"$readback_dir/handler.py\"; then exit 1; fi;\nprintf 'host reconcile handler source readback matched %s\\n' \"$revision\"\n",
-     "item_id": "dod-omn22146-deploy-source-readback"
-    }
-   ],
-   "contract_id": "OMN-22146",
-   "control": "fail_check",
-   "control_source": null,
-   "files_changed": 6,
-   "held_paths": [
-    "src/omnimarket/models/model_host_reconcile.py",
-    "src/omnimarket/nodes/node_host_reconcile_compute/handlers/handler_host_reconcile_compute.py"
-   ],
-   "lines_changed": 309,
-   "merge_commit": "38fc9888878821c20a7be43294a40234209e8dc5",
-   "merged_at": "2026-11-03T18:10:04-05:00",
-   "repository": "omnimarket",
-   "subject": "fix(OMN-22146): host reconcile replaces a dangling ~/.local/bin/onex with the wrapper link (#4971)"
   },
   {
    "band": "S",
@@ -8669,76 +8275,6 @@
   },
   {
    "band": "M",
-   "base_commit": "ff8ab1318bf578f38d4d3fbf71f22636ac0233df",
-   "check_files": [
-    "src/omnimarket/nodes/node_factory_floor_compute/contract.yaml",
-    "src/omnimarket/nodes/node_factory_floor_compute/handlers/handler_factory_floor.py",
-    "src/omnimarket/nodes/node_factory_floor_compute/models/model_factory_floor_output.py",
-    "src/omnimarket/nodes/node_factory_floor_effect/contract.yaml",
-    "src/omnimarket/nodes/node_factory_floor_effect/handlers/handler_factory_floor_effect.py",
-    "src/omnimarket/nodes/node_factory_floor_effect/models/model_factory_floor_runtime.py",
-    "src/omnimarket/nodes/node_factory_floor_effect/source_loader.py",
-    "src/omnimarket/nodes/node_factory_floor_effect/tests/test_draft_pr_plan.py",
-    "tests/nodes/node_factory_floor_compute/fixtures/plan_shapes/beta/plans/2026-10-29-orchestration-alignment-plan.md",
-    "tests/nodes/node_factory_floor_compute/fixtures/plan_shapes/beta/plans/2026-10-29-orchestration-alignment-plan.tasks.yaml",
-    "tests/nodes/node_factory_floor_compute/fixtures/plan_shapes/beta/plans/2026-10-30-context-plan.md",
-    "tests/nodes/node_factory_floor_compute/fixtures/plan_shapes/beta/plans/2026-10-31-account-limit-monitoring-plan.md",
-    "tests/nodes/node_factory_floor_compute/fixtures/plan_shapes/beta/plans/2026-10-31-account-limit-monitoring-plan.tasks.yaml",
-    "tests/nodes/node_factory_floor_compute/support.py",
-    "tests/nodes/node_factory_floor_compute/test_floor_lanes.py",
-    "tests/nodes/node_factory_floor_compute/test_handler_factory_floor.py",
-    "tests/nodes/node_factory_floor_compute/test_station_per_task.py",
-    "tests/nodes/node_factory_floor_effect/test_plan_tasks_and_containers.py",
-    "tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py"
-   ],
-   "checks": [
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_factory_floor_compute/test_station_per_task.py -q --no-cov --tb=line",
-     "item_id": "dod-omn22133-ac1"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_factory_floor_compute/test_station_per_task.py -k \"heading_rule or recorded_done\" -q --no-cov --tb=line",
-     "item_id": "dod-omn22133-ac2"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_factory_floor_compute/test_station_per_task.py -k every_task -q --no-cov --tb=line",
-     "item_id": "dod-omn22133-ac3"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_factory_floor_compute/test_station_per_task.py -k every_task -q --no-cov --tb=line",
-     "item_id": "dod-omn22133-ac4"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest src/omnimarket/nodes/node_factory_floor_compute src/omnimarket/nodes/node_factory_floor_effect src/omnimarket/nodes/node_factory_floor_publish_effect tests/nodes/node_factory_floor_compute tests/nodes/node_factory_floor_effect -q --no-cov --tb=line",
-     "item_id": "dod-omn22133-ac5"
-    },
-    {
-     "check_type": "command",
-     "check_value": "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_compute/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -Ec 'station_grouping: *task' && gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_effect/contract.yaml?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | grep -c 'heading_task_patterns:' && PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_station_per_task.py -q --no-cov --tb=line\n",
-     "item_id": "dod-omn22133-deploy-station-per-task"
-    }
-   ],
-   "contract_id": "OMN-22133",
-   "control": "fail_check",
-   "control_source": null,
-   "files_changed": 22,
-   "held_paths": [
-    "config/test_file_durations.json",
-    "src/omnimarket/models/model_factory_floor_input.py"
-   ],
-   "lines_changed": 612,
-   "merge_commit": "54d1c08d71dd32fbcd4d48b8dcf7022722f6fb79",
-   "merged_at": "2026-11-02T20:35:45Z",
-   "repository": "omnimarket",
-   "subject": "fix(OMN-22133): the factory floor draws every task of a plan as its own station (#4875)"
-  },
-  {
-   "band": "M",
    "base_commit": "d66c2a3d4ba084f993a27076604303679bb0d6e2",
    "check_files": [
     "src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_continuation.py",
@@ -8791,66 +8327,6 @@
    "merged_at": "2026-11-10T07:06:52Z",
    "repository": "omnimarket",
    "subject": "feat(OMN-23416): the fill starts a continuation lane for each stopped lane, with the earlier result in its brief (#5699)"
-  },
-  {
-   "band": "M",
-   "base_commit": "45e98cebfaeb4806969db08159811f8d1f922b7f",
-   "check_files": [
-    "tests/test_work_ledger_history_postgres.py",
-    "tests/test_work_ledger_history_query.py",
-    "tests/test_work_ledger_history_verification.py"
-   ],
-   "checks": [
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/test_work_ledger_history_query.py -q",
-     "item_id": "dod-history-ac1-boundary"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/test_work_ledger_history_verification.py -q --refuse-skips",
-     "item_id": "dod-history-ac1-boundary"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/test_work_ledger_history_query.py tests/test_golden_chain_work_ledger_query.py tests/test_work_ledger_query_inmemory_bus.py -q",
-     "item_id": "dod-history-ac2-hosted-suite"
-    },
-    {
-     "check_type": "command",
-     "check_value": "set -eu\nledger_probe=$(docker run --detach --rm --label onex.deploy-probe=ledger-history --env POSTGRES_HOST_AUTH_METHOD=trust --publish 127.0.0.1::5432 postgres:16-alpine)\ntrap 'docker rm --force \"$ledger_probe\" >/dev/null' EXIT\nledger_ready=0\nfor ledger_attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do\n  if docker exec \"$ledger_probe\" pg_isready --username postgres >/dev/null; then\n    ledger_ready=1\n    break\n  fi\n  sleep 1\ndone\ntest \"$ledger_ready\" = 1\nledger_port=$(docker port \"$ledger_probe\" 5432/tcp | awk -F: '$1 == \"127.0.0.1\" { print $2 }')\ntest -n \"$ledger_port\"\nONEX_TEST_LEDGER_HISTORY_DSN=\"host=127.0.0.1 port=$ledger_port user=postgres dbname=postgres\" uv run pytest tests/test_work_ledger_history_postgres.py -q --refuse-skips",
-     "item_id": "dod-history-deploy-postgres"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/test_work_ledger_history_postgres.py -q -k 'environment or ambient' --refuse-skips",
-     "item_id": "dod-history-ci-database-inputs"
-    }
-   ],
-   "contract_id": "OMN-21386",
-   "control": "pass",
-   "control_source": null,
-   "files_changed": 17,
-   "held_paths": [
-    "config/test_file_durations.json",
-    "pyproject.toml",
-    "src/omnimarket/models/work_ledger_query/__init__.py",
-    "src/omnimarket/models/work_ledger_query/model_work_ledger_query.py",
-    "src/omnimarket/nodes/node_projection_work_ledger/migrations/0006_work_ledger_ingested_at.sql",
-    "src/omnimarket/nodes/node_work_ledger_query_effect/contract.yaml",
-    "src/omnimarket/nodes/node_work_ledger_query_effect/handlers/handler_work_ledger_query.py",
-    "src/omnimarket/nodes/node_work_ledger_query_effect/handlers/work_ledger_history.py",
-    "src/omnimarket/nodes/node_work_ledger_query_effect/handlers/work_ledger_history_verification.py",
-    "src/omnimarket/nodes/node_work_ledger_query_effect/handlers/work_ledger_query_inmemory.py",
-    "src/omnimarket/nodes/node_work_ledger_query_effect/handlers/work_ledger_query_reader.py",
-    "src/omnimarket/nodes/node_work_ledger_query_effect/metadata.yaml",
-    "uv.lock"
-   ],
-   "lines_changed": 1416,
-   "merge_commit": "5bc457009362af291f830d66e8f3383b111d3cc1",
-   "merged_at": "2026-10-27T16:38:32Z",
-   "repository": "omnimarket",
-   "subject": "feat(OMN-21386): expose ordered ledger history with completeness (#4408)"
   },
   {
    "band": "M",
@@ -9389,79 +8865,6 @@
   },
   {
    "band": "M",
-   "base_commit": "8b6064bd0d0a9ff8898b08b8113f7a58255445ce",
-   "check_files": [
-    "tests/nodes/node_host_drift_fleet/test_host_drift_fleet_contract.py",
-    "tests/nodes/node_host_drift_fleet/test_host_drift_fleet_redpanda.py",
-    "tests/nodes/node_host_drift_fleet/test_host_drift_fleet_replays.py"
-   ],
-   "checks": [
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_host_drift_fleet/test_host_drift_fleet_contract.py -k host_drift_fleet_contract -q --no-cov --tb=line",
-     "item_id": "dod-omn21867-ac1-contract"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_host_drift_fleet/test_host_drift_fleet_replays.py -k groups_per_call -m \"not kafka\" -q --no-cov --tb=line",
-     "item_id": "dod-omn21867-ac2-groups-per-call"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_host_drift_fleet/test_host_drift_fleet_replays.py tests/nodes/node_host_drift_fleet/test_host_drift_fleet_redpanda.py -k host_drift_fleet_replays -m \"not kafka\" -q --no-cov --tb=line",
-     "item_id": "dod-omn21867-ac3-replays"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_host_drift_fleet/test_host_drift_fleet_contract.py -k host_drift_fleet_contract -q --no-cov --tb=line",
-     "item_id": "dod-omn21867-ac4-entry-point"
-    },
-    {
-     "check_type": "command",
-     "check_value": "dependencies=\"$(uv run --frozen --python 3.13 python -c 'import sysconfig; print(sysconfig.get_path(\"purelib\"))')\" &&\ndocker run --rm --network none --user \"$(id -u):$(id -g)\" \\\n  --tmpfs /tmp/host-drift-fleet-venv:rw,mode=1777 \\\n  --mount \"type=bind,source=$PWD,target=/workspace,readonly\" --workdir /workspace \\\n  --mount \"type=bind,source=$dependencies,target=/tmp/host-drift-fleet-venv/lib/python3.13/site-packages,readonly\" \\\n  --env PYTHONDONTWRITEBYTECODE=1 \\\n  ghcr.io/astral-sh/uv@sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca \\\n  sh -ec 'python -m venv --without-pip /tmp/host-drift-fleet-venv\n    exec /tmp/host-drift-fleet-venv/bin/python -m pytest tests/nodes/node_host_drift_fleet/test_host_drift_fleet_contract.py \\\n      tests/nodes/node_host_drift_fleet/test_host_drift_fleet_replays.py \\\n      -q --no-cov -p no:cacheprovider --basetemp=/tmp/host-drift-fleet-tests --refuse-skips'\n",
-     "item_id": "dod-omn21867-deploy-replay-check"
-    }
-   ],
-   "contract_id": "OMN-21867",
-   "control": "pass",
-   "control_source": null,
-   "files_changed": 30,
-   "held_paths": [
-    "pyproject.toml",
-    "src/omnimarket/nodes/node_host_drift_fleet/__init__.py",
-    "src/omnimarket/nodes/node_host_drift_fleet/contract.yaml",
-    "src/omnimarket/nodes/node_host_drift_fleet/handlers/__init__.py",
-    "src/omnimarket/nodes/node_host_drift_fleet/handlers/fold_host_drift_view.py",
-    "src/omnimarket/nodes/node_host_drift_fleet/handlers/handler_host_drift_fleet.py",
-    "src/omnimarket/nodes/node_host_drift_fleet/metadata.yaml",
-    "src/omnimarket/nodes/node_host_drift_fleet/models/__init__.py",
-    "src/omnimarket/nodes/node_host_drift_fleet/models/_base.py",
-    "src/omnimarket/nodes/node_host_drift_fleet/models/enum_host_drift_verdict.py",
-    "src/omnimarket/nodes/node_host_drift_fleet/models/model_host_drift_consumer_health.py",
-    "src/omnimarket/nodes/node_host_drift_fleet/models/model_host_drift_fleet_host.py",
-    "src/omnimarket/nodes/node_host_drift_fleet/models/model_host_drift_fleet_overlay.py",
-    "src/omnimarket/nodes/node_host_drift_fleet/models/model_host_drift_fleet_request.py",
-    "src/omnimarket/nodes/node_host_drift_fleet/models/model_host_drift_fleet_result.py",
-    "src/omnimarket/nodes/node_host_drift_fleet/models/model_host_drift_fleet_view.py",
-    "src/omnimarket/nodes/node_host_drift_fleet/models/model_host_drift_heartbeat_event.py",
-    "src/omnimarket/nodes/node_host_drift_fleet/models/model_host_drift_open_item.py",
-    "src/omnimarket/nodes/node_host_drift_fleet/models/model_host_drift_resolved_event.py",
-    "src/omnimarket/nodes/node_host_drift_fleet/node.py",
-    "src/omnimarket/nodes/node_host_drift_fleet/overlay.example.yaml",
-    "src/omnimarket/nodes/node_host_drift_fleet/protocols/__init__.py",
-    "tests/nodes/node_host_drift_fleet/__init__.py",
-    "tests/nodes/node_host_drift_fleet/helpers.py",
-    "tests/nodes/node_host_drift_fleet/test_fold_view.py",
-    "tests/test_market_node_runtime_dogfood.py"
-   ],
-   "lines_changed": 1656,
-   "merge_commit": "6fa3870f367e245e6cf890424349e2552c55ffbc",
-   "merged_at": "2026-11-01T21:43:17Z",
-   "repository": "omnimarket",
-   "subject": "OMN-21867 the host drift fleet node reads with one stable consumer group per host (#4747)"
-  },
-  {
-   "band": "M",
    "base_commit": "22f8b69313ec9d6735f0c0601a82d7561dfc9ad3",
    "check_files": [
     "tests/unit/nodes/node_work_ledger_copy_effect/test_restore_drill.py",
@@ -9510,62 +8913,6 @@
    "merged_at": "2026-11-08T01:30:29Z",
    "repository": "omnimarket",
    "subject": "feat(OMN-22916): the work-ledger snapshot job and restore drill, with a damaged snapshot refused (#5296)"
-  },
-  {
-   "band": "M",
-   "base_commit": "8420a52f61a2ce295d37dbc78c84be0be8dd5bc3",
-   "check_files": [
-    "src/omnimarket/nodes/node_exception_queue_effect/handlers/handler_andon_ledger_holds.py",
-    "tests/nodes/node_exception_queue_effect/test_andon_ledger_holds.py"
-   ],
-   "checks": [
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest -k andon_hold_opens_stop -q tests/nodes/node_exception_queue_effect/test_andon_ledger_holds.py --no-cov",
-     "item_id": "dod-omn21967-ac1"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest -k andon_release_keeps_readback -q tests/nodes/node_exception_queue_effect/test_andon_ledger_holds.py --no-cov",
-     "item_id": "dod-omn21967-ac2"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest -k andon_unregistered_class_reported -q tests/nodes/node_exception_queue_effect/test_andon_ledger_holds.py --no-cov",
-     "item_id": "dod-omn21967-ac3"
-    },
-    {
-     "check_type": "command",
-     "check_value": "gh api \"repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_exception_queue_effect/handlers/handler_andon_ledger_holds.py?ref=$(git rev-parse HEAD)\" --jq .content | base64 -d | python3 -c 'from pathlib import Path; import sys; actual = sys.stdin.read(); expected = Path(\"src/omnimarket/nodes/node_exception_queue_effect/handlers/handler_andon_ledger_holds.py\").read_text(); assert actual == expected; print(\"published detector matches evaluated revision\")'",
-     "item_id": "dod-omn21967-deploy-detector"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest -k andon_hold_deploy_bus_route -q tests/nodes/node_exception_queue_effect/test_andon_ledger_holds.py --no-cov",
-     "item_id": "dod-omn21967-deploy-detector"
-    }
-   ],
-   "contract_id": "OMN-21967",
-   "control": "fail_check",
-   "control_source": null,
-   "files_changed": 13,
-   "held_paths": [
-    "src/omnimarket/models/model_andon_ledger_holds.py",
-    "src/omnimarket/nodes/node_exception_queue_effect/container/container_exception_queue_effect.py",
-    "src/omnimarket/nodes/node_exception_queue_effect/contract.yaml",
-    "src/omnimarket/nodes/node_exception_queue_effect/handler.py",
-    "src/omnimarket/nodes/node_exception_queue_effect/handlers/__init__.py",
-    "src/omnimarket/nodes/node_exception_queue_effect/metadata.yaml",
-    "src/omnimarket/nodes/node_exception_queue_effect/models.py",
-    "src/omnimarket/nodes/node_exception_queue_effect/node.py",
-    "tests/nodes/node_exception_queue_effect/test_exception_queue_node.py",
-    "tests/nodes/node_exception_queue_effect/test_stop_opens_only_from_an_emit.py"
-   ],
-   "lines_changed": 771,
-   "merge_commit": "71260b29d778a565bf947bd230d5fc8d03064ea2",
-   "merged_at": "2026-11-04T04:09:05Z",
-   "repository": "omnimarket",
-   "subject": "OMN-21967: Open exception-queue stops from registered ledger HOLDs (#4999)"
   },
   {
    "band": "S",
@@ -9619,49 +8966,6 @@
    "merged_at": "2026-11-06T05:55:05Z",
    "repository": "omnimarket",
    "subject": "feat(OMN-22565): pure-import models for six small node overlays (#5167)"
-  },
-  {
-   "band": "M",
-   "base_commit": "21872456849d64febee559c011774d207b38e621",
-   "check_files": [
-    "src/omnimarket/nodes/node_host_reconcile_effect/handlers/handler_host_reconcile_effect.py",
-    "tests/test_host_reconcile_effect.py"
-   ],
-   "checks": [
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/test_host_reconcile_effect.py -q --no-cov --tb=line -k dispatch_venv_link_is_reported_in_check_mode",
-     "item_id": "dod-omn22254-ac1"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/test_host_reconcile_effect.py -q --no-cov --tb=line -k dispatch_venv_link_repair",
-     "item_id": "dod-omn22254-ac2"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/test_host_reconcile_effect.py -q --no-cov --tb=line -k other_onex",
-     "item_id": "dod-omn22254-ac3"
-    },
-    {
-     "check_type": "command",
-     "check_value": "set -eu;\nreadback_dir=\"$(mktemp -d)\";\ntrap 'rm -rf \"$readback_dir\"' EXIT;\nrevision=\"$(git rev-parse HEAD)\";\npath=src/omnimarket/nodes/node_host_reconcile_effect/handlers/handler_host_reconcile_effect.py;\ncurl --fail --silent --show-error --location --max-time 30 \\\n  \"https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path\" \\\n  --output \"$readback_dir/handler.py\";\ncmp \"$path\" \"$readback_dir/handler.py\";\ngrep -F 'is_dispatch_link = (' \"$readback_dir/handler.py\";\ngrep -F 'or is_dispatch_link' \"$readback_dir/handler.py\";\nif grep -En '\\bh[0-9]{3}\\b' \"$readback_dir/handler.py\"; then exit 1; fi;\nprintf 'host reconcile handler source readback matched %s\\n' \"$revision\"\n",
-     "item_id": "dod-omn22254-deploy-source-readback"
-    }
-   ],
-   "contract_id": "OMN-22254",
-   "control": "fail_check",
-   "control_source": null,
-   "files_changed": 5,
-   "held_paths": [
-    "src/omnimarket/models/model_host_reconcile.py",
-    "src/omnimarket/nodes/node_host_reconcile_compute/handlers/handler_host_reconcile_compute.py"
-   ],
-   "lines_changed": 206,
-   "merge_commit": "72351620cdd8ec81da8258c893592ffedb809555",
-   "merged_at": "2026-11-04T09:31:50Z",
-   "repository": "omnimarket",
-   "subject": "fix(OMN-22254): host reconcile repairs a live onex link to the dispatch venv console script (#5030)"
   },
   {
    "band": "S",
@@ -9727,59 +9031,6 @@
   },
   {
    "band": "M",
-   "base_commit": "72351620cdd8ec81da8258c893592ffedb809555",
-   "check_files": [
-    "tests/nodes/node_lab_host_key_distribution_effect/test_lab_host_key_distribution.py",
-    "tests/nodes/node_lab_host_key_distribution_effect/test_lab_host_public_keys_install.py"
-   ],
-   "checks": [
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_lab_host_key_distribution_effect -q --no-cov -k lab_host_public_keys_idempotent",
-     "item_id": "dod-omn22174-idempotent"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_lab_host_key_distribution_effect -q --no-cov -k lab_host_public_keys_overlay_only",
-     "item_id": "dod-omn22174-overlay-only"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run --frozen pytest tests/nodes/node_lab_host_key_distribution_effect/test_lab_host_public_keys_install.py -q --no-cov -k lab_host_public_keys_cli_declared_keys_refuses_without_overlay",
-     "item_id": "dod-omn22174-deploy-local-runtime"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run --frozen pytest tests/nodes/node_lab_host_key_distribution_effect/test_lab_host_public_keys_install.py -q --no-cov -k 'cli_installs_through_shell_transport and ssh'",
-     "item_id": "dod-omn22174-ssh-transport"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run --frozen pytest tests/nodes/node_lab_host_key_distribution_effect/test_lab_host_public_keys_install.py -q --no-cov -k 'cli_installs_through_shell_transport and local'",
-     "item_id": "dod-omn22174-cli-install-readback"
-    }
-   ],
-   "contract_id": "OMN-22174",
-   "control": "pass",
-   "control_source": null,
-   "files_changed": 10,
-   "held_paths": [
-    "src/omnimarket/nodes/node_lab_host_key_distribution_effect/__init__.py",
-    "src/omnimarket/nodes/node_lab_host_key_distribution_effect/contract.yaml",
-    "src/omnimarket/nodes/node_lab_host_key_distribution_effect/handlers/adapter_ssh_host_key_transport.py",
-    "src/omnimarket/nodes/node_lab_host_key_distribution_effect/handlers/handler_lab_host_public_keys_install.py",
-    "src/omnimarket/nodes/node_lab_host_key_distribution_effect/models/__init__.py",
-    "src/omnimarket/nodes/node_lab_host_key_distribution_effect/models/model_lab_host_public_keys_install.py",
-    "src/omnimarket/nodes/node_lab_host_key_distribution_effect/runtime_lab_host_key_distribution.py"
-   ],
-   "lines_changed": 835,
-   "merge_commit": "759beea5897e8fe19f5d1ddc38ffae281be5e205",
-   "merged_at": "2026-11-04T09:55:09Z",
-   "repository": "omnimarket",
-   "subject": "feat(OMN-22174): install the declared lab-host public keys on every pool host (#4961)"
-  },
-  {
-   "band": "M",
    "base_commit": "43fab97025e020b27ce86e04a4ba0cc4bd64d00a",
    "check_files": [
     "tests/unit/nodes/node_onex_setup_effect/test_onex_setup_contract.py",
@@ -9831,54 +9082,6 @@
    "merged_at": "2026-11-10T20:56:43Z",
    "repository": "omnimarket",
    "subject": "feat(OMN-23207): onex setup model step, proven delegation and unattended flags (#5501)"
-  },
-  {
-   "band": "M",
-   "base_commit": "9638c3a54997703a4d8c3d4f9696ec20081403ca",
-   "check_files": [
-    "src/omnimarket/nodes/node_pr_lifecycle_triage_compute/handlers/handler_classify_cascade_checks.py",
-    "tests/unit/nodes/node_pr_lifecycle_triage_compute/test_classify_ci_red.py",
-    "tests/unit/nodes/node_pr_lifecycle_triage_compute/test_landing_red_rules.py"
-   ],
-   "checks": [
-    {
-     "check_type": "test_passes",
-     "check_value": "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_landing_red_rules.py -k test_thread_gate_red_is_the_pull_requests_own_red -q --no-cov --tb=line",
-     "item_id": "dod-omn21917-ac1"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_landing_red_rules.py -k \"test_hostile_review_family_is_still_set_aside_beside_the_thread_gate or test_thread_gate_red_is_the_pull_requests_own_red\" -q --no-cov --tb=line",
-     "item_id": "dod-omn21917-ac2"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_classify_ci_red.py -k test_thread_gate_red_is_per_pr_even_with_armed_peers_carrying_it -q --no-cov --tb=line",
-     "item_id": "dod-omn21917-ac2-classify-ci-red"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/unit/nodes/node_pr_lifecycle_triage_compute/test_landing_red_rules.py -k test_thread_gate_red_is_never_presented_as_a_reviewer_rerun -q --no-cov --tb=line",
-     "item_id": "dod-omn21917-ac3"
-    },
-    {
-     "check_type": "command",
-     "check_value": "set -eu;\nreadback_dir=\"$(mktemp -d)\";\ntrap 'rm -rf \"$readback_dir\"' EXIT;\nrevision=\"$(git rev-parse HEAD)\";\npath=src/omnimarket/nodes/node_pr_lifecycle_triage_compute/handlers/handler_classify_cascade_checks.py;\ncurl --fail --silent --show-error --location --max-time 10 \\\n  \"https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path\" \\\n  --output \"$readback_dir/source.py\";\ncmp \"$path\" \"$readback_dir/source.py\";\ngrep -F 'hostile review(?!\\s+thread gate)' \"$readback_dir/source.py\";\nprintf 'classifier thread-gate exclusion source readback matched %s\\n' \"$revision\"\n",
-     "item_id": "dod-omn21917-deploy-probe"
-    }
-   ],
-   "contract_id": "OMN-21917",
-   "control": "fail_check",
-   "control_source": null,
-   "files_changed": 5,
-   "held_paths": [
-    "src/omnimarket/nodes/node_pr_lifecycle_triage_compute/handlers/handler_classify_ci_red.py"
-   ],
-   "lines_changed": 189,
-   "merge_commit": "7a96f247f42956b771bb12b9d3c882e0d6c8fd97",
-   "merged_at": "2026-11-03T18:10:00-05:00",
-   "repository": "omnimarket",
-   "subject": "fix(OMN-21917): the landing red rules take the Hostile Review Thread Gate as the pull request's own red (#4816)"
   },
   {
    "band": "S",
@@ -10784,63 +9987,6 @@
   },
   {
    "band": "M",
-   "base_commit": "b1fab33bba58257156add6abd81e8b23e1b1eea9",
-   "check_files": [
-    "src/omnimarket/nodes/node_compaction_verdict_compute/handlers/handler_compaction_verdict.py",
-    "src/omnimarket/nodes/node_compaction_verdict_compute/handlers/preregistration_gate.py",
-    "tests/nodes/node_compaction_verdict_compute/test_compaction_verdict.py"
-   ],
-   "checks": [
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_compaction_verdict_compute/test_compaction_verdict.py -q --no-cov -k 'preregistered and (without_a_block or without_a_data_pr or edited_after or merged_after)'",
-     "item_id": "dod-omn22037-ac1-data-pr-record"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_compaction_verdict_compute/test_compaction_verdict.py -q --no-cov -k 'preregistered and (missing_a_number or open_loop_kind or every_section_3_8)'",
-     "item_id": "dod-omn22037-ac2-required-numbers"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_compaction_verdict_compute/test_compaction_verdict.py -q --no-cov -k 'preregistered and (both_sets or split_hash or control_boundaries or calibration_session or neither_set)'",
-     "item_id": "dod-omn22037-ac3-disjoint-split"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_compaction_verdict_compute/test_compaction_verdict.py -q --no-cov -k 'preregistered and (build or names_build_split)'",
-     "item_id": "dod-omn22037-ac4-build-selection"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_compaction_verdict_compute/test_compaction_verdict.py -q --no-cov -k 'preregistered and (smallest_margin or feasible_minimum or feasibility_margin)'",
-     "item_id": "dod-omn22037-ac5-feasible-margin"
-    },
-    {
-     "check_type": "command",
-     "check_value": "set -eu;\nreadback_dir=\"$(mktemp -d)\";\ntrap 'rm -rf \"$readback_dir\"' EXIT;\nrevision=\"$(git rev-parse HEAD)\";\nnode_path=src/omnimarket/nodes/node_compaction_verdict_compute/handlers;\ncurl --fail --silent --show-error --location --max-time 30 \\\n  \"https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$node_path/preregistration_gate.py\" \\\n  --output \"$readback_dir/preregistration_gate.py\";\ncurl --fail --silent --show-error --location --max-time 30 \\\n  \"https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$node_path/handler_compaction_verdict.py\" \\\n  --output \"$readback_dir/handler_compaction_verdict.py\";\ncmp \"$node_path/preregistration_gate.py\" \"$readback_dir/preregistration_gate.py\";\ncmp \"$node_path/handler_compaction_verdict.py\" \"$readback_dir/handler_compaction_verdict.py\";\ngrep -F 'if digest != record.data_file_sha256:' \"$readback_dir/preregistration_gate.py\";\ngrep -F 'verify_confirmatory(request, thresholds)' \"$readback_dir/handler_compaction_verdict.py\";\nprintf 'compaction pre-registration source readback matched %s\\n' \"$revision\"\n",
-     "item_id": "dod-omn22037-deploy-source-readback"
-    }
-   ],
-   "contract_id": "OMN-22037",
-   "control": "fail_check",
-   "control_source": null,
-   "files_changed": 9,
-   "held_paths": [
-    "src/omnimarket/nodes/node_compaction_verdict_compute/contract.yaml",
-    "src/omnimarket/nodes/node_compaction_verdict_compute/models/__init__.py",
-    "src/omnimarket/nodes/node_compaction_verdict_compute/models/model_compaction_verdict.py",
-    "src/omnimarket/nodes/node_compaction_verdict_compute/models/model_preregistration.py",
-    "tests/nodes/node_compaction_verdict_compute/fixtures/thresholds.yaml"
-   ],
-   "lines_changed": 1031,
-   "merge_commit": "a053a9263d74484a890d18c7e685e747fb76de82",
-   "merged_at": "2026-11-03T05:55:34-05:00",
-   "repository": "omnimarket",
-   "subject": "feat(OMN-22037): verdict node refuses a confirmatory run that breaks the CM.14 pre-registration (#4952)"
-  },
-  {
-   "band": "M",
    "base_commit": "3be56931c18573b22380153b0062ddbe86eac624",
    "check_files": [
     "tests/nodes/node_delegation_capability_map_compute/test_capability_map_fold.py",
@@ -11148,157 +10294,6 @@
    "merged_at": "2026-11-11T13:31:02-05:00",
    "repository": "omnimarket",
    "subject": "feat(OMN-23212): pin omnidash v1.1.12 so onex dashboard serves the work since v1.1.11 (#5848)"
-  },
-  {
-   "band": "M",
-   "base_commit": "a053a9263d74484a890d18c7e685e747fb76de82",
-   "check_files": [
-    "src/omnimarket/nodes/node_factory_floor_compute/contract.yaml",
-    "src/omnimarket/nodes/node_factory_floor_compute/handlers/handler_factory_floor.py",
-    "src/omnimarket/nodes/node_factory_floor_compute/models/model_factory_floor_output.py",
-    "src/omnimarket/nodes/node_factory_floor_compute/tests/test_integrating.py",
-    "src/omnimarket/nodes/node_factory_floor_compute/tests/test_merged_mapping.py",
-    "src/omnimarket/nodes/node_factory_floor_compute/tests/test_percent_built.py"
-   ],
-   "checks": [
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest src/omnimarket/nodes/node_factory_floor_compute -q --no-cov -k integrating",
-     "item_id": "dod-omn22106-integrating"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest src/omnimarket/nodes/node_factory_floor_compute -q --no-cov -k merged_and_running",
-     "item_id": "dod-omn22106-merged-and-running"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest src/omnimarket/nodes/node_factory_floor_compute -q --no-cov",
-     "item_id": "dod-omn22106-node-suite"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest src/omnimarket/nodes/node_factory_floor_compute -q --no-cov -k integrating",
-     "item_id": "dod-omn22106-source-readback"
-    },
-    {
-     "check_type": "command",
-     "check_value": "set -eu\nreadback_dir=\"$(mktemp -d)\"\ntrap 'rm -rf \"$readback_dir\"' EXIT\nrevision=\"$(git rev-parse HEAD)\"\nfor path in src/omnimarket/nodes/node_factory_floor_compute/handlers/handler_factory_floor.py src/omnimarket/nodes/node_factory_floor_compute/contract.yaml; do\n  curl --fail --silent --show-error --location --max-time 10 \\\n    \"https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path\" \\\n    --output \"$readback_dir/source.txt\"\n  cmp \"$path\" \"$readback_dir/source.txt\"\ndone\ngrep -q 'integrating' src/omnimarket/nodes/node_factory_floor_compute/handlers/handler_factory_floor.py\ngrep -q 'integration_state' src/omnimarket/nodes/node_factory_floor_compute/contract.yaml\nprintf 'integrating source readback matched %s\\n' \"$revision\"\n",
-     "item_id": "dod-omn22106-source-readback"
-    }
-   ],
-   "contract_id": "OMN-22106",
-   "control": "fail_check",
-   "control_source": null,
-   "files_changed": 15,
-   "held_paths": [
-    "config/test_file_durations.json",
-    "src/omnimarket/models/model_factory_floor_input.py",
-    "tests/nodes/node_factory_floor_compute/support.py",
-    "tests/nodes/node_factory_floor_compute/test_handler_factory_floor.py",
-    "tests/nodes/node_factory_floor_compute/test_live_lines.py",
-    "tests/nodes/node_factory_floor_compute/test_scoped_tasks.py",
-    "tests/nodes/node_factory_floor_compute/test_station_per_task.py",
-    "tests/nodes/node_factory_floor_effect/test_runtime_factory_floor.py"
-   ],
-   "lines_changed": 785,
-   "merge_commit": "a7216c982f371b29e7b75e7873ef956c4e8792d9",
-   "merged_at": "2026-11-03T05:55:45-05:00",
-   "repository": "omnimarket",
-   "subject": "OMN-22106: factory floor counts done only when merged, running on dev and integration-proven (#4873)"
-  },
-  {
-   "band": "M",
-   "base_commit": "5b13aeb4cd045db5cdcdf1b9b77c48b17c0791f8",
-   "check_files": [
-    "src/omnimarket/nodes/node_factory_floor_compute/models/model_factory_floor_output.py",
-    "src/omnimarket/nodes/node_factory_floor_effect/handlers/handler_factory_floor_effect.py",
-    "src/omnimarket/nodes/node_merged_running_count_compute/handlers/handler_merged_running_count.py",
-    "src/omnimarket/nodes/node_merged_running_count_effect/sources/source_lab_pass_receipts.py",
-    "tests/nodes/node_factory_floor_effect/conftest.py",
-    "tests/nodes/node_factory_floor_effect/test_merged_running_wiring.py",
-    "tests/nodes/node_factory_floor_publish_effect/test_merged_running_page.py",
-    "tests/nodes/node_merged_running_count_compute/test_handler_merged_running_count.py",
-    "tests/nodes/node_merged_running_count_effect/__init__.py",
-    "tests/nodes/node_merged_running_count_effect/test_deployed_receipts.py",
-    "tests/nodes/node_merged_running_count_effect/test_effect_merged_running_count.py"
-   ],
-   "checks": [
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_merged_running_count_compute/test_handler_merged_running_count.py -k handoff -q --no-cov --tb=line",
-     "item_id": "dod-omn21931-ac1"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_merged_running_count_effect/test_deployed_receipts.py tests/nodes/node_merged_running_count_effect/test_effect_merged_running_count.py -k deployed -q --no-cov --tb=line",
-     "item_id": "dod-omn21931-ac2"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_merged_running_count_compute/test_handler_merged_running_count.py tests/nodes/node_merged_running_count_effect -k idle -q --no-cov --tb=line",
-     "item_id": "dod-omn21931-ac3"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_factory_floor_publish_effect/test_merged_running_page.py tests/nodes/node_factory_floor_effect/test_merged_running_wiring.py -k merged_running -q --no-cov --tb=line",
-     "item_id": "dod-omn21931-ac4"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_merged_running_count_effect/test_deployed_receipts.py tests/nodes/node_merged_running_count_effect/test_effect_merged_running_count.py -k 'hand_count or rolled' -q --no-cov --tb=line",
-     "item_id": "dod-omn21931-ac5"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_merged_running_count_compute/test_handler_merged_running_count.py tests/nodes/node_merged_running_count_effect tests/nodes/node_factory_floor_publish_effect tests/nodes/node_factory_floor_effect -q --no-cov --tb=line",
-     "item_id": "dod-omn21931-ac6"
-    },
-    {
-     "check_type": "command",
-     "check_value": "set -eu\nreadback_dir=\"$(mktemp -d)\"\ntrap 'rm -rf \"$readback_dir\"' EXIT\nrevision=\"$(git rev-parse HEAD)\"\nfor path in src/omnimarket/nodes/node_factory_floor_compute/models/model_factory_floor_output.py src/omnimarket/nodes/node_factory_floor_effect/handlers/handler_factory_floor_effect.py src/omnimarket/nodes/node_merged_running_count_compute/handlers/handler_merged_running_count.py src/omnimarket/nodes/node_merged_running_count_effect/sources/source_lab_pass_receipts.py; do\n  curl --fail --silent --show-error --location --max-time 10 \\\n    \"https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$revision/$path\" \\\n    --output \"$readback_dir/source.py\"\n  cmp \"$path\" \"$readback_dir/source.py\"\ndone\nprintf 'merged running source readback matched %s\\n' \"$revision\"\n",
-     "item_id": "dod-omn21931-source-readback"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/nodes/node_factory_floor_effect/test_merged_running_wiring.py -q --no-cov --tb=line",
-     "item_id": "dod-omn21931-source-readback"
-    }
-   ],
-   "contract_id": "OMN-21931",
-   "control": "fail_check",
-   "control_source": null,
-   "files_changed": 35,
-   "held_paths": [
-    "pyproject.toml",
-    "src/omnimarket/models/model_merged_running_count.py",
-    "src/omnimarket/nodes/node_factory_floor_effect/runtime_factory_floor.py",
-    "src/omnimarket/nodes/node_factory_floor_publish_effect/page/floor/index.html",
-    "src/omnimarket/nodes/node_merged_running_count_compute/__init__.py",
-    "src/omnimarket/nodes/node_merged_running_count_compute/contract.yaml",
-    "src/omnimarket/nodes/node_merged_running_count_compute/handlers/__init__.py",
-    "src/omnimarket/nodes/node_merged_running_count_compute/metadata.yaml",
-    "src/omnimarket/nodes/node_merged_running_count_effect/__init__.py",
-    "src/omnimarket/nodes/node_merged_running_count_effect/__main__.py",
-    "src/omnimarket/nodes/node_merged_running_count_effect/contract.yaml",
-    "src/omnimarket/nodes/node_merged_running_count_effect/handlers/__init__.py",
-    "src/omnimarket/nodes/node_merged_running_count_effect/handlers/handler_merged_running_count_effect.py",
-    "src/omnimarket/nodes/node_merged_running_count_effect/metadata.yaml",
-    "src/omnimarket/nodes/node_merged_running_count_effect/models/__init__.py",
-    "src/omnimarket/nodes/node_merged_running_count_effect/models/model_merged_running_count_run.py",
-    "src/omnimarket/nodes/node_merged_running_count_effect/runtime_merged_running_count.py",
-    "src/omnimarket/nodes/node_merged_running_count_effect/sources/__init__.py",
-    "src/omnimarket/nodes/node_merged_running_count_effect/sources/source_contract_config.py",
-    "src/omnimarket/nodes/node_merged_running_count_effect/sources/source_local_files.py",
-    "src/omnimarket/protocols/protocol_merged_running_count_reader.py",
-    "src/omnimarket/protocols/protocol_merged_running_sources.py",
-    "tests/nodes/node_merged_running_count_compute/__init__.py"
-   ],
-   "lines_changed": 2659,
-   "merge_commit": "a727ad18e9390a3c327894b144c5abcf68610ffe",
-   "merged_at": "2026-11-02T13:22:58Z",
-   "repository": "omnimarket",
-   "subject": "feat(OMN-21931): the floor shows merged-and-running work per Eastern day and idle slots per host (#4833)"
   },
   {
    "band": "M",
@@ -12408,47 +11403,6 @@
    "merged_at": "2026-11-07T22:58:56Z",
    "repository": "omnimarket",
    "subject": "feat(OMN-22977): piece 15 golden and error chain tests, synthetic delegated task node, named mutations (#5309)"
-  },
-  {
-   "band": "M",
-   "base_commit": "d23f72b0c0bc21ffaf63212e923c52702efdb262",
-   "check_files": [
-    "tests/projection/test_dashboard_served_money_omn21342.py"
-   ],
-   "checks": [
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/projection/test_dashboard_served_money_omn21342.py -q --no-cov --tb=line -k \"manifest or escalated or no_recorded_tokens\"",
-     "item_id": "dod-omn21342-ac2"
-    },
-    {
-     "check_type": "test_passes",
-     "check_value": "uv run pytest tests/projection/test_dashboard_served_money_omn21342.py -q --no-cov --tb=line -k \"window or spend or tenant\"",
-     "item_id": "dod-omn21342-served-totals"
-    },
-    {
-     "check_type": "command",
-     "check_value": "set -eu\nprobe_dir=\"$(mktemp -d)\"\nuv run python tests/projection/test_dashboard_served_money_omn21342.py \"$probe_dir\" > \"$probe_dir/server.log\" 2>&1 &\nprobe_pid=$!\ntrap 'kill \"$probe_pid\"; wait \"$probe_pid\" || test \"$?\" -eq 143; rm -rf \"$probe_dir\"' EXIT\nfor attempt in $(seq 1 600); do\n  test -s \"$probe_dir/port\" && break\n  if ! kill -0 \"$probe_pid\"; then cat \"$probe_dir/server.log\"; exit 1; fi\n  sleep 0.1\ndone\nif ! test -s \"$probe_dir/port\"; then cat \"$probe_dir/server.log\"; exit 1; fi\nprobe_url=\"http://127.0.0.1:$(cat \"$probe_dir/port\")\"\ncurl --fail --silent --show-error --retry 10 --retry-delay 1 --retry-connrefused --max-time 5 -H 'Authorization: Bearer dashboard-money-test-token' \"$probe_url/money/window?start=2026-11-01&end=2026-11-02\" > \"$probe_dir/money.json\"\ncurl --fail --silent --show-error --max-time 5 -H 'Authorization: Bearer dashboard-money-test-token' \"$probe_url/projection/onex.snapshot.projection.delegation.decisions.v1\" > \"$probe_dir/runs.json\"\ntest \"$(curl --silent --show-error --max-time 5 -o \"$probe_dir/denied.json\" -w '%{http_code}' \"$probe_url/money/window?start=2026-11-01&end=2026-11-02\")\" = 401\ntest \"$(curl --silent --show-error --max-time 5 -o \"$probe_dir/conflict.json\" -w '%{http_code}' -H 'Authorization: Bearer dashboard-money-test-token' \"$probe_url/money/window?start=2026-11-01&end=2026-11-02&tenant=someone-else\")\" = 422\nuv run python - \"$probe_dir\" <<'PY'\nimport json\nimport sys\nfrom decimal import Decimal\nfrom pathlib import Path\nfrom omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable\nroot = Path(sys.argv[1])\nmoney = json.loads((root / \"money.json\").read_text())\nassert money[\"tenant\"] == \"bc08ff01-9d50-442c-aca1-7ad2e687db70\", money\ntotals = money[\"window_totals\"]\nassert totals[\"spend_usd\"] == \"1.35\", totals\nassert totals[\"savings_usd\"] == \"2.70\", totals\nassert totals[\"runs_total\"] == 5, totals\nruns = json.loads((root / \"runs.json\").read_text())\npriced = runs[\"run_manifest_costs\"][\"6a0b5a8c-1d1c-4c43-9a7e-6b0f3f0c2a01\"]\nentry = ModelPricingTable.from_yaml().get_entry(\"gemini-2.5-flash\")\nassert entry is not None\nexpected = (1200 * Decimal(str(entry.input_cost_per_1k)) + 300 * Decimal(str(entry.output_cost_per_1k))) / 1000\nassert Decimal(priced[\"manifest_cost_usd\"]) == expected, priced\nassert json.loads((root / \"denied.json\").read_text())[\"error\"] == \"token_required\"\nassert json.loads((root / \"conflict.json\").read_text())[\"error\"] == \"tenant_conflict\"\nprint(\"dashboard live HTTP deploy probe: PASS\")\nPY\n",
-     "item_id": "dod-omn21342-deploy-dashboard-money"
-    }
-   ],
-   "contract_id": "OMN-21342",
-   "control": "pass",
-   "control_source": null,
-   "files_changed": 8,
-   "held_paths": [
-    "config/test_file_durations.json",
-    "docs/evidence/OMN-15423-relation-inventory.json",
-    "src/omnimarket/nodes/node_local_dashboard_serve_effect/contract.yaml",
-    "src/omnimarket/nodes/node_local_dashboard_serve_effect/handlers/handler_local_dashboard_serve.py",
-    "src/omnimarket/nodes/node_local_dashboard_serve_effect/metadata.yaml",
-    "src/omnimarket/nodes/node_local_dashboard_serve_effect/money.py"
-   ],
-   "lines_changed": 1116,
-   "merge_commit": "c9ea2f0d4fb0bf88ae47eb27193d5c0b042580bd",
-   "merged_at": "2026-11-06T22:15:58-06:00",
-   "repository": "omnimarket",
-   "subject": "feat(OMN-21342): serve the dashboard money figures computed by the API (#4997)"
   },
   {
    "band": "M",
