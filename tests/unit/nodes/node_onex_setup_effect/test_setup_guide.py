@@ -1,73 +1,18 @@
-"""OMN-26620: the Setup Guide under the welcome diagram.
+"""OMN-26620: the Setup Guide is a static welcome guide.
 
-Four steps (Config, Model, Delegation, Dashboard) that show where the reader really is in
-setup, mark the next step to do, and open the matching tab by click or by the keys 1 to 4
-on an empty prompt. Every status comes from the status the TUI already reads; an unknown
-status says unknown and is never guessed. Red on the previous head: there was no guide.
+Four boxes (Config, Model, Delegation, Dashboard) each say what the feature does. They show
+no live status: those tabs already report it. A click or the keys 1 to 4 on an empty prompt
+open the matching tab. The guide comes first, the diagram below it under its own heading, and
+both go away once something is submitted.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 
-from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
-    ModelTuiStatus,
-    OnexTui,
-    guide_steps,
-)
+from omnimarket.nodes.node_onex_setup_effect.cli_tui import ModelTuiStatus, OnexTui
 from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import tui_design
-
-
-def _status(**kwargs: object) -> ModelTuiStatus:
-    return ModelTuiStatus(**kwargs)  # type: ignore[arg-type]
-
-
-def _by_id(steps: list[object]) -> dict[str, object]:
-    return {step.id: step for step in steps}  # type: ignore[attr-defined]
-
-
-def test_setup_with_models_and_a_model_but_delegation_off_points_at_delegation() -> (
-    None
-):
-    steps = _by_id(
-        guide_steps(_status(model="Qwen3.8-27B", delegation="off", models=5))
-    )
-    assert steps["config"].done is True  # type: ignore[attr-defined]
-    assert "5 models ready" in steps["config"].status  # type: ignore[attr-defined]
-    assert steps["model"].done is True  # type: ignore[attr-defined]
-    assert "Qwen3.8-27B" in steps["model"].status  # type: ignore[attr-defined]
-    assert steps["delegation"].done is False  # type: ignore[attr-defined]
-    assert steps["delegation"].next is True  # type: ignore[attr-defined]
-    assert [
-        s.id
-        for s in guide_steps(_status(model="Q", delegation="off", models=5))
-        if s.next
-    ] == [  # type: ignore[attr-defined]
-        "delegation"
-    ]
-
-
-def test_a_fresh_install_points_at_config_first() -> None:
-    steps = guide_steps(_status(model=None, delegation="off", models=0))
-    assert [s.id for s in steps if s.next] == ["config"]  # type: ignore[attr-defined]
-
-
-def test_everything_done_has_no_next_step() -> None:
-    steps = guide_steps(_status(model="Q", delegation="hook", models=3))
-    assert not [s for s in steps if s.next]  # type: ignore[attr-defined]
-
-
-def test_an_unreadable_delegation_says_unknown_and_is_not_done() -> None:
-    steps = _by_id(guide_steps(_status(model="Q", delegation="unknown", models=3)))
-    delegation = steps["delegation"]
-    assert delegation.done is False  # type: ignore[attr-defined]
-    assert "Unknown" in delegation.status  # type: ignore[attr-defined]
-
-
-def test_a_status_not_read_yet_claims_nothing() -> None:
-    steps = guide_steps(None)
-    assert all(not s.done for s in steps)  # type: ignore[attr-defined]
-    assert not any(s.next for s in steps)  # type: ignore[attr-defined]
 
 
 class _Quiet:
@@ -89,7 +34,7 @@ class _Quiet:
 
 
 async def _ready() -> ModelTuiStatus:
-    return _status(model="Qwen3.8-27B", delegation="off", models=5)
+    return ModelTuiStatus(model="Qwen3.8-27B", delegation="off", models=5)
 
 
 async def _screen(
@@ -108,23 +53,53 @@ async def _screen(
         )
 
 
-async def test_a_tall_terminal_shows_the_guide_under_the_diagram() -> None:
+def _words(text: str) -> str:
+    return " ".join(text.split())
+
+
+async def test_each_box_says_what_its_feature_does() -> None:
+    guide = tui_design().welcome.guide
+    text = _words(await _screen(OnexTui(load_status=_ready), (140, 46)))
+    assert guide.title in text
+    for step in guide.steps:
+        assert step.title in text, step.title
+        # a description wraps inside its box, so look for its opening words
+        assert " ".join(step.text.split()[:2]) in text, step.text
+
+
+async def test_the_guide_shows_no_live_status() -> None:
+    """The tabs report status; the guide only explains."""
+    welcome = tui_design().welcome
     text = await _screen(OnexTui(load_status=_ready), (140, 46))
-    title = tui_design().welcome.guide.title
-    assert title in text
-    for word in ("Config", "Model", "Delegation", "Dashboard", "5 models ready"):
-        assert word in text, word
-    assert text.index(title) < text.index("Smart Routing"), "the guide comes first"
-    assert "press 3" in text.lower(), "the next step names its key"
+    guide_area = text[
+        text.index(welcome.guide.title) : text.index(welcome.diagram.heading)
+    ]
+    for live in (
+        "models ready",
+        "Qwen3.8-27B",
+        "Next:",
+        "reading",
+        "Unknown",
+        "Off",
+        "Press 1",
+    ):
+        assert live not in guide_area, live
+
+
+async def test_the_guide_comes_first_then_the_diagram_under_its_heading() -> None:
+    welcome = tui_design().welcome
+    text = await _screen(OnexTui(load_status=_ready), (140, 46))
+    assert text.index(welcome.guide.title) < text.index(welcome.diagram.heading)
+    assert text.index(welcome.diagram.heading) < text.index("Smart Routing")
 
 
 async def test_a_shorter_terminal_has_the_diagram_but_no_guide() -> None:
     text = await _screen(OnexTui(load_status=_ready), (140, 38))
-    assert "Right Model" in text
+    assert "Smart Routing" in text
     assert tui_design().welcome.guide.title not in text
 
 
-async def test_clicking_a_step_opens_its_tab() -> None:
+async def test_clicking_a_box_opens_its_tab() -> None:
     app = OnexTui(load_status=_ready, runner=_Quiet())  # type: ignore[arg-type]
     async with app.run_test(size=(140, 46)) as pilot:
         for _ in range(4):
@@ -155,14 +130,15 @@ async def test_a_number_on_an_empty_prompt_opens_the_step_and_in_a_task_it_is_te
         assert type(typed.screen).__name__ == "Screen"
 
 
-async def test_the_guide_goes_away_with_the_diagram_once_you_start() -> None:
+async def test_the_guide_and_the_diagram_go_away_once_you_start() -> None:
+    welcome = tui_design().welcome
     text = await _screen(OnexTui(load_status=_ready), (140, 46), (*"/clear", "enter"))
-    assert tui_design().welcome.guide.title not in text
+    assert welcome.guide.title not in text
+    assert welcome.diagram.heading not in text
     assert "Smart Routing" not in text
 
 
 async def test_the_guide_arrows_are_still() -> None:
-    """Operator feedback: the Setup Guide is static; only the diagram moves."""
     app = OnexTui(load_status=_ready)
     async with app.run_test(size=(140, 46)) as pilot:
         for _ in range(4):
@@ -173,3 +149,9 @@ async def test_the_guide_arrows_are_still() -> None:
             await pilot.pause(0.25)
         assert len(seen) == 1, "the guide arrows change"
         assert "●" not in next(iter(seen))
+
+
+async def test_the_boxes_show_no_step_numbers() -> None:
+    """Operator feedback: the 1 to 4 come off the boxes; the keys still work."""
+    text = await _screen(OnexTui(load_status=_ready), (140, 46))
+    assert not re.search(r"\b[1-4]\s{1,3}(Config|Model|Delegation|Dashboard)", text)

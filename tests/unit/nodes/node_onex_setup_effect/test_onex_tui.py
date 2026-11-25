@@ -393,16 +393,27 @@ async def test_a_failed_command_shows_its_exit_and_the_app_keeps_running() -> No
         assert app.is_running
 
 
+@click.group()
+def _prompting_root() -> None:
+    """A root whose doctor prompts."""
+
+
+@_prompting_root.command("doctor")
+@click.option("--key", prompt=True)
+def _prompting_doctor(key: str) -> None:
+    """Check this install (prompts, so it runs in the real terminal)."""
+
+
 async def test_a_prompting_command_runs_in_the_real_terminal() -> None:
     """F5."""
     runner = _Runner([])
-    app = _app(runner)
+    app = OnexTui(root=_prompting_root, runner=runner, load_status=_status)
     async with app.run_test() as pilot:
-        for key in "/metering":
+        for key in "/doctor":
             await pilot.press("space" if key == " " else "slash" if key == "/" else key)
         await pilot.press("enter")
         await pilot.pause()
-        assert runner.terminal_calls == [("metering",)]
+        assert runner.terminal_calls == [("doctor",)]
         assert _commands(runner) == []
 
 

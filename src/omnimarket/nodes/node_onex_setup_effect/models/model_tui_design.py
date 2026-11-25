@@ -20,7 +20,15 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 _COLOUR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 EnumTuiAction = Literal[
-    "config", "model", "delegation", "dashboard", "clear", "help", "quit"
+    "config",
+    "model",
+    "delegation",
+    "dashboard",
+    "metering",
+    "themes",
+    "clear",
+    "help",
+    "quit",
 ]
 
 
@@ -535,6 +543,7 @@ class ModelTuiDiagram(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    heading: str = Field(min_length=1)
     task: str = Field(min_length=1)
     hub_title: str = Field(min_length=1)
     hub_subtitle: str = Field(min_length=1)
@@ -546,32 +555,23 @@ class ModelTuiDiagram(BaseModel):
 
 
 class ModelTuiGuideStep(BaseModel):
-    """One step of the Setup Guide."""
+    """One box of the Setup Guide: a tab and what it is for."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     id: str = Field(pattern=r"^[a-z]+$")
     key: str = Field(pattern=r"^[0-9]$")
     title: str = Field(min_length=1)
-    done: str = Field(min_length=1)
-    todo: str = Field(min_length=1)
-    action: str = Field(min_length=1)
-    #: An optional step is never "next": it is there to be found, not required.
-    optional: bool = False
+    text: str = Field(min_length=1)
 
 
 class ModelTuiGuide(BaseModel):
-    """The Setup Guide: four steps and what to do next."""
+    """The Setup Guide: a static welcome guide to the four tabs."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     title: str = Field(min_length=1)
     min_height: int = Field(ge=30)
-    all_set: str = Field(min_length=1)
-    next_line: str = Field(min_length=1)
-    step_hint: str = Field(min_length=1)
-    reading: str = Field(min_length=1)
-    unknown: str = Field(min_length=1)
     steps: tuple[ModelTuiGuideStep, ...] = Field(min_length=4, max_length=4)
 
 

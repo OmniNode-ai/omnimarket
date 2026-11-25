@@ -51,6 +51,7 @@ welcome:
   letter_styles: [foreground, foreground, primary, primary]
   # The routing diagram: your task goes through ONEX and comes out as three outcomes.
   diagram:
+    heading: "How it works"
     task: "Your Task"
     hub_title: "ONEX"
     hub_subtitle: "Smart Routing"
@@ -60,20 +61,16 @@ welcome:
     # The dots on the connectors travel slowly; false keeps them still.
     pulse: true
     pulse_seconds: 0.2
-  # The Setup Guide under the diagram: where you are in setup, and what to do next.
+  # The Setup Guide: a static welcome guide to the four tabs. Each box says what its
+  # feature does; the tabs themselves show the live state.
   guide:
     title: "Setup Guide"
     min_height: 40
-    all_set: "✓ All set. Type a task below."
-    next_line: "▸ Next: press {key} to {action}"
-    step_hint: "{mark} press {key}"
-    reading: "… reading"
-    unknown: "? Unknown"
     steps:
-      - {id: config, key: "1", title: Config, done: "✓ {count} ready", todo: "○ No models yet", action: "add a model"}
-      - {id: model, key: "2", title: Model, done: "✓ {model}", todo: "○ None picked", action: "pick the first model"}
-      - {id: delegation, key: "3", title: Delegation, done: "✓ On", todo: "○ Off", action: "turn delegation on"}
-      - {id: dashboard, key: "4", title: Dashboard, done: "● Running", todo: "○ Optional", action: "open the dashboard", optional: true}
+      - {id: config, key: "1", title: Config, text: "Add providers, keys and models."}
+      - {id: model, key: "2", title: Model, text: "Pick the model tried first."}
+      - {id: delegation, key: "3", title: Delegation, text: "Turn Claude Code delegation on or off."}
+      - {id: dashboard, key: "4", title: Dashboard, text: "See usage, cost and savings."}
   letters:
     O: [".###.", "#...#", "#...#", "#...#", ".###."]
     N: ["#...#", "##..#", "#.#.#", "#..##", "#...#"]
@@ -86,6 +83,8 @@ shortcuts:
   - {path: [model], action: model, help: Pick the model every task tries first.}
   - {path: [delegation], action: delegation, help: Turn delegation on or off for Claude Code.}
   - {path: [dashboard], action: dashboard, help: "Start, open or stop the local dashboard."}
+  - {path: [metering], action: metering, help: "See your usage, cost and modelled savings."}
+  - {path: [theme], action: themes, help: Pick a colour theme with a live preview.}
   - {path: [clear], action: clear, help: Clear the output.}
   - {path: [help], action: help, help: Show keys and how commands work.}
   - {path: [quit], action: quit, help: Leave the TUI.}
@@ -99,6 +98,7 @@ customer_commands:
   - [dashboard]
   - [doctor]
   - [metering]
+  - [theme]
   - [clear]
   - [help]
   - [quit]
@@ -428,6 +428,29 @@ words:
   problem_model: "Could not change the model. Run /doctor."
   problem_delegation: "Could not change delegation. Run /doctor."
   problem_dashboard: "Could not start the dashboard. Run /doctor."
+  problem_metering: "Could not read your usage. Run /doctor."
+  problem_themes: "Could not change the theme."
+  metering_title: "Usage and cost"
+  metering_reading: "reading your usage…"
+  metering_empty: "No usage yet. Your first delegated task shows here."
+  metering_card_tasks: "Tasks"
+  metering_card_tokens: "Tokens"
+  metering_card_cost: "Cost"
+  metering_card_saved: "Saved ≈ (modelled)"
+  metering_models_title: "By model"
+  metering_col_model: "Model"
+  metering_col_tasks: "Tasks"
+  metering_col_tokens: "Tokens"
+  metering_col_cost: "Cost"
+  metering_note: "Savings are modelled, not billed."
+  tab_hint_metering: "r refresh · esc close"
+  tab_hint_themes: "↑↓ preview · enter keep · esc close"
+  themes_title: "Themes"
+  themes_list_title: "Pick a theme"
+  themes_preview_title: "Preview"
+  themes_sample_heading: "Build more. Spend less."
+  themes_sample_text: "The right intelligence, at the right cost."
+  themes_kept: "{name} kept."
   # Config tab (mockup page 4).
   add_title: Add models
   step_of: "step {step} of 3"
@@ -677,6 +700,11 @@ icons:
       nerd: "\uf0f1"
       fallback: "✚"
       ascii: "+"
+    cmd_theme:
+      lucide: palette
+      nerd: "\uf1fc"
+      fallback: "◐"
+      ascii: "~"
     cmd_metering:
       lucide: chart-no-axes-column
       nerd: "\uf080"
@@ -689,7 +717,7 @@ palette:
   name_width: 14
   themes_title: Themes
   themes_help: Pick a colour theme
-  icon_commands: [config, model, delegation, dashboard, doctor, metering]
+  icon_commands: [config, model, delegation, dashboard, doctor, metering, theme]
   hints:
     config: providers, keys and models
     model: pick the model to try first
@@ -697,6 +725,7 @@ palette:
     dashboard: open the local dashboard
     doctor: check your setup
     metering: usage and cost
+    theme: pick a colour theme
     clear: clear the screen
     help: keys and how commands work
     quit: leave onex

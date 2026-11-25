@@ -66,7 +66,7 @@ async def test_slash_lists_the_nine_commands_with_icons_and_hints(
         palette = app.query_one("#palette", OptionList)
         assert palette.display
         rows = _rows(palette)
-        assert len(rows) == len(design.customer_commands) == 9
+        assert len(rows) == len(design.customer_commands) == 10
         for row, path in zip(rows, design.customer_commands, strict=True):
             name = path[0]
             assert f"/{name}" in row, (name, row)

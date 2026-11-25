@@ -45,6 +45,7 @@ _CUSTOMER = [
     "/dashboard",
     "/doctor",
     "/metering",
+    "/theme",
     "/clear",
     "/help",
     "/quit",
@@ -129,7 +130,7 @@ async def test_no_environment_switch_widens_the_list_or_runs_hidden_commands(
         )
 
 
-@pytest.mark.parametrize("name", ["doctor", "metering"])
+@pytest.mark.parametrize("name", ["doctor"])
 async def test_doctor_and_metering_run_and_show_their_output(name: str) -> None:
     """C4, AC4: through the real command tree, in the customer view."""
     runner = _Runner([f"{name} output line"])

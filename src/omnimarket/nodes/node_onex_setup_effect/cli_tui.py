@@ -22,7 +22,6 @@ import signal
 import time
 from collections import Counter
 from collections.abc import Awaitable, Callable, Iterable, Mapping
-from dataclasses import dataclass, replace
 from functools import partial
 from pathlib import Path
 from typing import Any, ClassVar, Literal, Protocol, TypeVar, cast
@@ -97,6 +96,7 @@ from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_command impor
 )
 from omnimarket.nodes.node_onex_setup_effect.metering_page import (
     MeteringPage,
+    parse_metering,
     render_metering_page,
 )
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
@@ -2897,11 +2897,9 @@ def _draw_diagram(design: Any, tick: int = 0) -> Text:
         label = f"{words.outcome_icons[index]} {outcome}"
         box(x_out, top, out_w, 3, accent if is_lit else edge)
         if words.pulse:
-            centred(
-                x_out, mid, out_w, label, accent if is_lit else _style("foreground")
-            )
+            text_at(x_out + 2, mid, label, accent if is_lit else _style("foreground"))
         else:
-            centred(x_out, mid, out_w, label, rest_text[index])
+            text_at(x_out + 2, mid, label, rest_text[index])
     if words.pulse:
         if local < left_gap:
             put(x_task + task_w + local, middle, "●", accent)
@@ -3010,95 +3008,16 @@ def facts_renderable(parts: list[tuple[str, str]], run_label: str = "") -> Text:
     return text
 
 
-@dataclass(frozen=True)
-class GuideStepState:
-    """A step of the Setup Guide as it stands now."""
-
-    id: str
-    key: str
-    title: str
-    status: str
-    done: bool
-    next: bool
-    action: str
-
-
-def guide_steps(status: ModelTuiStatus | None) -> list[GuideStepState]:
-    """The four steps from the status the TUI already reads. A status that is unknown, or not
-    read yet, says so and is never guessed; only a known, unfinished step is "next"."""
-    guide = tui_design().welcome.guide
-    states: list[GuideStepState] = []
-    for spec in guide.steps:
-        known = status is not None
-        done = False
-        text = guide.reading
-        if status is not None:
-            text = spec.todo
-            if spec.id == "config":
-                done = bool(status.models)
-                text = (
-                    spec.done.format(count=_count(status.models or 0, "model"))
-                    if done
-                    else spec.todo
-                )
-            elif spec.id == "model":
-                done = bool(status.model)
-                text = spec.done.format(model=status.model) if done else spec.todo
-            elif spec.id == "delegation":
-                if status.delegation == "hook":
-                    done, text = True, spec.done
-                elif status.delegation == "off":
-                    text = spec.todo
-                else:
-                    known, text = (
-                        False,
-                        guide.unknown
-                        if status.delegation == "unknown"
-                        else guide.reading,
-                    )
-        states.append(
-            GuideStepState(
-                spec.id, spec.key, spec.title, text, done, False, spec.action
-            )
-        )
-        if not known:
-            states[-1] = replace(states[-1], next=False)
-    # the first known, unfinished, required step is next
-    for index, (spec, state) in enumerate(zip(guide.steps, states, strict=True)):
-        if (
-            not state.done
-            and not spec.optional
-            and state.status not in (guide.unknown, guide.reading)
-        ):
-            states[index] = replace(state, next=True)
-            break
-    return states
-
-
 def guide_arrow_text() -> Text:
     """An arrow between two steps: a still line with a head, no moving dot."""
     return Text("─────▶", style=_style("muted"), no_wrap=True)
 
 
-def guide_step_text(step: GuideStepState) -> Text:
-    """A step box: its number and name, its state, and the key to press when it is next."""
-    text = Text(no_wrap=True, overflow="ellipsis")
-    text.append(f"{step.key}  ", _style("primary", "bold"))
-    text.append(step.title + "\n", _style("foreground", "bold"))
-    if step.done:
-        role = "success"
-    elif step.status in (tui_design().welcome.guide.unknown,):
-        role = "warning"
-    else:
-        role = "muted"
-    text.append(step.status + "\n", _style(role))
-    if step.next:
-        text.append(
-            tui_design().welcome.guide.step_hint.format(
-                mark=tui_design().glyphs.tip, key=step.key
-            ),
-            _style("primary", "bold"),
-        )
+def guide_step_text(step: Any) -> Text:
+    """A box of the Setup Guide: its number and name, then what the feature does."""
+    text = Text(overflow="ellipsis")
+    text.append(step.title + "\n", _style("primary", "bold"))
+    text.append(step.text, _style("muted"))
     return text
 
 
@@ -3113,6 +3032,242 @@ class GuideStep(Static):
         self.app.run_worker(cast("OnexTui", self.app).open_tab(self.step_id))
 
 
+def _bar(fraction: float, width: int) -> str:
+    """A horizontal bar with eighth-cell steps."""
+    cells = max(0.0, min(1.0, fraction)) * width
+    whole = int(cells)
+    part = " ▏▎▍▌▋▊▉"[int((cells - whole) * 8)] if whole < width else ""
+    return ("█" * whole + part).ljust(width)
+
+
+class MeteringScreen(_TabbedScreen[None]):
+    """/metering as a full screen: four colourful cards and a by-model box (OMN-26620)."""
+
+    TAB = "metering"
+    NOTE = "#mnote"
+
+    def action_tab(self, step: int) -> None:
+        """Not one of the tabs: Tab and Shift+Tab move between this screen's parts."""
+        if step > 0:
+            self.focus_next()
+        else:
+            self.focus_previous()
+
+    PROBLEM = "problem_metering"
+
+    CSS = """
+    MeteringScreen { align: center middle; }
+    #mboard { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
+    #mboard .summary { display: none; }
+    #mhead { height: 1; }
+    #mtitle { width: 1fr; text-style: bold; color: $primary; }
+    #mperiod { width: auto; color: $text-muted; }
+    #mcards { height: 5; margin: 1 0; }
+    .mcard { width: 1fr; height: 5; border: round $border; padding: 0 1; margin-right: 1; }
+    .mcard.-tasks { border: round $primary; }
+    .mcard.-tokens { border: round $route-cheap; }
+    .mcard.-cost { border: round $accent; }
+    .mcard.-saved { border: round $success; }
+    #mmodels { height: 1fr; border: round $border; padding: 0 1; }
+    #mnote { height: 1; margin-top: 1; }
+    #mkeys { height: 1; dock: bottom; }
+    """
+    BINDINGS = [
+        Binding("escape", "cancel", _say("button_cancel")),
+        Binding("r", "refresh", "Refresh", show=False),
+    ]
+
+    #: The role of each card's number.
+    _ROLES = {
+        "tasks": "primary",
+        "tokens": "info",
+        "cost": "foreground",
+        "saved": "success",
+    }
+
+    def __init__(self, selection: ModelTuiSelection) -> None:
+        super().__init__()
+        self._selection = selection
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="mboard"):
+            yield _summary(self._selection)
+            with Horizontal(id="mhead"):
+                yield Static(Text(_say("metering_title")), id="mtitle")
+                yield Static("", id="mperiod")
+            with Horizontal(id="mcards"):
+                for kind in self._ROLES:
+                    yield Static("", id=f"mcard-{kind}", classes=f"mcard -{kind}")
+            yield Static("", id="mmodels")
+            yield Static("", id="mnote")
+            yield Static(_tab_hint("tab_hint_metering"), id="mkeys")
+
+    def on_mount(self) -> None:
+        self.query_one("#mmodels", Static).border_title = _say("metering_models_title")
+        self._read()
+
+    def action_cancel(self) -> None:
+        self._close()
+
+    def action_refresh(self) -> None:
+        self._read()
+
+    def _read(self) -> None:
+        app = self.app
+        if not isinstance(app, OnexTui):
+            return
+        self._note(_say("metering_reading"))
+
+        async def go() -> None:
+            summary = None
+            try:
+                code, out, err = await asyncio.wait_for(
+                    app.capture_command(("metering", "--json")), 20
+                )
+                summary = parse_metering(out or err) if code == 0 else None
+            except Exception as error:  # a read is a convenience; say it plainly
+                _LOG.warning("the usage read failed: %r", error)
+            with contextlib.suppress(NoMatches):
+                self._show(summary)
+
+        self.run_worker(go(), exclusive=True, group="metering-read")
+
+    def _show(self, summary: Any) -> None:
+        for kind in self._ROLES:
+            self.query_one(f"#mcard-{kind}", Static).update("")
+        self.query_one("#mmodels", Static).update("")
+        self.query_one("#mperiod", Static).update("")
+        if summary is None:
+            self._note(Text(_say("problem_metering"), style=_style("warning")))
+            return
+        if not summary.tasks and not summary.models:
+            self._note(Text(_say("metering_empty"), style=_style("muted")))
+            return
+        self.query_one("#mperiod", Static).update(Text(summary.period))
+        values = {
+            "tasks": f"{summary.tasks:,}",
+            "tokens": summary.tokens,
+            "cost": summary.cost,
+            "saved": summary.saved,
+        }
+        for kind, role in self._ROLES.items():
+            card = Text()
+            card.append(_say(f"metering_card_{kind}") + "\n", _style("muted"))
+            card.append(values[kind], _style(role, "bold"))
+            self.query_one(f"#mcard-{kind}", Static).update(card)
+        top = max((row[1] for row in summary.models), default=1) or 1
+        table = Text(no_wrap=True, overflow="ellipsis")
+        table.append(
+            f"{_say('metering_col_model'):<30}{_say('metering_col_tasks'):>8}  "
+            f"{'':<22}{_say('metering_col_tokens'):>9}{_say('metering_col_cost'):>16}\n",
+            _style("muted", "bold"),
+        )
+        for name, runs, tokens, cost in summary.models:
+            table.append(f"{name[:28]:<30}", _style("foreground", "bold"))
+            table.append(f"{runs:>8}  ", _style("foreground"))
+            table.append(_bar(runs / top, 22), _style("primary"))
+            table.append(f"{tokens:>9}", _style("info"))
+            table.append(
+                f"{cost:>16}\n", _style("success" if cost[:1] == "$" else "muted")
+            )
+        self.query_one("#mmodels", Static).update(table)
+        self._note(Text(_say("metering_note"), style=_style("muted")))
+
+
+class ThemeScreen(_TabbedScreen[None]):
+    """/theme as a full screen: every theme, a live preview and its colour swatches."""
+
+    TAB = "themes"
+    NOTE = "#tnote"
+
+    def action_tab(self, step: int) -> None:
+        """Not one of the tabs: Tab and Shift+Tab move between this screen's parts."""
+        if step > 0:
+            self.focus_next()
+        else:
+            self.focus_previous()
+
+    PROBLEM = "problem_themes"
+
+    CSS = """
+    ThemeScreen { align: center middle; }
+    #tboard { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
+    #tboard .summary { display: none; }
+    #thead { height: 1; }
+    #ttitle { width: 1fr; text-style: bold; color: $primary; }
+    #tbody { height: 1fr; margin-top: 1; }
+    #tlist { width: 34; border: round $border; }
+    #tpreview { width: 1fr; border: round $primary; padding: 1 2; margin-left: 1; }
+    #tnote { height: 1; margin-top: 1; }
+    #tkeys { height: 1; dock: bottom; }
+    """
+    BINDINGS = [Binding("escape", "cancel", _say("button_cancel"))]
+
+    _SWATCHES = ("primary", "secondary", "accent", "success", "warning", "error")
+
+    def __init__(self, selection: ModelTuiSelection) -> None:
+        super().__init__()
+        self._selection = selection
+        self._before = ""
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="tboard"):
+            yield _summary(self._selection)
+            with Horizontal(id="thead"):
+                yield Static(Text(_say("themes_title")), id="ttitle")
+            with Horizontal(id="tbody"):
+                yield OptionList(id="tlist")
+                yield Static("", id="tpreview")
+            yield Static("", id="tnote")
+            yield Static(_tab_hint("tab_hint_themes"), id="tkeys")
+
+    def on_mount(self) -> None:
+        self._before = str(self.app.theme)
+        themes = self.query_one("#tlist", OptionList)
+        names = sorted(self.app.available_themes)
+        themes.add_options(Option(name, id=name) for name in names)
+        themes.border_title = _say("themes_list_title")
+        self.query_one("#tpreview", Static).border_title = _say("themes_preview_title")
+        themes.highlighted = names.index(self._before) if self._before in names else 0
+        themes.focus()
+        self._preview(self._before)
+
+    def _preview(self, name: str) -> None:
+        theme = self.app.available_themes.get(name)
+        if theme is None:
+            return
+        text = Text()
+        text.append(f"{name}\n\n", _style("primary", "bold"))
+        text.append(_say("themes_sample_heading") + "\n", _style("foreground", "bold"))
+        text.append(_say("themes_sample_text") + "\n\n", _style("muted"))
+        for role in self._SWATCHES:
+            colour = getattr(theme, role, None) or theme.primary
+            text.append("████████  ", str(colour))
+            text.append(f"{role}\n", _style("foreground"))
+        self.query_one("#tpreview", Static).update(text)
+
+    def on_option_list_option_highlighted(
+        self, event: OptionList.OptionHighlighted
+    ) -> None:
+        if event.option.id:
+            self.app.theme = event.option.id
+            self._preview(event.option.id)
+
+    async def on_option_list_option_selected(
+        self, event: OptionList.OptionSelected
+    ) -> None:
+        if event.option.id:
+            await apply_theme(self.app, event.option.id)
+            self._before = event.option.id  # kept: Esc no longer puts the old one back
+            self._note(
+                Text(_say("themes_kept", name=event.option.id), style=_style("success"))
+            )
+
+    def action_cancel(self) -> None:
+        self.app.theme = self._before
+        self._close()
+
+
 class OnexTui(App[int]):
     """The onex terminal UI."""
 
@@ -3125,12 +3280,12 @@ class OnexTui(App[int]):
     #diagram { width: 100%; height: auto; margin-top: 1; text-align: center; }
     #guide-wrap { display: none; height: auto; margin-top: 1; }
     #guide-title { width: 100%; text-align: center; text-style: bold; color: $primary; }
-    #guide { width: 100%; height: 5; margin-top: 1; align-horizontal: center; }
-    .guide-step { width: 1fr; max-width: 24; height: 5; border: round $border; padding: 0 1; }
+    #guide { width: 100%; height: 6; margin-top: 1; align-horizontal: center; }
+    .guide-step { width: 1fr; max-width: 28; height: 6; border: round $border; padding: 0 1; }
     .guide-step.-next { border: round $primary; }
     .guide-step:hover { border: round $accent; }
-    .guide-arrow { width: 6; height: 5; content-align: center middle; }
-    #guide-next { width: 100%; text-align: center; margin-top: 1; }
+    .guide-arrow { width: 6; height: 6; content-align: center middle; }
+    #diagram-title { width: 100%; text-align: center; text-style: bold; color: $primary; margin-top: 1; }
     Screen.-roomy #promptrow { height: 3; border: round $primary; }
     #summary { height: 2; padding: 0 1; margin-top: 1; }
     #conversation { height: 1fr; }
@@ -3259,7 +3414,7 @@ class OnexTui(App[int]):
                         if position:
                             yield Static(classes="guide-arrow")
                         yield GuideStep(step.id)
-                yield Static(id="guide-next")
+            yield Static(tui_design().welcome.diagram.heading, id="diagram-title")
             yield Static(id="diagram")
         yield Static(id="header")
         yield Static(id="summary")
@@ -3327,7 +3482,6 @@ class OnexTui(App[int]):
         )
 
     def _render_status(self) -> None:
-        self._render_guide()
         sep = ("  ·  ", _style("muted"))
         status = self._status
         main = self._main()
@@ -3533,32 +3687,15 @@ class OnexTui(App[int]):
         )
 
     def _render_guide(self) -> None:
-        """Draw the Setup Guide from the status as it stands."""
+        """Draw the Setup Guide: static words about each tab, no live state."""
         main = self._main()
         if not main.query_one("#guide-wrap").display:
             return
         guide = tui_design().welcome.guide
-        steps = guide_steps(self._status if self._status_read else None)
-        for step in steps:
-            box = main.query_one(f"#guide-{step.id}", GuideStep)
-            box.update(guide_step_text(step))
-            box.set_class(step.next, "-next")
+        for spec in guide.steps:
+            main.query_one(f"#guide-{spec.id}", GuideStep).update(guide_step_text(spec))
         for arrow in main.query(".guide-arrow").results(Static):
             arrow.update(guide_arrow_text())
-        upcoming = next((s for s in steps if s.next), None)
-        required_done = all(
-            s.done
-            for s, spec in zip(steps, guide.steps, strict=True)
-            if not spec.optional
-        )
-        line = (
-            guide.next_line.format(key=upcoming.key, action=upcoming.action)
-            if upcoming
-            else (guide.all_set if self._status_read and required_done else "")
-        )
-        main.query_one("#guide-next", Static).update(
-            Text(line, style=_style("primary", "bold" if upcoming else ""))
-        )
 
     async def guide_key(self, key: str) -> bool:
         """A number on an empty prompt opens that step while the guide is showing."""
@@ -3573,10 +3710,15 @@ class OnexTui(App[int]):
                 return True
         return False
 
+    async def capture_command(self, argv: tuple[str, ...]) -> tuple[int, str, str]:
+        """Run an onex command and return its exit code, output and error text."""
+        return await self._runner.capture(argv)
+
     def get_css_variables(self) -> dict[str, str]:
         """Our themes define the chip fill; a built-in theme gets the same default."""
         variables = super().get_css_variables()
         variables.setdefault("chip", tui_design().theme.chip)
+        variables.setdefault("route-cheap", tui_design().theme.route_cheap)
         return variables
 
     def _pulse_welcome(self) -> None:
@@ -3608,6 +3750,7 @@ class OnexTui(App[int]):
         main.set_class(roomy, "-roomy")
         main.query_one("#welcome").display = showing
         main.query_one("#diagram").display = showing and not self._started
+        main.query_one("#diagram-title").display = showing and not self._started
         palette_open = main.query_one("#palette", OptionList).display
         main.query_one("#guide-wrap").display = (
             showing
@@ -3881,6 +4024,8 @@ class OnexTui(App[int]):
     async def tab_screen(self, name: str) -> Screen[object]:
         """The /config, /model or /delegation screen. After the first read it
         opens at once from the setup as last read, then refreshes it."""
+        if name in ("metering", "themes"):  # they need no model read
+            return self._build_tab(name, self._selection or ModelTuiSelection())
         cached = self._selection
         selection = cached or await self._first_selection()
         screen = self._build_tab(name, selection)
@@ -3932,6 +4077,10 @@ class OnexTui(App[int]):
             )
         if name == "dashboard":
             return cast(Screen[object], DashboardScreen(selection))
+        if name == "metering":
+            return cast(Screen[object], MeteringScreen(selection))
+        if name == "themes":
+            return cast(Screen[object], ThemeScreen(selection))
         return cast(Screen[object], ModelPickScreen(selection))
 
     async def switch_tab(self, name: str) -> None:
@@ -3952,7 +4101,14 @@ class OnexTui(App[int]):
             self._write(Text(tui_design().help, style=_style("foreground")))
         elif action == "clear":
             self.query_one("#output", OutputPane).clear()
-        elif action in ("config", "model", "delegation", "dashboard"):
+        elif action in (
+            "config",
+            "model",
+            "delegation",
+            "dashboard",
+            "metering",
+            "themes",
+        ):
             # A tab stays open until Esc; its actions run while it is open.
             await self.push_screen(await self.tab_screen(action))
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -139,6 +140,65 @@ def _summary_mapping(payload: Mapping[str, Any]) -> Mapping[str, Any]:
         return candidate
     # The metering row spreads summary_json at top level.
     return payload
+
+
+@dataclass(frozen=True)
+class MeteringSummary:
+    """What the Metering screen shows: the totals as words, and one row per model."""
+
+    period: str
+    tasks: int
+    tokens: str
+    cost: str
+    saved: str
+    models: tuple[tuple[str, int, str, str], ...]
+
+
+def parse_metering(payload: Any) -> MeteringSummary | None:
+    """The totals and per-model rows of an ``onex metering`` answer, or None when it is not one.
+
+    A figure that was not measured reads "not measured", never 0."""
+    report = _coerce(payload)
+    if report is None:
+        return None
+    summary = _summary_mapping(report)
+    unmeasured = _g("unmeasured", "not measured")
+    try:
+        tokens_total = int(
+            report.get("tokens_in", summary.get("tokens_in", 0)) or 0
+        ) + int(report.get("tokens_out", summary.get("tokens_out", 0)) or 0)
+    except (TypeError, ValueError):
+        tokens_total = 0
+    rows: list[tuple[str, int, str, str]] = []
+    for row in report.get("by_model", summary.get("by_model", [])) or []:
+        if not isinstance(row, Mapping):
+            continue
+        try:
+            runs = int(row.get("runs", row.get("tasks", 0)))
+        except (TypeError, ValueError):
+            runs = 0
+        try:
+            tokens = int(row.get("tokens_in", 0) or 0) + int(
+                row.get("tokens_out", 0) or 0
+            )
+        except (TypeError, ValueError):
+            tokens = 0
+        rows.append(
+            (
+                str(row.get("model", "")).strip(),
+                runs,
+                _compact_tokens(tokens),
+                _money(row.get("spend_usd", row.get("cost")), unmeasured),
+            )
+        )
+    return MeteringSummary(
+        period=_period(report, summary),
+        tasks=_task_count(report, summary),
+        tokens=_compact_tokens(tokens_total),
+        cost=_money(report.get("spend_usd", summary.get("spend_usd")), unmeasured),
+        saved=_money(report.get("savings_usd", summary.get("savings_usd")), unmeasured),
+        models=tuple(rows),
+    )
 
 
 def render_metering_page(
