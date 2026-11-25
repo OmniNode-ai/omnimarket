@@ -50,12 +50,13 @@ async def test_status_seeded_from_last_known() -> None:
     async with app.run_test() as pilot:
         await pilot.pause()
         # Seeded immediately from the last known saved state, never "reading".
-        saved = design.words.status_reading
+        saved = design.words["status_reading"]
         bar = _status_bar(app)
         assert saved not in bar, "AC7: 'reading your setup…' shown with saved state"
         assert "Last-Model" in bar, f"no seeded model in status bar: {bar!r}"
         assert (
-            design.words.delegation_off in bar or design.words.delegation_hook in bar
+            design.words["delegation_off"] in bar
+            or design.words["delegation_hook"] in bar
         ), "no seeded delegation state in status bar"
         slow.set()
         for _ in range(6):

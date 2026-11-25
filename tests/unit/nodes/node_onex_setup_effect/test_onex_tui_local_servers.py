@@ -211,11 +211,11 @@ async def test_the_status_bar_says_reading_until_the_setup_is_read() -> None:
         await pilot.pause()
         status = str(app.query_one("#status").render())
         # AC7: the saved state seeds the bar at once, never "reading your setup…".
-        assert design.words.status_reading not in status
+        assert design.words["status_reading"] not in status
         assert str(saved.get("model")) in status
         assert (
-            design.words.delegation_off in status
-            or design.words.delegation_hook in status
+            design.words["delegation_off"] in status
+            or design.words["delegation_hook"] in status
         )
         assert "not set" not in status
         gate.set()

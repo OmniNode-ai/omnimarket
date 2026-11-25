@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from functools import cache
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -306,24 +306,6 @@ class ModelTuiIcons(BaseModel):
     glyphs: dict[str, ModelTuiIcon] = Field(default_factory=dict)
 
 
-class ModelTuiWords(BaseModel):
-    """Words dict with attribute access (OMN-26620 AC7 test convenience)."""
-
-    model_config = ConfigDict(frozen=True, extra="allow")
-
-    def __getitem__(self, key: str) -> str:
-        return cast(str, getattr(self, key))
-
-    def get(self, key: str, default: object = None) -> object:
-        try:
-            return getattr(self, key)
-        except AttributeError:
-            return default
-
-    def __contains__(self, key: object) -> bool:
-        return isinstance(key, str) and hasattr(self, key)
-
-
 class ModelTuiTabSpec(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -357,7 +339,7 @@ class ModelTuiDesign(BaseModel):
     activity: ModelTuiActivity
     tabs: tuple[ModelTuiTabSpec, ...] = Field(min_length=1)
     #: The model screens' sentences, by name; ``{name}`` parts are filled in.
-    words: ModelTuiWords
+    words: dict[str, str]
     glyphs: ModelTuiGlyphs
     prompt_placeholder: str
     help: str
