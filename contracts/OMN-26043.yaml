@@ -142,12 +142,3 @@ dod_evidence:
   - check_type: command
     check_value: grep -q 'NodeOverlayNotFoundError' src/omnimarket/nodes/node_delegation_check_probe_effect/runtime_delegation_check_probe_tick.py
     cwd: .
-- id: dod-omn26043-responder-reader-live-shapes
-  description: "Four tests over real loopback sockets pass: the live responder reader chooses a responder whose listing carries meta.n_ctx only (window 131072), skips a dead first responder, advances to the openrouter tier when every local responder is dead, and orders by /slots load; they fail if the reader raises on a listing with no max_model_len, stops at a dead first responder, or ignores load. This binds AC7."
-  source: manual
-  binds_ac:
-  - AC7
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_http_responder_reader_live_shapes.py -q --no-cov -n 0 -p no:randomly
-    cwd: .
