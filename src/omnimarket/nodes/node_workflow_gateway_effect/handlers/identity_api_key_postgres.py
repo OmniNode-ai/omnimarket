@@ -20,7 +20,8 @@ logger = logging.getLogger(__name__)
 _SQL_RESOLVE_KEY = (
     "SELECT t.tenant_id, t.tenant_slug, k.id "
     "FROM tenant_api_keys k JOIN tenants t ON t.tenant_id = k.tenant_id "
-    "WHERE k.key_hash = $1 AND k.is_active = true AND k.revoked_at IS NULL"
+    "WHERE k.key_hash = $1 AND k.is_active = true AND k.revoked_at IS NULL "
+    "AND (k.expires_at IS NULL OR k.expires_at > now())"
 )
 
 _SQL_TOUCH_KEY = "UPDATE tenant_api_keys SET last_used_at = now() WHERE id = $1"

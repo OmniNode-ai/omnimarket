@@ -42,6 +42,13 @@ from omnimarket.nodes.node_runtime_bus_forward_effect.protocols import (
 
 pytestmark = pytest.mark.unit
 
+
+@pytest.fixture(autouse=True)
+def _isolated_host_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The adapter reads the host's unit environment files; a test never reads the machine's own."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "isolated-host-config"))
+
+
 OVERLAY_EXAMPLE = (
     Path(__file__).resolve().parents[4]
     / "src/omnimarket/nodes/node_runtime_bus_forward_effect/overlay.example.yaml"
