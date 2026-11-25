@@ -60,3 +60,7 @@ output_model:
 
 runtime_dispatch:
   external_trigger: true
+  # An operator or a service login with create rights runs the apply from the command line; nothing on the bus starts this node.
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_topic_provision_dry_run_effect.runtime_topic_provision_dry_run --apply
+    owner: OmniNode Platform Team

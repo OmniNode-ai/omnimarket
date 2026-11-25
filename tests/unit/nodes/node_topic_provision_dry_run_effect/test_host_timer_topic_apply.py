@@ -107,6 +107,8 @@ async def test_apply_leaves_a_routed_contracts_topic_to_the_runtime_boot(
 ) -> None:
     broker = FakeBroker()
 
-    await HandlerWriterTopicApply(broker, broker).handle(request_with_timer)
+    result = await HandlerWriterTopicApply(broker, broker).handle(request_with_timer)
 
+    assert result.host_unit_planned == (TIMER_TOPIC,)
+    assert ROUTED_TOPIC not in result.host_unit_planned
     assert ROUTED_TOPIC not in broker.live
