@@ -29,6 +29,8 @@ PINNED_VERDICTS = frozenset(
         "unscorable",
     }
 )
+#: Members the trial reducer records and the score node never emits (OMN-26661): a try a harness limit cut short.
+REDUCER_ONLY_VERDICTS = frozenset({"not_finished"})
 PINNED_SOURCES = frozenset(
     {
         "contract",
@@ -44,7 +46,10 @@ PINNED_SOURCES = frozenset(
 
 
 def test_enum_code_score_verdict_members_equal_the_pinned_set() -> None:
-    assert {m.value for m in EnumCodeScoreVerdict} == PINNED_VERDICTS
+    assert {m.value for m in EnumCodeScoreVerdict} == (
+        PINNED_VERDICTS | REDUCER_ONLY_VERDICTS
+    )
+    assert not PINNED_VERDICTS & REDUCER_ONLY_VERDICTS
 
 
 def test_enum_code_score_source_members_equal_the_pinned_set() -> None:

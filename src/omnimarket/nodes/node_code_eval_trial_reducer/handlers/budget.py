@@ -3,7 +3,8 @@
 """Budget counting of a try sequence (rule 7), pure.
 
 Budget k reads the first k verdicts of a sequence: a pass when one is ``pass``;
-else, when any is ``unscorable``, the sequence leaves n at that budget and gives
+else, when any is ``unscorable`` or ``not_finished`` (a try the harness's limit cut short, OMN-26661:
+never a failed answer), the sequence leaves n at that budget and gives
 no observation; else a non-pass. A budget's denominator counts the sequences it
 keeps.
 """
@@ -23,6 +24,8 @@ def budget_reading(verdicts: Sequence[EnumCodeScoreVerdict], k: int) -> bool | N
     if EnumCodeScoreVerdict.PASS in head:
         return True
     if EnumCodeScoreVerdict.UNSCORABLE in head:
+        return None
+    if EnumCodeScoreVerdict.NOT_FINISHED in head:
         return None
     return False
 

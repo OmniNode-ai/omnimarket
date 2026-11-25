@@ -37,6 +37,8 @@ def test_finish_twice_over_an_empty_diff_ends_no_change_without_running_checks()
     assert ports.checks_run == []
     assert "no file in the worktree has changed" in ports.prompts[1]
     assert "finish was called 2 times with no file changed" in result.detail
+    # the model's own answer, not a limit of the harness (OMN-26661)
+    assert result.limit_reached is False
 
 
 def test_a_write_before_finish_is_accepted_when_the_check_passes() -> None:
@@ -65,6 +67,8 @@ def test_turn_cap_with_ls_only_turns_and_a_passing_check_ends_no_change() -> Non
     assert result.status == EnumCodeEditStatus.NO_CHANGE
     assert result.turns == 3
     assert "the turn cap (3) was reached with no file changed" in result.detail
+    # a limit of the harness decided it, not an answer of the model (OMN-26661)
+    assert result.limit_reached is True
 
 
 def test_max_no_change_finishes_of_one_ends_at_the_first_empty_finish() -> None:

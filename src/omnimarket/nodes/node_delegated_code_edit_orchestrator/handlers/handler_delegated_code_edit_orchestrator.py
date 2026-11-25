@@ -399,10 +399,17 @@ class _State:
 
 
 class _TerminalError(Exception):
-    def __init__(self, status: EnumCodeEditStatus, detail: str = "") -> None:
+    def __init__(
+        self,
+        status: EnumCodeEditStatus,
+        detail: str = "",
+        *,
+        limit_reached: bool = False,
+    ) -> None:
         super().__init__(detail)
         self.status = status
         self.detail = detail
+        self.limit_reached = limit_reached
 
 
 class HandlerDelegatedCodeEditOrchestrator:
@@ -460,6 +467,7 @@ class HandlerDelegatedCodeEditOrchestrator:
         state.loop_started = self._clock()
         status = EnumCodeEditStatus.INFRA_ERROR
         detail = ""
+        limit_reached = False
         manifest: tuple[tuple[str, int], ...] = ()
         try:
             manifest = self._ports.workspace_files(request)
@@ -467,6 +475,7 @@ class HandlerDelegatedCodeEditOrchestrator:
             status = self._turns(request, manifest, context, state, state.good_turn + 1)
         except _TerminalError as terminal:
             status, detail = terminal.status, terminal.detail
+            limit_reached = terminal.limit_reached
         except WorkspacePathError as exc:
             status, detail = EnumCodeEditStatus.INFRA_ERROR, f"workspace: {exc}"
         except Exception as exc:
@@ -518,6 +527,7 @@ class HandlerDelegatedCodeEditOrchestrator:
             terminal_failure_cause=(
                 None if status == EnumCodeEditStatus.ACCEPTED else status.value
             ),
+            limit_reached=limit_reached,
         )
         self._ports.write_loop_receipt(
             loop_run_id,
@@ -842,7 +852,9 @@ class HandlerDelegatedCodeEditOrchestrator:
                 if wall_stopped
                 else f"the turn cap ({request.max_turns}) was reached with no file changed"
             )
-            raise _TerminalError(EnumCodeEditStatus.NO_CHANGE, detail)
+            raise _TerminalError(
+                EnumCodeEditStatus.NO_CHANGE, detail, limit_reached=True
+            )
         checks = self._run_checks(request, state)
         if all(c.status == "passed" for c in checks):
             return EnumCodeEditStatus.ACCEPTED
@@ -851,7 +863,9 @@ class HandlerDelegatedCodeEditOrchestrator:
             if wall_stopped
             else f"the turn cap ({request.max_turns}) was reached with checks failing"
         )
-        raise _TerminalError(EnumCodeEditStatus.BUDGET_EXHAUSTED, detail)
+        raise _TerminalError(
+            EnumCodeEditStatus.BUDGET_EXHAUSTED, detail, limit_reached=True
+        )
 
     @staticmethod
     def _prompt(

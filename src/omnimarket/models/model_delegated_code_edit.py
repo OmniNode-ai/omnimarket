@@ -352,6 +352,8 @@ class ModelCodeEditResult(BaseModel):
     summary: str = Field(default="", max_length=1000)
     detail: str = Field(default="", max_length=300)
     terminal_failure_cause: str | None = None
+    #: The loop ended on its own turn cap or wall budget, not on an answer of the model (OMN-26661).
+    limit_reached: bool = False
 
 
 __all__ = [

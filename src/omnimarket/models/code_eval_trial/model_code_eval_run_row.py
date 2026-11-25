@@ -99,6 +99,8 @@ class ModelCodeEvalSequenceRow(BaseModel):
     queued_seq: int = 0
     draft_diff: str = ""
     timed_out_with_diff: bool = False
+    #: The try now in flight or scoring ran into a limit of the harness (OMN-26661): a failing score reads not_finished.
+    limit_stopped: bool = False
     loop_status: str = ""
     duration_s: float = 0.0
     #: The revision the endpoint reported for the try now in flight or scoring (empty: none reported).

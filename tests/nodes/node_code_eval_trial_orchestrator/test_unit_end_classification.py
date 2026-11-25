@@ -26,6 +26,8 @@ from tests.nodes.node_code_eval_trial_orchestrator.support import (
 pytestmark = pytest.mark.unit
 HARNESS = (EnumCodeScoreVerdict.UNSCORABLE, EnumCodeScoreSource.HARNESS)
 TRUNCATED = (EnumCodeScoreVerdict.UNSCORABLE, EnumCodeScoreSource.DRAFT_NOT_RECOVERABLE)
+#: OMN-26661: a unit killed at its wall clock with no draft in hand is not finished, never a failed answer.
+NOT_FINISHED = (EnumCodeScoreVerdict.NOT_FINISHED, None)
 
 
 def placed_try() -> tuple[Run, object]:
@@ -56,8 +58,8 @@ CASES = [
     (
         "timed_out_no_diff",
         {"status": "timed_out", "exit_code": None, "loop_status": None, "diff": ""},
-        None,
-        True,
+        NOT_FINISHED,
+        False,
         False,
     ),
     ("exit_1", {"exit_code": 1}, HARNESS, False, False),

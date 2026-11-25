@@ -13,6 +13,10 @@ class EnumCodeScoreVerdict(StrEnum):
 
     Neither a check that hit its wall-clock limit nor an input refused for its size is a verdict on the draft: a limit
     is ``unscorable`` with source ``harness``, and the input-size ceiling is enforced upstream of this step (OMN-23635).
+
+    ``NOT_FINISHED`` (OMN-26661) is never a score node verdict: the trial reducer records it for a try that ran
+    into a limit of the harness (the loop's turn cap or wall budget, the unit's wall clock) and whose partial
+    draft did not pass. It is not a failed answer (``is_fail`` is false) and it leaves n, as an unscorable try does.
     """
 
     PASS = "pass"
@@ -21,6 +25,7 @@ class EnumCodeScoreVerdict(StrEnum):
     FAIL_DID_NOT_APPLY = "fail_did_not_apply"
     FAIL_TAMPERED = "fail_tampered"
     UNSCORABLE = "unscorable"
+    NOT_FINISHED = "not_finished"
 
     @property
     def is_fail(self) -> bool:

@@ -99,12 +99,16 @@ def test_a_loop_stopped_by_its_wall_budget_with_failing_checks_ends_budget_exhau
         in result.detail
     )
     assert request.correlation_id in ports.receipts
+    assert (
+        result.limit_reached is True
+    )  # OMN-26661: a limit of the harness, not a failed answer
 
 
 def test_a_loop_stopped_by_its_wall_budget_with_passing_checks_is_accepted() -> None:
     request = _request(max_turns=40, wall_budget_seconds=250)
     result, ports = _run(request, _write_then_list(), check_passes=[True])
     assert result.status == EnumCodeEditStatus.ACCEPTED
+    assert result.limit_reached is False
     assert result.turns == 2
     assert ports.delegate_turns == [1, 2]
     assert request.correlation_id in ports.receipts
@@ -118,6 +122,7 @@ def test_a_loop_with_no_wall_budget_runs_to_the_turn_cap() -> None:
     assert result.turns == 6
     assert ports.delegate_turns == [1, 2, 3, 4, 5, 6]
     assert "the turn cap (6) was reached with checks failing" in result.detail
+    assert result.limit_reached is True
 
 
 def test_the_first_turn_always_runs_even_inside_a_budget_it_cannot_fit() -> None:

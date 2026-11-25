@@ -43,6 +43,7 @@ from omnimarket.models.code_eval_trial.model_code_eval_task_material import (
     ModelCodeEvalTaskMaterial,
 )
 from omnimarket.models.enum_code_score import (
+    EnumCodeScoreSource,
     EnumCodeScoreVerdict,
 )
 from omnimarket.models.eval_item.model_eval_item_scored import (
@@ -83,6 +84,7 @@ def build_score_request(
         draft_diff=material.held_diff if is_control else send.draft_diff,
         contract=material.contract,
         check_files=material.check_files,
+        check_item_ids=material.check_item_ids,
         try_identity=ModelCodeScoreTry(
             task_key=send.task_key,
             model_arm=send.model_arm,
@@ -128,6 +130,8 @@ def build_unit_request(
             source_surface=overlay.source_surface,
             backend_id=place.backend_id,
             max_diff_bytes=overlay.max_diff_bytes,
+            wall_budget_seconds=overlay.wall_budget_seconds,
+            max_no_change_finishes=overlay.max_no_change_finishes,
         ),
     )
 
@@ -136,7 +140,7 @@ def generation_settings(
     overlay: ModelCodeEvalRunnerOverlay, model: str, backend_id: str
 ) -> tuple[tuple[str, str], ...]:
     """What a try was generated under, as name and value pairs: the trace keeps them, the row hashes them."""
-    return (
+    base = (
         ("model", model),
         ("backend_id", backend_id),
         ("max_turns", str(overlay.max_turns)),
@@ -144,6 +148,17 @@ def generation_settings(
         ("max_diff_bytes", str(overlay.max_diff_bytes)),
         ("draft_checks", "\n".join(overlay.draft_checks)),
     )
+    # A limit the overlay names is part of what the try was generated under; one it leaves out adds nothing,
+    # so a hash recorded before these keys existed stays what it was.
+    optional = tuple(
+        (name, str(value))
+        for name, value in (
+            ("wall_budget_seconds", overlay.wall_budget_seconds),
+            ("max_no_change_finishes", overlay.max_no_change_finishes),
+        )
+        if value is not None
+    )
+    return base + optional
 
 
 def generation_settings_hash(settings: tuple[tuple[str, str], ...]) -> str:
@@ -195,12 +210,25 @@ def trial_columns(
     band: str,
     settings_hash: str = "",
 ) -> dict[str, object]:
-    """E3's columns for one verdict (omnimarket pull request 5835, ``ModelTrialFields``)."""
+    """E3's columns for one verdict (omnimarket pull request 5835, ``ModelTrialFields``).
+
+    A try the harness's limit cut short (``not_finished``, OMN-26661) is projected as unscorable by the
+    harness, which the results projection keeps out of n; reading it as a verdict of its own would count
+    it as a failed answer there. Its ``try_end`` names the limit that ended it: the loop's status, or
+    ``timed_out`` for a unit killed at its wall clock.
+    """
+    not_finished = verdict.verdict is EnumCodeScoreVerdict.NOT_FINISHED
     return {
-        "check_verdict": verdict.verdict,
-        "unscorable_source": verdict.source,
+        "check_verdict": EnumCodeScoreVerdict.UNSCORABLE
+        if not_finished
+        else verdict.verdict,
+        "unscorable_source": EnumCodeScoreSource.HARNESS
+        if not_finished
+        else verdict.source,
         "row_kind": "control" if verdict.is_control else "try",
-        "try_end": verdict.loop_status,
+        "try_end": (verdict.loop_status or "timed_out")
+        if not_finished
+        else verdict.loop_status,
         "suite_digest": digest,
         "size_band": band,
         "sequence_id": f"{run_id}:{verdict.task_key}:{verdict.model_arm}",

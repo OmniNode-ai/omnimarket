@@ -7,6 +7,8 @@ try_timeout_seconds: 900                  # code_eval.runner.try_timeout_seconds
 receipt_slack_seconds: 60                 # code_eval.runner.receipt_slack_seconds: added to the try and score deadlines before the nudge expires them
 nudge_interval_seconds: 30                # code_eval.runner.nudge_interval_seconds: the tick cadence the completion bound must clear by one interval
 max_turns: 12                             # code_eval.runner.max_turns: the loop's turn ceiling for one try, 1..40
+wall_budget_seconds: 800                  # code_eval.runner.wall_budget_seconds (optional, OMN-26661): the loop's own wall budget, below try_timeout_seconds, so the loop stops itself and reports "not finished" instead of being killed with no result
+max_no_change_finishes: 2                 # code_eval.runner.max_no_change_finishes (optional, OMN-26661): empty finish calls that end the loop as no_change
 max_diff_bytes: 1000000                   # code_eval.runner.max_diff_bytes: a longer diff is cut and the try reads unscorable(draft_not_recoverable)
 draft_checks:                             # code_eval.runner.draft_checks: the loop's own checks, never a ticket contract's check
   - "uv run python -c pass"

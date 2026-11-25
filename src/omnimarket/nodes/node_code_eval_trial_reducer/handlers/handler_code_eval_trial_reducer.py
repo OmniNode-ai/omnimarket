@@ -13,6 +13,10 @@ emissions). The guards are those of formal/code_eval_trial/CodeEvalTrial.tla:
 * a try is placed only after its task's control reads ``pass``;
 * a sequence ends at the first ``pass`` or at the largest attempt budget; an
   ``unscorable`` try takes its ordinal and the sequence goes on;
+* (OMN-26661) a try that ran into a limit of the harness (the unit's wall clock, the loop's turn cap or
+  wall budget) is ``not_finished``, never a failed answer: with no draft in hand nothing is scored, a
+  partial draft is scored (it may pass) and a failing score reads ``not_finished``; the try takes its
+  ordinal, leaves n, is neither retried nor does it void the run;
 * the nudge expires a try or score in flight past its timeout plus the slack
   as ``unscorable(harness)`` (a control that expires could not be run);
 * the run closes once, on the leg where every admitted task has its control
@@ -69,6 +73,9 @@ _HARNESS = ModelCodeEvalVerdict(verdict=_UNSCORABLE, source=EnumCodeScoreSource.
 _TRUNCATED = ModelCodeEvalVerdict(
     verdict=_UNSCORABLE, source=EnumCodeScoreSource.DRAFT_NOT_RECOVERABLE
 )
+#: A try that ran into a limit of the harness and did not pass (OMN-26661): not a failed answer, and not an
+#: infrastructure fault either, so it is neither retried nor does it void the run; it leaves n.
+_NOT_FINISHED = ModelCodeEvalVerdict(verdict=EnumCodeScoreVerdict.NOT_FINISHED)
 _UNOBSERVED = ModelCodeEvalVerdict(
     verdict=_UNSCORABLE,
     source=EnumCodeScoreSource.HARNESS,
@@ -216,12 +223,12 @@ class HandlerCodeEvalTrialReducer:
             self._record(leg, seq, _HARNESS, diff=msg.diff)
         elif msg.diff_truncated:
             self._record(leg, seq, _TRUNCATED, diff=msg.diff)
-        elif msg.status == "timed_out":
-            # A try that ran past its wall clock returns no loop result, so no revision: it is the
-            # model's slowness (scored as before), not an infrastructure fault.
-            self._score_or_stamp(
-                leg, seq, msg, timed_out_with_diff=bool(msg.diff), answered=False
-            )
+        elif (
+            msg.status == "timed_out"
+            or msg.limit_stopped
+            or msg.loop_status == "budget_exhausted"
+        ):
+            self._limit_stopped(leg, seq, msg)
         elif (
             msg.exit_code == 1
             or msg.loop_status is None
@@ -233,6 +240,28 @@ class HandlerCodeEvalTrialReducer:
                 leg, seq, msg, timed_out_with_diff=False, answered=True
             )
         return "unit_answered"
+
+    def _limit_stopped(
+        self, leg: _Leg, seq: ModelCodeEvalSequenceRow, msg: ModelUnitAnsweredMessage
+    ) -> None:
+        """A try that ran into a limit of the harness (OMN-26661): never a failed answer.
+
+        A unit killed at its wall clock returns no loop result, so no revision; a loop that stopped on its
+        own turn cap or wall budget did answer, so its revision is checked first. With no draft in hand
+        the try is not finished and nothing is scored; a partial draft is scored, because it may pass, and
+        a score that fails it is read as not finished (``_score_answered``).
+        """
+        seq.limit_stopped = True
+        killed = msg.status == "timed_out"
+        if not killed:
+            refused = self._revision_refusal(leg.row, seq, msg.model_revision)
+            if refused is not None:
+                self._record(leg, seq, refused, diff=msg.diff)
+                return
+        if not msg.diff.strip():
+            self._record(leg, seq, _NOT_FINISHED, diff=msg.diff)
+            return
+        self._queue_score(leg, seq, msg.diff, timed_out_with_diff=killed)
 
     def _score_or_stamp(
         self,
@@ -299,6 +328,9 @@ class HandlerCodeEvalTrialReducer:
         )
         if seq is None:
             return "dropped:score_not_in_flight"
+        if seq.limit_stopped and verdict.verdict.is_fail:
+            # The partial draft failed its checks, but the harness cut the try short: not a failed answer.
+            verdict = _NOT_FINISHED
         self._record(leg, seq, verdict, checks=msg.checks)
         return "try_scored"
 
@@ -394,6 +426,7 @@ class HandlerCodeEvalTrialReducer:
             return
         seq.verdicts.append(verdict)
         seq.draft_diff, seq.timed_out_with_diff = "", False
+        seq.limit_stopped = False
         seq.retries_used, seq.model_revision = 0, ""
         seq.slot = (
             EnumCodeEvalSlot.DONE
@@ -419,6 +452,7 @@ class HandlerCodeEvalTrialReducer:
             leg.row.next_seq += 1
             return
         seq.draft_diff, seq.timed_out_with_diff = "", False
+        seq.limit_stopped = False
         seq.slot = EnumCodeEvalSlot.PENDING
 
     def _queue_score(

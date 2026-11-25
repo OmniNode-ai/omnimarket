@@ -69,6 +69,9 @@ class ModelUnitAnsweredMessage(BaseModel):
     diff_truncated: bool = False
     #: The loop result's status; None when the receipt carried no code_edit_result.
     loop_status: str | None = None
+    #: The try ran into a limit of the harness (the loop's turn cap or wall budget); a unit killed at its
+    #: wall clock is read from ``status`` (OMN-26661). Such a try is "not finished", never a failed answer.
+    limit_stopped: bool = False
     duration_s: float = Field(default=0.0, ge=0)
     #: The model revision the endpoint reported for the try's turns; empty when it reported none.
     model_revision: str = ""
