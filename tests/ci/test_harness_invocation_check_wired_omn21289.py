@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.ci.lint_jobs import lint_steps
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 COMMAND = "uv run python -m omnimarket.nodes.node_harness_invocation_check_effect"
 
@@ -18,7 +20,7 @@ def test_harness_invocation_check_runs_in_lint() -> None:
     )
     steps = [
         step
-        for step in workflow["jobs"]["lint"]["steps"]
+        for step in lint_steps(workflow)
         if step.get("name") == "Harness invocation gate"
     ]
     assert len(steps) == 1

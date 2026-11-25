@@ -11,7 +11,7 @@ description: >
   One declared topic carries messages between agents of different platforms (Claude, Codex, GLM, Hermes,
   Gemini and others). The node owns the topic's I/O. send validates one message (from, to, thread, kind,
   text, sent_at, platform), builds the event the emit effect spools and publishes it on the topic, and
-  refuses an incomplete or unknown message with a typed result and nothing published. A message carries a sender proof (its message_contract block): send signs with the key this host holds for the declared sender, and read returns a message only when the registered sender's key signed it, refusing a mismatch, an unknown sender and a malformed message with a typed reason. read returns the
+  refuses an incomplete or unknown message with a typed result and nothing published. A message carries a sender proof (its message_contract block): send signs with the key this host holds for the declared sender, and read returns a message only when the registered sender's key signed it, refusing a mismatch, an unknown sender and a malformed message with a typed reason. send also refuses (sender_mismatch) a declared sender whose registered principal is not the broker login that is sending, before it signs. read returns the
   typed messages addressed to one recipient, optionally in one thread, bounded by a count and a since-time,
   oldest first. Both operations use the broker this node's contract overlay declares (event_bus, resolved
   by resolve_dialable_broker); a node with no declaration answers a typed broker_not_declared result.

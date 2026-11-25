@@ -27,6 +27,9 @@ from omnimarket.enums.enum_agent_message_operation import EnumAgentMessageOperat
 from omnimarket.enums.enum_agent_message_refusal import (
     EnumAgentMessageRefusal as EnumNodeRefusal,
 )
+from omnimarket.enums.enum_agent_message_verification_reason import (
+    EnumAgentMessageVerificationReason as EnumVerificationReason,
+)
 from omnimarket.handlers.bus_binding.select import positional_opener
 from omnimarket.models.agent_message.model_agent_message_request import (
     MAX_READ_LIMIT,
@@ -40,6 +43,7 @@ from omnimarket.models.agent_message.model_agent_message_result import (
 from omnimarket.nodes.node_agent_message_client_effect.models.model_agent_message import (
     ModelAgentMessage,
     ModelAgentMessageQuery,
+    ModelAgentMessageReadReport,
 )
 from omnimarket.nodes.node_agent_message_client_effect.models.refusal import (
     AgentMessageRefusalError,
@@ -82,7 +86,7 @@ class _LoopThreadNode:
         future = asyncio.run_coroutine_threadsafe(self._node.send(message), self._loop)
         return future.result(timeout=_CALL_TIMEOUT_SECONDS)
 
-    def read(self, query: ModelAgentMessageQuery) -> tuple[ModelAgentMessage, ...]:
+    def read(self, query: ModelAgentMessageQuery) -> ModelAgentMessageReadReport:
         future = asyncio.run_coroutine_threadsafe(self._node.read(query), self._loop)
         return future.result(timeout=_CALL_TIMEOUT_SECONDS)
 
@@ -166,6 +170,11 @@ def _raise_for_refusal(result: ModelNodeResult) -> None:
     if result.accepted:
         return
     refusal = result.refusal
+    if result.reason is EnumVerificationReason.SENDER_MISMATCH:
+        raise AgentMessageRefusalError(
+            EnumAgentMessageRefusal.SENDER_MISMATCH,
+            f"the declared sender is not this login's: {result.detail}",
+        )
     code = (
         _REFUSAL_FOR_NODE_REFUSAL[refusal]
         if refusal is not None
@@ -215,9 +224,7 @@ class _NodeBackedBusNode:
             )
         return result.event_id
 
-    async def read(
-        self, query: ModelAgentMessageQuery
-    ) -> tuple[ModelAgentMessage, ...]:
+    async def read(self, query: ModelAgentMessageQuery) -> ModelAgentMessageReadReport:
         result = await self._handler.handle(
             ModelNodeRequest(
                 operation=EnumAgentMessageOperation.READ,
@@ -228,7 +235,7 @@ class _NodeBackedBusNode:
             )
         )
         _raise_for_refusal(result)
-        return tuple(
+        messages = tuple(
             ModelAgentMessage(
                 message_id=message_event_id(message),
                 sender=message.sender,
@@ -240,6 +247,11 @@ class _NodeBackedBusNode:
                 sent_at=message.sent_at,
             )
             for message in result.messages
+        )
+        return ModelAgentMessageReadReport(
+            messages=messages,
+            unverified=result.unverified,
+            rejections=result.rejections,
         )
 
 
