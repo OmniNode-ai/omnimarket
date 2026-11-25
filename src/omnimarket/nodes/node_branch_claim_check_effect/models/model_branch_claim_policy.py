@@ -17,8 +17,7 @@ class ModelLedgerSource(BaseModel):
 
 class ModelParityWitness(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
-    ledger_path_env: str = Field(min_length=1)
-    archive_dir_name: str = Field(pattern=r"^[a-z_][a-z0-9_-]*$")
+    reader: str = Field(pattern=r"^[a-z][a-z0-9-]*$")
 
 
 class ModelBranchClaimPolicy(BaseModel):
