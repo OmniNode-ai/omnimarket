@@ -33,9 +33,9 @@ from rich.console import Group
 from rich.markdown import Markdown
 from rich.text import Text
 from textual import on
-from textual.app import App, ComposeResult, SuspendNotSupported
+from textual.app import App, ComposeResult, RenderResult, SuspendNotSupported
 from textual.binding import Binding, BindingType
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
 from textual.screen import ModalScreen, Screen
 from textual.theme import Theme
@@ -54,6 +54,7 @@ from textual.widgets import (
     Tab,
     Tabs,
 )
+from textual.widgets._tabs import Underline
 from textual.widgets.option_list import Option
 from textual.worker import Worker
 
@@ -78,7 +79,6 @@ from omnimarket.models.model_local_server_details import ModelLocalServerDetails
 from omnimarket.nodes.node_onex_setup_effect.cli_model_table import (
     ModelTable,
     entry_key,
-    keycaps,
 )
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_command import (
     HandlerOnexCommand,
@@ -661,15 +661,56 @@ def _server_entry(
 _ResultT = TypeVar("_ResultT")
 
 
+class _TabRule(Underline):
+    """The heavy rule under the open tab only, as wide as its label."""
+
+    def render(self) -> RenderResult:
+        start, end = self._highlight_range
+        start = max(0, round(start))
+        rule = _say("tab_rule") * max(0, round(end) - start)
+        return Text(" " * start + rule, style=_style("primary", "bold"), no_wrap=True)
+
+
+class _TabBar(Tabs):
+    """The tab strip: plain labels, three spaces apart, a rule under the open one."""
+
+    DEFAULT_CSS = """
+    _TabBar Tab { padding: 0; margin: 0 3 0 0; color: $text-muted; }
+    _TabBar Tab.-active { color: $text; text-style: bold; background: transparent; }
+    _TabBar Tab:hover { background: transparent; }
+    _TabBar Underline { width: 1fr; }
+    """
+
+    def compose(self) -> ComposeResult:
+        with Container(id="tabs-scroll"), Vertical(id="tabs-list-bar"):
+            with Horizontal(id="tabs-list"):
+                yield from self._tabs
+            yield _TabRule()
+
+
 def _tab_strip(current: str) -> Tabs:
-    """The same strip on /config, /model and /delegation, the current one lit."""
-    strip = Tabs(
+    """The same strip on all four tabs, the current one underlined."""
+    strip = _TabBar(
         *(Tab(spec.label, id=f"tab-{spec.id}") for spec in tui_design().tabs),
         active=f"tab-{current}",
         id="tabs",
     )
     strip.can_focus = False
     return strip
+
+
+def _tab_hint(name: str) -> Text:
+    """A tab's one footer line: each part's first word is its key, in bold."""
+    text = Text(no_wrap=True, overflow="ellipsis")
+    separator = _say("hint_separator")
+    for position, part in enumerate(_say(name).split(separator)):
+        key, _, action = part.partition(" ")
+        if position:
+            text.append(separator, style=_style("muted"))
+        text.append(key, style=_style("foreground", "bold"))
+        if action:
+            text.append(f" {action}", style=_style("muted"))
+    return text
 
 
 def _summary(selection: ModelTuiSelection) -> Static:
@@ -804,7 +845,7 @@ class SetupScreen(_TabbedScreen[None]):
     CSS = """
     SetupScreen { align: center middle; }
     #form { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
-    #form .summary { height: 1; margin: 0 0 1 0; }
+    #form .summary { display: none; }
     #form Input { margin-bottom: 0; }
     #provider { width: 100%; border: none; padding: 0 1; margin-bottom: 1; }
     #found { height: 1fr; min-height: 3; display: none; }
@@ -860,7 +901,7 @@ class SetupScreen(_TabbedScreen[None]):
                 id="found",
             )
             yield Static(self._current_line(), id="basket")
-            yield Static(keycaps(tui_design().model_table.help["config"]), id="keys")
+            yield Static(_tab_hint("tab_hint_config"), id="keys")
             with Horizontal(id="buttons"):
                 yield Button(_say("button_guided_setup"), id="guided-setup")
                 yield Button(_say("button_add"), id="add")
@@ -1288,7 +1329,7 @@ class DelegationScreen(_TabbedScreen[None]):
     CSS = """
     DelegationScreen { align: center middle; }
     #deleg { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
-    #deleg .summary { height: 1; margin: 0 0 1 0; }
+    #deleg .summary { display: none; }
     .hook-switch { height: auto; }
     .hook-switch Label { width: 24; padding: 1 1 0 0; }
     .hook-switch Switch { width: 12; border: tall $primary; background: $surface; }
@@ -1379,9 +1420,7 @@ class DelegationScreen(_TabbedScreen[None]):
                 )
             with Vertical(id="dfoot"):
                 yield Static("", id="dnote")
-                yield Static(
-                    keycaps(tui_design().model_table.help["delegation"]), id="dkeys"
-                )
+                yield Static(_tab_hint("tab_hint_delegation"), id="dkeys")
                 with Horizontal(id="dbuttons"):
                     yield Button(_say("button_save"), variant="primary", id="dsave")
                     yield Button(_say("button_cancel"), id="dcancel")
@@ -1570,7 +1609,7 @@ class ModelPickScreen(_TabbedScreen[None]):
     CSS = """
     ModelPickScreen { align: center middle; }
     #pick { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
-    #pick .summary { height: 1; margin: 0 0 1 0; }
+    #pick .summary { display: none; }
     #pnote { color: $text-muted; height: auto; }
     #pkeys { color: $text-muted; height: auto; }
     #auto { width: auto; margin-bottom: 0; }
@@ -1579,6 +1618,7 @@ class ModelPickScreen(_TabbedScreen[None]):
         Binding("escape", "cancel", _say("button_cancel")),
         Binding("a", "auto", "Auto", show=False),
         Binding("r,delete", "remove", "Remove", show=False),
+        Binding("d", "details", "Details", show=False),
     ]
 
     def __init__(self, selection: ModelTuiSelection) -> None:
@@ -1606,7 +1646,7 @@ class ModelPickScreen(_TabbedScreen[None]):
                 id="models",
             )
             yield Static("", id="pnote")
-            yield Static(keycaps(words.help["model"]), id="pkeys")
+            yield Static(_tab_hint("tab_hint_model"), id="pkeys")
 
     def on_mount(self) -> None:
         table = self.query_one("#models", ModelTable)
@@ -1654,6 +1694,9 @@ class ModelPickScreen(_TabbedScreen[None]):
     def action_auto(self) -> None:
         self._run(lambda app: app.apply_model(("", "", "")))
 
+    def action_details(self) -> None:
+        self.query_one("#models", ModelTable).action_details()
+
     @on(DataTable.RowHighlighted)
     def _moved(self) -> None:
         """Moving to another row forgets a pending remove."""
@@ -1695,7 +1738,7 @@ class DashboardScreen(_TabbedScreen[None]):
     CSS = """
     DashboardScreen { align: center middle; }
     #board { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
-    #board .summary { height: 1; margin: 0 0 1 0; }
+    #board .summary { display: none; }
     #bstate { height: auto; margin: 1 0; }
     #bnote { height: auto; }
     #bkeys { color: $text-muted; height: 1; }
@@ -1722,9 +1765,7 @@ class DashboardScreen(_TabbedScreen[None]):
                 Text(_say("status_reading"), style=_style("muted")), id="bstate"
             )
             yield Static("", id="bnote")
-            yield Static(
-                keycaps(tui_design().model_table.help["dashboard"]), id="bkeys"
-            )
+            yield Static(_tab_hint("tab_hint_dashboard_stopped"), id="bkeys")
             with Horizontal(id="bbuttons"):
                 # The keys are S, Enter and X; a focused button would take Enter
                 # for itself and start instead of open. They stay clickable.

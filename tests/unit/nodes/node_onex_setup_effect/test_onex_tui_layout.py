@@ -41,6 +41,14 @@ _KEYS = {
 }
 
 
+def _hint(tab: str, words: dict[str, str]) -> str:
+    """The tab's footer line (OMN-26620 mockups): plain words from the design."""
+    name = tab.strip("/")
+    return words[
+        "tab_hint_dashboard_stopped" if name == "dashboard" else f"tab_hint_{name}"
+    ]
+
+
 async def _open(pilot, tab: str) -> None:
     await _type(pilot, tab)
     await pilot.press("enter")
@@ -68,11 +76,15 @@ async def test_the_key_line_shows_whole_above_the_buttons(tab: str) -> None:
         keys_id, buttons_id = _KEYS[tab]
         keys = app.screen.query_one(keys_id)
         text = _shown(keys)
-        hint = tui_design().model_table.help[tab.strip("/")]
+        hint = _hint(tab, tui_design().words)
         for word in hint.replace("·", " ").split():
             assert word in text, (word, text)
-        if buttons_id:
-            assert _gap(keys, app.screen.query_one(buttons_id)) >= 0
+        if buttons_id:  # the footer line is whole and clear of the buttons
+            buttons = app.screen.query_one(buttons_id)
+            assert not keys.region.intersection(buttons.region), (
+                keys.region,
+                buttons.region,
+            )
 
 
 @pytest.mark.parametrize(

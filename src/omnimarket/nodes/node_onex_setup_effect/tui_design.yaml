@@ -249,10 +249,10 @@ dashboard:
 # /config, /model and /delegation are three tabs of one place: Tab and
 # Shift+Tab move between them, and a click on a tab opens it.
 tabs:
-  - {id: config, label: "  Config  "}
-  - {id: model, label: "  Model  "}
-  - {id: delegation, label: "  Delegation  "}
-  - {id: dashboard, label: "  Dashboard  "}
+  - {id: config, label: Config}
+  - {id: model, label: Model}
+  - {id: delegation, label: Delegation}
+  - {id: dashboard, label: Dashboard}
 
 # Every word the /config, /model and /delegation screens show; {name} parts
 # are filled in. The screens hold no sentence of their own (OMN-23413 AC27).
@@ -309,6 +309,15 @@ words:
   toast_added: Added
   still_working: "still working… the tab closes or changes once this finishes"
   tab_loading: "opening {tab}…"
+  # The heavy rule under the open tab, and the footer line of each tab: the
+  # first word of each part is its key, drawn bold (mockups pages 4 to 7).
+  tab_rule: "━"
+  hint_separator: " · "
+  tab_hint_config: "tab next · space tick · ctrl+s save · esc close"
+  tab_hint_model: "↑↓ move · enter make first · d details · esc close"
+  tab_hint_delegation: "space switch · ctrl+s save · esc close"
+  tab_hint_dashboard_stopped: "s start · esc close"
+  tab_hint_dashboard_running: "enter open · s stop · esc close"
   # The one line under the tabs: how many models, on how many servers, and the first.
   summary: "{dot} {models} · {servers} · {first}"
   summary_no_servers: "{dot} {models} · {first}"
