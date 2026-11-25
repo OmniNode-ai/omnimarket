@@ -3,7 +3,8 @@
 """The Postgres overlay store: the backend of a runtime, the one component that holds a database URL.
 
 A host never selects this backend: it reads the snapshot topic the projection publishes. One row per
-overlay id and digest keeps every version; the row asserted last is the current one. The document
+overlay id and digest keeps every version; the row asserted last is the current one. ``operator_paths`` lists the settings an operator set through the
+store (OMN-26495); a row written before that column reads as none. The document
 column is JSON and not JSONB, because JSONB reorders keys and a table file's key order is part of how
 the flat parsers read it.
 """
@@ -26,16 +27,17 @@ _READ_NEWEST = f"""
 """
 _UPSERT = f"""
     INSERT INTO {STORE_TABLE}
-        (overlay_id, digest, document, source_ref, loaded_by, first_loaded_at, last_loaded_at)
-    VALUES ($1, $2, $3::json, $4, $5, $6, $6)
+        (overlay_id, digest, document, source_ref, loaded_by, first_loaded_at, last_loaded_at, operator_paths)
+    VALUES ($1, $2, $3::json, $4, $5, $6, $6, $7::json)
     ON CONFLICT (overlay_id, digest) DO UPDATE SET
         last_loaded_at = EXCLUDED.last_loaded_at,
+        operator_paths = EXCLUDED.operator_paths,
         source_ref = EXCLUDED.source_ref,
         loaded_by = EXCLUDED.loaded_by,
         projected_at = now()
 """
 _READ_CURRENT = f"""
-    SELECT overlay_id, digest, document, source_ref, loaded_by, last_loaded_at
+    SELECT overlay_id, digest, document, source_ref, loaded_by, last_loaded_at, operator_paths
     FROM {STORE_TABLE} WHERE overlay_id = $1
     ORDER BY last_loaded_at DESC LIMIT 1
 """
@@ -57,6 +59,7 @@ class PostgresOverlayStore:
             loaded.source_ref,
             loaded.loaded_by,
             loaded.loaded_at,
+            json.dumps(list(loaded.operator_paths)),
         )
         async with self._pool.acquire() as conn, conn.transaction():
             await conn.execute(_LOCK, f"overlay_store:{loaded.overlay_id}")
@@ -78,6 +81,7 @@ class PostgresOverlayStore:
             source_ref=str(row["source_ref"]),
             loaded_by=str(row["loaded_by"]),
             loaded_at=row["last_loaded_at"],
+            operator_paths=tuple(json.loads(row["operator_paths"] or "[]")),
         ).model_dump(mode="json")
 
 

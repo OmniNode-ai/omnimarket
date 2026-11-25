@@ -22,6 +22,12 @@ evidence_requirements:
   - kind: tests
     description: "The overlay model tests pass at the pushed head."
     command: "uv run --frozen pytest tests/unit/nodes/node_stability_gateway_key_provision_effect -q --no-cov -n 0 -p no:cacheprovider"
+  - kind: tests
+    description: "The per-check key name tests and the provision node's neighbouring tests pass at the pushed head: the default name unchanged, C16 never touching the name C11 reads, a stored key never changed."
+    command: "uv run --frozen pytest tests/nodes/node_stability_gateway_key_provision_effect -q --no-cov -n 0 -p no:cacheprovider"
+  - kind: manual
+    description: "Deploy validation command for the caller-contract deploy gate: the secret store contract declares C16's own key id. It starts nothing and touches no running lane."
+    command: "deploy: git grep -n stability_gateway_api_key_c16 -- src/omnimarket/nodes/node_secret_store_effect/contract.yaml"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -53,6 +59,15 @@ dod_evidence:
       - check_type: test_passes
         check_value: >-
           uv run --frozen pytest tests/unit/nodes/node_stability_gateway_key_provision_effect -q --no-cov -n 0 -p no:cacheprovider
+        cwd: .
+  - id: dod-omn26566-ac2-per-check-key-name
+    description: "AC2, second step: the per-check key name. The focused tests prove the default name is unchanged, a C16 provision never touches the name C11 reads, and a key already stored is never changed. Running the node for C16 and reading C16's receipt follow this change under the operator consent on the ticket."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run --frozen pytest tests/nodes/node_stability_gateway_key_provision_effect/test_per_check_key_name.py -q --no-cov -n 0 -p no:cacheprovider
         cwd: .
   - id: dod-omn26566-integration-proof
     description: "Local Done gate only, so it binds no criterion here: the overlay model tests run on a lab host at the pushed head."

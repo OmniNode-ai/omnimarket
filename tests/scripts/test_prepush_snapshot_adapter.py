@@ -100,3 +100,18 @@ def test_marker_identity_and_owned_cleanup_require_registered_worktree(
     assert not snapshot.exists()
     assert not parent.exists()
     assert str(snapshot) not in _git(repo, "worktree", "list", "--porcelain")
+
+
+def test_manifest_interpreter_names_the_recorded_interpreter_or_nothing(
+    tmp_path: Path,
+) -> None:
+    named = tmp_path / "named.json"
+    named.write_text(json.dumps({"pre_commit_python": "/x/python"}), encoding="utf-8")
+    absent = tmp_path / "absent.json"
+    absent.write_text(json.dumps({"pre_commit_version": "4.5.1"}), encoding="utf-8")
+    corrupt = tmp_path / "corrupt.json"
+    corrupt.write_text("{", encoding="utf-8")
+
+    assert adapter.manifest_interpreter(named) == "/x/python"
+    assert adapter.manifest_interpreter(absent) == ""
+    assert adapter.manifest_interpreter(corrupt) == ""

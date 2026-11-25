@@ -250,6 +250,33 @@ def _pair(value: str) -> tuple[str, str] | None:
     return (url.strip(), model.strip()) if url.strip() and model.strip() else None
 
 
+class ModelLocalServer(BaseModel):
+    """One local chat server that answered: its base URL and the model id it lists."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    base_url: str = Field(min_length=1)
+    model_id: str = Field(min_length=1)
+
+
+class ModelLocalServerPool(BaseModel):
+    """The local servers that answered, least busy first: the pool handler's dispatch response."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    servers: tuple[ModelLocalServer, ...]
+
+
+class ProtocolLocalServerPool(Protocol):
+    """The lab's local servers that answer now, least busy first (the product's local tier)."""
+
+    def live_servers(self) -> tuple[ModelLocalServer, ...]: ...
+
+
+def _origin(url: str) -> str:
+    return url.strip().rstrip("/")
+
+
 class HandlerScenarioR2:
     """Run scenario R2 once, write its STATUS row and emit its result on the bus."""
 
@@ -265,7 +292,9 @@ class HandlerScenarioR2:
         terminal_topic: str | None = None,
         trigger: EnumScenarioTrigger = EnumScenarioTrigger.SCHEDULE,
         clock: Clock = lambda: datetime.now(UTC),
+        pool: ProtocolLocalServerPool | None = None,
     ) -> None:
+        self._pool = pool
         self._runtime = runtime
         self._home = home
         self._environment = environment
@@ -336,6 +365,29 @@ class HandlerScenarioR2:
         missing = [name for key, name in names.items() if not values[key]]
         return values, missing
 
+    def _local_servers(
+        self, pinned: tuple[tuple[str, str], tuple[str, str]]
+    ) -> tuple[tuple[tuple[str, str], tuple[str, str]], str]:
+        """The two local servers the run adds, and where they came from.
+
+        The product reaches a local model through its local tier: the lab servers that answer, least busy first. So the
+        run adds the two least busy servers that answer now. A slot the pool cannot fill (fewer than two answer) keeps
+        a pinned setting, so a lab with one live server still fails ``both_listed_in_order`` honestly. With no pool
+        wired, or a pool that lists none, both settings stand as they are.
+        """
+        if self._pool is None:
+            return pinned, "pinned settings"
+        live = [(s.base_url, s.model_id) for s in self._pool.live_servers()]
+        if not live:
+            return pinned, "pinned settings"
+        taken = {_origin(live[0][0])}
+        if len(live) >= 2:
+            return (live[0], live[1]), "lab pool"
+        spare = next(
+            (pair for pair in pinned if _origin(pair[0]) not in taken), pinned[1]
+        )
+        return (live[0], spare), "lab pool (one server answers)"
+
     def _scenario(self, assertions: list[str]) -> str:
         runtime = self._runtime
         settings, missing = self._settings()
@@ -347,6 +399,7 @@ class HandlerScenarioR2:
             assertions.append("-settings_present")
             return "a local model setting is not <base url>|<model id>"
         assertions.append("+settings_present")
+        (first, second), source = self._local_servers((first, second))
 
         self._fresh_home()
         secret = settings["key"]
@@ -463,7 +516,11 @@ class HandlerScenarioR2:
             both == (first[1], second[1]),
             f"local models: {both}",
         )
-        text = "; ".join(problems) or "every assertion held"
+        text = (
+            "; ".join(problems) + f"; local servers from: {source}"
+            if problems
+            else "every assertion held"
+        )
         return text.replace(secret, "***")
 
     def _fresh_home(self) -> None:
@@ -473,6 +530,15 @@ class HandlerScenarioR2:
         if target.exists():
             shutil.rmtree(target)
         target.mkdir(parents=True)
+
+
+def _lab_pool() -> ProtocolLocalServerPool:
+    # Imported here: the pool module imports ModelLocalServer from this one.
+    from omnimarket.nodes.node_delegation_scenario_r2_effect.lab_local_pool import (
+        LabLocalPool,
+    )
+
+    return LabLocalPool()
 
 
 def build_runner(
@@ -508,4 +574,5 @@ def build_runner(
             timeout_seconds=runtime.bus_emit_timeout_seconds,
         ),
         trigger=trigger,
+        pool=_lab_pool(),
     )
