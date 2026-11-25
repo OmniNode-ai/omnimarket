@@ -34,6 +34,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from rich.cells import cell_len
 from rich.console import Group
 from rich.markdown import Markdown
+from rich.style import Style
 from rich.table import Table
 from rich.text import Text
 from textual import events, on
@@ -45,6 +46,7 @@ from textual.app import (
     SystemCommand,
 )
 from textual.binding import Binding, BindingType
+from textual.color import Color
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.content import Content
 from textual.css.query import NoMatches
@@ -498,6 +500,18 @@ def _hook_presence(doc: object) -> dict[str, str]:
     return {}
 
 
+#: The longest a held key waits: a command that has not answered by then
+#: lets the keys typed after it through.
+_HOLD_SECONDS = 1.0
+
+
+def metering_never_used(text: str) -> bool:
+    """Whether `onex metering` refused because nothing was ever delegated
+    here: no evidence store exists yet. That is no usage, not a fault; any
+    other refusal still says the read failed."""
+    return "no local delegation evidence database" in text
+
+
 def _measured_cost(metrics: dict[str, object]) -> float | None:
     """The run's cost in USD, or None when it was not measured: no cost_usd, or a
     zero the backend marks cost_measured false, which means unknown, not free."""
@@ -832,9 +846,65 @@ class _TabbedScreen(ModalScreen[_ResultT]):
         Binding("up", "app.focus_previous", "Previous field", show=False),
     ]
 
+    #: The part of the tab the setup fills: under a loading indicator
+    #: until the first read lands, so the tab itself opens at once.
+    BODY: ClassVar[str] = ""
+    #: True while the setup this tab shows has not been read yet.
+    reading: bool = False
+
+    #: The smallest window a tab is laid out for; below it the tab's parts
+    #: would be cut off, so one sentence says so instead.
+    MIN_SIZE: ClassVar[tuple[int, int]] = (80, 24)
+
+    def on_mount(self) -> None:
+        # Runs after the tab's own on_mount (Textual calls each class's).
+        if self.reading and self.BODY:
+            self.query_one(self.BODY).loading = True
+        self.mount(Static("", id="too-small"))
+        self._fit_window()
+
+    def _fit_window(self) -> None:
+        width, height = self.app.size
+        least_width, least_height = self.MIN_SIZE
+        small = width < least_width or height < least_height
+        self.set_class(small, "-small")
+        if small:
+            self.query_one("#too-small", Static).update(
+                Text(
+                    _say(
+                        "tab_too_small",
+                        width=width,
+                        height=height,
+                        min_width=least_width,
+                        min_height=least_height,
+                    ),
+                    style=_style("warning"),
+                )
+            )
+
+    def selection_read(self, selection: ModelTuiSelection) -> None:
+        """The first setup read landed after this tab opened: show it."""
+        self.reading = False
+        self._selection = selection
+        if not self.BODY:
+            return
+        with contextlib.suppress(NoMatches):
+            self.query_one(self.BODY).loading = False
+            self._first_read_shown()
+
+    def _first_read_shown(self) -> None:
+        self._show_selection()
+        self._empty_note()
+
+    def _empty_note(self) -> None:  # stub-ok: Config and Dashboard list no models
+        """Say so when no model is set up; a tab with nothing to say is quiet."""
+
     def action_tab(self, step: int) -> None:
         order: list[str] = [spec.id for spec in tui_design().tabs]
-        self._leave(order[(order.index(self.TAB) + step) % len(order)])
+        app = self.app
+        # Tab Tab: the second steps on from the tab the first is opening.
+        here = (app.tab_pending if isinstance(app, OnexTui) else None) or self.TAB
+        self._leave(order[(order.index(here) + step) % len(order)])
 
     def on_tabs_tab_activated(self, event: Tabs.TabActivated) -> None:
         target = (event.tab.id or "").removeprefix("tab-")
@@ -850,6 +920,8 @@ class _TabbedScreen(ModalScreen[_ResultT]):
     FOOT: ClassVar[tuple[str, str, str] | None] = None
 
     def on_resize(self) -> None:
+        if self.query("#too-small"):
+            self._fit_window()
         self.call_after_refresh(self._fit_footer)
 
     def _fit_footer(self) -> None:
@@ -881,6 +953,7 @@ class _TabbedScreen(ModalScreen[_ResultT]):
             (t.label.strip() for t in tui_design().tabs if t.id == target), target
         )
         self._note(_say("tab_loading", tab=label))
+        app.tab_pending = target
         app.run_worker(app.switch_tab(target), exclusive=True, group="tabs")
 
     def _close(self) -> None:
@@ -964,6 +1037,7 @@ class SetupScreen(_TabbedScreen[None]):
 
     TAB = "config"
     NOTE = "#note"
+    BODY = "#basket"
     FOOT = ("#cfg-foot", "#keys", "#buttons")
 
     CSS = """
@@ -1388,6 +1462,10 @@ class SetupScreen(_TabbedScreen[None]):
 
         self._run(save)
 
+    def _first_read_shown(self) -> None:
+        # What was ticked while the setup was read stays ticked.
+        self.query_one("#basket", Static).update(self._basket_line())
+
     def _show_selection(self) -> None:
         super()._show_selection()
         self.query_one("#found", ModelTable).set_ticked(())
@@ -1593,6 +1671,7 @@ class DelegationScreen(_TabbedScreen[None]):
     """
     TAB = "delegation"
     NOTE = "#dnote"
+    BODY = "#selected"
     FOOT = ("#dbar", "#dkeys", "#dbuttons")
     PROBLEM = "problem_delegation"
     BINDINGS = [
@@ -1676,12 +1755,17 @@ class DelegationScreen(_TabbedScreen[None]):
         table = self.query_one("#selected", ModelTable)
         table.border_title = _say("order_title")
         table.set_entries(self._selection.entries)
+        self._fit_order()
         # The keyboard goes to the list without scrolling the switch away.
         table.query_one("#mt-rows", DataTable).focus(scroll_visible=False)
-        words = tui_design().delegation
-        note = self.query_one("#dnote", Static)
+        if not self.reading:
+            self._empty_note()
+
+    def _empty_note(self) -> None:
         if not self._selection.entries:
-            note.update(Text(words.no_models, style=_style("warning")))
+            self.query_one("#dnote", Static).update(
+                Text(tui_design().delegation.no_models, style=_style("warning"))
+            )
 
     async def _check_claude(self) -> None:
         """Fill the Claude Code line: shown only when Claude Code is not ready."""
@@ -1696,8 +1780,10 @@ class DelegationScreen(_TabbedScreen[None]):
         }.get(state, (_say("claude_unknown"), "muted"))
         # While Claude Code is only installed, Save adds the plugin (the line says so);
         # the CLI's repair sentence is a developer command, so it goes to the log.
-        # Every other state keeps the CLI's plain next step (OMN-26617).
-        if fix and state == "installed":
+        # Signed out: the line says to sign in, so the CLI's sentence would
+        # only repeat it. Every other state keeps the CLI's plain next step
+        # (OMN-26617).
+        if fix and state in ("installed", "signed_out"):
             _LOG.info("claude code hint hidden: %s", fix)
             fix = ""
         rendered = line if not fix else f"{line}\n{fix}"
@@ -1851,6 +1937,13 @@ class DelegationScreen(_TabbedScreen[None]):
     def _show_selection(self) -> None:
         super()._show_selection()
         self.query_one("#selected", ModelTable).set_entries(self._selection.entries)
+        self._fit_order()
+
+    def _fit_order(self) -> None:
+        """No model yet: no empty order box; the note says to add one."""
+        self.query_one("#selected").display = self.reading or bool(
+            self._selection.entries
+        )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "dcancel":
@@ -1869,6 +1962,7 @@ class ModelPickScreen(_TabbedScreen[None]):
 
     TAB = "model"
     NOTE = "#pnote"
+    BODY = "#models"
     PROBLEM = "problem_model"
 
     CSS = """
@@ -1930,6 +2024,10 @@ class ModelPickScreen(_TabbedScreen[None]):
         table.set_first(self._first_key())
         table.set_entries(self._selection.entries)
         table.query_one("DataTable").focus()
+        if not self.reading:
+            self._empty_note()
+
+    def _empty_note(self) -> None:
         if not self._selection.entries:
             self._note(_say("nothing_set_up"), "warning")
 
@@ -3304,18 +3402,29 @@ class MeteringScreen(_TabbedScreen[None]):
                     app.capture_command(("metering", "--json")), 20
                 )
                 summary = parse_metering(out or err) if code == 0 else None
+                never = code != 0 and metering_never_used(f"{out}\n{err}")
             except Exception as error:  # a read is a convenience; say it plainly
                 _LOG.warning("the usage read failed: %r", error)
+                never = False
             with contextlib.suppress(NoMatches):
-                self._show(summary)
+                self._show(summary, never_used=never)
 
         self.run_worker(go(), exclusive=True, group="metering-read")
 
-    def _show(self, summary: Any) -> None:
+    def _show(self, summary: Any, *, never_used: bool = False) -> None:
         for kind in self._ROLES:
             self.query_one(f"#mcard-{kind}", Static).update("")
         self.query_one("#mmodels", Static).update("")
         self.query_one("#mperiod", Static).update("")
+        empty = never_used or (
+            summary is not None and not summary.tasks and not summary.models
+        )
+        # Nothing to count: no empty cards and box, one plain sentence.
+        self.query_one("#mcards").display = not empty
+        self.query_one("#mmodels").display = not empty
+        if empty:
+            self._note(Text(_say("metering_empty"), style=_style("muted")))
+            return
         if summary is None:
             self._note(Text(_say("problem_metering"), style=_style("warning")))
             return
@@ -3431,7 +3540,10 @@ class ThemeScreen(_TabbedScreen[None]):
         text.append(_say("themes_sample_text") + "\n\n", _style("muted"))
         for role in self._SWATCHES:
             colour = getattr(theme, role, None) or theme.primary
-            text.append("████████  ", str(colour))
+            # A theme names colours the Textual way (ansi_blue): Rich takes
+            # them converted, or the preview ends onex (T1).
+            swatch = Style(color=Color.parse(str(colour)).rich_color)
+            text.append("████████  ", swatch)
             text.append(f"{role}\n", _style("foreground"))
         self.query_one("#tpreview", Static).update(text)
 
@@ -3469,6 +3581,10 @@ class OnexTui(App[int]):
        (Textual leaves a modal screen transparent in ANSI colour). */
     _TabbedScreen { background: $background; }
     _TabbedScreen:ansi { background: ansi_default; }
+    /* Too small for a tab: its parts give way to one sentence. */
+    #too-small { display: none; width: 100%; height: auto; padding: 1 2; text-align: center; }
+    _TabbedScreen.-small > * { display: none; }
+    _TabbedScreen.-small > #too-small { display: block; }
     #header { height: 2; padding: 0 1; margin-top: 1; }
     #welcome { display: none; height: auto; margin-top: 1; }
     #bigmark { width: 100%; height: auto; text-align: center; }
@@ -3569,6 +3685,13 @@ class OnexTui(App[int]):
         self._active_task: Worker[None] | None = None
         self._task_started = 0.0
         self._ticker: Timer | None = None
+        #: The tab a Tab press is switching to, until it is on screen.
+        self.tab_pending: str | None = None
+        # Keys typed after Enter at the prompt, held until what it ran is
+        # on screen, then replayed one at a time (K1, K2).
+        self._held_keys: list[events.Key] | None = None
+        self._replays: list[events.Key] = []
+        self._hold_timer: Timer | None = None
         self._spinner: Timer | None = None
         self._history: list[str] = []
         self._recall = 0
@@ -3747,6 +3870,64 @@ class OnexTui(App[int]):
                 line.append(sep[0], style=sep[1])
                 line.append_text(hint)
         self._main().query_one("#status", Static).update(line)
+
+    async def on_event(self, event: events.Event) -> None:
+        if not isinstance(event, events.Key) or event.is_forwarded:
+            await super().on_event(event)
+            return
+        replay = event in self._replays
+        if replay:
+            self._replays.remove(event)
+        elif self._held_keys is not None:
+            self._held_keys.append(event)
+            return
+        main = self._main()
+        if self.screen is main and main.focused is None:
+            # A tab just closed: the main screen gets its focus back a
+            # moment later, and a key typed meanwhile would be lost.
+            with contextlib.suppress(NoMatches):
+                main.set_focus(main.query_one("#prompt", Input))
+        if event.key == "enter" and self._at_prompt():
+            # Enter still reaches the prompt after the letters before it; the
+            # keys after it wait until what it ran is on screen.
+            if self._held_keys is None:
+                self._held_keys = []
+            self._arm_hold()
+            await super().on_event(event)
+            return
+        await super().on_event(event)
+        if replay:  # the next one once this one's effect is drawn
+            self.call_after_refresh(self._release_next)
+
+    def _at_prompt(self) -> bool:
+        focused = self.focused
+        return (
+            focused is not None
+            and focused.id == "prompt"
+            and self.screen is self._main()
+        )
+
+    def _arm_hold(self) -> None:
+        """Held keys always go through: at the latest after _HOLD_SECONDS."""
+        if self._hold_timer is not None:
+            self._hold_timer.stop()
+        self._hold_timer = self.set_timer(_HOLD_SECONDS, self._release_next)
+
+    def _release_next(self) -> None:
+        """Replay the next held key to whatever is on screen now."""
+        if self._held_keys is None:
+            return
+        if not self._held_keys:
+            self._held_keys = None
+            if self._hold_timer is not None:
+                self._hold_timer.stop()
+                self._hold_timer = None
+            return
+        held = self._held_keys.pop(0)
+        key = events.Key(held.key, held.character)
+        self._replays.append(key)
+        self._arm_hold()
+        self.post_message(key)
 
     def _main(self) -> Screen[object]:
         """The main screen: its log and status bar, even while a tab is open."""
@@ -3966,9 +4147,11 @@ class OnexTui(App[int]):
             return
         main.set_class(roomy, "-roomy")
         main.query_one("#welcome").display = showing
-        main.query_one("#diagram").display = showing and not self._started
-        main.query_one("#diagram-title").display = showing and not self._started
         palette_open = main.query_one("#palette", OptionList).display
+        # The open command menu needs the rows: the diagram gives them up.
+        diagram = showing and not self._started and not palette_open
+        main.query_one("#diagram").display = diagram
+        main.query_one("#diagram-title").display = diagram
         main.query_one("#guide-wrap").display = (
             showing
             and not self._started
@@ -4092,7 +4275,14 @@ class OnexTui(App[int]):
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id != "prompt":  # #key and #url bubble up from a tab
             return
-        text = self._palette_choice(event.value.strip())
+        try:
+            await self._run_prompt(event.value)
+        finally:  # what it ran is on screen: the held keys go to it
+            self._release_next()
+
+    async def _run_prompt(self, value: str) -> None:
+        """Run what was typed at the prompt: a task or a /command."""
+        text = self._palette_choice(value.strip())
         prompt = self.query_one("#prompt", Input)
         prompt.value = ""
         self.action_close_palette()
@@ -4111,6 +4301,11 @@ class OnexTui(App[int]):
                         style=_style("warning"),
                     )
                 )
+                return
+            if self._status_read and self._status.models == 0:
+                # Nothing to delegate to: say so, never the engine's error.
+                self._write(task_echo_renderable(text), kind="user")
+                self._write(Text(_say("task_no_model"), style=_style("warning")))
                 return
             self._start_task(self._delegate(text))
             return
@@ -4256,18 +4451,32 @@ class OnexTui(App[int]):
         if name in ("metering", "themes"):  # they need no model read
             return self._build_tab(name, self._selection or ModelTuiSelection())
         cached = self._selection
-        selection = cached or await self._first_selection()
-        screen = self._build_tab(name, selection)
+        if cached is None:
+            # Not read yet (the CLI takes seconds): open now and fill in
+            # when the read lands, so keys pressed meanwhile reach the tab.
+            opening = self._build_tab(name, ModelTuiSelection())
+            if isinstance(opening, _TabbedScreen):
+                opening.reading = True
+            self.run_worker(self._fill_when_read(opening), group="first-read")
+            self._shown = True
+            return opening
+        screen = self._build_tab(name, cached)
         fresh = time.monotonic() - self._read_at < tui_design().fresh_seconds
         if cached is not None and (self._shown or not fresh):
             self.call_after_refresh(self._refresh_tab, screen)
         self._shown = True
         return screen
 
+    async def _fill_when_read(self, screen: Screen[object]) -> None:
+        selection = await self._first_selection()
+        if isinstance(screen, _TabbedScreen) and screen in self.screen_stack:
+            screen.selection_read(selection)
+
     async def _first_selection(self) -> ModelTuiSelection:
         """The start-up read if it worked, else a read now, else nothing yet:
-        a tab always opens, and refreshes its setup when it can be read."""
-        warming, self._warming = self._warming, None
+        a tab always opens, and refreshes its setup when it can be read.
+        Tabs opened while it runs all wait on the same read."""
+        warming = self._warming
         if warming is not None:
             with contextlib.suppress(Exception):
                 return await warming
@@ -4322,6 +4531,8 @@ class OnexTui(App[int]):
             await self.push_screen(screen)
         else:
             await self.switch_screen(screen)
+        if self.tab_pending == name:
+            self.tab_pending = None
 
     async def _shortcut(self, action: str) -> None:
         if action == "quit":

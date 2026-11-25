@@ -297,7 +297,7 @@ delegation:
   switched_off: "Claude Code delegation is off."
   not_switched: "Claude Code delegation was not switched {state}: {reason}"
   nothing_ticked: "Tick at least one model first: click it, or press Space on it."
-  no_models: "Select a model with /config first: Claude delegation needs at least one selected model."
+  no_models: "Add a model in the Config tab first: delegation needs at least one."
   # OMN-23413, operator 2026-11-14: the switch's state is written out, and the
   # hook it installs is shown with whether Claude Code has it (one hook, 2026-11-17).
   glyph_on: "●"
@@ -386,7 +386,9 @@ words:
   model_title: "Choose the model every task tries first"
   model_now: "Now: {current}"
   cannot_be_first: "{model} cannot be tried first: {reason}"
-  nothing_set_up: "No model is set up yet. Type /config to connect one."
+  nothing_set_up: "No model is set up yet. Open the Config tab (Shift+Tab) to connect one."
+  tab_too_small: "This window is {width}×{height}. The tabs need at least {min_width}×{min_height}: make the window bigger, or press Esc to go back."
+  task_no_model: "No model is set up yet, so there is nothing to delegate to. Run /config to add a provider key or a local server."
   now_first: "{model} is now tried first ({provider})"
   # The model tried first, and the server it runs on when it was added by URL.
   first_model: "{model} ({provider})"

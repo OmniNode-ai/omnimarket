@@ -999,15 +999,17 @@ async def test_the_table_says_when_a_provider_list_has_expired(
 
 
 async def test_model_with_nothing_set_up_points_to_setup() -> None:
+    from omnimarket.nodes.node_onex_setup_effect import cli_tui
+
     app = _app(_Runner([], by_command={("models", "list"): ""}))
     async with app.run_test() as pilot:
         await _type(pilot, "/model")
         await pilot.press("enter")
-        await pilot.pause()
-        await pilot.pause()
-        assert "Type /config to connect one." in str(
-            app.screen.query_one("#pnote").render()
-        )
+        for _ in range(6):  # the tab opens at once; the setup read fills it
+            await pilot.pause()
+        note = str(app.screen.query_one("#pnote").render())
+        assert cli_tui._say("nothing_set_up") in note, note
+        assert "Config tab" in note, note
 
 
 async def test_clear_empties_the_output() -> None:
