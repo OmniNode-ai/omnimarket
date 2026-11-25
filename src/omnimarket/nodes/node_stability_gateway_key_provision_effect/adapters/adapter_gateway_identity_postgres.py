@@ -8,6 +8,7 @@ derived from the slug so a second run replays the first. The key row is the stor
 
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from omnimarket.models.tenant_provision_command import ModelTenantProvisionCommand
@@ -69,10 +70,18 @@ class GatewayIdentityPostgres:
                 )
 
     async def ensure_api_key(
-        self, *, tenant_id: UUID, name: str, key_hash: str
+        self,
+        *,
+        tenant_id: UUID,
+        name: str,
+        key_hash: str,
+        expires_at: datetime | None = None,
     ) -> EnumApiKeyEnsure:
         kind = await self._store.ensure_api_key(
-            tenant_id=tenant_id, name=name, key_hash=key_hash
+            tenant_id=tenant_id,
+            name=name,
+            key_hash=key_hash,
+            expires_at=expires_at,
         )
         return EnumApiKeyEnsure(kind.value)
 
