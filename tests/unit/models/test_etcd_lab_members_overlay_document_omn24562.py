@@ -7,7 +7,6 @@ a repeated name, a second learner and a second laptop voter are the known bad on
 overlay's text with the voter rows of members.tsv, spelled here, so the two can be compared with no checkout of
 the provisioning.
 """
-# onex-allow-file OMN-24562 reason="invented tailnet-range addresses and host names as test fixtures; no real host or address"
 
 from __future__ import annotations
 
