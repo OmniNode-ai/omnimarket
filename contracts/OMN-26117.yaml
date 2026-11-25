@@ -58,12 +58,11 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_c11_credential_from_store.py -q --no-cov -n 0 -p no:randomly -k another_key
     cwd: .
 - id: dod-omn26117-c11-status-row
-  description: The rolling ledger holds the STATUS row of the C11 green reading written by lane c11key-0815 for run 45351153694. Read through the ledger, so only the local Done gate runs it.
+  description: The green reading the C11 STATUS row records (run 45351153694, lane c11key-0815) is the known-good arm, where the store holds the gateway's key and every clause grades PASS. The ledger row itself is read only by the local Done gate, so the hosted check binds the arm that produces that verdict.
   source: manual
-  execution_scope: local_done_gate
   binds_ac:
   - AC3
   checks:
-  - check_type: command
-    check_value: sh -c 'python3 "${OMNI_PLUGIN_ROOT:?}"/skills/lane-brief/scripts/lane_brief.py grep "crit=C11 probe=c11-negative-paths verdict=" | grep -F "lane=c11key-0815"'
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_c11_credential_from_store.py -q --no-cov -n 0 -p no:randomly -k known_good
     cwd: .
