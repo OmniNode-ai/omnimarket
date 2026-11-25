@@ -2064,6 +2064,16 @@ class TaskCard:
     def model(self) -> str:
         return str(self._recorded.get("model", ""))
 
+    _TASK_FIELDS = ("task", "task_text", "title", "prompt", "summary", "description")
+
+    @property
+    def task(self) -> str:
+        for field in self._TASK_FIELDS:
+            value = self._recorded.get(field)
+            if value is not None and str(value).strip():
+                return str(value).strip()
+        return ""
+
     @property
     def route(self) -> str:
         raw = str(self._recorded.get("route", "")).strip().lower()
@@ -2161,33 +2171,72 @@ class TaskCard:
         token = self.bar_colour_token()
         return str(getattr(theme, token, token))
 
+    @staticmethod
+    def _format_tokens(value: object) -> str:
+        try:
+            number = int(float(value))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return str(value)
+        if abs(number) >= 1000:
+            scaled = number / 1000
+            if scaled == int(scaled):
+                return f"{int(scaled)}k"
+            return f"{scaled:.1f}k"
+        return str(number)
+
+    def _tokens(self) -> object:
+        record = self._recorded
+        if record.get("tokens") is not None:
+            return record.get("tokens")
+        if record.get("total_tokens") is not None:
+            return record.get("total_tokens")
+        if record.get("tokens_total") is not None:
+            return record.get("tokens_total")
+        in_tokens = record.get("tokens_in")
+        out_tokens = record.get("tokens_out")
+        if in_tokens is not None or out_tokens is not None:
+            try:
+                return int(str(in_tokens or 0)) + int(str(out_tokens or 0))
+            except (TypeError, ValueError):
+                pass
+        return record.get("tokens")
+
+    def _cost(self) -> object:
+        return self._recorded.get("cost")
+
     def facts_line(self) -> str:
         design = self._design()
         task_card = getattr(design, "task_card", None)
         template = getattr(task_card, "facts_template", "")
+        fallback_template = getattr(task_card, "fallback_facts_template", "")
         failure_template = getattr(task_card, "failure_template", "")
-        if self.state == "failed" and failure_template:
+        if self.state == "failed":
+            if failure_template:
+                try:
+                    return str(failure_template).format(**self._recorded)
+                except (KeyError, ValueError, IndexError):
+                    try:
+                        return str(failure_template).format(model=self.model)
+                    except (KeyError, ValueError, IndexError):
+                        pass
+            return f"Could not reach {self.model}. Check its key with /config."
+        tokens = self._format_tokens(self._tokens())
+        cost = self._cost()
+        chosen_template = fallback_template if self.state == "fallback" else template
+        if chosen_template:
             try:
-                return str(failure_template).format(**self._recorded)
-            except (KeyError, ValueError, IndexError):
-                return str(failure_template).format(model=self.model)
-        if template:
-            try:
-                return str(template).format(**self._recorded)
+                return str(chosen_template).format(
+                    model=self.model,
+                    tokens=tokens,
+                    seconds=self._recorded.get("seconds"),
+                    cost=cost,
+                )
             except (KeyError, ValueError, IndexError):
                 pass
-        record = self._recorded
-        tokens = record.get("tokens")
-        if tokens is None:
-            tokens = record.get("total_tokens")
-        if tokens is None:
-            tokens = int(str(record.get("tokens_in") or 0)) + int(
-                str(record.get("tokens_out") or 0)
-            )
-        return (
-            f"{record.get('model')} · {tokens} tokens · "
-            f"{record.get('seconds')} s · ${record.get('cost')}"
-        )
+        parts = [self.model, f"{tokens} tokens", f"{self._recorded.get('seconds')} s"]
+        if self.state != "fallback" and cost is not None:
+            parts.append(f"${cost}")
+        return " · ".join(parts)
 
     def render(self) -> object:
         from rich.text import Text
@@ -2197,7 +2246,7 @@ class TaskCard:
         mark = self.mark()
         label = state.capitalize()
         return Group(
-            Text(f"┃ {mark} {label}   {self.model}", style=colour),
+            Text(f"┃ {mark} {label}   {self.task}", style=colour),
             Text(f"┃   {self.facts_line()}"),
         )
 

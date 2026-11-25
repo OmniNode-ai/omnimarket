@@ -283,6 +283,9 @@ class ModelTuiTaskCard(BaseModel):
 
     state_bar_colour: str
     facts_template: str = Field(min_length=1)
+    fallback_facts_template: str = Field(
+        default="{model} · {tokens} tokens · {seconds} s", min_length=1
+    )
     failure_template: str = Field(
         default="Could not reach {model}. Check its key with /config.", min_length=1
     )
