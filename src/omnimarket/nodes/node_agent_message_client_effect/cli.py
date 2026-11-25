@@ -257,7 +257,7 @@ def read_command(
     except AgentMessageRefusalError as refusal:
         _refuse(refusal, as_json=as_json)
         return
-    click.echo(render_read(result.messages, as_json=as_json))
+    click.echo(render_read(result, as_json=as_json))
 
 
 @agent_message_group.command("serve-mcp")

@@ -89,6 +89,9 @@ def _handler(
         bus=bus,
         registry=directory,
         signing_keys=directory if signs else None,
+        login_principal=lambda: (
+            None
+        ),  # the login binding has its own tests (tests/cli/test_agent_message_login_binding.py)
         read_window_seconds=0.05,
         quiet_gap_seconds=0.02,
     )
