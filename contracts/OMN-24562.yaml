@@ -39,8 +39,13 @@ requirements:
 - id: req-omn24562-customer-key-removal
   statement: A customer provider key registers unbound, routes, and is revoked before its secret is deleted, so a refused revoke publish never leaves an unrevoked row with no secret.
   acceptance:
+  - id: AC8
+    statement: 'AC8: register-tenant-key without --host stores the key unbound and revoke-tenant-key publishes the revoke before it deletes the stored secret -- falsifier: uv run pytest tests/test_credential_publisher.py tests/unit/cli/test_omn24562_revoke_tenant_key_command.py tests/unit/cli/test_omn21012_register_tenant_key_host.py fails when a refused publish still deletes the secret or the key carries the registering host'
+- id: req-omn24562-suite-admission-both-ways
+  statement: A code eval suite task is kept only if its known-good answer passes and an empty answer fails, both through the grader's own score handler.
+  acceptance:
   - id: AC7
-    statement: 'AC7: register-tenant-key without --host stores the key unbound and revoke-tenant-key publishes the revoke before it deletes the stored secret -- falsifier: uv run pytest tests/test_credential_publisher.py tests/unit/cli/test_omn24562_revoke_tenant_key_command.py tests/unit/cli/test_omn21012_register_tenant_key_host.py fails when a refused publish still deletes the secret or the key carries the registering host'
+    statement: 'AC7: the suite admission helper admits a task whose known-good answer passes and whose empty answer fails, and refuses one whose empty answer passes, whose known good fails, or whose check needs the network -- falsifier: tests/nodes/node_code_eval_trial_orchestrator/test_suite_admission_both_ways.py fails collection or any of its tests fails'
 evidence_requirements:
 - kind: tests
   description: The inode alarm tests pass at the pushed head.
@@ -111,11 +116,20 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/ci/test_lint_split_omn24562.py tests/ci/test_direct_model_call_ci_gate.py -q -n 0 --no-cov -p no:randomly
     cwd: .
-- id: dod-omn24562-customer-key-removal
-  description: 'AC7: a customer key registers unbound and is revoked before its secret is deleted; a refused publish keeps the secret and a central-store key is reported as not deletable (failing control: at the base the revoke command is absent and the publisher deletes before it publishes, so these files fail there).'
+- id: dod-omn24562-suite-admission-both-ways
+  description: A code eval suite task is kept only if its known-good answer passes and an empty answer fails, both run through the grader's own score handler; a recorded task whose merge carries another ticket's contract or a deploy-time check is read by the suite's recorded held paths and check items (the test file fails at collection before the admission helper exists and passes after).
   source: manual
   binds_ac:
   - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_code_eval_trial_orchestrator/test_suite_admission_both_ways.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24562-customer-key-removal
+  description: 'AC8: a customer key registers unbound and is revoked before its secret is deleted; a refused publish keeps the secret and a central-store key is reported as not deletable (failing control: at the base the revoke command is absent and the publisher deletes before it publishes, so these files fail there).'
+  source: manual
+  binds_ac:
+  - AC8
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/test_credential_publisher.py tests/unit/cli/test_omn24562_revoke_tenant_key_command.py tests/unit/cli/test_omn21012_register_tenant_key_host.py -q -n 0 --no-cov -p no:randomly
