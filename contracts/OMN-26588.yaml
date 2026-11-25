@@ -24,6 +24,11 @@ requirements:
     acceptance:
       - id: AC3
         statement: "AC3: a YAML answer to a YAML prompt passes compiles_without_errors and code_artifact_present, invalid YAML or JSON still fails under its own parser, and a prompt that names Python, both languages or neither keeps the Python parse -- falsifier: uv run pytest tests/unit/delegation/test_quality_gate_prompt_language_omn26588.py -q --no-cov -n 0; four of its tests fail at the merge base"
+  - id: req-omn26588-untagged-fence-beside-declared-block
+    statement: "An untagged fence beside a block tagged python, yaml or json is not parsed as Python."
+    acceptance:
+      - id: AC4
+        statement: "AC4: a python-tagged block that compiles plus an untagged fence holding a shell command or a console listing passes compiles_without_errors; an answer with only untagged fences, and a tagged block that fails to parse, keep MALFORMED -- falsifier: uv run pytest tests/unit/delegation/test_quality_gate_untagged_fence_omn26588.py -q --no-cov -n 0; the first test fails at the merge base"
 evidence_requirements:
   - kind: tests
     description: "The three focused test files and the gate and port tests they sit beside pass at the pushed head."
@@ -59,6 +64,15 @@ dod_evidence:
       - check_type: test_passes
         check_value: >-
           uv run --frozen pytest tests/unit/delegation/test_quality_gate_prompt_language_omn26588.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn26588-ac4
+    description: "AC4: an untagged fence beside a declared block is read as prose, and the controls keep their MALFORMED verdicts."
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run --frozen pytest tests/unit/delegation/test_quality_gate_untagged_fence_omn26588.py -q --no-cov -n 0 -p no:randomly
         cwd: .
   - id: dod-omn26588-integration-proof
     description: "Local Done gate only, so it binds no criterion here: the three focused test files run on a lab host at the pushed head."

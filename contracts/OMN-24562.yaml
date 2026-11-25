@@ -11,16 +11,26 @@ requirements:
   acceptance:
   - id: AC1
     statement: 'AC1: a reading at 14 percent free inodes produces the alarm rows with owner= in both, and a reading at 16 percent produces none -- falsifier: uv run pytest tests/nodes/node_lab_disk_watermark_effect/test_inode_alarm_omn24562.py -q fails when the threshold or the owner cell is removed'
+- id: req-omn24562-thermal-guard
+  statement: A lab host that runs hot is held out of placement through its declared hold file and released only once it has cooled, with the thresholds, names and texts all read from the overlay.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: node_host_thermal_guard_effect writes the hold file and a HOLD row above the hold threshold, removes it and writes a RELEASE row below the lower release threshold once the minimum hold has passed, and changes nothing between the two -- falsifier: uv run pytest tests/nodes/node_host_thermal_guard_effect -q fails when the release threshold is raised to the hold threshold or the minimum hold is dropped'
 - id: req-omn24562-thermal-guard-overlay-model
   statement: The thermal guard node's overlay document has a typed model in omnimarket that the overlays repository can pin ahead of the node.
   acceptance:
   - id: AC3
     statement: 'AC3: ModelHostThermalGuardOverlay validates the overlay document of the thermal guard node and refuses a malformed one -- falsifier: tests/unit/models/test_host_thermal_guard_overlay_document_omn24562.py fails collection or any of its tests fails'
-- id: req-omn24562-responder-reader
-  statement: The delegation check responder reader answers a llama.cpp listing without max_model_len, advances past a dead responder and prefers the least busy one.
+- id: req-omn24562-observability-overlay-model
+  statement: The host observability installer's overlay document has a typed model in omnimarket that its overlay document can be pinned to ahead of the node.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: ModelObservabilityOverlay validates the overlay document of the host observability installer and refuses a malformed one -- falsifier: tests/unit/models/test_observability_overlay_document_omn24562.py fails collection or any of its tests fails'
+- id: req-omn24562-tenant-key-overlay-model
+  statement: The tenant gateway key node's overlay document has a typed model in omnimarket that its overlay document can be pinned to ahead of the node.
   acceptance:
   - id: AC4
-    statement: 'AC4: the live reader chooses a responder whose listing carries meta.n_ctx only, skips a dead one and orders by load -- falsifier: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_http_responder_reader_live_shapes.py -q fails'
+    statement: 'AC4: ModelTenantApiKeyOverlay validates the overlay document of the tenant gateway key node and refuses a malformed one -- falsifier: tests/unit/models/test_tenant_api_key_overlay_document_omn24562.py fails collection or any of its tests fails'
 evidence_requirements:
 - kind: tests
   description: The inode alarm tests pass at the pushed head.
@@ -46,6 +56,15 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24562 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lab_disk_watermark_effect -q --no-cov
+- id: dod-omn24562-thermal-guard-ac2
+  description: 'AC2: a hold above the hold threshold, a release only below the release threshold after the minimum hold, nothing between the two (failing control: the same tests refuse to run at the merge base, where node_host_thermal_guard_effect does not exist).'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_thermal_guard_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
 - id: dod-omn24562-thermal-guard-overlay-model-tests
   description: The overlay document model for the thermal guard node accepts a valid document and refuses malformed ones; the test file fails at collection with ModuleNotFoundError before the model module exists and passes after.
   source: manual
@@ -55,12 +74,21 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/models/test_host_thermal_guard_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
     cwd: .
-- id: dod-omn24562-responder-reader-ac4
-  description: 'AC4: four tests over real loopback sockets pass; they fail if the reader raises on a listing with no max_model_len, stops at a dead first responder, or ignores load.'
+- id: dod-omn24562-observability-overlay-model-tests
+  description: The overlay document model for the host observability installer accepts a valid document and refuses malformed ones; the test file fails at collection with ModuleNotFoundError before the model module exists and passes after.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_observability_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24562-tenant-key-overlay-model-tests
+  description: The overlay document model for the tenant gateway key node accepts a valid document and refuses malformed ones; the test file fails at collection with ModuleNotFoundError before the model module exists and passes after.
   source: manual
   binds_ac:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_http_responder_reader_live_shapes.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run pytest tests/unit/models/test_tenant_api_key_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
     cwd: .

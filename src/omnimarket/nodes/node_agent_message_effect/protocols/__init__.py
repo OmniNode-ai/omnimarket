@@ -7,6 +7,12 @@ from typing import Protocol
 
 from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
 
+from omnimarket.models.agent_message.model_agent_signing_key import (
+    ModelAgentSigningKey,
+)
+from omnimarket.models.agent_message.model_registered_agent_sender import (
+    ModelRegisteredAgentSender,
+)
 from omnimarket.nodes.node_event_emit_effect import ModelEmitRequest, ModelEmitResult
 
 
@@ -25,4 +31,23 @@ class ProtocolAgentMessageBus(Protocol):
     ) -> Callable[[], Awaitable[None]]: ...
 
 
-__all__: list[str] = ["ProtocolAgentMessageBus", "ProtocolAgentMessageEmitter"]
+class ProtocolAgentSenderRegistry(Protocol):
+    """The sender registry and the cutover flag, both read from the settings store (never from the message)."""
+
+    async def lookup(self, name: str) -> ModelRegisteredAgentSender | None: ...
+
+    async def accepts_legacy(self) -> bool: ...
+
+
+class ProtocolAgentSigningKeys(Protocol):
+    """The signing keys this host holds, by agent name, read from the settings store."""
+
+    async def signing_key(self, name: str) -> ModelAgentSigningKey | None: ...
+
+
+__all__: list[str] = [
+    "ProtocolAgentMessageBus",
+    "ProtocolAgentMessageEmitter",
+    "ProtocolAgentSenderRegistry",
+    "ProtocolAgentSigningKeys",
+]

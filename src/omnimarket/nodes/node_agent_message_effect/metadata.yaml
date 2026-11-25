@@ -1,6 +1,6 @@
 name: node_agent_message_effect
 version: "0.1.0"
-description: "Sends and reads cross-platform agent messages on one declared topic, through the emit-effect spool and the broker the node's overlay declares."
+description: "Sends and reads cross-platform agent messages on one declared topic, through the emit-effect spool and the broker the node's overlay declares. A message carries a sender proof signed with the sender's registered key; readers verify it against the settings store registry."
 pack: agent_message
 node_role: effect
 display_name: "Agent Message Effect"
@@ -13,11 +13,11 @@ capabilities:
   full_runtime: true
   requires_network: true
   requires_repo: false
-  requires_secrets: false
+  requires_secrets: true
   requires_docker: false
   side_effect_class: write
 dependencies:
   - "omnibase-infra>=0.38.3,<0.39.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["effect", "agent-message", "event-emit", "spool"]
+tags: ["effect", "agent-message", "event-emit", "spool", "sender-proof"]

@@ -121,3 +121,33 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_build_delegation_checks tests/nodes/node_delegation_check_probe_effect/test_tick_single_check.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26043-setting-set-first-record
+  description: "A set on an overlay the node contract declares settable (delegation_check_responders, delegation_check_gateway) creates its first record when the store holds none, validated by the overlay's own model, with the actor and time as provenance; an invalid document, an undeclared overlay id and an overlay with no declared first document are still refused with nothing written. The tests read red on the base commit, where a set on an empty store always raised OverlayNotInStoreError. This binds AC7."
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_overlay_setting_set -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-responder-row-absent-keeps-c17
+  description: "A tick whose settings store serves no delegation_check_responders row no longer ends at once with overlay_unreadable: C13 and C14 publish PRECONDITION-ABSENT naming responders_row and C17, which reads no responder, still grades and publishes; a row that is served but broken still ends the tick with exit 2. The new test fails on the base commit, where the tick ended with exit 2 and published nothing, and passes after the change. This binds AC7."
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_tick_single_check.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+  - check_type: command
+    check_value: grep -q 'NodeOverlayNotFoundError' src/omnimarket/nodes/node_delegation_check_probe_effect/runtime_delegation_check_probe_tick.py
+    cwd: .
+- id: dod-omn26043-responder-reader-live-shapes
+  description: "Four tests over real loopback sockets pass: the live responder reader chooses a responder whose listing carries meta.n_ctx only (window 131072), skips a dead first responder, advances to the openrouter tier when every local responder is dead, and orders by /slots load; they fail if the reader raises on a listing with no max_model_len, stops at a dead first responder, or ignores load. This binds AC7."
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_http_responder_reader_live_shapes.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
