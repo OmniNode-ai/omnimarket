@@ -122,6 +122,11 @@ data_reader_gated_infrastructure_paths:
 # pinned merges (18 change pyproject.toml, 4 of them with a dependency or a lock change beyond the version
 # line) narrows one pyproject merge and no dependency or lock change; over the 83 merges since #6634 it
 # changes no pull request's selection, because the pyproject merges there also hit another escalation.
+# A changed tests/unit/**/*.py file selects itself, the tests that import it in any folder and the tests
+# that spell its path, instead of the whole tests/unit/ directory; a helper nothing imports or spells, a
+# non-python file and a package marker keep their directory. The replay reads the frozen snapshot's own
+# adjacency, which predates this key, so the stage 0 receipts are unchanged.
+unit_file_selection_enabled: true
 pyproject_section_selection_enabled: true
 pyproject_paths:
   - pyproject.toml

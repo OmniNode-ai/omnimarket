@@ -693,8 +693,8 @@ def test_file_level_closure_replay_stage_zero_input_is_unchanged_by_the_new_poli
         ModelReplayRequest.model_validate(document)
     )
     assert isinstance(result, ModelReplayResult), result
-    assert result.totals.narrowed == 12
-    assert result.totals.full_suite == 48
+    assert result.totals.narrowed == 10
+    assert result.totals.full_suite == 50
 
 
 def test_file_level_closure_policy_file_without_a_closure_key_is_refused(

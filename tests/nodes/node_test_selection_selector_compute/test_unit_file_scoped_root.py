@@ -11,13 +11,25 @@ path, the surviving tests that name a deleted file, and the old directory when n
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
+from omnimarket.nodes.node_test_selection_selector_compute.adapters.adjacency_file import (
+    load_adjacency_map,
+)
+from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_selection_replay import (
+    HandlerSelectionReplay,
+)
 from omnimarket.nodes.node_test_selection_selector_compute.handlers.handler_test_path_resolution import (
     HandlerTestPathResolution,
     clear_import_graph_cache,
+)
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_selection_replay import (
+    ModelReplayRequest,
+    ModelReplayResult,
+    ModelTreeSnapshot,
 )
 from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_path_resolution import (
     ModelAdjacencyEntry,
@@ -54,7 +66,7 @@ TREE = {
 ALWAYS = "tests/gates/"
 
 
-def _config() -> ModelAdjacencyMap:
+def _config(enabled: bool = True) -> ModelAdjacencyMap:
     return ModelAdjacencyMap(
         schema_version=1,
         shared_modules=[],
@@ -63,10 +75,13 @@ def _config() -> ModelAdjacencyMap:
         adjacency={"nodes": ModelAdjacencyEntry(), "unit": ModelAdjacencyEntry()},
         always_selected_paths=[ALWAYS],
         node_scoped_modules=["nodes"],
+        unit_file_selection_enabled=enabled,
     )
 
 
-def _resolve(root: Path, changed: list[str]) -> ModelPathResolutionResult:
+def _resolve(
+    root: Path, changed: list[str], enabled: bool = True
+) -> ModelPathResolutionResult:
     clear_import_graph_cache()
     for rel, text in TREE.items():
         path = root / rel
@@ -76,7 +91,7 @@ def _resolve(root: Path, changed: list[str]) -> ModelPathResolutionResult:
     return HandlerTestPathResolution().handle(
         ModelPathResolutionRequest(
             changed_files=tuple(changed),
-            adjacency=_config(),
+            adjacency=_config(enabled),
             repo_root=str(root),
         )
     )
@@ -131,3 +146,60 @@ def test_deleted_unit_test_selects_the_tests_that_name_it(tmp_path: Path) -> Non
     assert "tests/unit/c/test_names_gone.py" in result.selected_paths
     assert ALWAYS in result.selected_paths
     assert "tests/unit/" not in result.selected_paths
+
+
+def test_switch_off_keeps_the_directory_for_any_changed_unit_file(
+    tmp_path: Path,
+) -> None:
+    result = _resolve(tmp_path, ["tests/unit/a/test_x.py"], enabled=False)
+    assert result.selected_paths == ("tests/unit/",)
+
+
+def test_shipped_adjacency_turns_the_unit_file_rule_on() -> None:
+    shipped = load_adjacency_map(
+        Path(__file__).resolve().parents[3]
+        / "scripts"
+        / "ci"
+        / "test_selection_adjacency.yaml"
+    )
+    assert shipped.unit_file_selection_enabled is True
+
+
+def _replay(enabled: bool) -> ModelReplayResult:
+    """The recorded merges over the frozen tree, with the unit rule on or off in the frozen adjacency."""
+    repo = Path(__file__).resolve().parents[3]
+    document = json.loads(
+        (repo / "config/test_selection_replay_input.json").read_text(encoding="utf-8")
+    )
+    document["repo_root"] = str(repo)
+
+    class _Switched(HandlerSelectionReplay):
+        @staticmethod
+        def _snapshot(request: ModelReplayRequest) -> ModelTreeSnapshot:
+            snapshot = HandlerSelectionReplay._snapshot(request)
+            return snapshot.model_copy(
+                update={
+                    "adjacency": snapshot.adjacency.model_copy(
+                        update={"unit_file_selection_enabled": enabled}
+                    )
+                }
+            )
+
+    result = _Switched().handle(ModelReplayRequest.model_validate(document))
+    assert isinstance(result, ModelReplayResult), result
+    return result
+
+
+def test_replay_over_the_recorded_merges_narrows_two_more_with_the_rule_on() -> None:
+    off = _replay(False)
+    on = _replay(True)
+    assert (off.totals.narrowed, off.totals.full_suite) == (10, 50)
+    assert (on.totals.narrowed, on.totals.full_suite) == (12, 48)
+    assert on.totals.selected_seconds < off.totals.selected_seconds
+    changed = {
+        d.sha
+        for d in on.decisions
+        if d.kind != next(o.kind for o in off.decisions if o.sha == d.sha)
+    }
+    assert len(changed) == 2
+    assert all(d.kind == "narrowed" for d in on.decisions if d.sha in changed)

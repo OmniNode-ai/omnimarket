@@ -630,7 +630,11 @@ def _resolve(
                 # tests/, so it is selected as a file with its dependents below
                 # rather than as a tests/<file>.py/ pseudo-directory (OMN-15277).
                 root_level.append(path)
-            elif path.startswith(UNIT_PREFIX) and path.endswith(".py"):
+            elif (
+                config.unit_file_selection_enabled
+                and path.startswith(UNIT_PREFIX)
+                and path.endswith(".py")
+            ):
                 # A changed file under tests/unit/ selects itself and what imports or
                 # names it, never the whole tests/unit/ directory (file-scoped root).
                 unit_files.append(path)
