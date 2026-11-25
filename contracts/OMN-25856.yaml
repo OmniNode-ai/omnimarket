@@ -11,6 +11,8 @@ requirements:
   acceptance:
   - id: AC1
     statement: 'AC1: after a command check times out, every process the check started is gone -- falsifier: a process started by the timed-out check is still running 3 s later'
+  - id: AC2
+    statement: 'AC2: local Inkling-2-Mini has a zero marginal api cost row in cost_pricing.yaml and an unlisted local model still raises MissingCostPricingError -- falsifier: pricing Inkling-2-Mini raises, or an unlisted local model prices without error'
 evidence_requirements:
 - kind: tests
   description: The focused regression, failing first with the surviving child process, then passing.
@@ -46,6 +48,8 @@ dod_evidence:
 - id: dod-omn25856-inkling-priced-local
   description: 'Inkling-2-Mini carries a zero marginal api cost row in the omnimarket cost pricing contract, and an unlisted local model stays unpriced (positive control). The test fails on a contract with no Inkling row.'
   source: manual
+  binds_ac:
+  - AC2
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/cost/test_inkling_local_priced_omn25856.py -q --no-cov -n 0 -p no:randomly
