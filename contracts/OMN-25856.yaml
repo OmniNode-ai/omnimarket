@@ -43,3 +43,10 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25856 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_25856_timed_out_check_leaves_no_orphan.py -q --no-cov -n 0 -p no:randomly
+- id: dod-omn25856-inkling-priced-local
+  description: 'Inkling-2-Mini carries a zero marginal api cost row in the omnimarket cost pricing contract, and an unlisted local model stays unpriced (positive control). The test fails on a contract with no Inkling row.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/cost/test_inkling_local_priced_omn25856.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
