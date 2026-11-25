@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -117,8 +118,8 @@ def _gate(task_type: str, prompt: str, content: str, run: ModelNamedTestRun):
     )
 
 
-def _reasons(result: object) -> str:
-    return " | ".join(result.failure_reasons)  # type: ignore[attr-defined]
+def _reasons(result: Any) -> str:
+    return " | ".join(result.failure_reasons)
 
 
 @pytest.mark.parametrize("task_type", CLASSES)
