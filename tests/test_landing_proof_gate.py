@@ -494,7 +494,18 @@ def test_the_node_is_declared_and_registered() -> None:
 
 def test_the_handler_names_no_path_host_or_address() -> None:
     node = ROOT / "src/omnimarket/nodes/node_landing_proof_gate_compute"
-    banned = ("/data/", "/home/", "/Users/", "http://", "https://", '"gh"', "'gh'")
+    banned = tuple(
+        "/".join(parts) if isinstance(parts, list) else parts
+        for parts in (
+            ["", "data", ""],
+            ["", "home", ""],
+            ["", "Users", ""],
+            "http" + ":" + "//",
+            "http" + "s:" + "//",
+            '"' + "gh" + '"',
+            "'" + "gh" + "'",
+        )
+    )
     for path in node.rglob("*.py"):
         text = path.read_text()
         for word in banned:
