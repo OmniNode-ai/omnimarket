@@ -1,0 +1,109 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Stability Gateway Key Provision Effect (OMN-26586, the stability lane's C16 and probe tenant)
+#
+# Creates ONE stability tenant and ONE active gateway API key so C16 and the stability probes can authenticate, after a
+# stability database rebuild empties the identity tables. The key is generated inside the secret store node (declared id
+# below), stored only there, read once to be hashed, and only its SHA-256 hash is written to tenant_api_keys. The result
+# carries names and ids only: never the key value. Any lane the stability_only block does not declare is refused before any
+# secret read or database write.
+name: node_stability_gateway_key_provision_effect
+contract_name: node_stability_gateway_key_provision_effect
+node_name: node_stability_gateway_key_provision_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Provisions the stability gateway identity. The lane guard refuses, with no side effect, any command lane or overlay lane
+  the stability_only block does not declare (prod and the cloud lanes are never declared). A run generates the declared key
+  id (the default one, or the named check's own) through the secret store node (an existing key is reused, never replaced), ensures the declared tenant through the
+  tenant provision node's transaction, and inserts one active key row holding the SHA-256 hash of the stored value. A second
+  run on a populated database writes nothing; a different active key under the same name is a typed conflict, never a
+  replacement. Every failure is a typed result.
+
+handler:
+  module: omnimarket.nodes.node_stability_gateway_key_provision_effect.handlers.handler_stability_gateway_key_provision
+  class: HandlerStabilityGatewayKeyProvision
+  input_model: omnimarket.nodes.node_stability_gateway_key_provision_effect.models.model_stability_gateway_key_provision.ModelStabilityKeyProvisionCommand
+
+# HandlerStabilityGatewayKeyProvision takes the overlay lane, the identity store, the settings store, the key generator and
+# the contract path as constructor parameters, so the node runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [secret-store-write, database-write]
+  timeout_ms: 60000
+
+input_model:
+  name: ModelStabilityKeyProvisionCommand
+  module: omnimarket.nodes.node_stability_gateway_key_provision_effect.models.model_stability_gateway_key_provision
+  description: Which lane acts. The tenant slug, key name and key id are this contract's, never a caller's.
+output_model:
+  name: ModelStabilityKeyProvisionResult
+  module: omnimarket.nodes.node_stability_gateway_key_provision_effect.models.model_stability_gateway_key_provision
+  description: The outcome, the lane, the tenant id and slug, the key's name and the secret's folder and key name; never the key value.
+
+runtime_dispatch:
+  external_trigger: true
+  # Provisioning writes a tenant and a key, so it never runs on a timer: a lane runs it once on the stability lane after a rebuild.
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_stability_gateway_key_provision_effect run --lane stability
+    owner: OmniNode Platform Team
+
+# The node declares no topic: it is run once by a lane on the stability lane and answers on stdout, publishing nothing.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+overlay:
+  node: node_stability_gateway_key_provision_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+secret_dependencies:
+  tenant_identity.database.dsn:
+    required: true
+    description: "The identity database's DSN, asked of the secret store by this logical name (the overlay's database.dsn_secret)."
+
+identity_io:
+  db_tables:
+    - name: tenants
+      database_ref: omninode_cloud
+      schema: public
+      migration: "20251207_tenants_uuid_pk.sql"
+      access: read_insert
+      role: tenant_identity
+    - name: tenant_api_keys
+      database_ref: omninode_cloud
+      schema: public
+      migration: "20251211_m4_api_keys.sql"
+      access: read_insert
+      role: tenant_identity
+
+stability_only:
+  # The guard reads this block from this file, never from code: a command lane or overlay lane not listed here is refused
+  # with refused_lane_not_allowed before any secret read or database write. prod and the cloud lanes are never listed.
+  lanes:
+    - stability
+  tenant_slug: stability-canary
+  tenant_name: Stability canary
+  api_key_name: stability-canary-chain-gateway
+  # A generated_keys id of node_secret_store_effect/contract.yaml: its folder, key name, length and the gateway's key prefix.
+  generated_key_id: stability_gateway_api_key
+  # One entry per check that has its own key (OMN-26566). A command naming a check stores that check's key under that
+  # check's own generated_key_id (its own name in the secret store) and its own api_key_name row, so a run for one check never
+  # touches the name another check reads. A check must not reuse the default generated_key_id or api_key_name above: the run is
+  # refused with refused_check_not_declared and nothing is read or written. A command with no check is the default run.
+  checks:
+    c16:
+      generated_key_id: stability_gateway_api_key_c16
+      api_key_name: stability-canary-c16-gateway
+
+metadata:
+  ticket: OMN-26586
+  transport_type: database

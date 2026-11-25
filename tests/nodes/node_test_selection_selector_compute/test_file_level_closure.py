@@ -433,7 +433,13 @@ def test_file_level_closure_data_only_diff_selects_the_readers_when_the_switch_i
     assert result.data_only is True
     assert result.selected_paths == ("tests/test_reads_contract.py",)
     off = HandlerFileLevelClosure().handle(
-        request.model_copy(update={"adjacency": ADJACENCY})
+        request.model_copy(
+            update={
+                "adjacency": ADJACENCY.model_copy(
+                    update={"data_only_selection_enabled": False}
+                )
+            }
+        )
     )
     assert off.selected_paths == ()
     assert off.data_only is False

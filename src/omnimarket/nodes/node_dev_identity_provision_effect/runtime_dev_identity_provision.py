@@ -9,6 +9,11 @@
 ``delete`` delete one named dev user (``--username`` required) and read it back gone; the overlay user and every protected
            username are refused, and a user that is not in the realm answers user_absent.
 
+``run --tenant-id <uuid>`` (OMN-26476) binds the named ``--username`` to that EXISTING tenant instead of creating a probe tenant:
+the run reads the tenant over the ``--lane`` bus, sets the user's tenant attributes and signs in; it then reads the audience and
+the two tenant claims back out of the token (names are printed, the token never is). It needs ``--username`` with its own
+``--email`` and ``--password-key-id``.
+
 With no identity flag the overlay's user is provisioned. ``--username`` names another user, which then needs its own
 ``--email`` and ``--password-key-id`` (a key id the secret store node declares in its ``generated_keys``). An existing user is
 refused unless ``--reset-existing`` is given, and a user in the overlay's ``protected_usernames`` is refused unless
@@ -28,6 +33,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import yaml
 from pydantic import ValidationError
@@ -37,6 +43,7 @@ from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.overlay_store.bus_opener import open_lane_bus, workspace_root
 from omnimarket.nodes.node_dev_identity_provision_effect.adapters import (
     BusTenantProvisioner,
+    BusTenantReader,
     StoreKeyGenerator,
     UrllibIdentityTransport,
 )
@@ -46,8 +53,12 @@ from omnimarket.nodes.node_dev_identity_provision_effect.handlers.handler_dev_id
 from omnimarket.nodes.node_dev_identity_provision_effect.models.model_dev_identity_provision import (
     ModelDevIdentityProvisionCommand,
 )
+from omnimarket.nodes.node_dev_identity_provision_effect.models.model_tenant_binding import (
+    ModelTenantBinding,
+)
 from omnimarket.nodes.node_dev_identity_provision_effect.models.model_tenant_provision_wire import (
     ModelTenantProvisionTopics,
+    ModelTenantReadTopics,
 )
 from omnimarket.nodes.node_dev_identity_provision_effect.overlay import (
     NODE_NAME,
@@ -67,6 +78,20 @@ def load_tenant_provision_topics(
     )
 
 
+def load_tenant_read_topics(
+    contract_path: Path = _CONTRACT_PATH,
+) -> ModelTenantReadTopics:
+    """The runtime read command's topics and wait, as the contract's ``tenant_read_runtime`` block declares them."""
+    document = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    return ModelTenantReadTopics.model_validate(document["tenant_read_runtime"])
+
+
+def load_tenant_binding(contract_path: Path = _CONTRACT_PATH) -> ModelTenantBinding:
+    """The audience, attribute and claim names the bind mode sets and checks, from the contract's ``tenant_binding`` block."""
+    document = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    return ModelTenantBinding.model_validate(document["tenant_binding"])
+
+
 def _open_lane_bus(lane: str) -> Any:
     return open_lane_bus(
         bus="kafka", lane=lane, kafka_bootstrap=None, root=workspace_root(os.environ)
@@ -84,6 +109,11 @@ def _run(args: argparse.Namespace) -> int:
             open_bus=lambda: _open_lane_bus(args.lane),
             topics=load_tenant_provision_topics(),
         ),
+        tenant_reader=BusTenantReader(
+            open_bus=lambda: _open_lane_bus(args.lane),
+            topics=load_tenant_read_topics(),
+        ),
+        tenant_binding=load_tenant_binding(),
         contract_path=_CONTRACT_PATH,
     )
     result = asyncio.run(
@@ -99,6 +129,7 @@ def _run(args: argparse.Namespace) -> int:
                 disposable=args.disposable,
                 lookup_user=args.verb == "lookup",
                 delete_user=args.verb == "delete",
+                tenant_id=args.tenant_id,
             )
         )
     )
@@ -107,6 +138,8 @@ def _run(args: argparse.Namespace) -> int:
         f"lane={result.lane} user={result.user_name or ''} user_id={result.user_id or ''} "
         f"cleanup={result.cleanup.value if result.cleanup else ''} "
         f"tenant_id={result.tenant_id or ''} tenant_slug={result.tenant_slug or ''} "
+        f"audience={result.token_audience or ''} "
+        f"claims_verified={','.join(result.claims_verified or [])} "
         f"detail={result.detail}\n"
     )
     return 0 if result.ok else 1
@@ -122,6 +155,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--reset-existing", action="store_true")
     parser.add_argument("--allow-protected", action="store_true")
     parser.add_argument("--disposable", action="store_true")
+    parser.add_argument(
+        "--tenant-id",
+        type=UUID,
+        help="bind the named --username to this EXISTING tenant (no probe tenant is created)",
+    )
     try:
         return _run(parser.parse_args(list(sys.argv[1:] if argv is None else argv)))
     except (NodeOverlayError, ValidationError, ValueError, OSError) as exc:

@@ -1,0 +1,16 @@
+{
+ "tests/__init__.py": "",
+ "tests/gates/__init__.py": "",
+ "tests/gates/test_gate.py": "def test_gate() -> None: ...\n",
+ "tests/ci/__init__.py": "",
+ "tests/ci/test_binding.py": "def test_binding() -> None: ...\n",
+ "tests/helpers/__init__.py": "",
+ "tests/helpers/contracts_helper.py": "def all_contracts(root):\n    return sorted((root / \"contracts\").glob(\"OMN-*.yaml\"))\n",
+ "tests/test_enumerates.py": "from pathlib import Path\nFILES = list((Path(__file__).parents[1] / \"contracts\").glob(\"OMN-*.yaml\"))\n",
+ "tests/test_via_helper.py": "from tests.helpers.contracts_helper import all_contracts\n",
+ "tests/test_spells_the_file.py": "PATH = \"contracts/OMN-1.yaml\"\n",
+ "tests/test_reads_changelog.py": "TEXT = open(\"CHANGELOG.md\").read()\n",
+ "tests/test_hidden.py": "def test_hidden() -> None: ...\n",
+ "tests/test_globs_docs.py": "from pathlib import Path\nFILES = list((Path(__file__).parents[1] / \"docs\").glob(\"*.md\"))\n",
+ "tests/test_unrelated.py": "def test_unrelated() -> None: ...\n"
+}

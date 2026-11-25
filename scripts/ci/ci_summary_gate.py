@@ -1433,6 +1433,19 @@ def _parse_timestamp(raw: str | None) -> datetime | None:
     return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
+# OMN-16084: set by :func:`main` from the verdict of this run's OWN jobs (layers
+# 1-3) and read by :func:`_within`. While those jobs are still running, the
+# supersession windows below are measured by the jobs' state, not by the wall
+# clock: a replacement producer queues behind the same slow runners the run's own
+# jobs are waiting on, so the closing of a window says nothing about whether the
+# replacement is coming. Only the UPPER bound lifts; the lower bound (a completion
+# time in the future of the poller's clock) still fails now. It is False unless
+# main() proves the own jobs PENDING, so every other caller reads the strict
+# clock. The poller's deadline (DEADLINE_MINUTES in ci.yml) still ends the wait,
+# and once the own jobs settle the windows read the wall clock again.
+OWN_JOBS_PENDING: bool = False
+
+
 def _within(state: CheckRunState, now: datetime | None, grace_s: int) -> bool:
     """True when ``state`` concluded within ``grace_s`` either side of ``now``.
 
@@ -1443,12 +1456,11 @@ def _within(state: CheckRunState, now: datetime | None, grace_s: int) -> bool:
     waiting forever on it.
     """
 
-    if now is None:
-        return False
     completed = _parse_timestamp(state.completed_at)
-    if completed is None:
+    if now is None or completed is None:
         return False
-    return -grace_s <= (now - completed).total_seconds() <= grace_s
+    delta = (now - completed).total_seconds()
+    return -grace_s <= delta and (OWN_JOBS_PENDING or delta <= grace_s)
 
 
 def cancellation_is_provisional(state: CheckRunState, now: datetime | None) -> bool:
@@ -1949,8 +1961,7 @@ def _load_check_runs(path: str | None) -> list[dict[str, object]] | None:
     if path is None:
         return None
     try:
-        with open(path, encoding="utf-8") as handle:
-            raw = handle.read()
+        raw = Path(path).read_text(encoding="utf-8")
     except OSError:
         return None
     if not raw.strip():
@@ -1970,8 +1981,7 @@ def _load_workflow_runs(path: str | None) -> list[dict[str, object]] | None:
     if path is None:
         return None
     try:
-        with open(path, encoding="utf-8") as handle:
-            data = json.load(handle)
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     workflow_runs = data.get("workflow_runs", []) if isinstance(data, dict) else data
@@ -2074,6 +2084,8 @@ def main(argv: list[str] | None = None) -> int:
         ref_name=args.ref_name,
     )
     print(report)
+    global OWN_JOBS_PENDING
+    OWN_JOBS_PENDING = code == EXIT_PENDING
 
     if args.check_runs_file is not None:
         check_runs = _load_check_runs(args.check_runs_file)
