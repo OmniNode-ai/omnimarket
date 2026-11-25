@@ -83,3 +83,11 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_doctor_and_metering_run_and_show_their_output -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
+- id: dod-omn26610-integration-proof
+  description: The headless TUI tests for all four criteria run on a lab host at the pushed head, against the real onex command tree. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26610 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
