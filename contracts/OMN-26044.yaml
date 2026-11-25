@@ -100,3 +100,11 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_c30_dashboard_collector.py -q --no-cov -n 0 -p no:randomly
         cwd: .
+  - id: dod-omn26044-c30-collector-test-hygiene
+    description: "AC7: the C30 collector test file carries no suppression comment (the canonical file shape ratchet counts them), and its tests still pass."
+    source: manual
+    binds_ac: [AC7]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_c30_dashboard_collector.py -q --no-cov -n 0 -p no:randomly
+        cwd: .

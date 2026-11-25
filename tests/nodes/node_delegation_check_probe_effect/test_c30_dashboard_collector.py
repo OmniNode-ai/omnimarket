@@ -11,6 +11,7 @@ reaches an observation, a clause or a run record.
 from __future__ import annotations
 
 import json
+import uuid
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -57,7 +58,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.protocols.protocol_dele
     CollectorAbsentError,
 )
 
-SECRET = "s3cr3t-token-value-never-printed"  # pragma: allowlist secret
+SECRET = str(uuid.UUID(int=0x3030C30))
 CLOCK = FakeClock()
 
 
@@ -316,7 +317,15 @@ def test_a_failed_install_is_a_failed_setup_not_an_absent_instrument(
 
 def test_a_driver_with_no_record_is_an_absent_collector(tmp_path: Path) -> None:
     class Silent(_Runner):
-        def run(self, argv: Sequence[str], **kw: Any) -> CommandResult:  # type: ignore[override]
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            env: Mapping[str, str],
+            cwd: Path,
+            timeout_s: float,
+            stdin: str | None = None,
+        ) -> CommandResult:
             if argv[0] == "uv":
                 return CommandResult(0, "", "")
             return CommandResult(1, "", "boom")
