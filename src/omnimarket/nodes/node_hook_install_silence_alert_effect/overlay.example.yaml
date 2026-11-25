@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Example only: the real document names the machines we own.
+installs:
+  - {host: example-host, tool: claude, host_aliases: [example-host.local]}
+  - {host: example-host, tool: codex}
+required_kinds:
+  - {kind: session_start, hook_event_names: [SessionStart]}
+  - {kind: tool_use, hook_event_names: [PostToolUse]}
+  - {kind: stop, hook_event_names: [Stop]}
+lookback_minutes: 240
+quiet_minutes: 30
+check_interval_seconds: 300
