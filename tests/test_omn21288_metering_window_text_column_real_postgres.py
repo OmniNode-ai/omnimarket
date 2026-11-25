@@ -169,7 +169,7 @@ async def test_pattern_admits_exactly_the_calendar_dates_the_cast_accepts(
     pattern passes a date exactly when the calendar has it."""
     from calendar import monthrange
 
-    from omnimarket.projection.table_reader import _ISO_INSTANT_PATTERN
+    from omnimarket.handlers.projection_window_instant import _ISO_INSTANT_PATTERN
 
     candidates: list[str] = []
     real = 0
