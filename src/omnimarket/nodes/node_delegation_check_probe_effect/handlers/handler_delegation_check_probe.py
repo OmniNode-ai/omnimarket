@@ -74,7 +74,7 @@ class HandlerDelegationCheckProbe:
     def __init__(
         self,
         *,
-        responders: Sequence[ModelDelegationCheckResponder],
+        responders: Sequence[ModelDelegationCheckResponder] | None,
         reader: ProtocolResponderReader,
         machine: ProtocolCustomerMachine,
         publisher: ProtocolCheckResultPublisher,
@@ -86,7 +86,7 @@ class HandlerDelegationCheckProbe:
         sleep: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
-        self._responders = tuple(responders)
+        self._responders = None if responders is None else tuple(responders)
         self._reader = reader
         self._machine = machine
         self._publisher = publisher
@@ -148,6 +148,16 @@ class HandlerDelegationCheckProbe:
     def _task_check(
         self, request: ModelDelegationCheckRequest
     ) -> ModelDelegationCheckReading:
+        if self._responders is None:
+            return ModelDelegationCheckReading(
+                preconditions=(
+                    ModelCheckPrecondition(
+                        name="responders_row",
+                        present=False,
+                        detail="the settings store serves no delegation_check_responders row, so no responder chain is known",
+                    ),
+                )
+            )
         resolution = resolve_chain(self._responders, self._reader.read)
         head = self._chain_head(resolution)
         if not resolution.is_local or not resolution.base_url:
@@ -186,7 +196,11 @@ class HandlerDelegationCheckProbe:
     def _surface_check(self) -> ModelDelegationCheckReading:
         # The surface check grades no model, so a chain that left the local tier never turns it red; it still runs through
         # the chain and records it, so every check's record names the responder the lab served when it ran.
-        head = self._chain_head(resolve_chain(self._responders, self._reader.read))
+        head: dict[str, object] = (
+            {}
+            if self._responders is None
+            else self._chain_head(resolve_chain(self._responders, self._reader.read))
+        )
         try:
             observation = self._machine.collect_surface()
         except CollectorAbsentError as exc:

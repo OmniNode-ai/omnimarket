@@ -168,11 +168,17 @@ def main(
             raise ValueError(
                 f"result_topic {overlay.result_topic!r} is not a topic the contract declares"
             )
-        row = load_structured_overlay(
-            RESPONDERS_OVERLAY_ID,
-            ModelDelegationCheckRespondersOverlay,
-            file_env=RESPONDERS_FILE_ENV,
-        )
+        # The responder chain is the settings store's row. With none served the two checks that send a task through the
+        # chain read PRECONDITION-ABSENT and C17, which reads no responder, still grades; a row that is served but broken
+        # ends the tick like any other unreadable overlay.
+        try:
+            row: ModelDelegationCheckRespondersOverlay | None = load_structured_overlay(
+                RESPONDERS_OVERLAY_ID,
+                ModelDelegationCheckRespondersOverlay,
+                file_env=RESPONDERS_FILE_ENV,
+            )
+        except NodeOverlayNotFoundError:
+            row = None
     except (NodeOverlayError, ValueError, OSError) as exc:
         faulthandler.cancel_dump_traceback_later()
         reading = {
@@ -209,7 +215,7 @@ def main(
             sys.stderr.write(f"{NODE}: {reading['error']}\n")
             return EXIT_OVERLAY
     handler = HandlerDelegationCheckProbe(
-        responders=row.responders,
+        responders=row.responders if row is not None else None,
         reader=HttpResponderReader(overlay.responder_timeout_s),
         machine=machine
         or CleanInstallCustomerMachine(
