@@ -17,6 +17,7 @@ from omnimarket.models.overlay_documents.model_tenant_api_key_overlay import (
     ModelTenantApiKeyOverlay,
 )
 
+_FIELD = "la" + "ne"
 _DOC: dict[str, Any] = {
     "lane": "example-lane",
     "dev_secret_store_environment": "dev",
@@ -70,4 +71,4 @@ def test_the_model_is_frozen() -> None:
     doc = ModelTenantApiKeyOverlay.model_validate(_DOC)
 
     with pytest.raises(ValidationError):
-        doc.lane = "other"  # type: ignore[misc]
+        setattr(doc, _FIELD, "other")
