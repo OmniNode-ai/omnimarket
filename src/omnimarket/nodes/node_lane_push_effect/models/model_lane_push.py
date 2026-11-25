@@ -96,6 +96,9 @@ class ModelLanePushResult(BaseModel):
     refusal: EnumLanePushRefusal | None = None
     refused_check: str | None = None
     reason: str | None = None
+    # A result carrying a cause is published by the runtime on the contract's failure
+    # terminal (lane-push-failed); the handler leaves it None for pushed/refused/moved.
+    terminal_failure_cause: str | None = None
 
 
 __all__ = [
