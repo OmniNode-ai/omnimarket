@@ -89,6 +89,8 @@ runtime_dispatch:
     success: "onex.evt.omnimarket.lane-host-pool-snapshot-recorded.v1"
     failure: "onex.evt.omnimarket.lane-host-pool-snapshot-failed.v1"
   external_trigger: "A snapshot command once a minute; sources, store and publisher are injected. On a lab host a unit runs python -m omnimarket.nodes.node_lane_host_pool_snapshot_effect each minute (--observe prints the rows and writes nothing, --probe is the installer's start check)."
+  host_unit:
+    unit: lane-host-pool-snapshot-systemd
 descriptor:
   node_archetype: effect
   purity: side_effecting

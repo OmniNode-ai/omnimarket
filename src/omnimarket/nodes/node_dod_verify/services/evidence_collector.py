@@ -17,6 +17,7 @@ pre-populate evidence_results (tests, event-bus consumers).
 from __future__ import annotations
 
 import atexit
+import contextlib
 import glob
 import hashlib
 import importlib.util
@@ -26,6 +27,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -155,6 +157,14 @@ from omnimarket.nodes.node_dod_verify.services.criteria_drift import (
     evaluate_criteria,
     extract_criteria_pins,
     merge_criteria_pins,
+)
+from omnimarket.nodes.node_dod_verify.services.dispatch_budget import (
+    DISPATCH_BUDGET_MARKER,
+    budget_exhausted,
+    clamp_to_budget,
+)
+from omnimarket.nodes.node_dod_verify.services.dispatch_budget import (
+    exhausted_message as dispatch_budget_exhausted_message,
 )
 from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
     apply_supersessions,
@@ -351,6 +361,41 @@ _DEFAULT_CHECK_TIMEOUT_S = 30
 # Operator override for the ceiling above, for hosts slower (or more heavily
 # loaded) than the machine a contract's checks were authored on.
 _CHECK_TIMEOUT_ENV = "DOD_VERIFY_CHECK_TIMEOUT_S"
+
+
+def _run_in_process_group(
+    argv: list[str],
+    *,
+    timeout: float,
+    cwd: str | None,
+    env: dict[str, str] | None,
+) -> subprocess.CompletedProcess[str]:
+    """``subprocess.run`` that kills the command's whole process tree on a timeout.
+
+    ``subprocess.run`` kills only the direct child when the timeout trips. A check is
+    ``bash -c "uv run pytest ..."``: ``bash`` dies, ``uv`` and ``pytest`` are
+    reparented to the container init and keep burning CPU. In the dev runtime they
+    shared the container's 3-CPU quota with the event loop, the kernel throttled every
+    thread of the runtime and its ``/health`` answer stalled (OMN-25856). The command
+    gets its own session, and the whole group is killed when the timeout trips.
+    """
+    with subprocess.Popen(
+        argv,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        cwd=cwd,
+        env=env,
+        start_new_session=True,
+    ) as proc:
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+        except BaseException:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGKILL)
+            proc.communicate()
+            raise
+        return subprocess.CompletedProcess(argv, proc.returncode, stdout, stderr)
 
 
 def _check_timeout_s() -> float:
@@ -915,7 +960,7 @@ def _resolve_pinned_pnpm(
                 [*argv, "--version"],
                 capture_output=True,
                 text=True,
-                timeout=_TOOLCHAIN_PROBE_TIMEOUT_S,
+                timeout=clamp_to_budget(_TOOLCHAIN_PROBE_TIMEOUT_S),
                 env=probe_env,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
@@ -934,7 +979,7 @@ def _resolve_pinned_pnpm(
                         ],
                         capture_output=True,
                         text=True,
-                        timeout=_TOOLCHAIN_PROBE_TIMEOUT_S,
+                        timeout=clamp_to_budget(_TOOLCHAIN_PROBE_TIMEOUT_S),
                         cwd=str(project_root),
                         env=probe_env,
                     )
@@ -969,7 +1014,7 @@ def _resolve_pinned_pnpm(
                 [pnpm, "--version"],
                 capture_output=True,
                 text=True,
-                timeout=_TOOLCHAIN_PROBE_TIMEOUT_S,
+                timeout=clamp_to_budget(_TOOLCHAIN_PROBE_TIMEOUT_S),
                 cwd=str(project_root),
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
@@ -4301,7 +4346,9 @@ class EvidenceCollector:
                             unverifiable_cause=(
                                 EnumEvidenceUnverifiableCause.CHECK_BUDGET_EXCEEDED
                             ),
-                            message=(
+                            message=msg
+                            if msg.startswith(DISPATCH_BUDGET_MARKER)
+                            else (
                                 "CHECK_BUDGET_EXCEEDED: this run killed the "
                                 f"command at its {_check_timeout_s()}s "
                                 "per-check ceiling, so the command reached no "
@@ -5464,7 +5511,7 @@ class EvidenceCollector:
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=_git_op_timeout_s(),
+                timeout=clamp_to_budget(_git_op_timeout_s()),
                 env=scrub_git_location_env(os.environ),
             )
         except subprocess.TimeoutExpired:
@@ -5987,7 +6034,7 @@ class EvidenceCollector:
         # non-result as any other build failure, instead of needing a second
         # branch that says the same thing.
         argv = ["uv", "sync", "--frozen", "--project", str(project_root)]
-        timeout_s = _hermetic_sync_timeout_s()
+        timeout_s = clamp_to_budget(_hermetic_sync_timeout_s())
         logger.info(
             "OMN-16846: building lock-exact behaviour-check environment for %s at %s",
             project_root,
@@ -5999,10 +6046,8 @@ class EvidenceCollector:
         self._register_close_at_exit()
         try:
             env_path.parent.mkdir(parents=True, exist_ok=True)
-            proc = subprocess.run(
+            proc = _run_in_process_group(
                 argv,
-                capture_output=True,
-                text=True,
                 timeout=timeout_s,
                 cwd=str(project_root),
                 env=build_env,
@@ -6113,7 +6158,7 @@ class EvidenceCollector:
             self._hermetic_node_envs[project_root] = result
             return result
 
-        timeout_s = _hermetic_sync_timeout_s()
+        timeout_s = clamp_to_budget(_hermetic_sync_timeout_s())
         logger.info(
             "OMN-17863: staging lock-exact behaviour-check tree for %s at %s "
             "(pnpm %s via %s)",
@@ -6152,10 +6197,8 @@ class EvidenceCollector:
                 "--reporter=append-only",
             ]
             try:
-                proc = subprocess.run(
+                proc = _run_in_process_group(
                     argv,
-                    capture_output=True,
-                    text=True,
                     timeout=timeout_s,
                     cwd=str(stage),
                     env=build_env,
@@ -6248,14 +6291,12 @@ class EvidenceCollector:
             return result
 
         if not (stage / "node_modules").is_dir():
-            timeout_s = _hermetic_sync_timeout_s()
+            timeout_s = clamp_to_budget(_hermetic_sync_timeout_s())
             build_env = dict(os.environ)
             build_env["CI"] = "1"
             try:
-                proc = subprocess.run(
+                proc = _run_in_process_group(
                     [npm, "ci"],
-                    capture_output=True,
-                    text=True,
                     timeout=timeout_s,
                     cwd=str(stage),
                     env=build_env,
@@ -6372,6 +6413,13 @@ class EvidenceCollector:
         # can only ever describe THIS invocation.
         self._last_check_budget_exceeded = False
         self._last_command_failure = None
+
+        # OMN-26310: a merge-event dispatch is bounded as a whole. Once its
+        # budget is spent no further command starts (no build, no subprocess);
+        # the caller records the typed CHECK_BUDGET_EXCEEDED non-result.
+        if budget_exhausted():
+            self._last_check_budget_exceeded = True
+            return False, dispatch_budget_exhausted_message()
 
         # Prefer explicit `command` field; fall back to `check_value`
         cmd_str = check.get("command") or check.get("check_value", "")
@@ -6583,17 +6631,15 @@ class EvidenceCollector:
                 run_env if run_env is not None else os.environ
             )
 
-        timeout_s = _check_timeout_s()
+        timeout_s = clamp_to_budget(_check_timeout_s())
         start = time.monotonic()
         try:
             # OMN-15382: list-form + explicit pipefail (not shell=True /
             # plain sh -c) so a failing first stage of a multi-stage pipeline
             # fails the whole check instead of being masked by the last
             # stage's exit code.
-            result = subprocess.run(
+            result = _run_in_process_group(
                 ["bash", "-o", "pipefail", "-c", cmd_str],
-                capture_output=True,
-                text=True,
                 timeout=timeout_s,
                 cwd=run_cwd,
                 env=run_env,
@@ -6603,6 +6649,8 @@ class EvidenceCollector:
             # OMN-17795: record the fact HERE, where it is known first-hand,
             # rather than letting the caller re-derive it from this message.
             self._last_check_budget_exceeded = True
+            if budget_exhausted():
+                return False, dispatch_budget_exhausted_message()
             return False, f"Timed out after {timeout_s}s: {cmd_str}"
         except Exception as exc:
             return False, f"Execution error: {exc}"

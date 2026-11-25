@@ -17,7 +17,7 @@ from rich.text import Text
 from textual import events, on
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, VerticalScroll
 from textual.coordinate import Coordinate
 from textual.message import Message
 from textual.screen import ModalScreen
@@ -103,6 +103,8 @@ def provider_text(entry: ModelCatalogEntry, label: str) -> Text:
     if entry.server_url:  # two servers can run one model: say which one this is
         host = urlparse(entry.server_url).netloc or entry.server_url
         text.append(f"  {host}", style=_colour("muted"))
+    if entry.provider_list_expired:  # AC4: say why models.dev fills the facts
+        text.append(f"  {_table().listing_expired}", style=_colour("warning"))
     return text
 
 
@@ -401,28 +403,41 @@ def _detail_rows(
     def sourced(text: str, field: str) -> str:
         return f"{text}  ({source[field]})" if field in source else text
 
+    def token_price(value: Decimal | None, field: str) -> str:
+        text = f"{priced(value)} {say['per_million']}"
+        if value is None:
+            return text
+        # Older entries kept one source for both prices, even when it was mixed.
+        if field not in source and " + " not in source.get("price", ""):
+            return sourced(text, "price")
+        return sourced(text, field)
+
     rows = [
         (say["provider"], provider_label),
         *([(say["server"], entry.server_url)] if entry.server_url else []),
         (say["model"], entry.model_id),
-        (say["name"], entry.display_name),
+        (say["name"], sourced(entry.display_name, "name")),
         (say["runs"], _table().deployment[entry.deployment].text),
         (say["context"], sourced(context_text(entry.context_tokens), "context")),
-        (say["max_output"], context_text(entry.max_output_tokens)),
         (
-            say["input"],
-            sourced(
-                f"{priced(entry.input_usd_per_million)} {say['per_million']}", "price"
-            ),
+            say["max_output"],
+            sourced(context_text(entry.max_output_tokens), "max_output"),
         ),
-        (say["output"], f"{priced(entry.output_usd_per_million)} {say['per_million']}"),
-        (say["cache_read"], priced(entry.cache_read_usd_per_million)),
-        (say["cache_write"], priced(entry.cache_write_usd_per_million)),
+        (say["input"], token_price(entry.input_usd_per_million, "input")),
+        (say["output"], token_price(entry.output_usd_per_million, "output")),
+        (
+            say["cache_read"],
+            sourced(priced(entry.cache_read_usd_per_million), "cache_read"),
+        ),
+        (
+            say["cache_write"],
+            sourced(priced(entry.cache_write_usd_per_million), "cache_write"),
+        ),
     ]
     if entry.tiered_price:
-        rows.append((say["pricing"], say["tiered"]))
+        rows.append((say["pricing"], sourced(say["tiered"], "pricing")))
     for label, state in entry.capabilities.items():
-        rows.append((label, say.get(state, unknown)))
+        rows.append((label, sourced(say.get(state, unknown), f"capability.{label}")))
     rows.append((say["status"], _table().status[entry.status].text))
     if entry.status_reason:
         rows.append((say["why"], entry.status_reason))
@@ -454,7 +469,8 @@ class ModelDetailsScreen(ModalScreen[None]):
         self._label = provider_label
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="md"):
+        # Scrolls: on a small terminal the rows are taller than the screen.
+        with VerticalScroll(id="md"):
             yield Label(
                 Text(_table().details["title"], style=f"bold {_colour('primary')}")
             )
@@ -462,6 +478,9 @@ class ModelDetailsScreen(ModalScreen[None]):
                 with Horizontal():
                     yield Static(key, classes="mdk")
                     yield Static(value)
+
+    def on_mount(self) -> None:
+        self.query_one("#md", VerticalScroll).focus()
 
     def action_close(self) -> None:
         self.dismiss(None)

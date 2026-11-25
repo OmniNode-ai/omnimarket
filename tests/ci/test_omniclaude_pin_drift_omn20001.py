@@ -37,6 +37,7 @@ from omnimarket.validators.event_registry_drift import (
     main as drift_main,
 )
 from scripts.ci.ci_summary_gate import STRICT_GATE_JOBS
+from tests.ci.lint_jobs import lint_steps
 
 pytestmark = pytest.mark.unit
 
@@ -441,7 +442,7 @@ def _precommit_hook(hook_id: str) -> dict[str, Any]:
 
 
 def _lint_step_runs(name: str) -> str:
-    steps = _load_workflow()["jobs"]["lint"]["steps"]
+    steps = lint_steps(_load_workflow())
     matches = [s for s in steps if s.get("name") == name]
     assert len(matches) == 1, f"expected one lint step {name!r}, found {len(matches)}"
     return str(matches[0]["run"])

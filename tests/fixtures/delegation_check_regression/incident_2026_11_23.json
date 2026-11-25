@@ -1,0 +1,177 @@
+{
+ "incident": "2026-11-23 delegation board fell from 7 of 10 to 4 of 10",
+ "scrub": "Read from the settings store (omnidash_analytics omninode_internal.overlay_store) and the work ledger. Only local_endpoints.backends of the delegation_routing overlay is kept; LAN addresses are replaced by host labels h201 and h202; no secret_ref, header or credential field is kept.",
+ "settings_change": {
+  "overlay_id": "delegation_routing",
+  "previous_digest": "5a9718e8bd2a79475733be0be423de5dd47c0965cf3a879245660a2740bde757",
+  "new_digest": "e1bafab44c7969bcd70c35cf0c5342e1b81947ec33515264d89438ad49e74551",
+  "applied_at": "2026-11-23T17:28:17Z",
+  "loaded_by": "node_overlay_store_load_effect",
+  "previous_document": {
+   "local_endpoints": {
+    "backends": [
+     {
+      "backend_id": "local-coder",
+      "model_name": "Qwen3.8-27B",
+      "provider": "local",
+      "tier": "local",
+      "endpoint": "h201:8000"
+     },
+     {
+      "backend_id": "local-heavy-reasoning",
+      "model_name": "Qwen3.8-27B",
+      "provider": "local",
+      "tier": "local",
+      "endpoint": "h201:8000"
+     },
+     {
+      "backend_id": "local-omnipc2-chat",
+      "model_name": "Qwen3.8-27B",
+      "provider": "local",
+      "tier": "local",
+      "max_tokens": 16384,
+      "timeout_ms": 300000,
+      "endpoint": "h202:8000",
+      "placement": {
+       "tier": "local",
+       "fallback_for": [
+        "local-coder",
+        "local-heavy-reasoning"
+       ],
+       "max_context_tokens": 131072,
+       "mode": "spread",
+       "weight": 0.25
+      }
+     }
+    ]
+   }
+  },
+  "new_document": {
+   "local_endpoints": {
+    "backends": [
+     {
+      "backend_id": "local-coder",
+      "model_name": "Qwen3.8-27B",
+      "provider": "local",
+      "tier": "local",
+      "endpoint": "h201:8000"
+     },
+     {
+      "backend_id": "local-heavy-reasoning",
+      "model_name": "Qwen3.8-27B",
+      "provider": "local",
+      "tier": "local",
+      "endpoint": "h201:8000"
+     },
+     {
+      "backend_id": "local-omnipc2-chat",
+      "model_name": "Qwen3.8-27B",
+      "provider": "local",
+      "tier": "local",
+      "max_tokens": 16384,
+      "timeout_ms": 300000,
+      "endpoint": "h202:8000",
+      "placement": {
+       "tier": "local",
+       "fallback_for": [
+        "local-coder",
+        "local-heavy-reasoning"
+       ],
+       "max_context_tokens": 131072,
+       "mode": "spread",
+       "weight": 0.25
+      }
+     },
+     {
+      "backend_id": "local-h201-4090-chat",
+      "model_name": "Qwen3.8-27B",
+      "provider": "local",
+      "tier": "local",
+      "max_tokens": 8192,
+      "timeout_ms": 300000,
+      "endpoint": "h201:8112",
+      "placement": {
+       "tier": "local",
+       "fallback_for": [
+        "local-coder",
+        "local-heavy-reasoning"
+       ],
+       "max_context_tokens": 16384,
+       "mode": "spread",
+       "weight": 0.25
+      }
+     }
+    ]
+   }
+  },
+  "note": "The only delegation_routing or lab_hosts version in the store between 2026-11-20T18:44Z and 2026-11-24T00:19Z. The store holds no version at the 13:30Z to 14:45Z transition: the store still named the h201 port 8000 server for local-coder throughout."
+ },
+ "transition_window": {
+  "green_through": "2026-11-23T13:30:00Z",
+  "red_from": "2026-11-23T14:45:00Z"
+ },
+ "readings": [
+  {
+   "check_id": "C14",
+   "verdict": "green",
+   "read_at": "2026-11-23T13:30:00Z",
+   "run_ref": "",
+   "source": "ledger MSG 2026-11-24T00:52:47Z (board history, Publish beta release board logs): green through the 13:30Z publish"
+  },
+  {
+   "check_id": "C14",
+   "verdict": "red",
+   "read_at": "2026-11-23T14:45:00Z",
+   "run_ref": "",
+   "source": "ledger MSG 2026-11-24T00:52:47Z (board history): red from the 14:45Z publish; no run id recorded"
+  },
+  {
+   "check_id": "C29",
+   "verdict": "green",
+   "read_at": "2026-11-23T12:57:00Z",
+   "run_ref": "45179185106",
+   "source": "ledger ACK 2026-11-24T01:01:37Z lane c29-0020: last green run 45179185106 at 12:57Z"
+  },
+  {
+   "check_id": "C29",
+   "verdict": "red",
+   "read_at": "2026-11-23T13:57:00Z",
+   "run_ref": "45189064181",
+   "source": "ledger ACK 2026-11-24T01:01:37Z lane c29-0020: first red run 45189064181 at 13:57Z, clause no_omninode"
+  },
+  {
+   "check_id": "C13",
+   "verdict": "green",
+   "read_at": "2026-11-23T13:14:30Z",
+   "run_ref": "45181382568",
+   "source": "ledger STATUS 2026-11-23T13:16:30Z lane c13fix-1330: run 45181382568 concluded success"
+  },
+  {
+   "check_id": "C13",
+   "verdict": "green",
+   "read_at": "2026-11-23T14:45:00Z",
+   "run_ref": "",
+   "source": "ledger MSG 2026-11-24T00:52:47Z (board history): C13 green until 22:00Z"
+  }
+ ],
+ "host_model_change": {
+  "change_kind": "host_model",
+  "subject": "h201",
+  "changed_keys": [
+   "8000/vllm-gpu0"
+  ],
+  "applied_at": "2026-11-23T13:46:25Z",
+  "actor": "operator ruling",
+  "source": "ledger RULING 2026-11-23T13:46:25Z (Qwen off the h201 5090 for the Inkling runs; the time is the ruling's, the unit's own stop time is not recorded) and ledger TERMINAL 2026-11-23T17:37:19Z lane c14red-1730 (h201 port 8000 vLLM down, vllm-gpu0 failed, the responder chain fell to h202)"
+ },
+ "release_change": {
+  "change_kind": "release",
+  "subject": "omnimarket",
+  "changed_keys": [
+   "v0.4.325"
+  ],
+  "applied_at": "2026-11-23T13:16:38Z",
+  "actor": "release tag",
+  "source": "ledger MSG 2026-11-24T01:14:08Z lane m4whys-0105: omnimarket v0.4.325 tagged 2026-11-23T13:16:38Z"
+ }
+}

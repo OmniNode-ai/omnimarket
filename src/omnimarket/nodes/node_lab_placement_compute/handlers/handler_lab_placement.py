@@ -33,6 +33,7 @@ from pydantic import ValidationError
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
+from omnimarket.models.model_host_table_verdict import ModelHostTableVerdict
 from omnimarket.models.overlay_keys import (
     ModelLabHostRow,
     ModelLabHostsTable,
@@ -40,7 +41,6 @@ from omnimarket.models.overlay_keys import (
 )
 from omnimarket.nodes.node_lab_placement_compute.models.model_lab_placement import (
     CAPABILITY_COLUMNS,
-    ModelHostTableVerdict,
     ModelLabPlacementRequest,
     ModelLabPlacementResult,
     ModelPlacementRules,

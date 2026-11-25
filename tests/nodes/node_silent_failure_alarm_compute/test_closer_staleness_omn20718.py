@@ -37,6 +37,7 @@ from omnimarket.nodes.node_silent_failure_alarm_effect.models import (
     ModelSilentFailureAlarmOptions,
     ModelSilentFailureAlarmRequest,
 )
+from tests.helpers.fake_alarm_ledger import LEDGER_FIXTURE_NAME
 from tests.nodes.node_silent_failure_alarm_compute.test_golden_chain_silent_failure_alarm_compute import (
     HOST_NOW,
     Watch,
@@ -172,9 +173,8 @@ def _tick(
     receipts: list[dict[str, str]] | None = None,
 ):
     options = world(tmp_path)
-    assert options.ledger is not None
     if terminal_age is not None:
-        with options.ledger.open("a") as handle:
+        with (options.registry_root / LEDGER_FIXTURE_NAME).open("a") as handle:
             handle.write(_terminal(HOST_NOW - terminal_age) + "\n")
     fire_receipts = None
     if receipts is not None:

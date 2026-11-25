@@ -1,0 +1,326 @@
+schema_version: 1.0.0
+ticket_id: OMN-25547
+title: 'node_gateway_batch_ingest_effect: a stateless HTTPS batch ingest door that validates the whole batch and confirms each record''s delivery before it answers'
+summary: New node node_gateway_batch_ingest_effect serves POST /v1/gateway/batch-ingest through the contract's http_mount. It verifies the bearer token with the overlay's lab JWKS, binds the tenant from the claim to the overlay registry, validates every record of a batch before publishing any, produces each record on tenant-<slug>.<canonical topic> with its own delivery callback and answers 202 only when every record is confirmed. It holds no store, claim or lease, and every bound, the exact topics and the Kafka limits are overlay values.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25547-ac1
+  statement: 'lab JWKS verification: a token signed by the lab test key with audience exactly `gateway-attach`, the lab issuer and tenant claims is accepted; another key, a second audience, the broker audience, a wrong issuer or an expired `exp` is refused 401 with nothing published -- falsifier: `uv run pytest tests/nodes/node_gateway_batch_ingest_effect -k claims_lab_jwks` with the signature check disabled turns the other-key case red and with the issuer comparison removed turns the wrong-issuer case red'
+  acceptance:
+  - id: AC1
+    statement: 'AC1: lab JWKS verification: a token signed by the lab test key with audience exactly `gateway-attach`, the lab issuer and tenant claims is accepted; another key, a second audience, the broker audience, a wrong issuer or an expired `exp` is refused 401 with nothing published -- falsifier: `uv run pytest tests/nodes/node_gateway_batch_ingest_effect -k claims_lab_jwks` with the signature check disabled turns the other-key case red and with the issuer comparison removed turns the wrong-issuer case red'
+- id: req-omn25547-ac2
+  statement: 'tenant binding: a token for `T2` signed with slug `a` bound to `T1` is refused `tenant-binding-mismatch` (403) with publisher call count 0, and an unknown id, a slug mismatch and a reused slug are refused the same way; the overlay load refuses a registry repeating a `tenant_id` or a `tenant_slug` -- falsifier: `pytest ... -k tenant_binding` with the binding check removed turns the `T2` case red, and with the check comparing slug only turns the unknown-id case red'
+  acceptance:
+  - id: AC2
+    statement: 'AC2: tenant binding: a token for `T2` signed with slug `a` bound to `T1` is refused `tenant-binding-mismatch` (403) with publisher call count 0, and an unknown id, a slug mismatch and a reused slug are refused the same way; the overlay load refuses a registry repeating a `tenant_id` or a `tenant_slug` -- falsifier: `pytest ... -k tenant_binding` with the binding check removed turns the `T2` case red, and with the check comparing slug only turns the unknown-id case red'
+- id: req-omn25547-ac3
+  statement: 'tenant slugs are never reused: a retired tenant''s token is refused `tenant-retired`, a later tenant carrying the retired slug is refused `tenant-binding-mismatch`, and the load refuses a registry that reuses a retired slug or rebinds a retired id -- falsifier: `pytest ... -k slug_reuse` with the retired row dropped from the load check turns the load case red, and with the retired status ignored at admission turns the `T1` case red'
+  acceptance:
+  - id: AC3
+    statement: 'AC3: tenant slugs are never reused: a retired tenant''s token is refused `tenant-retired`, a later tenant carrying the retired slug is refused `tenant-binding-mismatch`, and the load refuses a registry that reuses a retired slug or rebinds a retired id -- falsifier: `pytest ... -k slug_reuse` with the retired row dropped from the load check turns the load case red, and with the retired status ignored at admission turns the `T1` case red'
+- id: req-omn25547-ac4
+  statement: 'tenant comes from the claim only, a body naming a tenant is refused `unknown-field`, and a topic carrying another tenant''s prefix is refused `topic-tenant-mismatch` -- falsifier: `pytest ... -k tenant` with the prefix comparison replaced by `True` turns the cross-tenant case red'
+  acceptance:
+  - id: AC4
+    statement: 'AC4: tenant comes from the claim only, a body naming a tenant is refused `unknown-field`, and a topic carrying another tenant''s prefix is refused `topic-tenant-mismatch` -- falsifier: `pytest ... -k tenant` with the prefix comparison replaced by `True` turns the cross-tenant case red'
+- id: req-omn25547-ac5
+  statement: 'tenant slug grammar (parametrised, accepted `a`, `cli-run-h051` and a 32-character slug; refused empty, 33 characters, hyphen edges, trailing newline, NUL, uppercase and the Unicode lookalikes) -- falsifier: `pytest ... -k slug_grammar` with `re.fullmatch` replaced by `re.match` turns the trailing-newline case red, and with a `.lower()` or NFKC fold added turns the Kelvin and uppercase cases red'
+  acceptance:
+  - id: AC5
+    statement: 'AC5: tenant slug grammar (parametrised, accepted `a`, `cli-run-h051` and a 32-character slug; refused empty, 33 characters, hyphen edges, trailing newline, NUL, uppercase and the Unicode lookalikes) -- falsifier: `pytest ... -k slug_grammar` with `re.fullmatch` replaced by `re.match` turns the trailing-newline case red, and with a `.lower()` or NFKC fold added turns the Kelvin and uppercase cases red'
+- id: req-omn25547-ac6
+  statement: 'topic normalization and exact allowlist: the canonical topic and `tenant-<own slug>.<canonical>` publish on the one wire topic; every lookalike, nested prefix, over-length, non-string and encoded form is refused with its named reason and nothing published; an overlay `topics[].topic` starting with `tenant-` is refused at load -- falsifier: `pytest ... -k topic_rules` with the exact-membership test replaced by `startswith` turns every lookalike case red, and `pytest ... -k overlay_topics` with the load check removed turns it red'
+  acceptance:
+  - id: AC6
+    statement: 'AC6: topic normalization and exact allowlist: the canonical topic and `tenant-<own slug>.<canonical>` publish on the one wire topic; every lookalike, nested prefix, over-length, non-string and encoded form is refused with its named reason and nothing published; an overlay `topics[].topic` starting with `tenant-` is refused at load -- falsifier: `pytest ... -k topic_rules` with the exact-membership test replaced by `startswith` turns every lookalike case red, and `pytest ... -k overlay_topics` with the load check removed turns it red'
+- id: req-omn25547-ac7
+  statement: 'topic length bounds: a legal maximum-length topic with a 32-character slug is accepted in both forms, `max_topic_chars + 1` is refused in both forms, an over-long wire input is refused before any prefix is removed, and the load refuses the inequalities on `max_topic_chars` and `max_wire_topic_chars` (at most 249) -- falsifier: `pytest ... -k topic_length` with one bound applied to the whole input before prefix removal turns the wire-form maximum case red, and with the load check removed turns the load cases red'
+  acceptance:
+  - id: AC7
+    statement: 'AC7: topic length bounds: a legal maximum-length topic with a 32-character slug is accepted in both forms, `max_topic_chars + 1` is refused in both forms, an over-long wire input is refused before any prefix is removed, and the load refuses the inequalities on `max_topic_chars` and `max_wire_topic_chars` (at most 249) -- falsifier: `pytest ... -k topic_length` with one bound applied to the whole input before prefix removal turns the wire-form maximum case red, and with the load check removed turns the load cases red'
+- id: req-omn25547-ac8
+  statement: 'ingress bound, with an ASGI harness that spies on `receive`: an over-cap `content-length` answers `413` with `receive` called zero times; a chunked or understated body stops at the cap plus one chunk; a stalled body answers `408`; too many or oversize headers and an oversize `authorization` answer `431` unread; a malformed `content-length` answers `400`; JSON nested past `max_json_depth` is refused -- falsifier: `pytest ... -k ingress_limits` with the counting `receive` replaced by `await request.body()` turns the 413 and chunked cases red'
+  acceptance:
+  - id: AC8
+    statement: 'AC8: ingress bound, with an ASGI harness that spies on `receive`: an over-cap `content-length` answers `413` with `receive` called zero times; a chunked or understated body stops at the cap plus one chunk; a stalled body answers `408`; too many or oversize headers and an oversize `authorization` answer `431` unread; a malformed `content-length` answers `400`; JSON nested past `max_json_depth` is refused -- falsifier: `pytest ... -k ingress_limits` with the counting `receive` replaced by `await request.body()` turns the 413 and chunked cases red'
+- id: req-omn25547-ac9
+  statement: 'in-flight caps and the total upload deadline: a request cap, a byte reservation (chunked requests reserve the cap), a total upload deadline beating a one-byte-per-tick trickle, release on every exit (normal, 422, 408, disconnect, handler raise, cancel), load inequalities, and counters that hold no record or `event_id` -- falsifier: `pytest ... -k inflight_caps` with the request cap removed turns case (a) red, with the byte reservation ignored turns (b) red, with the total deadline removed turns (c) red, with the release moved out of `finally` turns the matching (d) exit red, and with bytes charged as read rather than reserved turns the chunked case in (b) red'
+  acceptance:
+  - id: AC9
+    statement: 'AC9: in-flight caps and the total upload deadline: a request cap, a byte reservation (chunked requests reserve the cap), a total upload deadline beating a one-byte-per-tick trickle, release on every exit (normal, 422, 408, disconnect, handler raise, cancel), load inequalities, and counters that hold no record or `event_id` -- falsifier: `pytest ... -k inflight_caps` with the request cap removed turns case (a) red, with the byte reservation ignored turns (b) red, with the total deadline removed turns (c) red, with the release moved out of `finally` turns the matching (d) exit red, and with bytes charged as read rather than reserved turns the chunked case in (b) red'
+- id: req-omn25547-ac10
+  statement: 'Kafka size admission: a record whose `kafka_record_size` (stamps and declared overheads included) equals the effective limit is `published` and one byte over is refused `record-exceeds-kafka-limit` in a `422`, on each of two topics; a bad record in a batch means call count 0; an oversized record is never retried as `503`; a wrong overlay answers `500 kafka-limit-drift` with `retryable: false`; the producer is built with `message.max.bytes` equal to `producer_max_request_bytes` -- falsifier: `pytest ... -k kafka_size_admission` with the size check removed turns (a) over-limit, (c) and (d) red, with the stamps left out turns (b) red, with only the producer limit checked turns the topic-bound case red, and with the producer on its library default turns (g) red'
+  acceptance:
+  - id: AC10
+    statement: 'AC10: Kafka size admission: a record whose `kafka_record_size` (stamps and declared overheads included) equals the effective limit is `published` and one byte over is refused `record-exceeds-kafka-limit` in a `422`, on each of two topics; a bad record in a batch means call count 0; an oversized record is never retried as `503`; a wrong overlay answers `500 kafka-limit-drift` with `retryable: false`; the producer is built with `message.max.bytes` equal to `producer_max_request_bytes` -- falsifier: `pytest ... -k kafka_size_admission` with the size check removed turns (a) over-limit, (c) and (d) red, with the stamps left out turns (b) red, with only the producer limit checked turns the topic-bound case red, and with the producer on its library default turns (g) red'
+- id: req-omn25547-ac11
+  statement: 'per-record limits: an encoded key or value over its bound, too many headers, or an over-long header name or value is refused (`record-too-large`, `record-headers-too-large`) and base64 decoding is never called on an over-length string -- falsifier: `pytest ... -k record_limits` with the length precheck removed turns the decode-spy case red'
+  acceptance:
+  - id: AC11
+    statement: 'AC11: per-record limits: an encoded key or value over its bound, too many headers, or an over-long header name or value is refused (`record-too-large`, `record-headers-too-large`) and base64 decoding is never called on an over-length string -- falsifier: `pytest ... -k record_limits` with the length precheck removed turns the decode-spy case red'
+- id: req-omn25547-ac12
+  statement: 'whole-batch validation: a 5-record batch whose last (or middle) record is invalid answers `422` naming that `index` with publisher call count 0, for each refusal kind -- falsifier: `pytest ... -k validate_whole` with phase A and phase B merged turns the last-record case red'
+  acceptance:
+  - id: AC12
+    statement: 'AC12: whole-batch validation: a 5-record batch whose last (or middle) record is invalid answers `422` naming that `index` with publisher call count 0, for each refusal kind -- falsifier: `pytest ... -k validate_whole` with phase A and phase B merged turns the last-record case red'
+- id: req-omn25547-ac13
+  statement: 'the egress gate runs on every record: a duplicate member name, an oversize value and a client-sent stamp header are each refused with the gate''s own reason and nothing published -- falsifier: `pytest ... -k egress` with the gate call removed turns all three red'
+  acceptance:
+  - id: AC13
+    statement: 'AC13: the egress gate runs on every record: a duplicate member name, an oversize value and a client-sent stamp header are each refused with the gate''s own reason and nothing published -- falsifier: `pytest ... -k egress` with the gate call removed turns all three red'
+- id: req-omn25547-ac14
+  statement: 'stateless door: the same 3-record batch posted twice answers `202 {"published": 3}` both times and the topic holds 6 byte-identical copies; a retry after a healed publisher at once publishes all three; no store or claim module or key exists; memory does not grow over 1,000 batches -- falsifier: `pytest ... -k stateless_door` with a process-local claim map turns (a) red, with a lease on an unconfirmed record turns (b) red, and with any per-record container retained turns (d) red'
+  acceptance:
+  - id: AC14
+    statement: 'AC14: stateless door: the same 3-record batch posted twice answers `202 {"published": 3}` both times and the topic holds 6 byte-identical copies; a retry after a healed publisher at once publishes all three; no store or claim module or key exists; memory does not grow over 1,000 batches -- falsifier: `pytest ... -k stateless_door` with a process-local claim map turns (a) red, with a lease on an unconfirmed record turns (b) red, and with any per-record container retained turns (d) red'
+- id: req-omn25547-ac15
+  statement: 'broker failure then retry and unconfirmed publish: record 2 refused answers `503` with `published`, `failed` (retryable) and `not_attempted`, an immediate retry publishes again with the same `event_id`, a late append leaves two byte-identical copies, and `delivery-unconfirmed` is never decided `published` -- falsifier: `pytest ... -k partial_failure` with `not_attempted` ignored or the stop at the first non-published record removed turns the topic-count case red, and `pytest ... -k unconfirmed` with a timeout decided as `published` turns the `503` case red'
+  acceptance:
+  - id: AC15
+    statement: 'AC15: broker failure then retry and unconfirmed publish: record 2 refused answers `503` with `published`, `failed` (retryable) and `not_attempted`, an immediate retry publishes again with the same `event_id`, a late append leaves two byte-identical copies, and `delivery-unconfirmed` is never decided `published` -- falsifier: `pytest ... -k partial_failure` with `not_attempted` ignored or the stop at the first non-published record removed turns the topic-count case red, and `pytest ... -k unconfirmed` with a timeout decided as `published` turns the `503` case red'
+- id: req-omn25547-ac16
+  statement: 'per-record confirmation: two overlapping sends on one shared producer each report through their own callback, neither moved by the other, a callback that never fires is `delivery-unconfirmed`, and a synchronous produce failure is `publish-refused` -- falsifier: `pytest ... -k delivery_callback` with the outcome decided by a producer-wide flush turns the case where X fails and Y succeeds red'
+  acceptance:
+  - id: AC16
+    statement: 'AC16: per-record confirmation: two overlapping sends on one shared producer each report through their own callback, neither moved by the other, a callback that never fires is `delivery-unconfirmed`, and a synchronous produce failure is `publish-refused` -- falsifier: `pytest ... -k delivery_callback` with the outcome decided by a producer-wide flush turns the case where X fails and Y succeeds red'
+- id: req-omn25547-ac17
+  statement: 'at-least-once delivery (the delivery gate of P2): every admitted record is written at least once across a healthy run, an unconfirmed retry, a lost response and a fresh door instance; every copy of one original is byte-identical to it; originals sharing an `event_id` with a differing non-identity header are counted separately; a reference consumer dedup by `message-id` leaves one record per `event_id` -- falsifier: `pytest ... -k at_least_once` with a door-side skip of any record whose `event_id` was seen turns (d) red, with a re-encoding retry turns (b) red, and with the reference consumer keyed on the Kafka offset turns (c) red'
+  acceptance:
+  - id: AC17
+    statement: 'AC17: at-least-once delivery (the delivery gate of P2): every admitted record is written at least once across a healthy run, an unconfirmed retry, a lost response and a fresh door instance; every copy of one original is byte-identical to it; originals sharing an `event_id` with a differing non-identity header are counted separately; a reference consumer dedup by `message-id` leaves one record per `event_id` -- falsifier: `pytest ... -k at_least_once` with a door-side skip of any record whose `event_id` was seen turns (d) red, with a re-encoding retry turns (b) red, and with the reference consumer keyed on the Kafka offset turns (c) red'
+- id: req-omn25547-ac18
+  statement: 'dedup identity and one derivation for two clients: records differing in key or a declared identity header carry four distinct ids and publish as four; a record whose id came from topic and value only is refused `event-id-mismatch`; a record built by `PublisherHttps` and one built like the merged forwarder leg carry one id, from the wire or the canonical topic; the overlay refuses an `identity` key -- falsifier: `pytest ... -k dedup_identity` with the shared function weakened turns the four-distinct-ids case red, and `pytest ... -k shared_topic` with the leg''s old `envelope_payload` derivation restored turns the equal-id case red'
+  acceptance:
+  - id: AC18
+    statement: 'AC18: dedup identity and one derivation for two clients: records differing in key or a declared identity header carry four distinct ids and publish as four; a record whose id came from topic and value only is refused `event-id-mismatch`; a record built by `PublisherHttps` and one built like the merged forwarder leg carry one id, from the wire or the canonical topic; the overlay refuses an `identity` key -- falsifier: `pytest ... -k dedup_identity` with the shared function weakened turns the four-distinct-ids case red, and `pytest ... -k shared_topic` with the leg''s old `envelope_payload` derivation restored turns the equal-id case red'
+- id: req-omn25547-ac19
+  statement: 'header budget with the real client over a loopback socket: a maximum-header request answers `202` not `431`, each allowlisted proxy header at its `max_value_bytes` passes and over it answers `431`, a name outside `CLIENT_HEADER_SET` and the allowlist answers `431 header-not-declared` with `receive` never called, and no allowlisted header is copied into the record -- falsifier: `pytest ... -k header_budget_real_client` with `max_header_count` set one below the declared names turns the `202` case red, and with the undeclared-name refusal removed turns the `header-not-declared` case red'
+  acceptance:
+  - id: AC19
+    statement: 'AC19: header budget with the real client over a loopback socket: a maximum-header request answers `202` not `431`, each allowlisted proxy header at its `max_value_bytes` passes and over it answers `431`, a name outside `CLIENT_HEADER_SET` and the allowlist answers `431 header-not-declared` with `receive` never called, and no allowlisted header is copied into the record -- falsifier: `pytest ... -k header_budget_real_client` with `max_header_count` set one below the declared names turns the `202` case red, and with the undeclared-name refusal removed turns the `header-not-declared` case red'
+- id: req-omn25547-ac20
+  statement: 'the mount is declared in `contract.yaml` as `http_mount` and is the only serving path, with batch bounds and exact topics as overlay values -- falsifier: `uv run pytest tests/nodes/node_gateway_batch_ingest_effect/test_contract_mount.py -q` fails when the `http_mount` block is removed, `pytest ... -k overlay_bounds` over 1, 100 and 101 moves the refusal point with no code change, and `git grep -n gateway_batch_ingest` in the cloud infrastructure repository on `dev` stays empty'
+  acceptance:
+  - id: AC20
+    statement: 'AC20: the mount is declared in `contract.yaml` as `http_mount` and is the only serving path, with batch bounds and exact topics as overlay values -- falsifier: `uv run pytest tests/nodes/node_gateway_batch_ingest_effect/test_contract_mount.py -q` fails when the `http_mount` block is removed, `pytest ... -k overlay_bounds` over 1, 100 and 101 moves the refusal point with no code change, and `git grep -n gateway_batch_ingest` in the cloud infrastructure repository on `dev` stays empty'
+- id: req-omn25547-ac21
+  statement: 'KNOWN FINDING 2 (see the section below): the door bounds the server''s chunk size and reserves headroom before reading, so an overshoot chunk cannot be materialized past the reservation, shown by a test that posts an understated body whose first chunk exceeds the reservation and measures memory use within the bound -- falsifier: `pytest ... -k inflight_overshoot_chunk` with the chunk size left unbounded and the reservation checked only after `receive` returns turns the measured-memory case red (the overshoot chunk is materialized past the reservation)'
+  acceptance:
+  - id: AC21
+    statement: 'AC21: KNOWN FINDING 2 (see the section below): the door bounds the server''s chunk size and reserves headroom before reading, so an overshoot chunk cannot be materialized past the reservation, shown by a test that posts an understated body whose first chunk exceeds the reservation and measures memory use within the bound -- falsifier: `pytest ... -k inflight_overshoot_chunk` with the chunk size left unbounded and the reservation checked only after `receive` returns turns the measured-memory case red (the overshoot chunk is materialized past the reservation)'
+evidence_requirements:
+- kind: tests
+  description: The door's focused tests pass at the pushed head (the three tests that need unmerged code are pending and listed in the PR).
+  command: uv run --frozen pytest -q -p no:cacheprovider --no-cov tests/nodes/node_gateway_batch_ingest_effect
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25547-ac1
+  description: Focused tests of AC1 pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q -p no:cacheprovider --no-cov -k claims_lab_jwks tests/nodes/node_gateway_batch_ingest_effect
+    cwd: .
+- id: dod-omn25547-ac2
+  description: Focused tests of AC2 pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q -p no:cacheprovider --no-cov -k tenant_binding tests/nodes/node_gateway_batch_ingest_effect
+    cwd: .
+- id: dod-omn25547-ac3
+  description: Focused tests of AC3 pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q -p no:cacheprovider --no-cov -k slug_reuse tests/nodes/node_gateway_batch_ingest_effect
+    cwd: .
+- id: dod-omn25547-ac4
+  description: Focused tests of AC4 pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q -p no:cacheprovider --no-cov tests/nodes/node_gateway_batch_ingest_effect/test_tenant_binding.py
+    cwd: .
+- id: dod-omn25547-ac5
+  description: Focused tests of AC5 pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q -p no:cacheprovider --no-cov -k slug_grammar tests/nodes/node_gateway_batch_ingest_effect
+    cwd: .
+- id: dod-omn25547-ac6
+  description: Focused tests of AC6 pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q -p no:cacheprovider --no-cov -k 'topic_rules or overlay_topics' tests/nodes/node_gateway_batch_ingest_effect
+    cwd: .
+- id: dod-omn25547-ac7
+  description: Focused tests of AC7 pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q -p no:cacheprovider --no-cov -k topic_length tests/nodes/node_gateway_batch_ingest_effect
+    cwd: .
+- id: dod-omn25547-ac8
+  description: Focused tests of AC8 pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q -p no:cacheprovider --no-cov -k ingress_limits tests/nodes/node_gateway_batch_ingest_effect
+    cwd: .
+- id: dod-omn25547-ac9
+  description: Focused tests of AC9 pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q -p no:cacheprovider --no-cov -k inflight_caps tests/nodes/node_gateway_batch_ingest_effect
+    cwd: .
+- id: dod-omn25547-ac10
+  description: Focused tests of AC10 pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC10
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q -p no:cacheprovider --no-cov -k kafka_size_admission tests/nodes/node_gateway_batch_ingest_effect
+    cwd: .
+- id: dod-omn25547-ac11
+  description: Focused tests of AC11 pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC11
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q -p no:cacheprovider --no-cov -k record_limits tests/nodes/node_gateway_batch_ingest_effect
+    cwd: .
+- id: dod-omn25547-ac12
+  description: Focused tests of AC12 pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q -p no:cacheprovider --no-cov -k validate_whole tests/nodes/node_gateway_batch_ingest_effect
+    cwd: .
+- id: dod-omn25547-ac13
+  description: Focused tests of AC13 pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC13
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q -p no:cacheprovider --no-cov -k egress tests/nodes/node_gateway_batch_ingest_effect
+    cwd: .
+- id: dod-omn25547-ac14
+  description: Focused tests of AC14 pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC14
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q -p no:cacheprovider --no-cov -k stateless_door tests/nodes/node_gateway_batch_ingest_effect
+    cwd: .
+- id: dod-omn25547-ac15
+  description: Focused tests of AC15 pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC15
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q -p no:cacheprovider --no-cov -k 'partial_failure or unconfirmed' tests/nodes/node_gateway_batch_ingest_effect
+    cwd: .
+- id: dod-omn25547-ac16
+  description: Focused tests of AC16 pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC16
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q -p no:cacheprovider --no-cov -k delivery_callback tests/nodes/node_gateway_batch_ingest_effect
+    cwd: .
+- id: dod-omn25547-ac17
+  description: Focused tests of AC17 pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC17
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q -p no:cacheprovider --no-cov -k at_least_once tests/nodes/node_gateway_batch_ingest_effect
+    cwd: .
+- id: dod-omn25547-ac18
+  description: Focused tests of AC18 pass at the pushed head. The shared_topic half (a record built by PublisherHttps reads the id the door derives, over a TLS loopback socket) is test_shared_topic_two_clients.py.
+  source: manual
+  binds_ac:
+  - AC18
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q -p no:cacheprovider --no-cov -k 'dedup_identity or shared_topic' tests/nodes/node_gateway_batch_ingest_effect
+    cwd: .
+- id: dod-omn25547-ac19
+  description: Focused tests of AC19 pass at the pushed head. Covered at the ASGI seam and, over a TLS loopback socket with the merged PublisherHttps and an httpx client, in test_header_budget_real_client.py.
+  source: manual
+  binds_ac:
+  - AC19
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q -p no:cacheprovider --no-cov -k header_budget tests/nodes/node_gateway_batch_ingest_effect
+    cwd: .
+- id: dod-omn25547-ac20
+  description: Focused tests of AC20 pass at the pushed head.
+  source: manual
+  binds_ac:
+  - AC20
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q -p no:cacheprovider --no-cov tests/nodes/node_gateway_batch_ingest_effect/test_contract_mount.py
+    cwd: .
+- id: dod-omn25547-ac21
+  description: Focused tests of AC21 pass at the pushed head. The measured chunk is checked against a simulated bridge here; the same measurement against the real bridge at the head of omnibase_infra#6090 is in the PR lab comment.
+  source: manual
+  binds_ac:
+  - AC21
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest -q -p no:cacheprovider --no-cov -k inflight_overshoot_chunk tests/nodes/node_gateway_batch_ingest_effect
+    cwd: .
+- id: dod-omn25547-deploy
+  description: 'Deploy probe the hosted runner can run: the node''s contract at the checked-out commit declares the http_mount path prefix; the node does not exist at the merge base, so the probe fails there.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: grep -F '/v1/gateway/batch-ingest' src/omnimarket/nodes/node_gateway_batch_ingest_effect/contract.yaml
+    cwd: .
+- id: dod-omn25547-integration-proof
+  description: Hosted CI cannot reach a lab lane, so only the local Done gate runs this unbound check. On a lab host at the sha it runs the door's focused tests, which drive the real ASGI app, the real lab JWKS verifier and a recording producer through the contract's http_mount.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25547 --kind test -- sh -c 'uv run --frozen pytest tests/nodes/node_gateway_batch_ingest_effect -q --no-cov -n 0 -p no:randomly'
+    cwd: .

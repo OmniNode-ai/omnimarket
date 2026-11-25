@@ -5,9 +5,11 @@
     onex lab-story-log --week 2026-W42
     onex lab-story-log --week previous --publish      # what the Sunday host tick runs
 
-Every path comes from an option or the environment the host tick carries: the ledger from
-``ONEX_LEDGER_PATH`` (archive files whose split date reaches into the week are read too), the
-hygiene vocabulary from ``OMNIBASE_INTERNAL_HOME``, the checkout the log is written into from
+The week's ledger rows come from the work ledger reader node (reader ``lab-story-log``, a rows read
+back to the week's first day, at most 30 days), never from a file; a reader that is not moved, a node
+fault or a stale answer exits 69 and writes nothing. Every path comes from an option or the
+environment the host tick carries: the hygiene vocabulary from ``OMNIBASE_INTERNAL_HOME``, the
+checkout the log is written into from
 ``ONEX_STORY_LOG_CHECKOUT``, and for ``--publish`` the pull request's repository from
 ``ONEX_STORY_LOG_REPOSITORY`` and the worktree directory from ``ONEX_STORY_LOG_WORKTREES``.
 Nothing is guessed: an unset variable the run needs is a usage error naming it (exit 2). A
@@ -17,7 +19,7 @@ private name that survives replacement exits 1 and writes nothing.
 from __future__ import annotations
 
 import json
-import re
+import math
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -37,20 +39,19 @@ from omnimarket.nodes.node_lab_story_log_effect.publish import (
     PublishError,
     publish_story_log,
 )
+from omnimarket.nodes.node_work_ledger_reader_effect.adapters.rows_read import (
+    LedgerRowsUnreadableError,
+    read_window_rows,
+)
 
-_SPLIT = re.compile(r"(\d{4}-\d{2}-\d{2})-split\.md$")
+READER_NAME = "lab-story-log"
+EXIT_UNREADABLE = 69
 
 
-def ledger_paths(ledger: Path, week_start: datetime) -> tuple[Path, ...]:
-    """The live ledger plus every archive split dated on or after the week's first day."""
-    paths = [ledger]
-    archive = ledger.parent / "archive"
-    if archive.is_dir():
-        for candidate in sorted(archive.glob("*-split.md")):
-            found = _SPLIT.search(candidate.name)
-            if found and found.group(1) >= week_start.date().isoformat():
-                paths.append(candidate)
-    return tuple(paths)
+def week_rows(start: datetime, now: datetime) -> tuple[str, ...]:
+    """The reader node's rows from the week's first day to `now`; a failed read raises, it is never empty."""
+    hours = max(1, math.ceil((now - start).total_seconds() / 3600))
+    return read_window_rows(READER_NAME, hours)
 
 
 @click.command("lab-story-log")
@@ -59,13 +60,6 @@ def ledger_paths(ledger: Path, week_start: datetime) -> tuple[Path, ...]:
     default="previous",
     show_default=True,
     help="ISO week such as 2026-W42, or 'previous'.",
-)
-@click.option(
-    "--ledger",
-    type=click.Path(path_type=Path),
-    envvar="ONEX_LEDGER_PATH",
-    required=True,
-    help="The live work ledger.",
 )
 @click.option(
     "--vocabulary-home",
@@ -102,7 +96,6 @@ def ledger_paths(ledger: Path, week_start: datetime) -> tuple[Path, ...]:
 )
 def lab_story_log_command(
     week: str,
-    ledger: Path,
     vocabulary_home: Path,
     checkout: Path,
     repository: str | None,
@@ -127,9 +120,14 @@ def lab_story_log_command(
     output_root = root
     if publish and worktree_root is not None:
         output_root = worktree_root / f"lab-story-log-{label.lower()}" / "render"
+    try:
+        lines = week_rows(start, datetime.now(UTC))
+    except LedgerRowsUnreadableError as exc:
+        click.echo(f"lab-story-log: ledger rows unreadable: {exc}", err=True)
+        sys.exit(EXIT_UNREADABLE)
     request = ModelLabStoryLogRequest(
         week=label,
-        ledger_paths=ledger_paths(ledger, start),
+        ledger_lines=lines,
         hygiene_vocabulary_path=home
         / "docs/workflows/_shared/public_repo_hygiene_vocabulary.yaml",
         person_names_path=home / "vocabularies/person_names.txt",
@@ -171,4 +169,4 @@ def lab_story_log_command(
     click.echo(json.dumps(summary, indent=2, sort_keys=True))
 
 
-__all__ = ["lab_story_log_command", "ledger_paths"]
+__all__ = ["lab_story_log_command", "week_rows"]

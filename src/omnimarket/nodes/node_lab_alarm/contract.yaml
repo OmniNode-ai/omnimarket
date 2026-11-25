@@ -45,8 +45,11 @@ description: >
   repositories, a beat that is missing, stale or alarmed is a breach; a repository alarms only after its
   streak of consecutive breaching runs reaches the overlay's persistence bound, before that the run is OK
   with a waiting reason. An unreadable source, a document with no heartbeat object, or a malformed beat is
-  INDETERMINATE, never ALARM and never OK. The verdict is handed to the alarm delivery when the overlay's
-  alarm_delivery block turns it on.
+  INDETERMINATE, never ALARM and never OK. When the overlay also declares the agent's unit, the unit's systemd
+  USER state is read first through the overlay's host_command, and a loaded unit whose state is not active is a
+  breach on the same bound under the subject unit:<name>, while a unit not found in that scope (is-active prints
+  inactive for a missing unit too) and a state that cannot be read are INDETERMINATE, never ALARM and never OK.
+  The verdict is handed to the alarm delivery when the overlay's alarm_delivery block turns it on.
 
   The delegation-chain-canary condition (HandlerDelegationChainCanary, verb delegation-chain-canary, OMN-24400) reads the
   runs of the overlay's canary workflow through the GitHub gateway node. The newest completed run of an admitted event
@@ -174,6 +177,10 @@ terminal_event: onex.evt.omnimarket.lab-alarm-broker-lag-completed.v1
 runtime_dispatch:
   external_trigger: true
   command_topic: onex.cmd.omnimarket.lab-alarm-broker-lag-requested.v1
+  # No topic subscription starts this node on a schedule: the lab alarm sweep and a lane run it by hand with a request document.
+  on_demand:
+    command: uv run onex node node_lab_alarm --input <request.json>
+    owner: OmniNode Platform Team
 
 topics:
   broker_lag_requested: onex.cmd.omnimarket.lab-alarm-broker-lag-requested.v1
@@ -344,6 +351,8 @@ alarm_sources:
   - {condition: clone_local_work_refused, severity: fix-cause, review_name: host-drift clone drift, basis: nearest, posts_via: deliver-effect,
      raised_at: omnimarket/src/omnimarket/nodes/node_canonical_clone_dirty_converge_effect/contract.yaml:101,
      cause: "host-drift clone drift (stray files on one host in the infra clone, workspace/routing_tiers.yaml; untracked lock files on another host in the registry root)"}
+  - {condition: test_selector_miss, severity: page, review_name: "a nightly red test file attributed to merged pull requests that skipped it, or an incomplete nightly, or no collector result", basis: named, posts_via: deliver-effect,
+     raised_at: omnimarket/src/omnimarket/nodes/node_test_selector_miss_collect_effect/adapters/routed_receiver.py:31}
   # --- post to the channel by their own path, not through this node: declared, not routed by this table ---
   - {condition: capture_source_stale, severity: page, review_name: hook capture feed dead (CAPTURE SOURCE STALE), basis: named, posts_via: direct,
      raised_at: omnimarket/src/omnimarket/nodes/node_capture_silence_watch_effect/handlers/build_slack_command.py:37}

@@ -2,6 +2,12 @@
 # SPDX-License-Identifier: MIT
 """The dev identity provision node's real adapters."""
 
+from omnimarket.nodes.node_dev_identity_provision_effect.adapters.adapter_bus_tenant_provisioner import (
+    BusTenantProvisioner,
+)
+from omnimarket.nodes.node_dev_identity_provision_effect.adapters.adapter_bus_tenant_reader import (
+    BusTenantReader,
+)
 from omnimarket.nodes.node_dev_identity_provision_effect.adapters.adapter_store_key_generator import (
     StoreKeyGenerator,
 )
@@ -9,4 +15,9 @@ from omnimarket.nodes.node_dev_identity_provision_effect.adapters.adapter_urllib
     UrllibIdentityTransport,
 )
 
-__all__ = ["StoreKeyGenerator", "UrllibIdentityTransport"]
+__all__ = [
+    "BusTenantProvisioner",
+    "BusTenantReader",
+    "StoreKeyGenerator",
+    "UrllibIdentityTransport",
+]

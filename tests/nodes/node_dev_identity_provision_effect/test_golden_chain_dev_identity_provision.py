@@ -2,11 +2,13 @@
 # SPDX-License-Identifier: MIT
 """Golden chain for the dev identity provision node (OMN-24115).
 
-One run against the fakes provisions the probe tenant: the call order is the admin token, the user
-lookup, the user create, the user token and the provision call. The generated password moves to
+One run against the fakes provisions the probe tenant: the Keycloak call order is the admin token, the user
+lookup, the user create and the user token, and the tenant is then provisioned through the runtime's tenant
+provision command (never an HTTP call to a separate API). The generated password moves to
 Keycloak (the create body and the password grant) and to nothing else -- not the result's JSON dump,
-its repr, its str or the logs -- and neither does any token. A second run finds the user, resets its
-stored password and binds the same tenant; the probe verb answers ready and calls nothing.
+its repr, its str or the logs -- and neither does any token. A second run that carries reset_existing finds the
+user, resets its stored password and binds the same tenant (without it the run is refused, see
+test_dev_identity_provision_input.py); the probe verb answers ready and calls nothing.
 """
 
 from __future__ import annotations
@@ -25,7 +27,12 @@ from omnimarket.nodes.node_dev_identity_provision_effect.overlay import (
     ModelDevIdentityProvisionOverlay,
 )
 
-from .fakes import FakeKeycloakAndApi, FakeKeyGenerator, FakeSettingStore
+from .fakes import (
+    FakeKeycloakAndApi,
+    FakeKeyGenerator,
+    FakeSettingStore,
+    FakeTenantProvisioner,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -67,11 +74,7 @@ def _overlay() -> ModelDevIdentityProvisionOverlay:
             "password_folder": "/shared/env",
             "password_key": "DEV_PROBE_USER_PASSWORD",
         },
-        api={
-            "base_url": "https://api.example.invalid",
-            "provision_path": "/v1/auth/provision",
-            "timeout_seconds": 15.0,
-        },
+        protected_usernames=[],
         secret_store=None,
     )
 
@@ -80,12 +83,14 @@ def _build(
     transport: FakeKeycloakAndApi,
     store: FakeSettingStore,
     gen: FakeKeyGenerator,
+    provisioner: FakeTenantProvisioner | None = None,
 ) -> HandlerDevIdentityProvision:
     return HandlerDevIdentityProvision(
         overlay=_overlay(),
         transport=transport,
         settings_store=store,
         key_generator=gen,
+        tenant_provisioner=provisioner or FakeTenantProvisioner(),
         contract_path=CONTRACT_PATH,
     )
 
@@ -115,7 +120,8 @@ def test_golden_chain_provisioned(caplog: pytest.LogCaptureFixture) -> None:
     store = FakeSettingStore()
     _seed(store)
     gen = FakeKeyGenerator(outcome="created", value=_PASSWORD)
-    handler = _build(transport, store, gen)
+    provisioner = FakeTenantProvisioner()
+    handler = _build(transport, store, gen, provisioner)
 
     result = asyncio.run(
         handler.handle(ModelDevIdentityProvisionCommand(lane="dev", write=True))
@@ -129,19 +135,23 @@ def test_golden_chain_provisioned(caplog: pytest.LogCaptureFixture) -> None:
     assert result.realm == "omninode"
     assert result.lane == "dev"
 
-    # Call order: admin token, user lookup, user create, user token, provision.
+    # Keycloak call order: admin token, user lookup, user create, user token. No call names a provision route.
     calls = transport.call_log
-    assert len(calls) == 5
+    assert len(calls) == 4
     expected = [
         ("POST", "openid-connect/token"),
         ("GET", "/users"),
         ("POST", "/users"),
         ("POST", "openid-connect/token"),
-        ("POST", "/provision"),
     ]
     for call, (method, fragment) in zip(calls, expected, strict=True):
         assert call.startswith(method)
         assert fragment in call
+    assert not any("/provision" in call for call in calls)
+
+    # The tenant went through the runtime command, once, for the user's own slug and a replayable command id.
+    assert len(provisioner.requests) == 1
+    assert provisioner.requests[0].tenant_slug == "dev-probe-user"
 
     # The generated password was passed to Keycloak: the create body's credential.
     assert len(transport.create_bodies) == 1
@@ -166,18 +176,26 @@ def test_second_run_reuses_the_user_and_resets_the_password(
     store = FakeSettingStore()
     _seed(store)
     gen = FakeKeyGenerator(outcome="exists", value=_PASSWORD)
-    handler = _build(transport, store, gen)
+    provisioner = FakeTenantProvisioner()
+    handler = _build(transport, store, gen, provisioner)
 
     first = asyncio.run(
         handler.handle(ModelDevIdentityProvisionCommand(lane="dev", write=True))
     )
     second = asyncio.run(
-        handler.handle(ModelDevIdentityProvisionCommand(lane="dev", write=True))
+        handler.handle(
+            ModelDevIdentityProvisionCommand(
+                lane="dev", write=True, reset_existing=True
+            )
+        )
     )
 
     assert first.ok is True
     assert second.ok is True
     assert first.tenant_id == "tenant-abc-123"
+    # Both runs asked the runtime with the same command id, so the runtime answers the second as a replay of the first.
+    assert len(provisioner.requests) == 2
+    assert provisioner.requests[0].command_id == provisioner.requests[1].command_id
     assert second.tenant_id == first.tenant_id
     assert second.tenant_slug == first.tenant_slug
     # The user was created once; the second run found it and reset its stored password.

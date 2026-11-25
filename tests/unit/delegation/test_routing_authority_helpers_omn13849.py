@@ -154,14 +154,14 @@ def test_backend_id_for_tier_resolves_a_local_backend() -> None:
     overlay supplies a complete endpoint. This guards against fast-path drift to
     another local backend.
     """
-    backend_id = backend_id_for_tier("local", "code_generation")
+    backend_id = backend_id_for_tier("local", "code_generation", prompt="")
     assert backend_id == "local-coder"
     assert tier_for_backend(backend_id) == "local"
 
 
 def test_backend_id_for_tier_unknown_tier_returns_none() -> None:
     """An unknown tier name resolves no backend -> None."""
-    assert backend_id_for_tier("not_a_tier", "code_generation") is None
+    assert backend_id_for_tier("not_a_tier", "code_generation", prompt="") is None
 
 
 @pytest.mark.usefixtures("code_gen_routable")
@@ -171,7 +171,7 @@ def test_backend_id_for_tier_round_trips_through_tier_for_backend() -> None:
     Proves the escalation loop's tier<->backend mapping is internally consistent:
     the backend a tier selects is declared by that tier in routing_tiers.yaml.
     """
-    backend_id = backend_id_for_tier("local", "code_generation")
+    backend_id = backend_id_for_tier("local", "code_generation", prompt="")
     assert backend_id is not None
     assert tier_for_backend(backend_id) == "local"
 
@@ -183,7 +183,9 @@ def test_next_eligible_tier_advances_up_closed_set_order() -> None:
     From cheap_cloud, the next un-excluded eligible tier is the declared ceiling
     tier (closed-set order, OMN-13599).
     """
-    nxt = next_eligible_tier("cheap_cloud", frozenset(), task_type="code_generation")
+    nxt = next_eligible_tier(
+        "cheap_cloud", frozenset(), task_type="code_generation", prompt=""
+    )
     # The next tier after cheap_cloud in the code_generation closed-set order that
     # can route the task with a resolvable backend.
     assert nxt == "claude"
@@ -201,7 +203,7 @@ def test_first_eligible_tier_is_local_in_closed_set_order() -> None:
     when the AI-PC endpoint overlay makes the tier routable, NOT the first
     bifrost-file-order backend the untargeted resolver landed on.
     """
-    assert first_eligible_tier("code_generation") == "local"
+    assert first_eligible_tier("code_generation", prompt="") == "local"
 
 
 @pytest.mark.usefixtures("code_gen_routable")
@@ -214,9 +216,9 @@ def test_first_eligible_tier_backend_is_on_ladder_not_off_ladder() -> None:
     attempt). Resolving the first tier's backend through the routing authority
     guarantees the initial backend IS on the ladder, so escalation can proceed.
     """
-    first_tier = first_eligible_tier("code_generation")
+    first_tier = first_eligible_tier("code_generation", prompt="")
     assert first_tier is not None
-    backend_id = backend_id_for_tier(first_tier, "code_generation")
+    backend_id = backend_id_for_tier(first_tier, "code_generation", prompt="")
     assert backend_id is not None
     # The initial backend is classifiable back to its tier (on-ladder), so
     # next_eligible_tier can advance from it — the escalation loop is not stranded.
@@ -225,4 +227,4 @@ def test_first_eligible_tier_backend_is_on_ladder_not_off_ladder() -> None:
 
 def test_first_eligible_tier_unknown_task_returns_none() -> None:
     """A task class with no declared tier_order -> None (caller keeps legacy path)."""
-    assert first_eligible_tier("not_a_real_task_class") is None
+    assert first_eligible_tier("not_a_real_task_class", prompt="") is None

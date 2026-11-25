@@ -162,8 +162,18 @@ jobs:
       - name: Build the composed omnimarket runtime image
         run: |
           set -euo pipefail
+          # OMN-26405: the layer rebuilds the prebuilt manifest and reads the active
+          # package set from the base image's stamp. An infra ref older than the stamp
+          # carrying the runtime policy's set stamps none, so name the set from the
+          # policy file at the same pinned ref; the build stops on an empty value.
+          active="$(sed -n 's/^ONEX_ACTIVE_RUNTIME_PACKAGES=//p' infra/docker/runtime-policy.env | tail -n 1)"
+          if [ -z "$active" ]; then
+            echo "::error::infra/docker/runtime-policy.env declares no ONEX_ACTIVE_RUNTIME_PACKAGES"
+            exit 1
+          fi
           docker build -f market/Dockerfile.runtime \
             --build-arg INFRA_RUNTIME_IMAGE=omnibase-infra-local-runtime:latest \
+            --build-arg PREBUILT_ACTIVE_RUNTIME_PACKAGES="$active" \
             --build-arg OMNIMARKET_VCS_REF=${{ github.sha }} \
             -t omnibase-infra-local-omnimarket-runtime:latest market
 

@@ -20,6 +20,12 @@ requirements:
       - id: "AC5"
         statement: |-
           AC5: the smoke is recorded: each candidate's 2026-11-20 row in the cheap_frontier smoke receipts with its model, accepted count and p50, the ten task prompts stored beside them -- falsifier: the receipts have no 2026-11-20 rows, or the placed model's row accepted fewer than 7
+      - id: "AC7"
+        statement: |-
+          AC7 (replaces AC5; closeout sweep 2026-11-22T0945Z, comment dbab7908): each measured candidate's 2026-11-20 row in the cheap_frontier smoke receipts records its model, accepted count and p50, each unmeasured candidate records its model and why it was not measured, and the ten task prompts are stored beside them -- falsifier: the 2026-11-20 receipt has a measured row without its model, accepted count or p50, an unmeasured candidate without its model or the reason it was not measured, or fewer than ten stored task prompts
+      - id: "AC6"
+        statement: |-
+          AC6 (operator ruling 2026-11-24 in chat (YES 26129-RECORD); the ticket's own AC6 line asks for an accepted count and a p50 for both models and still needs this amendment): each 2026-11-20 cheap_frontier smoke candidate that was not measured that day (google/gemma-4-31b-it:free and inclusionai/ling-3.2-flash:free) has a dated later row in the cheap_frontier smoke receipts that records today's honest outcome on the ten stored task prompts, either a measured row (model, whole-number accepted count within its tasks, outcome, and a p50 only when something was accepted) or a not-measured entry (model, reason with its UTC time, tries) -- falsifier: the receipts have no dated later row for either model, or a row without those fields
   - id: "req-omn26129-tier-stays-free"
     statement: |-
       cheap_frontier stays free; paid models reach it only through the code eval.
@@ -33,35 +39,75 @@ requirements:
 evidence_requirements:
   - kind: "tests"
     description: "The catalogue, smoke-evidence, withdrawal and free-tier tests."
-    command: "uv run pytest tests/validators/test_provider_model_catalogue.py tests/nodes/node_provider_model_catalogue_effect tests/unit/routing/test_cheap_frontier_smoke_evidence_omn20376.py tests/unit/routing/test_cheap_frontier_stays_free_omn26129.py tests/unit/routing/test_north_mini_spread_omn17427.py -q -n 0 --no-cov"
+    command: "uv run pytest tests/validators/test_provider_model_catalogue.py tests/nodes/node_provider_model_catalogue_effect tests/unit/routing/test_cheap_frontier_smoke_evidence_omn20376.py tests/unit/routing/test_cheap_frontier_stays_free_omn26129.py tests/unit/routing/test_north_mini_spread_omn17427.py tests/unit/routing/test_cheap_frontier_closeout_omn26129.py -q -n 0 --no-cov"
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
-  - id: "dod-omn26129-ac1-ac5-listed-and-smoked"
-    description: "The provider-catalogue tests read the 2026-11-20 capture, which lists the new rung and not north-mini-code; the smoke-evidence tests read every dated smoke, including the 2026-11-20 receipt with the ten prompts and Nemotron 3.5 Super's 10 of 10. Fails at the merge base, whose contract still declares north-mini-code."
+  - id: "dod-omn26129-ac1-listed-and-smoked"
+    description: "AC1, one module holds it all: the catalogue probe exits 0 on the 2026-11-20 capture, no packaged backend declares a model the capture does not list, and each cheap_frontier rung is a listed free model priced 0/0 whose recorded smoke accepted 7 or more of 10; controls plant an unlisted, a priced, a below-the-bar and an unsmoked rung, each caught."
     source: "manual"
-    binds_ac: ["AC1", "AC5"]
+    binds_ac: ["AC1"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/validators/test_provider_model_catalogue.py tests/nodes/node_provider_model_catalogue_effect tests/unit/routing/test_cheap_frontier_smoke_evidence_omn20376.py -q -n 0 --no-cov"
+        check_value: "uv run pytest tests/unit/routing/test_cheap_frontier_ac1_listed_and_smoked_omn26129.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn26129-ac2-withdrawn-and-renamed"
-    description: "No backend, routing rule, default or tier names north-mini-code, and the tests that pinned the free tier's rung name Nemotron 3.5 Super. Fails at the merge base, where north-mini-code is still declared."
+    description: "AC2, one module holds it all: no parsed value in any packaged YAML or JSON file under src/omnimarket names cohere/north-mini-code:free or openrouter-north-mini-code (the routing contract, routing_tiers.yaml and the judge configs among the files scanned, an unparseable file failing), the independent-judge selector never picks the withdrawn rung, and the eight files omnimarket#6491 re-pointed name openrouter-nemotron-3-5-super, the only cheap_frontier rung; controls plant a withdrawn backend, a withdrawn judge and a file still pinning the old rung, each caught."
     source: "manual"
     binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/validators/test_provider_model_catalogue.py::test_north_mini_code_is_withdrawn_once_the_provider_stops_listing_it tests/unit/routing/test_north_mini_spread_omn17427.py tests/unit/routing/test_nemotron_ultra_withdrawn_omn20376.py -q -n 0 --no-cov"
+        check_value: "uv run pytest tests/unit/routing/test_cheap_frontier_ac2_withdrawn_and_renamed_omn26129.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
-  - id: "dod-omn26129-ac3-ac4-tier-stays-free"
-    description: "cheap_frontier is declared free_local at 0.0, every rung on it is listed at 0/0 in the 2026-11-20 capture, and no deepseek or qwen3.8 model is placed on it. Fails at the merge base, whose rung the capture does not list."
+  - id: "dod-omn26129-ac3-no-paid-model-on-the-tier"
+    description: "AC3, one module holds it all: no deepseek or qwen3.8 model is placed on cheap_frontier by any of three routes (bifrost on-tier, a placement block, the routing_tiers.yaml models list), each route and provider spelling caught when planted and malformed entries failing closed; and they join only as pinned-only code-eval arms: a deepseek and a qwen3.8 arm load through the routing overlay and through append_eval_arm_backends as explicit_pin_only with no placement, and an unpinned arm or one placed on cheap_frontier is refused."
     source: "manual"
-    binds_ac: ["AC3", "AC4"]
+    binds_ac: ["AC3"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/unit/routing/test_cheap_frontier_stays_free_omn26129.py -q -n 0 --no-cov"
+        check_value: "uv run pytest tests/unit/routing/test_cheap_frontier_no_eval_only_placement_omn26129.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26129-ac4-complete-free-before-paid"
+    description: "AC4, one module holds it all: cheap_frontier declared free_local at 0.0, its rung listed and priced 0/0 in the 2026-11-20 capture, every class ladder that names the tier served there by the placed routing config, and no paid tier ahead of it in any ladder; controls plant a metered tier, a priced and an unlisted rung, an unserved tier and a paid tier first, each caught."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_cheap_frontier_ac4_free_and_first_omn26129.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26129-ac5-smoke-recorded"
+    description: "The 2026-11-20 smoke receipt and its candidate set, pinned: the one measured candidate, the placed Nemotron 3.5 Super, has its model, an accepted count within its task count (10 of 10, against the bar of 7) and a positive p50_seconds, and ran as many tasks as prompts are stored; the two other candidates (gemma-4-31b-it:free and ling-3.2-flash:free) were never measured because OpenRouter answered 429 when the key was registered for them, so they have no accepted count or p50, and each records that 429 and is not on the ladder; the ten task prompts are stored in the same receipt, each with its name, task type and full text, in the 7 summarization, 1 review, 1 code_generation, 1 test mix. Controls remove a p50, an accepted count, the unmeasured rows, a 429 reason, a prompt or a prompt's text, swap the measured candidate, change the mix or place an unmeasured model, and each is caught."
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_cheap_frontier_closeout_omn26129.py::test_every_candidate_row_is_recorded_with_model_accepted_and_p50 tests/unit/routing/test_cheap_frontier_closeout_omn26129.py::test_no_unmeasured_candidate_is_on_the_ladder tests/unit/routing/test_cheap_frontier_closeout_omn26129.py::test_the_ladder_check_catches_an_unmeasured_model_placed tests/unit/routing/test_cheap_frontier_closeout_omn26129.py::test_the_ten_prompts_are_stored_beside_the_rows tests/unit/routing/test_cheap_frontier_closeout_omn26129.py::test_the_receipt_checks_catch_each_planted_gap tests/unit/routing/test_cheap_frontier_smoke_evidence_omn20376.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26129-ac7-measured-and-unmeasured-recorded"
+    description: "AC7, which replaces AC5 as written: the 2026-11-20 receipt records the one measured candidate (the placed Nemotron 3.5 Super) with its model, an accepted count within its task count and a positive p50_seconds; records each unmeasured candidate (gemma-4-31b-it:free and ling-3.2-flash:free) with its model and why it was not measured (OpenRouter's 429 at key registration), off the ladder; and stores the ten task prompts beside them, each with its name, task type and full text. The same receipt checks AC5's binding ran; their controls remove a p50, an accepted count, the unmeasured rows, a 429 reason, a prompt or a prompt's text, and each is caught."
+    source: "manual"
+    binds_ac: ["AC7"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_cheap_frontier_closeout_omn26129.py::test_every_candidate_row_is_recorded_with_model_accepted_and_p50 tests/unit/routing/test_cheap_frontier_closeout_omn26129.py::test_no_unmeasured_candidate_is_on_the_ladder tests/unit/routing/test_cheap_frontier_closeout_omn26129.py::test_the_ladder_check_catches_an_unmeasured_model_placed tests/unit/routing/test_cheap_frontier_closeout_omn26129.py::test_the_ten_prompts_are_stored_beside_the_rows tests/unit/routing/test_cheap_frontier_closeout_omn26129.py::test_the_receipt_checks_catch_each_planted_gap tests/unit/routing/test_cheap_frontier_smoke_evidence_omn20376.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26129-ac6-later-rows-recorded"
+    description: "AC6 per the operator ruling 2026-11-24 in chat (YES 26129-RECORD): the 2026-11-24 receipt records, for google/gemma-4-31b-it:free and inclusionai/ling-3.2-flash:free, a dated later row with the attempt's honest outcome (a measured row with a whole-number accepted count and a p50 only when something was accepted, or a not-measured entry with a reason, its UTC time and tries) and stores all ten task prompts; controls spoil each field and each is refused."
+    source: "manual"
+    binds_ac: ["AC6"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_cheap_frontier_ac6_later_rows_omn26129.py tests/unit/routing/test_cheap_frontier_smoke_evidence_omn20376.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26129-ac6-same-ten-prompts"
+    description: "AC6: the dated later receipt stores the same ten task prompts as the 2026-11-20 receipt, each with its text, and a receipt with a changed or emptied prompt is refused."
+    source: "manual"
+    binds_ac: ["AC6"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_cheap_frontier_ac6_later_rows_omn26129.py::test_a_later_receipt_must_store_the_first_days_ten_prompts -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn26129-integration-proof"
     description: >-
@@ -75,7 +121,7 @@ dod_evidence:
           env PYTHONDONTWRITEBYTECODE=1 onex lab-work run
           --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
           --lane dod-integration-proof-26129 --kind test --
-          env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest
+          uv run --frozen pytest
           tests/unit/delegation/test_routing_completeness_omn15630.py
           tests/unit/delegation/test_tier_order_backend_coverage_omn17427.py
           tests/unit/routing/test_cheap_frontier_stays_free_omn26129.py

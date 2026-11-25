@@ -30,6 +30,7 @@ from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_secret_source import EnumSecretSource
 from omnimarket.enums.enum_usage_source import EnumUsageSource
+from omnimarket.handlers import model_catalog as _model_catalog
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
 )
@@ -56,6 +57,9 @@ from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegatio
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_result import (
     ModelLlmDelegationCallResult,
 )
+
+#: The production pricing read; the suite's autouse fixture empties it per test.
+_PRODUCTION_PRICING_INDEX = _model_catalog.pricing_models_dev_index
 
 _HANDLER_MODULE = (
     "omnimarket.nodes.node_llm_delegation_call_effect.handlers."
@@ -239,10 +243,14 @@ class TestHandlerLlmDelegationCall:
         """Supplemental metadata is optional; a read failure leaves price unknown."""
         from omnimarket.handlers import model_catalog
 
-        def unreadable():
+        def unreadable(*_args: object, **_kwargs: object) -> None:
             raise OSError("synthetic unreadable metadata cache")
 
-        monkeypatch.setattr(model_catalog, "pricing_models_dev_index", unreadable)
+        monkeypatch.setattr(
+            model_catalog, "pricing_models_dev_index", _PRODUCTION_PRICING_INDEX
+        )
+        monkeypatch.setattr(model_catalog, "kept_models_dev_index", unreadable)
+        monkeypatch.setattr(model_catalog, "shipped_pricing_index", unreadable)
         captured = _patch_post(monkeypatch, json_body=_make_api_response())
         with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
             result = HandlerLlmDelegationCall()(

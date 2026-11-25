@@ -89,7 +89,7 @@ def _delegate(prompt: str, contract: Mapping[str, Any]) -> DelegateAnswer:
 
 
 def _handler(tmp_path: Path, append: FakeLedger) -> HandlerOperatorCaptureEffect:
-    ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
+    ledger = tmp_path / "scratch_rows.md"
     ledger.touch()
     return HandlerOperatorCaptureEffect(
         store_dir=tmp_path / "store",
@@ -269,7 +269,7 @@ def test_the_ledger_host_capture_appends_through_the_serve_process_runner(
 ) -> None:
     """The work-ledger serve process's own append runner writes the rows (OMN-20905)."""
     monkeypatch.setenv("ONEX_OPERATOR_CAPTURE_DIR", str(tmp_path / "store"))
-    ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
+    ledger = tmp_path / "scratch_rows.md"
     ledger.write_text("# Ledger\n")
 
     async def scenario() -> None:
@@ -317,7 +317,7 @@ def test_the_ledger_host_capture_rows_carry_req_and_via_when_given_the_append_ha
 ) -> None:
     """Capture rows pass the append handler as accepted commands, so none lacks via= (OMN-16176)."""
     monkeypatch.setenv("ONEX_OPERATOR_CAPTURE_DIR", str(tmp_path / "store"))
-    ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
+    ledger = tmp_path / "scratch_rows.md"
     ledger.write_text("# Ledger\n")
     append_handler = HandlerWorkLedgerAppendEffect(
         _file_append_command(ledger),

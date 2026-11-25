@@ -9,7 +9,7 @@ contract_version:
   minor: 0
   patch: 0
 node_version: 1.0.0
-description: Read what the duplicate-fix pull request guard folds over, from local sources only and never a GitHub search. The PR watcher's state file for the open pull requests of one repository (refused when its last_tick is older than 15 minutes), the rolling ledger named by ONEX_LEDGER_PATH, and git diff -U0 for what the new branch and each open pull request change against the merge base. Changed-line digests supply intent evidence; draft facts let the guard distinguish ownerless drafts. Git ancestry flags stacked ancestors and descendants, and the new diff excludes the tip-most open ancestor changes. The deployment overlay node_pr_duplicate_guard_compute/overlay.yaml (read from ONEX_SKILL_OVERLAY_ROOTS, then ONEX_WORKSPACE_CONFIG_ROOT/config/onex/overlays) names per repository the paths it regenerates in every pull request of a kind, passed to the guard as generated_paths; an absent overlay declares none. A source it cannot read, or an overlay it cannot parse, is returned as unchecked_reason, never as no duplicate.
+description: Read what the duplicate-fix pull request guard folds over, from local sources only and never a GitHub search. The PR watcher's state file for the open pull requests of one repository (refused when its last_tick is older than 15 minutes), the live ledger CLAIM rows the ledger reader node answers, and git diff -U0 for what the new branch and each open pull request change against the merge base. Changed-line digests supply intent evidence; draft facts let the guard distinguish ownerless drafts. Git ancestry flags stacked ancestors and descendants, and the new diff excludes the tip-most open ancestor changes. The deployment overlay node_pr_duplicate_guard_compute/overlay.yaml (read from ONEX_SKILL_OVERLAY_ROOTS, then ONEX_WORKSPACE_CONFIG_ROOT/config/onex/overlays) names per repository the paths it regenerates in every pull request of a kind, passed to the guard as generated_paths; an absent overlay declares none. A source it cannot read, or an overlay it cannot parse, is returned as unchecked_reason, never as no duplicate.
 input_model:
   name: ModelPrDuplicateSnapshotRequest
   module: omnimarket.models.model_pr_duplicate_guard
@@ -35,11 +35,29 @@ config:
     prefix_chars: 12
   stack:
     base_rule: newest_contained_open_pr_head
+  # The claims read through the ledger reader node (OMN-26433). A CLAIM is live 0.75 hours after its lane's last row, so the read is
+  # every row of the last heartbeat_window_hours (it names the live lanes), then the claim_kinds rows of the window for those
+  # lanes; the dev broker answers each in a page. A read that fails is asked once more (OMN-26387): the every-row read of the
+  # window needs 84 reply pages and did not finish in 400 seconds on h053 (2026-11-24), so it is never the fallback. A first read
+  # waits at most primary_timeout_s, its retry at most retry_timeout_s, every read together at most total_budget_s; when a
+  # read and its retry fail the guard is unchecked and opens nothing. The reader's own bus wait and the deadline it stamps on
+  # each request are its overlay's route.timeout_seconds and route.stamp_deadline.
+  ledger_read:
+    reader: pr-duplicate-guard-claims
+    window_hours: 168
+    heartbeat_window_hours: 1
+    claim_kinds: [CLAIM, TERMINAL, RELEASE]
+    primary_timeout_s: 150
+    retry_timeout_s: 150
+    total_budget_s: 600
 event_bus:
   subscribe_topics: []
   publish_topics: []
 runtime_dispatch:
   external_trigger: Direct Python invocation by onex scm pr-create and onex scm pr-duplicate-check.
+  on_demand:
+    command: onex scm pr-duplicate-check <owner>/<repo> --branch <branch>
+    owner: OmniNode Platform Team
 descriptor:
   node_archetype: effect
   purity: effectful

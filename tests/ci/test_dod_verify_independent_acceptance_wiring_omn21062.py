@@ -11,6 +11,8 @@ from typing import Any
 import pytest
 import yaml
 
+from tests.ci.lint_jobs import lint_steps
+
 pytestmark = pytest.mark.unit
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -39,7 +41,7 @@ def _lint_runs() -> list[str]:
     workflow = yaml.safe_load(
         (_ROOT / ".github" / "workflows" / "ci.yml").read_text("utf-8")
     )
-    return [str(step.get("run", "")) for step in workflow["jobs"]["lint"]["steps"]]
+    return [str(step.get("run", "")) for step in lint_steps(workflow)]
 
 
 def test_pre_commit_hook_runs_every_selector_check_only() -> None:

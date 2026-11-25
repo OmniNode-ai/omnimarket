@@ -4,7 +4,7 @@
 
 On 2026-10-30 the guard refused a plan pull request because seven unrelated open plan pull requests each
 rewrote the status-count rows (lines 16 and 19) of the rendered plan index, which the repository's index check
-requires. The repository, its watcher state, the ledger and the three git checkouts here are real files and the
+requires. The repository, its watcher state and the three git checkouts here are real files and the
 deployment overlay is a real file read by the snapshot effect. The repository is made up: the real overlay is
 private data and no public test names it.
 """
@@ -118,8 +118,6 @@ class World:
         self.lane = tmp_path / "lane"
         git(tmp_path, "clone", "-q", str(origin), str(self.lane))
         self.state = tmp_path / "watcher.json"
-        self.ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
-        self.ledger.write_text("")
         self.overlays = tmp_path / "overlays"
         self.write_state()
 
@@ -178,7 +176,6 @@ class World:
 def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
     built = World(tmp_path)
     monkeypatch.setenv("ONEX_PR_WATCHER_STATE", str(built.state))
-    monkeypatch.setenv("ONEX_LEDGER_PATH", str(built.ledger))
     monkeypatch.setenv("ONEX_SCM_CLONE_ROOT", str(built.root))
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(built.overlays))
     monkeypatch.delenv("ONEX_WORKSPACE_CONFIG_ROOT", raising=False)

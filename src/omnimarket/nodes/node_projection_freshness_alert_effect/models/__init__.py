@@ -8,6 +8,11 @@ from omnimarket.nodes.node_projection_freshness_alert_effect.models.enum_freshne
 from omnimarket.nodes.node_projection_freshness_alert_effect.models.freshness_policy_error import (
     FreshnessPolicyError,
 )
+from omnimarket.nodes.node_projection_freshness_alert_effect.models.model_done_items_coverage import (
+    ModelCoverageCheck,
+    ModelCoverageObservation,
+    ModelCoverageVerdict,
+)
 from omnimarket.nodes.node_projection_freshness_alert_effect.models.model_freshness_check import (
     ModelFreshnessCheck,
 )
@@ -45,6 +50,9 @@ from omnimarket.nodes.node_projection_freshness_alert_effect.models.model_reads_
 __all__ = [
     "EnumFreshnessState",
     "FreshnessPolicyError",
+    "ModelCoverageCheck",
+    "ModelCoverageObservation",
+    "ModelCoverageVerdict",
     "ModelFreshnessCheck",
     "ModelFreshnessDelivery",
     "ModelFreshnessDemand",

@@ -13,6 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
 
 from omnimarket.models.work_state_projection import (
     EnumSourceReading,
@@ -28,7 +29,7 @@ from omnimarket.nodes.node_work_state_projection_scheduled_effect.protocols.adap
 )
 from tests.nodes.node_work_state_projection_scheduled_effect.ledger_route_support import (
     COMMAND_ENV,
-    FILE_ROUTE_ENV,
+    CONTRACT,
     ROUTE,
     FakeBusReadCommand,
     environment,
@@ -123,15 +124,47 @@ def test_error_unread_a_command_that_is_not_configured_is_named_and_raises_nothi
     assert COMMAND_ENV in cause
 
 
-def test_failing_control_without_a_route_the_ledger_reads_unread(
+def test_golden_run_with_no_source_reads_through_the_contracts_command_route(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fake = install_fake(
         monkeypatch,
         FakeBusReadCommand([ledger_line("CLAIM", "lane-a", "ZEP-1")]),
     )
-    result = run(environment(tmp_path), T0)
+    env = environment(
+        tmp_path,
+        ledger_file=ledger_file(tmp_path, ledger_line("CLAIM", "file-lane", "ZEP-9")),
+    )
+    result = run(env, T0)
+    assert ledger_status(result)[0] is EnumSourceReading.FRESH
+    assert {k for request in fake.requests for k in request["kinds"]} >= {"CLAIM"}
+    assert "file-lane" not in result.model_dump_json()
+    assert "lane-a" in snapshots_text(tmp_path)
+
+
+def test_failing_control_without_a_command_the_ledger_reads_unread(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = install_fake(
+        monkeypatch,
+        FakeBusReadCommand([ledger_line("CLAIM", "lane-a", "ZEP-1")]),
+    )
+    env = environment(
+        tmp_path,
+        with_command=False,
+        ledger_file=ledger_file(tmp_path, ledger_line("CLAIM", "file-lane", "ZEP-9")),
+    )
+    result = run(env, T0)
     reading, cause = ledger_status(result)
     assert reading is EnumSourceReading.UNREAD
-    assert f"{FILE_ROUTE_ENV} unset" in cause
+    assert f"ledger-route-unconfigured: {COMMAND_ENV} unset" in cause
     assert fake.requests == []
+    assert "file-lane" not in result.model_dump_json()
+
+
+def test_the_contract_names_a_command_route_and_no_ledger_file() -> None:
+    ledger = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))["runtime"]["ledger"]
+    assert ledger["read_route"]["route"] == "command"
+    assert ledger["read_route"]["command_env"] == COMMAND_ENV
+    assert "path_env" not in ledger
+    assert "archive_subdir" not in ledger

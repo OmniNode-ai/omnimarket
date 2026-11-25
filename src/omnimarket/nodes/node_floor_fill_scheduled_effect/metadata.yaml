@@ -16,6 +16,7 @@ capabilities:
 dependencies:
   - "omnibase_core>=0.39.0"
   - "omnibase-infra>=0.38.3"
+  - "omnibase-spi>=0.20.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["effect", "schedule", "fill", "OMN-24029"]

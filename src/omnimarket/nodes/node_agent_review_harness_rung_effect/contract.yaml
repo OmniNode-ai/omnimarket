@@ -8,9 +8,10 @@ node_version: "1.0.0"
 description: >-
   The harness rung of the agent review: casts one voter's review of one pull request head
   through a CLI harness on its subscription login (Codex signed in with ChatGPT, Claude
-  Code on the Claude subscription via claude -p), run by the harness-delegate path on the
-  host where that login is. The rung's harness, login, endpoint, task class, effort, call
-  budget, harness script and run-directory leaf are data: the dispatch orchestrator reads
+  Code on the Claude subscription via claude -p), run by one onex delegate pinned to the
+  rung's harness backend, which the harness handler of the delegation call effect serves
+  on the host where that login is. The rung's harness, login, endpoint, task class,
+  effort, call budget, harness backend id, delegation lane and run-directory leaf are data: the dispatch orchestrator reads
   them from its overlay's harness_rungs map and sends them in each vote request, so one
   node serves every harness rung and none is named in code. It refuses a run that was not
   the rung's harness or login, did not finish, left no published delegation event or used

@@ -13,8 +13,12 @@ from omnimarket.models.landing_decision import (
     ModelLandingDecision,
     ModelLandingFacts,
 )
+from omnimarket.models.work_ledger_append import ModelWorkLedgerAppendRequest
 from omnimarket.nodes.node_pr_landing_decision_compute import decide_landing
 from omnimarket.nodes.node_pr_landing_tick_compute import decide_landing_fair_share
+from omnimarket.nodes.node_pr_landing_tick_orchestrator.models.model_tick_orchestrator import (
+    ModelTickLivenessRead,
+)
 
 
 class ProtocolTickDecider(Protocol):
@@ -33,6 +37,21 @@ class ProtocolTickWriter(Protocol):
 
 class ProtocolTickPublisher(Protocol):
     def publish(self, topic: str, event: BaseModel) -> None: ...
+
+
+class ProtocolTickLedgerAppender(Protocol):
+    """The only door to the ledger: hands one append request to the work ledger append effect (OMN-26549).
+
+    Never called in observe or replay mode. A request that cannot be handed over raises.
+    """
+
+    def append(self, request: ModelWorkLedgerAppendRequest) -> None: ...
+
+
+class ProtocolTickLivenessReader(Protocol):
+    """The liveness read of one pull request head; observation only, it never changes a decision (OMN-26024)."""
+
+    def read(self, pr: str, head_sha: str) -> ModelTickLivenessRead: ...
 
 
 class NodePathDecider:
@@ -55,6 +74,16 @@ class InMemoryTickWriter:
         return True
 
 
+class InMemoryTickLedgerAppender:
+    """Records the append requests it is given."""
+
+    def __init__(self) -> None:
+        self.appended: list[ModelWorkLedgerAppendRequest] = []
+
+    def append(self, request: ModelWorkLedgerAppendRequest) -> None:
+        self.appended.append(request)
+
+
 class InMemoryTickPublisher:
     """Records the events it is given, with their topic."""
 
@@ -66,10 +95,13 @@ class InMemoryTickPublisher:
 
 
 __all__: list[str] = [
+    "InMemoryTickLedgerAppender",
     "InMemoryTickPublisher",
     "InMemoryTickWriter",
     "NodePathDecider",
     "ProtocolTickDecider",
+    "ProtocolTickLedgerAppender",
+    "ProtocolTickLivenessReader",
     "ProtocolTickPublisher",
     "ProtocolTickWriter",
 ]

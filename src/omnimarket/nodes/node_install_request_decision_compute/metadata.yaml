@@ -1,0 +1,22 @@
+name: node_install_request_decision_compute
+version: "0.1.0"
+description: "Install request decision: execute, hold, expire, skip or ignore one typed install request, as a pure function"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_install_request_decision_compute: "omnimarket.nodes.node_install_request_decision_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "install-request", "pure"]
+pack: "host_install"
+display_name: "Install Request Decision"
+node_role: "compute"

@@ -216,6 +216,16 @@ class FloorFillOrchestrator:
         self._reducer = reducer
         self._lines = lines
 
+    def unbound_seams(self) -> tuple[str, ...]:
+        """The seams still bound to a stand-in that answers ``unbound``; a live profile that can ship has none."""
+        names = [
+            name
+            for name, seam in (("pool", self._pool), ("tickets", self._tickets))
+            if getattr(seam, "unbound", False)
+        ]
+        names.extend(getattr(self._facts, "unbound_seams", tuple)())
+        return tuple(names)
+
     # ------------------------------------------------------------------ commands
 
     def run(

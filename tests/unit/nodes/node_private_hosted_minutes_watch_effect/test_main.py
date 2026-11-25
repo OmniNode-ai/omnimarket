@@ -18,8 +18,27 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def install_defaults(
-    monkeypatch, *, alert="sent", written=True, failure=False, quiet=False
+    monkeypatch,
+    tmp_path,
+    *,
+    alert="sent",
+    written=True,
+    failure=False,
+    quiet=False,
 ):
+    overlay = tmp_path / "overlays/node_private_hosted_minutes_watch_effect"
+    overlay.mkdir(parents=True)
+    (overlay / "overlay.yaml").write_text(
+        "included_minutes: 50\nalert_fraction: 0.5\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path / "overlays"))
+    monkeypatch.setattr(
+        effects,
+        "read_repository_visibility",
+        lambda _org, repository: (
+            "private" if repository.startswith("private-") else "public"
+        ),
+    )
     payload = json.loads(
         (
             FIXTURES
@@ -44,8 +63,6 @@ def args(tmp_path):
         "2026-10-18",
         "--state-dir",
         str(tmp_path / "state"),
-        "--ledger",
-        str(tmp_path / "ledger.md"),
         "--omni-home",
         str(tmp_path),
     ]
@@ -65,22 +82,22 @@ def args(tmp_path):
 def test_cli_health_and_summary(
     tmp_path, monkeypatch, capsys, alert, written, expected
 ):
-    reader = install_defaults(monkeypatch, alert=alert, written=written)
+    reader = install_defaults(monkeypatch, tmp_path, alert=alert, written=written)
     assert cli.main(args(tmp_path)) == expected
     reader.assert_called_once_with("OmniNode-ai", 2026, 10)
     output = capsys.readouterr().out.splitlines()
     assert output == [
-        f"private-hosted-minutes-watch: day=2026-10-18 hosted_minutes=26.25 repos=2 alert={alert} ledger_written={written}",
+        f"private-hosted-minutes-watch: day=2026-10-18 hosted_minutes=26.25 repos=2 alert={alert} private_month_minutes=38.75 included=50 percent_used=77.5 uncounted=0 ledger_written={written}",
         "  private-repo-b: 20.25 min",
         "  private-repo-a: 6 min",
     ]
 
 
 def test_cli_quiet_day_healthy(tmp_path, monkeypatch, capsys):
-    install_defaults(monkeypatch, quiet=True)
+    install_defaults(monkeypatch, tmp_path, quiet=True)
     assert cli.main(args(tmp_path)) == 0
     assert (
-        "hosted_minutes=0 repos=0 alert=none ledger_written=True"
+        "hosted_minutes=0 repos=0 alert=none private_month_minutes=0 included=50 percent_used=0 uncounted=0 ledger_written=True"
         in capsys.readouterr().out
     )
 
@@ -88,7 +105,7 @@ def test_cli_quiet_day_healthy(tmp_path, monkeypatch, capsys):
 def test_cli_billing_failure_writes_heartbeat_and_exits_two(
     tmp_path, monkeypatch, capsys
 ):
-    install_defaults(monkeypatch, failure=True)
+    install_defaults(monkeypatch, tmp_path, failure=True)
     assert cli.main(args(tmp_path)) == 2
     assert (
         capsys.readouterr().err
@@ -102,7 +119,7 @@ def test_cli_billing_failure_writes_heartbeat_and_exits_two(
 
 def test_cli_unconfigured_alert_without_library(tmp_path, monkeypatch):
     sender = effects.send_alert
-    install_defaults(monkeypatch)
+    install_defaults(monkeypatch, tmp_path)
     monkeypatch.setattr(effects, "send_alert", sender)
     monkeypatch.delenv("ONEX_ALERT_CHANNEL_LIB", raising=False)
     assert cli.main(args(tmp_path)) == 1
@@ -116,14 +133,14 @@ def test_cli_default_day_is_yesterday_utc(tmp_path, monkeypatch):
             return cls(2026, 10, 19, 0, 1, tzinfo=UTC)
 
     monkeypatch.setattr(cli, "datetime", FixedDatetime)
-    reader = install_defaults(monkeypatch, quiet=True)
+    reader = install_defaults(monkeypatch, tmp_path, quiet=True)
     assert cli.main(args(tmp_path)[2:]) == 0
     reader.assert_called_once_with("OmniNode-ai", 2026, 10)
     assert (tmp_path / "state/days/2026-10-18.json").exists()
 
 
 def test_cli_invalid_date_rejected_before_billing(tmp_path, monkeypatch):
-    reader = install_defaults(monkeypatch)
+    reader = install_defaults(monkeypatch, tmp_path)
     with pytest.raises(SystemExit) as error:
         cli.main(["--day", "not-a-date", *args(tmp_path)[2:]])
     assert error.value.code == 2
