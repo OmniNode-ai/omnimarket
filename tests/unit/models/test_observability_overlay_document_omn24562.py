@@ -95,8 +95,9 @@ def test_extra_key_is_refused() -> None:
 
 def test_model_is_frozen() -> None:
     overlay = ModelObservabilityOverlay.model_validate(_doc())
+    field = "ticket"
     with pytest.raises(ValidationError):
-        overlay.ticket = "OMN-2"  # type: ignore[misc]
+        setattr(overlay, field, "OMN-2")
 
 
 def test_observer_must_be_a_target() -> None:
