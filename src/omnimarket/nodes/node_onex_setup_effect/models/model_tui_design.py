@@ -283,6 +283,38 @@ class ModelTuiTaskCard(BaseModel):
 
     state_bar_colour: str
     facts_template: str = Field(min_length=1)
+    failure_template: str = Field(
+        default="Could not reach {model}. Check its key with /config.", min_length=1
+    )
+    glyphs: dict[str, str] = Field(default_factory=dict)
+    bar_colours: dict[str, str] = Field(default_factory=dict)
+
+    @property
+    def state_glyphs(self) -> dict[str, str]:
+        return self.glyphs
+
+    @property
+    def state_bar_colours(self) -> dict[str, str]:
+        return self.bar_colours
+
+    @property
+    def state_colors(self) -> dict[str, str]:
+        return self.bar_colours
+
+
+class ModelTuiSpinner(BaseModel):
+    """A non-blocking spinner (OMN-26620 AC11)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    frames: tuple[str, ...] = Field(default_factory=lambda: tuple("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"))
+    fallback_frames: tuple[str, ...] = ("|", "/", "-", "\\")
+    ascii_frames: tuple[str, ...] = ("|", "/", "-", "\\")
+    frame_seconds: float = Field(default=0.1, gt=0)
+    text: str = "Thinking… (ctrl+c to interrupt)"
+    wording: str = "Thinking… (ctrl+c to interrupt)"
+    message: str = "Thinking… (ctrl+c to interrupt)"
+    line: str = "Thinking… (ctrl+c to interrupt)"
 
 
 class ModelTuiFooterKey(BaseModel):
@@ -349,6 +381,7 @@ class ModelTuiDesign(BaseModel):
     delegation: ModelTuiDelegation
     dashboard: ModelTuiDashboard
     activity: ModelTuiActivity
+    spinner: ModelTuiSpinner = Field(default_factory=ModelTuiSpinner)
     tabs: tuple[ModelTuiTabSpec, ...] = Field(min_length=1)
     #: The model screens' sentences, by name; ``{name}`` parts are filled in.
     words: dict[str, str]
