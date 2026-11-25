@@ -7,7 +7,7 @@
     {
       "pr": 5375,
       "sha": "0b0c45e11276ab22ac5d8c90a83d50783d73e2c6",
-      "verdicts": {"pull_request:": {"exit": 0, "layers": [0, 0, 0], "report_sha256": "68a851d60b58928ded5aba0c4f70a228b3366eadc51c172bc8fe00a5ceef3832"}, "merge_group:": {"exit": 0, "layers": [0, 0, 0], "report_sha256": "841638ab982d80b88b10f2eaea407a51c0c9cb3c74fee863acc798b8fc5b8aff"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "4c4394748772104f9d1664be86c669ac0d0b81bf8dc405e1e0d185a6eae73b3a"}},
+      "verdicts": {"pull_request:": {"exit": 0, "layers": [0, 0, 0], "report_sha256": "4802f6fec2be626340d38c9338e7b33c7d8618cb7ea208c99c1b1260dec8774b"}, "merge_group:": {"exit": 0, "layers": [0, 0, 0], "report_sha256": "c324be0c484a0a9f51f545162b8686fdd747e42531c24f501b22d6c1a5c768de"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "1a1375961eaa9e30244a41b0650455c15a3cdaa560a6b2f2dcfcd8abf9c8f668"}},
       "check_runs": [
         {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:21:18Z", "started_at": "2026-11-08T02:21:18Z", "id": 128699999001},
         {"name": "Node Trigger Declaration Check", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:21:18Z", "started_at": "2026-11-08T02:21:18Z", "id": 128699999101},
@@ -165,13 +165,14 @@
         {"name": "uv.lock Pin Reachability", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:23:55Z", "started_at": "2026-11-08T02:23:55Z", "id": 128601996595},
         {"name": "validate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:24:12Z", "started_at": "2026-11-08T02:24:12Z", "id": 128602003493},
         {"name": "wheel-content-parity", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:21:38Z", "started_at": "2026-11-08T02:21:38Z", "id": 128601452464},
-        {"name": "zone-filter / Zone Filter (docs-only check)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:23:58Z", "started_at": "2026-11-08T02:23:58Z", "id": 128601996610}
+        {"name": "zone-filter / Zone Filter (docs-only check)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:23:58Z", "started_at": "2026-11-08T02:23:58Z", "id": 128601996610},
+        {"name": "Undeclared Read Check (OMN-26424)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T02:49:45Z", "started_at": "2026-11-08T02:49:45Z", "id": 128699990375}
       ]
     },
     {
       "pr": 5382,
       "sha": "808536f285661b93bf3604681e0a282d550aa160",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "9cf69572ebbb37d89aec20dc0ad28442f6d7a96d003aa864a0a157e653b67262"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "542dc543c60c6fedf96afb347bcc9d537fe91c0ccffac19668865c1ed93e627a"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "b7d454bff390472a9b5be11ce15b60634835afbfcc4a71af052eae73ac738d40"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "fab495aa46ef679807456716250e79e0bf2abf111907e8754f6f7b3a253e2b67"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "8c735230327773a2449b79e784a7f84f1da575433a9c063b818f75c8f94cc90a"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "a3735a8634046e8df6132d8064e536855eeb8a47057621a6f286b9b93d45b45a"}},
       "check_runs": [
         {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:51:48Z", "started_at": "2026-11-08T04:51:48Z", "id": 128699999002},
         {"name": "Node Trigger Declaration Check", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:51:48Z", "started_at": "2026-11-08T04:51:48Z", "id": 128699999102},
@@ -274,13 +275,14 @@
         {"name": "subscriber-dispatcher-resolution", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:52:22Z", "started_at": "2026-11-08T04:52:22Z", "id": 128632427572},
         {"name": "tests+coverage (shadow)", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:51:52Z", "started_at": "2026-11-08T04:51:52Z", "id": 128632428141},
         {"name": "typecheck (shadow)", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:51:52Z", "started_at": "2026-11-08T04:51:52Z", "id": 128632428314},
-        {"name": "wheel-content-parity", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:52:11Z", "started_at": "2026-11-08T04:52:11Z", "id": 128632427445}
+        {"name": "wheel-content-parity", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:52:11Z", "started_at": "2026-11-08T04:52:11Z", "id": 128632427445},
+        {"name": "Undeclared Read Check (OMN-26424)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:54:12Z", "started_at": "2026-11-08T04:54:12Z", "id": 128699990382}
       ]
     },
     {
       "pr": 5383,
       "sha": "f0ff9238311b32bdc791e7b50cc4ae601507f927",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "cc8614e9b5d915d0618d7f312d264e053e1ac3cd579564afd3fb5a8ca18a4b76"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "230f0387d65c1412f6ec1e0d31d9998dabaf28d1109557ccce6ad9666a6a3bb4"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "57153428b1cff46e8e2e010f1089cc41bc516fd984783d863b81c502dc6a854b"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "9a84562f805f4dee395d1cb151db9481d470f9c8ef349ef2472a8f8d25bc0b84"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "a7edab4c63792faa840ed7fdec8592634ec1b965b9360e6dbb9fe70dfd4b6309"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "59762f61385b7b25da5ac868f4e52ba0db9339042562010e46c72b99a3d80b74"}},
       "check_runs": [
         {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:45:43Z", "started_at": "2026-11-08T04:45:43Z", "id": 128699999003},
         {"name": "Node Trigger Declaration Check", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:45:43Z", "started_at": "2026-11-08T04:45:43Z", "id": 128699999103},
@@ -413,13 +415,14 @@
         {"name": "uv.lock Pin Reachability", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:27Z", "started_at": "2026-11-08T04:47:27Z", "id": 128631545739},
         {"name": "validate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:53Z", "started_at": "2026-11-08T04:47:53Z", "id": 128631555399},
         {"name": "wheel-content-parity", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:46:05Z", "started_at": "2026-11-08T04:46:05Z", "id": 128631227868},
-        {"name": "zone-filter / Zone Filter (docs-only check)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:36Z", "started_at": "2026-11-08T04:47:36Z", "id": 128631545754}
+        {"name": "zone-filter / Zone Filter (docs-only check)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:36Z", "started_at": "2026-11-08T04:47:36Z", "id": 128631545754},
+        {"name": "Undeclared Read Check (OMN-26424)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:52Z", "started_at": "2026-11-08T04:53:52Z", "id": 128699990383}
       ]
     },
     {
       "pr": 5384,
       "sha": "6a0dde94e04bedeeec651f9a2f152b51e58f2cb7",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "2fefe9a4f955873d5d27d21bc1cc5e37d33eb759ddffc24e64e5e8cef1ffcf93"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "05d8937a609ea79782e022e5c64955a2f366b08166f317fd6ec47aca745625c4"}, "push:dev": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "0d1801d1e0e48e833c5446a8d570c9cc618daa0a7dc8008ea26b3ff2687a3bc4"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "8b3c24551c29246075d72d94079f7398db35020e3fb2dbad227860f6c75a5e00"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "5b55e5fe3a65ae0a9429773e5e01707c2ac3ec5399117283c7ee4249fa21a1d8"}, "push:dev": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "225e13cd5a6cef05f1c07fc99b33250967e9348c8a0e1656087b430662457439"}},
       "check_runs": [
         {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:03Z", "started_at": "2026-11-08T04:53:03Z", "id": 128699999004},
         {"name": "Node Trigger Declaration Check", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:03Z", "started_at": "2026-11-08T04:53:03Z", "id": 128699999104},
@@ -498,13 +501,14 @@
         {"name": "subscriber-dispatcher-resolution", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:35Z", "started_at": "2026-11-08T04:53:35Z", "id": 128632667889},
         {"name": "tests+coverage (shadow)", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:53:06Z", "started_at": "2026-11-08T04:53:06Z", "id": 128632668111},
         {"name": "typecheck (shadow)", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:53:06Z", "started_at": "2026-11-08T04:53:06Z", "id": 128632668117},
-        {"name": "wheel-content-parity", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:26Z", "started_at": "2026-11-08T04:53:26Z", "id": 128632667805}
+        {"name": "wheel-content-parity", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:26Z", "started_at": "2026-11-08T04:53:26Z", "id": 128632667805},
+        {"name": "Undeclared Read Check (OMN-26424)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:54:03Z", "started_at": "2026-11-08T04:54:03Z", "id": 128699990384}
       ]
     },
     {
       "pr": 5385,
       "sha": "bb637ecedd986e136442d0112323b1bce505432a",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "f2bb4f5a803223523b120224e828417d52c26c4b1db265ceba1949b7be1d4fb9"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "af2eab25419e42a4e26a63ee35e47051c4f66349ab83a4149d1a55c12c448f9e"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "4b16e56efea11cd863df7764f319f633b90148e61a0579f389bff89758028348"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "44ef58d1c0746bd34f4ceb577b5d0f3ded9f927347a09982f161d8adcb7c8a9b"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "8b9fabdb48adc2f69ed26b5d08235f3e137b53be6e7a8aa82179abe7719019ba"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "689cdf6c9e5a1c03f4b533b06f5aa03fc45a16dc5b7d97b198935ef5d8ee8cae"}},
       "check_runs": [
         {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:16Z", "started_at": "2026-11-08T04:47:16Z", "id": 128699999005},
         {"name": "Node Trigger Declaration Check", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:16Z", "started_at": "2026-11-08T04:47:16Z", "id": 128699999105},
@@ -656,13 +660,14 @@
         {"name": "uv.lock Pin Reachability", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:50:04Z", "started_at": "2026-11-08T04:50:04Z", "id": 128632031933},
         {"name": "validate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:50:25Z", "started_at": "2026-11-08T04:50:25Z", "id": 128632040674},
         {"name": "wheel-content-parity", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:47:42Z", "started_at": "2026-11-08T04:47:42Z", "id": 128631539977},
-        {"name": "zone-filter / Zone Filter (docs-only check)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:50:06Z", "started_at": "2026-11-08T04:50:06Z", "id": 128632032012}
+        {"name": "zone-filter / Zone Filter (docs-only check)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:50:06Z", "started_at": "2026-11-08T04:50:06Z", "id": 128632032012},
+        {"name": "Undeclared Read Check (OMN-26424)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:51:07Z", "started_at": "2026-11-08T04:51:07Z", "id": 128699990385}
       ]
     },
     {
       "pr": 5386,
       "sha": "afcf58c713b910e950c14d4669b80d46011eeace",
-      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "5db7cc573689933a4bfb51280ccf252dca14ba62bc0164f868e798bd51ee8ca2"}, "merge_group:": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "6a95b35dee835c91a426c36f747aac63a673ae9decf8ce0851c820fad4b9a426"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "01e1337d37ec4a98002f6cc2c981121dcb5cd466b8bf5c83fb2977bfc0e43207"}},
+      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "6d20b988598153e23c9d63f982781372bc45883c7d2544a032f9f87a745975a9"}, "merge_group:": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "54dc6c1d9442525363b866268dc92da756a1c41dfac85d268a940fc4cfba30ed"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "8daade5cfc02fa35ebd37f10b83e9bf528cc603d8a6b29b2308a4893af37a6fe"}},
       "check_runs": [
         {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:46:22Z", "started_at": "2026-11-08T03:46:22Z", "id": 128699999006},
         {"name": "Node Trigger Declaration Check", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:46:22Z", "started_at": "2026-11-08T03:46:22Z", "id": 128699999106},
@@ -819,13 +824,14 @@
         {"name": "uv.lock Pin Reachability", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:48:29Z", "started_at": "2026-11-08T03:48:29Z", "id": 128619656290},
         {"name": "validate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:48:54Z", "started_at": "2026-11-08T03:48:54Z", "id": 128619674801},
         {"name": "wheel-content-parity", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:46:46Z", "started_at": "2026-11-08T03:46:46Z", "id": 128619272488},
-        {"name": "zone-filter / Zone Filter (docs-only check)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:48:41Z", "started_at": "2026-11-08T03:48:41Z", "id": 128619656324}
+        {"name": "zone-filter / Zone Filter (docs-only check)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:48:41Z", "started_at": "2026-11-08T03:48:41Z", "id": 128619656324},
+        {"name": "Undeclared Read Check (OMN-26424)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:14:28Z", "started_at": "2026-11-08T04:14:28Z", "id": 128699990386}
       ]
     },
     {
       "pr": 5387,
       "sha": "3089a0191b93e6e73129090a539051d3f1893382",
-      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "332289860d9bef36c4394bd114c724f4973861ecf7b3e804f4bc56889fd5751f"}, "merge_group:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "484dd47eee689ace3ccb99e8bf6f7cafaa8cd247a4cacc2574a83bec55dfb266"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "df16d361856024aad5ef2005eaf1fc18865cc98a362faee5a39ce9e98cd64df1"}},
+      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "63fc5b95589183411dd66bf3713d857b00de9bbc0cca03fc38cac3c1b60673d9"}, "merge_group:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "da7a75bb5bec68148403c0bdc03190a1917ad4edc78496e530fa25ee5d18a650"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "a9bf6ce09aa5f5e23e49c8eafc5ca3c7bebdd6b8e5b3e502cf5e3855ca8bf893"}},
       "check_runs": [
         {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:53:39Z", "started_at": "2026-11-08T03:53:39Z", "id": 128699999007},
         {"name": "Node Trigger Declaration Check", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:53:39Z", "started_at": "2026-11-08T03:53:39Z", "id": 128699999107},
@@ -983,13 +989,14 @@
         {"name": "uv.lock Pin Reachability", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:56:59Z", "started_at": "2026-11-08T03:56:59Z", "id": 128621302023},
         {"name": "validate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:57:11Z", "started_at": "2026-11-08T03:57:11Z", "id": 128621287735},
         {"name": "wheel-content-parity", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:54:09Z", "started_at": "2026-11-08T03:54:09Z", "id": 128620699196},
-        {"name": "zone-filter / Zone Filter (docs-only check)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:57:07Z", "started_at": "2026-11-08T03:57:07Z", "id": 128621302082}
+        {"name": "zone-filter / Zone Filter (docs-only check)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T03:57:07Z", "started_at": "2026-11-08T03:57:07Z", "id": 128621302082},
+        {"name": "Undeclared Read Check (OMN-26424)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:19:51Z", "started_at": "2026-11-08T04:19:51Z", "id": 128699990387}
       ]
     },
     {
       "pr": 5388,
       "sha": "96516f0fb24f479eb24e1e72da4913afdc0b7c3d",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 0, 0], "report_sha256": "53986497760bb371e22b2ccc6eeb8ba87253e3d91a4d1fc1ce3a5860ee567306"}, "merge_group:": {"exit": 2, "layers": [2, 0, 0], "report_sha256": "052c17a3c42a7f2f2f53ff700a7eec7ae29f81c04062c9189a20cf99b6480fe1"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "1442dc88118abf458a46b96fd1e20df3f807265f01c560c4cc66a390d07f6339"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 0, 0], "report_sha256": "9b0281f86a32e6601f7577c2fcf54d2d19933e04304426b64d33c204b1972ec3"}, "merge_group:": {"exit": 2, "layers": [2, 0, 0], "report_sha256": "b254dc97cb8bb0c2a30042f08a1f0c353d2af31e37526de8b1abd418d12cdc59"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "a461b4a2b54c3ea390c29bf7b0add87b765160524543da902e46b80775b83e61"}},
       "check_runs": [
         {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:11:26Z", "started_at": "2026-11-08T04:11:26Z", "id": 128699999008},
         {"name": "Node Trigger Declaration Check", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:11:26Z", "started_at": "2026-11-08T04:11:26Z", "id": 128699999108},
@@ -1127,13 +1134,14 @@
         {"name": "uv.lock Pin Reachability", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:13:58Z", "started_at": "2026-11-08T04:13:58Z", "id": 128624794460},
         {"name": "validate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:14:03Z", "started_at": "2026-11-08T04:14:03Z", "id": 128624761134},
         {"name": "wheel-content-parity", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:11:50Z", "started_at": "2026-11-08T04:11:50Z", "id": 128624301617},
-        {"name": "zone-filter / Zone Filter (docs-only check)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:14:09Z", "started_at": "2026-11-08T04:14:09Z", "id": 128624794571}
+        {"name": "zone-filter / Zone Filter (docs-only check)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:14:09Z", "started_at": "2026-11-08T04:14:09Z", "id": 128624794571},
+        {"name": "Undeclared Read Check (OMN-26424)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:36:30Z", "started_at": "2026-11-08T04:36:30Z", "id": 128699990388}
       ]
     },
     {
       "pr": 5389,
       "sha": "331d81e5857a04e9cc89d3c497649bf0847070b7",
-      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "af1d87e95843e67d582a426f407bc2d893c0199bebf1aeb3ba95247d3830613b"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "0faa3b97d4c487dcf780106767c7f473aeb468b77f5b7f9b28bcac0dfcbe3990"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "a18e0a6ac4e49e43e81b1cecf2300c400cf2bff1a7a0e4dd856491acdd722c40"}},
+      "verdicts": {"pull_request:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "ef7b424d144fa33574c91d517283ab32c6ef87cd9bd1cd3811cab8bbcd368f53"}, "merge_group:": {"exit": 2, "layers": [2, 2, 0], "report_sha256": "aedb1e8c5aff223330c4c9c21c03c63e8306de7057b10953a2aba034efb16cc8"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "ede56eb1a1eb216c3459cd7284b5769197d8758e7e53d7c862b5b274c6fe65b0"}},
       "check_runs": [
         {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:45Z", "started_at": "2026-11-08T04:53:45Z", "id": 128699999009},
         {"name": "Node Trigger Declaration Check", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:53:45Z", "started_at": "2026-11-08T04:53:45Z", "id": 128699999109},
@@ -1235,13 +1243,14 @@
         {"name": "subscriber-dispatcher-resolution", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:53:48Z", "started_at": "2026-11-08T04:53:48Z", "id": 128632803742},
         {"name": "tests+coverage (shadow)", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:53:48Z", "started_at": "2026-11-08T04:53:48Z", "id": 128632804055},
         {"name": "typecheck (shadow)", "status": "in_progress", "conclusion": null, "completed_at": "2026-11-08T04:53:49Z", "started_at": "2026-11-08T04:53:49Z", "id": 128632804213},
-        {"name": "wheel-content-parity", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:54:10Z", "started_at": "2026-11-08T04:54:10Z", "id": 128632802876}
+        {"name": "wheel-content-parity", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:54:10Z", "started_at": "2026-11-08T04:54:10Z", "id": 128632802876},
+        {"name": "Undeclared Read Check (OMN-26424)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:54:11Z", "started_at": "2026-11-08T04:54:11Z", "id": 128699990389}
       ]
     },
     {
       "pr": 5390,
       "sha": "bee0521217f19edf949d2199c84d76cd21689d90",
-      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "a33f5e698ccdec61b8bf85f4f05290b21eb6822e53902c419a5562dea3f0ff18"}, "merge_group:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "506331f539895adc5cd72241388cc9a6c146af71138e1f6b088956692d2d7b3b"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "3b9d19c10d51555b4814346d2eb1cfb26b4a8d04ee47eae09dea729d7c5c16f3"}},
+      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "bbe3c0c311cb4fd7e50e336801781da8022bf7f419134dc4db6abbebd52872a1"}, "merge_group:": {"exit": 1, "layers": [1, 1, 0], "report_sha256": "685e3d7c58981c2411064a1d61d96a1e25f58aade4ce6bb09e2473d726646acf"}, "push:dev": {"exit": 1, "layers": [1, 0, 0], "report_sha256": "fd6fe90012875e014c7cb73ed9ccfe2787c68258ca3f12491e7202186ea42cbe"}},
       "check_runs": [
         {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:20:55Z", "started_at": "2026-11-08T04:20:55Z", "id": 128699999010},
         {"name": "Node Trigger Declaration Check", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:20:55Z", "started_at": "2026-11-08T04:20:55Z", "id": 128699999110},
@@ -1395,13 +1404,14 @@
         {"name": "uv.lock Pin Reachability", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:25:14Z", "started_at": "2026-11-08T04:25:14Z", "id": 128627105159},
         {"name": "validate", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:25:28Z", "started_at": "2026-11-08T04:25:28Z", "id": 128627099604},
         {"name": "wheel-content-parity", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:23:25Z", "started_at": "2026-11-08T04:23:25Z", "id": 128626260186},
-        {"name": "zone-filter / Zone Filter (docs-only check)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:25:24Z", "started_at": "2026-11-08T04:25:24Z", "id": 128627105051}
+        {"name": "zone-filter / Zone Filter (docs-only check)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:25:24Z", "started_at": "2026-11-08T04:25:24Z", "id": 128627105051},
+        {"name": "Undeclared Read Check (OMN-26424)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:39:05Z", "started_at": "2026-11-08T04:39:05Z", "id": 128699990390}
       ]
     },
     {
       "pr": 5391,
       "sha": "7101e23cf733189b1ff5e1d20a85192a3cff366e",
-      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "27206bd7268a1d50f06e996d7a3346cc7c49cfda89dc01cae311a33011c7609d"}, "merge_group:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "322e4e46a677d2a595193e83413bc30a69b1c799c49a40188a42bf19ca7acee3"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "80f02ac3a3610aa6de0274492d1026374fb11d11fb96f40698fe06818b876599"}},
+      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "4984b50ef3754f1a3b936865a775f342166f5ad2595c19f7bc5e57839ab9e626"}, "merge_group:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "5566ea7d0dac81cbc93d7cdbeaafcfcf415786b409ebba4f0f8424026f7626bb"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "d0bc899936a9a30c4e1864a43e09074619201041e3d7fc10d338466497c9b905"}},
       "check_runs": [
         {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:39:44Z", "started_at": "2026-11-08T04:39:44Z", "id": 128699999011},
         {"name": "Node Trigger Declaration Check", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:39:44Z", "started_at": "2026-11-08T04:39:44Z", "id": 128699999111},
@@ -1538,13 +1548,14 @@
         {"name": "uv.lock Pin Reachability", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:41:05Z", "started_at": "2026-11-08T04:41:05Z", "id": 128630287853},
         {"name": "validate", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:40:52Z", "started_at": "2026-11-08T04:40:52Z", "id": 128630277378},
         {"name": "wheel-content-parity", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:40:06Z", "started_at": "2026-11-08T04:40:06Z", "id": 128630054798},
-        {"name": "zone-filter / Zone Filter (docs-only check)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:41:19Z", "started_at": "2026-11-08T04:41:19Z", "id": 128630287848}
+        {"name": "zone-filter / Zone Filter (docs-only check)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:41:19Z", "started_at": "2026-11-08T04:41:19Z", "id": 128630287848},
+        {"name": "Undeclared Read Check (OMN-26424)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:42:12Z", "started_at": "2026-11-08T04:42:12Z", "id": 128699990391}
       ]
     },
     {
       "pr": 5392,
       "sha": "36ef6b9dd813cfdfd272f87ad177c8dee69e3ae3",
-      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "5efdb879fb2c2a9c7782d744288027ca244f10688ef570ae16688d0435e47725"}, "merge_group:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "5b119fe68431662c17e75d1c03dfedce2e6a5d0f54835bcb29832197ce3c2d39"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "87d1aee3152f1cac821c96eff7953bffcfd57118ac8c2f5114d9d31521569ece"}},
+      "verdicts": {"pull_request:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "3963a8a5386ee462fa600aca0a64c3fecd787f7a2bf38fb991a3021bb9e20546"}, "merge_group:": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "6d05b2e78d3083a2ece8bde14b8fc641eba2f8b1af414db04219ba4595b36535"}, "push:dev": {"exit": 1, "layers": [1, 2, 0], "report_sha256": "400590a9e86dcfe23b896d6a115e52fec0b2adc5438406a156183ef7ca6eab88"}},
       "check_runs": [
         {"name": "Latest Core Smoke", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:44:30Z", "started_at": "2026-11-08T04:44:30Z", "id": 128699999012},
         {"name": "Node Trigger Declaration Check", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:44:30Z", "started_at": "2026-11-08T04:44:30Z", "id": 128699999112},
@@ -1681,7 +1692,8 @@
         {"name": "uv.lock Pin Reachability", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:46:44Z", "started_at": "2026-11-08T04:46:44Z", "id": 128631351231},
         {"name": "validate", "status": "completed", "conclusion": "skipped", "completed_at": "2026-11-08T04:46:25Z", "started_at": "2026-11-08T04:46:25Z", "id": 128631369003},
         {"name": "wheel-content-parity", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:45:00Z", "started_at": "2026-11-08T04:45:00Z", "id": 128630984846},
-        {"name": "zone-filter / Zone Filter (docs-only check)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:46:37Z", "started_at": "2026-11-08T04:46:37Z", "id": 128631351276}
+        {"name": "zone-filter / Zone Filter (docs-only check)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:46:37Z", "started_at": "2026-11-08T04:46:37Z", "id": 128631351276},
+        {"name": "Undeclared Read Check (OMN-26424)", "status": "completed", "conclusion": "success", "completed_at": "2026-11-08T04:48:11Z", "started_at": "2026-11-08T04:48:11Z", "id": 128699990392}
       ]
     }
   ]

@@ -33,6 +33,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/test_undeclared_read_check.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26424-ac7-strict-gate
+  description: 'AC7: CI Summary lists Undeclared Read Check (OMN-26424) in STRICT_GATE_JOBS, so a skipped, cancelled or failed run refuses the required context and an absent run holds it pending, while a green run passes; the fork case stays as Coverage Sweep Gate (strict, the job''s own if: skips it, a skip refuses). Branch protection is not edited.'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/scripts/ci/test_ci_summary_undeclared_read_strict_omn26424.py tests/unit/scripts/ci/test_ci_summary_rules_replay_omn23079.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn26424-deploy-probe
   description: 'Deploy probe for AC7: the node contract read from GitHub at the checked-out commit names node_undeclared_read_check_compute. A head that does not carry the node there fails the probe.'
   source: manual

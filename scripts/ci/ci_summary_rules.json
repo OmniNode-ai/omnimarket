@@ -143,6 +143,12 @@
           ]
         },
         {
+          "name": "Undeclared Read Check (OMN-26424)",
+          "note": [
+            "undeclared-read-check — refuses an added read of a setting no overlay declares; its own if: skips it on a pull request from a fork (it holds no secrets), and like Coverage Sweep Gate it stays strict, so a skipped, absent or cancelled run refuses CI Summary"
+          ]
+        },
+        {
           "name": "Workflow Module Resolution",
           "note": [
             "workflow-module-refs — needs occ-preflight, no if:"
