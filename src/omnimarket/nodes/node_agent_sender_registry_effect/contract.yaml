@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_agent_sender_registry_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: EFFECT_GENERIC
+lifecycle: experimental
+node_version: {major: 0, minor: 1, patch: 0}
+description: >
+  The write path of the agent message sender registry. register stores one agent sender (its broker principal, key id and
+  generated Ed25519 public key) and its signing key in the settings store folders the agent message node's message_contract
+  declares; list returns the registered names; revoke removes the sender and its key, after which a reader refuses that
+  name as unknown_sender. Every value comes from the request or the declared folders. The result carries the public key
+  only; the seed is stored and never printed. A second register of a name is refused and keeps the first key.
+
+handler:
+  module: omnimarket.nodes.node_agent_sender_registry_effect.handlers.handler_agent_sender_registry
+  class: HandlerAgentSenderRegistry
+  input_model: omnimarket.models.agent_message.model_agent_sender_registry_request.ModelAgentSenderRegistryRequest
+  output_model: omnimarket.models.agent_message.model_agent_sender_registry_result.ModelAgentSenderRegistryResult
+
+input_model:
+  name: ModelAgentSenderRegistryRequest
+  module: omnimarket.models.agent_message.model_agent_sender_registry_request
+  description: "One operation: register (sender, principal, key id), list, or revoke (sender)."
+output_model:
+  name: ModelAgentSenderRegistryResult
+  module: omnimarket.models.agent_message.model_agent_sender_registry_result
+  description: "The typed outcome, the public key of a new registration, or the registered names."
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: false
+  timeout_ms: 30000
+
+runtime_dispatch:
+  external_trigger: A person or a lane runs one operation from the command line, in process, on a host whose settings store identity can write.
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_agent_sender_registry_effect register --sender <name> --principal <login> --key-id <id>
+    owner: OmniNode Platform Team
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+metadata:
+  transport_type: in_process

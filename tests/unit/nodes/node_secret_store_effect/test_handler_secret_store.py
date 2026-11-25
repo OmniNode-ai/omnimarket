@@ -53,7 +53,9 @@ class _FakeSecretStore:
         return True
 
     async def delete_secret(self, key: str) -> bool:
-        raise RuntimeError("not offered")
+        self.calls.append(("delete", key))
+        self._maybe_raise("delete")
+        return self.secrets.pop(key, None) is not None
 
     async def list_keys(self, prefix: str | None = None) -> list[str]:
         self.calls.append(("list", prefix or "/"))
@@ -305,3 +307,19 @@ async def test_an_unknown_provider_is_misconfigured(tmp_path: Path) -> None:
     )
     assert result.outcome is EnumSecretStoreOutcome.MISCONFIGURED
     assert "nothing-we-ship" in (result.detail or "")
+
+
+async def test_delete_removes_an_existing_key_and_reports_not_found_for_a_missing_one() -> (
+    None
+):
+    store = _FakeSecretStore({"/captured/KEY": "original"})
+    handler = _handler(store)
+    request = ModelSecretStoreRequest(
+        operation=EnumSecretStoreOperation.DELETE, folder="/captured", key="KEY"
+    )
+    first = await handler.handle(request)
+    assert first.outcome is EnumSecretStoreOutcome.DELETED
+    assert first.ok
+    assert "/captured/KEY" not in store.secrets
+    second = await handler.handle(request)
+    assert second.outcome is EnumSecretStoreOutcome.NOT_FOUND
