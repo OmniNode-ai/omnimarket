@@ -246,23 +246,6 @@ def apply_inference_protocol(
     return next_system_prompt, next_prompt, request_options
 
 
-def with_backend_reasoning_effort(
-    request_options: dict[str, Any],
-    reasoning_effort: str | None,
-) -> dict[str, Any]:
-    """The request options with the backend row's own ``reasoning_effort`` (OMN-26365).
-
-    A backend row that declares a value sends it as the ``reasoning_effort``
-    request option, over whatever a protocol profile matched by model name set.
-    A row that declares none leaves the options as the profile built them, so a
-    backend that takes no such option receives none. The options passed in are
-    never changed.
-    """
-    if reasoning_effort is None:
-        return dict(request_options)
-    return {**request_options, "reasoning_effort": reasoning_effort}
-
-
 def resolve_inference_protocol_default_temperature(
     *,
     model: str,
