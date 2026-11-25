@@ -207,6 +207,8 @@ TEST_SPLIT_PREFIX = "Tests (Split "
 DETECT_CHANGES_JOB = "Detect Changes"
 
 STRICT_GATE_JOBS: tuple[str, ...] = RULES.tuple("STRICT_GATE_JOBS")
+# OMN-26424: strict rows whose skip is declared on a fork head; see the rules overlay.
+FORK_SKIPPABLE_GATE_JOBS: tuple[str, ...] = RULES.tuple("FORK_SKIPPABLE_GATE_JOBS")
 
 SKIPPABLE_GATE_JOBS: tuple[str, ...] = RULES.tuple("SKIPPABLE_GATE_JOBS")
 
@@ -824,9 +826,15 @@ def evaluate(
     docs_only_gates: tuple[str, ...] = DOCS_ONLY_SKIPPABLE_GATE_JOBS,
     event: str | None = None,
     ref_name: str | None = None,
+    head_is_fork: bool = False,
 ) -> tuple[int, str]:
     """Return ``(exit_code, human_report)`` for the current job snapshot."""
 
+    # OMN-26424: on a fork head the declared fork-skip rows accept success or skipped (a
+    # failure or cancellation still refuses); omitted, every strict skip refuses.
+    fork = FORK_SKIPPABLE_GATE_JOBS if head_is_fork else ()
+    strict_gates = tuple(g for g in strict_gates if g not in fork)
+    skippable_gates += fork
     latest = dedup_latest(jobs, run_attempt=run_attempt)
     queue_run = event == "merge_group"
     dev_push = event == "push" and ref_name == "dev"
@@ -1090,10 +1098,11 @@ def _report(
     lines.append("  skippable gates (completed + success/skipped):")
     for g in skippable_gates:
         st = latest.get(g)
+        tag = f"declared fork skip: {g}" if g in FORK_SKIPPABLE_GATE_JOBS else g
         lines.append(
-            f"    - {g}: <absent>"
+            f"    - {tag}: <absent>"
             if st is None
-            else f"    - {g}: {st.status}/{st.conclusion}"
+            else f"    - {tag}: {st.status}/{st.conclusion}"
         )
     lines.append(f"  test matrix: {matrix_state}")
     if strict_failures:
@@ -1944,12 +1953,9 @@ def _worse(a: int, b: int) -> int:
 
 
 def _load_jobs(path: str | None) -> list[dict[str, object]]:
-    if path is None or path == "-":
-        raw = sys.stdin.read()
-    else:
-        with open(path, encoding="utf-8") as handle:
-            raw = handle.read()
-    data = json.loads(raw)
+    data = json.loads(
+        sys.stdin.read() if path in (None, "-") else Path(str(path)).read_text("utf-8")
+    )
     # Accept either the raw endpoint object ({"jobs": [...]}) or a bare array.
     jobs = data.get("jobs", []) if isinstance(data, dict) else data
     if not isinstance(jobs, list):
@@ -2059,6 +2065,7 @@ def main(argv: list[str] | None = None) -> int:
         "replacement holds and L5 event provenance (OMN-17427). "
         "Missing/unreadable holds nothing and exempts no sweep rows.",
     )
+    parser.add_argument("--head-is-fork", action="store_true")
     parser.add_argument(
         "--pr-number",
         type=int,
@@ -2084,6 +2091,7 @@ def main(argv: list[str] | None = None) -> int:
         superseded_by_newer_run=superseded_by_newer_run,
         event=args.event,
         ref_name=args.ref_name,
+        head_is_fork=args.head_is_fork,
     )
     print(report)
     global OWN_JOBS_PENDING

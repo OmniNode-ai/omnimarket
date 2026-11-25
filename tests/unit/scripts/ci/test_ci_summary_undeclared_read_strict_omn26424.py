@@ -7,6 +7,12 @@ required ``CI Summary`` context. Known bad: the job skipped on a pull request
 refuses. Known good: it passes when the job ran green. The fork case follows
 ``Coverage Sweep Gate``: the job's own ``if:`` skips it, it stays strict, and a
 skip fails closed.
+
+The job needs the ``ONEXBOT_APP_*`` secrets to read the settings declarations, and
+GitHub gives a fork pull request no secrets, so no hosted runner can run it for a fork. A
+skip on a pull request whose head is a fork is therefore the gate's own named outcome
+(``declared fork skip``); a skip when the head is not a fork still refuses, and a failure or
+a cancellation refuses on both.
 """
 
 from __future__ import annotations
@@ -21,6 +27,7 @@ from scripts.ci.ci_summary_gate import (
     EXIT_FAILURE,
     EXIT_PENDING,
     EXIT_SUCCESS,
+    FORK_SKIPPABLE_GATE_JOBS,
     SKIPPABLE_GATE_JOBS,
     STRICT_GATE_JOBS,
     evaluate,
@@ -75,3 +82,48 @@ def test_known_bad_job_absent_never_passes() -> None:
 
 def test_gate_module_loads_the_strict_row() -> None:
     assert DISPLAY_NAME in gate.GATE_JOBS
+
+
+def test_fork_skip_is_a_declared_row_of_the_gate() -> None:
+    assert DISPLAY_NAME in FORK_SKIPPABLE_GATE_JOBS
+    assert DISPLAY_NAME in STRICT_GATE_JOBS
+
+
+def test_fork_skip_passes_with_its_name_printed() -> None:
+    code, report = evaluate(_with("skipped"), event="pull_request", head_is_fork=True)
+    assert code == EXIT_SUCCESS, report
+    assert f"declared fork skip: {DISPLAY_NAME}" in report
+
+
+def test_non_fork_skip_refuses() -> None:
+    code, report = evaluate(_with("skipped"), event="pull_request", head_is_fork=False)
+    assert code == EXIT_FAILURE, report
+    assert "declared fork skip" not in report
+
+
+@pytest.mark.parametrize("head_is_fork", [True, False])
+@pytest.mark.parametrize("conclusion", ["cancelled", "failure"])
+def test_failure_refuses_on_both(conclusion: str, head_is_fork: bool) -> None:
+    code, report = evaluate(
+        _with(conclusion), event="pull_request", head_is_fork=head_is_fork
+    )
+    assert code == EXIT_FAILURE, report
+    assert DISPLAY_NAME in report
+
+
+def test_fork_skip_does_not_excuse_any_other_strict_gate() -> None:
+    jobs = [j for j in _with("skipped") if j["name"] != "Coverage Sweep Gate"]
+    jobs.append(_job("Coverage Sweep Gate", conclusion="skipped"))
+    code, report = evaluate(jobs, event="pull_request", head_is_fork=True)
+    assert code == EXIT_FAILURE, report
+    assert "Coverage Sweep Gate" in report
+
+
+def test_default_head_is_not_a_fork() -> None:
+    code, _ = evaluate(_with("skipped"), event="pull_request")
+    assert code == EXIT_FAILURE
+
+
+def test_ci_passes_the_fork_fact_to_the_gate() -> None:
+    text = CI_WORKFLOW.read_text()
+    assert "--head-is-fork" in text
