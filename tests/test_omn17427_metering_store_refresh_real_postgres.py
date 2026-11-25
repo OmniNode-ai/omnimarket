@@ -404,3 +404,97 @@ async def test_runtime_envelope_context_persists_summary(command: str) -> None:
             await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
         finally:
             await conn.close()
+
+
+@pytest.mark.integration
+async def test_an_incremental_refresh_continues_from_the_watermark_and_equals_a_rebuild() -> (
+    None
+):
+    """OMN-21288: the continuation SQL (watermark read, stored-day read) on real Postgres.
+
+    A refresh after one new run reads and folds that run only, through the
+    typed ``created_at >= $2`` and ``window_start = ANY($3::text[])`` statements,
+    and leaves the rows a rebuild on demand writes.
+    """
+    conn = await _connect_or_skip()
+    try:
+        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.execute(f"CREATE SCHEMA {_SCHEMA}")
+        for migration in _MIGRATIONS:
+            await conn.execute(_scoped(migration.read_text(encoding="utf-8")))
+        await conn.execute(_DELEGATION_EVENTS)
+        insert = (
+            f"INSERT INTO {_SCHEMA}.delegation_events (correlation_id, tenant_id, "
+            "created_at, delegated_to, task_type, tokens_input, tokens_output, "
+            "cost_usd, cost_savings_usd) "
+            "VALUES ($1, $2::uuid, $3, 'qwen', 'document', 100, 50, 0.0001, 0.01)"
+        )
+        await conn.executemany(
+            insert,
+            [
+                ("a", _TENANT, datetime(2026, 10, 18, 9, tzinfo=UTC)),
+                ("b", _TENANT, datetime(2026, 10, 19, 9, tzinfo=UTC)),
+            ],
+        )
+        writer = MeteringSummaryProjectionWriter.__new__(
+            MeteringSummaryProjectionWriter
+        )
+        writer._db = cast(Any, _ScopedConnectionAdapter(conn))
+        writer._standalone_bindings = None
+
+        first = await writer._refresh(
+            ModelMeteringSummaryRefreshRequested(
+                refresh_id="bootstrap",
+                reason=EnumMeteringRefreshReason.SCHEDULE,
+                requested_at=datetime(2026, 10, 19, 10, tzinfo=UTC),
+            )
+        )
+        assert first["tenants_rebuilt_in_full"] == [_TENANT]
+
+        await conn.execute(insert, "c", _TENANT, datetime(2026, 10, 19, 11, tzinfo=UTC))
+        second = await writer._refresh(
+            ModelMeteringSummaryRefreshRequested(
+                refresh_id="terminal-c",
+                reason=EnumMeteringRefreshReason.DELEGATION_TERMINAL,
+                tenant_ids=(_TENANT,),
+                days=frozenset({date(2026, 10, 19)}),
+                requested_at=datetime(2026, 10, 19, 11, tzinfo=UTC),
+            )
+        )
+        assert second["tenants_rebuilt_in_full"] == []
+        assert second["records_folded"] == 1
+
+        select = (
+            f"SELECT * FROM {_SCHEMA}.metering_summary "
+            "ORDER BY window_kind, window_start"
+        )
+
+        def comparable(rows: list[Any]) -> list[dict[str, Any]]:
+            # A day row's as_of is when that day was last folded; a rebuild
+            # folds every day, an incremental refresh only the days it touched.
+            return [
+                {
+                    k: v
+                    for k, v in dict(r).items()
+                    if not (r["window_kind"] == "day" and k == "as_of")
+                }
+                for r in rows
+            ]
+
+        incremental = comparable(await conn.fetch(select))
+        assert [r["runs_total"] for r in incremental] == [3, 1, 2]
+        assert incremental[0]["as_of"] == "2026-10-19T11:00:00.000001+00:00"
+
+        await writer._refresh(
+            ModelMeteringSummaryRefreshRequested(
+                refresh_id="rebuild",
+                reason=EnumMeteringRefreshReason.BACKFILL,
+                requested_at=datetime(2026, 10, 19, 12, tzinfo=UTC),
+            )
+        )
+        assert comparable(await conn.fetch(select)) == incremental
+    finally:
+        try:
+            await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        finally:
+            await conn.close()

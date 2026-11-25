@@ -9,7 +9,9 @@ unowned. No secret and no prod target is a setting here.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pathlib import PurePosixPath
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 #: The ten delegation checks: the beta board's delegation bucket, without the C31 row.
 DELEGATION_CHECKS: tuple[str, ...] = (
@@ -30,7 +32,8 @@ PROBE_NODE_TICK = "omnimarket.nodes.node_delegation_check_probe_effect.runtime_d
 
 #: Every one of the ten checks is probed by this repository's delegation check probe node: C13, C14 and C17 on a customer
 #: machine through the responder chain, and the other seven through the dev gateway the settings store names. None is a cloud
-#: workflow dispatch. ``{python}`` is the interpreter running the handler, ``{registry_root}`` the registry root.
+#: workflow dispatch. ``{python}`` is the interpreter running the handler, ``{registry_root}`` the registry root and
+#: ``{state_root}`` the runtime's declared writable state root (the registry root is read-only in the runtime).
 DEFAULT_CHECK_ROUTES: dict[str, tuple[str, ...]] = {
     check: (
         "{python}",
@@ -39,7 +42,7 @@ DEFAULT_CHECK_ROUTES: dict[str, tuple[str, ...]] = {
         "--omni-home",
         "{registry_root}",
         "--state-dir",
-        "{registry_root}/.onex_state/delegation-check-probe",
+        "{state_root}/delegation-check-probe",
         "--trigger",
         "manual",
         "--check",
@@ -68,9 +71,10 @@ class ModelBuildDelegationChecksOverlay(BaseModel):
     check_timeout_seconds: float = Field(default=1800.0, gt=0)
     #: A regression detected later than this after the red reading is marked late.
     max_alarm_latency_seconds: float = Field(default=900.0, gt=0)
-    #: The file the per-build records are kept in, relative to the registry root.
+    #: The file the per-build records are kept in, relative to the runtime's declared writable state root
+    #: (ONEX_STATE_DIR, then ONEX_STATE_ROOT); never relative to the registry root, which the runtime mounts read-only.
     history_relpath: str = Field(
-        default=".onex_state/build-delegation-checks/builds.json", min_length=1
+        default="build-delegation-checks/builds.json", min_length=1
     )
     #: How many builds the file keeps.
     history_keep: int = Field(default=200, gt=1)
@@ -87,6 +91,16 @@ class ModelBuildDelegationChecksOverlay(BaseModel):
         default_factory=lambda: dict(DEFAULT_CHECK_ROUTES)
     )
     bus_lane: str = Field(default="dev", min_length=1)
+
+    @field_validator("history_relpath")
+    @classmethod
+    def _history_stays_inside_the_state_root(cls, value: str) -> str:
+        path = PurePosixPath(value)
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError(
+                f"history_relpath must be a path inside the state root, got {value!r}"
+            )
+        return value
 
 
 __all__ = [

@@ -17,6 +17,10 @@ from omnimarket.nodes.node_build_delegation_checks.models.model_build_delegation
 )
 
 
+class BuildStoreUnwritableError(OSError):
+    """The build store cannot write its history where it was told to: the refusal names the path and the cause."""
+
+
 class ProtocolCheckRunner(Protocol):
     """Runs one check's probe against one build. A probe that cannot run answers UNAVAILABLE, never FAIL."""
 
@@ -64,6 +68,7 @@ class ProtocolRegressionSink(Protocol):
 
 
 __all__ = [
+    "BuildStoreUnwritableError",
     "ProtocolBuildStore",
     "ProtocolCheckRunner",
     "ProtocolMergeSource",

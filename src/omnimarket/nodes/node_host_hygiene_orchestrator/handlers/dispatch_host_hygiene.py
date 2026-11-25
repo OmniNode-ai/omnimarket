@@ -37,55 +37,95 @@ class DispatchHostHygieneUnits:
         self._sender = sender
         self._new_id = new_id
 
-    def dispatch(
+    def plan(
         self, due: tuple[ModelHostHygieneDecisionItem, ...]
-    ) -> tuple[ModelHostHygieneUnitResult, ...]:
+    ) -> tuple[
+        tuple[
+            ModelHostHygieneDecisionItem,
+            ModelLabWorkUnitRequest | None,
+            ModelHostHygieneUnitResult | None,
+        ],
+        ...,
+    ]:
+        """Build each due item's lab work request without sending it.
+
+        An item naming an undeclared host or cleanup has no request and carries its refused
+        result instead. The tick route publishes the requests and returns; the dispatch route
+        sends them and waits.
+        """
         lab_work = self._overlay.lab_work
         host_map = {h.name: h for h in self._overlay.hosts}
         cleanup_map = {c.cleanup_id: c for c in self._overlay.cleanups}
-
-        def _build_request(
-            item: ModelHostHygieneDecisionItem,
-        ) -> ModelLabWorkUnitRequest | None:
+        planned: list[
+            tuple[
+                ModelHostHygieneDecisionItem,
+                ModelLabWorkUnitRequest | None,
+                ModelHostHygieneUnitResult | None,
+            ]
+        ] = []
+        for item in due:
             host_row = host_map.get(item.host)
             cleanup = cleanup_map.get(item.cleanup_id)
             if host_row is None or cleanup is None:
-                return None
+                missing = []
+                if item.host not in host_map:
+                    missing.append(f"host {item.host!r}")
+                if item.cleanup_id not in cleanup_map:
+                    missing.append(f"cleanup {item.cleanup_id!r}")
+                planned.append(
+                    (
+                        item,
+                        None,
+                        ModelHostHygieneUnitResult(
+                            host=item.host,
+                            cleanup_id=item.cleanup_id,
+                            work_unit_id="",
+                            outcome=EnumHostHygieneUnitOutcome.REFUSED,
+                            exit_code=None,
+                            detail="undeclared " + " and ".join(missing),
+                            output_tail="",
+                        ),
+                    )
+                )
+                continue
             argv = tuple(
                 word.replace("{host}", item.host).replace(
                     "{registry_root}", host_row.registry_root
                 )
                 for word in cleanup.argv
             )
-            return ModelLabWorkUnitRequest(
-                work_unit_id=f"{lab_work.unit_id_prefix}-{self._new_id()}",
-                target_host=item.host,
-                repo=lab_work.repo,
-                commit_sha=lab_work.commit_sha,
-                argv=list(argv),
-                kind=cleanup.kind,
-                timeout_seconds=cleanup.timeout_seconds,
-                lane=lab_work.lane,
-            )
-
-        def _process(item: ModelHostHygieneDecisionItem) -> ModelHostHygieneUnitResult:
-            request = _build_request(item)
-            if request is None:
-                missing = []
-                if item.host not in host_map:
-                    missing.append(f"host {item.host!r}")
-                if item.cleanup_id not in cleanup_map:
-                    missing.append(f"cleanup {item.cleanup_id!r}")
-                detail = "undeclared " + " and ".join(missing)
-                return ModelHostHygieneUnitResult(
-                    host=item.host,
-                    cleanup_id=item.cleanup_id,
-                    work_unit_id="",
-                    outcome=EnumHostHygieneUnitOutcome.REFUSED,
-                    exit_code=None,
-                    detail=detail,
-                    output_tail="",
+            planned.append(
+                (
+                    item,
+                    ModelLabWorkUnitRequest(
+                        work_unit_id=f"{lab_work.unit_id_prefix}-{self._new_id()}",
+                        target_host=item.host,
+                        repo=lab_work.repo,
+                        commit_sha=lab_work.commit_sha,
+                        argv=list(argv),
+                        kind=cleanup.kind,
+                        timeout_seconds=cleanup.timeout_seconds,
+                        lane=lab_work.lane,
+                    ),
+                    None,
                 )
+            )
+        return tuple(planned)
+
+    def dispatch(
+        self, due: tuple[ModelHostHygieneDecisionItem, ...]
+    ) -> tuple[ModelHostHygieneUnitResult, ...]:
+        def _process(
+            planned: tuple[
+                ModelHostHygieneDecisionItem,
+                ModelLabWorkUnitRequest | None,
+                ModelHostHygieneUnitResult | None,
+            ],
+        ) -> ModelHostHygieneUnitResult:
+            item, request, refused = planned
+            if request is None:
+                assert refused is not None
+                return refused
             try:
                 receipt = self._sender.send(request)
             except Exception as exc:
@@ -98,16 +138,19 @@ class DispatchHostHygieneUnits:
                     detail=f"{type(exc).__name__}: {exc}",
                     output_tail="",
                 )
-            return _map_receipt(item, request, receipt)
+            return map_receipt(
+                item.host, item.cleanup_id, request.work_unit_id, receipt
+            )
 
         with ThreadPoolExecutor(max_workers=self._overlay.max_parallel_units) as pool:
-            results = list(pool.map(_process, due))
+            results = list(pool.map(_process, self.plan(due)))
         return tuple(results)
 
 
-def _map_receipt(
-    item: ModelHostHygieneDecisionItem,
-    request: ModelLabWorkUnitRequest,
+def map_receipt(
+    host: str,
+    cleanup_id: str,
+    work_unit_id: str,
     receipt: ModelLabWorkUnitReceipt,
 ) -> ModelHostHygieneUnitResult:
     if receipt.status is EnumLabWorkUnitStatus.INFRA_ERROR:
@@ -124,9 +167,9 @@ def _map_receipt(
     else:
         outcome = EnumHostHygieneUnitOutcome.FAILED
     return ModelHostHygieneUnitResult(
-        host=item.host,
-        cleanup_id=item.cleanup_id,
-        work_unit_id=request.work_unit_id,
+        host=host,
+        cleanup_id=cleanup_id,
+        work_unit_id=work_unit_id,
         outcome=outcome,
         exit_code=receipt.exit_code,
         detail=receipt.detail[:2000],
