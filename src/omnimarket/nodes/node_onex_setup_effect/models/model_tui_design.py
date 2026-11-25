@@ -30,11 +30,25 @@ def _colour(value: str) -> str:
     return value
 
 
+class ModelTuiPaint(BaseModel):
+    """The three background colours the app registers, and whether the app
+    draws with the terminal's own palette (the terminal's background shows)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    background: str
+    surface: str
+    panel: str
+    ansi: bool
+
+
 class ModelTuiTheme(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     name: str
     dark: bool
+    #: Whose background the screen shows: the terminal's own, or this theme's.
+    ground: Literal["terminal", "black"] = "terminal"
     primary: str
     secondary: str
     accent: str
@@ -82,6 +96,22 @@ class ModelTuiTheme(BaseModel):
         if not re.fullmatch(r"#[0-9a-fA-F]{8}", value):
             raise ValueError(f"{value!r} is not a #rrggbbaa colour")
         return value
+
+    def paint(self, ground: str | None = None) -> ModelTuiPaint:
+        """The backgrounds to register: none of our own when the terminal's shows."""
+        if (ground or self.ground) == "terminal":
+            return ModelTuiPaint(
+                background="ansi_default",
+                surface="ansi_default",
+                panel="ansi_default",
+                ansi=True,
+            )
+        return ModelTuiPaint(
+            background=self.background,
+            surface=self.surface,
+            panel=self.panel,
+            ansi=False,
+        )
 
 
 class ModelTuiWordmark(BaseModel):

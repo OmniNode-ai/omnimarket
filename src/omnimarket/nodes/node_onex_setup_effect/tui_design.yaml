@@ -9,6 +9,9 @@
 theme:
   name: onex-dark
   dark: true
+  # terminal: the screen shows the terminal's own background (nothing painted);
+  # black: the screen is painted with the background, surface and panel below.
+  ground: terminal
   primary: "#87AFFF"
   secondary: "#79b8ff"
   accent: "#D7AFFF"
@@ -17,12 +20,12 @@ theme:
   warning: "#f5a742"
   error: "#e06c75"
   foreground: "#eeeeee"
-  muted: "#808080"
+  muted: "#9a9a9a"
   background: "#000000"
   surface: "#000000"
   panel: "#0a0a0a"
   boost: "#FFFFFF08"
-  border: "#484848"
+  border: "#6c6c6c"
   route_cheap: "#79b8ff"
   route_fallback: "#ffea7f"
 
@@ -428,13 +431,15 @@ words:
   delegation_hook: "delegation on"
   delegation_hook_paused: "delegation on · paused"
   delegation_reading: "delegation: checking…"
-  delegation_unknown: "Could not read the delegation status. Run /doctor."
+  delegation_unknown: "delegation status unknown"
   # The start screen's status block and first-launch tip (OMN-26620 AC2).
   tips_first_launch: "Type a task and press Enter, or try /config or /doctor"
   summary_on: "Delegation on"
   summary_on_note: "Claude Code sends tasks to your models"
   summary_off: "Delegation off"
   summary_off_note: "Claude Code uses its own model"
+  summary_unknown: "Delegation status unknown"
+  summary_unknown_note: "Run /doctor to check it"
   summary_models: "{count} models ready"
   start_first: "{model} is tried first"
   summary_none: "No models set up"

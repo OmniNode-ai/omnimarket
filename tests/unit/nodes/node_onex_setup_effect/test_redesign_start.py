@@ -108,7 +108,9 @@ async def test_a_failed_status_read_says_it_plainly(
     width: int, height: int, tmp_path: Path
 ) -> None:
     """D4: no errno, path, exception text or env name; the next step is named."""
-    plain = tui_design().words["status_unreadable"]
+    words = tui_design().words
+    plain = words["summary_unknown"]
+    short = words["delegation_unknown"]
     state = tmp_path / "state.json"
     app = OnexTui(load_status=_broken(state))
     async with app.run_test(size=(width, height)) as pilot:
@@ -119,7 +121,9 @@ async def test_a_failed_status_read_says_it_plainly(
             assert raw not in text, raw
         assert "status could not be read" not in text
         status = str(app.query_one("#status", Static).render())
-        assert plain in status
+        assert short in status
+        # said once in plain words, not repeated in the output pane
+        assert words["status_unreadable"] not in text
 
 
 async def test_a_failed_status_read_keeps_the_raw_text_in_a_log(
@@ -133,23 +137,28 @@ async def test_a_failed_status_read_keeps_the_raw_text_in_a_log(
     assert "No such file or directory" in caplog.text
 
 
-async def test_the_default_theme_is_the_approved_true_black() -> None:
+async def test_the_default_theme_is_onex_dark_on_the_terminal_background() -> None:
     """D5: onex-dark is registered, is the default, and is true black."""
     app = OnexTui(load_status=_ready)
     async with app.run_test() as pilot:
         await _launch(pilot)
         assert str(app.theme) == "onex-dark"
         theme = app.available_themes["onex-dark"]
-        assert theme.background == "#000000"
-        assert theme.surface == "#000000"
-        assert theme.panel == "#0a0a0a"
+        # The terminal's own background shows (operator decision); the yaml
+        # switch ground: black brings the true black back.
+        black = tui_design().theme.paint(ground="black")
+        assert (black.background, black.surface, black.panel) == (
+            "#000000",
+            "#000000",
+            "#0a0a0a",
+        )
         assert theme.primary == "#87AFFF"
         assert theme.accent == "#D7AFFF"
         assert theme.success == "#7fd88f"
         assert theme.warning == "#f5a742"
         assert theme.error == "#e06c75"
         assert theme.foreground == "#eeeeee"
-        assert theme.variables["border"] == "#484848"
+        assert theme.variables["border"] == "#6c6c6c"
         assert {"onex-light", "textual-dark", "textual-light"} <= set(
             app.available_themes
         )

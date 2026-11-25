@@ -68,7 +68,10 @@ def test_card_facts_line_single() -> None:
     card = card_cls.from_recorded(_RECORDED)
     facts = card.facts_line()
     assert "\n" not in facts, "facts line must be a single line"
-    for word in ("Qwen3.8-27B", "1200", "340", "2.4", "0.0042"):
+    # Tokens are the in and out counts together, in thousands (mockups-v2: "1.5k tokens").
+    for word in ("Qwen3.8-27B", "1.5k tokens", "2.4 s", "$0.0042"):
         assert word in facts, (word, facts)
+    for raw in ("1200", "340"):
+        assert raw not in facts, (raw, facts)
     # The wording is re-used from the design file, not written in code (AC27).
     assert design.task_card.facts_template, "no facts wording token in design"

@@ -2156,16 +2156,23 @@ def summary_renderable(status: ModelTuiStatus | None) -> Text:
             f"{glyphs.dot_off} {_say('status_reading')}\n", style=_style("muted")
         )
     on = status.delegation == "hook"
+    unknown = status.delegation == "unknown"
     first = Text(no_wrap=True, overflow="crop")
-    first.append(
-        f"{glyphs.dot_on if on else glyphs.dot_off} "
-        f"{_say('summary_on' if on else 'summary_off')}",
-        style=_style("success" if on else "muted"),
-    )
-    first.append(
-        "   " + _say("summary_on_note" if on else "summary_off_note"),
-        style=_style("muted"),
-    )
+    if unknown:
+        first.append(
+            f"{glyphs.dot_off} {_say('summary_unknown')}", style=_style("warning")
+        )
+        first.append("   " + _say("summary_unknown_note"), style=_style("muted"))
+    else:
+        first.append(
+            f"{glyphs.dot_on if on else glyphs.dot_off} "
+            f"{_say('summary_on' if on else 'summary_off')}",
+            style=_style("success" if on else "muted"),
+        )
+        first.append(
+            "   " + _say("summary_on_note" if on else "summary_off_note"),
+            style=_style("muted"),
+        )
     second = Text(no_wrap=True, overflow="crop")
     if status.models:
         second.append(
@@ -2692,12 +2699,14 @@ class OnexTui(App[int]):
         load_index: LoadIndex | None = None,
         read_server: ReadServer | None = None,
     ) -> None:
-        super().__init__()
+        super().__init__(ansi_color=tui_design().theme.paint().ansi)
         self._load_index: LoadIndex = load_index or _default_index
         self._read_server: ReadServer = read_server or _default_read_server
         design = tui_design()
         themes_to_register = [design.theme, *design.themes.values()]
+        paint = design.theme.paint()
         for tokens in themes_to_register:
+            own = tokens is design.theme
             self.register_theme(
                 Theme(
                     name=tokens.name,
@@ -2709,9 +2718,9 @@ class OnexTui(App[int]):
                     warning=tokens.warning,
                     error=tokens.error,
                     foreground=tokens.foreground,
-                    background=tokens.background,
-                    surface=tokens.surface,
-                    panel=tokens.panel,
+                    background=paint.background if own else tokens.background,
+                    surface=paint.surface if own else tokens.surface,
+                    panel=paint.panel if own else tokens.panel,
                     boost=tokens.boost,
                     variables={
                         "border": tokens.border,
@@ -2799,15 +2808,9 @@ class OnexTui(App[int]):
             status = await self._load_status()
         except Exception as error:  # status is a convenience; never crash on it
             _LOG.warning("the delegation status read failed: %s", error, exc_info=True)
-            self._write(
-                Text(
-                    plain_message(
-                        error,
-                        what="read the delegation status",
-                        next_step="Run /doctor.",
-                    ),
-                    style=_style("warning"),
-                )
+            # The status block and the footer say it; the raw error stays in the log.
+            plain_message(
+                error, what="read the delegation status", next_step="Run /doctor."
             )
             status = self._status.model_copy(
                 update={"delegation": "unknown", "hooks": {}, "problem": str(error)}
@@ -2815,7 +2818,6 @@ class OnexTui(App[int]):
         else:
             if status.problem:  # a failed read is said plainly, its cause logged
                 _LOG.warning("the delegation status was unreadable: %s", status.problem)
-                self._write(Text(_say("status_unreadable"), style=_style("warning")))
         self._show_status(status)
 
     def _show_status(self, status: ModelTuiStatus) -> None:
