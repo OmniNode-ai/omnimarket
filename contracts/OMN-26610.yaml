@@ -1,0 +1,85 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-26610"
+title: "The onex TUI lists only the nine commands a customer needs"
+summary: "Typing / in the onex TUI lists /config, /model, /delegation, /dashboard, /doctor, /metering, /clear, /help and /quit; every other command stays in the CLI, a typed one runs nothing and says so, and there is no switch that lists them all."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26610-ac1
+  statement: "`/` in the TUI lists exactly /config, /model, /delegation, /dashboard, /doctor, /metering, /clear, /help, /quit in that order, declared once in tui_design.yaml"
+  acceptance:
+  - id: AC1
+    statement: 'AC1: `/` in the TUI lists exactly /config, /model, /delegation, /dashboard, /doctor, /metering, /clear, /help, /quit in that order, declared once in tui_design.yaml; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py'
+- id: req-omn26610-ac2
+  statement: "a typed command the TUI does not list runs nothing and says: Not a TUI command: run onex <command> in a terminal"
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a typed command the TUI does not list runs nothing and says: Not a TUI command: run onex <command> in a terminal; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py'
+- id: req-omn26610-ac3
+  statement: "the TUI has no list-everything switch and reads no ONEX_CLI_SHOW_ALL_COMMANDS variable: with it set, `/` still lists exactly the nine and a typed hidden command still runs nothing"
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the TUI has no list-everything switch and reads no ONEX_CLI_SHOW_ALL_COMMANDS variable: with it set, `/` still lists exactly the nine and a typed hidden command still runs nothing; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py'
+- id: req-omn26610-ac4
+  statement: "/doctor and /metering run and show their output in the TUI"
+  acceptance:
+  - id: AC4
+    statement: 'AC4: /doctor and /metering run and show their output in the TUI; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py'
+evidence_requirements:
+- kind: tests
+  description: AC1 headless TUI test.
+  command: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_slash_lists_exactly_the_nine_customer_commands_in_order tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_the_customer_list_is_declared_once_in_tui_design_yaml -q -n 0 --no-cov -p no:cacheprovider
+- kind: tests
+  description: AC2 headless TUI test.
+  command: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_a_typed_hidden_command_runs_nothing_and_says_so tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_a_command_that_does_not_exist_is_still_no_match -q -n 0 --no-cov -p no:cacheprovider
+- kind: tests
+  description: AC3 headless TUI test.
+  command: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_no_environment_switch_widens_the_list_or_runs_hidden_commands -q -n 0 --no-cov -p no:cacheprovider
+- kind: tests
+  description: AC4 headless TUI test.
+  command: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_doctor_and_metering_run_and_show_their_output -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26610-ac1
+  description: 'AC1: `/` in the TUI lists exactly /config, /model, /delegation, /dashboard, /doctor, /metering, /clear, /help, /quit in that order, declared once in tui_design.yaml.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_slash_lists_exactly_the_nine_customer_commands_in_order tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_the_customer_list_is_declared_once_in_tui_design_yaml -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26610-ac2
+  description: 'AC2: a typed command the TUI does not list runs nothing and says: Not a TUI command: run onex <command> in a terminal.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_a_typed_hidden_command_runs_nothing_and_says_so tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_a_command_that_does_not_exist_is_still_no_match -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26610-ac3
+  description: 'AC3: the TUI has no list-everything switch and reads no ONEX_CLI_SHOW_ALL_COMMANDS variable: with it set, `/` still lists exactly the nine and a typed hidden command still runs nothing.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_no_environment_switch_widens_the_list_or_runs_hidden_commands -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26610-ac4
+  description: 'AC4: /doctor and /metering run and show their output in the TUI.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_doctor_and_metering_run_and_show_their_output -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .

@@ -58,7 +58,7 @@ banner:
     - {key: /delegation, text: Claude Code on or off}
     - {key: /, text: "every command   ·   ↑↓ history   ·   ctrl+c quit"}
 
-# Shortcuts lead the / palette in this order; every onex CLI command follows.
+# Shortcuts are the TUI's own commands; customer_commands below picks what / lists.
 shortcuts:
   - {path: [config], action: config, help: "Manage providers, keys and models or run guided setup."}
   - {path: [model], action: model, help: Pick the model every task tries first.}
@@ -67,6 +67,19 @@ shortcuts:
   - {path: [clear], action: clear, help: Clear the output.}
   - {path: [help], action: help, help: Show keys and how commands work.}
   - {path: [quit], action: quit, help: Leave the TUI.}
+
+# The only commands the / palette lists and the TUI runs, in this order: seven
+# shortcuts above and two CLI commands. There is no switch that lists the rest.
+customer_commands:
+  - [config]
+  - [model]
+  - [delegation]
+  - [dashboard]
+  - [doctor]
+  - [metering]
+  - [clear]
+  - [help]
+  - [quit]
 
 # Typed but not listed: each opens the shortcut it names.
 aliases:
@@ -91,8 +104,8 @@ prompt_placeholder: Ask ONEX to delegate a task, or type / for commands
 help: >-
   Type a task and press Enter to delegate it. /config sets up providers, keys
   and models, /model picks the model tried first, /delegation turns Claude Code
-  delegation on or off, /clear empties this pane. Type / to list every onex
-  command; keep typing to filter, Tab to complete, Enter to run, Esc to close.
+  delegation on or off, /clear empties this pane. Type / to list the
+  commands; keep typing to filter, Tab to complete, Enter to run, Esc to close.
   Up and Down recall earlier entries.
 
 # /config loads a provider's models this long after the key or URL stops
@@ -361,6 +374,7 @@ words:
   task_cancelled: "cancelled after {seconds}s"
   unreadable_command: "could not read that command: {error}"
   exit_code: "exit {code}"
+  not_a_tui_command: "Not a TUI command: run onex {command} in a terminal"
   no_match: "no onex command matches '/{command}'; type / to list them"
   setup_ready: "Ready: {provider} · {models}. Type a task to try it, or /model to choose which goes first."
   # One delegated task's facts, and the status bar's note of the last one.

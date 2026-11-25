@@ -97,6 +97,16 @@ def _shortcut_paths() -> dict[tuple[str, ...], str]:
     return {s.path: s.help for s in tui_design().shortcuts}
 
 
+def _is_customer_command(path: tuple[str, ...]) -> bool:
+    """Whether ``path`` is one of the customer commands or a subcommand of one.
+
+    `/delegation on` runs because `delegation` is a customer command.
+    """
+    return any(
+        path[: len(command)] == command for command in tui_design().customer_commands
+    )
+
+
 def _alias_paths() -> set[tuple[str, ...]]:
     """Typed-only names (an alias) never listed in the palette."""
     return {(alias,) for alias in tui_design().aliases}
@@ -2055,18 +2065,11 @@ class OnexTui(App[int]):
             ModelTuiCommand(path=path, help=text, needs_terminal=False)
             for path, text in _shortcut_paths().items()
         ]
-        return [
-            entry
-            for entry in (
-                *local,
-                *(
-                    c
-                    for c in self._commands
-                    if c.path not in _shortcut_paths() and c.path not in _alias_paths()
-                ),
-            )
-            if all(word in " ".join(entry.path) for word in words)
+        by_path = {c.path: c for c in (*self._commands, *local)}
+        pool = [
+            by_path[path] for path in tui_design().customer_commands if path in by_path
         ]
+        return [e for e in pool if all(word in " ".join(e.path) for word in words)]
 
     def on_input_changed(self, event: Input.Changed) -> None:
         palette = self.query_one("#palette", OptionList)
@@ -2270,6 +2273,9 @@ class OnexTui(App[int]):
         entry = self._resolve(words)
         if entry is None:
             self._write(_say("no_match", command=" ".join(words)))
+            return
+        if not _is_customer_command(entry.path):
+            self._write(_say("not_a_tui_command", command=" ".join(words)))
             return
         await self._run(entry, tuple(words))
 
