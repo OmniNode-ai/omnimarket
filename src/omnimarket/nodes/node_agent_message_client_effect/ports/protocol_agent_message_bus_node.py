@@ -9,6 +9,7 @@ from typing import Protocol
 from omnimarket.nodes.node_agent_message_client_effect.models.model_agent_message import (
     ModelAgentMessage,
     ModelAgentMessageQuery,
+    ModelAgentMessageReadReport,
 )
 
 
@@ -17,4 +18,4 @@ class ProtocolAgentMessageBusNode(Protocol):
 
     async def read(
         self, query: ModelAgentMessageQuery
-    ) -> tuple[ModelAgentMessage, ...]: ...
+    ) -> ModelAgentMessageReadReport: ...
