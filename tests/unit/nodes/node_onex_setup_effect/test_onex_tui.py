@@ -619,8 +619,8 @@ async def test_config_takes_several_providers_and_keeps_keys_out_of_argv_and_log
         _tick(app, "llama3.2")
         await _press(pilot, app, "add")
         basket = str(screen.query_one("#basket").render())
-        assert "openrouter: qwen/qwen3.8-27b" in basket
-        assert "local: llama3.2" in basket
+        assert "◈ qwen/qwen3.8-27b" in basket  # OMN-26620: no provider prefix
+        assert "◈ llama3.2" in basket
         await _press(pilot, app, "save")
         await pilot.pause()
         for _ in range(6):
@@ -664,7 +664,7 @@ async def test_a_long_list_is_searchable_and_ticks_survive_searching() -> None:
             "qwen/qwen3.8-27b",
         ]
         await _press(pilot, app, "add")
-        assert "openrouter: vendor/model-07, qwen/qwen3.8-27b" in str(
+        assert "◈ vendor/model-07  ◈ qwen/qwen3.8-27b" in str(
             screen.query_one("#basket").render()
         )
 
@@ -1055,7 +1055,7 @@ async def test_entering_a_key_loads_the_models_without_pressing_find() -> None:
         await pilot.pause(1.5)
         assert seen == [("openrouter", "sk-or-final-key-value")]
         assert len(_found(app).entries) == 2
-        assert "2 found" in str(screen.query_one("#note").render())
+        assert "2 models found" in str(screen.query_one("#note").render())
 
 
 async def test_enter_on_a_partial_command_runs_the_highlighted_entry() -> None:
@@ -1087,7 +1087,7 @@ async def test_every_model_is_listed_with_no_cap_and_any_number_can_be_ticked() 
         await pilot.pause()
         await _press(pilot, app, "add")
         basket = str(screen.query_one("#basket").render())
-        assert basket.count(",") == 465
+        assert basket.count("◈") == 466  # one mark per model
 
 
 async def test_a_failed_setup_step_shows_its_fix_and_no_ready_line(
@@ -1456,7 +1456,7 @@ async def test_one_click_ticks_a_row_and_the_list_takes_focus_when_it_loads() ->
         await _wait_for_models(pilot)
         rows = _found(app).query_one(DataTable)
         assert rows.has_focus
-        await pilot.click(rows, offset=(30, 2))  # the second data row, once
+        await pilot.click(rows, offset=(30, 1))  # the second row (no header), once
         await pilot.pause()
         assert len(_found(app).ticked) == 1
 

@@ -87,9 +87,19 @@ async def test_the_key_line_shows_whole_above_the_buttons(tab: str) -> None:
             )
 
 
+async def test_config_key_box_sits_beside_the_provider_list_with_room() -> None:
+    """L2 for /config (OMN-26620): the key box is right of the providers, a gap apart."""
+    app = _app(_Runner([], by_command=_selected_rows(connection=False)))
+    async with app.run_test(size=(120, 36)) as pilot:
+        await _open(pilot, "/config")
+        providers = app.screen.query_one("#provider").region
+        key_box = app.screen.query_one("#keybox").region
+        assert key_box.x - (providers.x + providers.width) >= 1, (providers, key_box)
+
+
 @pytest.mark.parametrize(
     ("tab", "upper", "lower"),
-    [("/config", "#provider", "#key"), ("/delegation", "#on-state", "#claude")],
+    [("/delegation", "#on-state", "#claude")],
 )
 async def test_sections_have_room_between_them(
     tab: str, upper: str, lower: str

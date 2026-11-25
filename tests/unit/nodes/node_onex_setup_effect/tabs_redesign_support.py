@@ -9,6 +9,8 @@ drawn screen is read back as text, as a person reads it.
 from __future__ import annotations
 
 from decimal import Decimal
+from pathlib import Path
+from typing import Any
 
 from textual.pilot import Pilot
 
@@ -70,13 +72,17 @@ def selection() -> ModelTuiSelection:
     )
 
 
-def app(run: _Runner | None = None, hooks: dict[str, str] | None = None) -> OnexTui:
+def app(
+    run: _Runner | None = None,
+    hooks: dict[str, str] | None = None,
+    **extra: Any,
+) -> OnexTui:
     async def status() -> ModelTuiStatus:
         return ModelTuiStatus(
             models=3, delegation="hook", hooks=hooks or {"prompt_hook": "installed"}
         )
 
-    return OnexTui(root=_root, runner=run or _Runner([]), load_status=status)
+    return OnexTui(root=_root, runner=run or _Runner([]), load_status=status, **extra)
 
 
 async def settle(pilot: Pilot[int], times: int = 10) -> None:
@@ -105,3 +111,33 @@ def bold_words(the_app: OnexTui) -> set[str]:
             if segment.style is not None and segment.style.bold:
                 found.update(segment.text.split())
     return found
+
+
+#: What a failure looks like when the cause leaks: an errno, an exception name,
+#: a permission message, an environment name and a path (the path is the test's
+#: own temporary folder, so no absolute path is written in a test).
+RAW_PARTS = (
+    "Errno",
+    "keys.json",
+    "OSError",
+    "Permission denied",
+    "Traceback",
+    "ONEX_SECRET_DIR",
+)
+
+
+def planted_path(tmp_path: Path) -> Path:
+    return tmp_path / "onex" / "keys.json"
+
+
+def raw_text(tmp_path: Path) -> str:
+    return (
+        f"[Errno 13] Permission denied: '{planted_path(tmp_path)}' "
+        "(OSError, set ONEX_SECRET_DIR)"
+    )
+
+
+def assert_no_raw(text: str, tmp_path: Path) -> None:
+    """AC9: none of the planted raw cause, nor its path, is on the screen."""
+    for part in (*RAW_PARTS, str(tmp_path), "pytest-of-"):
+        assert part not in text, (part, text)

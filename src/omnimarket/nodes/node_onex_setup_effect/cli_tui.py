@@ -36,6 +36,7 @@ from textual import on
 from textual.app import App, ComposeResult, RenderResult, SuspendNotSupported
 from textual.binding import Binding, BindingType
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
+from textual.content import Content
 from textual.css.query import NoMatches
 from textual.screen import ModalScreen, Screen
 from textual.theme import Theme
@@ -791,7 +792,26 @@ class _TabbedScreen(ModalScreen[_ResultT]):
             return
         self.dismiss(cast(_ResultT, None))
 
+    #: The words key of this tab's plain problem sentence (tui_design.yaml).
+    PROBLEM: ClassVar[str] = "problem_config"
+
+    def _calm(self, text: Text | str) -> Text | str:
+        """A line that carries a raw cause (an errno, a path, an exception or an
+        environment name) goes to the log; the screen says what to do instead."""
+        plain = text.plain if isinstance(text, Text) else text
+        if re.search(tui_design().words["raw_text_pattern"], plain):
+            _LOG.warning("tab problem: %s", plain)
+            return Text(_say(self.PROBLEM), style=_style("warning"))
+        return text
+
+    def _problem(self, error: BaseException) -> None:
+        """An action or a read raised: log it, tell the user in plain words."""
+        _LOG.warning("tab problem: %r", error)
+        with contextlib.suppress(NoMatches):
+            self._note(Text(_say(self.PROBLEM), style=_style("warning")))
+
     def _note(self, text: Text | str, style: str = "muted") -> None:
+        text = self._calm(text)
         line = text if isinstance(text, Text) else Text(text, style=_style(style))
         self.query_one(self.NOTE, Static).update(line)
 
@@ -811,6 +831,8 @@ class _TabbedScreen(ModalScreen[_ResultT]):
                 self._show_selection()
                 if outcome is not None:
                     self._note(outcome)
+            except Exception as error:
+                self._problem(error)
             finally:
                 self._busy = False
 
@@ -826,8 +848,11 @@ class _TabbedScreen(ModalScreen[_ResultT]):
             return
 
         async def go() -> None:
-            self._selection = await app.load_selection()
-            self._show_selection()
+            try:
+                self._selection = await app.load_selection()
+                self._show_selection()
+            except Exception as error:
+                self._problem(error)
 
         self.run_worker(go(), exclusive=True, group="tab-refresh")
 
@@ -846,13 +871,20 @@ class SetupScreen(_TabbedScreen[None]):
     SetupScreen { align: center middle; }
     #form { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
     #form .summary { display: none; }
-    #form Input { margin-bottom: 0; }
-    #provider { width: 100%; border: none; padding: 0 1; margin-bottom: 1; }
+    #cfg-head { height: 1; }
+    #cfg-title { width: 1fr; text-style: bold; color: $primary; }
+    #cfg-step { width: auto; color: $text-muted; }
+    #cfg-row { height: auto; }
+    #provider { width: 24; height: auto; border: round $border; border-title-color: $text-muted; padding: 0 1; background: transparent; }
+    #keybox { width: 1fr; height: 3; border: round $border; border-title-color: $text-muted; margin-left: 2; }
+    #keybox Input { width: 1fr; height: 1; border: none; padding: 0 1; background: transparent; }
+    #keymark { width: auto; padding: 0 1; }
     #found { height: 1fr; min-height: 3; display: none; }
     #note { color: $text-muted; height: auto; }
     #basket { color: $success; height: auto; }
-    #keys { color: $text-muted; height: auto; }
-    #buttons { height: 3; dock: bottom; align-horizontal: right; }
+    #keys { height: 1; }
+    #buttons { height: 1; align-horizontal: right; }
+    #buttons Button { height: 1; min-width: 8; border: none; margin: 0 0 0 2; }
     """
     BINDINGS = [
         Binding("escape", "cancel", "Back"),
@@ -882,34 +914,73 @@ class SetupScreen(_TabbedScreen[None]):
         with Vertical(id="form"):
             yield _tab_strip(self.TAB)
             yield _summary(self._selection)
-            yield Label(_say("config_title"))
+            with Horizontal(id="cfg-head"):
+                yield Static(_say("add_title"), id="cfg-title")
+                yield Static(self._step_text(1), id="cfg-step")
             choices = _picker()
             first = choices[0]
-            yield Choice(
-                [(e.label, e.provider) for e in choices], first.provider, id="provider"
-            )
-            yield Input(placeholder=_say("key_placeholder"), password=True, id="key")
-            yield Input(
-                value=self._stored_url(first.provider) or "",
-                placeholder=_say("url_placeholder"),
-                id="url",
-            )
+            with Horizontal(id="cfg-row"):
+                yield Choice(
+                    [(e.label, e.provider) for e in choices],
+                    first.provider,
+                    id="provider",
+                )
+                with Horizontal(id="keybox"):
+                    yield Input(
+                        placeholder=_say("key_placeholder"), password=True, id="key"
+                    )
+                    yield Input(
+                        value=self._stored_url(first.provider) or "",
+                        placeholder=_say("url_placeholder"),
+                        id="url",
+                    )
+                    yield Static("", id="keymark")
             yield Static("", id="note")
             yield ModelTable(
                 selectable=True,
                 provider_labels={e.provider: e.label for e in choices},
                 id="found",
+                layout="found",
             )
-            yield Static(self._current_line(), id="basket")
-            yield Static(_tab_hint("tab_hint_config"), id="keys")
+            yield Static(self._selected_line(), id="basket")
             with Horizontal(id="buttons"):
                 yield Button(_say("button_guided_setup"), id="guided-setup")
                 yield Button(_say("button_add"), id="add")
                 yield Button(_say("button_save"), variant="primary", id="save")
                 yield Button(_say("button_cancel"), id="cancel")
+            yield Static(_tab_hint("tab_hint_config"), id="keys")
+
+    def _step_text(self, step: int) -> Text:
+        return Text(_say("step_of", step=step), style=_style("muted"))
+
+    def _step(self) -> int:
+        """1 choosing a provider and key, 2 models found, 3 something chosen."""
+        table = self.query_one("#found", ModelTable)
+        if self._basket or table.ticked:
+            return 3
+        return 2 if table.entries else 1
+
+    def _show_step(self) -> None:
+        self.query_one("#cfg-step", Static).update(self._step_text(self._step()))
+
+    def _selected_line(self) -> str:
+        """The models ticked or added, each with the model mark; or none yet."""
+        chosen: list[str] = []
+        for pick in self._basket.values():
+            chosen.extend(pick.models)
+        if self.is_mounted:
+            chosen.extend(
+                e.model_id for e in self.query_one("#found", ModelTable).ticked
+            )
+        names = list(dict.fromkeys(chosen))
+        if not names:
+            return _say("selected_none")
+        mark = _say("model_glyph")
+        return _say("selected", models="  ".join(f"{mark} {n}" for n in names))
 
     def on_mount(self) -> None:
         self.query_one("#found").display = False
+        self.query_one("#provider").border_title = _say("provider_box")
         self._show_fields()
         self.query_one("#note", Static).update(_hint(self._provider()))
         self._schedule_find()
@@ -978,6 +1049,19 @@ class SetupScreen(_TabbedScreen[None]):
             url.value = self._stored_url(self._provider()) or ""
         self.query_one("#key").display = hosted
         self.query_one("#url").display = not hosted
+        self.query_one("#keybox").border_title = _say(
+            "key_box" if hosted else "url_box"
+        )
+        self._mark_key(None)
+
+    def _mark_key(self, word: str | None) -> None:
+        """The mark beside the key: valid or not accepted, from the list read with it."""
+        mark = self.query_one("#keymark", Static)
+        if word is None:
+            mark.update("")
+            return
+        colour = "success" if word in ("key_valid", "url_valid") else "warning"
+        mark.update(Text(_say(word), style=_style(colour)))
 
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
         self._show_fields()
@@ -1017,6 +1101,9 @@ class SetupScreen(_TabbedScreen[None]):
             await self._fetch(note, provider, wanted)
         except NoMatches:  # the user left this tab while the list was loading
             return
+        except Exception as error:  # a listing that raised: say so, calmly
+            self._problem(error)
+            self._mark_key(None)
         finally:
             self._loading = False
 
@@ -1034,6 +1121,8 @@ class SetupScreen(_TabbedScreen[None]):
             )
             entries = [_listed_entry(provider, m, index) for m in listing.models]
             message = listing.message
+            accepted = listing.outcome == "listed"
+            rejected = listing.outcome == "rejected"
         else:
             (_, out, err), index = await asyncio.gather(
                 self._runner.capture(
@@ -1049,13 +1138,26 @@ class SetupScreen(_TabbedScreen[None]):
                 _server_entry(provider, model, index, said.get(model))
                 for model in found
             ]
+            accepted, rejected = bool(found), False
         if self._source() != wanted:  # the key, URL or provider changed meanwhile
             return
         entries = [self._as_stored(e, wanted[1]) for e in entries]
         self._show_rows(entries)
         if entries:
             self.query_one("#found", ModelTable).focus_rows()
-        note.update(message or _say("found", count=len(entries)))
+        hosted = _hosted(provider)
+        if accepted:
+            self._mark_key("key_valid" if hosted else "url_valid")
+        elif rejected:
+            self._mark_key("key_rejected")
+        if not entries:
+            say = message or _say("none_found")
+        elif len(entries) == 1:
+            say = _say("models_found_one")
+        else:
+            say = _say("models_found", count=len(entries))
+        note.update(say)
+        self._show_step()
 
     def _load_index(self) -> ModelsDevIndex:
         return _safe_index(self._load)
@@ -1066,10 +1168,18 @@ class SetupScreen(_TabbedScreen[None]):
         table.set_ticked(())
         table.set_entries(entries)
         table.display = bool(entries)
+        self._show_step()
+        self.query_one("#basket", Static).update(self._basket_line())
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id in ("key", "url"):
+            self._mark_key(None)
             self._schedule_find()
+
+    @on(ModelTable.Ticked)
+    def _ticked(self) -> None:
+        self.query_one("#basket", Static).update(self._basket_line())
+        self._show_step()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         """Enter in the key or URL field moves on to the list, loading it if needed."""
@@ -1103,18 +1213,12 @@ class SetupScreen(_TabbedScreen[None]):
         )
         table.set_ticked(())
         self.query_one("#basket", Static).update(self._basket_line())
+        self._show_step()
         return True
 
     def _basket_line(self) -> str:
         """What is added and not yet set up, or what is set up when nothing is."""
-        if not self._basket:
-            return self._current_line()
-        return _say(
-            "basket",
-            choices="   ·   ".join(
-                f"{c.provider}: {', '.join(c.models)}" for c in self._basket.values()
-            ),
-        )
+        return self._selected_line()
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         note = self.query_one("#note", Static)
@@ -1278,6 +1382,22 @@ class ModelTuiDelegationChoice(BaseModel):
     done: str | None = None
 
 
+class _Radio(RadioButton):
+    """A radio button drawn as one marker, filled or hollow, from the design."""
+
+    DEFAULT_CSS = """
+    _Radio { padding: 0; background: transparent; }
+    _Radio > .toggle--button { background: transparent; color: $text-muted; }
+    _Radio.-on > .toggle--button { color: $primary; }
+    _Radio.-selected { background: $boost; }
+    """
+
+    @property
+    def _button(self) -> Content:
+        glyph = _say("radio_on" if self.value else "radio_off")
+        return Content.assemble((glyph, self.get_visual_style("toggle--button")))
+
+
 class Choice(RadioSet):
     """A choice with every option shown and one marked; the TUI has no dropdown.
 
@@ -1297,7 +1417,7 @@ class Choice(RadioSet):
         self._value = value if value in self._ids else self._ids[0]
         super().__init__(
             *(
-                RadioButton(label, value=option_id == self._value, name=option_id)
+                _Radio(label, value=option_id == self._value, name=option_id)
                 for label, option_id in options
             ),
             id=id,

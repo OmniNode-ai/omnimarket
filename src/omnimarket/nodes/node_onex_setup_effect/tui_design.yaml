@@ -185,6 +185,41 @@ model_table:
     model: "Tab next screen · Enter selects · A auto · R remove · I details · / search · F filter · S sort · Esc back"
     delegation: "Tab next screen · Space switches · I details · Ctrl+S saves · Esc back"
     dashboard: "Tab next screen · S start · Enter opens · X stop · Esc back"
+  # The tables on the Config tab (found models, tick boxes) and the Model tab
+  # (the set-up models, the one tried first marked), mockups pages 4 and 5.
+  tab_table:
+    ticked: "[✓]"
+    unticked: "[ ]"
+    marker_first: "◉"
+    marker_other: "○"
+    context_thousand: k
+    context_million: M
+    price_in_out: "{input} in · {output} out"
+    capability_join: ", "
+    status:
+      ready: {text: "✓ ready", colour: success}
+      listed: {text: "· available", colour: info}
+      untested: {text: "· not tested yet", colour: warning}
+      failed: {text: "✗ not working", colour: error}
+      unavailable: {text: "! needs a key", colour: warning}
+    layouts:
+      found:
+        header: false
+        columns:
+          - {key: pick, title: " "}
+          - {key: model, title: Model}
+          - {key: context, title: Context}
+          - {key: price_words, title: Price}
+          - {key: capabilities, title: Capabilities}
+      pick:
+        header: true
+        columns:
+          - {key: marker, title: " "}
+          - {key: model, title: Model}
+          - {key: context, title: Context}
+          - {key: price_in, title: "In $/1M"}
+          - {key: price_out, title: "Out $/1M"}
+          - {key: status, title: Status}
 
 # /delegation: one switch, the prompt hook; subagents always run on Claude (OMN-23413).
 delegation:
@@ -313,6 +348,30 @@ words:
   # first word of each part is its key, drawn bold (mockups pages 4 to 7).
   tab_rule: "━"
   hint_separator: " · "
+  # A problem is said in plain words with the next step; the raw cause goes to
+  # the log only (OMN-26620 AC9). A line holding an errno, a path, an exception
+  # name or an environment name is replaced by its tab's sentence.
+  raw_text_pattern: '\[Errno|Traceback|\w+(Error|Exception)\b|(?:^|[\s(\x27"])(?:/[\w.\-]+){2,}|~/[\w.\-]+|\b[A-Za-z]:\\|\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b'
+  problem_config: "Could not add the models. Run /doctor."
+  problem_model: "Could not change the model. Run /doctor."
+  problem_delegation: "Could not change delegation. Run /doctor."
+  problem_dashboard: "Could not start the dashboard. Run /doctor."
+  # Config tab (mockup page 4).
+  add_title: Add models
+  step_of: "step {step} of 3"
+  provider_box: Provider
+  key_box: Key
+  url_box: Server URL
+  key_valid: "✓ valid"
+  key_rejected: "! not accepted"
+  url_valid: "✓ reachable"
+  radio_on: "●"
+  radio_off: "○"
+  models_found: "{count} models found · Space to tick"
+  models_found_one: "1 model found · Space to tick"
+  model_glyph: "◈"
+  selected: "Selected  {models}"
+  selected_none: "Selected  none yet"
   tab_hint_config: "tab next · space tick · ctrl+s save · esc close"
   tab_hint_model: "↑↓ move · enter make first · d details · esc close"
   tab_hint_delegation: "space switch · ctrl+s save · esc close"

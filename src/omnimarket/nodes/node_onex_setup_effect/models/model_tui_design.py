@@ -137,6 +137,49 @@ class ModelTuiWord(BaseModel):
     colour: str = Field(min_length=1)
 
 
+class ModelTuiLayoutColumn(BaseModel):
+    """One column of a tab table (OMN-26620): what it shows and its title."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    key: Literal[
+        "pick",
+        "marker",
+        "model",
+        "context",
+        "price_words",
+        "price_in",
+        "price_out",
+        "capabilities",
+        "status",
+    ]
+    title: str
+
+
+class ModelTuiLayout(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    header: bool
+    columns: tuple[ModelTuiLayoutColumn, ...] = Field(min_length=1)
+
+
+class ModelTuiTabTable(BaseModel):
+    """The words and layouts of the tables on the Config and Model tabs."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    ticked: str = Field(min_length=1)
+    unticked: str = Field(min_length=1)
+    marker_first: str = Field(min_length=1)
+    marker_other: str = Field(min_length=1)
+    context_thousand: str = Field(min_length=1)
+    context_million: str = Field(min_length=1)
+    price_in_out: str = Field(min_length=1)
+    capability_join: str = Field(min_length=1)
+    status: dict[str, ModelTuiWord]
+    layouts: dict[str, ModelTuiLayout]
+
+
 class ModelTuiModelTable(BaseModel):
     """The one model table /config, /model and /delegation all show (OMN-23413)."""
 
@@ -172,6 +215,8 @@ class ModelTuiModelTable(BaseModel):
     bar_ticked: str
     auto_label: str
     help: dict[str, str]
+    #: The tables on the Config and Model tabs (OMN-26620 mockups pages 4 and 5).
+    tab_table: ModelTuiTabTable
 
 
 class ModelTuiDelegationHook(BaseModel):
@@ -397,6 +442,11 @@ class ModelTuiDesign(BaseModel):
         for wanted in ("ready", "listed", "untested", "failed", "unavailable"):
             if wanted not in table.status:
                 raise ValueError(f"model_table status has no word for {wanted!r}")
+            if wanted not in table.tab_table.status:
+                raise ValueError(f"tab_table status has no word for {wanted!r}")
+        for name, shown in table.tab_table.status.items():
+            if shown.colour not in tokens:
+                raise ValueError(f"tab_table word {name!r}: no colour {shown.colour!r}")
         return self
 
     def replaces(self, path: tuple[str, ...]) -> bool:
