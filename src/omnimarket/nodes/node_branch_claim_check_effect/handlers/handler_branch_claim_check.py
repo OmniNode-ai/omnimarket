@@ -34,7 +34,7 @@ from omnimarket.nodes.node_branch_claim_check_effect.handlers.check_run_poster i
     ProtocolCheckRunPoster,
 )
 from omnimarket.nodes.node_branch_claim_check_effect.handlers.ledger_witness_reader import (
-    FileLedgerWitness,
+    BusLedgerWitness,
     ProtocolLedgerWitness,
 )
 from omnimarket.nodes.node_branch_claim_check_effect.handlers.pr_commit_reader import (
@@ -215,7 +215,9 @@ class HandlerBranchClaimCheck:
             witness = (
                 self._witness
                 if self._witness is not None
-                else FileLedgerWitness(self.policy.parity_witness, since=since)
+                else BusLedgerWitness(
+                    self.policy.parity_witness, since=since, now=until
+                )
             )
             witness_rows = witness.read_rows()
             witness_newest = max(

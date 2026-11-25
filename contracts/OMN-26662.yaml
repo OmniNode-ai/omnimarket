@@ -11,6 +11,11 @@ requirements:
   acceptance:
   - id: AC1
     statement: 'AC1: what the page shows, what it should show, and each cause down to the process that let it stop unseen, read live with times -- falsifier: a cause with no reading'
+- id: req-omn26662-observability-overlay-launchd-model
+  statement: The host observability installer's overlay document model takes a launchd exporter value, a launchd_exporter section and an optional per target textfile directory, so the overlay document can be pinned to a merged revision that holds them ahead of the node.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: ModelObservabilityOverlay accepts a launchd target with its launchd_exporter section and an optional absolute per target textfile_directory, and refuses a launchd target with no section -- falsifier: tests/unit/models/test_observability_overlay_launchd_omn26662.py fails or any of its tests fails'
 evidence_requirements:
 - kind: tests
   description: 'The ledger-reads-per-line test and the factory floor compute tests at the pushed head.'
@@ -36,4 +41,13 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26662 --kind test --timeout 3000 -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_ledger_reads_per_line.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26662-obs-overlay-launchd-tests
+  description: 'The overlay document model accepts the launchd exporter value with its section and the per target textfile directory and refuses a launchd target with no section; 3 of the 6 tests fail at origin/dev 05500b974b (no textfile_directory field, launchd value refused) and all 6 pass with the model file taken unchanged from the omnimarket#6802 branch. The node is not part of this change.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/models/test_observability_overlay_launchd_omn26662.py -q --no-cov -n 0 -p no:randomly
     cwd: .
