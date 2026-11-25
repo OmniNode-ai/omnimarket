@@ -25,6 +25,9 @@ released consumer already accepts.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.enums.enum_backend_placement_mode import EnumBackendPlacementMode
@@ -121,7 +124,20 @@ class ModelPlacedDelegationBackend(BaseModel):
     placement: ModelDelegationBackendPlacement
 
 
+#: Row fields a backend entry carries that the wire model does not declare, so
+#: the loader lifts them off before it validates (placement: OMN-19215;
+#: reasoning_effort: OMN-26365, read by the resolver from the merged entry).
+LIFTED_BACKEND_ROW_FIELDS: tuple[str, ...] = ("placement", "reasoning_effort")
+
+
+def wire_backend_entry(entry: Mapping[str, Any]) -> dict[str, Any]:
+    """``entry`` without the fields the wire model does not declare."""
+    return {k: v for k, v in entry.items() if k not in LIFTED_BACKEND_ROW_FIELDS}
+
+
 __all__: list[str] = [
+    "LIFTED_BACKEND_ROW_FIELDS",
     "ModelDelegationBackendPlacement",
     "ModelPlacedDelegationBackend",
+    "wire_backend_entry",
 ]

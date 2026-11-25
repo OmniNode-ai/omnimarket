@@ -1,0 +1,103 @@
+schema_version: 1.0.0
+ticket_id: OMN-26495
+title: A settings refresh fills only settings that have no live value and reports drift, so a change made through the store sticks
+summary: The overlay store loader reads the live record before it loads. A setting an operator set through the store keeps its live value, every other setting takes the settings repository's value, and each setting where the two differ is reported on a contract-declared topic by overlay id, setting path and two digests, never a value. A live record the store cannot read refuses the run and replaces nothing. The record carries the operator-set setting paths and the store keeps them in a new column.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- events
+- topics
+requirements:
+- id: req-omn26495-keep-and-report
+  statement: A loader run keeps operator-set settings, fills the rest from the settings repository and reports drift by setting path.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a loader run keeps a live value that was set by an operator command when the settings repository holds a different value for that setting -- falsifier: uv run pytest tests/unit/nodes/node_overlay_store/test_refresh_keeps_operator_value.py -q -n 0 --no-cov fails on origin/main (the whole document is replaced) and passes with the change'
+  - id: AC2
+    statement: 'AC2: a loader run fills every setting that has no live value from the settings repository, and a document with no live values is stored exactly as today -- falsifier: uv run pytest tests/unit/nodes/node_overlay_store/test_refresh_keeps_operator_value.py -q -n 0 --no-cov -k "fills_empty or no_live_values"'
+  - id: AC3
+    statement: 'AC3: for each setting whose repository value differs from its live operator-set value the run publishes one drift report naming the overlay id and the setting path and carrying the two digests but neither value, on a topic the loader contract declares, and it publishes none when the values are equal -- falsifier: uv run pytest tests/unit/nodes/node_overlay_store/test_refresh_drift_report.py -q -n 0 --no-cov -k "drift_reported or no_drift_when_equal or topic_declared"'
+  - id: AC4
+    statement: 'AC4: after the store command clears an operator-set value, the next loader run fills that setting from the settings repository again -- falsifier: uv run pytest tests/unit/nodes/node_overlay_store/test_refresh_keeps_operator_value.py -q -n 0 --no-cov -k cleared_value_refills'
+  - id: AC5
+    statement: 'AC5: a live record the store cannot read ends in a reported refusal and is never replaced by the repository''s document, on a golden chain and an error chain under one correlation id -- falsifier: uv run pytest tests/unit/nodes/node_overlay_store/test_refresh_drift_report.py -q -n 0 --no-cov -k "chain or unreadable_live_record"'
+  - id: AC6
+    statement: 'AC6: integrated: after the merge reaches the running runtime, a probe setting set through the store command keeps its value across one loader run on the dev lane and the run reports drift for it -- falsifier: the probe setting in the store snapshot on h053 reads the settings repository''s value, or no drift report names it, after one loader run (read the stamp loaded_at and the snapshot file, never edit a stored value by hand)'
+evidence_requirements:
+- kind: tests
+  description: The three new test files and the neighbouring overlay store tests pass at the pushed head; on origin/dev the new files fail.
+  command: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_overlay_store -q
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26495-ac1
+  description: 'AC1: the focused test passes at the head; on origin/dev the same file fails.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_store/test_refresh_keeps_operator_value.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26495-ac2
+  description: 'AC2: the focused test passes at the head; on origin/dev the same file fails.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_store/test_refresh_keeps_operator_value.py -q --no-cov -n 0 -p no:randomly -k "fills_empty or no_live_values"
+    cwd: .
+- id: dod-omn26495-ac3
+  description: 'AC3: the focused test passes at the head; on origin/dev the same file fails.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_store/test_refresh_drift_report.py -q --no-cov -n 0 -p no:randomly -k "drift_reported or no_drift_when_equal or topic_declared"
+    cwd: .
+- id: dod-omn26495-ac4
+  description: 'AC4: the focused test passes at the head; on origin/dev the same file fails.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_store/test_refresh_keeps_operator_value.py -q --no-cov -n 0 -p no:randomly -k cleared_value_refills
+    cwd: .
+- id: dod-omn26495-ac5
+  description: 'AC5: the focused test passes at the head; on origin/dev the same file fails.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_store/test_refresh_drift_report.py -q --no-cov -n 0 -p no:randomly -k "chain or unreadable_live_record"
+    cwd: .
+- id: dod-omn26495-neighbours
+  description: The neighbouring overlay store tests pass at the head.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_store -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26495-ac6-hosted-proxy
+  description: 'hosted proxy for AC6: the focused tests that pin the keep-and-report behaviour pass here; the reading of the dev lane after the merge is posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_store/test_refresh_keeps_operator_value.py tests/unit/nodes/node_overlay_store/test_refresh_drift_report.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26495-ac6-integration-proof
+  description: 'AC6: integrated: the pushed head''s overlay store tests ran on a lab host through the lab work runner and exited 0; the probe setting set through the store command is read in the h053 snapshot after one loader run on the dev lane, and recorded in the pull request, once the merge has reached the runtime and the store command exists. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26495 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_overlay_store -q --no-cov
+    cwd: .

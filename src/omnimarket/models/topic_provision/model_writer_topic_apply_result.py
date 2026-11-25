@@ -11,6 +11,7 @@ class ModelWriterTopicApplyResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     planned: tuple[str, ...]
+    host_unit_planned: tuple[str, ...] = ()
     created: tuple[str, ...]
     existing: tuple[str, ...]
     num_partitions: int

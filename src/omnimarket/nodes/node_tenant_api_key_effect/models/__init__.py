@@ -6,9 +6,6 @@ from omnimarket.nodes.node_tenant_api_key_effect.models.enum_tenant_api_key_outc
     EnumTenantApiKeyRegisterOutcome,
     EnumTenantApiKeyRevokeOutcome,
 )
-from omnimarket.nodes.node_tenant_api_key_effect.models.model_tenant_api_key_overlay import (
-    ModelTenantApiKeyOverlay,
-)
 from omnimarket.nodes.node_tenant_api_key_effect.models.model_tenant_api_key_register_request import (
     ModelTenantApiKeyRegisterRequest,
 )
@@ -31,7 +28,6 @@ from omnimarket.nodes.node_tenant_api_key_effect.models.model_tenant_state_readi
 __all__ = [
     "EnumTenantApiKeyRegisterOutcome",
     "EnumTenantApiKeyRevokeOutcome",
-    "ModelTenantApiKeyOverlay",
     "ModelTenantApiKeyRegisterRequest",
     "ModelTenantApiKeyRegisterResult",
     "ModelTenantApiKeyRevokeRequest",

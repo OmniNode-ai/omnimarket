@@ -1,0 +1,64 @@
+schema_version: 1.0.0
+ticket_id: OMN-26652
+title: Every delegation check's grader passes a recorded real answer and refuses that answer with one clause removed
+summary: A recorded or constructed good answer for each of the ten delegation checks (C11 to C17, C28, C29, C30) is stored beside the check node's tests with its source named, and the customer-machine graders of C13, C14 and C17 are shown to pass it, to refuse it with each clause removed alone, and never to pass an empty answer, a timeout or a missing credential. The gateway-graded legs are measured in the report on omnimarket#6765 and handed to its owner; no grader is changed here.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26652-golden-answers
+  statement: Each delegation check's grader is shown to pass a good answer and refuse it with one clause removed, before any further check change is opened.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: for each of the ten checks, one recorded realistic answer (captured from a real dev gateway run where one exists, its run id and capture time recorded; otherwise built from the response models and named as constructed) is fed to the real grader in memory and grades PASS -- falsifier: a check whose grader returns anything but PASS on its recorded good answer'
+  - id: AC2
+    statement: 'AC2: for each clause of each check, the same answer with only that clause removed grades FAIL and names that clause -- falsifier: a removed clause that still grades PASS, or a FAIL naming another clause'
+  - id: AC3
+    statement: 'AC3: an empty answer, a timeout and a missing credential each grade the declared non-green state, never PASS -- falsifier: any of the three grading PASS'
+  - id: AC4
+    statement: 'AC4: a table lists every grader that cannot pass on its recorded answer, with the clause and the code line -- falsifier: a check on the board with no row'
+evidence_requirements:
+- kind: tests
+  description: The golden-answer tests of the check node, each failing against a weakened grader and passing on the real one.
+  command: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_golden_answers_graders.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26652-good-answers
+  description: The fixture names every one of the ten checks and the source of every answer (recorded with its run id and capture time, or constructed from the declared response models); the customer-machine graders pass the good answer, and the gateway answers validate against the gateway's declared status, receipt and acknowledgement models.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_golden_answers_graders.py -q --no-cov -n 0 -p no:randomly -k 'fixture or names_its_source or declared_models or recorded_c11 or good_answer'
+    cwd: .
+- id: dod-omn26652-one-clause-removed
+  description: Each clause of the C13, C14 and C17 graders, removed alone, grades FAIL and is the only clause named; every clause is removed by at least one case.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_golden_answers_graders.py -q --no-cov -n 0 -p no:randomly -k 'removed'
+    cwd: .
+- id: dod-omn26652-non-green-states
+  description: An empty answer reads FAIL, a timeout reads ERROR and a missing credential or collector reads PRECONDITION-ABSENT through the handler; none reads PASS. The gateway's own resolver refuses a JWT in x-api-key with the code a wrong key gets.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_golden_answers_graders.py -q --no-cov -n 0 -p no:randomly -k 'empty or timeout or credential or jwt or absent_code'
+    cwd: .
+- id: dod-omn26652-table
+  description: The table of graders that cannot pass, with clause and code line, is in the lane report; the fixture file is present on the branch.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_golden_answers_graders.py -q --no-cov -n 0 -p no:randomly -k 'fixture'
+    cwd: .

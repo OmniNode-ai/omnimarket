@@ -24,7 +24,7 @@ pytestmark = pytest.mark.unit
 _SEND_ARGS: dict[str, Any] = {
     "to": "codex:review",
     "thread": "t-9",
-    "kind": "request",
+    "kind": "question",
     "platform": "claude",
     "text": "hello",
 }
@@ -37,8 +37,15 @@ def test_lists_exactly_the_send_and_read_tools_with_closed_enums() -> None:
     send = next(t for t in tools if t.name == SEND_TOOL)
     props = send.input_schema["properties"]
     assert set(props) == {"to", "thread", "kind", "platform", "text"}
-    assert props["kind"]["enum"] == ["request", "reply", "status", "handoff"]
-    assert props["platform"]["enum"] == ["claude", "codex", "glm", "hermes", "gemini"]
+    assert props["kind"]["enum"] == ["message", "question", "answer", "notice"]
+    assert props["platform"]["enum"] == [
+        "claude",
+        "codex",
+        "glm",
+        "hermes",
+        "gemini",
+        "other",
+    ]
     read = next(t for t in tools if t.name == READ_TOOL)
     assert set(read.input_schema["properties"]) == {"to", "thread", "since", "limit"}
 
@@ -87,3 +94,16 @@ def test_refusals_come_back_as_tool_errors(
         asyncio.run(server.call_tool(tool, arguments))
     assert node.sends == 0
     assert node.reads == 0
+
+
+def test_read_tool_returns_the_typed_refusals_and_the_legacy_count() -> None:
+    from tests.cli.test_agent_message_cli import _node_with_refusals
+
+    node = _node_with_refusals()
+    server = build_server(make_runtime(node, {"ONEX_LANE": "mcp-caller"}))
+    result = asyncio.run(server.call_tool(READ_TOOL, {"to": "codex:review"}))
+    assert result.structured_content is not None
+    assert result.structured_content["unverified"] == 2
+    assert [r["reason"] for r in result.structured_content["rejections"]] == [
+        "sender_mismatch"
+    ]

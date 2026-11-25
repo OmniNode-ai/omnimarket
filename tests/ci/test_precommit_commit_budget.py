@@ -35,6 +35,7 @@ import pytest
 import yaml
 
 from scripts.ci import ci_summary_gate
+from tests.ci.lint_jobs import job_with_lint_steps
 
 pytestmark = pytest.mark.unit
 
@@ -303,7 +304,7 @@ def _job(workflow: str, job_id: str) -> dict[str, Any]:
     document = yaml.safe_load((WORKFLOWS / workflow).read_text(encoding="utf-8"))
     jobs: dict[str, Any] = document["jobs"]
     assert job_id in jobs, f"{workflow} has no job {job_id}"
-    job: dict[str, Any] = jobs[job_id]
+    job: dict[str, Any] = job_with_lint_steps(document, job_id)
     return job
 
 
