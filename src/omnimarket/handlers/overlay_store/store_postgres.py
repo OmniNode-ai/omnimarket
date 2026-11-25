@@ -3,7 +3,9 @@
 """The Postgres overlay store: the backend of a runtime, the one component that holds a database URL.
 
 A host never selects this backend: it reads the snapshot topic the projection publishes. One row per
-overlay id and digest keeps every version; the version with the highest revision is the current one. The document
+overlay id and digest keeps every version; the version with the highest revision is the current one. ``operator_paths``
+lists the settings an operator set through the store (OMN-26495), as a JSON array; a row written before that column reads
+as none. The document
 column is JSON and not JSONB, because JSONB reorders keys and a table file's key order is part of how
 the flat parsers read it.
 
@@ -50,7 +52,7 @@ _READ_HELD = f"""
 _UPSERT = f"""
     INSERT INTO {STORE_TABLE}
         (overlay_id, digest, document, source_ref, loaded_by, first_loaded_at, last_loaded_at, revision, operator_paths)
-    VALUES ($1, $2, $3::json, $4, $5, $6, $6, $7, $8)
+    VALUES ($1, $2, $3::json, $4, $5, $6, $6, $7, $8::json)
     ON CONFLICT (overlay_id, digest) DO UPDATE SET
         last_loaded_at = EXCLUDED.last_loaded_at,
         source_ref = EXCLUDED.source_ref,
@@ -93,6 +95,13 @@ _READ_CURRENT = f"""
 """
 
 
+def _held_paths(held: Any) -> list[str]:
+    """The operator paths of the held row: a JSON array in the column, empty for a row with none."""
+    if held is None:
+        return []
+    return [str(path) for path in json.loads(held["operator_paths"] or "[]")]
+
+
 class PostgresOverlayStore:
     """Reads and writes through a pool the runtime's topology binding opened."""
 
@@ -129,8 +138,9 @@ class PostgresOverlayStore:
         held = await conn.fetchrow(_READ_HELD, write.overlay_id)
         if held is None or held["digest"] != write.digest:
             revision += 1
-        # A loader's load names no operator path: the paths the store holds stay marked.
-        paths = list(held["operator_paths"]) if held is not None else []
+        # A loader's refresh names the operator paths it kept and the store holds exactly those; a load naming none
+        # leaves the paths the store holds marked.
+        paths = list(write.operator_paths) or _held_paths(held)
         await self._put_version(conn, write, revision, paths)
         await conn.execute(_UPSERT_REVISION, write.overlay_id, revision)
         return ModelOverlayWriteReply(
@@ -164,7 +174,7 @@ class PostgresOverlayStore:
         held = await conn.fetchrow(_READ_HELD, write.overlay_id)
         paths = sorted(
             {
-                *(held["operator_paths"] if held is not None else ()),
+                *_held_paths(held),
                 *write.operator_paths,
             }
         )
@@ -215,7 +225,7 @@ class PostgresOverlayStore:
             write.loaded_by,
             write.loaded_at,
             revision,
-            paths,
+            json.dumps(paths),
         )
 
     async def read_current(self, overlay_id: str) -> Mapping[str, JsonType] | None:
@@ -230,7 +240,7 @@ class PostgresOverlayStore:
             source_ref=str(row["source_ref"]),
             loaded_by=str(row["loaded_by"]),
             loaded_at=row["last_loaded_at"],
-            operator_paths=tuple(row["operator_paths"]),
+            operator_paths=tuple(json.loads(row["operator_paths"] or "[]")),
             revision=int(row["revision"]),
         ).model_dump(mode="json")
 

@@ -19,6 +19,7 @@ class EnumStabilityKeyOutcome(StrEnum):
     PROVISIONED = "provisioned"
     ALREADY_PROVISIONED = "already_provisioned"
     REFUSED_LANE_NOT_ALLOWED = "refused_lane_not_allowed"
+    REFUSED_CHECK_NOT_DECLARED = "refused_check_not_declared"
     KEY_UNAVAILABLE = "key_unavailable"
     TENANT_REFUSED = "tenant_refused"
     KEY_NAME_CONFLICT = "key_name_conflict"
@@ -54,11 +55,16 @@ class ModelTenantEnsured(BaseModel):
 
 
 class ModelStabilityKeyProvisionCommand(BaseModel):
-    """The command: which lane acts. The tenant slug, the key name and the key id are the contract's, never a caller's."""
+    """The command: which lane acts, and for which check. The tenant slug, the key name and the key id are the contract's.
+
+    ``check`` names one entry of the contract's ``stability_only.checks`` block, so each check stores its own key under its own
+    name. Left out, the run is the default run: the key the stability probes already read, exactly as before.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     lane: str
+    check: str | None = None
 
 
 class ModelStabilityKeyProvisionResult(BaseModel):

@@ -34,7 +34,7 @@ async def test_a_set_is_stored_with_provenance_per_path_and_a_revision() -> None
     loop = Loopback()
     await loop.seed()
     assert loop.snapshot()["revision"] == 1
-    assert loop.snapshot()["operator_paths"] == []
+    assert loop.snapshot().get("operator_paths", []) == []
     await loop.deliver(set_write(based_on_revision=1))
 
     snapshot = loop.snapshot()
@@ -93,11 +93,14 @@ async def test_the_snapshot_is_published_with_every_write_and_a_load_still_store
     assert len(loop.on(REPLY_TOPIC)) == 1
 
 
-def test_operator_paths_without_an_audit_row_are_refused() -> None:
+def test_operator_paths_without_an_audit_row_are_a_loaders_kept_paths() -> None:
     write = set_write()
     del write["audit"]
-    with pytest.raises(ValidationError, match="without an audit row"):
-        ModelOverlayStoreWrite.model_validate(write)
+    del write["write_id"]
+    del write["based_on_revision"]
+    accepted = ModelOverlayStoreWrite.model_validate(write)
+    assert accepted.operator_paths == tuple(write["operator_paths"])
+    assert accepted.audit is None
 
 
 def test_an_audit_row_without_the_revision_it_was_built_on_is_refused() -> None:

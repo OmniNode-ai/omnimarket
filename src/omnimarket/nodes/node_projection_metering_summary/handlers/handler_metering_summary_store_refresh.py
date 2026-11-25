@@ -23,25 +23,19 @@ tenant with no runs is reported, never folded into an empty row.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Sequence
 from datetime import UTC, date, timedelta
 from typing import Any, Protocol
 
-from omnimarket.models.model_metering_summary_refresh_requested import (
-    ModelMeteringSummaryRefreshRequested,
-)
 from omnimarket.nodes.node_metering_summary_compute import (
     METERING_CAUSE_COLUMN,
     METERING_COLUMNS,
     ModelCounterfactualBaseline,
     ModelMeteringRecord,
-    metering_record_from_row,
 )
-from omnimarket.nodes.node_projection_metering_summary.baseline import resolve_baseline
 from omnimarket.nodes.node_projection_metering_summary.models import (
     ModelMeteringSummaryFoldRequest,
 )
-from omnimarket.pricing import resolve_baseline_model
 
 # The fold's windows are half-open, [start, as_of): as_of is one microsecond
 # past the newest run so the run is inside its own row, the same rule as the
@@ -59,7 +53,7 @@ RECORDS_SQL = (
     "WHERE tenant_id::text = $1 AND data_source <> 'fixture' AND data_source <> 'experiment'"
 )
 STORED_ALL_SQL = (
-    "SELECT pricing_manifest_version FROM public.metering_summary "
+    "SELECT pricing_manifest_version, as_of, summary_json FROM public.metering_summary "
     "WHERE tenant_id = $1 AND window_kind = 'all' AND window_start = '' "
     "AND baseline_model = $2"
 )
@@ -107,70 +101,10 @@ def plan_tenant_fold(
     )
 
 
-async def _tenants(
-    request: ModelMeteringSummaryRefreshRequested,
-    reads_for: Callable[[str], ProtocolMeteringStoreReads],
-) -> list[str]:
-    if request.tenant_ids is not None:
-        return sorted(set(request.tenant_ids))
-    rows = await reads_for("delegation_events").execute(VISIBLE_TENANTS_SQL)
-    return sorted({str(row["tenant_id"]) for row in rows if row.get("tenant_id")})
-
-
-async def refresh_from_store(
-    request: ModelMeteringSummaryRefreshRequested,
-    *,
-    reads_for: Callable[[str], ProtocolMeteringStoreReads],
-    fold_and_store: Callable[
-        [ModelMeteringSummaryFoldRequest], Awaitable[dict[str, Any]]
-    ],
-) -> dict[str, Any]:
-    """Refresh each requested tenant's rows from its delegation_events."""
-    baseline_model = resolve_baseline_model(overlay={}, store={}).model
-    baseline = resolve_baseline(baseline_model)
-    refreshed: list[str] = []
-    without_runs: list[str] = []
-    upserted = 0
-    for tenant in await _tenants(request, reads_for):
-        rows = await reads_for("delegation_events").execute(
-            RECORDS_SQL, tenant, tenant=tenant
-        )
-        records = [r for r in map(metering_record_from_row, rows) if r is not None]
-        stored = await reads_for("metering_summary").execute(
-            STORED_ALL_SQL, tenant, baseline_model, tenant=tenant
-        )
-        plan = plan_tenant_fold(
-            tenant_id=tenant,
-            records=records,
-            days=request.days,
-            baseline_model=baseline_model,
-            baseline=baseline,
-            stored_all_manifest_version=(
-                stored[0]["pricing_manifest_version"] if stored else None
-            ),
-            stored_all_present=bool(stored),
-        )
-        if plan is None:
-            without_runs.append(tenant)
-            continue
-        applied = await fold_and_store(plan)
-        upserted += int(applied["rows_upserted"])
-        refreshed.append(tenant)
-    return {
-        "refresh_id": request.refresh_id,
-        "reason": request.reason.value,
-        "baseline_model": baseline_model,
-        "tenants_refreshed": refreshed,
-        "tenants_without_runs": without_runs,
-        "rows_upserted": upserted,
-    }
-
-
 __all__: list[str] = [
     "RECORDS_SQL",
     "STORED_ALL_SQL",
     "VISIBLE_TENANTS_SQL",
     "ProtocolMeteringStoreReads",
     "plan_tenant_fold",
-    "refresh_from_store",
 ]

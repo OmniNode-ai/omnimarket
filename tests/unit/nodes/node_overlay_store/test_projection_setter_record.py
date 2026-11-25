@@ -72,10 +72,10 @@ async def test_projection_stores_a_setting_record_with_operator_paths_and_its_au
 
 
 @pytest.mark.asyncio
-async def test_projection_refuses_operator_paths_without_an_audit_row(
+async def test_projection_stores_a_loaders_record_that_names_the_paths_it_kept(
     store: InMemoryOverlayStore,
 ) -> None:
-    """The interim projection stored such a record and dropped its paths; the paths now come with their audit row or not at all."""
+    """A loader's refresh keeps the operator-set settings and publishes their paths with no audit row: the store holds them (OMN-26495)."""
     published: list[tuple[str, bytes | None, bytes]] = []
 
     async def publish(topic: str, key: bytes | None, value: bytes) -> None:
@@ -84,10 +84,11 @@ async def test_projection_refuses_operator_paths_without_an_audit_row(
     runner = HandlerOverlayStoreProjectionRunner(publish_keyed_fn=publish)
     payload = record(loaded_at=NOW + timedelta(minutes=1)).model_dump(mode="json")
     payload["operator_paths"] = [SET_PATH]
-    with pytest.raises(ValueError, match="without an audit row"):
-        await runner.project_event(LOADED_TOPIC, payload, None)
-    assert await store.read_current("lab_hosts") is None
-    assert published == []
+    assert await runner.project_event(LOADED_TOPIC, payload, None) is True
+    current = await store.read_current("lab_hosts")
+    assert current is not None
+    assert current["operator_paths"] == [SET_PATH]
+    assert published
 
 
 @pytest.mark.asyncio

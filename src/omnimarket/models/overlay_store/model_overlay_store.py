@@ -73,6 +73,32 @@ class ModelOverlayStoreLoadResult(_Frozen):
     source_ref: str
     topic: str
     loaded_at: datetime
+    correlation_id: str | None = None
+    # The operator-set settings the run kept, and those among them that differ from the overlay home.
+    operator_paths: tuple[str, ...] = ()
+    drifted_paths: tuple[str, ...] = ()
+
+
+class ModelOverlayStoreDrift(_Frozen):
+    """One setting whose overlay home value differs from its live operator-set value: digests, never values."""
+
+    overlay_id: OverlayId
+    setting_path: str = Field(min_length=1)
+    # None when the overlay home no longer holds the setting.
+    repository_digest: str | None = None
+    live_digest: str = Field(min_length=64, max_length=64)
+    source_ref: str = Field(min_length=1)
+    correlation_id: str = Field(min_length=1)
+    observed_at: datetime
+
+
+class ModelOverlayStoreLoadRefusal(_Frozen):
+    """A load that ended without publishing, reported by its overlay and why: no value of any document."""
+
+    overlay_id: OverlayId
+    reason: str = Field(min_length=1)
+    correlation_id: str = Field(min_length=1)
+    observed_at: datetime
 
 
 class ModelOverlayStoreRefusal(_Frozen):
@@ -207,6 +233,10 @@ class ModelOverlayStoreLoadOverlay(_Frozen):
     clone_relpath: str | None = Field(default=None, min_length=1)
     clone_branch: str | None = Field(default=None, min_length=1)
     overlay_ids: tuple[str, ...] = ()
+    # How long a run listens on the snapshot topic for the live record of an overlay before it loads: the record
+    # tells which settings an operator set, and those keep their live value (OMN-26495). Unset, a run reads no live
+    # record and replaces the whole document, as before.
+    live_read_window_s: float | None = Field(default=None, gt=0)
     # An id whose newest loader assertion is older than this alarms by name (the plan's two hours), and the owner is
     # the role or lane the alarm names as the one who acts on it; ``alarm_owner_by_id`` overrides it for one id.
     assertion_stale_after_s: int = Field(default=7200, gt=0)

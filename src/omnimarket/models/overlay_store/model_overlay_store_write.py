@@ -59,10 +59,7 @@ class ModelOverlayStoreWrite(ModelOverlayStoreRecord):
 
     @model_validator(mode="after")
     def _a_set_is_whole(self) -> ModelOverlayStoreWrite:
-        if self.operator_paths and self.audit is None:
-            raise ValueError(
-                f"overlay {self.overlay_id}: operator paths without an audit row"
-            )
+        # A load may name operator paths: the ones a loader's refresh kept (OMN-26495). A set names them with its audit row.
         if self.audit is None:
             return self
         if self.write_id is None:

@@ -132,7 +132,7 @@ class HandlerOverlayStoreProjectionRunner(BaseProjectionRunner):
                 self._snapshot_topic,
                 write.overlay_id.encode("utf-8"),
                 ModelOverlayStoreRecord.model_validate(current)
-                .model_dump_json()
+                .model_dump_json(exclude_defaults=True)
                 .encode("utf-8"),
             )
         if write.write_id is not None:

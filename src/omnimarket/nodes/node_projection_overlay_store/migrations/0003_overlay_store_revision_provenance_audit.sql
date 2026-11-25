@@ -6,11 +6,10 @@
 -- provenance, its write id and its audit row in one transaction. Counts and digests only: no table holds a secret.
 -- =============================================================================
 
--- The version rows carry the revision the store numbered them with and the paths an operator set.
+-- The version rows carry the revision the store numbered them with. The paths an operator set are the JSON column
+-- operator_paths that 0002_add_operator_paths.sql adds.
 ALTER TABLE omninode_internal.overlay_store
     ADD COLUMN IF NOT EXISTS revision       INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE omninode_internal.overlay_store
-    ADD COLUMN IF NOT EXISTS operator_paths TEXT[]  NOT NULL DEFAULT '{}';
 
 -- One row per overlay: the revision its current version holds. A write is checked against this row, under the
 -- overlay's advisory lock.

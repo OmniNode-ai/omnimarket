@@ -56,7 +56,8 @@ MIGRATION = MIGRATIONS / "0000_create_overlay_store.sql"
 # The grant files need the runtime role, which a throwaway database does not have.
 MIGRATION_FILES = (
     "0000_create_overlay_store.sql",
-    "0002_overlay_store_revision_provenance_audit.sql",
+    "0002_add_operator_paths.sql",
+    "0003_overlay_store_revision_provenance_audit.sql",
 )
 META = MessageMeta(topic="t", partition=0, offset=1, fallback_id="f")
 
@@ -254,21 +255,41 @@ async def test_a_set_is_answered_and_its_audit_row_is_published_from_the_table_o
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_a_record_naming_operator_paths_without_its_audit_row_is_refused_and_stores_nothing() -> (
+async def test_the_settings_an_operator_set_are_stored_and_published_with_the_record() -> (
     None
 ):
-    """OMN-26521 stored such a record and dropped its paths; the store now holds the paths with their audit row, or refuses the record."""
+    async with _migrated() as (runner, connection, published):
+        paths = ("hosts/[name=h1]/cap",)
+        await runner.project_event(
+            "t", record(operator_paths=paths).model_dump(mode="json"), META
+        )
+        row = await connection.fetchrow(
+            "SELECT operator_paths FROM omninode_internal.overlay_store"
+        )
+        assert row is not None
+        assert json.loads(row["operator_paths"]) == list(paths)
+        assert (
+            ModelOverlayStoreRecord.model_validate_json(published[-1][2]).operator_paths
+            == paths
+        )
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_setting_record_with_operator_paths_is_stored_and_published_with_its_paths() -> (
+    None
+):
+    """The record a setting set publishes carries ``operator_paths``; the real write binds them, and the snapshot carries them back so the next loader run keeps those settings (OMN-26495)."""
     async with _migrated() as (runner, connection, published):
         payload = {
             **record().model_dump(mode="json"),
             "operator_paths": ["floor_fill_live/pool_engine"],
         }
-        with pytest.raises(ValidationError, match="without an audit row"):
-            await runner.project_event("t", payload, META)
-        assert (
-            await connection.fetchval(
-                "SELECT count(*) FROM omninode_internal.overlay_store"
-            )
-            == 0
+        assert await runner.project_event("t", payload, META)
+        compared = compare_documents(TABLE, await _stored(connection))
+        assert compared.equal, compared.differing
+        assert ModelOverlayStoreRecord.model_validate_json(
+            published[-1][2]
+        ) == record().model_copy(
+            update={"operator_paths": ("floor_fill_live/pool_engine",), "revision": 1}
         )
-        assert published == []

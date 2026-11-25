@@ -37,6 +37,10 @@ from omnimarket.nodes.node_floor_fill_orchestrator.tests.support import (
 from omnimarket.nodes.node_floor_fill_orchestrator.tests.test_floor_fill_live_binding import (
     live_section,
 )
+from omnimarket.nodes.node_floor_fill_orchestrator.tests.test_floor_fill_schedule_unit_environment import (
+    DECLARED_ENVIRONMENT,
+    host_row,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -76,6 +80,8 @@ def _install_live(
         ],
         {"floor_fill": OVERLAY, "floor_fill_live": section},
         hosts=HOSTS,
+        host_rows=[host_row()],
+        environment=DECLARED_ENVIRONMENT,
         home=tmp_path,
         run=run or _ok,
     )

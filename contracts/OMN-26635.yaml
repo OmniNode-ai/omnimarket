@@ -63,7 +63,7 @@ dod_evidence:
     check_value: grep -q 'overlay-store-write-reply.v1' src/omnimarket/nodes/node_projection_overlay_store/contract.yaml
     cwd: .
   - check_type: command
-    check_value: test -f src/omnimarket/nodes/node_projection_overlay_store/migrations/0002_overlay_store_revision_provenance_audit.sql
+    check_value: test -f src/omnimarket/nodes/node_projection_overlay_store/migrations/0003_overlay_store_revision_provenance_audit.sql
     cwd: .
 - id: dod-omn26635-hosted-reading-of-ac4
   description: 'The hosted reading of AC4, over the in-memory store that keeps the Postgres store''s rules: a set is stored with provenance operator for its path and exactly one audit row for its write id, and the same write delivered twice leaves one. The dev read (counts and digests only) is the live-read item below and the PR''s Lab line.'

@@ -99,8 +99,9 @@ class InMemoryOverlayStore:
             )
         if current is None or current.get("digest") != write.digest:
             revision += 1
-        # A loader's load names no operator path: the paths the store holds stay marked.
-        paths = _operator_paths(current)
+        # A loader's refresh names the operator paths it kept and the store holds exactly those; a load naming none
+        # leaves the paths the store holds marked.
+        paths = write.operator_paths or _operator_paths(current)
         record = write.model_copy(
             update={"revision": revision, "operator_paths": paths}
         )
