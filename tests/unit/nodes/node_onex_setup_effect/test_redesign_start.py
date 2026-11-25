@@ -177,3 +177,16 @@ def test_the_design_file_has_no_duplicate_keys() -> None:
     )
     design = Path(cli_tui.__file__).parent / "tui_design.yaml"
     yaml.load(design.read_text(), Loader=_Strict)
+
+
+def test_a_theme_that_cannot_be_saved_is_logged_not_swallowed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A full or read-only disk keeps the theme for this run and says why in the log."""
+    blocker = tmp_path / "blocker"
+    blocker.write_text("a file where a folder is needed")
+    monkeypatch.setattr(cli_tui.ThemeStore, "_path", blocker / "theme")
+    with caplog.at_level("WARNING"):
+        assert cli_tui.ThemeStore.save("onex-light") is True
+    assert cli_tui.ThemeStore.load() == "onex-light"
+    assert "could not remember the theme" in caplog.text

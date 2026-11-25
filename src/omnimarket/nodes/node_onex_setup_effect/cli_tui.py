@@ -1946,7 +1946,7 @@ class ThemeStore:
             cls._path.parent.mkdir(parents=True, exist_ok=True)
             cls._path.write_text(theme)
         except OSError:
-            pass
+            _LOG.warning("could not remember the theme", exc_info=True)
         return True
 
     @classmethod
