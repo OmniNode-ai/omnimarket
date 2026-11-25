@@ -98,6 +98,8 @@ message_contract:
   settings_store:
     senders_folder: /agent-message/senders
     keys_folder: /agent-message/keys
+    # Revoke writes a tombstone row here (the store is create-only, so a row is never deleted); a name with a row is unknown_sender.
+    revoked_folder: /agent-message/revoked
     policy_folder: /agent-message/policy
     accept_legacy_name: accept_legacy
 

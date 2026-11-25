@@ -27,9 +27,11 @@ MCP server: ``onex agent-message serve-mcp --bus-lane dev`` serves two tools ove
 ``read_agent_messages(to, thread?, since?, limit?)``. ``kind`` and ``platform`` carry their closed
 value lists in the tool schema; a refusal comes back as a tool error with the same text. Register
 it as a stdio server whose command is ``onex`` and arguments ``agent-message serve-mcp --bus-lane
-dev``, with ``ONEX_LANE`` (or ``ONEX_AGENT_IDENTITY``) in its environment so the sender is named:
+dev``, with ``ONEX_LANE`` (or ``ONEX_AGENT_IDENTITY``) in its environment so the sender is named and
+``OMNIBASE_PATH`` (the workspace root holding the lane declaration) so the server finds the bus lane; without it a
+read is refused ``broker_refused``:
 
-- Claude Code: ``claude mcp add agent-message -e ONEX_LANE=<lane> -- onex agent-message serve-mcp --bus-lane dev``
+- Claude Code: ``claude mcp add agent-message -e ONEX_LANE=<lane> -e OMNIBASE_PATH=<workspace root> -- onex agent-message serve-mcp --bus-lane dev``
 - Codex: a ``[mcp_servers.agent-message]`` table in ``~/.codex/config.toml`` with
   ``command = "onex"`` and ``args = ["agent-message", "serve-mcp", "--bus-lane", "dev"]``.
 - Gemini CLI: an entry under ``mcpServers`` in ``~/.gemini/settings.json`` with the same command and args.

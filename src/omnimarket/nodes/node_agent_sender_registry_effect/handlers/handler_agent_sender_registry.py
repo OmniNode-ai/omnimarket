@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT
 """Register, list and revoke one agent sender and its signing key in the settings store.
 
+Revoke is a tombstone row, never a delete: the dev store is create-only and its adapter refuses delete.
+
 The store folders are the agent message node's ``message_contract.settings_store`` block; the sender, principal and key
 id are the request's. The keypair is generated here: the public half goes to the sender row, the seed to the key row,
 and the seed never leaves the store (the result carries the public key only).
@@ -45,14 +47,21 @@ class HandlerAgentSenderRegistry:
         self._store = store
         self._senders = layout["senders_folder"]
         self._keys = layout["keys_folder"]
+        self._revoked = layout["revoked_folder"]
 
     async def handle(
         self, request: ModelAgentSenderRegistryRequest
     ) -> ModelAgentSenderRegistryResult:
         try:
             if request.operation is EnumAgentSenderRegistryOperation.LIST:
+                revoked = set(await self._store.names(self._revoked))
                 return ModelAgentSenderRegistryResult(
-                    outcome=Out.LISTED, senders=await self._store.names(self._senders)
+                    outcome=Out.LISTED,
+                    senders=tuple(
+                        n
+                        for n in await self._store.names(self._senders)
+                        if n not in revoked
+                    ),
                 )
             if request.operation is EnumAgentSenderRegistryOperation.REVOKE:
                 return await self._revoke(request.sender or "")
@@ -68,7 +77,10 @@ class HandlerAgentSenderRegistry:
         name = request.sender or ""
         principal = request.principal or ""
         key_id = request.key_id or ""
-        if await self._store.read(self._senders, name) is not None:
+        if (
+            await self._store.read(self._senders, name) is not None
+            or await self._store.read(self._revoked, name) is not None
+        ):
             return ModelAgentSenderRegistryResult(
                 outcome=Out.ALREADY_REGISTERED, sender=name
             )
@@ -102,11 +114,19 @@ class HandlerAgentSenderRegistry:
         )
 
     async def _revoke(self, name: str) -> ModelAgentSenderRegistryResult:
-        sender_gone = await self._store.delete(self._senders, name)
-        key_gone = await self._store.delete(self._keys, name)
-        if not (sender_gone or key_gone):
+        """Write a tombstone row; the settings store is create-only, so nothing is deleted and no delete grant is needed.
+
+        A revoked name stays burnt: its rows remain in the store, readers refuse it as unknown_sender and it cannot be
+        registered again, so a revoked key is never revived.
+        """
+        if await self._store.read(self._senders, name) is None:
             return ModelAgentSenderRegistryResult(
                 outcome=Out.NOT_REGISTERED, sender=name
+            )
+        tombstone = SecretStr(json.dumps({"revoked": True}))
+        if not await self._store.create(self._revoked, name, tombstone):
+            return ModelAgentSenderRegistryResult(
+                outcome=Out.NOT_REGISTERED, sender=name, detail="already revoked"
             )
         return ModelAgentSenderRegistryResult(outcome=Out.REVOKED, sender=name)
 
