@@ -1512,6 +1512,10 @@ async def test_saving_with_nothing_ticked_warns_and_runs_nothing() -> None:
     app = _app(runner)
     async with app.run_test(size=(120, 44)) as pilot:
         await _open_config(pilot, app)
+        # The URL just typed starts an auto find; let it end first, or on a slow
+        # runner its "no models found" lands after the warning and replaces it.
+        await _wait_for_models(pilot)
+        await app.workers.wait_for_complete()
         await pilot.press("ctrl+s")
         await pilot.pause()
         assert tui_design().delegation.nothing_ticked in str(

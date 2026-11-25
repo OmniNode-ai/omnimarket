@@ -23,6 +23,8 @@ requirements:
     statement: 'AC6: the floor fill schedule reads its overlay from the settings store root before the declared overlay file, and node_overlay_setting_set declares the floor_fill_live keys settable -- falsifier: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_schedule_store_overlay.py on the merge base exits non-zero'
   - id: AC7
     statement: 'AC7: the overlay-store projection stores the record a setting set publishes, operator_paths included, so a set key can reach the store -- falsifier: uv run pytest tests/unit/nodes/node_overlay_store/test_projection_setter_record.py on the merge base exits non-zero'
+  - id: AC8
+    statement: 'AC8: the live tick unit carries ONEX_LEDGER_BUS_APPEND_COMMAND, ONEX_WORKSPACE_CONFIG_ROOT and ONEX_SKILL_OVERLAY_ROOTS the append command built from the fill host row of the lab host table and the other two from the installing host environment, and the install refuses naming the key or variable that is not declared -- falsifier: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_schedule_unit_environment.py on the merge base exits non-zero'
 evidence_requirements:
 - kind: tests
   description: The floor fill orchestrator tests pass at the pushed head.
@@ -97,6 +99,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_overlay_store/test_projection_setter_record.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26521-unit-environment
+  description: 'The live tick unit carries the ledger append command (from the fill host row), the workspace config root and the overlay roots (from the installing host environment), and an undeclared value refuses naming it (failing control: on the merge base the test module fails at import because the contract schedule block names no unit environment).'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest src/omnimarket/nodes/node_floor_fill_orchestrator/tests/test_floor_fill_schedule_unit_environment.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26521-integration-proof
   description: the live seam tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check

@@ -2,10 +2,17 @@
 # SPDX-License-Identifier: MIT
 """The Valkey-backed page cache of the projection query node (OMN-24458).
 
-A served projection page is held in the shared Valkey for the expiry the node
-contract's ``page_cache`` block declares (``ttl_seconds``); this module holds no
-number of its own. A read past the expiry finds nothing and the handler
+A served projection page is held in the shared Valkey. The node contract's
+``page_cache`` block declares how long it is fresh (``ttl_seconds``), how long
+past that it may still be served while it is refreshed (``stale_seconds``) and
+how long one runtime's claim to refresh it lasts (``refresh_lock_seconds``);
+this module holds no number of its own. The Valkey drops a page after
+``ttl_seconds + stale_seconds``; a read after that finds nothing and the handler
 recomputes the page from the windowed store read.
+
+The held value carries the time its writer stored it, so the age of a page is
+read from the page and not from a clock of the reader's own; that clock is
+injected so a test can step it.
 
 A Valkey that cannot be reached, or that answers an error or does not answer in
 time, raises :class:`PageCacheUnavailableError`; the handler then serves the
@@ -19,10 +26,14 @@ import asyncio
 import hashlib
 import json
 import os
+import time
 from collections.abc import Callable, Mapping
 from typing import Any, Protocol
 from urllib.parse import quote
 
+from omnimarket.nodes.node_projection_query_api_effect.models.model_held_page import (
+    ModelHeldPage,
+)
 from omnimarket.nodes.node_projection_query_api_effect.models.model_page_cache import (
     ModelPageCacheSettings,
 )
@@ -44,9 +55,16 @@ class ProtocolPageCache(Protocol):
     @property
     def ttl_seconds(self) -> int: ...
 
-    async def get(self, key: str) -> dict[str, Any] | None: ...
+    @property
+    def stale_seconds(self) -> int: ...
+
+    async def get(self, key: str) -> ModelHeldPage | None: ...
 
     async def put(self, key: str, page: dict[str, Any]) -> None: ...
+
+    async def claim_refresh(self, key: str) -> bool: ...
+
+    async def release_refresh(self, key: str) -> None: ...
 
     async def close(self) -> None: ...
 
@@ -83,15 +101,22 @@ class ValkeyPageCache:
         self,
         settings: ModelPageCacheSettings,
         client: Any,
+        *,
+        clock: Callable[[], float] = time.time,
     ) -> None:
         self._settings = settings
         self._client = client
+        self._clock = clock
 
     @property
     def ttl_seconds(self) -> int:
         return self._settings.ttl_seconds
 
-    async def get(self, key: str) -> dict[str, Any] | None:
+    @property
+    def stale_seconds(self) -> int:
+        return self._settings.stale_seconds
+
+    async def get(self, key: str) -> ModelHeldPage | None:
         timeout = self._settings.valkey.operation_timeout_seconds
         try:
             raw = await asyncio.wait_for(self._client.get(key), timeout)
@@ -100,20 +125,58 @@ class ValkeyPageCache:
         if raw is None:
             return None
         try:
-            page = json.loads(raw)
+            held = json.loads(raw)
         except (TypeError, ValueError):
             return None
-        return page if isinstance(page, dict) else None
+        if not isinstance(held, dict):
+            return None
+        stored_at = held.get("stored_at")
+        page = held.get("page")
+        if (
+            isinstance(stored_at, bool)
+            or not isinstance(stored_at, int | float)
+            or not isinstance(page, dict)
+        ):
+            return None
+        return ModelHeldPage(page=page, age_seconds=max(0.0, self._clock() - stored_at))
 
     async def put(self, key: str, page: dict[str, Any]) -> None:
         timeout = self._settings.valkey.operation_timeout_seconds
+        held = {"stored_at": self._clock(), "page": page}
         try:
             await asyncio.wait_for(
                 self._client.set(
-                    key, json.dumps(page, default=str), ex=self._settings.ttl_seconds
+                    key,
+                    json.dumps(held, default=str),
+                    ex=self._settings.ttl_seconds + self._settings.stale_seconds,
                 ),
                 timeout,
             )
+        except Exception as exc:
+            raise PageCacheUnavailableError(type(exc).__name__) from None
+
+    async def claim_refresh(self, key: str) -> bool:
+        """Take this page's refresh claim in the shared Valkey; ``False`` when another runtime holds it."""
+        timeout = self._settings.valkey.operation_timeout_seconds
+        try:
+            taken = await asyncio.wait_for(
+                self._client.set(
+                    f"{key}:refresh",
+                    "1",
+                    ex=self._settings.refresh_lock_seconds,
+                    nx=True,
+                ),
+                timeout,
+            )
+        except Exception as exc:
+            raise PageCacheUnavailableError(type(exc).__name__) from None
+        return bool(taken)
+
+    async def release_refresh(self, key: str) -> None:
+        """Drop this page's refresh claim so the next expiry can be refreshed at once."""
+        timeout = self._settings.valkey.operation_timeout_seconds
+        try:
+            await asyncio.wait_for(self._client.delete(f"{key}:refresh"), timeout)
         except Exception as exc:
             raise PageCacheUnavailableError(type(exc).__name__) from None
 

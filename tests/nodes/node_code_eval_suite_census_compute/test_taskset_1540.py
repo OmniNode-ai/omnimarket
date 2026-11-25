@@ -72,3 +72,9 @@ def test_the_two_dropped_tasks_are_one_counted_exclusion() -> None:
     assert excluded[f"pre_control:{DROPPED_REASON}"] == DROPPED_COUNT
     candidates = {(c.repository, c.contract_id) for c in answer.candidates}
     assert set(KEPT) <= candidates
+
+
+def test_the_suite_carries_the_rebuilt_set_not_the_earlier_one() -> None:
+    request = load_committed_suite()
+    assert request.suite_id.endswith("2026-11-21")
+    assert len(request.tasks) == 316

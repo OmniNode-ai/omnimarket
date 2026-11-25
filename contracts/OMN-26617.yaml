@@ -18,7 +18,9 @@ requirements:
   statement: "When hook assets are really missing or broken, status still names the repair command."
   acceptance:
   - id: AC2
-    statement: 'AC2: when the hook assets are really missing or broken, the status still names the repair command (`onex install omninode-claude`); Falsifier: tests/unit/nodes/node_onex_setup_effect/test_omn26617_repro_status.py::test_ac2_assets_really_broken_keeps_the_repair_command'
+    statement: 'AC2: when the hook assets are really missing or broken, the status still names the repair command (`onex install omninode-claude`); Falsifier: tests/unit/nodes/node_onex_setup_effect/test_omn26617_repro_status.py::test_ac2_assets_really_removed_keeps_the_repair_command'
+  - id: AC5
+    statement: 'AC5: a different hooks break with delegation off keeps its own repair and never reads as a plain on; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_omn26617_repro_status.py::test_ac2_a_different_hooks_break_with_delegation_off_keeps_its_own_repair'
 - id: req-omn26617-tui-same-next-step
   statement: "The TUI /delegation tab shows the same next step as the CLI in the off-and-ready state."
   acceptance:
@@ -60,7 +62,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_omn26617_repro_status.py::test_ac2_assets_really_broken_keeps_the_repair_command -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_omn26617_repro_status.py::test_ac2_assets_really_removed_keeps_the_repair_command -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26617-ac3
   description: 'AC3: the TUI /delegation tab shows the same next step as the CLI.'
@@ -79,6 +81,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_cli_delegation.py tests/unit/nodes/node_onex_setup_effect/test_omn26617_repro_status.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26617-ac5
+  description: 'AC5: a different hooks break with delegation off keeps its own repair and never reads as a plain on.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_omn26617_repro_status.py::test_ac2_a_different_hooks_break_with_delegation_off_keeps_its_own_repair -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26617-integration-proof
   description: Run the OMN-26617 tests on a lab host at the pushed revision.

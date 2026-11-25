@@ -15,14 +15,17 @@ no declared price stays unpriced rather than booked at a tier rate.
 
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 
 from omnimarket.handlers.model_catalog import models_dev_price_with_read_time
 from omnimarket.handlers.routing.byok_provider_backends import (
     byok_backend_provider,
-    byok_model_price_per_1m,
+    byok_model_price_with_source,
     resolve_byok_backend_by_id,
 )
+
+logger = logging.getLogger(__name__)
 
 _PER_1M = Decimal("1000000")
 
@@ -40,22 +43,31 @@ def byok_priced_actual_cost(
     backend, a non-BYOK backend, a backend that cannot be resolved, or a model
     the catalogue prices nowhere. Otherwise the measured tokens priced at the
     declared ``(input, output)`` USD-per-1M rates, computed in ``Decimal`` and
-    returned as a ``float``.
+    returned as a ``float``. One INFO line per priced call names the source that
+    priced it (catalogue, model registry or models.dev) and, for models.dev, the
+    time it was read, so a runtime log shows which leg of the lookup ran.
     """
     if not backend_id or byok_backend_provider(backend_id) is None:
         return None
     backend = resolve_byok_backend_by_id(backend_id)
     if backend is None:
         return None
-    prices = byok_model_price_per_1m(
+    priced = byok_model_price_with_source(
         backend_id,
         backend.endpoint_url,
         model_name,
         models_dev_price=models_dev_price_with_read_time,
     )
-    if prices is None:
+    if priced is None:
         return None
-    price_in, price_out = prices
+    (price_in, price_out), price_source, price_read_at = priced
+    logger.info(
+        "BYOK call priced: backend_id=%s model=%s price_source=%s price_read_at=%s",
+        backend_id,
+        model_name,
+        price_source,
+        price_read_at,
+    )
     cost = (
         Decimal(prompt_tokens) * price_in + Decimal(completion_tokens) * price_out
     ) / _PER_1M

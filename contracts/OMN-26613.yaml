@@ -1,0 +1,67 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-26613"
+title: "Typing in the key or URL field of the onex TUI no longer crashes it with NoMatches '#palette'"
+summary: "The onex TUI's app-level input handler acts only on the main prompt, so a character typed into a tab's key or URL field cannot raise NoMatches; a tab swap that lands after Esc opens the tab instead of popping the main screen. The model search still starts."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26613-key-url-typing-safe
+  statement: "Typing into the Config tab's key and URL fields does not raise, the model search still starts, and the / palette still opens from the main prompt."
+  acceptance:
+  - id: AC1
+    statement: 'AC1: typing into the key and URL fields does not raise and the model search still starts; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_typing_with_no_palette_on_the_main_screen_keeps_the_tui_running; the search starts: tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_typing_in_key_and_url_starts_the_model_search'
+  - id: AC2
+    statement: 'AC2: the / palette still opens and filters from the main prompt; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_the_palette_still_opens_from_the_main_prompt_after_a_raced_swap'
+  - id: AC3
+    statement: 'AC3: the app input handler acts only on the main prompt input (input id prompt); Falsifier: tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_typing_with_no_palette_on_the_main_screen_keeps_the_tui_running'
+evidence_requirements:
+- kind: tests
+  description: Typing in the key and URL fields keeps the TUI running, with and without a tab swap raced by Esc, and the model search still starts.
+  command: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py -q -n 0 --no-cov -p no:cacheprovider
+- kind: tests
+  description: The existing TUI and palette tests pass unchanged, run together with the palette-after-a-raced-swap test.
+  command: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_the_palette_still_opens_from_the_main_prompt_after_a_raced_swap -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26613-ac1
+  description: 'AC1: typing one character into #key and into #url does not raise, and the model search still starts.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_typing_with_no_palette_on_the_main_screen_keeps_the_tui_running tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_typing_after_a_tab_swap_raced_esc_keeps_the_tui_running tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_typing_in_key_and_url_starts_the_model_search -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26613-ac2
+  description: 'AC2: the / palette still opens and filters from the main prompt, including after a tab swap raced by Esc; the existing palette tests run together with that new test.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py::test_the_palette_still_opens_from_the_main_prompt_after_a_raced_swap -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26613-ac3
+  description: 'AC3: the app input handler acts only on the main prompt input.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26613-integration-proof
+  description: the OMN-26613 test file and the existing TUI tests run on a lab host at the pushed revision; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26613 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_dialog_input_omn26613.py tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py -q -n 0 --no-cov --refuse-skips
+    cwd: .

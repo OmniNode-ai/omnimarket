@@ -65,15 +65,18 @@ class FakeGateway:
             payload = body["payload"]
             source = payload.get("source")
             if source not in ("claude-code", "codex", "external-client"):
+                # The real gateway refuses a payload the workflow contract rejects 400 and names the violated field.
                 return ModelGatewayObservation(
-                    status=422,
+                    status=400,
                     body={
-                        "detail": [
+                        "detail": "payload does not conform to the workflow contract",
+                        "workflow_type": "delegate-skill",
+                        "errors": [
                             {
-                                "type": "literal_error",
-                                "loc": ["body", "payload", "source"],
+                                "field": "source",
+                                "message": "does not match the contract",
                             }
-                        ]
+                        ],
                     },
                 )
             workflow_id = f"00000000-0000-4000-8000-{len(self._runs):012d}"
@@ -84,41 +87,33 @@ class FakeGateway:
             )
         match = re.match(r"^/v1/workflows/([^/]+)/(status|receipt)", path)
         if match and match.group(1) in self._runs:
-            dying = self._runs[match.group(1)]["dying"]
+            workflow_id = match.group(1)
+            dying = self._runs[workflow_id]["dying"]
+            # One terminal record, so the status and the receipt agree on every field both declared models carry.
+            common: dict[str, Any] = {
+                "workflow_id": workflow_id,
+                "correlation_id": "00000000-0000-4000-8000-0000000000c1",
+                "workflow_type": "delegate-skill",
+                "status": "failed" if dying else "completed",
+                "terminal_model_used": "none" if dying else "served-model",
+                "terminal_total_tokens": 0 if dying else 41,
+                "terminal_latency_ms": 12 if dying else 1840,
+                "terminal_failure_class": "TaskClassError" if dying else None,
+                "terminal_failure_code": "ONEX_TASK_CLASS_UNKNOWN" if dying else None,
+                "terminal_failure_reason": "not a task class" if dying else None,
+                "terminal_remediation": None,
+                "rule_evaluations": []
+                if dying
+                else [{"rule": "non_empty", "passed": True, "enforcement": "blocking"}],
+            }
             if match.group(2) == "status":
-                return ModelGatewayObservation(
-                    status=200,
-                    body={
-                        "status": "failed" if dying else "completed",
-                        **(
-                            {
-                                "terminal_failure_class": "TaskClassError",
-                                "terminal_failure_code": "ONEX_TASK_CLASS_UNKNOWN",
-                            }
-                            if dying
-                            else {"route": "lab-local", "provider": "local"}
-                        ),
-                    },
-                )
-            if dying:
-                return ModelGatewayObservation(
-                    status=200,
-                    body={
-                        "status": "failed",
-                        "terminal_failure_class": "TaskClassError",
-                        "terminal_failure_code": "ONEX_TASK_CLASS_UNKNOWN",
-                    },
-                )
+                return ModelGatewayObservation(status=200, body=common)
             return ModelGatewayObservation(
                 status=200,
                 body={
-                    "status": "completed",
-                    "route": "lab-local",
-                    "provider": "local",
-                    "terminal_model_used": "served-model",
-                    "rule_evaluations": [
-                        {"rule": "non_empty", "passed": True, "enforcement": "blocking"}
-                    ],
+                    **common,
+                    "route": None if dying else "lab-local",
+                    "provider": None if dying else "local",
                 },
             )
         if path.startswith("/v1/workflows/") and path.endswith("/receipt"):
