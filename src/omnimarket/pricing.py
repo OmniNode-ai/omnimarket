@@ -26,10 +26,7 @@ from omnibase_infra.models.pricing.model_pricing_entry import ModelPricingEntry
 from omnibase_infra.models.pricing.model_pricing_table import ModelPricingTable
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.handlers.model_binding_reader import (
-    model_binding,
-    model_binding_section,
-)
+from omnimarket.handlers import model_binding_reader as _bindings
 from omnimarket.models import model_tenant_routing_overlay_backend as _overlay
 from omnimarket.models.baseline_fallback import (
     BaselineSelectionCase,
@@ -47,9 +44,9 @@ ROUTING_TIERS_YAML = Path(__file__).resolve().parent / "configs" / "routing_tier
 
 # The baseline and the frontier comparison models are declared in
 # configs/model_bindings.v1.yaml (OMN-21805); this module names no model.
-DEFAULT_BASELINE_MODEL = model_binding("pricing_baseline_model")
+DEFAULT_BASELINE_MODEL = _bindings.model_binding("pricing_baseline_model")
 DEFAULT_FRONTIER_COMPARISON_MODELS: tuple[str, ...] = tuple(
-    model_binding_section("frontier_comparison_models")
+    _bindings.model_binding_section("frontier_comparison_models")
 )
 
 
