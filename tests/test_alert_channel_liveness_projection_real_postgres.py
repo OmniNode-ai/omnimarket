@@ -194,3 +194,27 @@ async def test_verdicts_round_trip_through_a_real_postgres(port: int) -> None:
         ]
         assert {r["source_topic"] for r in rows} == {_TOPIC}
         assert again["correlation_id"] == dead["correlation_id"]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_throttled_tick_is_skipped_and_a_verdict_is_not_against_a_real_postgres(
+    port: int,
+) -> None:
+    """OMN-26410: only a throttled tick is a designed zero; a written verdict is not."""
+    async with _provisioned(port) as (admin, writer):
+        tick_row, tick_skipped = await writer._fold_and_persist(
+            {"probed": False, "probe_interval_seconds": 900, "failure_surfaced": False},
+            _meta(1),
+        )
+        verdict_row, verdict_skipped = await writer._fold_and_persist(
+            _result("LIVE", "channel ok"), _meta(2)
+        )
+
+        assert (tick_row, tick_skipped) == (None, True)
+        assert verdict_row is not None
+        assert verdict_skipped is False
+        count = await admin.fetchval(
+            "SELECT count(*) FROM omninode_internal.alert_channel_liveness_verdicts"
+        )
+        assert count == 1
