@@ -6,6 +6,7 @@
 # makes the ONE read the overlay declares with that user's bearer, then reports the HTTP status and the data state of the
 # answer. The result carries names, a status and a data state only: never a token, a password or a row. Any lane or realm
 # the dev_only block does not declare is refused before any secret read or HTTP call.
+# The command topic is subscribed so the runtime routes it.
 name: node_dev_signed_in_read_effect
 contract_name: node_dev_signed_in_read_effect
 node_name: node_dev_signed_in_read_effect
@@ -47,6 +48,10 @@ terminal_event: onex.evt.omnimarket.dev-signed-in-read-completed.v1
 
 runtime_dispatch:
   external_trigger: true
+  command_topic: onex.cmd.omnimarket.dev-signed-in-read-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.dev-signed-in-read-completed.v1
+    failure: onex.evt.omnimarket.dev-signed-in-read-failed.v1
 
 topics:
   command: onex.cmd.omnimarket.dev-signed-in-read-requested.v1
@@ -54,8 +59,40 @@ topics:
   failed: onex.evt.omnimarket.dev-signed-in-read-failed.v1
 
 event_bus:
-  subscribe_topics: []
-  publish_topics: []
+  subscribe_topics:
+    - onex.cmd.omnimarket.dev-signed-in-read-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.dev-signed-in-read-completed.v1
+    - onex.evt.omnimarket.dev-signed-in-read-failed.v1
+
+# The broker grants the node's three topics need (coverage gate): the runtime login reads the command and writes the
+# completed and failed answers, and reads (joins) and describes the node's own consumer groups. The group prefix stops at
+# ``consume.`` so it covers the group names the runtime derives from the node version as well as the ``consume.v1.`` ones.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.dev-signed-in-read-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.dev-signed-in-read-requested.v1, operation: DESCRIBE}
+      - {resource_type: GROUP, pattern: PREFIXED, name: local.omnimarket.node_dev_signed_in_read_effect.consume., operation: READ}
+      - {resource_type: GROUP, pattern: PREFIXED, name: local.omnimarket.node_dev_signed_in_read_effect.consume., operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-signed-in-read-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-signed-in-read-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-signed-in-read-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dev-signed-in-read-failed.v1, operation: DESCRIBE}
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: dev-signed-in-read.run
+      message_category: command
+      handler:
+        name: HandlerDevSignedInRead
+        module: omnimarket.nodes.node_dev_signed_in_read_effect.handlers.handler_dev_signed_in_read
+      event_model:
+        name: ModelDevSignedInReadCommand
+        module: omnimarket.nodes.node_dev_signed_in_read_effect.models.model_dev_signed_in_read
+      event_type: omnimarket.dev-signed-in-read-requested
+      description: Sign the dev probe user in and read one declared route.
 
 externally_consumed_topics:
   - onex.evt.omnimarket.dev-signed-in-read-completed.v1
