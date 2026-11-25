@@ -265,7 +265,7 @@ requirements:
     statement: An accepted-binding evidence item that runs a test names it in a test_passes check, so the repo binds-every-criterion test finds the test file.
     acceptance:
       - id: AC134
-        statement: 'AC134: the accepted bindings of OMN-22621 AC1 and OMN-22623 AC2 use check_type test_passes, every repo contract binds every criterion, and no command check hides a pytest run behind uv run --frozen -- falsifier: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -n 0 -p no:randomly -k "every_repo_contract_binds_every_criterion or hides_a_pytest_run"'
+        statement: 'AC134: the accepted bindings of OMN-22621 AC1 and OMN-22623 AC2 use check_type test_passes, every repo contract binds every criterion, and no command check hides a pytest run behind uv run --frozen -- falsifier: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -n 0 -p no:randomly -k "every_repo_contract_binds_every_criterion or hides_a_pytest_run or accepted_pytest_bindings"'
 evidence_requirements:
   - kind: tests
     description: Recorded gate subject spellings and named causes run through the production ledger parser and contract handler.
@@ -1012,5 +1012,5 @@ dod_evidence:
     binds_ac: [AC134]
     checks:
       - check_type: test_passes
-        check_value: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -n 0 -p no:randomly -k "every_repo_contract_binds_every_criterion or hides_a_pytest_run"
+        check_value: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -n 0 -p no:randomly -k "every_repo_contract_binds_every_criterion or hides_a_pytest_run or accepted_pytest_bindings"
         cwd: .
