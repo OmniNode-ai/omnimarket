@@ -1,0 +1,17 @@
+{
+ "aaf1652192e12c15e83d693b079985aec4e41e93": [
+  "contracts/OMN-21787.yaml"
+ ],
+ "b21fd5d9b53e5954a396a887171e2f5db89aedc7": [
+  "contracts/OMN-21735.yaml"
+ ],
+ "d66f9e22f8941ef3b53425126c6f4b6d0fb58b97": [
+  "contracts/OMN-21694.yaml"
+ ],
+ "cf6fd12a57d3f86aac6b402809062dfc946b090a": [
+  "contracts/OMN-21632.yaml"
+ ],
+ "5bf30a3f5258f3e797bd86d05a5847dca9efcc82": [
+  "CHANGELOG.md"
+ ]
+}

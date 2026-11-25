@@ -342,10 +342,52 @@ jobs:
             echo "hold=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # Arming is not a gate: an armed pull request merges itself at green and bypasses every
+      # check that runs after it. This step asks the proof gate node, at the live head, whether the
+      # pull request carries a lab proof for the change that would merge (a Lab line naming the head,
+      # or a commit with the head's patch id). Only the answer PROVEN arms it; DRAFT, an unreadable
+      # proof or any failure here leaves it unarmed, and the landing controller decides what next.
+      # The workflow has no ledger to read, so the answer says the ledger was not checked: a hold or
+      # do-not-land message is the landing controller's to read, and the hold gate above still applies.
+      - name: Check the lab proof at the exact head
+        id: proof_gate
+        if: steps.resolve.outputs.skip != 'true' && steps.hold_gate.outputs.hold == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ steps.resolve.outputs.pr }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          work="${RUNNER_TEMP:-$(mktemp -d)}"
+          unproven() {
+            echo "::warning::PR #${PR} is not armed: $1"
+            echo "proven=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+          view="$(gh pr view "$PR" --repo "$REPO" --json headRefOid,baseRefName)" || unproven "the head could not be read"
+          head="$(printf '%s' "$view" | jq -r '.headRefOid')"
+          base="$(printf '%s' "$view" | jq -r '.baseRefName')"
+          text="$(gh pr view "$PR" --repo "$REPO" --json body,comments --jq '{body: .body, comments: [.comments[].body]}')" || unproven "the pull request text could not be read"
+          files="$(gh api "repos/${REPO}/pulls/${PR}/files" --paginate --jq '.[].filename' | jq -R -s 'split("\n") | map(select(length > 0))')" || unproven "the changed files could not be read"
+          jq -n --argjson text "$text" --argjson files "$files" '$text + {files: $files}' > "${work}/pr_text.json"
+          if ! python3 -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('pydantic') else 1)"; then
+            python3 -m pip install --quiet "pydantic>=2"
+          fi
+          answer="$(PYTHONPATH=src python3 -m omnimarket.nodes.node_landing_proof_gate_compute \
+            --repo "${REPO#*/}" --number "$PR" --base "$base" --head "$head" \
+            --pr-text-file "${work}/pr_text.json" --no-ledger --clone . || true)"
+          echo "proof gate for PR #${PR} at ${head}: ${answer}"
+          verdict="$(printf '%s' "$answer" | jq -r '.answer // "DRAFT"')" || verdict="DRAFT"
+          if [ "$verdict" = "PROVEN" ]; then
+            echo "proven=true" >> "$GITHUB_OUTPUT"
+          else
+            unproven "the proof gate answered ${verdict} at ${head}"
+          fi
+
       # OMN-19032: feature-base stacks must never be armed by this workflow.
       # Read the base immediately before arming on every triggering path.
       - name: Refuse feature-base auto-merge
-        if: steps.resolve.outputs.skip != 'true' && steps.hold_gate.outputs.hold == 'false'
+        if: steps.resolve.outputs.skip != 'true' && steps.hold_gate.outputs.hold == 'false' && steps.proof_gate.outputs.proven == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR: ${{ steps.resolve.outputs.pr }}
@@ -367,7 +409,7 @@ jobs:
           esac
 
       - name: Enable auto-merge
-        if: steps.resolve.outputs.skip != 'true' && steps.hold_gate.outputs.hold == 'false'
+        if: steps.resolve.outputs.skip != 'true' && steps.hold_gate.outputs.hold == 'false' && steps.proof_gate.outputs.proven == 'true'
         env:
           # OMN-16081: CROSS_REPO_PAT, not GITHUB_TOKEN -- see header comment.
           # GITHUB_TOKEN-armed auto-merge completions are attributed to
@@ -407,8 +449,14 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           PR: ${{ steps.resolve.outputs.pr }}
+          PROVEN: ${{ steps.proof_gate.outputs.proven }}
         run: |
           set -euo pipefail
+          # Enqueueing arms the pull request as much as the Enable step does: only the proof gate's PROVEN lets it run.
+          if [ "$PROVEN" != "true" ]; then
+            echo "PR #${PR} is not enqueued: the proof gate did not answer PROVEN."
+            exit 0
+          fi
           OWNER="${GH_REPO%/*}"
           NAME="${GH_REPO#*/}"
 

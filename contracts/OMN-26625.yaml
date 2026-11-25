@@ -1,0 +1,63 @@
+schema_version: 1.0.0
+ticket_id: OMN-26625
+title: omnimarket test fixtures that only feed a file ledger move to the in-memory bus fixture, in batches of at most 25 files
+summary: The omnimarket census files that are test fixtures only feeding a file ledger move onto the in-memory ledger row reader the context source tests already use, at most 25 files per pull request, and the census ratchet is lowered in the same pull request.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26625-tests-off-the-file-ledger
+  statement: A test whose ledger file only feeds a reader reads the same rows from the in-memory reader, and the census ratchet drops by the files moved.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the census count for omnimarket drops by the number of fixture files moved, and the per-kind counts of the 94 non-runtime files are reported -- falsifier: the census node run with --per-file prints the same omnimarket count before and after the change'
+  - id: AC2
+    statement: 'AC2: the ratchet is lowered in the same pull request with the census node --lower, and no row is raised or added -- falsifier: git diff origin/dev on the ratchet file shows a raised or added line, or the census run exits non-zero'
+  - id: AC3
+    statement: 'AC3: a pull request moves at most 25 files, and every moved fixture test stays green on the in-memory reader -- falsifier: git diff --name-only origin/dev lists more than 25 test files, or the moved test file fails'
+  - id: AC4
+    statement: 'AC4: integrated: on a lab host the census node run with --packaged-overlay --record reads back a lower omnimarket count after the pull request than before -- falsifier: the recorded run prints an omnimarket count equal to or above the count recorded before the change'
+evidence_requirements:
+- kind: tests
+  description: The moved test file passes on the in-memory reader.
+  command: uv run pytest tests/unit/nodes/node_context_source_work_state_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26625-census-count
+  description: The census over this tree passes against the lowered ratchet, with state ok and the omnimarket count equal to its ratchet row (105, below the 106 recorded before the change). This is the hosted reading of AC4; the lab-host reading is the unbound local_done_gate item below and the PR's Lab line.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC4
+  checks:
+  - check_type: command
+    check_value: ONEX_LEDGER_CENSUS_ROOT="$(dirname "$PWD")" uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --packaged-overlay --repos omnimarket --directory "omnimarket=$PWD" --per-file | grep -q 'CENSUS omnimarket counted state=ok files=105 ' && uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_all_repositories_census.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26625-moved-tests-green
+  description: The moved test file passes on the in-memory reader.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: "grep -qE '^  omnimarket: 105$' src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml && uv run pytest tests/unit/nodes/node_context_source_work_state_effect -q --no-cov -n 0 -p no:randomly"
+    cwd: .
+- id: dod-omn26625-hosted-deploy-check
+  description: 'Deploy check the hosted runner can run: the census node module is packaged and the ratchet file is present. This binds no criterion by itself.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: test -f src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml
+    cwd: .
+- id: dod-omn26625-integration-proof
+  description: On a lab host the census node run with --packaged-overlay --record over this branch reads back an omnimarket count below the count recorded before the change. Hosted CI holds no lab host, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26625 --kind test -- uv run --frozen pytest tests/unit/nodes/node_context_source_work_state_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .

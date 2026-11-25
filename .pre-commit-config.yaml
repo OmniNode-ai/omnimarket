@@ -24,6 +24,15 @@
 repos:
   - repo: local
     hooks:
+      # OMN-26638: no store address, port, database, key prefix or implementation kind is written into the settings-store
+      # surface of source or contracts; the wiring gives every value. The CI gate is tests/settings_store/test_no_reader_backend_choice.py.
+      - id: settings-store-address-check
+        name: Settings store surface holds no address, port, prefix or kind (OMN-26638)
+        entry: uv run --frozen python -m omnimarket.handlers.overlay_store.store_address_check
+        language: system
+        files: ^(src/omnimarket/handlers/(overlay_store/.*|floor_fill_scheduled_tick\.py)|src/omnimarket/nodes/(node_floor_fill_scheduled_effect|node_host_table_keys_ingest_effect)/.*)$
+        pass_filenames: false
+        stages: [pre-commit]
       - id: github-webhook-http
         name: GitHub webhook runtime HTTP boundary
         entry: uv run --frozen pytest tests/nodes/node_github_webhook_ingress_effect/test_http_ingress.py tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov

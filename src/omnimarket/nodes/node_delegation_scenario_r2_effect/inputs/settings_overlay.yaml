@@ -15,6 +15,9 @@ settings:
   # fails). The first server's address is the existing name LLM_CODER_URL. LLM_CODER_FAST_URL names a server that was retired (its
   # card went for repair), so the second server is the other lab host that serves the same model; its address is the setting
   # LLM_CODER_PC2_URL, held with the others in the host's environment file or the secret store, never in this repository.
+  # The two settings below are the fallback pins. The run adds the lab's local servers that answer now, least busy first
+  # (the same declared local tier the product routes through, read at run time), and uses a pin only for a slot that tier
+  # leaves unfilled, so a host that stops serving the model drops out with no settings change.
   - {env: ONEX_SCENARIO_R2_LOCAL_FIRST, template: "{LLM_CODER_URL}|Qwen3.8-27B"}
   - {env: ONEX_SCENARIO_R2_LOCAL_SECOND, template: "{LLM_CODER_PC2_URL}|Qwen3.8-27B"}
   # A base URL nothing listens on (the discard port): the refusal leg's address.

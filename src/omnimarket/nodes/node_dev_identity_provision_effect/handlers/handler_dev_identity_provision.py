@@ -5,6 +5,11 @@
 The tenant is created by the runtime's tenant provision command, asked over the bus through the tenant provisioner
 seam; no separate HTTP API is called. The tenant is ownerless: the runtime's owner path does not exist yet.
 
+With a ``tenant_id`` on the command (OMN-26476) the run binds the user to that EXISTING tenant instead: it reads the tenant
+through the tenant reader seam (the runtime's tenant read command), never asks for a new tenant, sets the user's tenant
+attributes, signs in and reads the audience and tenant claims back out of the token it got. Every attribute, claim and
+audience name comes from the contract's ``tenant_binding`` block.
+
 The password value moves only between the key generator and the Keycloak calls; it is never printed, logged, serialized
 or returned. The result carries names and ids only. The dev-only guard refuses, before any secret read or HTTP call,
 when the lane or realm is not the one the contract declares.
@@ -22,6 +27,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import yaml
 from pydantic import SecretStr
@@ -33,14 +39,21 @@ from omnimarket.models.model_dev_identity_http import (
 from omnimarket.models.secret_store.model_secret_store_result import (
     EnumSecretStoreOutcome,
 )
+from omnimarket.nodes.node_dev_identity_provision_effect.handlers.token_claims import (
+    read_token_claims,
+)
 from omnimarket.nodes.node_dev_identity_provision_effect.models.model_dev_identity_provision import (
     EnumDevIdentityCleanup,
     EnumDevIdentityOutcome,
     ModelDevIdentityProvisionCommand,
     ModelDevIdentityProvisionResult,
 )
+from omnimarket.nodes.node_dev_identity_provision_effect.models.model_tenant_binding import (
+    ModelTenantBinding,
+)
 from omnimarket.nodes.node_dev_identity_provision_effect.models.model_tenant_provision_wire import (
     ModelTenantProvisionRequest,
+    ModelTenantReadRequest,
 )
 from omnimarket.nodes.node_dev_identity_provision_effect.overlay import (
     ModelDevIdentityProvisionOverlay,
@@ -49,6 +62,7 @@ from omnimarket.nodes.node_dev_identity_provision_effect.protocols.protocol_dev_
     ProtocolDevIdentityTransport,
     ProtocolKeyGenerator,
     ProtocolTenantProvisioner,
+    ProtocolTenantReader,
     TenantProvisionUnavailableError,
 )
 
@@ -67,6 +81,7 @@ _OK_OUTCOMES = frozenset(
         EnumDevIdentityOutcome.USER_FOUND,
         EnumDevIdentityOutcome.USER_ABSENT,
         EnumDevIdentityOutcome.USER_DELETED,
+        EnumDevIdentityOutcome.BOUND,
     }
 )
 
@@ -74,6 +89,14 @@ _OK_OUTCOMES = frozenset(
 def _tenant_slug(username: str) -> str:
     """A DNS-label form of the username; the runtime's slug rule decides whether it is a usable slug."""
     return _SLUG_UNSAFE.sub("-", username.lower()).strip("-")
+
+
+@dataclass(frozen=True)
+class _BoundTenant:
+    """The existing tenant a bind run attaches the user to, as the runtime's read answered it."""
+
+    tenant_id: UUID
+    tenant_slug: str
 
 
 class _UserLookupFailedError(Exception):
@@ -117,6 +140,8 @@ class HandlerDevIdentityProvision:
         settings_store: ProtocolSettingStore,
         key_generator: ProtocolKeyGenerator,
         tenant_provisioner: ProtocolTenantProvisioner,
+        tenant_reader: ProtocolTenantReader | None = None,
+        tenant_binding: ModelTenantBinding | None = None,
         contract_path: Path | None = None,
     ) -> None:
         self._overlay = overlay
@@ -124,6 +149,8 @@ class HandlerDevIdentityProvision:
         self._settings_store = settings_store
         self._key_generator = key_generator
         self._tenant_provisioner = tenant_provisioner
+        self._tenant_reader = tenant_reader
+        self._tenant_binding = tenant_binding
         self._contract_path = contract_path
 
     def _result(
@@ -137,6 +164,8 @@ class HandlerDevIdentityProvision:
         user_id: str | None = None,
         cleanup: EnumDevIdentityCleanup | None = None,
         expected_secret: str | None = None,
+        token_audience: str | None = None,
+        claims_verified: list[str] | None = None,
     ) -> ModelDevIdentityProvisionResult:
         ok = outcome in _OK_OUTCOMES
         logger.info(
@@ -158,6 +187,8 @@ class HandlerDevIdentityProvision:
             user_id=user_id,
             cleanup=cleanup,
             expected_secret=expected_secret,
+            token_audience=token_audience,
+            claims_verified=claims_verified,
         )
 
     def _dev_guard(
@@ -214,6 +245,19 @@ class HandlerDevIdentityProvision:
                     user_name=user.username,
                 )
 
+        bind: tuple[ModelTenantBinding, ProtocolTenantReader] | None = None
+        if command.tenant_id is not None:
+            if self._tenant_binding is None or self._tenant_reader is None:
+                return self._result(
+                    EnumDevIdentityOutcome.TENANT_BINDING_UNCONFIGURED,
+                    detail=(
+                        "binding a user to an existing tenant needs the contract's tenant_binding block and a "
+                        "tenant reader; nothing was read or sent"
+                    ),
+                    user_name=user.username,
+                )
+            bind = (self._tenant_binding, self._tenant_reader)
+
         admin_secret = await self._settings_store.read(
             admin.secret_folder, admin.secret_key
         )
@@ -228,6 +272,16 @@ class HandlerDevIdentityProvision:
                 EnumDevIdentityOutcome.READY,
                 detail="the admin credential is present; the probe verb wrote nothing and called nothing",
             )
+
+        # An unknown or inactive tenant is refused here, before the Keycloak admin token and any user write.
+        bound_tenant: _BoundTenant | None = None
+        if bind is not None and command.tenant_id is not None:
+            read = await self._read_tenant(
+                bind[1], bind[0], command.tenant_id, user.username
+            )
+            if isinstance(read, ModelDevIdentityProvisionResult):
+                return read
+            bound_tenant = read
 
         token_url = f"{kc.base_url}{kc.token_path_template.format(realm=kc.realm)}"
         admin_token = await self._admin_bearer(token_url, admin_secret)
@@ -291,7 +345,18 @@ class HandlerDevIdentityProvision:
         # Only a user this run created is this run's to delete; an existing user (reset_existing) never is.
         created_id = user_id if found is None else None
         try:
-            result = await self._sign_in_and_provision(token_url, user, password)
+            if bind is not None and bound_tenant is not None:
+                result = await self._bind_and_verify(
+                    bind[0],
+                    admin_token,
+                    token_url,
+                    user,
+                    user_id,
+                    password,
+                    bound_tenant,
+                )
+            else:
+                result = await self._sign_in_and_provision(token_url, user, password)
         except BaseException:
             if created_id is not None and not self._is_protected(user.username):
                 await self._delete_after_exception(
@@ -308,19 +373,9 @@ class HandlerDevIdentityProvision:
         password: SecretStr,
     ) -> ModelDevIdentityProvisionResult:
         """Sign in as the user and ask the runtime for the probe tenant; every failure is a typed result."""
-        user_token = await self._user_token(token_url, user, password)
-        if user_token is None:
-            return self._result(
-                EnumDevIdentityOutcome.USER_TOKEN_REFUSED,
-                detail="the Keycloak password grant refused the dev user",
-                user_name=user.username,
-            )
-        if isinstance(user_token, str):
-            return self._result(
-                EnumDevIdentityOutcome.KEYCLOAK_UNREACHABLE,
-                detail=user_token,
-                user_name=user.username,
-            )
+        user_token = await self._sign_in(token_url, user, password)
+        if isinstance(user_token, ModelDevIdentityProvisionResult):
+            return user_token
 
         request = ModelTenantProvisionRequest(
             command_id=uuid.uuid5(_TENANT_COMMAND_NAMESPACE, user.tenant_slug),
@@ -354,6 +409,155 @@ class HandlerDevIdentityProvision:
             tenant_id=answer.tenant_id,
             tenant_slug=answer.tenant_slug,
         )
+
+    async def _sign_in(
+        self, token_url: str, user: _Identity, password: SecretStr
+    ) -> SecretStr | ModelDevIdentityProvisionResult:
+        """The user's access token from the password grant, or the typed result that says why there is none."""
+        user_token = await self._user_token(token_url, user, password)
+        if user_token is None:
+            return self._result(
+                EnumDevIdentityOutcome.USER_TOKEN_REFUSED,
+                detail="the Keycloak password grant refused the dev user",
+                user_name=user.username,
+            )
+        if isinstance(user_token, str):
+            return self._result(
+                EnumDevIdentityOutcome.KEYCLOAK_UNREACHABLE,
+                detail=user_token,
+                user_name=user.username,
+            )
+        return SecretStr(user_token.get_secret_value())
+
+    async def _read_tenant(
+        self,
+        reader: ProtocolTenantReader,
+        binding: ModelTenantBinding,
+        tenant_id: UUID,
+        username: str,
+    ) -> _BoundTenant | ModelDevIdentityProvisionResult:
+        """Read the existing tenant over the runtime's read command; every refusal is a typed result."""
+        try:
+            answer = await reader.read(
+                ModelTenantReadRequest(command_id=uuid.uuid4(), tenant_id=tenant_id)
+            )
+        except TenantProvisionUnavailableError as exc:
+            return self._result(
+                EnumDevIdentityOutcome.RUNTIME_UNREACHABLE,
+                detail=str(exc),
+                user_name=username,
+            )
+        if answer.outcome == "not_found":
+            return self._result(
+                EnumDevIdentityOutcome.TENANT_NOT_FOUND,
+                detail=f"the runtime knows no tenant {tenant_id}; no user was made",
+                user_name=username,
+            )
+        if answer.outcome != "found":
+            return self._result(
+                EnumDevIdentityOutcome.PROVISION_REFUSED,
+                detail=f"the runtime answered {answer.outcome} to the tenant read: {answer.detail}",
+                user_name=username,
+            )
+        if answer.tenant_id != str(tenant_id) or not answer.tenant_slug:
+            return self._result(
+                EnumDevIdentityOutcome.PROVISION_RESPONSE_INVALID,
+                detail="the runtime's read answer names another tenant id or no tenant_slug",
+                user_name=username,
+            )
+        if answer.provisioning_state != binding.required_provisioning_state:
+            return self._result(
+                EnumDevIdentityOutcome.TENANT_NOT_ACTIVE,
+                detail=(
+                    f"tenant {tenant_id} is in state {answer.provisioning_state!r}, not "
+                    f"{binding.required_provisioning_state!r}; no user was made"
+                ),
+                user_name=username,
+            )
+        return _BoundTenant(tenant_id=tenant_id, tenant_slug=answer.tenant_slug)
+
+    async def _bind_and_verify(
+        self,
+        binding: ModelTenantBinding,
+        admin_token: SecretStr,
+        token_url: str,
+        user: _Identity,
+        user_id: str,
+        password: SecretStr,
+        tenant: _BoundTenant,
+    ) -> ModelDevIdentityProvisionResult:
+        """Set the user's tenant attributes, sign in, and read the audience and tenant claims back out of the token."""
+        attributes = {
+            binding.tenant_id_attribute: [str(tenant.tenant_id)],
+            binding.tenant_slug_attribute: [tenant.tenant_slug],
+        }
+        if not await self._set_user_attributes(admin_token, user_id, attributes):
+            return self._result(
+                EnumDevIdentityOutcome.USER_ATTRIBUTES_FAILED,
+                detail="Keycloak refused to read or update the dev user's attributes",
+                user_name=user.username,
+            )
+        user_token = await self._sign_in(token_url, user, password)
+        if isinstance(user_token, ModelDevIdentityProvisionResult):
+            return user_token
+        claims = read_token_claims(user_token.get_secret_value())
+        verified = ["aud", binding.tenant_id_claim, binding.tenant_slug_claim]
+        failing = _failing_claims(claims, binding, tenant)
+        if failing:
+            return self._result(
+                EnumDevIdentityOutcome.TOKEN_CLAIMS_MISMATCH,
+                detail=(
+                    "the signed-in token does not carry what the inference-credentials route checks; "
+                    f"missing or different: {', '.join(failing)}"
+                ),
+                user_name=user.username,
+            )
+        return self._result(
+            EnumDevIdentityOutcome.BOUND,
+            detail=(
+                "the dev user is bound to the existing tenant; its token carries the declared audience and "
+                "both tenant claims"
+            ),
+            user_name=user.username,
+            tenant_id=str(tenant.tenant_id),
+            tenant_slug=tenant.tenant_slug,
+            token_audience=binding.audience,
+            claims_verified=verified,
+        )
+
+    async def _set_user_attributes(
+        self, admin_token: SecretStr, user_id: str, attributes: dict[str, list[str]]
+    ) -> bool:
+        """Merge ``attributes`` into the user's own and write the user back; True only on a 2xx update."""
+        kc = self._overlay.keycloak
+        user_url = f"{kc.base_url}{kc.admin_users_path_template.format(realm=kc.realm)}/{user_id}"
+        current = await self._send(
+            ModelIdentityHttpRequest(
+                method="GET",
+                url=user_url,
+                bearer=admin_token,
+                timeout_seconds=kc.timeout_seconds,
+            )
+        )
+        if (
+            isinstance(current, str)
+            or current.status != 200
+            or not isinstance(current.json_body, dict)
+        ):
+            return False
+        held = current.json_body.get("attributes")
+        merged: dict[str, Any] = dict(held) if isinstance(held, dict) else {}
+        merged.update(attributes)
+        update = await self._send(
+            ModelIdentityHttpRequest(
+                method="PUT",
+                url=user_url,
+                bearer=admin_token,
+                json_body={**current.json_body, "attributes": merged},
+                timeout_seconds=kc.timeout_seconds,
+            )
+        )
+        return not isinstance(update, str) and update.status in (200, 204)
 
     async def _admin_bearer(
         self, token_url: str, admin_secret: SecretStr
@@ -701,6 +905,24 @@ class HandlerDevIdentityProvision:
         if not isinstance(access_token, str):
             return None
         return SecretStr(access_token)
+
+
+def _failing_claims(
+    claims: dict[str, Any] | None, binding: ModelTenantBinding, tenant: _BoundTenant
+) -> list[str]:
+    """The names of the claims the route would reject: the audience and the two tenant claims, by name only."""
+    if claims is None:
+        return ["aud", binding.tenant_id_claim, binding.tenant_slug_claim]
+    failing: list[str] = []
+    audience = claims.get("aud")
+    held = [audience] if isinstance(audience, str) else audience
+    if not isinstance(held, list) or binding.audience not in held:
+        failing.append("aud")
+    if claims.get(binding.tenant_id_claim) != str(tenant.tenant_id):
+        failing.append(binding.tenant_id_claim)
+    if claims.get(binding.tenant_slug_claim) != tenant.tenant_slug:
+        failing.append(binding.tenant_slug_claim)
+    return failing
 
 
 __all__ = ["HandlerDevIdentityProvision"]
