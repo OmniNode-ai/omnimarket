@@ -365,6 +365,12 @@ class ModelTuiActivity(BaseModel):
     verb_seconds: float = Field(gt=0)
     #: ``{frame}``, ``{verb}`` and ``{seconds}`` are filled in.
     line: str = Field(min_length=1)
+    #: The task's path drawn after the line, a dot travelling it; ``{model}``
+    #: is the model tried first, or ``flow_auto`` when Auto picks.
+    flow: tuple[str, ...] = ()
+    flow_auto: str = "best model"
+    #: Steps between two stops of the flow, the arrow included.
+    flow_gap: int = Field(default=6, ge=2)
 
 
 class ModelTuiHeader(BaseModel):
@@ -461,8 +467,6 @@ class ModelTuiIcon(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    #: The Lucide icon this one matches, by name (a terminal cannot draw Lucide).
-    lucide: str = Field(min_length=1)
     nerd: str = Field(min_length=1)
     fallback: str = Field(min_length=1)
     ascii: str = Field(min_length=1)

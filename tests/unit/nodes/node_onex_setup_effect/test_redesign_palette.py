@@ -162,7 +162,7 @@ def test_icons_default_to_unicode_and_switch_to_nerd_and_ascii(
     assert names
     for name in names:
         spec = design.icons.glyphs[name]
-        for form in (spec.fallback, spec.nerd, spec.ascii, spec.lucide):
+        for form in (spec.fallback, spec.nerd, spec.ascii):
             assert form, name
         assert cli_tui.icon(name) == spec.fallback  # default: Unicode, not Nerd
         assert spec.ascii.isascii()

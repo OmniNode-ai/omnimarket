@@ -148,6 +148,10 @@ activity:
   verbs: ["Delegating", "Working", "Thinking", "Reasoning", "Composing"]
   verb_seconds: 3
   line: "{frame} {verb}… {seconds}s · esc to cancel"
+  # The task's path, with a dot travelling it while the task runs.
+  flow: ["Your task", "ONEX", "{model}"]
+  flow_auto: "best model"
+  flow_gap: 6
 # A Done or Failed pop-up after an action stays this long.
 toast_seconds: 6
 # A test's failure reason is cut to this many characters on screen.
@@ -651,64 +655,52 @@ themes:
     route_fallback: "#8a6a00"
 
 # Icons (OMN-26620 AC6): Unicode symbols by default, Nerd Font glyphs only when
-# mode is nerd, plain ASCII when mode is ascii. Each icon carries all three, and
-# the Lucide icon it matches where one exists (terminals cannot draw Lucide).
+# mode is nerd, plain ASCII when mode is ascii. Each icon carries all three.
 icons:
   mode: plain
   enabled: false
   glyphs:
     ask:
-      lucide: command
       nerd: "\uf120"
-      fallback: "⌘"
+      fallback: "❯"
       ascii: ">"
     answer:
-      lucide: sparkles
       nerd: "\uf005"
-      fallback: "✦"
+      fallback: "◆"
       ascii: "*"
     done:
-      lucide: check
       nerd: "\uf00c"
       fallback: "✓"
       ascii: "v"
     task:
-      lucide: chevron-right
       nerd: "\uf054"
       fallback: "›"
       ascii: ">"
     cmd_config:
-      lucide: settings
       nerd: "\uf013"
       fallback: "⚙"
       ascii: "*"
     cmd_model:
-      lucide: cpu
       nerd: "\uf2db"
       fallback: "◈"
       ascii: "+"
     cmd_delegation:
-      lucide: arrow-left-right
       nerd: "\uf0ec"
       fallback: "⇄"
       ascii: "<>"
     cmd_dashboard:
-      lucide: layout-dashboard
       nerd: "\uf0e4"
       fallback: "▦"
       ascii: "#"
     cmd_doctor:
-      lucide: stethoscope
       nerd: "\uf0f1"
       fallback: "✚"
       ascii: "+"
     cmd_theme:
-      lucide: palette
       nerd: "\uf1fc"
       fallback: "◐"
       ascii: "~"
     cmd_metering:
-      lucide: chart-no-axes-column
       nerd: "\uf080"
       fallback: "≋"
       ascii: "="

@@ -21,7 +21,7 @@ import shlex
 import signal
 import time
 from collections import Counter
-from collections.abc import Awaitable, Callable, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from functools import partial
 from pathlib import Path
 from typing import Any, ClassVar, Literal, Protocol, TypeVar, cast
@@ -2969,6 +2969,33 @@ def activity_renderable(frame: str, verb: str, seconds: int) -> Text:
     return text
 
 
+def flow_renderable(tick: int, stops: Sequence[str]) -> Text:
+    """The task's path, ``stop ──●──▶ stop``: the dot moves one step a tick,
+    stop to stop, and each stop it has reached shows in the brand colour."""
+    gap = tui_design().activity.flow_gap
+    legs = max(len(stops) - 1, 1)
+    span = (gap - 1) * legs
+    at = tick % span
+    leg, step = divmod(at, gap - 1)
+    text = Text(no_wrap=True)
+    for index, stop in enumerate(stops):
+        reached = index <= leg
+        text.append(
+            stop,
+            _style("primary", "bold") if reached else _style("foreground", "bold"),
+        )
+        if index == len(stops) - 1:
+            break
+        text.append(" ")
+        for position in range(gap - 1):
+            if index == leg and position == step:
+                text.append("●", _style("accent", "bold"))
+            else:
+                text.append("─", _style("muted"))
+        text.append("▶ ", _style("muted"))
+    return text
+
+
 def answer_renderable(markdown_text: str) -> Table:
     """An answer: its own icon in the margin, the text beside it."""
     grid = Table.grid(expand=True, padding=(0, 1))
@@ -3313,7 +3340,7 @@ class OnexTui(App[int]):
     #promptmark { width: 2; color: $primary; text-style: bold; }
     #prompt { border: none; height: 1; padding: 0; background: $background; }
     #status { height: 1; padding: 0 1; background: $panel; color: $text-muted; }
-    #activity { height: 1; padding: 0 1; display: none; }
+    #activity { height: 1; padding: 0 2; margin-top: 1; display: none; }
     """
     BINDINGS = [
         Binding("ctrl+c", "interrupt", "Cancel or quit", priority=True),
@@ -3702,11 +3729,12 @@ class OnexTui(App[int]):
             self._render_status()
 
     def _fit_log(self) -> None:
-        """Leave one row under a full log for the live line while it shows."""
+        """Leave two rows under a full log while the live line shows: the blank
+        row above it and the line itself."""
         main = self._main()
         live = main.query_one("#activity", Static).display
         main.query_one("#output", OutputPane).styles.max_height = (
-            max(1, main.query_one("#conversation").content_region.height - 1)
+            max(1, main.query_one("#conversation").content_region.height - 2)
             if live
             else "100%"
         )
@@ -3802,9 +3830,17 @@ class OnexTui(App[int]):
         verb = activity.verbs[
             int(elapsed / activity.verb_seconds) % len(activity.verbs)
         ]
-        self._main().query_one("#activity", Static).update(
-            activity_renderable(frame, verb, int(elapsed))
-        )
+        line = activity_renderable(frame, verb, int(elapsed))
+        if activity.flow:
+            read = self._status.model if self._status_read else None
+            model = read or activity.flow_auto
+            stops = [stop.format(model=model) for stop in activity.flow]
+            flow = flow_renderable(int(elapsed / activity.frame_seconds), stops)
+            # Only when it fits: a narrow window keeps the line on one row.
+            if len(line) + 3 + len(flow) <= self.size.width - 4:
+                line.append("   ")
+                line.append_text(flow)
+        self._main().query_one("#activity", Static).update(line)
 
     async def action_show_help(self) -> None:
         await self._shortcut("help")
