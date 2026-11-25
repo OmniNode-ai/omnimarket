@@ -15,6 +15,7 @@ class EnumAgentMessageRefusal(StrEnum):
     UNKNOWN_KIND = "unknown_kind"
     BAD_SINCE = "bad_since"
     BAD_LIMIT = "bad_limit"
+    SENDER_MISMATCH = "sender_mismatch"
     UNDECLARED_BROKER = "undeclared_broker"
     BROKER_REFUSED = "broker_refused"
     NODE_UNAVAILABLE = "node_unavailable"
@@ -29,6 +30,7 @@ REFUSAL_EXIT_CODES: dict[EnumAgentMessageRefusal, int] = {
     EnumAgentMessageRefusal.UNKNOWN_KIND: 2,
     EnumAgentMessageRefusal.BAD_SINCE: 2,
     EnumAgentMessageRefusal.BAD_LIMIT: 2,
+    EnumAgentMessageRefusal.SENDER_MISMATCH: 2,
     EnumAgentMessageRefusal.UNDECLARED_BROKER: 3,
     EnumAgentMessageRefusal.BROKER_REFUSED: 3,
     EnumAgentMessageRefusal.NODE_UNAVAILABLE: 3,

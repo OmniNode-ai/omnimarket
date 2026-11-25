@@ -62,6 +62,24 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/integration/test_agent_message_sender_proof_roundtrip.py -q --no-cov -n 0 -p no:randomly -k registered_login
     cwd: .
+- id: dod-omn26644-login-binding-forged
+  description: A forged --from on the command line and a forged sender on the MCP tool are refused with sender_mismatch when the declared sender's registered principal differs from the broker login that is sending, and nothing is published; the test fails on a client or node that signs for the forged sender.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/cli/test_agent_message_login_binding.py -q --no-cov -n 0 -p no:randomly -k "forged"
+    cwd: .
+- id: dod-omn26644-login-binding-honest-and-forged
+  description: The honest sender is accepted and the forged sender is refused, on both the command line and the MCP tool, and a login that declares no principal is not compared. The whole login-binding test file, so the test fails when either direction is wrong.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/cli/test_agent_message_login_binding.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn26644-contract-declared
   description: The topic node's contract.yaml declares the typed message, its fields and its refusal reasons, equal to the model and the enum. This binds no criterion by itself.
   source: manual

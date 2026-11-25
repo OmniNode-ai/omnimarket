@@ -17,6 +17,8 @@ from typing import Any
 import pytest
 import yaml
 
+from tests.ci.lint_jobs import lint_steps
+
 pytestmark = pytest.mark.unit
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -42,7 +44,7 @@ def _lint_steps() -> list[dict[str, Any]]:
     workflow = yaml.safe_load(
         (_ROOT / ".github" / "workflows" / "ci.yml").read_text("utf-8")
     )
-    steps: list[dict[str, Any]] = workflow["jobs"]["lint"]["steps"]
+    steps: list[dict[str, Any]] = lint_steps(workflow)
     return steps
 
 

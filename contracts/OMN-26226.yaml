@@ -73,12 +73,12 @@ dod_evidence:
         check_value: uv run pytest -q tests/unit/nodes/node_onex_setup_effect/test_dashboard_no_tenant_id_shown.py
         cwd: .
   - id: dod-omn26226-ac5
-    description: Start URL with token redirects without it and sets the cookie.
+    description: Start URL with token redirects without it and sets the HttpOnly cookie; a read with a wrong or missing token is still refused.
     source: manual
     binds_ac: [AC5]
     checks:
       - check_type: test_passes
-        check_value: uv run pytest -q tests/unit/nodes/node_local_dashboard_serve_effect/test_start_url_redirect_strips_token.py
+        check_value: uv run pytest -q tests/unit/nodes/node_local_dashboard_serve_effect/test_start_url_redirect_strips_token.py tests/unit/nodes/node_local_dashboard_serve_effect/test_start_url_cookie_and_refusal_omn26226.py
         cwd: .
   - id: dod-omn26226-command-output
     description: The foreground onex dashboard command output (the serve path of cli_local.dashboard_command, handler stubbed) shows no session token and no tenant id.

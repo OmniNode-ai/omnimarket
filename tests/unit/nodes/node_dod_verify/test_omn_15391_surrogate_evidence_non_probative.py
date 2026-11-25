@@ -377,6 +377,11 @@ def _stub_exit_zero(monkeypatch: pytest.MonkeyPatch) -> None:
         return _Completed()
 
     monkeypatch.setattr(evidence_collector.subprocess, "run", _run)
+    # Check commands run through the process-group runner (OMN-25856), which
+    # starts its own process, so it is stubbed at its own seam.
+    monkeypatch.setattr(
+        evidence_collector, "_run_in_process_group", lambda *_a, **_k: _Completed()
+    )
     # The OMN-14207 live-PR-state legs reach GitHub through their own effect
     # handler, not through the collector's subprocess. Stub them GREEN — the
     # strictly harder case, and the one that matters: a passing live-state leg
@@ -626,7 +631,7 @@ class TestThroughTheRealCollector:
             stderr = "could not resolve to a PullRequest"
 
         monkeypatch.setattr(
-            evidence_collector.subprocess, "run", lambda *_a, **_k: _Failed()
+            evidence_collector, "_run_in_process_group", lambda *_a, **_k: _Failed()
         )
 
         path = tmp_path / "OMN-16667.yaml"
