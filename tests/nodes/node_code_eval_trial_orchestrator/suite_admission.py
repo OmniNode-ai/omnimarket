@@ -36,6 +36,9 @@ from omnimarket.models.code_eval_trial.model_code_eval_reduce_io import (
 from omnimarket.models.code_eval_trial.model_code_eval_run_request import (
     ModelCodeEvalCandidate,
 )
+from omnimarket.models.code_eval_trial.model_code_eval_task_material import (
+    ModelCodeEvalTaskMaterial,
+)
 from omnimarket.models.eval_suite_census.committed_suite import load_committed_suite
 from omnimarket.models.eval_suite_census.model_suite_task import ModelCodeEvalSuiteTask
 from omnimarket.models.model_code_score import ModelCodeScoreOverlay
@@ -93,7 +96,11 @@ def static_refusal(
     return None
 
 
-def verdict_of(overlay: ModelCodeScoreOverlay, send: ModelScoreToSend, material) -> str:  # type: ignore[no-untyped-def]
+def verdict_of(
+    overlay: ModelCodeScoreOverlay,
+    send: ModelScoreToSend,
+    material: ModelCodeEvalTaskMaterial,
+) -> str:
     """The verdict the grader gives one draft; an unscorable verdict reads ``unscorable(<source>)``."""
     request = build_score_request(uuid4(), send, material, overlay)
     result = asyncio.run(HandlerCodeContractScore().handle(request))
