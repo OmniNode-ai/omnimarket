@@ -40,3 +40,35 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22623 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_context_install_confirm_trigger_effect -q --no-cov
     cwd: .
+- id: dod-omn22623-ac1-accepted-20261125t1145z
+  description: "AC1 binding (accepted 2026-11-25T1145Z, proposed by lane=dod-closeout-bind-2026-11-25T1145Z-c3, accepted by lane=dod-closeout-accept-2026-11-25T1145Z-c3). The recorded runtime payload (event_id, rows_upserted, projected) validates and drives HandlerContextInstallConfirmTrigger to REQUEST_READY. Re-run at origin/dev 526156dd8fa9: 1 passed. The model at the parent of 6d47f3afb49f is extra=forbid without projected, so the recorded payload is refused there with projected extra_forbidden."
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac: [AC1]
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest "tests/nodes/node_context_install_confirm_trigger_effect/test_recorded_applied_event_omn22478.py::test_golden_the_recorded_runtime_payload_validates_and_drives_the_trigger" -q --no-cov
+    cwd: .
+- id: dod-omn22623-ac2-accepted-20261125t1145z
+  description: "AC2 binding (accepted 2026-11-25T1145Z, proposed by lane=dod-closeout-bind-2026-11-25T1145Z-c3, accepted by lane=dod-closeout-accept-2026-11-25T1145Z-c3). An unknown key, projected=false and a missing event_id or rows_upserted are each still refused. Re-run at origin/dev 526156dd8fa9: 4 passed, 2 deselected. This is a preservation criterion that predates the change: the pre-change model refused the same payloads, and the check fails if the fix relaxed extra=forbid."
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac: [AC2]
+  checks:
+  - check_type: command
+    check_value: uv run --frozen pytest tests/nodes/node_context_install_confirm_trigger_effect/test_recorded_applied_event_omn22478.py -q --no-cov -k error
+    cwd: .
+context:
+  ac_binding_provenance:
+    dod-omn22623-ac1-accepted-20261125t1145z:
+    - label: AC1
+      criterion_hash: 43407a2dbac0618dda33a08d7555dbd145d674c532d15fe0dc3f442b910da4f6
+      proposed_by: lane=dod-closeout-bind-2026-11-25T1145Z-c3
+      accepted_by: lane=dod-closeout-accept-2026-11-25T1145Z-c3
+      accepted_at: "2026-11-25T12:19:25Z"
+    dod-omn22623-ac2-accepted-20261125t1145z:
+    - label: AC2
+      criterion_hash: 128d94c1156de1217ab427ff8489371729e3e2c57ed56ccdb33c61cc225e8696
+      proposed_by: lane=dod-closeout-bind-2026-11-25T1145Z-c3
+      accepted_by: lane=dod-closeout-accept-2026-11-25T1145Z-c3
+      accepted_at: "2026-11-25T12:19:25Z"

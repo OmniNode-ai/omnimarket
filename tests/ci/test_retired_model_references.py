@@ -10,6 +10,7 @@ import yaml
 from omnimarket.nodes.node_retired_model_reference_check_effect.handlers.handler_retired_model_reference_check import (
     violations,
 )
+from tests.ci.lint_jobs import lint_steps
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -63,7 +64,7 @@ def test_check_runs_in_hook_and_required_ci_lint():
     assert hook["always_run"] is True
     assert hook["pass_filenames"] is False
     ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
-    assert any(command in step.get("run", "") for step in ci["jobs"]["lint"]["steps"])
+    assert any(command in step.get("run", "") for step in lint_steps(ci))
 
 
 def test_cli_refuses_new_reference(tmp_path, monkeypatch):
