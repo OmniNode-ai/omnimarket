@@ -32,7 +32,8 @@ PROBE_NODE_TICK = "omnimarket.nodes.node_delegation_check_probe_effect.runtime_d
 
 #: Every one of the ten checks is probed by this repository's delegation check probe node: C13, C14 and C17 on a customer
 #: machine through the responder chain, and the other seven through the dev gateway the settings store names. None is a cloud
-#: workflow dispatch. ``{python}`` is the interpreter running the handler, ``{registry_root}`` the registry root.
+#: workflow dispatch. ``{python}`` is the interpreter running the handler, ``{registry_root}`` the registry root and
+#: ``{state_root}`` the runtime's declared writable state root (the registry root is read-only in the runtime).
 DEFAULT_CHECK_ROUTES: dict[str, tuple[str, ...]] = {
     check: (
         "{python}",
@@ -41,7 +42,7 @@ DEFAULT_CHECK_ROUTES: dict[str, tuple[str, ...]] = {
         "--omni-home",
         "{registry_root}",
         "--state-dir",
-        "{registry_root}/.onex_state/delegation-check-probe",
+        "{state_root}/delegation-check-probe",
         "--trigger",
         "manual",
         "--check",

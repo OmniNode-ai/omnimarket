@@ -25,13 +25,16 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn26678-ac1-state-root-from-config
-  description: With the registry root closed to writes and ONEX_STATE_DIR naming a writable directory, the build history lands under that directory and nothing is created under the registry root; the history path is the overlay's relative path, and an absolute or parent-escaping path is refused. The test fails on a handler that derives the path from the registry root or a literal.
+  description: With the registry root closed to writes and ONEX_STATE_DIR naming a writable directory, the build history lands under that directory and nothing is created under the registry root; the history path is the overlay's relative path, and an absolute or parent-escaping path is refused. The test fails on a handler that derives the path from the registry root or a literal; the probe each check runs gets its own state directory under that root (the {state_root} placeholder), never one under the registry root.
   source: manual
   binds_ac:
   - AC1
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_build_delegation_checks/test_state_root.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_build_delegation_checks/test_probe_state_dir.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn26678-ac2-named-refusal
   description: With a state root under a regular file, and with a PermissionError making the history directory, the handler answers with status refused and a reason naming the history path, the cause and the ONEX_STATE_DIR key; it raises nothing and runs no check. The tests fail on a store that lets the OSError escape.

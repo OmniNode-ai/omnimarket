@@ -418,7 +418,9 @@ class HandlerBuildDelegationChecks:
         runner: ProtocolCheckRunner = (
             recorded_results(Path(replay))
             if replay
-            else CommandCheckExecutor(settings.check_routes, registry_root=root)
+            else CommandCheckExecutor(
+                settings.check_routes, registry_root=root, state_root=state_root
+            )
         )
         self._run = _BuildChecksRun(
             settings=settings,
