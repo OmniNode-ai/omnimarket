@@ -75,6 +75,22 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_tenant_provision_effect -q -n 0 --no-cov -k replay_same_command"
         cwd: "."
+  - id: "dod-omn26473-ac1-identity-queries-seam-shape"
+    description: "The tenant identity queries run against a scratch PostgreSQL 16 holding the seam columns (tenant_plans keyed by plan_code, tenant_event_outbox with topic and no tenant column): a double run of one slug gives one tenant, one plan and one outbox row, and reads answer by id and slug. Before the query change the provision answers failed_store_unavailable on that schema."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_tenant_provision_effect/test_provision_postgres.py -q -n 0 --no-cov -k 'test_b_double_run or test_read_answers_by_id'"
+        cwd: "."
+  - id: "dod-omn26473-ac1-outbox-topic"
+    description: "The outbox row the provision writes carries the topic onex.tenant.events, read back from a scratch PostgreSQL 16 in the seam shape; the replayed command answers the original payload."
+    source: "manual"
+    binds_ac: ["AC1", "AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_tenant_provision_effect/test_provision_postgres.py -q -n 0 --no-cov -k 'test_b_double_run or replay_same_command'"
+        cwd: "."
   - id: "dod-omn26473-integration-proof"
     description: "Run the node's focused tests and the registry consumer test on a lab host at the pushed head; the local Done gate runs this unbound check."
     source: "manual"
