@@ -10,6 +10,7 @@ CLAIM in the ledger, and the cloud credit left, or ``unmeasured`` when it cannot
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -39,6 +40,7 @@ from omnimarket.nodes.node_lab_fill_effect.protocols import LabFillClaimFacts
 from omnimarket.nodes.node_lab_fill_effect.protocols.local_lab_fill_adapters import (
     LocalLedgerReader,
 )
+from omnimarket.protocols.protocol_ledger_rows_reader import LedgerReadError
 from tests.nodes.node_lab_fill_effect.fakes import (
     START,
     FakeApproved,
@@ -83,7 +85,34 @@ def _request(tmp_path: Path, ledger: Path, **kw: Any) -> ModelLabFillTickRequest
     return ModelLabFillTickRequest(**base)
 
 
-def _tick(rows: list[dict[str, object]]) -> tuple[HandlerLabFillTick, FakeRunner]:
+class _LedgerRows:
+    """The bus rows reader the cloud-claim port reads: fixed rows, or a failure when ``fail`` is set."""
+
+    def __init__(self, lines: Sequence[str] = (), fail: str = "") -> None:
+        self._lines, self._fail = tuple(lines), fail
+
+    def rows(
+        self,
+        *,
+        reader: str,
+        window_hours: int,
+        kinds: Sequence[str] = (),
+        lanes: Sequence[str] = (),
+    ) -> tuple[str, ...]:
+        if self._fail:
+            raise LedgerReadError(self._fail)
+        return tuple(
+            line
+            for line in self._lines
+            if not kinds or line.split("|")[1].strip() in kinds
+        )
+
+
+def _tick(
+    rows: list[dict[str, object]],
+    ledger_rows: Sequence[str] = (),
+    ledger_fail: str = "",
+) -> tuple[HandlerLabFillTick, FakeRunner]:
     runner = FakeRunner()
     approved = FakeApproved(rows={str(r["id"]): r for r in rows}, all_rows=rows)
     clock = FakeClock()
@@ -103,7 +132,7 @@ def _tick(rows: list[dict[str, object]]) -> tuple[HandlerLabFillTick, FakeRunner
         owners=owners,
         launch=launch,
         clock=clock,
-        cloud_facts=LocalLedgerReader(),
+        cloud_facts=LocalLedgerReader(rows=_LedgerRows(ledger_rows, ledger_fail)),
     )
     return handler, runner
 
@@ -262,15 +291,13 @@ def test_cloud_placement_auto_off_when_the_placement_node_refuses(
 def test_cloud_lane_age_line_names_the_newest_cloud_claim_and_credit(
     tmp_path: Path,
 ) -> None:
-    ledger = _ledger(
-        tmp_path,
-        [
-            f"{_stamp(START - 7200)} | CLAIM | lane=a | host=cloud | ticket=OMN-1 | x",
-            f"{_stamp(START - 3900)} | CLAIM | lane=b | host=cloud | ticket=OMN-2 | x",
-            f"{_stamp(START - 60)} | CLAIM | lane=c | host=h201 | ticket=OMN-3 | x",
-            f"{_stamp(START - 30)} | TERMINAL | lane=b | host=cloud | ticket=OMN-2 | x",
-        ],
-    )
+    ledger_rows = [
+        f"{_stamp(START - 7200)} | CLAIM | lane=a | host=cloud | ticket=OMN-1 | x",
+        f"{_stamp(START - 3900)} | CLAIM | lane=b | host=cloud | ticket=OMN-2 | x",
+        f"{_stamp(START - 60)} | CLAIM | lane=c | host=h201 | ticket=OMN-3 | x",
+        f"{_stamp(START - 30)} | TERMINAL | lane=b | host=cloud | ticket=OMN-2 | x",
+    ]
+    ledger = _ledger(tmp_path, ledger_rows)
     pdir = tmp_path / "placement"
     recorded = HandlerCloudSessionPlacement().handle(
         ModelCloudSessionPlacementRequest(
@@ -282,7 +309,7 @@ def test_cloud_lane_age_line_names_the_newest_cloud_claim_and_credit(
         )
     )
     assert recorded.error is None
-    handler, _ = _tick([])
+    handler, _ = _tick([], ledger_rows)
     result = handler.handle(
         _request(
             tmp_path,
@@ -344,7 +371,7 @@ def test_cloud_lane_age_line_on_a_tick_with_no_headroom(tmp_path: Path) -> None:
 def test_cloud_lane_age_line_says_unreadable_when_the_ledger_is_missing(
     tmp_path: Path,
 ) -> None:
-    handler, _ = _tick([])
+    handler, _ = _tick([], ledger_fail="reader exited 69: unreadable")
     result = handler.handle(_request(tmp_path, tmp_path / "missing.md"))
     assert " newest_cloud_claim_age=unreadable " in result.cloud_line
 

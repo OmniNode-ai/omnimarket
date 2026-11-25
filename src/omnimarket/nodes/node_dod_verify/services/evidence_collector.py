@@ -17,6 +17,7 @@ pre-populate evidence_results (tests, event-bus consumers).
 from __future__ import annotations
 
 import atexit
+import contextlib
 import glob
 import hashlib
 import importlib.util
@@ -26,6 +27,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -359,6 +361,41 @@ _DEFAULT_CHECK_TIMEOUT_S = 30
 # Operator override for the ceiling above, for hosts slower (or more heavily
 # loaded) than the machine a contract's checks were authored on.
 _CHECK_TIMEOUT_ENV = "DOD_VERIFY_CHECK_TIMEOUT_S"
+
+
+def _run_in_process_group(
+    argv: list[str],
+    *,
+    timeout: float,
+    cwd: str | None,
+    env: dict[str, str] | None,
+) -> subprocess.CompletedProcess[str]:
+    """``subprocess.run`` that kills the command's whole process tree on a timeout.
+
+    ``subprocess.run`` kills only the direct child when the timeout trips. A check is
+    ``bash -c "uv run pytest ..."``: ``bash`` dies, ``uv`` and ``pytest`` are
+    reparented to the container init and keep burning CPU. In the dev runtime they
+    shared the container's 3-CPU quota with the event loop, the kernel throttled every
+    thread of the runtime and its ``/health`` answer stalled (OMN-25856). The command
+    gets its own session, and the whole group is killed when the timeout trips.
+    """
+    with subprocess.Popen(
+        argv,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        cwd=cwd,
+        env=env,
+        start_new_session=True,
+    ) as proc:
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+        except BaseException:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGKILL)
+            proc.communicate()
+            raise
+        return subprocess.CompletedProcess(argv, proc.returncode, stdout, stderr)
 
 
 def _check_timeout_s() -> float:
@@ -6009,10 +6046,8 @@ class EvidenceCollector:
         self._register_close_at_exit()
         try:
             env_path.parent.mkdir(parents=True, exist_ok=True)
-            proc = subprocess.run(
+            proc = _run_in_process_group(
                 argv,
-                capture_output=True,
-                text=True,
                 timeout=timeout_s,
                 cwd=str(project_root),
                 env=build_env,
@@ -6162,10 +6197,8 @@ class EvidenceCollector:
                 "--reporter=append-only",
             ]
             try:
-                proc = subprocess.run(
+                proc = _run_in_process_group(
                     argv,
-                    capture_output=True,
-                    text=True,
                     timeout=timeout_s,
                     cwd=str(stage),
                     env=build_env,
@@ -6262,10 +6295,8 @@ class EvidenceCollector:
             build_env = dict(os.environ)
             build_env["CI"] = "1"
             try:
-                proc = subprocess.run(
+                proc = _run_in_process_group(
                     [npm, "ci"],
-                    capture_output=True,
-                    text=True,
                     timeout=timeout_s,
                     cwd=str(stage),
                     env=build_env,
@@ -6607,10 +6638,8 @@ class EvidenceCollector:
             # plain sh -c) so a failing first stage of a multi-stage pipeline
             # fails the whole check instead of being masked by the last
             # stage's exit code.
-            result = subprocess.run(
+            result = _run_in_process_group(
                 ["bash", "-o", "pipefail", "-c", cmd_str],
-                capture_output=True,
-                text=True,
                 timeout=timeout_s,
                 cwd=run_cwd,
                 env=run_env,

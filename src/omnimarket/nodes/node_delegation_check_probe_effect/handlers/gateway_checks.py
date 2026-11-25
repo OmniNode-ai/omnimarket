@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 import time
+import uuid
 from collections.abc import Callable, Mapping
 from typing import Any, Final, cast, get_args
 
@@ -121,6 +122,18 @@ def _names_missing(body: Any, field: str) -> bool:
     )
 
 
+def _error_fields(body: Any) -> list[str]:
+    """The ``field`` of each entry of the ``errors`` list a refused submission carries."""
+    errors = body.get("errors") if isinstance(body, dict) else None
+    if not isinstance(errors, list):
+        return []
+    return [
+        e["field"]
+        for e in errors
+        if isinstance(e, dict) and isinstance(e.get("field"), str)
+    ]
+
+
 def _strings(value: Any) -> list[str]:
     if isinstance(value, str):
         return [value]
@@ -149,12 +162,14 @@ class _Session:
         check_id: str,
         sleep: Callable[[float], None],
         monotonic: Callable[[], float],
+        new_uuid: Callable[[], uuid.UUID] = uuid.uuid4,
     ) -> None:
         self.client = client
         self.settings = settings
         self.check_id = check_id
         self._sleep = sleep
         self._monotonic = monotonic
+        self._new_uuid = new_uuid
 
     def call(
         self,
@@ -180,7 +195,8 @@ class _Session:
             auth=auth,
             body={
                 "workflow_type": WORKFLOW_TYPE,
-                "correlation_id": f"{self.check_id.lower()}-{task_type}-{source}",
+                # The declared request model (ModelWorkflowSubmitRequest) takes a UUID here, never free text.
+                "correlation_id": str(self._new_uuid()),
                 "payload": {
                     "prompt": f"Reply with the single word: alive. Automated {self.check_id} delegation check.",
                     "task_type": task_type,
@@ -269,6 +285,45 @@ def _completed(
         f"the run {workflow_id} reads completed"
         if state == "completed"
         else f"the run reads {state!r} ({answered})",
+    )
+
+
+#: The fields the declared status model (ModelWorkflowStatus) and the declared receipt model (ModelWorkflowReceipt) both carry
+#: about one terminal run. The status model carries no route or provider (extra="forbid"), so the two bodies are read against
+#: each other on what both declare: the same run, the same terminal state, the same model, tokens, latency and failure.
+AGREEMENT_FIELDS: Final[tuple[str, ...]] = (
+    "workflow_id",
+    "correlation_id",
+    "workflow_type",
+    "status",
+    "terminal_model_used",
+    "terminal_total_tokens",
+    "terminal_latency_ms",
+    "terminal_failure_class",
+    "terminal_failure_code",
+    "terminal_failure_reason",
+    "terminal_remediation",
+    "rule_evaluations",
+)
+
+
+def _agreement_clause(
+    name: str, status: Mapping[str, Any] | None, receipt: Mapping[str, Any] | None
+) -> ModelCheckClause:
+    """The status body and the receipt of one terminal run say the same thing on every field both models declare."""
+    if status is None or receipt is None:
+        return _clause(
+            name,
+            False,
+            "the status or the receipt of the run was not read, so they cannot be compared",
+        )
+    differ = [f for f in AGREEMENT_FIELDS if status.get(f) != receipt.get(f)]
+    return _clause(
+        name,
+        not differ,
+        "the status and the receipt agree on every field both declare"
+        if not differ
+        else f"the status and the receipt differ on {differ}",
     )
 
 
@@ -439,7 +494,7 @@ def _dying_clauses(s: _Session, *, prefix: str) -> tuple[ModelCheckClause, ...]:
         value = receipt.get(key) if receipt else None
         if not isinstance(value, str) or not pattern.match(value):
             problems.append(f"{key}={value!r}")
-        elif status is not None and key in status and status[key] != value:
+        elif status is None or status.get(key) != value:
             problems.append(f"{key} differs between status and receipt")
     if receipt is not None and receipt.get("status") == "completed":
         problems.append("the receipt reads completed")
@@ -457,21 +512,10 @@ def _dying_clauses(s: _Session, *, prefix: str) -> tuple[ModelCheckClause, ...]:
 
 def _c16(s: _Session) -> tuple[ModelCheckClause, ...]:
     workflow_id, status, receipt, answered = _healthy(s)
-    agree = True
-    if status is not None and receipt is not None:
-        for key in ("route", "provider"):
-            if key in status and key in receipt and status[key] != receipt[key]:
-                agree = False
     return (
         _completed("healthy_completed", status, answered, workflow_id),
         _identity_clause("receipt_identity_present", receipt),
-        _clause(
-            "status_agrees_with_receipt",
-            agree,
-            "the status and the receipt name the same route and provider"
-            if agree
-            else "the status and the receipt name a different route or provider",
-        ),
+        _agreement_clause("status_agrees_with_receipt", status, receipt),
         _rules_clause(receipt),
         *_dying_clauses(s, prefix="dead_run_typed_failure"),
     )
@@ -512,6 +556,9 @@ def _c29(s: _Session) -> tuple[ModelCheckClause, ...]:
 def _c30(s: _Session) -> tuple[ModelCheckClause, ...]:
     workflow_id, status, receipt, answered = _healthy(s, "claude-code")
     unknown, _ = s.submit("test", UNKNOWN_SOURCE)
+    # The gateway answers a payload the workflow contract refuses 400 with the violated fields (handler_workflow_submit.py
+    # step 5); 422 is the receipt route's missing query field. The refusal counts when it names the source field.
+    refused_on_field = unknown.status == 400 and "source" in _error_fields(unknown.body)
     return (
         _clause(
             "plugin_source_accepted",
@@ -524,10 +571,11 @@ def _c30(s: _Session) -> tuple[ModelCheckClause, ...]:
         _identity_clause("receipt_names_provider_and_model", receipt),
         _clause(
             "unknown_source_refused",
-            unknown.status == 422,
-            "a source outside the three adapters is refused 422"
-            if unknown.status == 422
-            else f"a source outside the three adapters answered {unknown.status}",
+            refused_on_field,
+            "a source outside the three adapters is refused 400 naming the source field"
+            if refused_on_field
+            else f"a source outside the three adapters answered {unknown.status}, "
+            f"fields named {_error_fields(unknown.body)}",
         ),
     )
 
@@ -542,22 +590,9 @@ def _c13_leg(s: _Session) -> tuple[ModelCheckClause, ...]:
 
 def _c14_leg(s: _Session) -> tuple[ModelCheckClause, ...]:
     workflow_id, status, receipt, answered = _healthy(s)
-    agree = True
-    if status is not None and receipt is not None:
-        agree = all(
-            status[k] == receipt[k]
-            for k in ("route", "provider")
-            if k in status and k in receipt
-        )
     return (
         _completed("gateway_routed_run_completes", status, answered, workflow_id),
-        _clause(
-            "gateway_status_agrees_with_receipt",
-            agree,
-            "the status and the receipt name the same route and provider"
-            if agree
-            else "the status and the receipt name a different route or provider",
-        ),
+        _agreement_clause("gateway_status_agrees_with_receipt", status, receipt),
         *_dying_clauses(s, prefix="gateway_unroutable_class_typed_failure"),
     )
 
@@ -613,9 +648,10 @@ def run_gateway_check(
     *,
     sleep: Callable[[float], None] = time.sleep,
     monotonic: Callable[[], float] = time.monotonic,
+    new_uuid: Callable[[], uuid.UUID] = uuid.uuid4,
 ) -> ModelDelegationCheckReading:
     """Grade one check, or the gateway leg of a customer-local check, by requests to ``client`` alone."""
-    session = _Session(client, settings, check_id, sleep, monotonic)
+    session = _Session(client, settings, check_id, sleep, monotonic, new_uuid)
     head = {"endpoint": client.gateway_url, "tenant_slug": client.tenant_slug}
     try:
         clauses = _GRADERS[cast("str", check_id)](session)
@@ -627,6 +663,7 @@ def run_gateway_check(
 
 
 __all__ = [
+    "AGREEMENT_FIELDS",
     "CLOUD_DEPENDENT_CHECKS",
     "CUSTOMER_LOCAL_CHECKS",
     "GATEWAY_CHECKS",

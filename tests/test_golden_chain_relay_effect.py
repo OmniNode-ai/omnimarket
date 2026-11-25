@@ -370,16 +370,15 @@ class FixtureRelayEvaluator:
 
 
 class ScratchLedger:
-    """File adapter under the real append handler, using the existing row grammar."""
+    """In-memory adapter under the real append handler, using the existing row grammar."""
 
-    def __init__(self, path: Path) -> None:
-        self.path = path
-        self.path.write_text("")
+    def __init__(self) -> None:
+        self.text = ""
         self.append_calls = 0
         self.fail_ack_once = False
 
     def read_text(self) -> str:
-        return self.path.read_text()
+        return self.text
 
     def append(self, rows: str) -> ModelAppendCommandResult:
         self.append_calls += 1
@@ -391,7 +390,7 @@ class ScratchLedger:
         refusal = ledger_row_grammar.refusal_for_payload(rows, "ROLLING_WORK_LEDGER.md")
         if refusal:
             return ModelAppendCommandResult(exit_code=65, stderr=refusal)
-        self.path.write_text(self.read_text() + rows + "\n")
+        self.text += rows + "\n"
         return ModelAppendCommandResult(
             exit_code=0, stdout="appended to scratch ledger"
         )
@@ -438,7 +437,7 @@ async def _scratch_bus(
         environment="local", group=f"relay-effect-{uuid4().hex}"
     )
     await bus.start()
-    ledger = ScratchLedger(tmp_path / "ROLLING_WORK_LEDGER.md")
+    ledger = ScratchLedger()
     handler = HandlerWorkLedgerAppendEffect(
         ledger,
         ledger,

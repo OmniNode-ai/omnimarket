@@ -92,3 +92,53 @@ def test_the_timer_run_with_no_check_flag_keeps_its_exit_codes(
     code, pub = _run(tmp_path, monkeypatch)
     assert [e["payload"]["criterion"] for e in pub.events] == ["C13", "C14", "C17"]
     assert code == tick.EXIT_FAILED
+
+
+def test_a_tick_with_no_responders_row_still_runs_c17_and_publishes_c13_and_c14_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The settings store serves no delegation_check_responders row (measured on h053, 2026-11-25): the tick ended at once
+    with overlay_unreadable, so no check published a result. A missing row is an absent instrument for the two checks that
+    send a task through the chain; C17 reads no responder and still grades."""
+    from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_delegation_check import (
+        InMemoryCustomerMachine,
+    )
+    from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe import (
+        ModelBrokenCommandCase,
+        ModelSurfaceObservation,
+    )
+
+    env = _overlays(tmp_path, ["C13", "C14", "C17"])
+    monkeypatch.setenv(tick.OVERLAY_FILE_ENV, env[tick.OVERLAY_FILE_ENV])
+    monkeypatch.delenv(tick.RESPONDERS_FILE_ENV, raising=False)
+    monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
+    surface = ModelSurfaceObservation(
+        guides_lead_with_local=True,
+        install_rc=0,
+        install_interpreter_matches=True,
+        help_answers=True,
+        parameter_controls_caught=True,
+        operator_switch_env="ONEX_OPERATOR_SWITCH",
+        broken_ran_with_switch=True,
+        broken_before_rc=0,
+        broken_after_rc=0,
+        broken_cases=(
+            ModelBrokenCommandCase(
+                entry_point="c17-broken-probe-import",
+                rc=1,
+                output="[ONEX_CORE_124_IMPORT_ERROR] 'c17-broken-probe-import' failed",
+            ),
+        ),
+    )
+    pub = InMemoryCheckPublisher()
+    code = tick.main(
+        ["--omni-home", str(tmp_path), "--state-dir", str(tmp_path / "state")],
+        publisher=pub,
+        gateway=FakeGateway(),
+        machine=InMemoryCustomerMachine(surface=surface),
+    )
+    verdicts = {e["payload"]["criterion"]: e["payload"]["verdict"] for e in pub.events}
+    assert verdicts["C13"] == "PRECONDITION-ABSENT"
+    assert verdicts["C14"] == "PRECONDITION-ABSENT"
+    assert verdicts["C17"] == "PASS"
+    assert code != tick.EXIT_OVERLAY

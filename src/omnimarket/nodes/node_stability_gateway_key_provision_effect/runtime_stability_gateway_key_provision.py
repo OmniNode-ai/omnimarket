@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""``python -m omnimarket.nodes.node_stability_gateway_key_provision_effect run --lane <lane>``.
+"""``python -m omnimarket.nodes.node_stability_gateway_key_provision_effect run --lane <lane> [--check <check>]``.
 
 Creates the stability tenant and its one active gateway key when they are absent, storing the generated key value only in the
 secret store. Prints the outcome and names; never a value. Exit codes: 0 provisioned or already provisioned; 1 a typed
@@ -41,7 +41,7 @@ from omnimarket.nodes.node_stability_gateway_key_provision_effect.overlay import
 _CONTRACT_PATH = Path(__file__).resolve().parent / "contract.yaml"
 
 
-async def _run(lane: str) -> int:
+async def _run(lane: str, check: str | None) -> int:
     overlay = load_overlay()
     store = build_identity_store(overlay)
     handler = HandlerStabilityGatewayKeyProvision(
@@ -52,7 +52,9 @@ async def _run(lane: str) -> int:
         contract_path=_CONTRACT_PATH,
     )
     try:
-        result = await handler.handle(ModelStabilityKeyProvisionCommand(lane=lane))
+        result = await handler.handle(
+            ModelStabilityKeyProvisionCommand(lane=lane, check=check)
+        )
     finally:
         await store.close()
     sys.stdout.write(
@@ -68,9 +70,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog=NODE_NAME, description=__doc__)
     parser.add_argument("verb", choices=("run",))
     parser.add_argument("--lane", required=True)
+    parser.add_argument(
+        "--check",
+        default=None,
+        help="a check the contract declares under stability_only.checks; its key is stored under its own name",
+    )
     try:
         args = parser.parse_args(list(sys.argv[1:] if argv is None else argv))
-        return asyncio.run(_run(args.lane))
+        return asyncio.run(_run(args.lane, args.check))
     except (NodeOverlayError, ValidationError, ValueError, OSError) as exc:
         sys.stderr.write(f"INDETERMINATE: {type(exc).__name__}: {exc}\n")
         return 3

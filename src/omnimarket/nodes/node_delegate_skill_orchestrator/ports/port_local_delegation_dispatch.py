@@ -140,6 +140,10 @@ from omnimarket.handlers.delegation_model_scope import (
     model_scope_skip_reason,
     read_model_scope,
 )
+from omnimarket.handlers.delegation_output_budget import (
+    read_output_budget_setting,
+    resolve_output_budget,
+)
 from omnimarket.handlers.delegation_paid_band import resolve_paid_from_size_band
 from omnimarket.handlers.delegation_sampling_reader import read_sampling_settings
 from omnimarket.handlers.handler_capability_start import (
@@ -170,6 +174,7 @@ from omnimarket.handlers.routing.delegation_backend_resolution import (
     resolve_declared_local_model,
     resolve_effective_max_tokens,
     resolve_timeout_seconds,
+    with_backend_reasoning_effort,
 )
 from omnimarket.handlers.routing.delegation_backend_resolution import (
     resolve_delegation_backend as _resolve_delegation_backend_uncustomized,
@@ -195,6 +200,7 @@ from omnimarket.handlers.routing.measured_correct_ceiling import (
 from omnimarket.handlers.routing.spread_load_snapshot import (
     read_spread_load_snapshot,
 )
+from omnimarket.handlers.routing.vllm_input_token_meter import VllmTokenizeMeter
 from omnimarket.handlers.tenant_mirror_requirement import require_tenant_mirrored
 from omnimarket.inference import provider_quota_state
 from omnimarket.inference.protocol_config import (
@@ -380,6 +386,7 @@ from omnimarket.nodes.node_delegation_escalation_decision_compute.handlers.handl
 # AND not a deterministic-floor rejection — resolved from the task-class contract.
 from omnimarket.nodes.node_delegation_orchestrator.quality_bar_authority import (
     RequiredBarAuthorityError,
+    checks_in_force_under_response_contract,
     is_quality_accepted,
     resolve_required_bar_authority,
     with_executed_check_verdict,
@@ -455,6 +462,7 @@ from omnimarket.projection.sqlite_metering_summary import (
 from omnimarket.projection.tenant_isolation import (
     TenantContextMissingError,
 )
+from omnimarket.protocols.protocol_input_token_meter import ProtocolInputTokenMeter
 from omnimarket.routing.roi_overlay import (
     ModelRoutingRoiOverlay,
     resolve_roi_overlay,
@@ -589,6 +597,20 @@ def _acceptance_by_executed_tests(task_type: str) -> bool:
     except RequiredBarAuthorityError:
         return False
     return authority.acceptance_by_executed_tests
+
+
+def _declared_checks_in_force(
+    task_type: str, prompt: str, *, response_contract_governed: bool
+) -> tuple[str, ...]:
+    """The class's deterministic checks a decision is judged against (OMN-26656)."""
+    class_checks = resolve_task_class_dod_checks(task_type, prompt=prompt)[0]
+    try:
+        authority = resolve_required_bar_authority(task_type=task_type)
+    except RequiredBarAuthorityError:
+        return () if response_contract_governed else class_checks
+    return checks_in_force_under_response_contract(
+        class_checks, authority, response_contract_governed=response_contract_governed
+    )
 
 
 def _named_blocking_vetoes(
@@ -1545,6 +1567,15 @@ def _apply_class_sampling(
     return options, prompt
 
 
+def _chat_messages(system_prompt: str | None, prompt: str) -> list[dict[str, str]]:
+    """The chat messages one attempt sends: the system turn when there is one, then the user turn (OMN-26640)."""
+    messages: list[dict[str, str]] = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+    return messages
+
+
 def _attempt_configuration(
     backend: ModelResolvedDelegationBackend,
     *,
@@ -1791,7 +1822,13 @@ class LocalDelegationDispatchPort:
         clock: Callable[[], float] | None = None,
         capability_cell_reader: ProtocolCapabilityCellReader | None = None,
         sleep: Callable[[float], Awaitable[None]] | None = None,
+        input_token_meter: ProtocolInputTokenMeter | None = None,
     ) -> None:
+        # OMN-26640: counts a request's input in the served model's own tokens, so a backend the code budget
+        # overlay names in ``output_budgets`` is sent the window less that count less the declared margin.
+        self._input_token_meter: ProtocolInputTokenMeter = (
+            input_token_meter if input_token_meter is not None else VllmTokenizeMeter()
+        )
         # OMN-23176: waits between same-route re-issues of a customer route. Tests inject one so a wait costs no wall time.
         self._sleep = sleep or asyncio.sleep
         self._terminal_publisher = terminal_publisher or EmitEffectTopicPublisher()
@@ -3729,11 +3766,13 @@ class LocalDelegationDispatchPort:
             # gate passed with no executed test run is refused as the gate
             # refuses it, before anything decides.
             # A response contract replaces the class DoD at the gate
-            # (OMN-15193), so the check set in force is then empty.
-            declared_deterministic = (
-                ()
-                if attempt_outcome.response_contract_governed
-                else resolve_task_class_dod_checks(task_type, prompt=prompt)[0]
+            # (OMN-15193) for a class not accepted by executed tests; for a code
+            # class it adds to the executed checks and never empties them
+            # (OMN-26656).
+            declared_deterministic = _declared_checks_in_force(
+                task_type,
+                prompt,
+                response_contract_governed=attempt_outcome.response_contract_governed,
             )
             gate_result = _with_executed_check_verdict(
                 task_type, gate_result, declared_deterministic
@@ -5197,13 +5236,21 @@ class LocalDelegationDispatchPort:
         #    Unset request -> backend ceiling; explicit request -> capped at it.
         #    The local tier's output is then cut to what the resolved backend's
         #    window leaves after the prompt's token upper bound (the clamp).
-        effective_max_tokens = clamp_max_tokens(
-            prompt,
-            backend.tier,
-            backend.backend_id,
-            resolve_effective_max_tokens(
-                requested=max_tokens, backend_max_tokens=backend.max_tokens
-            ),
+        #    OMN-26640: a backend the code budget overlay names in ``output_budgets`` is sent the
+        #    window less the request's measured input less the declared margin instead (resolved
+        #    below, once the outbound messages exist); the fixed local-member tables do not apply.
+        output_budget_named = read_output_budget_setting(backend.backend_id) is not None
+        effective_max_tokens = (
+            backend.max_tokens
+            if output_budget_named
+            else clamp_max_tokens(
+                prompt,
+                backend.tier,
+                backend.backend_id,
+                resolve_effective_max_tokens(
+                    requested=max_tokens, backend_max_tokens=backend.max_tokens
+                ),
+            )
         )
 
         # 2b. RESOLVE the per-call HTTP timeout from the routing contract (÷1000),
@@ -5402,6 +5449,9 @@ class LocalDelegationDispatchPort:
         if reserved:
             keys = ", ".join(sorted(reserved))
             raise ValueError(f"provider request options cannot override: {keys}")
+        # OMN-26640: the output budget of a backend the overlay names is computed from what this
+        # attempt will send. The sampling values below can change the prompt text only by taking the
+        # ``/no_think`` switch off, so the messages are measured after they are applied.
         # OMN-24061: the overlay's sampling values for this task class go over the
         # profile's request options; a class the overlay does not name changes nothing.
         class_sampling = read_sampling_settings(task_type) if task_type else None
@@ -5409,11 +5459,41 @@ class LocalDelegationDispatchPort:
             provider_request_options, outbound_prompt = _apply_class_sampling(
                 provider_request_options, outbound_prompt, class_sampling
             )
+        output_budget = (
+            resolve_output_budget(
+                backend_id=backend.backend_id,
+                endpoint_ref=backend.endpoint_ref,
+                model_id=backend.model_id,
+                messages=_chat_messages(outbound_system_prompt, outbound_prompt),
+                requested=max_tokens,
+                meter=self._input_token_meter,
+            )
+            if output_budget_named
+            else None
+        )
+        if output_budget is not None:
+            effective_max_tokens = output_budget.tokens
+            logger.info(
+                "LocalDelegationDispatch: output budget backend=%s window=%d input=%d (%s) "
+                "margin=%d budget=%d correlation=%s",
+                backend.backend_id,
+                output_budget.window,
+                output_budget.input_tokens,
+                output_budget.input_source,
+                output_budget.margin,
+                output_budget.tokens,
+                correlation_id,
+            )
         # OMN-26588: thinking tokens share the output cap with the answer, so
         # whichever of the profile and the overlay set a budget, it leaves the
         # answer room.
         provider_request_options = bound_thinking_budget_to_answer_room(
             provider_request_options, max_tokens=effective_max_tokens
+        )
+        # OMN-26365: the backend row's own reasoning effort goes to this backend
+        # only; a row that declares none sends none.
+        provider_request_options = with_backend_reasoning_effort(
+            provider_request_options, backend.reasoning_effort
         )
         # OMN-19432: the profile's prescribed temperature is a default for a
         # caller that sent none, never a competing writer of the wire key.
@@ -5623,6 +5703,9 @@ class LocalDelegationDispatchPort:
         elapsed_ms = max(0, int((time.monotonic() - call_started) * 1000))
         if not result.latency_ms:
             result = result.model_copy(update={"latency_ms": elapsed_ms})
+        if output_budget is not None:
+            # OMN-26640: the receipt records the budget the call was sent with.
+            result.record_local_output_ceiling(output_budget.tokens)
         _record_run_step_calls(
             run_steps,
             backend,
