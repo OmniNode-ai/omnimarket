@@ -876,7 +876,6 @@ class HandlerLlmDelegationCall:
                     model_not_chosen_message(byok.provider),
                 )
             return self._execute_call_once(request, endpoint_url, event_publisher)
-        configured = request.model_id
         if request.model_id == BYOK_MODEL_UNRESOLVED:
             resolved = self._resolve_byok_model(request, byok, exclude=())
             if isinstance(resolved, ModelLlmDelegationCallResult):
@@ -899,14 +898,9 @@ class HandlerLlmDelegationCall:
             result, request = self._retry_on_another_model(
                 request, byok, endpoint_url, event_publisher, first=result
             )
-        if (
-            result.success
-            and request.model_id != configured
-            and result.served_model_id is None
-        ):
-            # The model came off the provider's own list for this key and just
-            # answered, so it is the attribution, not the route's stale value.
-            result = result.model_copy(update={"served_model_id": request.model_id})
+        # OMN-18079: a model picked off the provider's own list that "just
+        # answered" is still only the REQUESTED model; it is not served-model
+        # evidence, so ``served_model_id`` stays whatever the call itself read.
         return result
 
     def _retry_on_another_model(
@@ -1559,6 +1553,12 @@ class HandlerLlmDelegationCall:
             content, request.inline_reasoning_terminator
         )
         output_hash = _sha256(content)
+        # OMN-18079: the provider's own reported ``model`` is serving evidence
+        # (an aggregator that fell back to another model says so there); it wins
+        # over the /v1/models confirmation of the requested id.
+        reported_model = response_json.get("model")
+        if isinstance(reported_model, str) and reported_model.strip():
+            served_model_id = reported_model.strip()
         tokens_in, tokens_out = _extract_usage(response_json)
         cache_read, cache_write_5m, cache_write_1h = cache_usage_figures(
             response_json.get("usage") or {}
@@ -1747,8 +1747,10 @@ class HandlerLlmDelegationCall:
         # /v1/models evidence for this backend), attribution falls back to the
         # configured name exactly as OMN-8022 left it. Either way this is
         # never the raw response-echoed string.
-        attributed_model_id = result.served_model_id or request.model_id
+        # OMN-18079: never the requested model when nothing served-side names one.
+        attributed_model_id = result.served_model_id or "unknown"
         return ModelLlmDelegationCompletedEvent(
+            requested_model_id=request.model_id,
             correlation_id=request.correlation_id,
             causation_id=request.causation_id,
             request_id=request.request_id,

@@ -1,0 +1,23 @@
+---
+schema_version: "1.0.0"
+ticket_id: OMN-18079
+title: Delegation receipt names the route/provider that answered
+summary: The delegation receipt names the model that answered, never the requested one.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+evidence_requirements:
+  - kind: "ci"
+    description: "CI passes on the pull request"
+    command: "onex scm pr-checks"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-answering-model-receipt"
+    description: "Receipt names the answering model: a different served model, missing metadata and a retry landing on another model are each covered by a test that fails on the base head."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_omn18079_receipt_names_answering_model.py -q"

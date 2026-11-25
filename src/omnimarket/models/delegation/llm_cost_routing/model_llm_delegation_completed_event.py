@@ -32,6 +32,7 @@ class ModelLlmDelegationCompletedEvent(BaseModel):
 
     # Model selection
     selected_model: str
+    requested_model_id: str | None = None
     model_id: str
     model_tier: str
     provider: str
