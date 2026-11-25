@@ -3,7 +3,7 @@
 """A stand-in node command for the workflow tests: records each step key it runs and answers as scripted.
 
 ``read``: installed per FAKE_INSTALLED, running from reading number FAKE_RUNNING_AFTER on (0 = never).
-``install``: answers installed. ``ledger-append <row>``: appends the row to FAKE_LEDGER (the ledger CLI's place).
+``install``: answers installed. ``bus-append``: appends the rows on stdin to FAKE_LEDGER (the bus append command's place).
 ``merge-sha <repo>#<number>``: answers a fixed sha per number. ``batch-step <verb>``: runs the real batch verb
 with the child read and install steps set to this stand-in.
 Every run appends ``ONEX_RUN_STEP_KEY`` to FAKE_STEP_LOG, so a test counts how often each step ran.
@@ -74,10 +74,6 @@ def main() -> int:
             rows = sys.stdin.read()
             ledger.write(rows if rows.endswith("\n") else rows + "\n")
         print(json.dumps({"status": "accepted"}))
-        return 0
-    if verb == "ledger-append":
-        with open(os.environ["FAKE_LEDGER"], "a", encoding="utf-8") as ledger:
-            ledger.write(sys.argv[2] + "\n")
         return 0
     step = json.loads(sys.stdin.read())
     if verb == "install":

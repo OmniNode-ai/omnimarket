@@ -69,7 +69,7 @@ BATCH = ModelIntegrationReadingBatch(
             7,
             target="h051 unit",
         ),
-        _reading("overlays", 530, EnumIntegrationState.CI_ONLY, 8),
+        _reading("omniclaude", 530, EnumIntegrationState.CI_ONLY, 8),
         _reading("omnimarket", 6003, EnumIntegrationState.NOT_RUNNING, 5),
         _reading("omnimarket", 6004, EnumIntegrationState.NOT_RUNNING, 1),
     ),

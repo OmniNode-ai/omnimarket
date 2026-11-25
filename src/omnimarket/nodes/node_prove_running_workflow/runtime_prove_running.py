@@ -265,15 +265,8 @@ def cmd_install(cfg: dict[str, Any]) -> int:
 
 
 def _append_row(row: str, step_key: str, lane: str) -> tuple[int, str]:
-    """Append one row. A test names the append command in ``ONEX_PROVE_RUNNING_LEDGER_ARGV``; otherwise the row goes
-    through the bus append command the unit's environment names (the ledger file is never named). The request id is
-    derived from the step key, so a step delivered twice is one request the ledger host answers once."""
-    raw = os.environ.get("ONEX_PROVE_RUNNING_LEDGER_ARGV", "").strip()
-    if raw:
-        proc = subprocess.run(
-            [*json.loads(raw), row], capture_output=True, text=True, check=False
-        )
-        return proc.returncode, proc.stderr[-300:]
+    """Append one row through the bus append command the unit's environment names (the ledger file is never named).
+    The request id is derived from the step key, so a step delivered twice is one request the ledger host answers once."""
     command = os.environ.get(BUS_APPEND_COMMAND_ENV, "").strip()
     host = os.environ.get(HOST_NAME_ENV, "").strip()
     if not command or not host:
@@ -296,7 +289,7 @@ def cmd_write_row(cfg: dict[str, Any], outcome: str) -> int:
                 change=step.change,
                 reading=step.last_reading,
                 step_key=step.step_key,
-                lane=os.environ.get("ONEX_PROVE_RUNNING_LANE", cfg["lane"]),
+                lane=cfg["lane"],
                 ticket=cfg["ticket"],
                 written_at=_now(),
                 batch_id=step.batch_id,
@@ -304,9 +297,7 @@ def cmd_write_row(cfg: dict[str, Any], outcome: str) -> int:
         )
         .row
     )
-    code, error = _append_row(
-        row, step.step_key, os.environ.get("ONEX_PROVE_RUNNING_LANE", cfg["lane"])
-    )
+    code, error = _append_row(row, step.step_key, cfg["lane"])
     if code != 0:
         sys.stderr.write(f"ledger append exited {code}: {error}\n")
         return code
@@ -317,7 +308,7 @@ def cmd_write_row(cfg: dict[str, Any], outcome: str) -> int:
 def cmd_write_line_row(cfg: dict[str, Any]) -> int:
     """The batch's row step: the rows of every line the pass answers itself, appended together (see
     ``write_line_rows``). The verb keeps its name so a schedule created before the batching still names it."""
-    lane = os.environ.get("ONEX_PROVE_RUNNING_LANE", cfg["lane"])
+    lane = cfg["lane"]
     code, text = write_line_rows(
         sys.stdin.read(),
         lane=lane,

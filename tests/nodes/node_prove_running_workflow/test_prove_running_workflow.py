@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import json
 import sys
 import uuid
 from collections import Counter
@@ -84,9 +83,9 @@ def files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]:
     monkeypatch.setenv("FAKE_STEP_LOG", str(log))
     monkeypatch.setenv("FAKE_LEDGER", str(ledger))
     monkeypatch.setenv(
-        "ONEX_PROVE_RUNNING_LEDGER_ARGV",
-        json.dumps([sys.executable, FAKE, "ledger-append"]),
+        "ONEX_LEDGER_BUS_APPEND_COMMAND", f"{sys.executable} {FAKE} bus-append"
     )
+    monkeypatch.setenv("ONEX_LEDGER_HOST_NAME", "h051")
     return {"log": log, "ledger": ledger}
 
 

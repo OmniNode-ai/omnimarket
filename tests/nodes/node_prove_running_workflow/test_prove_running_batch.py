@@ -459,9 +459,7 @@ async def test_refire_no_duplicate(
 def test_append_row_through_bus_command(
     batch_files: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """With no test override, a row goes through the bus append command the unit names, never a ledger file."""
-    monkeypatch.delenv("ONEX_PROVE_RUNNING_LEDGER_ARGV", raising=False)
-    monkeypatch.delenv("ONEX_LEDGER_PATH", raising=False)
+    """A row goes through the bus append command the unit names, never a ledger file."""
     monkeypatch.setenv("ONEX_RUN_STEP_KEY", "bus-append-step")
     monkeypatch.setenv(
         "ONEX_LEDGER_BUS_APPEND_COMMAND", f"{sys.executable} {FAKE} bus-append"
