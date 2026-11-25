@@ -340,6 +340,12 @@ Repository = "https://github.com/OmniNode-ai/omnimarket"
 # (node_pr_arm_gate_compute + node_pr_lifecycle_merge_effect). Handler source
 # remains, hard-gated fail-closed (contract.yaml lifecycle: deprecated).
 # Weekly retrospective chain, scaffolded from its design (contracts and seams first).
+# OMN-26638: the overlay-store kinds, selected by one wiring function from the bootstrap inputs.
+[project.entry-points."onex.backends"]
+store_in_memory = "omnimarket.handlers.overlay_store.backend_in_memory:BackendInMemory"
+store_postgres = "omnimarket.handlers.overlay_store.backend_postgres:BackendPostgres"
+store_valkey = "omnimarket.handlers.overlay_store.backend_valkey:BackendValkey"
+
 [project.entry-points."onex.nodes"]
 node_ab_compare_orchestrator = "omnimarket.nodes.node_ab_compare_orchestrator"
 node_ab_compare_reducer = "omnimarket.nodes.node_ab_compare_reducer"
@@ -811,6 +817,7 @@ node_hook_delegate_effect = "omnimarket.nodes.node_hook_delegate_effect"
 node_hook_drain_probe_compute = "omnimarket.nodes.node_hook_drain_probe_compute"
 node_hook_event_capture = "omnimarket.nodes.node_hook_event_capture"
 node_hook_events_by_correlation_read_effect = "omnimarket.nodes.node_hook_events_by_correlation_read_effect"
+node_hook_install_emission_compute = "omnimarket.nodes.node_hook_install_emission_compute"
 node_hook_lane_join_compute = "omnimarket.nodes.node_hook_lane_join_compute"
 node_hook_lane_trace_compute = "omnimarket.nodes.node_hook_lane_trace_compute"
 node_hook_parse_probe_compute = "omnimarket.nodes.node_hook_parse_probe_compute"
@@ -867,6 +874,7 @@ node_host_table_compute = "omnimarket.nodes.node_host_table_compute"
 node_host_table_copies_drift_compute = "omnimarket.nodes.node_host_table_copies_drift_compute"
 node_host_table_keys_ingest_effect = "omnimarket.nodes.node_host_table_keys_ingest_effect"
 node_host_table_keys_read_effect = "omnimarket.nodes.node_host_table_keys_read_effect"
+node_host_thermal_guard_effect = "omnimarket.nodes.node_host_thermal_guard_effect"
 node_host_thermal_hold_report_effect = "omnimarket.nodes.node_host_thermal_hold_report_effect"
 node_host_thermal_observe_effect = "omnimarket.nodes.node_host_thermal_observe_effect"
 node_host_tree_install_effect = "omnimarket.nodes.node_host_tree_install_effect"
@@ -963,6 +971,7 @@ node_landing_not_started_effect = "omnimarket.nodes.node_landing_not_started_eff
 node_landing_placement_wait_effect = "omnimarket.nodes.node_landing_placement_wait_effect"
 node_landing_policy_compute = "omnimarket.nodes.node_landing_policy_compute"
 node_landing_private_reads_effect = "omnimarket.nodes.node_landing_private_reads_effect"
+node_landing_proof_gate_compute = "omnimarket.nodes.node_landing_proof_gate_compute"
 node_landing_stall_expectation_compute = "omnimarket.nodes.node_landing_stall_expectation_compute"
 node_landing_tick_bounds_compute = "omnimarket.nodes.node_landing_tick_bounds_compute"
 node_landing_tick_speed_effect = "omnimarket.nodes.node_landing_tick_speed_effect"
@@ -1835,7 +1844,8 @@ omnimarket = "omnimarket.handlers.bus_binding.node_contract_overlay_resolver:Nod
 # OMN-26115: infra moves to dev-20261119220033-b6f27747506c (omnibase_infra#6063, OMN-25545), newer than the dev tag dev-20261119055404-a679b44e2cfe; it locks the core tag below, so the two tags move together.
 # OMN-26286: infra moves to dev-20261120235610-e1c7b1f075d2 (omnibase_infra#6116 merged: the infra and omnimemory dev tags now name one omnibase-core tag, dev-20261120075721-2a9efbda3548).
 # OMN-25103: infra moves to dev-20261121195628-0f7f2b730399, which carries omnibase_infra#6129 (the runtime account's grant on floor_integration_pass); the core pin is unchanged.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261121195628-0f7f2b730399" }
+# OMN-26495: infra moves to dev-20261124065450-0ecba67c8fee, which carries omnibase_infra#6201 (the vendored overlay store migration 0002_add_operator_paths.sql); the core pin is unchanged.
+omnibase-infra ={ git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261124065450-0ecba67c8fee" }
 # OMN-21478, RULINGs 2026-10-16T07:34:18Z and 2026-10-16T09:35:49Z: core, spi and
 # memory are read from their dev merge tags too, as infra is, and the
 # Internal Sibling Pins check (internal-sibling-pins.yml) refuses any other form.

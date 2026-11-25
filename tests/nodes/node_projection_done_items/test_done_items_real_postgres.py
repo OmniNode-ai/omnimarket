@@ -10,6 +10,7 @@ row; and malformed done_row_id values being rejected by the database.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from datetime import UTC, datetime
 from pathlib import Path
@@ -321,5 +322,33 @@ def test_real_postgres_failed_write_keeps_the_held_rows() -> None:
                 {**_v1(DONE_TWO), "_topic": V1, "_partition": 0, "_offset": 1}
             )
         assert sorted(tuple(r) for r in asyncio.run(_served_rows())) == held
+    finally:
+        asyncio.run(_drop())
+
+
+@pytest.mark.integration
+def test_real_postgres_not_done_terminal_writes_no_row_and_says_so() -> None:
+    """A recorded handed-off TERMINAL owes no row, reports it, and a done one lands (OMN-26520)."""
+    recorded = json.loads(
+        (
+            Path(__file__).parent
+            / "fixtures"
+            / "dev_work_ledger_terminal_events_2026-11-23.json"
+        ).read_text()
+    )
+    dsn = _dsn_or_skip()
+    asyncio.run(_prepare())
+    try:
+        writer = DoneItemsProjectionWriter(store=_AsyncpgDoneItemsStore(dsn))
+        filtered = writer.handle(
+            {**recorded["handed_off"], "_topic": V1, "_partition": 0, "_offset": 0}
+        )
+        assert (filtered["rows_upserted"], filtered["events_not_applicable"]) == (0, 1)
+        assert asyncio.run(_served_rows()) == []
+        landed = writer.handle(
+            {**recorded["done"], "_topic": V1, "_partition": 0, "_offset": 1}
+        )
+        assert landed["rows_upserted"] == 1
+        assert [r["ticket"] for r in asyncio.run(_served_rows())] == ["OMN-1002"]
     finally:
         asyncio.run(_drop())

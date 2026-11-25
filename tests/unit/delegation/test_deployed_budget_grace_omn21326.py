@@ -65,7 +65,9 @@ class _FakeClock:
     """
 
     def __init__(self) -> None:
-        self.now = time.monotonic() + 1000.0
+        # Whole seconds: a whole-second delay then adds exactly, whatever fraction
+        # of a second the host's real clock reads (48999 ms for 49 s otherwise).
+        self.now = float(int(time.monotonic()) + 1000)
 
     def monotonic(self) -> float:
         return self.now
@@ -194,6 +196,26 @@ def _has_budget(authority: Any, name: str) -> bool:
     except ValueError:
         return False
     return True
+
+
+@pytest.mark.parametrize(
+    "real_monotonic",
+    [3070.857493981394, 15375.823037831471, 1047563.3416276231],
+)
+def test_the_fake_clock_adds_whole_seconds_exactly_on_any_host_uptime(
+    monkeypatch: pytest.MonkeyPatch, real_monotonic: float
+) -> None:
+    """A host whose uptime has a fractional second must not turn 49 s into 48999 ms.
+
+    On these real readings ``(origin + 1000.0 + 49.0) - (origin + 1000.0)`` falls just under 49.0, so
+    ``int(... * 1000.0)`` in the handler reports 48999. The fake clock's origin
+    is whole seconds, so adding a whole-second delay is exact on every host.
+    """
+    monkeypatch.setattr(time, "monotonic", lambda: real_monotonic)
+    clock = _FakeClock()
+    started = clock.monotonic()
+    clock.now += BUDGET_SECONDS - 1
+    assert int((clock.monotonic() - started) * 1000.0) == (BUDGET_SECONDS - 1) * 1000
 
 
 async def test_a_run_past_its_budget_and_grace_ends_as_a_typed_timeout(

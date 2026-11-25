@@ -80,6 +80,14 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest -q tests/unit/nodes/node_local_dashboard_serve_effect/test_start_url_redirect_strips_token.py
         cwd: .
+  - id: dod-omn26226-command-output
+    description: The foreground onex dashboard command output (the serve path of cli_local.dashboard_command, handler stubbed) shows no session token and no tenant id.
+    source: manual
+    binds_ac: [AC3, AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/unit/nodes/node_local_dashboard_serve_effect/test_dashboard_command_output.py
+        cwd: .
   # Not bound as a check: tests/unit/nodes/node_onex_setup_effect/test_dashboard_token_not_in_argv.py
   # guards a regression made and fixed inside this branch (a token on the child's
   # command line). Dev never put the token in argv, so on the merge base it can

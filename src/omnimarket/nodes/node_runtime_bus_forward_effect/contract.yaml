@@ -23,6 +23,9 @@ description: >
   none of the overlay's allowed topic prefixes, or past the overlay's max_events, is refused by name and never
   published; a publish the client refuses, or a flush that leaves events unconfirmed, counts as failed, and the run's
   receipt carries the detail.
+  A machine whose operator declared no hosted bus (no overlay for this node) is not a failure: the events are kept in
+  a local record file under the user's .onex directory and the receipt says they were kept locally (OMN-26451).
+  A dry run writes nothing, so the events of a dry run are not kept either and the receipt says so (OMN-26451).
 
 handler:
   module: omnimarket.nodes.node_runtime_bus_forward_effect.handlers.handler_runtime_bus_forward
@@ -30,7 +33,8 @@ handler:
   input_model: omnimarket.nodes.node_runtime_bus_forward_effect.models.model_runtime_bus_forward.ModelRuntimeBusForwardCommand
 
 # HandlerRuntimeBusForward takes the overlay and the publisher as constructor parameters, so it is called by the
-# omnibase_core runtime through the entry point adapter, not handler_routing.
+# omnibase_core runtime through the entry point adapter. The same adapter calls HandlerRuntimeBusLocalRecord when the
+# machine declares no hosted bus (OMN-26451); it is a helper of the bound handler module, not a dispatched handler.
 
 descriptor:
   node_archetype: effect
@@ -51,8 +55,12 @@ output_model:
 
 terminal_event: onex.evt.omnimarket.runtime-bus-forward-completed.v1
 
+# The omnibase_core runtime calls this node after each node run on a runtime-local bus, through the forwarder this
+# repository registers under the onex.runtime_bus_forwarders entry-point group in pyproject.toml.
 runtime_dispatch:
   external_trigger: true
+  callers:
+    - path: pyproject.toml
 
 topics:
   runtime_bus_forward_requested: onex.cmd.omnimarket.runtime-bus-forward-requested.v1

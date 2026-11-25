@@ -26,6 +26,8 @@ class EnumCodeBudgetRefusal(StrEnum):
     OVER_CEILING = "over_ceiling"
     UNNAMED_INPUT_CEILING = "unnamed_input_ceiling"
     UNNAMED_SAMPLING_CLASS = "unnamed_sampling_class"
+    UNNAMED_OUTPUT_BUDGET = "unnamed_output_budget"
+    NO_OUTPUT_ROOM = "no_output_room"
 
 
 # The overlay key under which a site declares the input ceiling of a backend and task class (OMN-23631).
@@ -72,6 +74,61 @@ class ModelClassSampling(BaseModel):
         return self
 
 
+class ModelOutputBudgetSetting(BaseModel):
+    """What a backend's output budget is computed from (OMN-26640). No field has a default.
+
+    ``window`` is the tokens the served model holds for one request, input and output together.
+    ``margin`` is the tokens kept back for what the server adds that the measurement does not count.
+    ``floor`` is the least output a request may be sent with: a prompt that leaves less is refused.
+    ``ceiling`` is the most output a request may ask for. ``measure_timeout_s`` bounds the call that
+    measures the input.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    window: int = Field(ge=1)
+    margin: int = Field(ge=0)
+    floor: int = Field(ge=1)
+    ceiling: int = Field(ge=1)
+    measure_timeout_s: float = Field(gt=0)
+
+    @model_validator(mode="after")
+    def validate_room(self) -> ModelOutputBudgetSetting:
+        if self.ceiling < self.floor:
+            raise ValueError("ceiling must be at least the floor")
+        if self.window - self.margin < self.floor:
+            raise ValueError("window less margin must hold the floor")
+        return self
+
+
+class ModelOutputBudget(BaseModel):
+    """One request's output budget and the numbers it was computed from."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    tokens: int = Field(ge=1)
+    window: int = Field(ge=1)
+    input_tokens: int = Field(ge=0)
+    margin: int = Field(ge=0)
+    floor: int = Field(ge=1)
+    ceiling: int = Field(ge=1)
+
+
+class ModelOutputBudgetResolution(BaseModel):
+    """The budget a delegated request is sent with and where its input count came from (OMN-26640)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    tokens: int = Field(ge=1)
+    window: int = Field(ge=1)
+    input_tokens: int = Field(ge=0)
+    input_source: Literal["measured", "upper_bound"]
+    margin: int = Field(ge=0)
+    floor: int = Field(ge=1)
+    ceiling: int = Field(ge=1)
+    requested: int | None = None
+
+
 class ModelCodeBudgetOverlay(BaseModel):
     """The overlay of node_delegation_code_budget_compute. No key has a default."""
 
@@ -84,6 +141,8 @@ class ModelCodeBudgetOverlay(BaseModel):
     ceiling_s: float = Field(gt=0)
     input_ceilings: dict[str, dict[str, int]]
     class_sampling: dict[str, ModelClassSampling] | None = None
+    # Per backend id: the window, margin, floor and ceiling its output budget is computed from (OMN-26640).
+    output_budgets: dict[str, ModelOutputBudgetSetting] | None = None
     # The bus `onex run-node` reads to reach this node (OMN-24265)
     event_bus: ModelNodeEventBus | None = None
 
@@ -95,6 +154,16 @@ class ModelCodeBudgetOverlay(BaseModel):
             for name in self.class_sampling:
                 if not name:
                     raise ValueError("class_sampling must name a class")
+        return self
+
+    @model_validator(mode="after")
+    def validate_output_budgets(self) -> ModelCodeBudgetOverlay:
+        if self.output_budgets is not None:
+            if not self.output_budgets:
+                raise ValueError("output_budgets must not be empty")
+            for name in self.output_budgets:
+                if not name:
+                    raise ValueError("output_budgets must name a backend")
         return self
 
     @model_validator(mode="after")
@@ -134,16 +203,23 @@ class ModelCodeBudgetRequest(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    operation: Literal["resolve", "size", "input_ceiling", "sampling"]
+    operation: Literal["resolve", "size", "input_ceiling", "sampling", "output_budget"]
     task_class: str = Field(min_length=1)
     measurements: tuple[ModelDraftMeasurement, ...] = ()
     overlay: ModelCodeBudgetOverlay
     backend: str | None = Field(default=None, min_length=1)
+    # The request's input, in the served model's own tokens, as the caller measured it (OMN-26640).
+    input_tokens: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def validate_backend_named_for_input_ceiling(self) -> ModelCodeBudgetRequest:
         if self.operation == "input_ceiling" and self.backend is None:
             raise ValueError("operation input_ceiling names a backend")
+        if self.operation == "output_budget":
+            if self.backend is None:
+                raise ValueError("operation output_budget names a backend")
+            if self.input_tokens is None:
+                raise ValueError("operation output_budget carries the measured input")
         return self
 
 
@@ -152,7 +228,7 @@ class ModelCodeBudgetResult(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    operation: Literal["resolve", "size", "input_ceiling", "sampling"]
+    operation: Literal["resolve", "size", "input_ceiling", "sampling", "output_budget"]
     task_class: str
     call_budget_s: float | None
     source: Literal["overlay", "measured"]
@@ -163,3 +239,4 @@ class ModelCodeBudgetResult(BaseModel):
     input_ceiling_tokens: int | None = None
     overlay_key: str | None = None
     sampling: ModelClassSampling | None = None
+    output_budget: ModelOutputBudget | None = None
