@@ -16,7 +16,10 @@ from typing import Any, Final
 
 from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
 
-from omnimarket.handlers.bus_binding.node_broker import resolve_dialable_broker
+from omnimarket.handlers.bus_binding.node_broker import (
+    NodeBrokerResolutionError,
+    resolve_dialable_broker,
+)
 from omnimarket.models.bus_binding.model_node_broker import ModelNodeBroker
 from omnimarket.nodes.node_agent_message_effect.adapters.adapter_settings_store_agent_directory import (
     SettingsStoreAgentDirectory,
@@ -37,6 +40,14 @@ NODE_NAME: Final[str] = "node_agent_message_effect"
 def resolve_declared_broker(_caller: str = NODE_NAME) -> ModelNodeBroker:
     """This node's declared broker, whatever node name the shared publisher passes."""
     return resolve_dialable_broker(NODE_NAME)
+
+
+def declared_login_principal() -> str | None:
+    """The broker principal this login authenticates as (the declared broker's SASL user), or None when there is none."""
+    try:
+        return resolve_declared_broker().sasl_username
+    except NodeBrokerResolutionError:
+        return None
 
 
 def create_directory() -> SettingsStoreAgentDirectory:
@@ -103,5 +114,6 @@ __all__: list[str] = [
     "create_bus",
     "create_directory",
     "create_emitter",
+    "declared_login_principal",
     "resolve_declared_broker",
 ]

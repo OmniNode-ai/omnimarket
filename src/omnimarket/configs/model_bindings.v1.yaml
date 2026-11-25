@@ -87,6 +87,14 @@ triage_routing_policy:
   ci_override:
     primary: "deepseek-r1-14b"
 
+# Frontier models the pricing module compares delegated work against (OMN-21805). Each
+# name is a key of the pricing manifest, in the order the estimates are reported.
+frontier_comparison_models:
+  - "claude-opus-4-6"
+  - "claude-sonnet-4-20250514"
+  - "claude-haiku-3-5"
+  - "gpt-4o"
+
 bindings:
   design_to_plan_model_key: "qwen3-coder"
   plans_today_glm_model: "glm-5.3-flash"
@@ -95,3 +103,5 @@ bindings:
   cost_demo_local_model: "qwen3-coder-30b"
   lab_measure_rater_role: "blind_model:claude-opus-5-5"
   route_check_cheap_cloud_model: "gemini-2.5-flash-lite"
+  pricing_baseline_model: "claude-sonnet-5-5"
+  lane_dispatch_brief_model: "claude-sonnet-5-5"
