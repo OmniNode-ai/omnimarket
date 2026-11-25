@@ -185,7 +185,7 @@ def test_environment_build_ceiling_is_clamped_to_the_budget_left(
         seen.append(kwargs["timeout"])
         raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
 
-    monkeypatch.setattr(evidence_collector.subprocess, "run", _fake_run)
+    monkeypatch.setattr(evidence_collector, "_run_in_process_group", _fake_run)
     monkeypatch.delenv("DOD_VERIFY_HERMETIC_SYNC_TIMEOUT_S", raising=False)
 
     collector = EvidenceCollector()

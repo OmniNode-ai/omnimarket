@@ -1,0 +1,888 @@
+[
+ {
+  "pr": 6759,
+  "base": "dev",
+  "head": "47a79d28b927aef8a69737521abebc2a70b87369",
+  "files": [
+   "contracts/ticket-contract.yaml",
+   "scripts/ci/test_selection_adjacency.yaml",
+   "tests/nodes/node_test_selection_selector_compute/test_pyproject_sections.py"
+  ],
+  "text_lines": [
+   "Lab: head=47a79d28b927aef8a69737521abebc2a70b87369",
+   "Known good answer passed: the reference answer was graded and passed.",
+   "Known bad answer failed: the defective answer was graded and failed."
+  ],
+  "patch_ids": {
+   "47a79d28b927aef8a69737521abebc2a70b87369": "46f4a8f530adefd16153c0cc58eea0ef62199cba"
+  },
+  "expect": {
+   "answer": "PROVEN",
+   "codes": [],
+   "proof": "head"
+  }
+ },
+ {
+  "pr": 6722,
+  "base": "dev",
+  "head": "24aa9a70dd8145a5d1f8145aafa21aa8dc634909",
+  "files": [
+   "config/test_file_durations.d/tests__nodes__node_delegation_scenario_r2_effect__test_local_pool_chain.json",
+   "contracts/ticket-contract.yaml",
+   "src/omnimarket/handlers/routing/spread_load_snapshot.py",
+   "src/omnimarket/nodes/node_delegation_scenario_r2_effect/handlers/handler_scenario_r2.py",
+   "src/omnimarket/nodes/node_delegation_scenario_r2_effect/inputs/settings_overlay.yaml",
+   "src/omnimarket/nodes/node_delegation_scenario_r2_effect/lab_local_pool.py",
+   "tests/nodes/node_delegation_scenario_r2_effect/test_local_pool_chain.py"
+  ],
+  "text_lines": [
+   "Lab: head=6a4aea3a1587ee764090124977712126830107bb",
+   "Lab: head=af52116ae22fc43bc8019206a531c4ff0eea95a7",
+   "Known good answer passed: the reference answer was graded and passed.",
+   "Known bad answer failed: the defective answer was graded and failed."
+  ],
+  "patch_ids": {
+   "24aa9a70dd8145a5d1f8145aafa21aa8dc634909": "db3eae724e71dda5e7e03dcab68c5db963174891",
+   "6a4aea3a1587ee764090124977712126830107bb": "fdbe35b5daaa577d10a6b2f5e476d1fa0f8b6f27",
+   "af52116ae22fc43bc8019206a531c4ff0eea95a7": "f4057189a1661654e7dca073799ebcbee03c048e"
+  },
+  "expect": {
+   "answer": "DRAFT",
+   "codes": [
+    "lab_proof_other_change"
+   ],
+   "proof": ""
+  }
+ },
+ {
+  "pr": 6783,
+  "base": "dev",
+  "head": "18616c6353ae1cc821802812f25ed6bb897e898e",
+  "files": [
+   "config/test_file_durations.d/tests__nodes__node_delegation_check_probe_effect__test_golden_answers_gateway_graders.json",
+   "contracts/ticket-contract.yaml",
+   "src/omnimarket/nodes/node_delegation_check_probe_effect/handlers/gateway_checks.py",
+   "tests/nodes/node_delegation_check_probe_effect/_gateway_fake.py",
+   "tests/nodes/node_delegation_check_probe_effect/_golden_real_gateway.py",
+   "tests/nodes/node_delegation_check_probe_effect/golden_answers_gateway.json",
+   "tests/nodes/node_delegation_check_probe_effect/test_golden_answers_gateway_graders.py"
+  ],
+  "text_lines": [
+   "Lab: head=edb2a5a37441b832692bf484f4156821a15294e4"
+  ],
+  "patch_ids": {
+   "18616c6353ae1cc821802812f25ed6bb897e898e": "8912582b14b96dbd697cca4f7b94cb97234a467e",
+   "edb2a5a37441b832692bf484f4156821a15294e4": "898c11ccb779bce937c2395927108fbc85f767c1"
+  },
+  "expect": {
+   "answer": "DRAFT",
+   "codes": [
+    "known_bad_missing",
+    "known_good_missing",
+    "lab_proof_other_change"
+   ],
+   "proof": ""
+  }
+ },
+ {
+  "pr": 6762,
+  "base": "dev",
+  "head": "e587f21421af25e52669b2cb4ede97d0c9a83e7f",
+  "files": [
+   "config/test_file_durations.d/tests__nodes__node_delegation_code_budget_compute__test_output_budget.json",
+   "config/test_file_durations.d/tests__unit__delegation__test_output_budget_follows_window_omn26640.json",
+   "config/test_file_durations.d/tests__unit__handlers__test_delegation_output_budget.json",
+   "contracts/ticket-contract.yaml",
+   "src/omnimarket/handlers/delegation_output_budget.py",
+   "src/omnimarket/handlers/routing/vllm_input_token_meter.py",
+   "src/omnimarket/models/model_delegation_code_budget.py",
+   "src/omnimarket/nodes/node_delegate_skill_orchestrator/ports/port_local_delegation_dispatch.py",
+   "src/omnimarket/nodes/node_delegation_code_budget_compute/contract.yaml",
+   "src/omnimarket/nodes/node_delegation_code_budget_compute/handlers/handler_delegation_code_budget.py",
+   "src/omnimarket/nodes/node_llm_delegation_call_effect/__init__.py",
+   "src/omnimarket/protocols/protocol_input_token_meter.py",
+   "tests/nodes/node_delegation_code_budget_compute/test_output_budget.py",
+   "tests/nodes/node_delegation_code_budget_compute/test_seam_input_ceiling_overlay_routing.py",
+   "tests/unit/delegation/test_output_budget_follows_window_omn26640.py",
+   "tests/unit/handlers/test_delegation_output_budget.py"
+  ],
+  "text_lines": [
+   "Lab: head=9a006b2f5a8010f249c06da2844c85d0c78846d6"
+  ],
+  "patch_ids": {
+   "e587f21421af25e52669b2cb4ede97d0c9a83e7f": "09e8830d1805bf4fb0661fc1dbcdc28a78008562",
+   "9a006b2f5a8010f249c06da2844c85d0c78846d6": "09e8830d1805bf4fb0661fc1dbcdc28a78008562"
+  },
+  "expect": {
+   "answer": "DRAFT",
+   "codes": [
+    "known_bad_missing",
+    "known_good_missing"
+   ],
+   "proof": "patch_id"
+  }
+ },
+ {
+  "pr": 6784,
+  "base": "dev",
+  "head": "aa9032d5d5b98ddb4c096115602f8dd5b5de1e2c",
+  "files": [
+   "config/test_file_durations.d/tests__nodes__node_dev_identity_provision_effect__test_bind_existing_tenant.json",
+   "contracts/ticket-contract.yaml",
+   "src/omnimarket/nodes/node_dev_identity_provision_effect/adapters/__init__.py",
+   "src/omnimarket/nodes/node_dev_identity_provision_effect/adapters/adapter_bus_tenant_reader.py",
+   "src/omnimarket/nodes/node_dev_identity_provision_effect/contract.yaml",
+   "src/omnimarket/nodes/node_dev_identity_provision_effect/handlers/handler_dev_identity_provision.py",
+   "src/omnimarket/nodes/node_dev_identity_provision_effect/handlers/token_claims.py",
+   "src/omnimarket/nodes/node_dev_identity_provision_effect/metadata.yaml",
+   "src/omnimarket/nodes/node_dev_identity_provision_effect/models/model_dev_identity_provision.py",
+   "src/omnimarket/nodes/node_dev_identity_provision_effect/models/model_tenant_binding.py",
+   "src/omnimarket/nodes/node_dev_identity_provision_effect/models/model_tenant_provision_wire.py",
+   "src/omnimarket/nodes/node_dev_identity_provision_effect/protocols/__init__.py",
+   "src/omnimarket/nodes/node_dev_identity_provision_effect/protocols/protocol_dev_identity_transport.py",
+   "src/omnimarket/nodes/node_dev_identity_provision_effect/runtime_dev_identity_provision.py",
+   "tests/nodes/node_dev_identity_provision_effect/test_bind_existing_tenant.py"
+  ],
+  "text_lines": [
+   "Lab: head=a170b1ce067dfa26ad226e31dd109f4e902d048b",
+   "Known good answer passed: the reference answer was graded and passed.",
+   "Known bad answer failed: the defective answer was graded and failed."
+  ],
+  "patch_ids": {
+   "aa9032d5d5b98ddb4c096115602f8dd5b5de1e2c": "3d8c5be690105703b671aab84d86daa2cb7c4a35",
+   "a170b1ce067dfa26ad226e31dd109f4e902d048b": "50fc577e4964511b18fab125270922fb92bbed1d"
+  },
+  "expect": {
+   "answer": "DRAFT",
+   "codes": [
+    "lab_proof_other_change"
+   ],
+   "proof": ""
+  }
+ },
+ {
+  "pr": 6774,
+  "base": "dev",
+  "head": "5c7f1a40966335be49040191b883f5295285f7ec",
+  "files": [
+   "config/test_file_durations.d/tests__nodes__node_delegation_check_probe_effect__test_golden_answers_graders.json",
+   "contracts/ticket-contract.yaml",
+   "tests/nodes/node_delegation_check_probe_effect/golden_answers.json",
+   "tests/nodes/node_delegation_check_probe_effect/test_golden_answers_graders.py"
+  ],
+  "text_lines": [
+   "Lab: head=e44d391b1c0aa017d36ec46716d8f5599b07c2cf",
+   "Known good answer passed: the reference answer was graded and passed.",
+   "Known bad answer failed: the defective answer was graded and failed."
+  ],
+  "patch_ids": {
+   "5c7f1a40966335be49040191b883f5295285f7ec": "808eaede415738a069a31f33a179ea52611e26cc",
+   "e44d391b1c0aa017d36ec46716d8f5599b07c2cf": "bfbbac029f500478f2826457bc995b66d504487f"
+  },
+  "expect": {
+   "answer": "DRAFT",
+   "codes": [
+    "lab_proof_other_change"
+   ],
+   "proof": ""
+  }
+ },
+ {
+  "pr": 6772,
+  "base": "dev",
+  "head": "2281c5b5f1c4a33ae326758543ac28d8f0dc8131",
+  "files": [
+   "config/test_file_durations.d/tests__nodes__node_code_eval_suite_census_compute__test_taskset_1540.json",
+   "contracts/ticket-contract.yaml",
+   "pyproject.toml",
+   "src/omnimarket/configs/code_eval_suite.v1.json",
+   "src/omnimarket/configs/work_contracts/contracts/F01-01.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-02.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-03.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-04.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-05.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-06.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-07.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-08.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-09.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-10.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-01.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-02.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-03.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-04.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-05.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-06.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-07.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-08.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-09.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-10.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-01.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-02.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-03.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-04.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-05.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-06.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-07.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-08.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-09.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-10.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-01.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-02.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-03.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-04.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-05.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-06.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-07.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-08.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-09.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-10.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-01.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-02.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-03.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-04.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-05.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-06.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-07.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-08.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-09.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-10.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-01.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-02.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-03.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-04.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-05.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-06.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-07.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-08.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-09.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-10.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-11.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-12.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-13.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-14.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-15.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-16.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-17.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-18.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-19.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-20.yaml",
+   "tests/nodes/node_code_eval_suite_census_compute/test_taskset_1540.py",
+   "uv.lock"
+  ],
+  "text_lines": [
+   "Known good answer passed: the reference answer was graded and passed.",
+   "Known bad answer failed: the defective answer was graded and failed."
+  ],
+  "patch_ids": {
+   "2281c5b5f1c4a33ae326758543ac28d8f0dc8131": "0ec69d1a8e6c628d94b31681efc4b5d8d8d6eaa2"
+  },
+  "expect": {
+   "answer": "DRAFT",
+   "codes": [
+    "lab_line_missing"
+   ],
+   "proof": ""
+  }
+ },
+ {
+  "pr": 6785,
+  "base": "dev",
+  "head": "389f9b7b8f8085dc922f91b5922fef2390c9f3f0",
+  "files": [
+   "contracts/ticket-contract.yaml",
+   "src/omnimarket/nodes/node_agent_review_dispatch_orchestrator/adapters/adapter_agent_review_ports.py",
+   "src/omnimarket/nodes/node_agent_review_dispatch_orchestrator/models/model_agent_review.py",
+   "src/omnimarket/nodes/node_agent_review_harness_rung_effect/adapters/adapter_harness_runner.py",
+   "src/omnimarket/nodes/node_agent_review_harness_rung_effect/contract.yaml",
+   "src/omnimarket/nodes/node_agent_review_harness_rung_effect/handlers/handler_harness_rung.py",
+   "src/omnimarket/nodes/node_agent_review_harness_rung_effect/models/model_harness_rung.py",
+   "tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_harness_rungs.py",
+   "tests/unit/nodes/node_agent_review_dispatch_orchestrator/test_production_ports.py",
+   "tests/unit/nodes/node_agent_review_harness_rung_effect/test_harness_rung.py"
+  ],
+  "text_lines": [
+   "Lab: head=389f9b7b8f8085dc922f91b5922fef2390c9f3f0",
+   "Known good answer passed: the reference answer was graded and passed.",
+   "Known bad answer failed: the defective answer was graded and failed."
+  ],
+  "patch_ids": {
+   "389f9b7b8f8085dc922f91b5922fef2390c9f3f0": "c224abe1b35aa32cd127cc796947b5da97bd19da"
+  },
+  "expect": {
+   "answer": "PROVEN",
+   "codes": [],
+   "proof": "head"
+  }
+ },
+ {
+  "pr": 6750,
+  "base": "dev",
+  "head": "366316cb3f5b58986b0b2bb55a57c657dcb070a7",
+  "files": [
+   "contracts/ticket-contract.yaml",
+   "src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml",
+   "tests/unit/nodes/node_context_source_work_state_effect/test_context_source_work_state.py"
+  ],
+  "text_lines": [
+   "Lab: head=4e543aab9067b740e5bdc64834436b16de51e3fb",
+   "Known good answer passed: the reference answer was graded and passed.",
+   "Known bad answer failed: the defective answer was graded and failed."
+  ],
+  "patch_ids": {
+   "366316cb3f5b58986b0b2bb55a57c657dcb070a7": "9b3cd6b4a22c626b802d9508f9a593c7a00c786c",
+   "4e543aab9067b740e5bdc64834436b16de51e3fb": "7e269eddaeec305859c1ed38c7743fd5ebf92c39"
+  },
+  "expect": {
+   "answer": "DRAFT",
+   "codes": [
+    "lab_proof_other_change"
+   ],
+   "proof": ""
+  }
+ },
+ {
+  "pr": 6741,
+  "base": "dev",
+  "head": "4107cdef9ee538c9863f4d5a3f6d859d589ca7bb",
+  "files": [
+   "config/test_file_durations.d/tests__nodes__node_lab_fill_effect__test_ledger_ports_bus_read.json",
+   "contracts/ticket-contract.yaml",
+   "src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_launch.py",
+   "src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_probe.py",
+   "src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_tick.py",
+   "src/omnimarket/nodes/node_lab_fill_effect/protocols/local_lab_fill_adapters.py",
+   "src/omnimarket/nodes/node_lab_fill_effect/protocols/protocol_lab_fill_effect.py",
+   "tests/nodes/node_lab_fill_effect/fakes.py",
+   "tests/nodes/node_lab_fill_effect/test_ledger_ports_bus_read.py",
+   "tests/nodes/node_lab_fill_effect/test_local_adapters_lab_fill_effect.py",
+   "tests/nodes/node_lab_fill_effect/test_merged_history_lab_fill.py",
+   "tests/unit/nodes/node_lab_fill_effect/test_lab_fill_cloud_placement.py"
+  ],
+  "text_lines": [
+   "Lab: head=c312b43dcd213a1bf22ea13337a2414185179e52",
+   "Known good answer passed: the reference answer was graded and passed.",
+   "Known bad answer failed: the defective answer was graded and failed."
+  ],
+  "patch_ids": {
+   "4107cdef9ee538c9863f4d5a3f6d859d589ca7bb": "021eeb39e5de8e3d70276368431045107034ed89",
+   "c312b43dcd213a1bf22ea13337a2414185179e52": "e1c4fc1c0fdc3c9578eeba67a8bb09ed2ba11dec"
+  },
+  "expect": {
+   "answer": "DRAFT",
+   "codes": [
+    "lab_proof_other_change"
+   ],
+   "proof": ""
+  }
+ },
+ {
+  "pr": 6780,
+  "base": "dev",
+  "head": "72fb401073233527757f63357867b7cd363712a8",
+  "files": [
+   "config/test_file_durations.d/tests__nodes__node_host_retention_effect__test_host_retention_uv_free_disk.json",
+   "contracts/ticket-contract.yaml",
+   "src/omnimarket/nodes/node_host_retention_effect/contract.yaml",
+   "src/omnimarket/nodes/node_host_retention_effect/handlers/handler_host_retention.py",
+   "src/omnimarket/nodes/node_host_retention_effect/handlers/host_retention_ports.py",
+   "src/omnimarket/nodes/node_host_retention_effect/handlers/host_retention_uv_cache_cap.py",
+   "src/omnimarket/nodes/node_host_retention_effect/models/model_host_retention.py",
+   "src/omnimarket/nodes/node_host_retention_effect/overlay.example.yaml",
+   "tests/nodes/node_host_retention_effect/host_retention_fakes.py",
+   "tests/nodes/node_host_retention_effect/test_host_retention_uv_free_disk.py"
+  ],
+  "text_lines": [
+   "Lab: head=72fb401073233527757f63357867b7cd363712a8",
+   "Known good answer passed: the reference answer was graded and passed.",
+   "Known bad answer failed: the defective answer was graded and failed."
+  ],
+  "patch_ids": {
+   "72fb401073233527757f63357867b7cd363712a8": "51aabb5d424e04bd620551a7567d53000bc09047"
+  },
+  "expect": {
+   "answer": "PROVEN",
+   "codes": [],
+   "proof": "head"
+  }
+ },
+ {
+  "pr": 6743,
+  "base": "dev",
+  "head": "83c0a5c2f211a10a1cdbba9a74548acecfa152f1",
+  "files": [
+   "config/test_file_durations.d/tests__e2e__node_onex_setup_effect__test_onex_setup_clean_machine.json",
+   "config/test_file_durations.d/tests__unit__nodes__node_onex_setup_effect__test_onex_setup_clean_setup_2026_11_22.json",
+   "config/test_file_durations.d/tests__unit__nodes__node_onex_setup_effect__test_onex_setup_no_hosted_bus.json",
+   "contracts/ticket-contract.yaml",
+   "src/omnimarket/nodes/node_runtime_bus_forward_effect/adapter_core_forwarder.py",
+   "src/omnimarket/nodes/node_runtime_bus_forward_effect/contract.yaml",
+   "src/omnimarket/nodes/node_runtime_bus_forward_effect/handlers/handler_runtime_bus_forward.py",
+   "src/omnimarket/nodes/node_runtime_bus_forward_effect/models/__init__.py",
+   "src/omnimarket/nodes/node_runtime_bus_forward_effect/models/model_runtime_bus_forward.py",
+   "tests/e2e/node_onex_setup_effect/test_onex_setup_clean_machine.py",
+   "tests/fixtures/onboarding_clean_setup_2026_11_22/README.md",
+   "tests/fixtures/onboarding_clean_setup_2026_11_22/recorded_setup_error.txt",
+   "tests/unit/nodes/node_onex_setup_effect/test_onex_setup_clean_setup_2026_11_22.py",
+   "tests/unit/nodes/node_onex_setup_effect/test_onex_setup_no_hosted_bus.py"
+  ],
+  "text_lines": [
+   "Lab: head=0be3972d8626c4964c3237719d3484ab9487ed9f",
+   "Known good answer passed: the reference answer was graded and passed.",
+   "Known bad answer failed: the defective answer was graded and failed."
+  ],
+  "patch_ids": {
+   "83c0a5c2f211a10a1cdbba9a74548acecfa152f1": "9c9e38194f2a8929694b287e13b77e5cfd4fea3e",
+   "0be3972d8626c4964c3237719d3484ab9487ed9f": "004555574508b15399b36fc91de9735f2c456912"
+  },
+  "expect": {
+   "answer": "DRAFT",
+   "codes": [
+    "lab_proof_other_change"
+   ],
+   "proof": ""
+  }
+ },
+ {
+  "pr": 6767,
+  "base": "dev",
+  "head": "c85f41df8f407039115857b095134412d8243c37",
+  "files": [
+   "config/test_file_durations.d/tests__unit__routing__test_cheap_frontier_ac6_later_rows_omn26129.json",
+   "contracts/ticket-contract.yaml",
+   "tests/fixtures/receipts/cheap_frontier_smokes_2026_11_24.json",
+   "tests/unit/routing/test_cheap_frontier_ac6_later_rows_omn26129.py",
+   "tests/unit/routing/test_cheap_frontier_smoke_evidence_omn20376.py"
+  ],
+  "text_lines": [
+   "Known good answer passed: the reference answer was graded and passed.",
+   "Known bad answer failed: the defective answer was graded and failed."
+  ],
+  "patch_ids": {
+   "c85f41df8f407039115857b095134412d8243c37": "1a1436d0de5969826aa4050b99ed130a3418d75b"
+  },
+  "expect": {
+   "answer": "DRAFT",
+   "codes": [
+    "lab_line_missing"
+   ],
+   "proof": ""
+  }
+ },
+ {
+  "pr": 6749,
+  "base": "dev",
+  "head": "df2e83b441411566883715260b9e09c9fb28a14a",
+  "files": [
+   "config/test_file_durations.d/tests__cli__test_agent_message_node_adapter.json",
+   "contracts/ticket-contract.yaml",
+   "src/omnimarket/models/agent_message/model_agent_message_request.py",
+   "src/omnimarket/models/agent_message/model_agent_message_result.py",
+   "src/omnimarket/nodes/node_agent_message_client_effect/adapter_bus_node.py",
+   "src/omnimarket/nodes/node_agent_message_client_effect/cli.py",
+   "src/omnimarket/nodes/node_agent_message_client_effect/handlers/handler_agent_message_send.py",
+   "src/omnimarket/nodes/node_agent_message_client_effect/models/model_agent_message.py",
+   "src/omnimarket/nodes/node_agent_message_client_effect/ports/protocol_agent_message_bus_node.py",
+   "src/omnimarket/nodes/node_agent_message_client_effect/ports/protocol_agent_message_node.py",
+   "src/omnimarket/nodes/node_agent_message_client_effect/runtime.py",
+   "src/omnimarket/nodes/node_agent_message_effect/contract.yaml",
+   "src/omnimarket/nodes/node_agent_message_effect/handlers/handler_agent_message.py",
+   "src/omnimarket/nodes/node_agent_message_effect/models/__init__.py",
+   "tests/cli/test_agent_message_cli.py",
+   "tests/cli/test_agent_message_mcp.py",
+   "tests/cli/test_agent_message_node_adapter.py",
+   "tests/unit/nodes/node_agent_message_effect/test_agent_message_handler.py",
+   "tests/unit/nodes/test_golden_chain_agent_message_effect.py"
+  ],
+  "text_lines": [
+   "Lab: head=ff5532969f12f2d3f54fb8f1767620cf012481df",
+   "Known good answer passed: the reference answer was graded and passed.",
+   "Known bad answer failed: the defective answer was graded and failed."
+  ],
+  "patch_ids": {
+   "df2e83b441411566883715260b9e09c9fb28a14a": "81dcca3bf4f1fce51c502db28b768dc6766df391",
+   "ff5532969f12f2d3f54fb8f1767620cf012481df": null
+  },
+  "expect": {
+   "answer": "DRAFT",
+   "codes": [
+    "lab_proof_other_change"
+   ],
+   "proof": ""
+  }
+ },
+ {
+  "pr": 6751,
+  "base": "dev",
+  "head": "881d9249dcd34a2bbf2878df936cb619b5096ef1",
+  "files": [
+   "contracts/ticket-contract.yaml",
+   "src/omnimarket/nodes/node_overlay_store_load_effect/runtime_overlay_store_load_tick.py",
+   "tests/unit/nodes/node_overlay_store/test_overlay_store_load_continue.py"
+  ],
+  "text_lines": [
+   "Lab: head=48bc428c37d9b689a7385d6abde608e9c19f25a2",
+   "Lab: head=54d4fe1c3",
+   "Known good answer passed: the reference answer was graded and passed.",
+   "Known bad answer failed: the defective answer was graded and failed."
+  ],
+  "patch_ids": {
+   "881d9249dcd34a2bbf2878df936cb619b5096ef1": "18f0805de520c0994186d534dea998de51032d5b",
+   "48bc428c37d9b689a7385d6abde608e9c19f25a2": "fb343e65fee5465bd893626927585fb156d0d402",
+   "54d4fe1c3": null
+  },
+  "expect": {
+   "answer": "DRAFT",
+   "codes": [
+    "lab_proof_other_change"
+   ],
+   "proof": ""
+  }
+ },
+ {
+  "pr": 6760,
+  "base": "dev",
+  "head": "5ae62eddcc20c69a8f8cc0784bd5fab13e6b3467",
+  "files": [
+   "contracts/ticket-contract.yaml",
+   "src/omnimarket/models/model_ledger_claims_read.py",
+   "src/omnimarket/nodes/node_pr_duplicate_snapshot_effect/contract.yaml",
+   "src/omnimarket/nodes/node_pr_duplicate_snapshot_effect/handlers/ledger_claims_read.py",
+   "tests/helpers/fake_ledger_rows.py",
+   "tests/unit/handlers/scm/conftest.py",
+   "tests/unit/handlers/scm/test_scm_duplicate_guard_reader_hosts.py",
+   "tests/unit/handlers/scm/test_scm_duplicate_guard_reader_timeout.py",
+   "tests/unit/handlers/scm/test_scm_duplicate_guard_stack.py"
+  ],
+  "text_lines": [
+   "Lab: head=51d971675",
+   "Lab: head=d48b9e9cd73f3c43293d907cdc9bed2b268d0092",
+   "Known good answer passed: the reference answer was graded and passed.",
+   "Known bad answer failed: the defective answer was graded and failed."
+  ],
+  "patch_ids": {
+   "5ae62eddcc20c69a8f8cc0784bd5fab13e6b3467": "ee98c8563724e8f783627019ac72a2cc148480e3",
+   "51d971675": null,
+   "d48b9e9cd73f3c43293d907cdc9bed2b268d0092": "63a24c83e1898a8fd4f8aa225324313997a48706"
+  },
+  "expect": {
+   "answer": "DRAFT",
+   "codes": [
+    "lab_proof_other_change"
+   ],
+   "proof": ""
+  }
+ },
+ {
+  "pr": 6740,
+  "base": "dev",
+  "head": "2124cc12e73a6b6f40c4f2a48e38376e5ddfbcdb",
+  "files": [
+   "contracts/ticket-contract.yaml",
+   "src/omnimarket/nodes/node_projection_query_api_effect/contract.yaml",
+   "src/omnimarket/nodes/node_projection_query_api_effect/handlers/handler_projection_query.py",
+   "src/omnimarket/nodes/node_projection_query_api_effect/models/__init__.py",
+   "src/omnimarket/nodes/node_projection_query_api_effect/models/model_held_page.py",
+   "src/omnimarket/nodes/node_projection_query_api_effect/models/model_page_cache.py",
+   "src/omnimarket/nodes/node_projection_query_api_effect/ports/page_cache.py",
+   "tests/projection/test_t17_projection_query_node_cross_tenant_real_postgres.py",
+   "tests/unit/projection/test_omn24458_windowed_read_and_page_cache.py"
+  ],
+  "text_lines": [
+   "Lab: head=27955a11e33abae4f3315d3305d1ba87a9c43b45",
+   "Known good answer passed: the reference answer was graded and passed.",
+   "Known bad answer failed: the defective answer was graded and failed."
+  ],
+  "patch_ids": {
+   "2124cc12e73a6b6f40c4f2a48e38376e5ddfbcdb": "562f8304c0675c821eccd2efe8d6b79045145262",
+   "27955a11e33abae4f3315d3305d1ba87a9c43b45": "562f8304c0675c821eccd2efe8d6b79045145262"
+  },
+  "expect": {
+   "answer": "PROVEN",
+   "codes": [],
+   "proof": "patch_id"
+  }
+ },
+ {
+  "pr": 6771,
+  "base": "dev",
+  "head": "258f4bb511012f60ff0db4ce2680ace49cec8883",
+  "files": [
+   "CHANGELOG.md",
+   "config/test_file_durations.d/tests__unit__nodes__node_overlay_setting_set__test_setting_set_goal_scope_ticket_rule.json",
+   "contracts/ticket-contract.yaml",
+   "docs/evidence/TICKET-relation-inventory.json",
+   "pyproject.toml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-01.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-02.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-03.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-04.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-05.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-06.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-07.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-08.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-09.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-10.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-01.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-02.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-03.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-04.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-05.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-06.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-07.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-08.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-09.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-10.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-01.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-02.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-03.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-04.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-05.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-06.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-07.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-08.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-09.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-10.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-01.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-02.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-03.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-04.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-05.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-06.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-07.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-08.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-09.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-10.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-01.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-02.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-03.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-04.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-05.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-06.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-07.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-08.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-09.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-10.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-01.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-02.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-03.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-04.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-05.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-06.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-07.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-08.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-09.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-10.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-11.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-12.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-13.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-14.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-15.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-16.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-17.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-18.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-19.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-20.yaml",
+   "src/omnimarket/handlers/goal_scope_overlay.py",
+   "src/omnimarket/models/overlay_documents/model_goal_scope_ticket_rule_overlay.py",
+   "src/omnimarket/nodes/node_goal_scope_admission_compute/tests/test_goal_scope_overlay_no_second_protocol.py",
+   "src/omnimarket/nodes/node_goal_scope_admission_compute/tests/test_goal_scope_overlay_settings_store.py",
+   "src/omnimarket/nodes/node_overlay_setting_set_effect/contract.yaml",
+   "tests/unit/nodes/node_overlay_setting_set/test_setting_set_goal_scope_ticket_rule.py",
+   "uv.lock"
+  ],
+  "text_lines": [
+   "Lab: head=38e1260fab43255100bc69b7d3a6af4a88050f58",
+   "Lab: head=611862ab1",
+   "Known good answer passed: the reference answer was graded and passed.",
+   "Known bad answer failed: the defective answer was graded and failed."
+  ],
+  "patch_ids": {
+   "258f4bb511012f60ff0db4ce2680ace49cec8883": "26980a836b229757765de1748b40906321c515f3",
+   "38e1260fab43255100bc69b7d3a6af4a88050f58": "6fbe261c43ffe8f5bd1b3e6b4c31470170c365d9",
+   "611862ab1": null
+  },
+  "expect": {
+   "answer": "DRAFT",
+   "codes": [
+    "lab_proof_other_change"
+   ],
+   "proof": ""
+  }
+ },
+ {
+  "pr": 6738,
+  "base": "dev",
+  "head": "9448f295e6adc3ea5618c717240eb67e8fdcfa48",
+  "files": [
+   "config/test_file_durations.d/tests__unit__delegation__test_quality_gate_untagged_fence_omn26588.json",
+   "contracts/ticket-contract.yaml",
+   "src/omnimarket/nodes/node_delegation_quality_gate_reducer/handlers/code_artifact_blocks.py",
+   "src/omnimarket/nodes/node_delegation_quality_gate_reducer/handlers/handler_quality_gate.py",
+   "tests/unit/delegation/test_quality_gate_untagged_fence_omn26588.py"
+  ],
+  "text_lines": [],
+  "patch_ids": {
+   "9448f295e6adc3ea5618c717240eb67e8fdcfa48": "b848c92da70a89cf8facdb05286a5aff522815d8"
+  },
+  "expect": {
+   "answer": "DRAFT",
+   "codes": [
+    "known_bad_missing",
+    "known_good_missing",
+    "lab_line_missing"
+   ],
+   "proof": ""
+  }
+ },
+ {
+  "pr": 6766,
+  "base": "dev",
+  "head": "b4a2a5736c88c4e1c8e8329dbbee1e14a3412623",
+  "files": [
+   ".pre-commit-config.yaml",
+   "CHANGELOG.md",
+   "config/test_file_durations.d/tests__settings_store__test_backend_connector_injection.json",
+   "config/test_file_durations.d/tests__settings_store__test_bootstrap_seed_idempotent.json",
+   "config/test_file_durations.d/tests__settings_store__test_no_reader_backend_choice.json",
+   "config/test_file_durations.d/tests__settings_store__test_refresh_kept_set.json",
+   "config/test_file_durations.d/tests__settings_store__test_stale_requires_both_heartbeats.json",
+   "config/test_file_durations.d/tests__settings_store__test_store_injection.json",
+   "config/test_file_durations.d/tests__settings_store__test_store_registration.json",
+   "config/test_file_durations.d/tests__settings_store__test_store_wiring.json",
+   "config/test_file_durations.d/tests__settings_store__test_tick_from_store.json",
+   "config/test_file_durations.d/tests__settings_store__test_valkey_acl_rules.json",
+   "config/test_file_durations.d/tests__settings_store__test_valkey_replay_backfill.json",
+   "contracts/ticket-contract.yaml",
+   "docs/evidence/TICKET-relation-inventory.json",
+   "pyproject.toml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-01.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-02.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-03.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-04.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-05.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-06.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-07.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-08.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-09.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F01-10.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-01.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-02.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-03.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-04.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-05.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-06.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-07.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-08.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-09.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F02-10.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-01.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-02.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-03.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-04.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-05.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-06.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-07.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-08.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-09.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F04-10.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-01.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-02.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-03.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-04.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-05.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-06.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-07.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-08.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-09.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F05-10.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-01.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-02.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-03.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-04.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-05.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-06.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-07.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-08.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-09.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/F06-10.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-01.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-02.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-03.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-04.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-05.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-06.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-07.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-08.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-09.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-10.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-11.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-12.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-13.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-14.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-15.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-16.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-17.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-18.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-19.yaml",
+   "src/omnimarket/configs/work_contracts/contracts/dod-TICKET-20.yaml",
+   "src/omnimarket/handlers/floor_fill_scheduled_tick.py",
+   "src/omnimarket/handlers/overlay_store/backend_in_memory.py",
+   "src/omnimarket/handlers/overlay_store/backend_postgres.py",
+   "src/omnimarket/handlers/overlay_store/backend_valkey.py",
+   "src/omnimarket/handlers/overlay_store/bootstrap_file.py",
+   "src/omnimarket/handlers/overlay_store/heartbeat_gate.py",
+   "src/omnimarket/handlers/overlay_store/kept_set.py",
+   "src/omnimarket/handlers/overlay_store/reader_store.py",
+   "src/omnimarket/handlers/overlay_store/settings_seed.py",
+   "src/omnimarket/handlers/overlay_store/store_address_check.py",
+   "src/omnimarket/handlers/overlay_store/store_backend_registry.py",
+   "src/omnimarket/handlers/overlay_store/store_import_check.py",
+   "src/omnimarket/handlers/overlay_store/store_valkey.py",
+   "src/omnimarket/handlers/overlay_store/store_wiring.py",
+   "src/omnimarket/handlers/overlay_store/tick_from_store.py",
+   "src/omnimarket/handlers/overlay_store/valkey_acl.py",
+   "src/omnimarket/models/overlay_store/model_overlay_settings_record.py",
+   "src/omnimarket/models/overlay_store/model_store_backend.py",
+   "src/omnimarket/nodes/node_floor_fill_scheduled_effect/handlers/handler_floor_fill_scheduled.py",
+   "src/omnimarket/nodes/node_floor_fill_scheduled_effect/metadata.yaml",
+   "src/omnimarket/nodes/node_overlay_store_read_effect/contract.yaml",
+   "src/omnimarket/nodes/node_overlay_store_read_effect/handlers/handler_overlay_store_read.py",
+   "tests/settings_store/__init__.py",
+   "tests/settings_store/live/__init__.py",
+   "tests/settings_store/live/conftest.py",
+   "tests/settings_store/live/probe_valkey_acl_refusals.py",
+   "tests/settings_store/test_backend_connector_injection.py",
+   "tests/settings_store/test_bootstrap_seed_idempotent.py",
+   "tests/settings_store/test_no_reader_backend_choice.py",
+   "tests/settings_store/test_refresh_kept_set.py",
+   "tests/settings_store/test_stale_requires_both_heartbeats.py",
+   "tests/settings_store/test_store_injection.py",
+   "tests/settings_store/test_store_registration.py",
+   "tests/settings_store/test_store_wiring.py",
+   "tests/settings_store/test_tick_from_store.py",
+   "tests/settings_store/test_valkey_acl_rules.py",
+   "tests/settings_store/test_valkey_replay_backfill.py",
+   "uv.lock"
+  ],
+  "text_lines": [
+   "Lab: head=3c836bc6a",
+   "Lab: head=c7168e4f2dc12fbbd1c903f48543105c524bfb73",
+   "Lab: head=ef51e860f1a9477a6a5de637e16da50713255a94"
+  ],
+  "patch_ids": {
+   "b4a2a5736c88c4e1c8e8329dbbee1e14a3412623": "1622f0f147c5945c9b57239d95ab2b1a2b18e53f",
+   "3c836bc6a": null,
+   "c7168e4f2dc12fbbd1c903f48543105c524bfb73": "d82c18b51e9ab2fac4a72fc67c2990b5521f42d8",
+   "ef51e860f1a9477a6a5de637e16da50713255a94": "dc4dfad43b5ef06a07463cddaed11e9ce1cc7095"
+  },
+  "expect": {
+   "answer": "DRAFT",
+   "codes": [
+    "known_bad_missing",
+    "known_good_missing",
+    "lab_proof_other_change"
+   ],
+   "proof": ""
+  }
+ }
+]

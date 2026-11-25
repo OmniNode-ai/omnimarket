@@ -48,6 +48,14 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest -q tests/unit/nodes/node_onex_setup_effect/test_dashboard_open_instruction.py
         cwd: .
+  - id: dod-omn26226-ac1-foreground-line
+    description: The foreground onex dashboard line keeps the address first for the setup port read, says it needs this start's token and names onex dashboard open, so it never offers the bare address to open.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/unit/nodes/node_onex_setup_effect/test_dashboard_open_instruction.py::test_the_foreground_serve_never_offers_the_bare_address_to_open
+        cwd: .
   - id: dod-omn26226-ac2
     description: Browser gets a readable page; API reads still 401.
     source: manual
@@ -73,12 +81,20 @@ dod_evidence:
         check_value: uv run pytest -q tests/unit/nodes/node_onex_setup_effect/test_dashboard_no_tenant_id_shown.py
         cwd: .
   - id: dod-omn26226-ac5
-    description: Start URL with token redirects without it and sets the cookie.
+    description: Start URL with token redirects without it and sets the HttpOnly cookie; a read with a wrong or missing token is still refused.
     source: manual
     binds_ac: [AC5]
     checks:
       - check_type: test_passes
-        check_value: uv run pytest -q tests/unit/nodes/node_local_dashboard_serve_effect/test_start_url_redirect_strips_token.py
+        check_value: uv run pytest -q tests/unit/nodes/node_local_dashboard_serve_effect/test_start_url_redirect_strips_token.py tests/unit/nodes/node_local_dashboard_serve_effect/test_start_url_cookie_and_refusal_omn26226.py
+        cwd: .
+  - id: dod-omn26226-command-output
+    description: The foreground onex dashboard command output (the serve path of cli_local.dashboard_command, handler stubbed) shows no session token and no tenant id.
+    source: manual
+    binds_ac: [AC3, AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/unit/nodes/node_local_dashboard_serve_effect/test_dashboard_command_output.py
         cwd: .
   # Not bound as a check: tests/unit/nodes/node_onex_setup_effect/test_dashboard_token_not_in_argv.py
   # guards a regression made and fixed inside this branch (a token on the child's
