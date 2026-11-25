@@ -753,13 +753,12 @@ async def revoke_inference_credential(
         else _build_secret_store(allow_delete=True)
     )
     try:
-        event = ModelCredentialRevokedEvent(
-            tenant_id=tenant_id, api_key_ref=api_key_ref
-        )
         envelope: ModelEventEnvelope[
             ModelCredentialRegisteredEvent | ModelCredentialRevokedEvent
         ] = ModelEventEnvelope(
-            payload=event,
+            payload=ModelCredentialRevokedEvent(
+                tenant_id=tenant_id, api_key_ref=api_key_ref
+            ),
             envelope_timestamp=datetime.now(UTC),
             source_tool=_SOURCE_TOOL,
             event_type=CREDENTIAL_REVOKED_TOPIC_V1,

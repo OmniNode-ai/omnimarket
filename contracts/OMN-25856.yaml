@@ -22,6 +22,8 @@ requirements:
     statement: 'AC9: the lab-backend and house-key refusals name their reason -- falsifier: the text says Register a provider key'
   - id: AC10
     statement: 'AC10: onex secret revoke-tenant-key calls the existing revoke, and for a central-store key says it cannot be deleted and exits 0 after the revoke is published -- falsifier: no such command, or a central key reported deleted'
+  - id: AC11
+    statement: 'AC11: a tenant whose overlay row names no usable credential is refused locally and makes no outbound provider call -- falsifier: a withdrawn credential reaches the vendor with no Authorization header'
 evidence_requirements:
 - kind: tests
   description: The focused regression, failing first with the surviving child process, then passing.
@@ -89,6 +91,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/cli/test_omn24562_revoke_tenant_key_command.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-ck5-withdrawn-credential-is-absent
+  description: A withdrawn credential is absent, not a keyless route; the refusal text change leaves the typed refusal and the no-outbound-call seam intact.
+  source: manual
+  binds_ac:
+  - AC11
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_omn18191_withdrawn_credential_is_absent.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn25856-customer-key-integration-proof
   description: the customer key tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check

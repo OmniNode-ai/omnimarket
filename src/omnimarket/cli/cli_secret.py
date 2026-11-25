@@ -68,6 +68,12 @@ from omnimarket.handlers.routing.byok_provider_backends import (
     ByokPlanNotPermittedError,
     resolve_byok_provider_backend,
 )
+from omnimarket.handlers.routing.customer_key_revoke import (
+    registering_host,
+)
+from omnimarket.handlers.routing.customer_key_revoke import (
+    revoke_tenant_key as revoke_tenant_key_handler,
+)
 from omnimarket.handlers.routing.local_byok_route import house_provider_slug
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
@@ -125,12 +131,10 @@ from omnimarket.nodes.node_secret_store_effect.models import (
 from omnimarket.projection.credential_publisher import (
     CredentialKeyRefusedError,
     CredentialPlanUndeterminedError,
-    CredentialStoreDeleteRejectedError,
     CredentialStoreError,
     ModelInferenceCredentialCreateRequest,
     ProtocolCredentialEventBus,
     register_inference_credential,
-    revoke_inference_credential,
 )
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 
@@ -316,11 +320,7 @@ def _environment_names_broker() -> bool:
 
 
 def _registering_host() -> str | None:
-    """This machine's row name in the lab host table, or ``None`` (OMN-24562).
-
-    The declared lane host first, else the short hostname matched to a row's
-    name or target. Used only to find the publish lane; never to bind a key.
-    """
+    """This machine's row name in the lab host table, or ``None`` (OMN-24562)."""
     table = _lab_host_table()
     if table is None:
         return None
@@ -328,14 +328,8 @@ def _registering_host() -> str | None:
         rows = _lab_host_rows(table)
     except click.ClickException:
         return None
-    names = {name for name, _target in rows}
-    for env in _LANE_HOST_ENVS:
-        declared = os.environ.get(env, "").strip()
-        if declared in names:
-            return declared
-    hostname = socket.gethostname().split(".")[0]
-    matches = [name for name, target in rows if hostname in (name, target)]
-    return matches[0] if len(matches) == 1 else None
+    declared = [os.environ.get(env, "").strip() for env in _LANE_HOST_ENVS]
+    return registering_host(rows, declared, socket.gethostname().split(".")[0])
 
 
 def _lab_host_bus_lane(bound_host: str | None) -> str | None:
@@ -625,31 +619,19 @@ def revoke_tenant_key(
         else _tenant_key_store()
     )
     try:
-        response = asyncio.run(
-            _register_on_declared_bus(
-                lambda event_bus: revoke_inference_credential(
-                    api_key_ref,
-                    tenant_id=tenant,
-                    secret_store=secret_store,
-                    event_bus=event_bus,
-                ),
+        shown = asyncio.run(
+            revoke_tenant_key_handler(
+                api_key_ref,
+                tenant_id=tenant,
+                central=store_choice == "central",
+                secret_store=secret_store,
+                register_on_bus=_register_on_declared_bus,
                 lane=_lab_host_bus_lane(lane_host),
             )
         )
-    except CredentialStoreDeleteRejectedError as exc:
-        if store_choice == "central":
-            click.echo(
-                "credential-revoked was published, so the credential is revoked "
-                "and no longer routes. The stored value cannot be deleted from "
-                "here: the central tenant store is create-only, so it stays "
-                "there until the store's operator removes it. A retry cannot "
-                "remove it."
-            )
-            return
-        raise click.ClickException(str(exc)) from exc
     except CredentialStoreError as exc:
         raise click.ClickException(str(exc)) from exc
-    click.echo(response.model_dump_json())
+    click.echo(shown)
 
 
 def _fold_registered_tenant_key(response: Any, tenant: str) -> None:
