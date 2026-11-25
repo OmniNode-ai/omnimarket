@@ -27,6 +27,11 @@ requirements:
     acceptance:
       - id: "AC4"
         statement: "Every packaged work-contract input pin matches this tree."
+  - id: "req-post-release-0-4-328-bump"
+    statement: "The 0.4.327 release cut's CHANGELOG.md leaves with the 0.4.328 bump."
+    acceptance:
+      - id: "AC5"
+        statement: "The 0.4.328 bump leaves dev at version 0.4.328 or later with no release CHANGELOG.md in the tree."
 evidence_requirements:
   - kind: "tests"
     description: "Run the release-identity gate in strict mode against the tree and compare the uv.lock pin with pyproject.toml."
@@ -101,4 +106,12 @@ dod_evidence:
           assert pin["sha256"] == hashlib.sha256((root / "uv.lock").read_bytes()).hexdigest(), "deployed work-contract lockfile pin mismatch"
           print("work-contract source-artifact deploy probe: PASS")
           PY
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn18010-0-4-328-bump"
+    description: "The tree is at 0.4.328 or later and carries no release CHANGELOG.md; the test fails when the changelog is left behind or the version is below 0.4.328."
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_post_release_dev_bump_omn18010.py -q -k 0_4_328"
         cwd: "${OMNI_HOME}/omnimarket"
