@@ -142,3 +142,10 @@ dod_evidence:
   - check_type: command
     check_value: grep -q 'NodeOverlayNotFoundError' src/omnimarket/nodes/node_delegation_check_probe_effect/runtime_delegation_check_probe_tick.py
     cwd: .
+- id: dod-omn26043-probe-unit-bus-environment
+  description: "The delegation-check-probe registry unit declares the lane bus environment by reference (OMNIBASE_PATH and ONEX_WORKSPACE_CONFIG_ROOT, the same two variables the overlay-store-load unit renders) and names no broker address; the rendered service carries both, and the overlay-store-load render is unchanged. The new test file fails on the base commit, where the unit declared neither variable (measured on h051: event not delivered, KAFKA_BOOTSTRAP_SERVERS), and passes after the change. This binds no criterion of this ticket."
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_delegation_check_probe_bus_env.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

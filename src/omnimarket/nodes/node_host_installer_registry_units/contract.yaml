@@ -918,6 +918,11 @@ units:
     environment:
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      # OMN-26043: the probe publishes its event on the lane bus named in its overlay; the lane declaration table
+      # (config/lab/ci_bus_lanes.yaml) that names the lane's broker is found under these two roots, as for the other
+      # registry units. No KAFKA_* variable names a broker (measured on h051: the unit rendered none and the event was not delivered).
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/delegation-check-probe/last-run.json
     state_directory: .onex_state/delegation-check-probe
   # The overlay store's loader on a Linux pool host (OMN-23353): every 300 s it checks this host's clone of the overlay home,
