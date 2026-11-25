@@ -169,6 +169,8 @@ def test_no_lab_line_is_draft_naming_the_missing_item() -> None:
         f"Lab: head={LAB_HEAD} host h051 PUBLISH REFUSED, nothing ran",
         f"Lab: head={LAB_HEAD} host h051 the run was refused",
         f"Lab: head={LAB_HEAD} host h051 pytest 2 failed, exit code 1",
+        f"Lab: head={LAB_HEAD} host h051 12 passed, 1 failed, known bad answer refused",
+        f"Lab: head={LAB_HEAD} host h051 exit 1, 12 passed, known good admitted, known bad refused",
     ],
 )
 def test_a_lab_line_recording_a_refused_or_failed_run_is_not_proof(line: str) -> None:
@@ -184,6 +186,12 @@ def test_a_lab_line_recording_a_refused_or_failed_run_is_not_proof(line: str) ->
     [
         f"Lab: head={LAB_HEAD} host h051 exit 0, 259 passed",
         f"Lab: head={LAB_HEAD} host h051 exit 0, 259 passed, 0 failed",
+        f"Lab: head={LAB_HEAD} host h051 12 passed; known bad answer was refused",
+        # a known-bad control: the bad answer was refused, and the run itself passed
+        f"Lab: head={LAB_HEAD} host h051 exit 0, 12 passed; known bad answer was refused, known good admitted",
+        # the two real lines seen on 2026-11-24: the census pull request and a hook timing test
+        f"Lab: host=h051 lane=censclaude-1220 sha={LAB_HEAD} exit 0, 474 passed and 1 skipped in 73 s; the hook script run by the test, refusing and allowing as the tests assert",
+        f"Lab: head={LAB_HEAD} hosts=h053,h202,h051 pytest test_hook_preflight.py: whole file 73 passed in 299.41 s on h053; the same -k run on h202 had within_half_budget FAILED at 240 s; known bad test id refused exit 4 (not found) and known good -k kind collected 14/128 exit 0, on h053",
     ],
 )
 def test_control_a_lab_line_recording_a_passing_run_is_proven(line: str) -> None:
