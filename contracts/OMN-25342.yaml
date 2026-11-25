@@ -69,3 +69,10 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25342 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_dev_signed_in_read_effect -q --no-cov --refuse-skips
     cwd: .
+- id: dod-omn25342-trigger-declared
+  description: The node contract declares what runs it (on_demand command and owner), so the Node Trigger Declaration Check passes for it on any pull request that touches the node. Fails on dev dfb19a0870, where runtime_dispatch.external_trigger is set and nothing names the runner.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_signed_in_read_effect/test_trigger_declaration.py -q --no-cov -n 0 -p no:randomly --refuse-skips
+    cwd: .
