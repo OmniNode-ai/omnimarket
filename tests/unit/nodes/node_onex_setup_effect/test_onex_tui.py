@@ -1038,6 +1038,10 @@ def test_config_providers_come_from_the_traits_file_in_its_order() -> None:
         "openai",
         "openrouter",
         "reflection",
+        # Operator 2026-11-26: more providers. setup already adds and lists
+        # both (onex models add anthropic|glm; each backend's models_url).
+        "anthropic",
+        "glm",
         "local",
     ]
     assert [e.provider for e in choices if not cli_tui._hosted(e.provider)] == ["local"]
@@ -1046,6 +1050,8 @@ def test_config_providers_come_from_the_traits_file_in_its_order() -> None:
     for entry in choices:
         assert cli_tui._hosted(entry.provider) is not traits.needs_url(entry.provider)
     assert "openrouter.ai/keys" in cli_tui._hint("openrouter")
+    assert "platform.claude.com/settings/keys" in cli_tui._hint("anthropic")
+    assert "z.ai/manage-apikey/apikey-list" in cli_tui._hint("glm")
 
 
 async def test_entering_a_key_loads_the_models_without_pressing_find() -> None:

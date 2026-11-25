@@ -52,7 +52,8 @@ async def test_the_list_shows_its_column_names() -> None:
         rows = table.query_one("#mt-rows", DataTable)
         assert rows.show_header is True
         titles = [str(column.label) for column in rows.columns.values()]
-        for name in ("Model", "Context", "Price", "Capabilities"):
+        # Operator 2026-11-26: the prices are titled as on the Model tab.
+        for name in ("Model", "Context", "In $/1M", "Out $/1M", "Capabilities"):
             assert any(name in title for title in titles), titles
 
 

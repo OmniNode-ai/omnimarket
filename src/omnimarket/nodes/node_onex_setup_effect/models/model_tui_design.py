@@ -189,10 +189,8 @@ class ModelTuiLayoutColumn(BaseModel):
         "pick",
         "model",
         "model_marked",
-        "position",
-        "model_mark",
+        "model_numbered",
         "context",
-        "price_words",
         "price_in",
         "price_out",
         "capabilities",
@@ -221,7 +219,6 @@ class ModelTuiTabTable(BaseModel):
     marker_other: str = Field(min_length=1)
     context_thousand: str = Field(min_length=1)
     context_million: str = Field(min_length=1)
-    price_in_out: str = Field(min_length=1)
     capability_join: str = Field(min_length=1)
     status: dict[str, ModelTuiWord]
     layouts: dict[str, ModelTuiLayout]

@@ -246,7 +246,6 @@ model_table:
     marker_other: "○"
     context_thousand: k
     context_million: M
-    price_in_out: "{input} in · {output} out"
     capability_join: ", "
     status:
       ready: {text: "✓ ready", colour: success}
@@ -255,11 +254,16 @@ model_table:
       failed: {text: "✗ not working", colour: error}
       unavailable: {text: "! needs a key", colour: warning}
     layouts:
+      # Every list shows a model's shared facts the same way, under the same
+      # titles: name, Context, In $/1M, Out $/1M (operator 2026-11-26).
       order:
-        header: false
+        header: true
         columns:
-          - {key: position, title: " "}
-          - {key: model_mark, title: Model}
+          # The position leads the name, as the Model tab's marker does.
+          - {key: model_numbered, title: "  Model"}
+          - {key: context, title: Context}
+          - {key: price_in, title: "In $/1M"}
+          - {key: price_out, title: "Out $/1M"}
           - {key: status, title: Status}
       found:
         header: true
@@ -267,8 +271,11 @@ model_table:
         columns:
           - {key: pick, title: " "}
           - {key: model, title: Model}
+          # The same cells and titles as the Model tab (operator 2026-11-26:
+          # in and out are named once, in the titles, never in each row).
           - {key: context, title: Context}
-          - {key: price_words, title: "Price per 1M tokens"}
+          - {key: price_in, title: "In $/1M"}
+          - {key: price_out, title: "Out $/1M"}
           - {key: capabilities, title: Capabilities}
       pick:
         header: true

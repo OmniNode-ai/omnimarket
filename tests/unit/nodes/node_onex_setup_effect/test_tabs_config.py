@@ -156,7 +156,10 @@ async def test_model_rows_show_context_price_in_words_and_capabilities(
     gemini = _line(text, "gemini-flash")
     assert "[ ]" in gemini, gemini
     assert "1M" in gemini, gemini
-    assert "$0.08 in · $0.30 out" in gemini, gemini
+    # Operator 2026-11-26: in and out are named once, in the column titles.
+    assert "$0.08" in gemini, gemini
+    assert "$0.30" in gemini, gemini
+    assert " in · " not in gemini, gemini
     assert "tools, vision" in gemini, gemini
     # Operator feedback (2026-11-25) added the column names and a search box to this list,
     # so "Search models" is now expected here.
@@ -166,7 +169,8 @@ async def test_model_rows_show_context_price_in_words_and_capabilities(
     if size[0] > 100:
         qwen = _line(text, "qwen3-27b")
         assert "32k" in qwen, qwen
-        assert "$0.10 in · $0.30 out" in qwen, qwen
+        assert "$0.10" in qwen, qwen
+        assert "$0.30" in qwen, qwen
 
 
 @pytest.mark.parametrize("size", sup.SIZES)

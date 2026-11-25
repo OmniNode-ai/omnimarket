@@ -108,15 +108,6 @@ def price_in_words(entry: ModelCatalogEntry, *, output: bool = False) -> str:
     return _money(value) if value is not None else _table().price_unknown
 
 
-def price_words(entry: ModelCatalogEntry) -> str:
-    """'$0.10 in · $0.30 out', the way the mockup reads it."""
-    if entry.deployment == "local":
-        return _table().price_local
-    return _table().tab_table.price_in_out.format(
-        input=price_in_words(entry), output=price_in_words(entry, output=True)
-    )
-
-
 def capability_words(entry: ModelCatalogEntry) -> Text:
     """'tools, vision': the supported capabilities in plain lower-case words."""
     supported = [label for label, state in entry.capabilities.items() if state == "yes"]
@@ -261,7 +252,18 @@ class ModelTable(Widget):
 
     DEFAULT_CSS = """
     ModelTable { height: 1fr; }
-    ModelTable #mt-search { margin-bottom: 0; }
+    /* a row of space between the search box and the column names (M3) */
+    ModelTable #mt-search { margin-bottom: 1; }
+    /* Column names are quiet: muted bold words, no coloured bar. Textual's
+       default is white on $panel, and white on bright blue in ANSI (M1, M2). */
+    ModelTable DataTable > .datatable--header {
+        background: $surface; color: $text-muted; text-style: bold;
+    }
+    ModelTable DataTable:ansi > .datatable--header {
+        background: ansi_default; color: ansi_bright_black; text-style: bold;
+    }
+    ModelTable DataTable > .datatable--header-hover { background: $surface; }
+    ModelTable DataTable:ansi > .datatable--header-hover { background: ansi_default; }
     ModelTable #mt-bar { height: 1; color: $text-muted; }
     ModelTable DataTable { height: 1fr; }
     """
@@ -295,6 +297,8 @@ class ModelTable(Widget):
         #: A tab layout from tui_design.yaml (model_table.tab_table.layouts), or
         #: None for the classic table with its search, filter and sort bar.
         self._layout = layout
+        #: How many digits the last position has (the Delegation list).
+        self._digits = 1
         #: The row tried first, drawn with the first marker (the Model tab).
         self._first: str | None = None
         self._selectable = selectable
@@ -409,11 +413,11 @@ class ModelTable(Widget):
                 named = Text(_named(entry), style=_colour("foreground"))
                 _say_expired(named, entry)
                 cells.append(named)
-            elif key == "position":
-                cells.append(Text(str(position), style=_colour("muted")))
-            elif key == "model_mark":
-                mark = tui_design().words["model_glyph"]
-                named = Text(f"{mark} ", style=_colour("primary"))
+            elif key == "model_numbered":
+                # The position in the name cell, right-aligned, as the Model
+                # tab leads with its marker: one column fewer, so an
+                # 80-column window keeps the status whole.
+                named = Text(f"{position:>{self._digits}} ", style=_colour("muted"))
                 named.append(_named(entry), style=_colour("foreground"))
                 _say_expired(named, entry)
                 cells.append(named)
@@ -428,8 +432,6 @@ class ModelTable(Widget):
                 cells.append(marked)
             elif key == "context":
                 cells.append(Text(context_words(entry.context_tokens)))
-            elif key == "price_words":
-                cells.append(Text(price_words(entry), style=_colour("accent")))
             elif key == "price_in":
                 cells.append(Text(price_in_words(entry)))
             elif key == "price_out":
@@ -490,7 +492,7 @@ class ModelTable(Widget):
         named = [
             i
             for i, column in enumerate(columns)
-            if column.key in ("model", "model_mark", "model_marked")
+            if column.key in ("model", "model_numbered", "model_marked")
         ]
         width = rows.scrollable_content_region.width
         if not named or width <= 0:
@@ -521,6 +523,7 @@ class ModelTable(Widget):
             for column in rows.columns.values():
                 column.content_width = column.label.cell_len
         visible = self._visible()
+        self._digits = len(str(len(visible)))
         built = [
             self._cells(entry, position)
             for position, entry in enumerate(visible, start=1)

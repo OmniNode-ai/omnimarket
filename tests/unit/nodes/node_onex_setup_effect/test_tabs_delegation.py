@@ -87,7 +87,7 @@ async def test_models_are_listed_in_the_order_they_are_tried(
     """D5."""
     text = await _text(size)
     assert "Tried in this order" in text
-    rows = [_line(text, "1  ◈"), _line(text, "2  ◈"), _line(text, "3  ◈")]
+    rows = [_line(text, "1 qwen3"), _line(text, "2 gemini"), _line(text, "3 glm")]
     assert "qwen3-27b" in rows[0], rows[0]
     assert "✓ ready" in rows[0], rows[0]
     assert "gemini-flash" in rows[1], rows[1]

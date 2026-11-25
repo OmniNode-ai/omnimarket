@@ -883,6 +883,9 @@ class _TabbedScreen(ModalScreen[_ResultT]):
     #: The smallest window a tab is laid out for; below it the tab's parts
     #: would be cut off, so one sentence says so instead.
     MIN_SIZE: ClassVar[tuple[int, int]] = (80, 24)
+    #: Below this many rows the tab is short: parts that take extra rows
+    #: (a bordered search box, the row of space under it) take one.
+    SHORT_HEIGHT: ClassVar[int] = 30
 
     def on_mount(self) -> None:
         # Runs after the tab's own on_mount (Textual calls each class's).
@@ -896,6 +899,7 @@ class _TabbedScreen(ModalScreen[_ResultT]):
         least_width, least_height = self.MIN_SIZE
         small = width < least_width or height < least_height
         self.set_class(small, "-small")
+        self.set_class(height < self.SHORT_HEIGHT, "-short")
         if small:
             self.query_one("#too-small", Static).update(
                 Text(
@@ -1081,6 +1085,9 @@ class SetupScreen(_TabbedScreen[None]):
     #keybox Input { width: 1fr; height: 1; border: none; padding: 0 1; background: transparent; }
     #keymark { width: auto; padding: 0 1; }
     #found { height: 1fr; min-height: 3; display: none; }
+    /* 80x24 with every provider listed: the search box takes one row, so
+       the found models keep room to show (operator 2026-11-26). */
+    SetupScreen.-short #found #mt-search { height: 1; border: none; padding: 0 1; margin-bottom: 0; }
     #note { color: $text-muted; height: auto; }
     #basket { color: $success; height: auto; }
     #basket.-empty { color: $text-muted; }
