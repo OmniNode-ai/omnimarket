@@ -117,9 +117,12 @@ data_reader_gated_infrastructure_paths:
 # project.version narrows beside a lock change only when the lock's sole change is the package's own
 # version line. pyproject_reader_globs are the source files indexed for a read of pyproject.toml (a file
 # that opens it or reads entry-point metadata); the tests that import one, transitively, are readers.
-# The rule is the stage 2 entry of the selection record; like the data-only rule it stays off until the
-# change that turns it on, and it needs the base ref (detect_test_paths --base-ref).
-pyproject_section_selection_enabled: false
+# The rule is the stage 2 entry of the selection record and is on; it needs the base ref
+# (detect_test_paths --base-ref), and a change with no base ref keeps the full suite. A replay of the 60
+# pinned merges (18 change pyproject.toml, 4 of them with a dependency or a lock change beyond the version
+# line) narrows one pyproject merge and no dependency or lock change; over the 83 merges since #6634 it
+# changes no pull request's selection, because the pyproject merges there also hit another escalation.
+pyproject_section_selection_enabled: true
 pyproject_paths:
   - pyproject.toml
 pyproject_lock_paths:

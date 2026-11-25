@@ -13,14 +13,14 @@ import pytest
 from omnimarket.enums.enum_agent_message_operation import EnumAgentMessageOperation
 from omnimarket.enums.enum_agent_message_refusal import EnumAgentMessageRefusal
 from omnimarket.handlers.bus_binding.node_broker import NodeBrokerResolutionError
-from omnimarket.nodes.node_agent_message_effect.handlers.handler_agent_message import (
-    HandlerAgentMessage,
-)
-from omnimarket.nodes.node_agent_message_effect.models.model_agent_message_request import (
+from omnimarket.models.agent_message.model_agent_message_request import (
     ModelAgentMessageRequest,
 )
-from omnimarket.nodes.node_agent_message_effect.models.model_agent_message_result import (
+from omnimarket.models.agent_message.model_agent_message_result import (
     ModelAgentMessageResult,
+)
+from omnimarket.nodes.node_agent_message_effect.handlers.handler_agent_message import (
+    HandlerAgentMessage,
 )
 from tests.unit.nodes.node_agent_message_effect.conftest import FakeBus, message_fields
 
