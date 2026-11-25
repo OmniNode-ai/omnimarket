@@ -19,10 +19,18 @@ requirements:
     statement: 'AC5: thresholds and owners are read from the settings store and the overlay defaults are tested, and no alarm goes to prod -- falsifier: pytest that loads the overlay defaults and fails when a threshold or owner key is missing or when a prod target is accepted'
   - id: AC6
     statement: 'AC6: a regression test built from the incident''s recorded data (fixture path) fails on the broken code and passes on the fix -- falsifier: uv run pytest tests/ -k delegation_check_regression -q'
+- id: req-omn26618-regression-overlay-model
+  statement: The delegation check regression node's overlay document has a typed model in omnimarket that the overlay home can pin ahead of the node.
+  acceptance:
+  - id: AC7
+    statement: 'AC7: ModelRegressionSettings validates the overlay document of the delegation check regression node and refuses a malformed one -- falsifier: tests/unit/models/test_delegation_check_regression_overlay_document_omn24562.py fails collection or any of its tests fails'
 evidence_requirements:
 - kind: tests
   description: The delegation check regression tests pass at the pushed head.
   command: uv run pytest tests/nodes/node_delegation_check_regression_effect -k delegation_check_regression -q
+- kind: tests
+  description: The overlay document model tests pass at the pushed head.
+  command: uv run pytest tests/unit/models/test_delegation_check_regression_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
@@ -80,4 +88,13 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_check_regression_effect -k delegation_check_regression -q
+    cwd: .
+- id: dod-omn26618-regression-overlay-model-tests
+  description: The overlay document model for the delegation check regression node accepts a valid document and refuses malformed ones; the test file fails at collection with ModuleNotFoundError before the model module exists and passes after.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_delegation_check_regression_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
     cwd: .

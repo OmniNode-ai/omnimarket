@@ -8,6 +8,7 @@ name only: never a DSN, a statement or a driver message.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
@@ -26,7 +27,12 @@ class ProtocolGatewayIdentityStore(Protocol):
     ) -> ModelTenantEnsured: ...
 
     async def ensure_api_key(
-        self, *, tenant_id: UUID, name: str, key_hash: str
+        self,
+        *,
+        tenant_id: UUID,
+        name: str,
+        key_hash: str,
+        expires_at: datetime | None = None,
     ) -> EnumApiKeyEnsure: ...
 
 
