@@ -13,6 +13,7 @@ from collections.abc import Sequence
 from decimal import Decimal
 from urllib.parse import urlparse
 
+from rich.cells import cell_len
 from rich.text import Text
 from textual import events, on
 from textual.app import ComposeResult
@@ -233,6 +234,28 @@ class _Rows(DataTable[object]):
             self.cursor_coordinate = Coordinate(row, column)
 
 
+def _cut_middle(name: Text, room: int) -> Text:
+    """``name`` in ``room`` cells with "…" in the middle: the start names the
+    model and the end its server, so two servers' copies stay apart."""
+    plain = name.plain
+    keep = room - 1
+    head = (keep + 1) // 2
+    tail = keep - head
+    if keep <= 0 or len(plain) != cell_len(plain):  # wide glyphs: cut the end
+        cut = name.copy()
+        cut.truncate(room, overflow="ellipsis")
+        return cut
+    cut = name[:head]
+    cut.append("…", style=_colour("muted"))
+    if tail:
+        cut.append_text(name[len(plain) - tail :])
+    return cut
+
+
+#: A model name is never cut shorter than this: past it, the table scrolls.
+_NAME_FLOOR = 14
+
+
 class ModelTable(Widget):
     """Search, filter and sort a model list; optionally tick any number of rows."""
 
@@ -450,13 +473,61 @@ class ModelTable(Widget):
                 cells.append(status_text(entry))
         return cells
 
+    def on_resize(self) -> None:
+        if self._layout is not None:  # names are fitted to the width
+            self.call_after_refresh(self._redraw)
+
+    def _fit_names(self, rows: DataTable[object], built: list[list[object]]) -> None:
+        """Shorten long model names with "…" so every other column, the
+        status last of all, keeps its full width (an 80-column window)."""
+        if self._layout is None or not built:
+            return
+        columns = [
+            column
+            for column in _table().tab_table.layouts[self._layout].columns
+            if not (column.key == "pick" and not self._selectable)
+        ]
+        named = [
+            i
+            for i, column in enumerate(columns)
+            if column.key in ("model", "model_mark", "model_marked")
+        ]
+        width = rows.scrollable_content_region.width
+        if not named or width <= 0:
+            return
+        pad = 2 * rows.cell_padding
+        others = sum(
+            max(
+                [cell_len(column.title)]
+                + [cell_len(str(cells[i])) for cells in built if i < len(cells)]
+            )
+            + pad
+            for i, column in enumerate(columns)
+            if i != named[0]
+        )
+        room = max(width - others - pad, _NAME_FLOOR)
+        for cells in built:
+            name = cells[named[0]]
+            if isinstance(name, Text) and name.cell_len > room:
+                cells[named[0]] = _cut_middle(name, room)
+
     def _redraw(self) -> None:
         rows = self.query_one("#mt-rows", DataTable)
         keep = self.current()
         rows.clear()
+        if self._layout is not None:
+            # DataTable.clear keeps each column's widest cell: start from the
+            # titles so a fitted (shortened) name can narrow its column.
+            for column in rows.columns.values():
+                column.content_width = column.label.cell_len
         visible = self._visible()
-        for position, entry in enumerate(visible, start=1):
-            rows.add_row(*self._cells(entry, position), key=entry_key(entry))
+        built = [
+            self._cells(entry, position)
+            for position, entry in enumerate(visible, start=1)
+        ]
+        self._fit_names(rows, built)
+        for entry, cells in zip(visible, built, strict=True):
+            rows.add_row(*cells, key=entry_key(entry))
         words = _table()
         ticked = (
             words.bar_ticked.format(count=len(self._ticked)) if self._selectable else ""

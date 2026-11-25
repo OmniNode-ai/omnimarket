@@ -506,6 +506,7 @@ words:
   status_reading: "reading your setup…"
   status_none: "no model set up · /config"
   status_auto: "Auto · {count}"
+  header_auto: "Auto"
   status_first: "{model} first"
   # Claude Code delegation in the status bar, as it is (OMN-23413).
   delegation_off: "delegation off"

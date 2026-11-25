@@ -475,6 +475,10 @@ async def load_status() -> ModelTuiStatus:
     )
 
 
+#: claude-hooks step outcomes that mean the hook is not in Claude Code.
+_HOOK_ABSENT = frozenset({"action_required", "unavailable"})
+
+
 def _hook_presence(doc: object) -> dict[str, str]:
     """prompt_hook from status's claude-hooks evidence (OMN-23413: one hook)."""
     observations = doc.get("observations") if isinstance(doc, dict) else None
@@ -483,9 +487,14 @@ def _hook_presence(doc: object) -> dict[str, str]:
             observation.get("evidence") if isinstance(observation, dict) else None
         )
         if isinstance(evidence, dict) and observation.get("step") == "claude-hooks":
-            return {
+            found = {
                 key: str(evidence[key]) for key in ("prompt_hook",) if key in evidence
             }
+            # No evidence, and the step says the hook must be installed or
+            # repaired (the plugin is absent): Claude Code does not have it.
+            if not found and observation.get("status") in _HOOK_ABSENT:
+                found = {"prompt_hook": "missing"}
+            return found
     return {}
 
 
@@ -1868,6 +1877,9 @@ class ModelPickScreen(_TabbedScreen[None]):
     #pick .summary { display: none; }
     #pnow { height: 1; text-style: bold; }
     #models { height: 1fr; border: round $border; padding: 0 1; margin-top: 1; }
+    /* status sits beside the name; prices past the edge scroll with the arrows,
+       without a bar whose track ANSI colour leaves invisible */
+    #models DataTable { scrollbar-size-horizontal: 0; }
     #pnote { color: $text-muted; height: auto; }
     #pfoot { dock: bottom; height: 1; }
     #pkeys { width: 1fr; height: 1; }
@@ -2045,7 +2057,9 @@ class DashboardScreen(_TabbedScreen[None]):
                 with Horizontal(id="bhead"):
                     yield Static(Text(words.title), id="btitle")
                     yield Static(self._state_line(None), id="bstate")
-                yield Static("", id="baddr")
+                address = Static("", id="baddr")
+                address.display = False  # shown only while it runs
+                yield address
                 with Horizontal(id="bbuttons"):
                     # The keys are S, Enter and X; a focused button would take Enter
                     # for itself. The buttons stay clickable.
@@ -2128,9 +2142,11 @@ class DashboardScreen(_TabbedScreen[None]):
         running = state.get("status") == "success" and bool(found.get("url"))
         self._dash_running = running
         self.query_one("#bstate", Static).update(self._state_line(state))
-        self.query_one("#baddr", Static).update(
+        address = self.query_one("#baddr", Static)
+        address.update(
             Text(str(found.get("url")), style=_style("accent")) if running else ""
         )
+        address.display = running
         self.query_one("#bstart").display = not running
         self.query_one("#bopen").display = running
         self.query_one("#bstop").display = running
@@ -2236,6 +2252,8 @@ def header_renderable(model: str | None, width: int) -> Text:
     version = design.header.version.format(version=_version())
     detail = model or ""
     first, second = design.header.lines
+    if not detail:  # nothing known yet: no slot, no separator before the folder
+        second = second.replace("{model} · ", "")
     template_room = len(second.format(mark=mark.rows[1], model=detail, folder=""))
     folder = _folder(max(width - template_room - 2, 0))
     text = Text(no_wrap=True, overflow="crop")
@@ -2364,7 +2382,12 @@ class StatusStore:
 
     @classmethod
     def save(cls, status: ModelTuiStatus) -> None:
-        document = {"model": status.model, "delegation": status.delegation}
+        document = {
+            "model": status.model,
+            "delegation": status.delegation,
+            "models": status.models,
+            "first_url": status.first_url,
+        }
         try:
             cls._path.parent.mkdir(parents=True, exist_ok=True)
             cls._path.write_text(json.dumps(document))
@@ -2377,7 +2400,10 @@ class StatusStore:
         try:
             document = json.loads(cls._path.read_text())
             return ModelTuiStatus(
-                model=document.get("model"), delegation=document.get("delegation")
+                model=document.get("model"),
+                delegation=document.get("delegation"),
+                models=document.get("models"),
+                first_url=document.get("first_url"),
             )
         except (OSError, ValueError, AttributeError):
             return ModelTuiStatus()
@@ -3667,10 +3693,15 @@ class OnexTui(App[int]):
         status = self._status
         main = self._main()
         main.query_one("#header", Static).update(
-            header_renderable(status.model, max(self.size.width - 2, 0))
+            header_renderable(
+                _on_server(status.model, status.first_url)
+                if status.model
+                else (_say("header_auto") if status.models else None),
+                max(self.size.width - 2, 0),
+            )
         )
         main.query_one("#summary", Static).update(
-            summary_renderable(status if self._status_read else None)
+            summary_renderable(status)  # the saved setup until the read lands
         )
         if status.models is None and status.model is None:
             routing = (_say("status_reading"), _style("muted", "italic"))
