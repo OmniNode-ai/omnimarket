@@ -11277,6 +11277,7 @@
       "readers": [
         "node_beacon_trace_capture_effect",
         "node_build_loop_orchestrator",
+        "node_delegation_check_probe_effect",
         "node_generation_consumer",
         "node_projection_delegation",
         "node_projection_eval_results",

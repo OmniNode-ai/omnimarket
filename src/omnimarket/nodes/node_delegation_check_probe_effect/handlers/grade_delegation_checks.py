@@ -46,6 +46,12 @@ def _zero_provider(obs: ModelDelegateObservation) -> ModelCheckClause:
             ok=False,
             detail="a deliberate outbound connect was not classified external: the parser cannot see what it grades for",
         )
+    if obs.negative_control_refused is False:
+        return ModelCheckClause(
+            name="zero_provider",
+            ok=False,
+            detail="a run with no customer overlay was not refused or reached the model server: the configured model is not proven to come from the configuration",
+        )
     if obs.egress_external:
         return ModelCheckClause(
             name="zero_provider",
