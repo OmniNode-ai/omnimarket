@@ -14,7 +14,7 @@ uv target without a checksum; a platform mapped to the wrong uv build, or an
 unsupported one accepted; a missing tool reported late or not at all; a uv
 download that is run although its sha256 differs; a launcher another tool owns
 being overwritten; and (opt-in, real network) a clean install, reinstall or
-upgrade that leaves anything but onex and omni-agent on PATH.
+upgrade that leaves anything but onex on PATH.
 """
 
 from __future__ import annotations
@@ -357,12 +357,12 @@ def test_install_reinstall_and_upgrade_for_real(tmp_path: Path) -> None:
     first = _run(env, timeout=1800)
     assert first.returncode == 0, first.stderr
     assert "checksum verified" in first.stderr
-    assert {p.name for p in bin_dir.iterdir()} == {"onex", "omni-agent"}
+    assert {p.name for p in bin_dir.iterdir()} == {"onex"}
     assert "is not on your PATH yet" in first.stderr
 
     again = _run(env, timeout=1800)
     assert again.returncode == 0, again.stderr
-    assert {p.name for p in bin_dir.iterdir()} == {"onex", "omni-agent"}
+    assert {p.name for p in bin_dir.iterdir()} == {"onex"}
 
     uv_bin = shutil.which("uv")
     if uv_bin is None:
@@ -399,7 +399,7 @@ def test_install_reinstall_and_upgrade_for_real(tmp_path: Path) -> None:
     upgraded = _run({**env, "ONEX_INSTALL_FIND_LINKS": str(wheels)}, newer_script, 1800)
     assert upgraded.returncode == 0, upgraded.stderr
     assert f"omninode-onex=={newer}" in upgraded.stderr
-    assert {p.name for p in bin_dir.iterdir()} == {"onex", "omni-agent"}
+    assert {p.name for p in bin_dir.iterdir()} == {"onex"}
 
 
 @pytest.mark.unit

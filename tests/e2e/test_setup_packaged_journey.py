@@ -595,7 +595,7 @@ def test_dashboard_observation_rejects_changed_current_tenant(
 
 @pytest.mark.release_proof
 def test_customer_launchers_only(tmp_path: Path) -> None:
-    """AC2: `uv tool install omninode-onex` puts exactly onex and omni-agent on PATH.
+    """AC2: `uv tool install omninode-onex` puts exactly onex on PATH.
 
     Opt in with ONEX_TEST_ONEX_WHEEL (the built omninode-onex wheel); the
     distributions it pins resolve from PyPI. The control installs omnibase-core
@@ -643,7 +643,7 @@ def test_customer_launchers_only(tmp_path: Path) -> None:
 
     version = wheel.name.split("-")[1]
     launchers, bin_dir = install(f"omninode-onex=={version}", "customer")
-    assert launchers == {"onex", "omni-agent"}, launchers
+    assert launchers == {"onex"}, launchers
     ran = _run(
         [str(bin_dir / "onex"), "--version"],
         {
@@ -668,4 +668,4 @@ def test_customer_launchers_only(tmp_path: Path) -> None:
     assert listed.returncode == 0, listed.stdout + listed.stderr
 
     control, _ = install("omnibase-core", "control")
-    assert control > {"onex", "omni-agent"}, control
+    assert control > {"onex"}, control

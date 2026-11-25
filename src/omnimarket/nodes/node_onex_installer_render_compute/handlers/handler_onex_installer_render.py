@@ -38,7 +38,7 @@ _TEMPLATE = r"""
 #      pinned uv release from GitHub, checks its sha256 against the value
 #      written in this script, and keeps it in a private directory
 #      (~/.local/share/omninode/uv). It never changes your own uv.
-#   4. Refuses, before installing anything, if an onex or omni-agent it did
+#   4. Refuses, before installing anything, if an onex it did
 #      not install is already in uv's bin directory, and names the file.
 #   5. Runs `uv tool install --python 3.12 --no-build omninode-onex==<version>`
 #      from PyPI. uv downloads Python 3.12 itself if you do not have it.
@@ -295,7 +295,7 @@ Install the OmniNode onex command line on Apple Silicon macOS or Linux (x86_64, 
     curl -fsSL https://omninode.ai/install.sh | bash
 
 Installs $ONEX_PACKAGE $ONEX_VERSION with uv into your home directory (no sudo,
-no git) and puts onex and omni-agent in uv's bin directory. Running it again is
+no git) and puts onex in uv's bin directory. Running it again is
 safe; a newer installer upgrades in place.
 EOF
         return 0

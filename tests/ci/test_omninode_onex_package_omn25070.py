@@ -3,10 +3,10 @@
 """The customer package omninode-onex (OMN-25070, AC2, AC3 and AC5).
 
 omninode-onex is a metadata-only distribution: it carries no code, declares the
-two customer launchers ``onex`` and ``omni-agent`` with omnibase_core's CLI as
+one customer launcher ``onex`` with omnibase_core's CLI as
 their target, and pins each distribution it installs with ``==``. A customer
 runs ``uv tool install omninode-onex``, which links only the named package's
-launchers, so exactly ``onex`` and ``omni-agent`` land on PATH.
+launchers, so exactly ``onex`` lands on PATH.
 
 Failure modes each test catches: a launcher missing or an extra one added; a
 launcher whose target differs from the one omnibase_core declares; a range pin
@@ -45,7 +45,7 @@ from packaging.version import Version
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PACKAGE_DIR = REPO_ROOT / "packages" / "omninode-onex"
 PYPROJECT = PACKAGE_DIR / "pyproject.toml"
-CUSTOMER_LAUNCHERS = {"onex", "omni-agent"}
+CUSTOMER_LAUNCHERS = {"onex"}
 # Every first-party distribution a customer install contains, so a later
 # release of any of them cannot change what a customer gets.
 PINNED_DISTRIBUTIONS = {
@@ -303,7 +303,7 @@ def check_run_by_lane_scripts_kept(pyproject: Path, expected: dict[str, str]) ->
 
 
 def check_customer_package_scripts(pyproject: Path, expected: dict[str, str]) -> None:
-    """Raise AssertionError unless the customer package declares only its two."""
+    """Raise AssertionError unless the customer package declares only onex."""
     scripts = _scripts(pyproject)
     assert set(scripts) == CUSTOMER_LAUNCHERS, sorted(scripts)
     assert not set(scripts) & set(expected), sorted(scripts)
@@ -358,9 +358,24 @@ def test_retargeted_run_by_lane_script_is_caught(tmp_path: Path) -> None:
 @pytest.mark.unit
 def test_run_by_lane_script_in_customer_package_is_caught(tmp_path: Path) -> None:
     name, target = next(iter(RUN_BY_LANE_LITERAL.items()))
-    old = 'omni-agent = "omnibase_core.cli.cli_commands:cli"\n'
+    old = 'onex = "omnibase_core.cli.cli_commands:cli"\n'
     scratch = _scratch_pyproject(
         tmp_path, PYPROJECT, old, old + f'{name} = "{target}"\n'
+    )
+    with pytest.raises(AssertionError):
+        check_customer_package_scripts(scratch, RUN_BY_LANE_LITERAL)
+
+
+@pytest.mark.unit
+def test_a_leaked_omni_agent_launcher_is_caught(tmp_path: Path) -> None:
+    # Negative control (OMN-25070 ruling 2026-11-25): the customer install
+    # exposes only onex, so a re-added omni-agent must fail the launcher check.
+    old = 'onex = "omnibase_core.cli.cli_commands:cli"\n'
+    scratch = _scratch_pyproject(
+        tmp_path,
+        PYPROJECT,
+        old,
+        old + 'omni-agent = "omnibase_core.cli.cli_commands:cli"\n',
     )
     with pytest.raises(AssertionError):
         check_customer_package_scripts(scratch, RUN_BY_LANE_LITERAL)
