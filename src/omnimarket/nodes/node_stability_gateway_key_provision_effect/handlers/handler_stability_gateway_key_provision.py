@@ -122,6 +122,34 @@ class HandlerStabilityGatewayKeyProvision:
             )
         return None
 
+    def _chosen_key(
+        self, lane: str, check: str | None, declared: dict[str, Any]
+    ) -> tuple[str, str] | ModelStabilityKeyProvisionResult:
+        """The (generated key id, key row name) this run uses, or the refusal when the check cannot have its own key.
+
+        No check is the default run. A named check must be declared and must differ from the default in both the generated
+        key id (its name in the secret store) and the key row name, so it can never store under, or collide with, the key
+        another check reads.
+        """
+        default = (declared["generated_key_id"], declared["api_key_name"])
+        if check is None:
+            return default
+        entry = (declared.get("checks") or {}).get(check)
+        if entry is None:
+            return self._result(
+                EnumStabilityKeyOutcome.REFUSED_CHECK_NOT_DECLARED,
+                lane=lane,
+                detail=f"check {check!r} is not a check the contract declares {sorted(declared.get('checks') or {})}; nothing was read or written",
+            )
+        chosen = (entry["generated_key_id"], entry["api_key_name"])
+        if chosen[0] == default[0] or chosen[1] == default[1]:
+            return self._result(
+                EnumStabilityKeyOutcome.REFUSED_CHECK_NOT_DECLARED,
+                lane=lane,
+                detail=f"check {check!r} reuses the default key id or key name; a check needs its own; nothing was read or written",
+            )
+        return chosen
+
     async def handle(
         self, request: ModelStabilityKeyProvisionCommand
     ) -> ModelStabilityKeyProvisionResult:
@@ -131,9 +159,12 @@ class HandlerStabilityGatewayKeyProvision:
         if guard is not None:
             return guard
         slug: str = declared["tenant_slug"]
-        key_name: str = declared["api_key_name"]
+        chosen = self._chosen_key(lane, request.check, declared)
+        if isinstance(chosen, ModelStabilityKeyProvisionResult):
+            return chosen
+        key_id, key_name = chosen
 
-        generated = await self._key_generator.generate(declared["generated_key_id"])
+        generated = await self._key_generator.generate(key_id)
         if (
             generated.outcome
             not in (EnumSecretStoreOutcome.CREATED, EnumSecretStoreOutcome.EXISTS)
@@ -143,7 +174,7 @@ class HandlerStabilityGatewayKeyProvision:
             return self._result(
                 EnumStabilityKeyOutcome.KEY_UNAVAILABLE,
                 lane=lane,
-                detail=f"the key generator returned {generated.outcome.value} for {declared['generated_key_id']!r}",
+                detail=f"the key generator returned {generated.outcome.value} for {key_id!r}",
             )
         folder, secret_key = generated.folder, generated.key
         secret = await self._settings_store.read(folder, secret_key)

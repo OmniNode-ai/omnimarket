@@ -147,14 +147,26 @@ def test_the_census_tick_probe_answers_and_one_tick_keeps_the_daily_record(
             env=scrub_git_location_env(os.environ),
         )
     out = io.StringIO()
+    sent: list[dict[str, object]] = []
+
+    class _Bus:
+        def publish(self, **event: object) -> bool:
+            sent.append(dict(event))
+            return True
+
     code = module.main(
         ["--omni-home", str(registry), "--state-dir", str(tmp_path / "state")],
         environ={},
         stdout=out,
+        publisher=_Bus(),
     )
     assert code == 0, out.getvalue()
+    assert [e["topic"] for e in sent] == [
+        "onex.evt.omnimarket.ledger-file-census-daily-record.v1"
+    ]
     evidence = json.loads((tmp_path / "state" / "last-run.json").read_text("utf-8"))
     assert evidence["exit_code"] == 0
+    assert evidence["published"] is True
     assert [r["repository"] for r in evidence["record"]["repositories"]] == registered
     assert "CENSUS-RECORD " in out.getvalue()
 
