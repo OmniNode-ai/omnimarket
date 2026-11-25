@@ -242,3 +242,10 @@ def test_the_reopen_dev_action_runs_the_bump_and_stages_the_removal() -> None:
     shell = "\n".join(str(s.get("run", "")) for s in action["runs"]["steps"])
     assert shell.count("scripts/ci/post_release_dev_bump.py") >= 2
     assert "git rm -q --ignore-unmatch -- CHANGELOG.md" in shell
+
+
+def test_the_0_4_328_bump_left_no_release_changelog() -> None:
+    """The 0.4.328 bump removes the CHANGELOG.md the 0.4.327 cut added."""
+    version = tuple(int(x) for x in _pyproject_version().split("."))
+    assert version >= (0, 4, 328)
+    assert not (ROOT / "CHANGELOG.md").exists()

@@ -159,6 +159,16 @@ def plan_topic_provision(
         tuple(c for c in contracts if c.contract_name in loaded_contracts), request
     )
     topics_to_provision.update(service_writer_topics)
+    host_unit_publish_topics = tuple(
+        sorted(
+            {
+                topic
+                for c in contracts
+                if c.contract_name in loaded_contracts
+                for topic in c.host_unit_publish_topics
+            }
+        )
+    )
     topics_sorted = tuple(sorted(topics_to_provision))
 
     # Live topic counts.
@@ -183,6 +193,7 @@ def plan_topic_provision(
         live_topics_outside_rule=live_topics_outside_rule,
         live_topics_undeclared=live_topics_undeclared,
         service_writer_topics=service_writer_topics,
+        host_unit_publish_topics=host_unit_publish_topics,
     )
 
 

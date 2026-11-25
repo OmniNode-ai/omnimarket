@@ -122,6 +122,8 @@ generated_keys:
   # (OMN-26586) the stability gateway key node_stability_gateway_key_provision_effect hashes into tenant_api_keys; prefix is the gateway's API key prefix.
   # (OMN-26121) `key` is the name the stability probes (C15, C16, C11) read from the stability Infisical, so it carries their STABILITY_TEST_ name.
   stability_gateway_api_key: {folder: /shared/env, key: STABILITY_TEST_CHAIN_CANARY_GATEWAY_API_KEY, bytes: 32, prefix: "onxk_"}
+  # (OMN-26566) the stability gateway key of check C16 alone: its own name, so a C16 provision never touches the name C11 reads.
+  stability_gateway_api_key_c16: {folder: /shared/env, key: STABILITY_TEST_C16_GATEWAY_API_KEY, bytes: 32, prefix: "onxk_"}
 
 # A reference's first segment, when it names one of these, maps through it:
 # secret://onex/captured/<digest> is key CAPTURED_<digest> in folder /captured

@@ -8,13 +8,13 @@ stderr and exits non-zero with no stack trace: 2 for a request to fix, 3 for a b
 
 Command line::
 
-    onex agent-message send --to codex:review --thread t-1 --kind request \\
+    onex agent-message send --to codex:review --thread t-1 --kind question \\
       --platform claude --text "please review the diff"
-    onex agent-message send --to some-lane --thread t-1 --kind reply --platform codex --text -@answer.txt
+    onex agent-message send --to some-lane --thread t-1 --kind answer --platform codex --text -@answer.txt
     onex agent-message read --to codex:review --thread t-1 --since 2026-11-23T13:00:00Z --limit 20 --json
 
-``--to`` is a lane name or ``platform:name``; ``--kind`` is one of request, reply, status, handoff;
-``--platform`` is one of claude, codex, glm, hermes, gemini. ``--text`` takes the text, ``-@FILE``
+``--to`` is a lane name or ``platform:name``; ``--kind`` is one of message, question, answer, notice;
+``--platform`` is one of claude, codex, glm, hermes, gemini, other. ``--text`` takes the text, ``-@FILE``
 to read a file, or ``-`` for stdin. The sender defaults to ``$ONEX_LANE``, then
 ``$ONEX_AGENT_IDENTITY``, then ``<platform>:<platform>``; ``--from`` overrides it, and the client
 sets ``sent_at`` in UTC. The broker is the declared bus lane: ``--bus-lane dev`` (or
@@ -257,7 +257,7 @@ def read_command(
     except AgentMessageRefusalError as refusal:
         _refuse(refusal, as_json=as_json)
         return
-    click.echo(render_read(result.messages, as_json=as_json))
+    click.echo(render_read(result, as_json=as_json))
 
 
 @agent_message_group.command("serve-mcp")

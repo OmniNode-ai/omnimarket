@@ -19,7 +19,7 @@ runtime_profiles: [effects]
 description: >
   Provisions the stability gateway identity. The lane guard refuses, with no side effect, any command lane or overlay lane
   the stability_only block does not declare (prod and the cloud lanes are never declared). A run generates the declared key
-  id through the secret store node (an existing key is reused, never replaced), ensures the declared tenant through the
+  id (the default one, or the named check's own) through the secret store node (an existing key is reused, never replaced), ensures the declared tenant through the
   tenant provision node's transaction, and inserts one active key row holding the SHA-256 hash of the stored value. A second
   run on a populated database writes nothing; a different active key under the same name is a typed conflict, never a
   replacement. Every failure is a typed result.
@@ -95,6 +95,14 @@ stability_only:
   api_key_name: stability-canary-chain-gateway
   # A generated_keys id of node_secret_store_effect/contract.yaml: its folder, key name, length and the gateway's key prefix.
   generated_key_id: stability_gateway_api_key
+  # One entry per check that has its own key (OMN-26566). A command naming a check stores that check's key under that
+  # check's own generated_key_id (its own name in the secret store) and its own api_key_name row, so a run for one check never
+  # touches the name another check reads. A check must not reuse the default generated_key_id or api_key_name above: the run is
+  # refused with refused_check_not_declared and nothing is read or written. A command with no check is the default run.
+  checks:
+    c16:
+      generated_key_id: stability_gateway_api_key_c16
+      api_key_name: stability-canary-c16-gateway
 
 metadata:
   ticket: OMN-26586

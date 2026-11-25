@@ -25,6 +25,7 @@ from omnimarket.nodes.node_lab_fill_effect.protocols.local_lab_fill_adapters imp
 from omnimarket.nodes.node_lab_fill_effect.protocols.local_lab_fill_merged_history import (
     LocalMergedHistory,
 )
+from omnimarket.protocols.protocol_ledger_rows_reader import LedgerReadError
 
 pytestmark = pytest.mark.unit
 
@@ -155,16 +156,44 @@ def test_a_stale_watcher_and_no_merge_in_the_clones_is_unread(tmp_path: Path) ->
         _work(tmp_path, _Watcher(fail=True)).merged_prs("OMN-22623", "")
 
 
+class _Rows:
+    """The bus rows reader the built-reports port reads: fixed rows, or a failure when ``fail`` is set."""
+
+    def __init__(self, lines: tuple[str, ...] = (), fail: str = "") -> None:
+        self._lines, self._fail = lines, fail
+
+    def rows(
+        self,
+        *,
+        reader: str,
+        window_hours: int,
+        kinds: Sequence[str] = (),
+        lanes: Sequence[str] = (),
+    ) -> tuple[str, ...]:
+        if self._fail:
+            raise LedgerReadError(self._fail)
+        return self._lines
+
+
 def test_built_reports_read_the_ledger_rows_of_the_ticket(tmp_path: Path) -> None:
-    ledger = tmp_path / "ledger.md"
-    ledger.write_text(
-        "2026-11-09T14:29:11Z | TERMINAL | lane=fill-ticket-OMN-9-x | ticket=OMN-9 | outcome=skipped-already-built | falsifiers=pass | evidence=ran it\n"
-        "2026-11-09T14:30:00Z | TERMINAL | lane=fill-ticket-OMN-8-x | ticket=OMN-8 | outcome=skipped-already-built | falsifiers=pass\n",
-        encoding="utf-8",
+    rows = _Rows(
+        (
+            "2026-11-09T14:29:11Z | TERMINAL | lane=fill-ticket-OMN-9-x | ticket=OMN-9 | outcome=skipped-already-built | falsifiers=pass | evidence=ran it",
+            "2026-11-09T14:30:00Z | TERMINAL | lane=fill-ticket-OMN-8-x | ticket=OMN-8 | outcome=skipped-already-built | falsifiers=pass",
+        )
     )
-    reports = _work(tmp_path, _Watcher()).built_reports("OMN-9", str(ledger))
+    work = LocalMergedWork(
+        reader=_Watcher(),
+        history=LocalMergedHistory(SETTINGS, root=tmp_path),
+        rows=rows,
+    )
+    reports = work.built_reports("OMN-9")
     assert [(r.ticket, r.falsifiers_passed, r.evidence) for r in reports] == [
         ("OMN-9", True, "ran it")
     ]
     with pytest.raises(LabFillPortError, match="ledger unreadable"):
-        _work(tmp_path, _Watcher()).built_reports("OMN-9", str(tmp_path / "none.md"))
+        LocalMergedWork(
+            reader=_Watcher(),
+            history=LocalMergedHistory(SETTINGS, root=tmp_path),
+            rows=_Rows(fail="reader exited 69"),
+        ).built_reports("OMN-9")

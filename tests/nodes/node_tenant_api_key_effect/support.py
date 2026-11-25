@@ -8,6 +8,9 @@ import hashlib
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
+from omnimarket.models.overlay_documents.model_tenant_api_key_overlay import (
+    ModelTenantApiKeyOverlay,
+)
 from omnimarket.nodes.node_tenant_api_key_effect.handlers.handler_tenant_api_key_register import (
     HandlerTenantApiKeyRegister,
 )
@@ -18,7 +21,6 @@ from omnimarket.nodes.node_tenant_api_key_effect.handlers.store_tenant_api_key_p
     PostgresTenantApiKeyStore,
 )
 from omnimarket.nodes.node_tenant_api_key_effect.models import (
-    ModelTenantApiKeyOverlay,
     ModelTenantApiKeyRegisterRequest,
     ModelTenantApiKeyRevokeRequest,
 )

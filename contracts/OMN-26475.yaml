@@ -34,6 +34,13 @@ requirements:
       - id: "AC4"
         statement: |-
           AC4: the gateway_key reference maps to its folder and key -- falsifier: the test in `tests/nodes/node_secret_store_effect/` asserting `_load_namespaces` maps `gateway_key/<name>` to `/tenant-gateway-keys` and the key fails
+  - id: "req-omn26475-shared-overlay"
+    statement: |-
+      The tenant key node reads the shared overlay document model and keeps no node-local copy.
+    acceptance:
+      - id: "AC5"
+        statement: |-
+          AC5: the tenant key node's handler and test support use the shared ModelTenantApiKeyOverlay and the node holds no local copy -- falsifier: `uv run pytest tests/nodes/node_tenant_api_key_effect/test_shared_overlay_model.py -q -n 0 --no-cov` fails, or the node's models package still defines or exports ModelTenantApiKeyOverlay
 evidence_requirements:
   - kind: "tests"
     description: "The CLI, entry point registration and namespace tests pass at the pushed head."
@@ -74,6 +81,14 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_secret_store_effect -q -n 0 --no-cov"
+        cwd: "."
+  - id: "dod-omn26475-ac5-shared-overlay"
+    description: "The handler and test support import the shared overlay model, and the node-local overlay model module is gone."
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_tenant_api_key_effect/test_shared_overlay_model.py -q -n 0 --no-cov"
         cwd: "."
   - id: "dod-omn26475-integration-proof"
     description: "Run the installed onex tenant group's help and the CLI tests on a lab host at the pushed head; the local Done gate runs this unbound check."

@@ -14,6 +14,9 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
 )
+from omnimarket.models.overlay_documents.model_tenant_api_key_overlay import (
+    ModelTenantApiKeyOverlay,
+)
 from omnimarket.nodes.node_tenant_api_key_effect.handlers.contract_settings import (
     CONTRACT_PATH,
     load_database_dsn_env,
@@ -25,7 +28,6 @@ from omnimarket.nodes.node_tenant_api_key_effect.models import (
     EnumTenantApiKeyRegisterOutcome as Outcome,
 )
 from omnimarket.nodes.node_tenant_api_key_effect.models import (
-    ModelTenantApiKeyOverlay,
     ModelTenantApiKeyRegisterRequest,
     ModelTenantApiKeyRegisterResult,
     ModelTenantApiKeyRow,
