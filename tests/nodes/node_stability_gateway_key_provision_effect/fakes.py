@@ -10,6 +10,7 @@ so a test can prove the value never appears in a result, a repr or a log.
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -89,6 +90,7 @@ class FakeIdentityStore:
     ) -> None:
         self.tenants: dict[str, UUID] = {}
         self.keys: dict[tuple[UUID, str], str] = {}
+        self.expiries: dict[tuple[UUID, str], datetime | None] = {}
         self.calls: list[str] = []
         self._slug_taken = slug_taken
         self._unavailable = unavailable
@@ -116,7 +118,12 @@ class FakeIdentityStore:
         )
 
     async def ensure_api_key(
-        self, *, tenant_id: UUID, name: str, key_hash: str
+        self,
+        *,
+        tenant_id: UUID,
+        name: str,
+        key_hash: str,
+        expires_at: datetime | None = None,
     ) -> EnumApiKeyEnsure:
         self.calls.append("ensure_api_key")
         if key_hash in self._hashes_held_by_others:
@@ -124,6 +131,7 @@ class FakeIdentityStore:
         held = self.keys.get((tenant_id, name))
         if held is None:
             self.keys[(tenant_id, name)] = key_hash
+            self.expiries[(tenant_id, name)] = expires_at
             return EnumApiKeyEnsure.CREATED
         if held == key_hash:
             return EnumApiKeyEnsure.EXISTS

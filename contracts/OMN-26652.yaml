@@ -102,3 +102,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_check_regression_effect/test_audit_model_location.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26652-relation-inventory-current
+  description: The checked-in relation inventory lists node_delegation_check_regression_effect as a reader of overlay_store, the table its trigger now reads settings from, so the source-derived generator check reports the file current.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/scripts/test_application_relation_inventory.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
