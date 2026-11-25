@@ -54,3 +54,33 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22576 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_hook_lane_join_compute -q --no-cov
     cwd: .
+- id: dod-omn22576-accept-ac1-tests-mypy-ruff
+  description: 'AC1: the node golden and error chain tests pass, and mypy --strict, ruff check and ruff format --check are clean over the node and its tests. Re-run by the accepting lane at omnimarket dev 8a88457b89: 15 passed; mypy Success: no issues found in 5 source files; ruff All checks passed!; 7 files already formatted. With the product changes of merged fix 42a1a083eb reverted, 5 of the 15 tests fail. The ticket falsifier names src/omnimarket/nodes/node_hook_lane_join_compute; the tests live at tests/nodes/node_hook_lane_join_compute.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: env -u PYTHONPATH PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_hook_lane_join_compute -q --no-cov -p no:cacheprovider && env -u PYTHONPATH uv run --frozen mypy --strict src/omnimarket/nodes/node_hook_lane_join_compute && env -u PYTHONPATH uv run --frozen ruff check src/omnimarket/nodes/node_hook_lane_join_compute tests/nodes/node_hook_lane_join_compute && env -u PYTHONPATH uv run --frozen ruff format --check src/omnimarket/nodes/node_hook_lane_join_compute tests/nodes/node_hook_lane_join_compute
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn22576-accept-ac2-unmatched-and-silent
+  description: 'AC2: against an unbroken control (no unmatched agent, no silent host), the injected agent break names agents b and c in unmatched_agents with their reasons, and the injected host break reports silent_hosts == (h202,) and hosts [(mac, 2), (h202, 0)]. Re-run by the accepting lane at omnimarket dev 8a88457b89: 3 passed. The ticket falsifier -k error_chain selects by file name; this check names the three node ids.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: env -u PYTHONPATH PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_hook_lane_join_compute/test_error_chain_hook_lane_join.py::test_control_every_agent_fits_a_lane_and_every_host_reports tests/nodes/node_hook_lane_join_compute/test_error_chain_hook_lane_join.py::test_injected_break_an_agent_that_fits_no_lane_is_named_not_dropped tests/nodes/node_hook_lane_join_compute/test_error_chain_hook_lane_join.py::test_injected_break_a_host_with_no_events_is_counted_at_zero_and_named -v --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+context:
+  ac_binding_provenance:
+    dod-omn22576-accept-ac1-tests-mypy-ruff:
+    - label: AC1
+      criterion_hash: 6030fec03c8254ca9ba6f3d95b981f618fce4748875a64f89d4acbc98abc328a
+      proposed_by: lane=dod-closeout-bind-2026-11-25T0345Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-25T0345Z-c2
+    dod-omn22576-accept-ac2-unmatched-and-silent:
+    - label: AC2
+      criterion_hash: e70c93999ad1843b5f7032991d2ee725d890c84a54047cf0955ceca3a8aa4091
+      proposed_by: lane=dod-closeout-bind-2026-11-25T0345Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-25T0345Z-c2
