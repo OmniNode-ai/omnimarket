@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Awaitable, Callable
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, cast
@@ -347,36 +348,98 @@ def _baseline(store: FakeStore) -> str:
     return next(key[3] for key in store.rows if key[1] == "all")
 
 
+_GAP_ROUNDS = 3
+
+
+async def _longest_gap(work: Awaitable[Any]) -> tuple[float, int, Any]:
+    """The longest gap a yielding coroutine sees while ``work`` runs on the loop."""
+    stop = asyncio.Event()
+    gaps: list[float] = []
+
+    async def ticker() -> None:
+        last = time.perf_counter()
+        while not stop.is_set():
+            await asyncio.sleep(0)
+            now = time.perf_counter()
+            gaps.append(now - last)
+            last = now
+
+    tick = asyncio.create_task(ticker())
+    await asyncio.sleep(0)
+    try:
+        result = await work
+    finally:
+        stop.set()
+        await tick
+    return max(gaps), len(gaps), result
+
+
+async def _quietest_gap(
+    make_work: Callable[[], Awaitable[Any]], rounds: int = _GAP_ROUNDS
+) -> tuple[float, int, Any]:
+    """The smallest longest-gap over up to ``rounds`` runs of the same work.
+
+    Code that holds the loop holds it the same way in every run, so its gap is the
+    floor of every round. A stall of the runner (a noisy neighbour, a paused VM)
+    lands in one round only, so the first clean round settles it. Hosted runs read
+    0.60, 0.70 and 0.91 s for a refresh whose longest gap is 0.06 s on one lab CPU
+    and 0.22 s with three busy loops sharing that CPU: the code holds nothing over
+    100 ms, the runner stalled. Same method as omnibase_infra's loop-hold tests.
+    """
+    best: tuple[float, int, Any] | None = None
+    for _ in range(rounds):
+        measured = await _longest_gap(make_work())
+        if best is None or measured[0] < best[0]:
+            best = measured
+        if measured[0] < _MAX_LOOP_GAP_SECONDS:
+            break
+    assert best is not None
+    return best
+
+
+def _large_refresh(*, inline_fold: bool = False) -> Callable[[], Awaitable[Any]]:
+    async def work() -> Any:
+        writer = _writer(FakeStore(_runs(_LARGE_STORE_RUNS, per_day=2000)))
+        if inline_fold:
+
+            async def on_the_loop(fn: Callable[..., Any], *args: Any) -> Any:
+                return fn(*args)
+
+            writer._run_blocking = on_the_loop
+        return await writer._refresh(_request(EnumMeteringRefreshReason.SCHEDULE))
+
+    return work
+
+
 def test_the_refresh_does_not_hold_the_loop_over_a_large_store() -> None:
     # Steady state: the writer has already read its contract once (a one-time
     # parse that is not what a refresh costs), so warm it on a small store.
     _bootstrap(FakeStore(_runs(10)))
-    store = FakeStore(_runs(_LARGE_STORE_RUNS, per_day=2000))
-
-    async def scenario() -> tuple[float, int]:
-        stop = asyncio.Event()
-        gaps: list[float] = []
-
-        async def ticker() -> None:
-            last = time.perf_counter()
-            while not stop.is_set():
-                await asyncio.sleep(0)
-                now = time.perf_counter()
-                gaps.append(now - last)
-                last = now
-
-        tick = asyncio.create_task(ticker())
-        await asyncio.sleep(0)
-        try:
-            result = await _writer(store)._refresh(
-                _request(EnumMeteringRefreshReason.SCHEDULE)
-            )
-        finally:
-            stop.set()
-            await tick
-        assert result["rows_upserted"] > 0
-        return max(gaps), len(gaps)
-
-    max_gap, ticks = asyncio.run(scenario())
+    max_gap, ticks, result = asyncio.run(_quietest_gap(_large_refresh()))
+    assert result["rows_upserted"] > 0
     assert max_gap < _MAX_LOOP_GAP_SECONDS
     assert ticks >= _MIN_TICKS_DURING_REFRESH
+
+
+def test_a_fold_made_synchronous_on_the_loop_is_read_as_a_hold() -> None:
+    """Control: the same refresh with its fold run on the loop fails every round."""
+    _bootstrap(FakeStore(_runs(10)))
+    max_gap, _, result = asyncio.run(_quietest_gap(_large_refresh(inline_fold=True)))
+    assert result["rows_upserted"] > 0
+    assert max_gap >= _MAX_LOOP_GAP_SECONDS
+
+
+def test_a_one_off_runner_stall_is_not_read_as_a_hold() -> None:
+    """Control: one stalled round, the work itself holding nothing, passes."""
+    rounds: list[int] = []
+
+    async def work() -> str:
+        rounds.append(1)
+        if len(rounds) == 1:
+            time.sleep(_MAX_LOOP_GAP_SECONDS * 1.5)  # the runner's stall
+        await asyncio.sleep(0)
+        return "done"
+
+    max_gap, _, _ = asyncio.run(_quietest_gap(work))
+    assert len(rounds) == 2
+    assert max_gap < _MAX_LOOP_GAP_SECONDS
