@@ -829,7 +829,10 @@ def test_a_ledger_file_path_alone_does_not_satisfy_the_remote_setup() -> None:
             READY_SETTINGS,
             READY_CONFIG,
             "",
-            {"OMNI_HOME": "/workspace/registry", "ONEX_LEDGER_PATH": "/x/ledger.md"},
+            {
+                "OMNI_HOME": "/workspace/registry",
+                "ONEX_LEDGER_FILE_LOCATION": "/x/ledger.md",
+            },
         )
     )
     assert not result.ok
@@ -837,7 +840,7 @@ def test_a_ledger_file_path_alone_does_not_satisfy_the_remote_setup() -> None:
         "ONEX_LEDGER_BUS_APPEND_COMMAND is not set",
         "ONEX_LEDGER_HOST_NAME is not set",
     )
-    assert "ONEX_LEDGER_PATH" not in result.line
+    assert "ONEX_LEDGER_FILE_LOCATION" not in result.line
 
 
 def test_session_start_reports_setup_remote_only(tmp_path: Path) -> None:

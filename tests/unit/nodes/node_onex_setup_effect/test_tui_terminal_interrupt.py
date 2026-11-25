@@ -46,7 +46,7 @@ def _app_main() -> None:
 
     app = OnexTui(
         root=_root,
-        runner=Runner(["terminal still accepts commands"]),
+        runner=Runner(["Not a TUI command"]),
         load_status=_status,
         load_index=_index,
     )
@@ -86,12 +86,7 @@ def test_ctrl_c_at_guided_setup_keeps_the_tui_usable(tmp_path: Path) -> None:
         stdout=slave,
         stderr=slave,
         start_new_session=True,
-        env={
-            **os.environ,
-            "HOME": str(tmp_path),
-            "TERM": "xterm-256color",
-            "ONEX_CLI_SHOW_ALL_COMMANDS": "1",  # OMN-26610: the operator view
-        },
+        env={**os.environ, "HOME": str(tmp_path), "TERM": "xterm-256color"},
     )
     os.close(slave)
     try:
@@ -105,7 +100,7 @@ def test_ctrl_c_at_guided_setup_keeps_the_tui_usable(tmp_path: Path) -> None:
         for key in b"/models connections\r":
             os.write(master, bytes([key]))
             time.sleep(0.02)
-        _expect(master, b"terminal still accepts commands")
+        _expect(master, b"Not a TUI command")
     finally:
         if app.poll() is None:
             os.killpg(app.pid, signal.SIGTERM)

@@ -213,17 +213,12 @@ def _disable(name: str) -> None:
         ("/delegation on", True),
         ("/delegation on --replace", True),
         ("/delegation off", False),
-        ("/hooks enable POST_SKILL_DELEGATION_ENFORCER", True),
-        ("/hooks disable POST_SKILL_DELEGATION_ENFORCER", False),
     ],
 )
 async def test_a_palette_command_that_switches_delegation_reads_it_again(
-    typed: str, now_on: bool, monkeypatch: pytest.MonkeyPatch
+    typed: str, now_on: bool
 ) -> None:
     """DS2: the bar and a tab opened afterwards show the state the command left."""
-    monkeypatch.setenv(
-        "ONEX_CLI_SHOW_ALL_COMMANDS", "1"
-    )  # OMN-26610: the operator view
     runner = _Runner([], by_command=_selected_rows(connection=False))
     reads = 0
 

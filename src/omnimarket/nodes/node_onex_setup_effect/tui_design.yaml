@@ -60,8 +60,7 @@ banner:
 
 # The / palette lists exactly these, in this order: the commands a customer needs
 # (OMN-26610). A path with action "run" runs the onex CLI command of that name.
-# Every other onex CLI command stays in the CLI; the TUI lists and runs them only
-# when ONEX_CLI_SHOW_ALL_COMMANDS=1 is set, after these.
+# Every other onex CLI command stays in the CLI and is not reachable from the TUI.
 shortcuts:
   - {path: [config], action: config, help: "Manage providers, keys and models or run guided setup."}
   - {path: [model], action: model, help: Pick the model every task tries first.}
@@ -274,10 +273,10 @@ dashboard:
   start: [dashboard, start, --json]
   open: [dashboard, open, --json]
   stop: [dashboard, stop, --json]
-  running: "Running at {url} (process {pid})"
+  running: "Running (process {pid}). Press Enter, use the Open button, or run onex dashboard open to open it."
   not_running: "Not running. {fix}"
-  started: "Dashboard running at {url}"
-  opened: "Opened {url} in your browser"
+  started: "Dashboard running. Press Enter, use the Open button, or run onex dashboard open to open it."
+  opened: "Opened in your browser. Press Enter, use the Open button, or run onex dashboard open to open it again."
   stopped: "Dashboard stopped"
   failed: "Dashboard {action} did not work: {reason}"
 
@@ -418,6 +417,7 @@ words:
   # A zero cost with cost_measured false is unknown, not free (audit S9-1, OMN-24224).
   run_cost_unmeasured: "cost not measured"
   run_saved: "saved ${saved}"
+  run_saved_unmeasured: "savings not measured"
   run_id: "run {run}"
   last_run: "last run {model} ${cost}"
   last_run_unmeasured: "last run {model} · cost not measured"

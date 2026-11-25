@@ -24,7 +24,6 @@ from textual.pilot import Pilot
 from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
     ModelTuiStatus,
     OnexTui,
-    command_tree,
 )
 
 pytestmark = pytest.mark.unit
@@ -183,37 +182,23 @@ async def test_a_typed_internal_command_runs_nothing_and_says_where_to_run_it() 
         assert runner.terminal_calls == []
 
 
-async def test_the_operator_switch_lists_every_command(
+async def test_no_environment_switch_widens_the_list_or_runs_hidden_commands(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """AC3 / F3: the customer commands lead, then every other CLI command."""
-    monkeypatch.setenv("ONEX_CLI_SHOW_ALL_COMMANDS", "1")
-    app = _app(_Runner())
-    async with app.run_test() as pilot:
-        await pilot.press("slash")
-        listed = _listed(app)
-        assert tuple(listed[: len(_CUSTOMER)]) == _CUSTOMER
-        every_cli = {"/" + " ".join(c.path) for c in command_tree(_root)}
-        # /setup is replaced by /config in the TUI, as it is today.
-        expected = (set(_CUSTOMER) | every_cli) - {"/setup"}
-        assert set(listed) == expected
-        assert len(listed) == len(expected)
-        assert "/scm pr-list" in listed
-
-
-async def test_with_the_switch_a_typed_internal_command_runs(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """AC3 / F3: the team loses nothing."""
+    """AC3 / F3: setting the old switch changes nothing."""
     monkeypatch.setenv("ONEX_CLI_SHOW_ALL_COMMANDS", "1")
     runner = _Runner()
+    app = _app(runner)
+    async with app.run_test() as pilot:
+        await pilot.press("slash")
+        assert tuple(_listed(app)) == _CUSTOMER
     app = _app(runner)
     async with app.run_test() as pilot:
         await _type(pilot, "/scm pr-list")
         await pilot.press("enter")
         await pilot.pause()
-        assert runner.calls == [("scm", "pr-list")]
-        assert "Not a TUI command" not in _log_text(app)
+        assert runner.calls == []
+        assert "Not a TUI command: run onex scm pr-list in a terminal" in _log_text(app)
 
 
 @click.group()

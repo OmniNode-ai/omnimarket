@@ -466,6 +466,9 @@ class HandlerRegistryUnits:
             raise ValueError(
                 f"project_path {request.project_path!r} is not an absolute path"
             )
+        # OMN-26549: a unit that runs a worktree dies when the worktree is removed (uv exits 2 on every fire).
+        if under_worktrees(str(project)):
+            raise UnitRootRefusedError(request.unit, [str(project)])
         return project, project.resolve() == canonical.resolve()
 
     def checkout_revision(
@@ -656,8 +659,7 @@ class HandlerRegistryUnits:
     ) -> str:
         """The unit's declared configuration document with every placeholder filled.
 
-        Built-in placeholders are {home}, {registry_root} and {ledger_path} (the request's, else the registry's own
-        ledger file). The others are the declaration's ``inputs``: each names a request field and an environment
+        Built-in placeholders are {home} and {registry_root}. The others are the declaration's ``inputs``: each names a request field and an environment
         variable of the installing shell, and falls back to the value the unit's last install recorded, so a
         reinstall with no inputs reproduces the file. A placeholder nothing fills is refused, so a configuration is
         never written with a hole in it, except in a top-level key the declaration lists under ``optional_keys``:
@@ -666,12 +668,9 @@ class HandlerRegistryUnits:
         declared = unit.get("config_file")
         if not declared:
             return ""
-        root = Path(request.registry_root)
         values = {
             "home": request.home,
             "registry_root": request.registry_root,
-            "ledger_path": request.ledger_path
-            or str(root / "docs/tracking/ROLLING_WORK_LEDGER.md"),
         }
         values.update(self.config_inputs(request, unit))
 

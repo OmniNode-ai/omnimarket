@@ -22,6 +22,7 @@ Failure modes:
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Callable
 from pathlib import Path
@@ -252,41 +253,30 @@ def _log_text(app: OnexTui) -> str:
     return "\n".join(lines)
 
 
-async def test_slash_opens_a_filtered_palette_and_escape_closes_it(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_slash_opens_a_filtered_palette_and_escape_closes_it() -> None:
     """F1, F6."""
-    monkeypatch.setenv(
-        "ONEX_CLI_SHOW_ALL_COMMANDS", "1"
-    )  # OMN-26610: the operator view
     app = _app(_Runner([]))
     async with app.run_test() as pilot:
-        await pilot.press("slash", "c", "o", "n", "n")
+        await pilot.press("slash", "d", "o", "c")
         palette = app.query_one("#palette")
         assert palette.display
         shown = [str(option.prompt) for option in palette.options]
-        assert any("models connections" in text for text in shown)
-        assert any("models connect " in text for text in shown)
+        assert any("doctor" in text for text in shown)
         assert not any(text.startswith("/setup") for text in shown)
         await pilot.press("escape")
         assert not palette.display
 
 
-async def test_enter_runs_the_named_cli_command_and_shows_its_output(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_enter_runs_the_named_cli_command_and_shows_its_output() -> None:
     """F2."""
-    monkeypatch.setenv(
-        "ONEX_CLI_SHOW_ALL_COMMANDS", "1"
-    )  # OMN-26610: the operator view
     runner = _Runner(["openrouter  ready  qwen/qwen3.8-27b"])
     app = _app(runner)
     async with app.run_test() as pilot:
-        for key in "/models connections":
-            await pilot.press("space" if key == " " else "slash" if key == "/" else key)
+        for key in "/doctor":
+            await pilot.press("slash" if key == "/" else key)
         await pilot.press("enter")
         await pilot.pause()
-        assert _commands(runner) == [("models", "connections")]
+        assert _commands(runner) == [("doctor",)]
         assert "qwen/qwen3.8-27b" in _log_text(app)
 
 
@@ -383,13 +373,8 @@ async def test_a_failed_command_shows_its_exit_and_the_app_keeps_running() -> No
         assert app.is_running
 
 
-async def test_a_prompting_command_runs_in_the_real_terminal(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_a_prompting_command_runs_in_the_real_terminal() -> None:
     """F5."""
-    monkeypatch.setenv(
-        "ONEX_CLI_SHOW_ALL_COMMANDS", "1"
-    )  # OMN-26610: the operator view
     runner = _Runner([])
     app = _app(runner)
     async with app.run_test() as pilot:
@@ -397,8 +382,11 @@ async def test_a_prompting_command_runs_in_the_real_terminal(
             await pilot.press("space" if key == " " else "slash" if key == "/" else key)
         await pilot.press("enter")
         await pilot.pause()
-        assert runner.terminal_calls == [("models", "connect")]
+        assert runner.terminal_calls == []
         assert _commands(runner) == []
+        assert "Not a TUI command: run onex models connect in a terminal" in _log_text(
+            app
+        )
 
 
 async def test_status_bar_shows_the_model_and_delegation() -> None:
@@ -449,12 +437,7 @@ async def _type[T](pilot: Pilot[T], text: str) -> None:
         await pilot.press(names.get(key, key))
 
 
-async def test_shortcuts_lead_the_palette_like_coding_agent_tuis(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv(
-        "ONEX_CLI_SHOW_ALL_COMMANDS", "1"
-    )  # OMN-26610: the operator view
+async def test_shortcuts_lead_the_palette_like_coding_agent_tuis() -> None:
     app = _app(_Runner([]))
     async with app.run_test() as pilot:
         await pilot.press("slash")
@@ -468,7 +451,6 @@ async def test_shortcuts_lead_the_palette_like_coding_agent_tuis(
             "/metering",
         ]
         assert not any(text.split()[0] == "/setup" for text in shown)
-        assert any(text.startswith("/models connections") for text in shown)
 
 
 async def _press[T](pilot: Pilot[T], app: OnexTui, button_id: str) -> None:
@@ -1458,6 +1440,49 @@ async def test_tab_and_shift_tab_cycle_the_three_screens_and_a_click_opens_one()
         assert isinstance(app.screen, ModelPickScreen)
 
 
+class _HeldDiscoverRunner(_Runner):
+    """A runner whose `models discover` waits until the test lets it answer."""
+
+    def __init__(self) -> None:
+        super().__init__([], by_command=_selected_rows(connection=False))
+        self.release = asyncio.Event()
+
+    async def capture(
+        self, argv: tuple[str, ...], stdin: str | None = None
+    ) -> tuple[int, str, str]:
+        if argv[:2] == ("models", "discover"):
+            self.calls.append(argv)
+            await self.release.wait()
+            return 0, json.dumps({"status": "ready", "models": ["llama3.2"]}), ""
+        return await super().capture(argv, stdin)
+
+
+async def test_a_list_that_answers_after_the_config_tab_was_left_is_dropped() -> None:
+    """The list answers after the user tabbed away (a slow runner answers late,
+    as in CI, after the screen is gone but before its worker is cancelled):
+    nothing is read from the departed screen and nothing raises."""
+    from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
+        ModelPickScreen,
+        SetupScreen,
+    )
+
+    runner = _HeldDiscoverRunner()
+    app = _app(runner)
+    async with app.run_test(size=(140, 44)) as pilot:
+        await _open_config(pilot, app)
+        setup = app.screen
+        assert isinstance(setup, SetupScreen)
+        loading = asyncio.create_task(setup._find())
+        await pilot.pause()
+        assert not loading.done()  # `models discover` is still out
+        await pilot.press("tab")
+        for _ in range(6):
+            await pilot.pause()
+        assert isinstance(app.screen, ModelPickScreen)
+        runner.release.set()
+        await loading  # the late answer lands on a screen that is gone
+
+
 async def test_one_click_ticks_a_row_and_the_list_takes_focus_when_it_loads() -> None:
     """T2."""
     from textual.widgets import DataTable
@@ -1489,6 +1514,10 @@ async def test_saving_with_nothing_ticked_warns_and_runs_nothing() -> None:
     app = _app(runner)
     async with app.run_test(size=(120, 44)) as pilot:
         await _open_config(pilot, app)
+        # The URL just typed starts an auto find; let it end first, or on a slow
+        # runner its "no models found" lands after the warning and replaces it.
+        await _wait_for_models(pilot)
+        await app.workers.wait_for_complete()
         await pilot.press("ctrl+s")
         await pilot.pause()
         assert tui_design().delegation.nothing_ticked in str(

@@ -14,7 +14,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-import os
 import re
 import shlex
 import signal
@@ -99,13 +98,12 @@ def _shortcut_paths() -> dict[tuple[str, ...], str]:
     return {s.path: s.help for s in tui_design().shortcuts}
 
 
-def _show_all_commands() -> bool:
-    """The operator switch: list and run every onex command, as before OMN-26610."""
-    return os.environ.get("ONEX_CLI_SHOW_ALL_COMMANDS", "").lower() in (
-        "1",
-        "true",
-        "yes",
-    )
+def _is_customer_command(path: tuple[str, ...]) -> bool:
+    """Whether ``path`` belongs to one of the TUI's customer shortcuts."""
+    if not path:
+        return False
+    customer_tops = {s.path[0] for s in tui_design().shortcuts if s.path}
+    return path[0] in customer_tops
 
 
 def _alias_paths() -> set[tuple[str, ...]]:
@@ -455,7 +453,7 @@ def claude_code_state(document: dict[str, object] | None) -> tuple[str, str]:
         return ("unknown", "")
     named = document.get("claude_code")
     if named in ("not_installed", "signed_out", "ready", "installed"):
-        return (str(named), "" if named == "ready" else str(document.get("fix") or ""))
+        return (str(named), str(document.get("fix") or ""))
     steps = document.get("observations")
     step = next(
         (
@@ -1031,6 +1029,8 @@ class SetupScreen(_TabbedScreen[None]):
         self._loading = True
         try:
             await self._fetch(note, provider, wanted)
+        except NoMatches:  # the user left this tab while the list was loading
+            return
         finally:
             self._loading = False
             self._stop_spin()
@@ -1404,6 +1404,7 @@ class DelegationScreen(_TabbedScreen[None]):
         self._hooks = dict(hooks or {})
         #: Claude Code's state once the check answers; "checking" until then.
         self._claude_state = "checking"
+        self._claude_fix = ""
 
     def compose(self) -> ComposeResult:
         words = tui_design().delegation
@@ -1468,15 +1469,17 @@ class DelegationScreen(_TabbedScreen[None]):
 
     async def _check_claude(self) -> None:
         """Fill the Claude Code line: ready, installed, signed out or missing."""
-        state, _fix = await cast("OnexTui", self.app).claude_code()
+        state, fix = await cast("OnexTui", self.app).claude_code()
         self._claude_state = state
+        self._claude_fix = fix
         line, colour = {
             "ready": (_say("claude_ready"), "success"),
             "installed": (_say("claude_installed"), "info"),
             "signed_out": (_say("claude_signed_out"), "warning"),
             "not_installed": (_say("claude_missing"), "error"),
         }.get(state, (_say("claude_unknown"), "muted"))
-        self.query_one("#claude", Static).update(Text(line, style=_style(colour)))
+        rendered = line if not fix else f"{line}\n{fix}"
+        self.query_one("#claude", Static).update(Text(rendered, style=_style(colour)))
 
     def action_flip(self) -> None:
         """Space switches both: on when any is off, otherwise off."""
@@ -2155,14 +2158,7 @@ class OnexTui(App[int]):
         ]
         return [
             entry
-            for entry in (
-                *local,
-                *(
-                    c
-                    for c in (self._commands if _show_all_commands() else ())
-                    if c.path not in _shortcut_paths() and c.path not in _alias_paths()
-                ),
-            )
+            for entry in local
             if all(word in " ".join(entry.path) for word in words)
         ]
 
@@ -2384,7 +2380,7 @@ class OnexTui(App[int]):
         if entry is None:
             self._write(_say("no_match", command=" ".join(words)))
             return
-        if not _show_all_commands():
+        if not _is_customer_command(entry.path):
             self._write(
                 Text(
                     _say("not_a_tui_command", command=" ".join(words)),
@@ -2901,10 +2897,12 @@ class OnexTui(App[int]):
             if cost is not None
             else _say("run_cost_unmeasured")
         )
-        if metrics.get("cost_savings_usd"):
+        if cost is not None and metrics.get("cost_savings_usd"):
             facts.append(
                 _say("run_saved", saved=f"{float(metrics['cost_savings_usd']):.4f}")
             )
+        elif cost is None:
+            facts.append(_say("run_saved_unmeasured"))
         run_id = str(document.get("run_id") or "") if document else ""
         self._main().query_one("#output", RichLog).write(
             Markdown(str(result["response"]).strip())
