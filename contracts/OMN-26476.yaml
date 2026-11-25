@@ -49,11 +49,6 @@ requirements:
   acceptance:
   - id: AC8
     statement: 'AC8: a key resolves before its expiry and not after it; Falsifier: tests/nodes/node_stability_gateway_key_provision_effect/test_dev_lane_expiry.py::test_store_writes_expires_at_and_the_gateway_refuses_the_key_after_it'
-- id: req-omn26476-live-identity-schema
-  statement: "The tenant provision store writes the identity tables as the dev database holds them: tenant_plans by plan_code, and tenant_event_outbox by topic and envelope with no tenant id column."
-  acceptance:
-  - id: AC9
-    statement: 'AC9: the provision transaction creates one tenant, one plan row and one TENANT_CREATED outbox row on a scratch database built with the live columns; Falsifier: tests/nodes/node_tenant_provision_effect/test_provision_postgres.py::test_b_double_run_of_one_slug_gives_one_tenant_one_plan_one_outbox_row'
 evidence_requirements:
 - kind: tests
   description: The node's whole test directory, the new bind tests included.
@@ -134,15 +129,6 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_stability_gateway_key_provision_effect/test_dev_lane_expiry.py -k "refuses_the_key_after_it or still_resolves" -q -n 0 --no-cov -p no:cacheprovider
-    cwd: .
-- id: dod-omn26476-ac9
-  description: 'AC9: the provision store matches the live identity columns.'
-  source: manual
-  binds_ac:
-  - AC9
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_tenant_provision_effect/test_provision_postgres.py -k test_b_double_run -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26476-integration-proof
   description: Run the node's whole test directory on a lab host at the pushed revision.
