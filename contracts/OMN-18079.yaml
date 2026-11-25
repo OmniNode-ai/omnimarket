@@ -45,3 +45,12 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -n 0 -p no:randomly -k omn18079"
         cwd: .
+  - id: "dod-omn18079-sea-chain-model-named"
+    description: "The SEA acceptance golden chain names the answering model the endpoint reported on its chat completion; with the receipt no longer falling back to the requested model, a response with no model made the projected row read unknown, and with the response naming its model it passes."
+    source: "manual"
+    binds_ac:
+      - AC4
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/integration/golden_chain/test_sea_acceptance_chain.py -q --no-cov -n 0 -p no:randomly"
+        cwd: .
