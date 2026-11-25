@@ -60,7 +60,7 @@ async def _run(lane: str, check: str | None) -> int:
     sys.stdout.write(
         f"outcome={result.outcome.value} ok={result.ok} lane={result.lane} "
         f"tenant_slug={result.tenant_slug or ''} tenant_id={result.tenant_id or ''} "
-        f"key_name={result.key_name or ''} secret_key={result.secret_key or ''} "
+        f"key_name={result.key_name or ''} "
         f"detail={result.detail}\n"
     )
     return 0 if result.ok else 1
