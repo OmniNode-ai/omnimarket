@@ -17,6 +17,8 @@ requirements:
     statement: 'AC2: one command dispatched to the handler built with no arguments is answered on the completed or failed topic -- falsifier: the handler constructor requires three keyword arguments, as at the merge base'
   - id: AC3
     statement: 'AC3: a missing overlay is a typed failed result and is never swallowed -- falsifier: the guard test sees no failed answer for a missing overlay'
+  - id: AC4
+    statement: 'AC4: the node contract declares what runs it through runtime_dispatch.on_demand (command and owner), so the Node Trigger Declaration Check passes for it -- falsifier: the trigger declaration test reports no-trigger-declared at the merge base, where external_trigger is set and no runner is named'
 evidence_requirements:
 - kind: tests
   description: The node focused tests at the pushed head. The failing control is the contract at the merge base, where the command topic is not subscribed and the handler needs three arguments (the route tests fail).
@@ -72,6 +74,8 @@ dod_evidence:
 - id: dod-omn25342-trigger-declared
   description: The node contract declares what runs it (on_demand command and owner), so the Node Trigger Declaration Check passes for it on any pull request that touches the node. Fails on dev dfb19a0870, where runtime_dispatch.external_trigger is set and nothing names the runner.
   source: manual
+  binds_ac:
+  - AC4
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_dev_signed_in_read_effect/test_trigger_declaration.py -q --no-cov -n 0 -p no:randomly --refuse-skips
