@@ -54,6 +54,10 @@ output_model:
 
 runtime_dispatch:
   external_trigger: true
+  # A lane or an operator reads ledger rows by hand; it never runs on a timer.
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_ledger_rows_loader_effect --window-hours 24
+    owner: OmniNode Platform Team
 
 # The topics by role; the handler reads these and holds no topic string.
 topics:

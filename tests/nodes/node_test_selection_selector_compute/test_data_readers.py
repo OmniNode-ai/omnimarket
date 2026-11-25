@@ -93,12 +93,14 @@ def _covers(selected: tuple[str, ...] | list[str], path: str) -> bool:
 # --- the real tree -----------------------------------------------------------------------------
 
 
-def test_data_readers_shipped_adjacency_declares_the_rule_and_keeps_it_off() -> None:
+def test_data_readers_shipped_adjacency_declares_the_rule_and_turns_it_on() -> None:
     config = load_adjacency_map(ADJACENCY)
-    assert config.data_reader_roots == ["tests/", "contracts/", "src/omnimarket/nodes/"]
+    # OMN-24562: on for the fixture tree only; contracts/ and a node's own data files keep their present rules.
+    assert config.data_reader_roots == ["tests/fixtures/"]
     assert config.data_reader_fixture_roots == ["tests/fixtures/"]
-    # The rule changes what a pull request runs; the change that turns it on is its own.
-    assert config.data_file_readers_enabled is False
+    # OMN-24562: the shipped switch is on, so a changed fixture selects its readers and no longer takes the
+    # full suite. Off is still the escalation it had (test_data_readers_a_fixture_keeps_the_full_suite_while_the_rule_is_off).
+    assert config.data_file_readers_enabled is True
     # Fixtures are no longer unconditional test infrastructure; the rest still is.
     assert "tests/fixtures/" not in config.test_infrastructure_paths
     assert {
@@ -107,8 +109,12 @@ def test_data_readers_shipped_adjacency_declares_the_rule_and_keeps_it_off() -> 
         ".pre-commit-config.yaml",
         "uv.lock",
     } <= set(config.test_infrastructure_paths)
-    # While the rule is off a fixture keeps the escalation it had.
+    # With the rule on the gated path is not test infrastructure; off, it is.
     assert config.data_reader_gated_infrastructure_paths == ["tests/fixtures/"]
+    assert not config.is_test_infrastructure(
+        "tests/fixtures/routing_sources/inventory.yaml"
+    )
+    assert config.is_test_infrastructure("tests/fixtures/__init__.py")
 
 
 @pytest.mark.parametrize(("sha", "changed"), FOUR_FIXTURE_MERGES.items())
@@ -129,6 +135,55 @@ def test_data_readers_four_fixture_merges_narrow_and_select_every_reader(
         ]
         missing = [p for p in hits if not _covers(selection.selected_paths, p)]
         assert not missing, (sha, data_file, missing)
+
+
+def _missed_readers(
+    changed: list[str], selected: tuple[str, ...] | list[str]
+) -> list[str]:
+    """Test files whose text names a changed data file and that ``selected`` does not cover."""
+    missed: list[str] = []
+    for data_file in changed:
+        name = data_file.rsplit("/", 1)[-1]
+        for p in (REPO_ROOT / "tests").rglob("test_*.py"):
+            rel = p.relative_to(REPO_ROOT).as_posix()
+            text = p.read_text(encoding="utf-8", errors="ignore")
+            if name in text and not _covers(selected, rel):
+                missed.append(rel)
+    return missed
+
+
+@pytest.mark.parametrize(("sha", "changed"), FOUR_FIXTURE_MERGES.items())
+def test_data_readers_shipped_settings_narrow_each_recorded_fixture_merge_with_zero_misses(
+    sha: str, changed: list[str]
+) -> None:
+    # OMN-24562: the shipped adjacency file itself, no override. Of the recorded fixture-only merges none
+    # takes the full suite, and no test file that names a changed file is left out of the selection.
+    selection = _selection(changed, ADJACENCY)
+    assert not selection.is_full_suite, sha
+    assert selection.full_suite_reason is None, sha
+    assert "tests/" not in selection.selected_paths
+    assert _missed_readers(changed, selection.selected_paths) == [], sha
+
+
+def test_data_readers_a_selection_that_drops_a_reader_is_a_miss_the_check_sees() -> (
+    None
+):
+    # The known bad: the selection with its readers removed (the always set only) must report misses,
+    # so the zero above is a reading and not a check that cannot fail.
+    changed = FOUR_FIXTURE_MERGES["006a153ee0"]
+    kept = [
+        p for p in _selection(changed, ADJACENCY).selected_paths if p in ALWAYS_REAL
+    ]
+    assert _missed_readers(changed, kept), "the known-bad selection reported no miss"
+
+
+@pytest.mark.parametrize(("sha", "changed"), TWO_LOCK_MERGES.items())
+def test_data_readers_shipped_settings_keep_a_lock_merge_full(
+    sha: str, changed: list[str]
+) -> None:
+    selection = _selection(changed, ADJACENCY)
+    assert selection.is_full_suite, sha
+    assert selection.full_suite_reason is EnumFullSuiteReason.TEST_INFRASTRUCTURE
 
 
 ALWAYS_REAL = {
@@ -164,7 +219,9 @@ def test_data_readers_catalog_yaml_selects_the_tests_that_name_it(
     changed = [
         "tests/nodes/node_workflow_gateway_effect/fixtures/workflow_catalog.yaml"
     ]
-    selection = _selection(changed, _adjacency(tmp_path))
+    # The mechanism over the wide roots: the shipped roots are the fixture tree only (OMN-24562).
+    wide = ["tests/", "contracts/", "src/omnimarket/nodes/"]
+    selection = _selection(changed, _adjacency(tmp_path, data_reader_roots=wide))
     assert not selection.is_full_suite
     hits = [
         p.relative_to(REPO_ROOT).as_posix()

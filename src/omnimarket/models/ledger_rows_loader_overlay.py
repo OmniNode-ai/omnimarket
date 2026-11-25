@@ -16,3 +16,6 @@ class ModelRowsLoaderOverlay(BaseModel):
     file_fallback_allowed: bool
     # The environment variable naming the file the node's events are journalled to.
     journal_env: str = Field(min_length=1)
+    # How many days back the store holds rows; a since/until range that starts earlier is refused
+    # (range-wider-than-store), never answered short. The 720 hour cap stays for window_hours reads.
+    store_history_days: int = Field(default=365, ge=1)

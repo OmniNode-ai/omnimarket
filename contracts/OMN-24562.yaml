@@ -51,6 +51,16 @@ requirements:
   acceptance:
   - id: AC7
     statement: 'AC7: the suite admission helper admits a task whose known-good answer passes and whose empty answer fails, and refuses one whose empty answer passes, whose known good fails, or whose check needs the network -- falsifier: tests/nodes/node_code_eval_trial_orchestrator/test_suite_admission_both_ways.py fails collection or any of its tests fails'
+- id: req-omn24562-windowed-read-every-exposure
+  statement: Every exposure that declares a freshness_column answers the 1d, 7d and 30d windowed read through the real store path, including one whose freshness column is not a served column, without growing the baselined table reader.
+  acceptance:
+  - id: AC8
+    statement: 'AC8: the 1d, 7d and 30d windowed read answers 200 for every node contract declaring a freshness_column on real Postgres, and table_reader.py stays at or under its 914 code lines -- falsifier: uv run pytest tests/test_omn24562_windowed_read_every_exposure_real_postgres.py tests/test_omn24562_table_reader_unserved_freshness.py fails when the window order alias is dropped or the reader grows'
+- id: req-omn24562-fixture-readers-on
+  statement: A pull request whose only test-infrastructure trigger is a changed data fixture under tests/fixtures/ runs the tests that read the fixture and not the full suite.
+  acceptance:
+  - id: AC9
+    statement: 'AC9: with the shipped adjacency file, each of the four recorded fixture-only merges narrows and no test file naming a changed file is left out of its selection, and a selection with its readers removed reports misses -- falsifier: uv run pytest tests/nodes/node_test_selection_selector_compute/test_data_readers.py -k shipped fails when data_file_readers_enabled is false'
 evidence_requirements:
 - kind: tests
   description: The inode alarm tests pass at the pushed head.
@@ -165,4 +175,22 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_test_selection_selector_compute/test_unit_file_scoped_root.py -q -n 0 --no-cov -p no:randomly -k second_deleted_file_does_not_reparse_the_tree
+    cwd: .
+- id: dod-omn24562-windowed-read-every-exposure
+  description: 'Every node contract that declares a freshness_column (61) answers the 1d, 7d and 30d windowed read through the real store path on real Postgres, built from its own migrations (failing control: the same walk answers 503 for a TEXT freshness column under the window expression before OMN-21288, and for an exposure whose freshness column is not a served column before this change).'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn24562_windowed_read_every_exposure_real_postgres.py tests/test_omn24562_table_reader_unserved_freshness.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24562-fixture-readers-on
+  description: 'AC9: the shipped adjacency file turns data_file_readers_enabled on. Replay of the 4 recorded fixture-only merges with the shipped file: all 4 narrow, zero test files naming a changed file are missed, the known-bad selection (readers removed) reports misses, and the 2 merges that also change uv.lock stay a full suite (failing control: the shipped-settings tests fail against the previous adjacency file).'
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_test_selection_selector_compute/test_data_readers.py -q -n 0 --no-cov -p no:randomly -k shipped
     cwd: .

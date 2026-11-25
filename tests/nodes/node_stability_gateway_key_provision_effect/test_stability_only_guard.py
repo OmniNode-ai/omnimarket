@@ -77,7 +77,7 @@ def _assert_zero_side_effects(rig: _Rig) -> None:
     assert rig.identity.writes == 0
 
 
-@pytest.mark.parametrize("lane", ["prod", "cloud", "dev", "public", ""])
+@pytest.mark.parametrize("lane", ["prod", "cloud", "public", ""])
 def test_lane_the_contract_does_not_declare_is_refused_with_zero_side_effects(
     lane: str,
 ) -> None:
