@@ -62,6 +62,10 @@ runtime_io:
     reader: "process-health"
     # HOLD and RELEASE rows are read this far back, beside the series window.
     hold_history_days: 365
+    # The rows loader's floor is its own clock minus its store depth; a HOLD history that would start
+    # before it starts this much inside it instead, so a report generated earlier than the clock
+    # (or a loader that starts a moment later) is never refused range-wider-than-store.
+    hold_floor_margin_seconds: 3600
   landing:
     dir_env_var: "LANDING_STATE_DIR"
     dir_default: "~/.local/state/omni/landing"

@@ -8,7 +8,7 @@ import json
 import os
 import re
 import subprocess
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from itertools import pairwise
@@ -136,17 +136,27 @@ def read_ledger(
     generated_at: datetime,
     out: Sources,
     rows_reader: ProtocolRowsReader = read_ledger_rows_range_via_node,
+    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> None:
-    """The ledger rows from the bus rows reader: every row since keep_from, plus HOLD and RELEASE rows of any age the store holds."""
+    """The ledger rows from the bus rows reader: every row since keep_from, plus HOLD and RELEASE rows of any age the store holds.
+
+    The store's floor is the loader's own clock minus its history, not generated_at minus it, so
+    the HOLD history starts at the later of the two: a report generated earlier than the clock
+    reads from just inside the store (the margin covers the loader's start-up), and a report
+    generated later keeps its full declared history.
+    """
     reader = str(io["reader"])
     locator = f"bus rows reader {reader}"
+    history = timedelta(days=int(io["hold_history_days"]))
+    hold_from = max(
+        generated_at - history,
+        clock().astimezone(UTC)
+        - history
+        + timedelta(seconds=int(io["hold_floor_margin_seconds"])),
+    )
     try:
         window = rows_reader(reader, keep_from)
-        holds = rows_reader(
-            reader,
-            generated_at - timedelta(days=int(io["hold_history_days"])),
-            kinds=tuple(sorted(_KEEP_ALWAYS)),
-        )
+        holds = rows_reader(reader, hold_from, kinds=tuple(sorted(_KEEP_ALWAYS)))
     except LedgerRowsUnreadableError as exc:
         out.reads.append(_unread(EnumSourceName.LEDGER, locator, str(exc)))
         return
