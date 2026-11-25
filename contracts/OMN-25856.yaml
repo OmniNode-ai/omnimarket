@@ -11,6 +11,11 @@ requirements:
   acceptance:
   - id: AC1
     statement: 'AC1: after a command check times out, every process the check started is gone -- falsifier: a process started by the timed-out check is still running 3 s later'
+- id: req-omn25856-start-budget
+  statement: A hosted dod-verify-start command is bounded as a whole by an overlay-declared budget below the 600 s dispatch deadline, so a contract of many checks completes its dispatch with a typed unverifiable verdict instead of outrunning the deadline and leaving an orphaned dispatch.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a start command whose checks exceed the declared budget returns inside the budget with an UNRESOLVED verdict that names how many checks ran and how many did not, and counts none of the unrun checks as passed -- falsifier: the command runs past the budget, the verdict is VERIFIED, or an unrun check is counted verified'
 evidence_requirements:
 - kind: tests
   description: The focused regression, failing first with the surviving child process, then passing.
@@ -28,6 +33,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_25856_timed_out_check_leaves_no_orphan.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-ac2-start-command-budget
+  description: A hosted start command over twelve 0.4 s checks and a 2 s declared budget returns in under 2.5 s as UNRESOLVED / dispatch_budget_exhausted naming ran and not-run counts; with no declared budget it refuses before any check; a failing check inside the budget stays FAILED and a fast contract under the 540 s overlay value stays VERIFIED.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_25856_start_command_budget.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn25856-hosted-deploy-check
   description: 'Deploy check the hosted runner can run: the other command-check tests that stub the collector subprocess still pass through the process-group runner. This binds no criterion by itself.'
