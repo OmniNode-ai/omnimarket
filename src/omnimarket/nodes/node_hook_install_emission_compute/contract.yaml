@@ -1,0 +1,54 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_hook_install_emission_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: >
+  Judge, without I/O, whether each declared Claude Code and Codex install on a machine we own put its session start,
+  tool use and stop events on the bus. The request carries the declared installs (host, tool, the names the host
+  reports), the required event kinds with the hook event names that satisfy each, the rows read back from the
+  hook-event projection and the window start. Each install is emitting, partial (names the missing kinds) or silent;
+  an emitter no install explains is counted and named, so a machine missing from the declaration shows.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+  - operation: judge_hook_install_emission
+    handler:
+      name: HandlerHookInstallEmission
+      module: omnimarket.nodes.node_hook_install_emission_compute.handlers.handler_hook_install_emission
+    input_model: omnimarket.nodes.node_hook_install_emission_compute.models.model_hook_install_emission.ModelHookInstallEmissionRequest
+    output_model: omnimarket.nodes.node_hook_install_emission_compute.models.model_hook_install_emission.ModelHookInstallEmissionResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: [main]
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.hook-install-emission-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.hook-install-emission-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.hook-install-emission-decided.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.hook-install-emission-decided.v1, operation: DESCRIBE}
+event_bus:
+  subscribe_topics:
+  - onex.cmd.omnimarket.hook-install-emission-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.hook-install-emission-decided.v1
+terminal_event: onex.evt.omnimarket.hook-install-emission-decided.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.hook-install-emission-requested.v1
+externally_consumed_topics:
+- onex.evt.omnimarket.hook-install-emission-decided.v1
+metadata:
+  ticket: OMN-26658
+  transport_type: kafka
+lifecycle: experimental
