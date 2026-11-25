@@ -58,10 +58,14 @@ class HandlerAgentMessageRead:
             )
         thread = (request.thread or "").strip() or None
         since = parse_since(request.since) if request.since else None
-        messages = self._node.read(
+        report = self._node.read(
             ModelAgentMessageQuery(
                 to=to, thread=thread, since=since, limit=request.limit
             )
         )
-        ordered = tuple(sorted(messages, key=lambda m: m.sent_at))
-        return ModelAgentMessageReadResult(messages=ordered[-request.limit :])
+        ordered = tuple(sorted(report.messages, key=lambda m: m.sent_at))
+        return ModelAgentMessageReadResult(
+            messages=ordered[-request.limit :],
+            unverified=report.unverified,
+            rejections=report.rejections,
+        )
