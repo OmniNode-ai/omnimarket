@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 
-from omnimarket.handlers.node_overlay_reader import NodeOverlayNotFoundError
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.models.scheduled_overlay import ModelScheduledOverlayRefusal
 
 
@@ -24,9 +24,7 @@ class ScheduledOverlayRefusalLatch:
         self._log = log if log is not None else logging.getLogger(__name__)
         self._latched: ModelScheduledOverlayRefusal | None = None
 
-    def refuse(
-        self, error: NodeOverlayNotFoundError
-    ) -> ModelScheduledOverlayRefusal | None:
+    def refuse(self, error: NodeOverlayError) -> ModelScheduledOverlayRefusal | None:
         """Build the typed refusal; log one ERROR line only when the cause is new."""
         refusal = ModelScheduledOverlayRefusal(
             node_name=self._node_name,
