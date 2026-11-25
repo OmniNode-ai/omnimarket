@@ -19,6 +19,7 @@ from itertools import pairwise
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from omnimarket.models.bus_binding.model_node_event_bus import ModelNodeEventBus
+from omnimarket.models.model_delegated_code_edit import MAX_TURNS_CEILING
 
 # A check is a shell-free command word list joined by a single space (for
 # example ``uv run python -c pass``): words of plain characters, separated by
@@ -39,7 +40,9 @@ class ModelCodeEvalRunnerOverlay(BaseModel):
     try_timeout_seconds: int = Field(ge=1)
     receipt_slack_seconds: int = Field(ge=0)
     nudge_interval_seconds: int = Field(ge=1)
-    max_turns: int = Field(ge=1, le=40)
+    max_turns: int = Field(ge=1, le=MAX_TURNS_CEILING)
+    #: Wall seconds one loop may use (OMN-26656); no default, so an overlay without it refuses.
+    loop_wall_budget_seconds: int = Field(ge=1, le=7200)
     max_diff_bytes: int = Field(ge=1)
     draft_checks: tuple[str, ...] = Field(min_length=1)
     need_tools: tuple[str, ...]

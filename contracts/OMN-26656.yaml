@@ -95,3 +95,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_code_eval_trial_orchestrator/test_code_eval_suite_admission.py tests/nodes/node_code_eval_trial_orchestrator/test_code_draft_hidden_check_never_sent.py tests/nodes/node_lab_work_unit_effect/test_code_draft_kind.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26656-loop-wall-and-turn-cap-declared
+  description: The code-eval trial's loop wall budget (loop_wall_budget_seconds, 3600 in the example overlay) is a required overlay value that reaches the loop request, so a code attempt is bounded by an executed check inside a declared wall rather than an implicit 300 s; an overlay without it or with a turn cap over 100 refuses to load. The tests fail at the base, where the key does not exist.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_code_eval_trial_orchestrator/test_loop_wall_and_turn_cap_settings.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_code_eval_trial_orchestrator/test_code_eval_suite_admission.py -q --no-cov -n 0 -p no:randomly -k pytest_node_id
+    cwd: .

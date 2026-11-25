@@ -136,6 +136,7 @@ def build_unit_request(
                 for index, command in enumerate(commands, start=1)
             ),
             max_turns=overlay.max_turns,
+            wall_budget_seconds=overlay.loop_wall_budget_seconds,
             caller_lane=lane,
             ticket=overlay.caller_ticket,
             traffic_class=EnumDelegationTrafficClass.SYNTHETIC,
@@ -154,6 +155,7 @@ def generation_settings(
         ("model", model),
         ("backend_id", backend_id),
         ("max_turns", str(overlay.max_turns)),
+        ("loop_wall_budget_seconds", str(overlay.loop_wall_budget_seconds)),
         ("try_timeout_seconds", str(overlay.try_timeout_seconds)),
         ("max_diff_bytes", str(overlay.max_diff_bytes)),
         ("draft_checks", "\n".join(overlay.draft_checks)),

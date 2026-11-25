@@ -294,3 +294,18 @@ def test_a_quoted_word_stays_one_word_in_a_loop_check(tmp_path: Path) -> None:
     root, candidate = build_repo(tmp_path, check_value=value)
     (material,) = reader(root).read((candidate,))
     assert material.check_commands == (value,)
+
+
+def test_a_check_naming_a_pytest_node_id_names_the_changed_test_file(
+    tmp_path: Path,
+) -> None:
+    """OMN-26656: ``tests/test_a.py::test_x`` names ``tests/test_a.py``; the task is admitted and its
+    check is the loop's check (it was excluded as check_names_no_changed_path, so a builder with
+    real_check_in_loop raised "task has no loop check")."""
+    root, candidate = build_repo(
+        tmp_path, check_value="uv run pytest tests/test_a.py::test_x -q"
+    )
+    (material,) = reader(root).read((candidate,))
+    assert material.excluded_reason is None
+    assert [f.path for f in material.check_files] == ["tests/test_a.py"]
+    assert material.check_commands == ("uv run pytest tests/test_a.py::test_x -q",)

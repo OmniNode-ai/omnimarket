@@ -30,6 +30,7 @@ from omnibase_core.enums.enum_delegation_traffic_class import (
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from omnimarket.models.model_delegated_code_edit import (
+    MAX_TURNS_CEILING,
     ModelCodeEditResult,
     ModelDeclaredCheck,
 )
@@ -116,7 +117,9 @@ class ModelLabCodeDraft(BaseModel):
     seed_files: tuple[ModelSeedFile, ...] = ()
     checks: tuple[ModelDeclaredCheck, ...] = Field(..., min_length=1)
     formatter: tuple[tuple[str, ...], ...] = ()
-    max_turns: int = Field(..., ge=1, le=40)
+    max_turns: int = Field(..., ge=1, le=MAX_TURNS_CEILING)
+    #: Wall seconds the loop may use; None leaves the loop request without a limit.
+    wall_budget_seconds: int | None = Field(default=None, ge=1, le=7200)
     caller_lane: str | None = None
     ticket: str | None = Field(default=None, pattern=r"^OMN-[0-9]+$")
     traffic_class: EnumDelegationTrafficClass | None = None

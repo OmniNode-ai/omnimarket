@@ -62,6 +62,11 @@ def _runs_as_argv(command: str) -> bool:
     return bool(words) and not any(_SHELL_WORD.match(word) for word in words)
 
 
+def _path_tokens(check_value: str) -> tuple[str, ...]:
+    """The words of a check value, a pytest node id (``path::name``) cut to its file path."""
+    return tuple(word.split("::", 1)[0] for word in check_value.split())
+
+
 # the contract check types whose value is a command the loop can run as argv
 _LOOP_CHECK_TYPES = frozenset({"test_passes", "command"})
 
@@ -320,7 +325,7 @@ class GitCodeEvalSuiteReader:
     @staticmethod
     def _names_a_changed_path(check_value: str, changed: tuple[str, ...]) -> bool:
         """True when a token of the check value is a changed path or a directory prefix of one."""
-        for token in check_value.split():
+        for token in _path_tokens(check_value):
             if token in changed:
                 return True
             prefix = token.rstrip("/") + "/"
@@ -337,7 +342,7 @@ class GitCodeEvalSuiteReader:
     ) -> tuple[ModelCodeScoreCheckFile, ...]:
         named: set[str] = set()
         for _item_id, _check_type, check_value in bound:
-            for token in check_value.split():
+            for token in _path_tokens(check_value):
                 if token in changed or any(
                     path.startswith(token.rstrip("/") + "/") for path in changed
                 ):

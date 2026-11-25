@@ -100,6 +100,7 @@ def overlay(**overrides: object) -> ModelCodeEvalRunnerOverlay:
         "receipt_slack_seconds": 60,
         "nudge_interval_seconds": 30,
         "max_turns": 8,
+        "loop_wall_budget_seconds": 3600,
         "max_diff_bytes": 100_000,
         "draft_checks": ["uv run python -c pass"],
         "need_tools": ["uv"],
