@@ -38,6 +38,7 @@ from omnimarket.nodes.node_dev_cause_lane_receiver_effect.protocols.local_dev_ca
     FileDispatchKeyLedger,
     SubprocessCauseLaneStarter,
 )
+from tests.ci.lint_jobs import lint_steps
 
 pytestmark = pytest.mark.unit
 
@@ -262,5 +263,5 @@ def test_required_lint_job_runs_the_suite() -> None:
     workflow = yaml.safe_load(
         (_ROOT / ".github" / "workflows" / "ci.yml").read_text("utf-8")
     )
-    runs = [str(step.get("run", "")) for step in workflow["jobs"]["lint"]["steps"]]
+    runs = [str(step.get("run", "")) for step in lint_steps(workflow)]
     assert any(_SUITE in run and "pytest" in run for run in runs)

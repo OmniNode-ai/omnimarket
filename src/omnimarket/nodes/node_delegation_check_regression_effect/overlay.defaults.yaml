@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Shipped defaults of the delegation check regression run; tests/nodes/node_delegation_check_regression_effect loads them.
+# The settings store's own version replaces them. Nothing here is a model default: a key missing from the live version
+# fails the load.
+condition: delegation_check_regression
+# A red check alarms within 15 minutes of the change.
+alarm_deadline_seconds: 900
+# A target an alarm never reaches.
+refused_targets: [prod]
+# A change selects the delegation checks that read what it changed. The responder chain resolves every customer check's
+# model, so a change to a local endpoint, a harness backend, an escalation chain or a task-kind rung of the routing
+# overlay, a host's model server, or a release of the package the customer machine installs selects the customer checks.
+key_check_map:
+  - {change_kind: settings_store, subject_glob: delegation_routing, key_glob: "local_endpoints/*", checks: [C13, C14, C29]}
+  - {change_kind: settings_store, subject_glob: delegation_routing, key_glob: "harness_backends/*", checks: [C13, C14, C29]}
+  - {change_kind: settings_store, subject_glob: delegation_routing, key_glob: "harness_tiers/*", checks: [C13, C14, C29]}
+  - {change_kind: settings_store, subject_glob: delegation_routing, key_glob: "escalation_chains/*", checks: [C13, C14, C29]}
+  - {change_kind: settings_store, subject_glob: delegation_routing, key_glob: "task_kind_rungs/*", checks: [C13, C14, C29]}
+  - {change_kind: settings_store, subject_glob: lab_hosts, key_glob: "hosts/*", checks: [C13, C14, C29]}
+  - {change_kind: host_model, subject_glob: "h20*", key_glob: "*", checks: [C13, C14, C29]}
+  - {change_kind: release, subject_glob: omnimarket, key_glob: "*", checks: [C13, C14, C29]}
+# Per check: the named owner (the customer path owner of delegation_workflows.yaml W2), how long the run waits for the
+# reading, and how many consecutive red readings alarm.
+checks:
+  C13: {owner: customer path owner, read_deadline_seconds: 600, red_streak_to_alarm: 1}
+  C14: {owner: customer path owner, read_deadline_seconds: 600, red_streak_to_alarm: 1}
+  C29: {owner: customer path owner, read_deadline_seconds: 600, red_streak_to_alarm: 1}

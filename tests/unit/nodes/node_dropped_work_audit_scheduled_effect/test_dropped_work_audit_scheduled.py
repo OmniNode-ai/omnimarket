@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The dropped-work audit on the runtime's schedule (OMN-26205): the overlay, the hourly gate, the tick over a ledger file."""
+"""The dropped-work audit on the runtime's schedule (OMN-26205): the overlay, the hourly gate, the tick over the in-memory ledger."""
 
 from __future__ import annotations
 
@@ -35,6 +35,7 @@ from omnimarket.nodes.node_dropped_work_audit_scheduled_effect.handlers.handler_
     HandlerDroppedWorkAuditScheduled,
 )
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
+    InMemoryLedger,
     LedgerRouteError,
 )
 from omnimarket.nodes.node_reading_writer_effect.protocols import ModelAppendOutcome
@@ -209,14 +210,13 @@ def test_without_an_overlay_there_is_no_run(tmp_path: Path) -> None:
 
 
 class _Appender:
-    def __init__(self, ledger: Path) -> None:
+    def __init__(self, ledger: InMemoryLedger) -> None:
         self.rows: list[tuple[str, str]] = []
         self._ledger = ledger
 
     def append(self, rows: str, request_id: str) -> ModelAppendOutcome:
         self.rows.append((rows, request_id))
-        with self._ledger.open("a", encoding="utf-8") as handle:
-            handle.write(rows + "\n")
+        self._ledger.lines.extend(rows.splitlines())
         return ModelAppendOutcome(status="accepted")
 
 
@@ -231,11 +231,8 @@ class _Publisher:
 
 def tick_environ(
     tmp_path: Path,
-) -> tuple[dict[str, str], Path, ModelDroppedWorkAuditScheduleOverlay]:
-    ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
-    ledger.write_text(
-        "\n".join(REAL_ROWS[name] for name in SIX_KIND_ROWS) + "\n", encoding="utf-8"
-    )
+) -> tuple[dict[str, str], InMemoryLedger, ModelDroppedWorkAuditScheduleOverlay]:
+    ledger = InMemoryLedger([REAL_ROWS[name] for name in SIX_KIND_ROWS])
     pr_state = tmp_path / "pr-watcher-state.json"
     pr_state.write_text(
         json.dumps(
@@ -259,24 +256,16 @@ def tick_environ(
     (rules_dir / "overlay.yaml").write_text(
         yaml.safe_dump(example(COMPUTE)), encoding="utf-8"
     )
-    schedule = dict(example(NODE))
-    schedule["ledger_read"] = {
-        "route": "file",
-        "path_env": "LEDGER_FILE",
-        "timeout_seconds": 5,
-        "row_limit": 1000,
-    }
-    overlay = ModelDroppedWorkAuditScheduleOverlay.model_validate(schedule)
+    overlay = ModelDroppedWorkAuditScheduleOverlay.model_validate(example(NODE))
     environ = {
         "ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "overlays"),
-        "LEDGER_FILE": str(ledger),
         "ONEX_PR_WATCHER_STATE": str(pr_state),
         "ONEX_ADMISSION_REFUSAL_READ_COMMAND": command,
     }
     return environ, ledger, overlay
 
 
-def test_tick_over_a_ledger_file_raises_each_item_once(tmp_path: Path) -> None:
+def test_tick_over_the_in_memory_ledger_raises_each_item_once(tmp_path: Path) -> None:
     environ, ledger, overlay = tick_environ(tmp_path)
     appender = _Appender(ledger)
     publisher = _Publisher()
@@ -286,6 +275,7 @@ def test_tick_over_a_ledger_file_raises_each_item_once(tmp_path: Path) -> None:
         environ=environ,
         clock=lambda: T0,
         evented=evented,
+        source=ledger,
         appender=appender,
         publisher=publisher,
     )
@@ -300,6 +290,7 @@ def test_tick_over_a_ledger_file_raises_each_item_once(tmp_path: Path) -> None:
         environ=environ,
         clock=lambda: T0 + timedelta(hours=1),
         evented=evented,
+        source=ledger,
         appender=appender,
         publisher=publisher,
     )
@@ -319,6 +310,7 @@ def test_dry_run_appends_and_publishes_nothing(tmp_path: Path) -> None:
         environ=environ,
         clock=lambda: T0,
         evented=set(),
+        source=ledger,
         appender=appender,
         publisher=publisher,
         dry_run=True,
@@ -338,6 +330,7 @@ def test_an_unreadable_pull_request_state_fails_the_run_by_name(tmp_path: Path) 
         environ=environ,
         clock=lambda: T0,
         evented=set(),
+        source=ledger,
         appender=_Appender(ledger),
         publisher=_Publisher(),
     )

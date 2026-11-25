@@ -25,6 +25,11 @@ requirements:
         statement: "AC4: a tenant_overlay decision stamped house_overlay with no credential reference classifies as no credential required, a house reference classifies as a house key, and a decision built by the reducer from a house row under either form of the house tenant id classifies the same -- falsifier: uv run pytest tests/unit/delegation/test_omn26365_house_route_needs_no_customer_key.py -k 'house' fails"
       - id: AC5
         statement: "AC5: a customer tenant's overlay decision with a minted reference, with no reference, or built by the reducer from a customer row still classifies as the customer's key, and the OMN-18201 boundary tests stay green -- falsifier: uv run pytest tests/unit/delegation/test_omn26365_house_route_needs_no_customer_key.py tests/unit/delegation/test_omn18201_effect_boundary_auth_header.py -k 'customer or tenant_overlay or minted' fails"
+  - id: req-omn26365-reasoning-effort-per-backend
+    statement: "Each backend row carries its own reasoning_effort and the request that backend receives on the local dispatch path names it, and only it."
+    acceptance:
+      - id: AC6
+        statement: "AC6: reasoning_effort is a field of the backend row, carried onto the resolved backend, and the request each backend receives carries that row's own value, or no reasoning_effort when the row declares none -- falsifier: a test that passes on origin/dev, or a reasoning_effort value written in code (uv run pytest tests/unit/delegation/test_backend_row_reasoning_effort_omn26365.py)"
 evidence_requirements:
   - kind: tests
     description: "The node's tests and the house tenant reader tests at the pushed head."
@@ -87,3 +92,20 @@ dod_evidence:
       - check_type: command
         check_value: >-
           env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26365 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_house_routing_overlay_effect tests/nodes/node_delegation_routing_reducer/test_omn19186_house_tenant_overlay.py -q --no-cov -n 0 -p no:randomly
+  - id: dod-omn26365-ac6-row-to-request
+    description: "The row's reasoning_effort reaches the request of the local dispatch port, each backend with its own value, a backend with none sending none; the test file fails at import on origin/dev."
+    source: manual
+    binds_ac: [AC6]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run --frozen pytest tests/unit/delegation/test_backend_row_reasoning_effort_omn26365.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn26365-reasoning-effort-integration-proof
+    description: "Run the reasoning_effort row-to-request tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26365-effort --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_backend_row_reasoning_effort_omn26365.py -q --no-cov -n 0 -p no:randomly

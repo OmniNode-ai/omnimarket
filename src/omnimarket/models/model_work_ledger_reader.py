@@ -264,6 +264,11 @@ class ModelReaderOverlay(BaseModel):
     # is read a page at a time, following next_cursor, and never cut short.
     page_size: int = Field(ge=1, le=5000)
     max_pages: int = Field(ge=1, le=1000)
+    # The page bound of a history range read (a rows read that names since): a range of a
+    # fortnight or more holds more rows than max_pages pages, so it pages to the end of its range
+    # under its own declared bound and is refused, never cut short, when it runs past it. Optional;
+    # absent, a range read keeps the max_pages bound so every overlay written before this key loads.
+    range_max_pages: int | None = Field(default=None, ge=1, le=100000)
     # The page size one kind of read asks for in place of page_size (an open-claims page
     # carries each claim's activity and is far larger than a rows line, so its pages must be
     # smaller to fit under the query node's answer bound); absent means every read uses

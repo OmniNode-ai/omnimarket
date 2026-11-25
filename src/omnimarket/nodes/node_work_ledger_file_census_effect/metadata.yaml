@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: work_ledger_file_census_effect
 version: "1.0.0"
-description: "Counts executable readers and writers of the ledger file's name and path variable over the registered repositories and holds the count in a shrink-only ratchet."
+description: "Counts executable readers and writers of the ledger file's name and path variable over the registered repositories and holds the count in a shrink-only ratchet.  The daily run publishes its record with the change against the previous day on the bus."
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -10,11 +10,11 @@ entry_points:
 capabilities:
   standalone: true
   full_runtime: false
-  requires_network: false
+  requires_network: true
   requires_repo: true
   requires_secrets: false
   requires_docker: false
-  side_effect_class: read
+  side_effect_class: write
 dependencies:
   - "omnibase_core>=0.39.0"
   - "pyyaml>=6.0"

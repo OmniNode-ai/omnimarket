@@ -58,6 +58,17 @@ EXIT_FILE_FALLBACK = 10
 EXIT_UNREADABLE = 69
 
 
+def _stamp(text: str) -> datetime:
+    """A UTC stamp such as 2026-09-01T00:00:00Z; a naive stamp is refused."""
+    try:
+        moment = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"not a stamp: {text}") from exc
+    if moment.tzinfo is None:
+        raise argparse.ArgumentTypeError(f"the stamp has no zone: {text}")
+    return moment.astimezone(UTC)
+
+
 def exit_code(status: EnumRowsStatus, source: EnumRowsSource) -> int:
     if status is not EnumRowsStatus.OK:
         return EXIT_UNREADABLE
@@ -73,7 +84,23 @@ def main(
 ) -> int:
     parser = argparse.ArgumentParser(prog="node_ledger_rows_loader_effect")
     parser.add_argument("--reader", required=True)
-    parser.add_argument("--window-hours", required=True, type=int)
+    parser.add_argument(
+        "--window-hours",
+        type=int,
+        help="the last N hours (at most 720); or name --since for a history range",
+    )
+    parser.add_argument(
+        "--since",
+        type=_stamp,
+        help="a history range from this UTC stamp, at any age the store holds (with optional --until)",
+    )
+    parser.add_argument("--until", type=_stamp, help="the range's end, inclusive")
+    parser.add_argument(
+        "--kind",
+        action="append",
+        default=[],
+        help="narrow a range read to this ledger row type (repeatable)",
+    )
     parser.add_argument(
         "--file-ledger",
         help="the live ledger file; its rows (and its archive splits) are the fallback only",
@@ -83,6 +110,14 @@ def main(
         help="glob of the archive split files beside the ledger file (under archive/); none reads the live file only",
     )
     args = parser.parse_args(argv)
+    if (args.window_hours is None) == (args.since is None):
+        parser.error("name exactly one of --window-hours or --since")
+    if args.until is not None and args.since is None:
+        parser.error("--until needs --since")
+    if args.kind and args.since is None:
+        parser.error("--kind is only for a --since range read")
+    if args.until is not None and args.until < args.since:
+        parser.error("--until is before --since")
     env = os.environ if environ is None else environ
     reader_overlay = load_reader_overlay(env)
     overlay = load_overlay(env)
@@ -99,6 +134,9 @@ def main(
             reader=args.reader,
             query=EnumReaderQuery.ROWS,
             window_hours=args.window_hours,
+            since=args.since,
+            until=args.until,
+            kinds=tuple(args.kind),
         )
     )
     journal = env.get(overlay.journal_env, "").strip()
@@ -111,12 +149,16 @@ def main(
             clock() - timedelta(hours=args.window_hours),
             args.archive_glob,
         )
-        if args.file_ledger
+        if args.file_ledger and args.window_hours is not None
         else None
     )
     result = HandlerRowsLoader(overlay, sink, file_rows, clock=clock).handle(
         ModelRowsLoaderRequest(
-            reader=args.reader, window_hours=args.window_hours, node_answer=answer
+            reader=args.reader,
+            window_hours=args.window_hours,
+            since=args.since,
+            until=args.until,
+            node_answer=answer,
         )
     )
     sys.stdout.write("".join(f"{line}\n" for line in result.lines))
