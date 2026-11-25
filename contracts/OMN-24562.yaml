@@ -46,6 +46,11 @@ requirements:
   acceptance:
   - id: AC9
     statement: 'AC9: after Save is refused with no model chosen, the pending or running auto-find does not replace the refusal note -- falsifier: tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py::test_config_refusal_note_survives_the_late_auto_find fails when the find is not cancelled on refusal'
+- id: req-omn24562-customer-key-removal
+  statement: A customer provider key registers unbound, routes, and is revoked before its secret is deleted, so a refused revoke publish never leaves an unrevoked row with no secret.
+  acceptance:
+  - id: AC8
+    statement: 'AC8: register-tenant-key without --host stores the key unbound and revoke-tenant-key publishes the revoke before it deletes the stored secret -- falsifier: uv run pytest tests/test_credential_publisher.py tests/unit/cli/test_omn24562_revoke_tenant_key_command.py tests/unit/cli/test_omn21012_register_tenant_key_host.py fails when a refused publish still deletes the secret or the key carries the registering host'
 - id: req-omn24562-suite-admission-both-ways
   statement: A code eval suite task is kept only if its known-good answer passes and an empty answer fails, both through the grader's own score handler.
   acceptance:
@@ -166,7 +171,6 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_code_eval_trial_orchestrator/test_suite_admission_both_ways.py -q --no-cov -n 0 -p no:randomly
     cwd: .
-
 - id: dod-omn24562-unit-file-scoped-root-reference-cache
   description: 'AC8: a deleted-file lookup reuses the parsed references of every test file instead of parsing the tree again, so test_split_count_by_duration_no_narrowed_shard_past_target finishes inside its shard timeout (failing control: at the previous head the second lookup parses every file again and the test fails; recorded 308 s before, 89 s after on the same host).'
   source: manual
@@ -175,6 +179,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_test_selection_selector_compute/test_unit_file_scoped_root.py -q -n 0 --no-cov -p no:randomly -k second_deleted_file_does_not_reparse_the_tree
+    cwd: .
+- id: dod-omn24562-customer-key-removal
+  description: 'AC8: a customer key registers unbound and is revoked before its secret is deleted; a refused publish keeps the secret and a central-store key is reported as not deletable (failing control: at the base the revoke command is absent and the publisher deletes before it publishes, so these files fail there).'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_credential_publisher.py tests/unit/cli/test_omn24562_revoke_tenant_key_command.py tests/unit/cli/test_omn21012_register_tenant_key_host.py -q -n 0 --no-cov -p no:randomly
     cwd: .
 - id: dod-omn24562-windowed-read-every-exposure
   description: 'Every node contract that declares a freshness_column (61) answers the 1d, 7d and 30d windowed read through the real store path on real Postgres, built from its own migrations (failing control: the same walk answers 503 for a TEXT freshness column under the window expression before OMN-21288, and for an exposure whose freshness column is not a served column before this change).'

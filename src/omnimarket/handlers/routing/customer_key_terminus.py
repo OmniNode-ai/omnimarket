@@ -192,6 +192,25 @@ _BOUNDARY_REASON_PHRASES: Final[Mapping[EnumCustomerKeyRefusalReason, str]] = {
 }
 
 
+# OMN-24562. Two refusal reasons are not fixed by registering a key: the route
+# itself is wrong. Telling the customer to register a key sends them to a step
+# that cannot clear the refusal, so each of these names its own reason. Phrased
+# with no ``SENSITIVE_PATTERNS`` token so it also survives the boundary.
+_REASON_REMEDIATION: Final[Mapping[EnumCustomerKeyRefusalReason, str]] = {
+    EnumCustomerKeyRefusalReason.HOUSE_CREDENTIAL_ON_CUSTOMER_PATH: (
+        "Refused because the resolved route would run on a platform-owned key. "
+        "Registering a provider key does not clear this; the route is a "
+        "routing misconfiguration on the platform side."
+    ),
+    EnumCustomerKeyRefusalReason.LAB_BACKEND_ON_CUSTOMER_PATH: (
+        "Refused because the resolved route points at OmniNode's own lab "
+        "hardware, which customer work may never use. Registering a provider "
+        "key does not clear this; the route is a routing misconfiguration on "
+        "the platform side."
+    ),
+}
+
+
 class ModelCustomerKeyRefusal(BaseModel):
     """The typed, customer-facing refusal payload.
 
@@ -247,6 +266,20 @@ class ModelCustomerKeyRefusal(BaseModel):
         """
         if isinstance(data, dict) and "remediation" not in data:
             surface = data.get("surface")
+            reason = data.get("reason")
+            named = None
+            if isinstance(reason, str):
+                try:
+                    named = _REASON_REMEDIATION.get(
+                        EnumCustomerKeyRefusalReason(reason)
+                    )
+                except ValueError:
+                    named = None
+            local = surface == EnumDelegationSurface.CUSTOMER_LOCAL or surface == (
+                EnumDelegationSurface.CUSTOMER_LOCAL.value
+            )
+            if named is not None and not local:
+                return {**data, "remediation": named}
             if surface == EnumDelegationSurface.CUSTOMER_LOCAL or surface == (
                 EnumDelegationSurface.CUSTOMER_LOCAL.value
             ):
@@ -283,9 +316,12 @@ class ModelCustomerKeyRefusal(BaseModel):
         )
 
     def _boundary_remediation(self) -> str:
-        """The sanitizer-safe remediation for this refusal's surface."""
+        """The sanitizer-safe remediation for this refusal's reason and surface."""
         if self.surface is EnumDelegationSurface.CUSTOMER_LOCAL:
             return _BOUNDARY_REMEDIATION_CUSTOMER_LOCAL
+        named = _REASON_REMEDIATION.get(self.reason)
+        if named is not None:
+            return named
         return _BOUNDARY_REMEDIATION
 
 
