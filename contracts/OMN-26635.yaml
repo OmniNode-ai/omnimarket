@@ -82,3 +82,10 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26635 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_overlay_store_write_real_postgres.py tests/test_overlay_store_real_postgres.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26635-work-contract-pins-current
+  description: 'After the merge of dev and the infra dev-tag pin move, every work contract environment pin carries the sha256 of the committed uv.lock, so the corpus loads and the test collection that the typecheck and shard jobs run finishes. This binds no criterion by itself.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/test_work_contract_pins_current.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
