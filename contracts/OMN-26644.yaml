@@ -122,7 +122,7 @@ dod_evidence:
     check_value: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn26644-revoke-create-only-store
-  description: Revoke works against the create-only dev store through the real adapter chain (registry handler, secret store handler, Infisical adapter with delete refused) by writing a tombstone row in the declared revoked folder; the revoked name is read as unknown_sender, is not listed, cannot be registered again, and no delete is sent to the store. This binds no criterion by itself.
+  description: Revoke works against the create-only dev store through the real adapter chain (registry handler, secret store handler, Infisical adapter with delete refused) by writing a tombstone row (revoked_prefix + name) in the existing senders folder, since the live store has no revoked folder and a folder is the store owner's act; the revoked name is read as unknown_sender, is not listed, cannot be registered again, and no delete is sent to the store. This binds no criterion by itself.
   source: manual
   checks:
   - check_type: test_passes

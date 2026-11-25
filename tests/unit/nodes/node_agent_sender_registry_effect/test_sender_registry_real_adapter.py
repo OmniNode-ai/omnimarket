@@ -55,6 +55,8 @@ class CreateOnlyInfisical:
 
     def __init__(self) -> None:
         self.rows: dict[tuple[str, str], str] = {}
+        # Folders that exist on the live store; a write into any other folder is answered 404 (folders are infra's).
+        self.folders: set[str] = set()
         self.methods: list[str] = []
 
     async def __call__(
@@ -69,6 +71,8 @@ class CreateOnlyInfisical:
         scope = (kwargs.get("params") or kwargs.get("payload") or {}).get(
             "secretPath", "/"
         )
+        if scope not in self.folders:
+            return 404, {"message": "folder not found"}
         if path == _RAW and method == "GET":
             names = [n for (f, n) in self.rows if f == scope]
             return 200, {"secrets": [{"secretKey": n} for n in names]}
@@ -87,8 +91,10 @@ class CreateOnlyInfisical:
 
 
 @pytest.fixture
-def exchange() -> CreateOnlyInfisical:
-    return CreateOnlyInfisical()
+def exchange(layout: dict[str, str]) -> CreateOnlyInfisical:
+    fake = CreateOnlyInfisical()
+    fake.folders = {layout["senders_folder"], layout["keys_folder"]}
+    return fake
 
 
 @pytest.fixture

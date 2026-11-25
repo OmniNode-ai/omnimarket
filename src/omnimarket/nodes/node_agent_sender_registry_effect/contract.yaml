@@ -8,7 +8,7 @@ node_version: {major: 0, minor: 1, patch: 0}
 description: >
   The write path of the agent message sender registry. register stores one agent sender (its broker principal, key id and
   generated Ed25519 public key) and its signing key in the settings store folders the agent message node's message_contract
-  declares; list returns the registered names; revoke writes a tombstone row in the revoked folder (the store is create-only, so nothing is deleted and no delete grant is opened), after which a reader refuses that
+  declares; list returns the registered names; revoke writes a tombstone row in the senders folder (the store is create-only, so nothing is deleted and no delete grant is opened), after which a reader refuses that
   name as unknown_sender. Every value comes from the request or the declared folders. The result carries the public key
   only; the seed is stored and never printed. A second register of a name is refused and keeps the first key.
 

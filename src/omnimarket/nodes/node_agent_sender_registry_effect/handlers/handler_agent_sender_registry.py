@@ -47,20 +47,26 @@ class HandlerAgentSenderRegistry:
         self._store = store
         self._senders = layout["senders_folder"]
         self._keys = layout["keys_folder"]
-        self._revoked = layout["revoked_folder"]
+        self._revoked_prefix = layout["revoked_prefix"]
 
     async def handle(
         self, request: ModelAgentSenderRegistryRequest
     ) -> ModelAgentSenderRegistryResult:
         try:
             if request.operation is EnumAgentSenderRegistryOperation.LIST:
-                revoked = set(await self._store.names(self._revoked))
+                names = await self._store.names(self._senders)
+                tombstoned = {
+                    n.removeprefix(self._revoked_prefix)
+                    for n in names
+                    if n.startswith(self._revoked_prefix)
+                }
                 return ModelAgentSenderRegistryResult(
                     outcome=Out.LISTED,
                     senders=tuple(
                         n
-                        for n in await self._store.names(self._senders)
-                        if n not in revoked
+                        for n in names
+                        if not n.startswith(self._revoked_prefix)
+                        and n not in tombstoned
                     ),
                 )
             if request.operation is EnumAgentSenderRegistryOperation.REVOKE:
@@ -79,7 +85,8 @@ class HandlerAgentSenderRegistry:
         key_id = request.key_id or ""
         if (
             await self._store.read(self._senders, name) is not None
-            or await self._store.read(self._revoked, name) is not None
+            or await self._store.read(self._senders, self._revoked_prefix + name)
+            is not None
         ):
             return ModelAgentSenderRegistryResult(
                 outcome=Out.ALREADY_REGISTERED, sender=name
@@ -124,7 +131,9 @@ class HandlerAgentSenderRegistry:
                 outcome=Out.NOT_REGISTERED, sender=name
             )
         tombstone = SecretStr(json.dumps({"revoked": True}))
-        if not await self._store.create(self._revoked, name, tombstone):
+        if not await self._store.create(
+            self._senders, self._revoked_prefix + name, tombstone
+        ):
             return ModelAgentSenderRegistryResult(
                 outcome=Out.NOT_REGISTERED, sender=name, detail="already revoked"
             )

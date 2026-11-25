@@ -37,13 +37,16 @@ class SettingsStoreAgentDirectory:
         self._store = store
         self._senders_folder = layout["senders_folder"]
         self._keys_folder = layout["keys_folder"]
-        self._revoked_folder = layout["revoked_folder"]
+        self._revoked_prefix = layout["revoked_prefix"]
         self._policy_folder = layout["policy_folder"]
         self._accept_legacy_name = layout["accept_legacy_name"]
 
     async def _revoked(self, name: str) -> bool:
         """A tombstone row marks a revoked name; the store is create-only, so the sender row itself stays."""
-        return await self._store.read(self._revoked_folder, name) is not None
+        return (
+            await self._store.read(self._senders_folder, self._revoked_prefix + name)
+            is not None
+        )
 
     async def lookup(self, name: str) -> ModelRegisteredAgentSender | None:
         if await self._revoked(name):
