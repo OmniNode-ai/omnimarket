@@ -1,17 +1,36 @@
 schema_version: 1.0.0
 ticket_id: OMN-26619
 title: A delegation check that goes green to red in the probes' own results raises one regression event and an alarm to the orchestrator within 15 minutes
-summary: The build delegation checks node (node_build_delegation_checks) keeps its per-build history under the runtime's declared writable state root instead of under the registry root, which the dev runtime mounts read-only, and reads the mounted clone's merges with a per-command safe directory, so the ten delegation checks run after every dev build.
+summary: A new node, node_delegation_check_regression_effect, reads the finished runs of each delegation probe workflow through the SCM gateway, publishes one regression event per green to red transition naming the last green run, the first red run and what changed between them, hands one alarm to the lab alarm delivery path, queues one fix lane unless a live CLAIM holds the check, and alarms the second flap of a check in 24 hours.
 is_seam_ticket: false
-interface_change: false
-interfaces_touched: []
+interface_change: true
+interfaces_touched:
+- public_api
 requirements:
+- id: req-omn26619-regression-alarm
+  statement: A delegation check that goes green to red in the probes' own results raises one regression event, one alarm and one fix lane request; a flap is counted and the second in 24 hours alarms.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: each green to red transition of C11 to C17, C28, C29 or C30 in the probes'' own results emits one regression event on the bus naming the check, the last green run, the first red run, and the merges, dev builds and host or model setting changes between them -- falsifier: uv run pytest tests/unit/test_regression_transition.py -q fails on a fixture transition that emits no event or an event missing one of those fields'
+  - id: AC2
+    statement: 'AC2: a regression event raises one alarm to the orchestrator lane with a named owner within 15 minutes and queues one fix lane for that check unless a live lane already holds it -- falsifier: uv run pytest tests/unit/test_regression_alarm.py -q fails when no alarm row is written, a second fix lane is queued for a held check, or an alarm exceeds 15 minutes'
+  - id: AC3
+    statement: 'AC3: a flap (red then green inside one interval) is counted, and the second flap of a check inside 24 hours raises an alarm -- falsifier: uv run pytest tests/unit/test_regression_flap.py -q fails when the first flap alarms or the second does not'
+  - id: AC4
+    statement: 'AC4: replaying the recorded probe results of 2026-11-23 13:30Z to 14:45Z through the node on dev or the lab emits the C14 and C29 regression events with the Qwen host change named as what changed -- falsifier: the replay run output lacks a C14 or C29 regression event or does not name the 5090 host change'
+  - id: AC5
+    statement: 'AC5: a regression test built from the recorded probe results of 2026-11-23 (fixture path) fails on the code with no transition detection and passes on the fix -- falsifier: uv run pytest tests/unit/test_regression_recorded_replay.py -q'
+  - id: AC6
+    statement: 'AC6: integrated: the node is running on the dev lane or the lab and one regression event for a real green to red transition of a delegation check is read back from the bus together with its alarm row -- falsifier: onex node run of the regression node on a lab host replays the recorded 13:30Z to 14:45Z results and the read back of the bus topic and the ledger alarm rows shows no event or no alarm'
 - id: req-omn26619-build-checks-state-root
   statement: The node that runs the ten delegation checks after each dev build writes its readings under the runtime's declared state root, so a read-only registry root cannot stop it.
   acceptance:
   - id: AC7
     statement: 'AC7: node_build_delegation_checks runs under the runtime''s read-only registry root: its build history is written under ONEX_STATE_DIR (then ONEX_STATE_ROOT), no declared state root refuses instead of choosing a path, and its git log of the mounted clone names only that clone as a safe directory -- falsifier: uv run pytest tests/nodes/node_build_delegation_checks/test_state_root.py tests/nodes/node_build_delegation_checks/test_git_merge_source_ownership.py -q fails on a handler that writes under the registry root or a git read that names no safe directory'
 evidence_requirements:
+- kind: tests
+  description: The four regression tests and the adapter tests pass at the pushed head.
+  command: uv run pytest tests/unit/test_regression_transition.py tests/unit/test_regression_alarm.py tests/unit/test_regression_flap.py tests/unit/test_regression_recorded_replay.py tests/unit/test_regression_adapters.py tests/unit/test_regression_autowire.py -q -n 0 --no-cov -p no:cacheprovider
 - kind: tests
   description: The node's focused tests, the new state root test failing against the registry-root path first.
   command: uv run pytest tests/nodes/node_build_delegation_checks -q --no-cov -n 0 -p no:randomly
@@ -20,6 +39,74 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+- id: dod-omn26619-ac1
+  description: 'AC1: each green to red transition of C11 to C17, C28, C29 or C30 in the probes'' own results emits one regression event on the bus naming the check, the last green run, the first red run, and the merges, dev builds and host or model setting changes between them'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_regression_transition.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26619-ac2
+  description: 'AC2: a regression event raises one alarm to the orchestrator lane with a named owner within 15 minutes and queues one fix lane for that check unless a live lane already holds it'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_regression_alarm.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26619-ac3
+  description: 'AC3: a flap (red then green inside one interval) is counted, and the second flap of a check inside 24 hours raises an alarm'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_regression_flap.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26619-ac5
+  description: 'AC5: a regression test built from the recorded probe results of 2026-11-23 (fixture path) fails on the code with no transition detection and passes on the fix'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_regression_recorded_replay.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26619-ac4
+  description: 'AC4: the replay of the recorded runs at 14:45Z names the C14 and C29 events and the 5090 host change; the recorded-runs fixture test holds the same assertion at hosted CI, and the live replay reads the gateway, so it is a local Done gate check and binds no criterion.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: bash -c 'uv run python -m omnimarket.nodes.node_delegation_check_regression_effect replay --at 2026-11-23T14:45:00Z --bus inmemory --registry-root "$OMNI_HOME" | grep -q C14 && uv run python -m omnimarket.nodes.node_delegation_check_regression_effect replay --at 2026-11-23T14:45:00Z --bus inmemory --registry-root "$OMNI_HOME" | grep -q 5090'
+- id: dod-omn26619-ac4-fixture
+  description: 'AC4 at hosted CI: the recorded runs of 2026-11-23 replayed at 14:45Z give the C14 and C29 events with the 5090 host change named'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_regression_recorded_replay.py -q -n 0 --no-cov -p no:cacheprovider -k 1445z
+    cwd: .
+- id: dod-omn26619-ac6-chain
+  description: 'AC6 at hosted CI: the scan of the recorded runs publishes the regression event, the alarm row request and the fix lane request on the contract''s declared topics, read back from the bus port'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_node_delegation_check_regression_effect.py -q -n 0 --no-cov -p no:cacheprovider -k hop2
+    cwd: .
+- id: dod-omn26619-integration-proof
+  description: 'AC6: the node on a lab host or the dev lane replays the recorded window through the bus and the bus topic and ledger alarm rows are read back; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26619 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen python -m omnimarket.nodes.node_delegation_check_regression_effect replay --at 2026-11-23T14:45:00Z --bus kafka --registry-root "$OMNI_HOME"
 - id: dod-omn26619-state-root
   description: With the registry root closed to writes and ONEX_STATE_DIR naming a writable directory, two builds are recorded in the history file under the state root and nothing is created under the registry root; with no state root declared the handler raises OnexStateRootUnconfiguredError. The test fails on a handler that derives the history path from the registry root.
   source: manual
@@ -48,7 +135,7 @@ dod_evidence:
   - check_type: command
     check_value: grep -q 'resolve_onex_state_root' src/omnimarket/nodes/node_build_delegation_checks/handlers/handler_build_delegation_checks.py
     cwd: .
-- id: dod-omn26619-integration-proof
+- id: dod-omn26619-state-root-integration-proof
   description: On a lab host, with the branch checked out at its pushed sha, the state root test runs the contract-bound handler with the registry root closed to writes and the history lands under the declared state root. Hosted CI holds no lab host, so only the local Done gate runs this unbound check (the lab reading is in the PR's Lab line).
   source: manual
   execution_scope: local_done_gate

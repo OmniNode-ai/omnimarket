@@ -1,0 +1,135 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The delegation check regression alarm. A delegation check (C11 to C17, C28, C29, C30) that goes from green to red in the
+# probes' own recorded results (the finished runs of each probe's scheduled workflow, read through the SCM gateway) raises one
+# regression event on the bus naming the check, the last green run, the first red run and what changed between them (dev
+# merges, dev builds, host or model setting changes), one alarm to the orchestrator lane through the lab alarm delivery path
+# with a named owner, and one fix lane request unless a live CLAIM already holds the check. A red run followed by a green run
+# inside one interval is a flap; the second flap of a check inside 24 hours raises a flap alarm.
+name: node_delegation_check_regression_effect
+contract_name: node_delegation_check_regression_effect
+node_name: node_delegation_check_regression_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+description: >
+  Scan the finished runs of every watched delegation check's workflow, find each green to red transition and each flap, and
+  raise one regression event, one alarm and one fix lane request per new transition. Keep every dev-lane rebuild the deploy
+  agent completes, so an event can name the builds between two runs. Thresholds, owners, the watched checks and the change
+  markers are the node's overlay.
+
+handler:
+  module: omnimarket.nodes.node_delegation_check_regression_effect.handlers.handler_delegation_check_regression
+  class: HandlerDelegationCheckRegression
+  input_model: omnimarket.nodes.node_delegation_check_regression_effect.models.model_regression.ModelRegressionScanRequest
+  output_model: omnimarket.nodes.node_delegation_check_regression_effect.models.model_regression.ModelRegressionScanResult
+
+# The runtime builds both handlers with no argument; each makes its ports (the run source, change source, claims, seen store,
+# publisher and dev build store) from the node's overlay on a request. A caller that passes every port gets exactly those ports.
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: delegation_check_regression.scan
+      topic: onex.intent.platform.runtime-tick.v1
+      handler:
+        name: HandlerDelegationCheckRegression
+        module: omnimarket.nodes.node_delegation_check_regression_effect.handlers.handler_delegation_check_regression
+      input_model: omnimarket.nodes.node_delegation_check_regression_effect.models.model_regression.ModelRegressionScanRequest
+      output_model: omnimarket.nodes.node_delegation_check_regression_effect.models.model_regression.ModelRegressionScanResult
+    - operation: delegation_check_regression.record_dev_build
+      topic: onex.evt.deploy.rebuild-completed.v1
+      handler:
+        name: HandlerDevBuildRecord
+        module: omnimarket.nodes.node_delegation_check_regression_effect.handlers.handler_dev_build_record
+      input_model: omnimarket.nodes.node_delegation_check_regression_effect.models.model_regression.ModelRebuildCompletedObserved
+      output_model: omnimarket.nodes.node_delegation_check_regression_effect.models.model_regression.ModelDevBuildRecorded
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [workflow-run-read, ledger-read, git-log-read, bus-publish, state-file-write]
+  timeout_ms: 300000
+
+input_model:
+  name: ModelRegressionScanRequest
+  module: omnimarket.nodes.node_delegation_check_regression_effect.models.model_regression
+  description: One scan; now is the detection time.
+output_model:
+  name: ModelRegressionScanResult
+  module: omnimarket.nodes.node_delegation_check_regression_effect.models.model_regression
+  description: The regression events, flap counts, alarm requests, fix lane requests, held fixes and unread checks of one scan.
+
+topics:
+  scan_tick: onex.intent.platform.runtime-tick.v1
+  rebuild_completed: onex.evt.deploy.rebuild-completed.v1
+  regression_detected: onex.evt.omnimarket.delegation-check-regression-detected.v1
+  fix_lane_queued: onex.evt.omnimarket.delegation-check-fix-lane-queued.v1
+  alarm_delivery_requested: onex.cmd.omnimarket.lab-alarm-delivery-requested.v1
+  scan_completed: onex.evt.omnimarket.delegation-check-regression-scan-completed.v1
+
+config:
+  delegation_check_regression:
+    schedule:
+      workflow: delegation-check-regression
+      interval_seconds: 300
+      offset_seconds: 0
+
+input_subscriptions:
+  - topic: onex.intent.platform.runtime-tick.v1
+    operation: delegation_check_regression.scan
+  - topic: onex.evt.deploy.rebuild-completed.v1
+    operation: delegation_check_regression.record_dev_build
+
+event_bus:
+  subscribe_topics:
+    - onex.intent.platform.runtime-tick.v1
+    - onex.evt.deploy.rebuild-completed.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-check-regression-detected.v1
+    - onex.evt.omnimarket.delegation-check-fix-lane-queued.v1
+    - onex.cmd.omnimarket.lab-alarm-delivery-requested.v1
+    - onex.evt.omnimarket.delegation-check-regression-scan-completed.v1
+
+terminal_event: onex.evt.omnimarket.delegation-check-regression-scan-completed.v1
+
+# The regression event and the fix lane request are read by the orchestrator's dispatch, which is outside this repository;
+# the alarm command is read by node_lab_alarm_deliver_effect.
+externally_consumed_topics:
+  - onex.evt.omnimarket.delegation-check-regression-detected.v1
+  - onex.evt.omnimarket.delegation-check-fix-lane-queued.v1
+  - onex.evt.omnimarket.delegation-check-regression-scan-completed.v1
+
+# The runtime login reads the two subscribed topics and writes the four published ones.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.deploy.rebuild-completed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.deploy.rebuild-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-check-regression-detected.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-check-regression-detected.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-check-fix-lane-queued.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-check-fix-lane-queued.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-alarm-delivery-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-alarm-delivery-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-check-regression-scan-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-check-regression-scan-completed.v1, operation: DESCRIBE}
+
+overlay:
+  id: node_delegation_check_regression_effect
+  file_env: ONEX_DELEGATION_CHECK_REGRESSION_OVERLAY
+  example: overlay.example.yaml
+
+golden_path:
+  - "A scan reads each watched check's finished runs through the SCM gateway"
+  - "Each green to red transition not yet raised publishes one regression event, hands one alarm to the lab alarm delivery command and queues one fix lane unless a live CLAIM holds the check"
+  - "A red run the next run turned green inside one interval is a flap; the second flap in 24 hours raises a flap alarm"
+
+metadata:
+  transport_type: kafka
+  ticket: OMN-26619

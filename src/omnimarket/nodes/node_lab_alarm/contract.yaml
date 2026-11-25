@@ -353,6 +353,10 @@ alarm_sources:
      cause: "host-drift clone drift (stray files on one host in the infra clone, workspace/routing_tiers.yaml; untracked lock files on another host in the registry root)"}
   - {condition: test_selector_miss, severity: page, review_name: "a nightly red test file attributed to merged pull requests that skipped it, or an incomplete nightly, or no collector result", basis: named, posts_via: deliver-effect,
      raised_at: omnimarket/src/omnimarket/nodes/node_test_selector_miss_collect_effect/adapters/routed_receiver.py:31}
+  - {condition: delegation_check_regression, severity: page, review_name: "a delegation check went from green to red in the probes' own results", basis: named, posts_via: deliver-effect,
+     raised_at: omnimarket/src/omnimarket/nodes/node_delegation_check_regression_effect/handlers/handler_delegation_check_regression.py:200}
+  - {condition: delegation_check_flap, severity: page, review_name: "a delegation check flapped twice in 24 hours (red then green inside one interval)", basis: named, posts_via: deliver-effect,
+     raised_at: omnimarket/src/omnimarket/nodes/node_delegation_check_regression_effect/handlers/handler_delegation_check_regression.py:306}
   # --- post to the channel by their own path, not through this node: declared, not routed by this table ---
   - {condition: capture_source_stale, severity: page, review_name: hook capture feed dead (CAPTURE SOURCE STALE), basis: named, posts_via: direct,
      raised_at: omnimarket/src/omnimarket/nodes/node_capture_silence_watch_effect/handlers/build_slack_command.py:37}
