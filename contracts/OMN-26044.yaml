@@ -108,3 +108,11 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_c30_dashboard_collector.py -q --no-cov -n 0 -p no:randomly
         cwd: .
+  - id: dod-omn26044-tui-provider-switch-key
+    description: "AC7: switching the provider in the setup screen clears the key field, so the next provider's model list is never fetched with the previous provider's key (and the save refusal note is not overwritten by a late list)."
+    source: manual
+    binds_ac: [AC7]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py -q --no-cov -n 0 -p no:randomly -k "switching_provider"
+        cwd: .
