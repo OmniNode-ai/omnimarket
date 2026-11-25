@@ -101,6 +101,14 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/routing/test_cheap_frontier_ac6_later_rows_omn26129.py tests/unit/routing/test_cheap_frontier_smoke_evidence_omn20376.py -q -n 0 --no-cov"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26129-ac6-same-ten-prompts"
+    description: "AC6: the dated later receipt stores the same ten task prompts as the 2026-11-20 receipt, each with its text, and a receipt with a changed or emptied prompt is refused."
+    source: "manual"
+    binds_ac: ["AC6"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/routing/test_cheap_frontier_ac6_later_rows_omn26129.py::test_a_later_receipt_must_store_the_first_days_ten_prompts -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn26129-integration-proof"
     description: >-
       Run the provider-catalogue check, the routing-completeness and tier-order coverage tests and the free-tier
