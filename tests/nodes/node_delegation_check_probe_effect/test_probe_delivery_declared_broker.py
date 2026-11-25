@@ -19,6 +19,9 @@ from _gateway_fake import FakeGateway
 from omnimarket.handlers.bus_binding import (
     declared_broker_publisher as publisher_module,
 )
+from omnimarket.handlers.bus_binding.declared_broker_publisher import (
+    DeclaredBrokerPublisher,
+)
 from omnimarket.models.bus_binding.model_node_broker import ModelNodeBroker
 from omnimarket.nodes.node_delegation_check_probe_effect import (
     runtime_delegation_check_probe_tick as tick,
@@ -97,9 +100,31 @@ def test_a_tick_with_no_kafka_bootstrap_delivers_on_the_overlay_declared_broker(
     assert len(sent) == 1
     topic, value, key = sent[0]
     assert topic.endswith(contract_topics()[0])
-    assert json.loads(value)["payload"]["criterion"] == "C17"
+    record = json.loads(value)
+    assert record["criterion"] == "C17"
+    assert record["check_id"] == "C17"
+    assert "payload" not in record
     assert key == b"C17"
     assert asked == [NODE]
+
+
+def test_a_flat_publisher_sends_the_payload_alone_and_the_default_keeps_the_envelope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The result topic's other records (the emit effect's wire shape, read on the dev broker from h051) carry check_id
+    and verdict at the top level; a record wrapped as {event_type, event_id, correlation_id, payload} hides them from
+    that reader. The default envelope stays for the callers that already publish it."""
+    sent, _ = _fake_producer(monkeypatch)
+    row = {"topic": "t", "event_type": "e", "payload": {"check_id": "C17"}}
+    assert DeclaredBrokerPublisher(NODE, flat=True).publish(event_id="r", **row)
+    assert DeclaredBrokerPublisher(NODE).publish(event_id="r", **row)
+    assert json.loads(sent[0][1]) == {"check_id": "C17"}
+    assert set(json.loads(sent[1][1])) == {
+        "event_type",
+        "event_id",
+        "correlation_id",
+        "payload",
+    }
 
 
 def test_a_tick_whose_overlay_declares_no_bus_still_exits_not_published(

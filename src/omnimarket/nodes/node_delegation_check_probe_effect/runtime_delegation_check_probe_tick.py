@@ -215,7 +215,7 @@ def main(
         or CleanInstallCustomerMachine(
             sources=GitCloneSurfaceSources(args.registry_root)
         ),
-        publisher=publisher or DeclaredBrokerPublisher(NODE),
+        publisher=publisher or DeclaredBrokerPublisher(NODE, flat=True),
         topic=overlay.result_topic,
         gateway=gateway,
     )

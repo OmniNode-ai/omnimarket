@@ -29,10 +29,15 @@ class DeclaredBrokerPublisher:
     ``KAFKA_BOOTSTRAP_SERVERS`` is never read. Delivery never raises: a refusal returns False and the tick exits 3.
 
     ``node`` names the node whose overlay declares the broker; it defaults to the host job claim node, the first caller.
+
+    ``flat`` sends the payload alone as the record value, the wire shape the emit effect puts on a topic, for a topic whose
+    readers take the payload's own keys at the top level (the delegation check probe's result topic). The default wraps
+    it as ``{event_type, event_id, correlation_id, payload}``.
     """
 
-    def __init__(self, node: str = NODE) -> None:
+    def __init__(self, node: str = NODE, *, flat: bool = False) -> None:
         self._node = node
+        self._flat = flat
 
     def publish(
         self,
@@ -54,6 +59,7 @@ class DeclaredBrokerPublisher:
                     event_id,
                     correlation_id,
                     partition_key,
+                    self._flat,
                 )
             )
         except Exception as exc:
@@ -70,6 +76,7 @@ class DeclaredBrokerPublisher:
         event_id: str,
         correlation_id: str | None,
         partition_key: str | None = None,
+        flat: bool = False,
     ) -> None:
         from aiokafka import AIOKafkaProducer
 
@@ -81,12 +88,16 @@ class DeclaredBrokerPublisher:
             options["sasl_plain_username"] = broker.sasl_username
         if broker.sasl_password is not None:
             options["sasl_plain_password"] = broker.sasl_password.get_secret_value()
-        envelope = {
-            "event_type": event_type,
-            "event_id": event_id,
-            "correlation_id": correlation_id,
-            "payload": dict(payload),
-        }
+        envelope: Mapping[str, object] = (
+            dict(payload)
+            if flat
+            else {
+                "event_type": event_type,
+                "event_id": event_id,
+                "correlation_id": correlation_id,
+                "payload": dict(payload),
+            }
+        )
         producer = AIOKafkaProducer(
             bootstrap_servers=broker.bootstrap_servers,
             security_protocol=broker.security_protocol or "PLAINTEXT",

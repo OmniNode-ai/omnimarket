@@ -163,3 +163,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_probe_delivery_declared_broker.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26043-probe-record-flat-on-topic
+  description: "The probe tick publishes its run record flat, the payload alone as the record value, the wire shape every other record on the result topic carries (read from the dev broker on h051: check_id, verdict and run_id at the top level), where the default declared broker publisher wraps it as event_type, event_id, correlation_id and payload; the publisher keeps the wrapped shape for its other callers. The new test fails on the previous commit, where the tick sent the wrapped record and the publisher took no flat option, and passes after the change. This binds no criterion of this ticket."
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_probe_delivery_declared_broker.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
