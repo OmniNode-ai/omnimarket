@@ -108,6 +108,9 @@ class ModelLabDiskWatermarkSchedule(_Frozen):
     interval_seconds: int = Field(gt=0)
     accuracy: NonEmptyStr
     timeout_start_seconds: int = Field(gt=0)
+    #: The share of ``timeout_start_seconds`` the class scan may spend. The docker reads (two commands, each bounded by the
+    #: overlay's ``timeout_seconds``), the inode read and the publish run after it, so the share leaves room for them.
+    scan_budget_percent: int = Field(gt=0, lt=100, default=70)
     description: NonEmptyStr
 
 
@@ -119,6 +122,8 @@ class ModelLabDiskWatermarkRequest(_Frozen):
     dry_run: bool = False
     #: Names the host disk event and its failure; a blank one is minted by the handler.
     correlation_id: str = ""
+    #: Seconds the class scan may spend before it stops with the classes it has read (OMN-26097); None is unbounded.
+    budget_seconds: float | None = Field(default=None, gt=0)
 
 
 class ModelVolumeReading(_Frozen):
@@ -146,6 +151,54 @@ class ModelLabDiskWatermarkReading(_Frozen):
     host_disk: ModelHostDiskRead | ModelHostDiskReadFailed | None = None
 
 
+class ModelInodeAlarmDeclaration(_Frozen):
+    """The inode alarm the contract declares: below which free share it fires, who owns it, and the ledger route it uses.
+
+    The route is the one the lab stack reaper and the deploy agent use: a FRICTION row per alarm and one STATUS row with
+    ``alarms=<n>``, appended through the bus append command whose environment variable this declaration names.
+    """
+
+    free_percent_below: float = Field(gt=0, lt=100)
+    owner: NonEmptyStr
+    lane: NonEmptyStr
+    ticket: NonEmptyStr
+    repeat_minutes: int = Field(gt=0)
+    ledger_append_command_env: NonEmptyStr
+    ledger_append_timeout_seconds: int = Field(gt=0)
+
+
+class ModelInodeReading(_Frozen):
+    """The inode use of one declared volume; ``free_percent`` is the free inodes over all inodes."""
+
+    path: str
+    files: int
+    free: int
+    free_percent: float
+    alarm: bool
+
+
+class ModelInodeAlarm(_Frozen):
+    """One volume read below the declared free share: the rows it writes, whether they were written, and why not."""
+
+    host_name: str
+    path: str
+    free_percent: float
+    free: int
+    files: int
+    threshold_percent: float
+    owner: str
+    rows: tuple[str, ...]
+    written: bool
+    note: str = ""
+
+
+class ModelClassScanSkip(_Frozen):
+    """The entries of one class the scan listed and then found gone (OMN-26097): skipped and counted, never raised."""
+
+    class_name: NonEmptyStr
+    skipped_entries: int = Field(ge=1)
+
+
 class ModelLabDiskWatermarkGrowthReading(ModelLabDiskWatermarkReading):
     """A reading with the growth of each volume against the admission floor (OMN-21663).
 
@@ -155,6 +208,13 @@ class ModelLabDiskWatermarkGrowthReading(ModelLabDiskWatermarkReading):
 
     growth: tuple[ModelVolumeGrowth, ...] = ()
     growth_paged: bool = False
+    #: Inode use per readable volume, the alarms below the declared free share, and the volumes whose inodes were unread
+    #: (OMN-24562). Result only, like the growth: the reading file and the host disk event keep their shape.
+    inodes: tuple[ModelInodeReading, ...] = ()
+    inode_alarms: tuple[ModelInodeAlarm, ...] = ()
+    inodes_unread: tuple[str, ...] = ()
+    #: Entries a class scan listed and then found gone, per class (OMN-26097). Result only: the event keeps its shape.
+    scan_skipped: tuple[ModelClassScanSkip, ...] = ()
 
 
 class ModelLabDiskWatermarkScheduleResult(_Frozen):

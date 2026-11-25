@@ -1,0 +1,60 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Example overlay: every value is a placeholder; a deployment supplies its own. The JWKS holds public keys only.
+# producer_max_request_bytes and each topic_max_message_bytes come from an authorized read-only broker config source,
+# never from a run-time read through the door's own principal.
+claims:
+  verifier: lab-jwks
+  issuer: https://keycloak.example.invalid/realms/lab
+  audience: gateway-attach
+  algorithms: [ES256]
+  max_lifetime_seconds: 900
+  jwks_keys:
+    - kid: lab-test-key
+      kty: EC
+      crv: P-256
+      x: REPLACE_WITH_PUBLIC_X
+      y: REPLACE_WITH_PUBLIC_Y
+tenants:
+  - tenant_id: 00000000-0000-0000-0000-000000000001
+    tenant_slug: example-tenant
+    status: active
+topics:
+  - topic: onex.evt.omnimarket.pool-usage-verdict-evaluated.v1
+    topic_max_message_bytes: 1048588
+  - topic: onex.evt.omniclaude.tool-executed.v1
+    topic_max_message_bytes: 524288
+proxy_headers:
+  - name: x-forwarded-for
+    max_value_bytes: 256
+  - name: x-request-id
+    max_value_bytes: 128
+limits:
+  max_batch_records: 100
+  max_body_bytes: 262144
+  chunk_headroom_bytes: 1048577
+  max_header_count: 32
+  max_header_bytes: 4096
+  max_authorization_bytes: 4096
+  max_json_depth: 16
+  read_idle_timeout_s: 5.0
+  total_upload_deadline_s: 30.0
+  max_inflight_requests: 8
+  max_inflight_bytes: 16777216
+  max_topic_chars: 160
+  max_wire_topic_chars: 249
+  max_key_chars: 1024
+  max_value_chars: 349528
+  max_record_headers: 16
+  max_header_name_chars: 64
+  max_header_value_chars: 1024
+  max_egress_value_bytes: 262144
+kafka:
+  lane: dev
+  # The mounted directory that holds config/lab/ci_bus_lanes.yaml; set it when the runtime exports no
+  # ONEX_WORKSPACE_CONFIG_ROOT.
+  workspace_config_root: /etc/onex/workspace-config
+  producer_max_request_bytes: 1048576
+  message_timeout_ms: 10000
+  record_overhead_bytes: 64
+  header_overhead_bytes: 16

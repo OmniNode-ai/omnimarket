@@ -1,0 +1,23 @@
+name: node_host_lane_path_share_compute
+version: "1.0.0"
+description: "Alarms, with a named owner, while a host's mounted data drives hold under 10 percent of its lane path bytes"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_host_lane_path_share_compute: "omnimarket.nodes.node_host_lane_path_share_compute"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read
+dependencies:
+  - "pydantic>=2.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["host", "placement", "disk", "alarm", "compute"]
+pack: "install"
+display_name: "Host Lane Path Share"
+node_role: "compute"

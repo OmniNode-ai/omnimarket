@@ -1,0 +1,95 @@
+schema_version: 1.0.0
+ticket_id: OMN-26500
+title: The post-release bump removes the CHANGELOG.md that the release cut carries, on both release paths
+summary: 'The release train stages a CHANGELOG.md entry in omnimarket''s release cut, because the release-cut rule of the ticket-contract prerequisite admits a cut only with that file in its diff. The removed-prose test forbids the file on a tree, so the post-release dev bump removes it again (the 0.4.324 bump did it by hand), and the auto-tag path of the merged release pull request now runs the same bump.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26500-cut-changelog-leaves-with-the-bump
+  statement: The post-release bump deletes a CHANGELOG.md the released tag's commit added, never one the cut did not add, and both release paths run it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a regression test built from the recorded release PR facts (head e1fd1c07 against base 586bf466, empty diff, title shape `chore: release omnimarket 0.4.325 (OMN-18595)`, fixture path named in the PR) fails on the train code at origin/dev and passes on the fix, which stages a CHANGELOG.md entry for the version it cuts -- falsifier: uv run pytest on the named focused test file fails at the base branch and passes on the pushed branch'
+  - id: AC2
+    statement: 'AC2: the release-cut rule and the removed-prose test are unchanged by the pull request -- falsifier: git diff origin/dev --stat on the pushed branch lists no change to handler_ticket_contract_prerequisite.py or test_repository_prose_removed_omn17427.py, run with uv run pytest on the touched tests'
+  - id: AC3
+    statement: 'AC3: after the pull request merges and the omnimarket train is re-dispatched, the rebuilt release pull request reads lint success -- falsifier: onex scm commit-check-runs OmniNode-ai/omnimarket on the rebuilt head shows lint not success'
+evidence_requirements:
+- kind: tests
+  description: The named focused tests pass at the pushed head.
+  command: uv run pytest tests/ci/test_post_release_dev_bump_omn18010.py tests/ci/test_release_cut_changelog_omn26500.py tests/ci/test_repository_prose_removed_omn17427.py -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26500-ac1
+  description: 'AC1, omnimarket half: the cut adds CHANGELOG.md (the 0.4.324 facts) and the bump script removes it, leaves one the cut did not add, and a rerun is a noop. At the merge base the decision carries no remove_changelog key and the first of these tests fails with a KeyError. The train half, whose staged set carries CHANGELOG.md for the cut, is the omnibase_infra pull request of the same ticket.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_post_release_dev_bump_omn18010.py tests/ci/test_release_cut_changelog_omn26500.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn26500-ac2
+  description: 'AC2: the diff against origin/dev lists no change to the ticket-contract prerequisite handler, the removed-prose test or any required-check list, and the removed-prose test still passes with CHANGELOG.md absent from the tree.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: test -z "$(git diff --name-only origin/dev HEAD -- src/omnimarket/nodes/node_ticket_contract_prerequisite_effect tests/ci/test_repository_prose_removed_omn17427.py)"
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_repository_prose_removed_omn17427.py -q -p no:randomly --no-cov
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_release_cut_changelog_omn26500.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn26500-ac3
+  description: 'AC3, before the merge: both release paths reach the bump that removes the cut''s CHANGELOG.md. The auto-tag workflow has a reopen-dev job that needs its tag job and runs the shared action, which runs scripts/ci/post_release_dev_bump.py and stages the removal.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_post_release_dev_bump_omn18010.py -q -p no:randomly --no-cov -k "reopen or changelog"
+    cwd: .
+- id: dod-omn26500-bump-0-4-328
+  description: 'AC2, post-release bump to 0.4.328: the 0.4.327 release re-added CHANGELOG.md, which tests refuse, and left dev at the published version. This change deletes CHANGELOG.md and moves pyproject.toml and uv.lock to 0.4.328; the changelog-absent test and the release-identity test fail at origin/dev and pass at the head.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_changelog_absent_omn26488.py tests/ci/test_repository_prose_removed_omn17427.py -q -p no:randomly --no-cov
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_post_release_dev_bump_omn18010.py -q -p no:randomly --no-cov -k "ahead"
+    cwd: .
+- id: dod-omn26500-ac3-lint-success
+  description: 'AC3, read after both pull requests of the ticket merged and the omnimarket train rebuilt the release pull request: the lint check-run of the rebuilt head reads success. It carries no hosted binding because that head does not exist when this contract is written.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex scm commit-check-runs OmniNode-ai/omnimarket --head-sha "$(git rev-parse origin/automation/release-0.4.325-omn-18595)" --check-name lint
+    cwd: .
+- id: dod-omn26500-integration-proof
+  description: 'Run the focused test files of this change on a lab host at the pushed revision. This local completion proof carries no hosted AC bindings.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: >-
+      env PYTHONDONTWRITEBYTECODE=1 onex lab-work run
+      --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+      --lane dod-integration-proof-26500 --kind test --
+      env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest
+      tests/ci/test_post_release_dev_bump_omn18010.py
+      tests/ci/test_release_cut_changelog_omn26500.py
+      tests/ci/test_repository_prose_removed_omn17427.py
+      -q -n 0 --no-cov --refuse-skips
+    cwd: .

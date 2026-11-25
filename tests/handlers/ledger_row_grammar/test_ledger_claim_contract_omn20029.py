@@ -14,6 +14,7 @@ from omnimarket.handlers import ledger_claim_contract as claim_contract
 from omnimarket.handlers import ledger_row_grammar as g
 
 pytestmark = pytest.mark.unit
+LEDGER_NAME = sorted(g.GOVERNED_LEDGER_NAMES)[0]
 FLAG = claim_contract.REQUIRE_CLAIM_CONTRACT_ENV
 STAMP = "2026-09-23T14:00:00Z"
 PLAIN_CLAIM = (
@@ -277,8 +278,8 @@ def test_non_claim_unchanged_claim_contract(monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_payload_checks_claim_contract(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(FLAG, "on")
-    refused = g.refusal_for_payload(PLAIN_CLAIM, "ROLLING_WORK_LEDGER.md")
+    refused = g.refusal_for_payload(PLAIN_CLAIM, LEDGER_NAME)
     assert refused is not None
     assert "OMN-20029" in refused
     valid = PLAIN_CLAIM + _contract([_item()])
-    assert g.refusal_for_payload(valid, "ROLLING_WORK_LEDGER.md") is None
+    assert g.refusal_for_payload(valid, LEDGER_NAME) is None

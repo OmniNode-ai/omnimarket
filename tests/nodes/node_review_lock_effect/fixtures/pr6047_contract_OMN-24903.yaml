@@ -1,0 +1,81 @@
+schema_version: 1.0.0
+ticket_id: OMN-24903
+title: A stability runtime deploy also builds and recreates the projection writers its overlay declares
+summary: >-
+  Dev's delegation-regression-nightly run 43826372809 (job 133161076598) read a delegation_events row with terminal_ok NULL for every case, I9 and I10 included. On the stability lane the runtime was redeployed on 2026-11-16 at 07:08Z with omnimarket 0.4.321, while the lane's projection-delegation-writer still ran omnimarket 0.4.283 from its 2026-11-12 build and sent each delegate-skill terminal to onex.dlq.omnimarket.projection-delegation-malformed.v1 (ModelDelegateSkillTerminalProjection refused the newer fields and the cause returned_to_caller), so only the compat event reached the row. The writers are declared in the stability lane's compose overlay, but services_for_scope names them for the dev lane only and the lane-only build is dev only, so no stability deploy rebuilt or recreated them. roll_stability_lane_writers (src/omnibase_infra/nodes/node_setup_local_provision_effect/runtime_cost_estimator_build.py) builds the seven writers from the stability compose files at the deploy's sha and recreates them before the runtime family; build_dev_lane_services calls it, and DeployExecutor runs that on every RUNTIME and FULL rebuild. A lane whose compose files do not include the stability overlay is untouched, and services_for_scope and the executor are unchanged. The fixture scripts/deploy-agent/tests/unit/fixtures/stability_nightly_unterminalised_row_omn24903.json is the recorded I9 row and its DLQ record. The nightly also needs the stability runtime to read the code budget overlay (every case refused with "no call budget declared"): per RULING 2026-11-17T00:45:37Z the stability runtime main now takes the dev runtime main's ONEX_SKILL_OVERLAY_ROOTS and its two overlay mounts, from the same host directories. Per RULING 2026-11-16T17:37:23Z the OMN-18108 assertion that a stability build names no dev-lane-only service is inverted: a stability build must name the writers dev runs.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn24903-stability-writers-follow-runtime
+    statement: A stability runtime deploy leaves no projection writer on an older image than the runtime it deploys.
+    acceptance:
+      - id: AC1
+        statement: "AC1: the repository and code that leave the delegation run of cases I9 and I10 without a terminal are named from run 43826372809 and job 133161076598, with the row's terminal_ok and terminal values quoted and the code located through a code graph lookup -- falsifier: the lane's TERMINAL row names no repository, file and run id, or the quoted row does not show terminal_ok NULL and terminal unknown"
+      - id: AC2
+        statement: "AC2: one pull request on the default branch of the owning repository fixes the cause with a test that fails at the unfixed base and passes at the new head, built from the recorded row of the run (fixture path in the PR) -- falsifier: `uv run pytest <the new test path> -q` run at the unfixed base commit passes, or `onex scm pr-view` shows no such pull request"
+      - id: AC3
+        statement: "AC3: the test fails red then passes green on the lab, and the PR body carries a line starting `Lab:` with the head sha, the command and exit 0 -- falsifier: the PR body has no line starting `Lab:` or the lab run exit is not 0 at the head"
+      - id: AC4
+        statement: "AC4: the fix widens or bypasses no check, so the diff removes no assertion and adds no skip, xfail, loosened threshold or changed required-check list -- falsifier: `git diff <base> <head> -- tests/ .github/` shows a removed assert, a new skip or xfail marker or a changed required-check list"
+      - id: AC5
+        statement: "AC5: after the fix is merged and deployed where it runs, dev's delegation-regression-nightly is triggered by workflow dispatch if the workflow allows it (else the next scheduled run time is stated) and its newest run reads success -- falsifier: `onex scm run-list OmniNode-ai/omnimarket` shows the newest delegation-regression-nightly.yml run on dev with a conclusion other than success"
+evidence_requirements:
+  - kind: tests
+    description: The stability writer roll test, built from the recorded I9 row of run 43826372809, and the neighbour tests that pin the other lanes.
+    command: uv run --frozen pytest scripts/deploy-agent/tests/unit/test_stability_writers_follow_runtime_omn24903.py -q --no-cov -n 0 -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn24903-ac1-recorded-row
+    description: >-
+      The fixture holds the recorded I9 row (terminal_ok null) and its malformed-DLQ record from node_projection_delegation; the test names the stability service that runs the refusing writer container.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest scripts/deploy-agent/tests/unit/test_stability_writers_follow_runtime_omn24903.py -k "recorded_row or refused_the_terminal" -q --no-cov -n 0 -p no:cacheprovider
+        cwd: .
+  - id: dod-omn24903-ac2-writers-roll
+    description: >-
+      A stability RUNTIME or FULL rebuild builds and recreates every writer the stability overlay declares, before the runtime is recreated, and the stability runtime main reads the same overlay roots as dev's. Nine of the ten tests fail at the merge base.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest scripts/deploy-agent/tests/unit/test_stability_writers_follow_runtime_omn24903.py -q --no-cov -n 0 -p no:cacheprovider
+        cwd: .
+  - id: dod-omn24903-ac3-lab
+    description: >-
+      The same test file run on a lab host at the pushed head; the Lab line in the pull request names host, sha and exit code.
+    source: manual
+    binds_ac:
+      - AC3
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest scripts/deploy-agent/tests/unit/test_stability_writers_follow_runtime_omn24903.py -q --no-cov -n 0 -p no:cacheprovider
+        cwd: .
+  - id: dod-omn24903-ac4-no-widening
+    description: >-
+      The neighbour tests that pin the dev lane's and the other lanes' scope and the estimator's dev-only build pass; the one assertion the diff changes is the OMN-18108 stability assertion, inverted (not removed or skipped) under RULING 2026-11-16T17:37:23Z, and the diff edits no workflow.
+    source: manual
+    binds_ac:
+      - AC4
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest scripts/deploy-agent/tests/unit/test_dev_lane_only_scope_omn18108.py scripts/deploy-agent/tests/unit/test_cost_estimator_build_omn21487.py scripts/deploy-agent/tests/unit/test_gateway_lane_scope_omn18134.py -q --no-cov -n 0 -p no:cacheprovider
+        cwd: .
+  - id: dod-omn24903-ac5-nightly
+    description: >-
+      Post-merge: the deploy agent rolls the stability lane from a tag carrying this change, then delegation-regression-nightly is dispatched on dev with the stability lane input. That read is pending and is posted on the ticket; the check here is the roll test it depends on.
+    source: manual
+    binds_ac:
+      - AC5
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest scripts/deploy-agent/tests/unit/test_stability_writers_follow_runtime_omn24903.py -k "rolls_the_writers_before" -q --no-cov -n 0 -p no:cacheprovider
+        cwd: .

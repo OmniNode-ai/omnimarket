@@ -269,6 +269,31 @@ def test_throttled_tick_skips_and_writes_nothing() -> None:
     assert handle_result["alert_channel_liveness_rows"] == []
 
 
+def test_throttled_tick_attests_a_skipped_noop_and_a_verdict_does_not() -> None:
+    """OMN-26410: the dev runtime logged every throttled tick as a failed write.
+
+    On the dev runtime 76 of 79 deliveries in 40 minutes were throttled ticks
+    that wrote zero rows by design and logged at ERROR. The writer attests the
+    designed zero under projection_noop_reason; a measured verdict, which writes
+    a row, never carries it. Wire strings are spelled out so this reads the same
+    before and after the change.
+    """
+    tick = ModelAlertChannelLivenessResult(
+        probed=False,
+        verdict=None,
+        probe_interval_seconds=_INTERVAL,
+        failure_surfaced=False,
+    )
+    _, tick_result = _project(tick.model_dump(mode="json"))
+    assert tick_result["rows_upserted"] == 0
+    assert tick_result["projection_noop_reason"] == "skipped"
+
+    measured, _ = _result_for(EnumAlertChannelStatus.DEAD)
+    _, verdict_result = _project(measured.model_dump(mode="json"))
+    assert verdict_result["rows_upserted"] == 1
+    assert "projection_noop_reason" not in verdict_result
+
+
 # ---------------------------------------------------------------------------
 # The writer: one measured verdict becomes one upserted row
 # ---------------------------------------------------------------------------

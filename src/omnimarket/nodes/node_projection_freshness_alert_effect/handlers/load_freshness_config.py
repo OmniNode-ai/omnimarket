@@ -10,6 +10,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from omnimarket.nodes.node_projection_freshness_alert_effect.models import (
     FreshnessPolicyError,
+    ModelCoverageCheck,
     ModelFreshnessCheck,
     ModelFreshnessPolicy,
     ModelReadsSource,
@@ -37,4 +38,26 @@ def load_freshness_config(
     except (OSError, yaml.YAMLError, KeyError, ValidationError) as exc:
         raise FreshnessPolicyError(
             f"invalid freshness contract at {contract_path}: {exc}"
+        ) from exc
+
+
+def load_coverage_checks(contract_path: Path) -> tuple[ModelCoverageCheck, ...]:
+    """Read the optional coverage_checks block; a malformed block fails closed."""
+    try:
+        raw: Any = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            raise FreshnessPolicyError("freshness contract must be a mapping")
+        if "coverage_checks" not in raw:
+            return ()
+        checks = TypeAdapter(tuple[ModelCoverageCheck, ...]).validate_python(
+            raw["coverage_checks"]
+        )
+        if len({check.check_id for check in checks}) != len(checks):
+            raise FreshnessPolicyError(
+                "coverage_checks must have unique check_id values"
+            )
+        return checks
+    except (OSError, yaml.YAMLError, ValidationError) as exc:
+        raise FreshnessPolicyError(
+            f"invalid coverage checks at {contract_path}: {exc}"
         ) from exc

@@ -17,6 +17,7 @@ dependencies:
   - "omnibase_core>=0.46.13"
   - "pydantic>=2.0"
   - "click>=8.0"
+  - node_work_ledger_reader_effect
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["effect", "ledger", "story-log", "sanitized", "articles"]

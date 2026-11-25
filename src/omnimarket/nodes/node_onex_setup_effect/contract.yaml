@@ -40,7 +40,7 @@ handler_routing:
   routing_strategy: operation_match
   handlers:
     # First: the local runtime gives the subscribe topic to the first entry by position,
-    # so `onex setup` through run_node_in_process reaches HandlerOnexSetup (OMN-24455).
+    # so `onex setup` through ModelRunNodeHosted.run reaches HandlerOnexSetup (OMN-24455).
     - operation: onex_setup.run_walk
       handler:
         name: HandlerOnexSetup
@@ -201,6 +201,8 @@ dod_evidence:
 
 metadata:
   transport_type: filesystem
+  # T2 AC9: reviewed native Linux distribution identities, including Ubuntu on WSL 2.
+  native_linux_distributions: [ubuntu]
   # OMN-23413: the loopback host of the processes setup starts (URL authority);
   # read by handlers/setup_contract_values.py.
   loopback_host: "127.0.0.1"

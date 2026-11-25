@@ -28,6 +28,7 @@ from typing import Literal
 import yaml
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
+from omnimarket.handlers.repository_retirement_policy import load_retirement_policy
 from omnimarket.models.model_clone_lock_policy import ModelCloneLockPolicy
 from omnimarket.models.model_host_reconcile import (
     ModelGatePurityFact,
@@ -59,10 +60,12 @@ from .adapter_holder import (
     terminate_holder,
 )
 from .clone_lock_state import describe_lock_line, load_clone_lock_policy
-from .retired_repositories import (
-    load_retirement_policy,
-    retired_repository_findings,
+from .reconcile_failure_alarm import (
+    append_friction,
+    failure_alert_text,
+    failure_friction_row,
 )
+from .retired_repositories import retired_repository_findings
 from .venv_build_lock_facts import venv_build_lock_fact
 
 
@@ -122,12 +125,15 @@ class HandlerHostReconcileEffect:
             for signum in (signal.SIGINT, signal.SIGTERM):
                 previous[signum] = signal.signal(signum, interrupt)
         try:
-            result = _ReconcilePass(
+            reconcile = _ReconcilePass(
                 command, self.evaluator, self.publisher, self.slack_topic
-            ).run()
+            )
+            result = reconcile.run()
         finally:
             for restored_signum, handler in previous.items():
                 signal.signal(restored_signum, handler)
+        if result.exit_code:
+            result = self._raise_failure(command, reconcile, result)
         try:
             self.publisher.publish(self.completed_topic, result)
         except Exception as exc:
@@ -140,6 +146,76 @@ class HandlerHostReconcileEffect:
                 }
             )
         return result
+
+    def _raise_failure(
+        self,
+        command: ModelHostReconcileCommand,
+        reconcile: _ReconcilePass,
+        result: ModelHostReconcileRunResult,
+    ) -> ModelHostReconcileRunResult:
+        """One FRICTION row and one alert for a non-zero exit, on the first failure (OMN-26216).
+
+        The exit-2 path of ``finish`` has already alerted (``reconcile.alerted``); every other non-zero exit
+        reaches here with nothing sent. Neither write changes the exit code: a writer that fails is a
+        diagnostic on the result.
+        """
+        detail = next(
+            (
+                line
+                for line in reversed(result.diagnostics)
+                if line.startswith(("INDETERMINATE", "TIMEOUT", "REFUSED", "LOCK"))
+            ),
+            result.diagnostics[-1] if result.diagnostics else "no diagnostic",
+        )
+        receipt = reconcile.receipt_path()
+        notes: list[str] = []
+        failed = append_friction(
+            append_command=command.ledger_append_command,
+            host=result.host,
+            row=failure_friction_row(
+                at=datetime.now(UTC),
+                host=result.host,
+                exit_code=result.exit_code,
+                detail=detail,
+                receipt=receipt,
+            ),
+        )
+        if failed:
+            notes.append(f"WARNING: could not write the failure FRICTION row: {failed}")
+        if not reconcile.alerted:
+            text = failure_alert_text(
+                host=result.host,
+                exit_code=result.exit_code,
+                detail=detail,
+                receipt=receipt,
+                root=str(reconcile.root),
+            )
+            try:
+                if command.alert_command:
+                    subprocess.run(
+                        [*shlex.split(command.alert_command), text],
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                        check=False,
+                    )
+                elif reconcile.env.get("SLACK_CHANNEL_ID"):
+                    self.publisher.publish(
+                        self.slack_topic,
+                        ModelHostReconcileSlackCommand(
+                            channel=reconcile.env["SLACK_CHANNEL_ID"],
+                            text=f"*OmniNode workspace reconcile FAILED* ({result.host})\n{text}",
+                            idempotency_key=(
+                                f"host-reconcile|{result.host}|{command.correlation_id}"
+                            ),
+                            correlation_id=command.correlation_id,
+                        ),
+                    )
+            except Exception as exc:
+                notes.append(f"WARNING: could not deliver the failure alert: {exc}")
+        if not notes:
+            return result
+        return result.model_copy(update={"diagnostics": (*result.diagnostics, *notes)})
 
 
 class _ReconcilePass:
@@ -169,6 +245,8 @@ class _ReconcilePass:
         self.surfaces: list[ModelSurfaceDecision] = []
         self.diagnostics: list[str] = []
         self.floor_stamped = False
+        # Set when `finish` has sent the surface-failure alert, so a failure row never alerts twice.
+        self.alerted = False
         self.child: subprocess.Popen[str] | None = None
         self.lock = self.root / ".onex-reconcile-host.lock"
         self.acquired = False
@@ -745,8 +823,6 @@ class _ReconcilePass:
                     repo,
                     "--state-dir",
                     str(self.root / ".onex_state"),
-                    "--ledger",
-                    self.request.ledger,
                     "--lock-age-s",
                     str(self.request.step_timeout_s),
                 ]
@@ -1128,6 +1204,7 @@ class _ReconcilePass:
         if decisions.failures:
             try:
                 if self.request.alert_command:
+                    self.alerted = True
                     self.command(
                         [
                             *shlex.split(self.request.alert_command),
@@ -1139,6 +1216,7 @@ class _ReconcilePass:
                         ]
                     )
                 elif self.env.get("SLACK_CHANNEL_ID"):
+                    self.alerted = True
                     message = "\n".join(
                         f"{s.surface}: {s.verdict} — {s.detail}" for s in failures
                     )

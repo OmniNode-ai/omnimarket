@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: MIT
 """``python -m omnimarket.nodes.node_work_ledger_file_census_effect``: the census against its ratchet.
 
-Exit 0: every counted repository is at or under its ratchet row. Exit 1: a count grew past its row
-(red). Exit 69: a repository is absent or unreadable, a repository has no ratchet row, or the ratchet
-file is unreadable: nothing is passed on a read that failed. ``--lower`` rewrites the ratchet file with
+Exit 0: every counted repository is at or under its ratchet row; a repository with no clone is not counted and is
+named on a ``CENSUS-ABSENT`` line, never a reason to print no count (operator ruling 2026-11-24T16:19:26Z). Exit 1: a
+count grew past its row (red). Exit 69: no repository is present, a repository is unreadable, a repository has no
+ratchet row, or the ratchet file is unreadable: nothing is passed on a read that failed. ``--lower`` rewrites the ratchet file with
 every lowerable count lowered after a passing run; it never raises a row.
 """
 
@@ -16,6 +17,7 @@ import os
 import sys
 import uuid
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 
 from omnimarket.handlers.emission_sink import (
@@ -23,14 +25,17 @@ from omnimarket.handlers.emission_sink import (
     JsonlEmissionSink,
     ProtocolEmissionSink,
 )
+from omnimarket.handlers.repository_retirement_policy import load_retirement_policy
 from omnimarket.nodes.node_work_ledger_file_census_effect.adapters import (
     GitRepositorySource,
+    YamlFileBaselineStore,
     YamlRatchetStore,
 )
 from omnimarket.nodes.node_work_ledger_file_census_effect.handlers import (
     HandlerFileCensus,
 )
 from omnimarket.nodes.node_work_ledger_file_census_effect.models import (
+    ModelCensusDailyRecord,
     ModelCensusRepository,
     ModelCensusRequest,
 )
@@ -39,9 +44,13 @@ from omnimarket.nodes.node_work_ledger_file_census_effect.overlay import (
     load_overlay,
 )
 
+_RED = ("ratchet-grew", "new-file-reader")
 _HEADER = (
     "# Shrink-only ratchet: executable readers and writers of the ledger file's name or path variable,\n"
     "# counted in files per repository. A count above its row fails; `--lower` only ever lowers a row.\n"
+    "# The `files` table holds, for each repository, the files that hold such a reader or writer with their\n"
+    "# line counts (run with --per-file): a file with no row, or with more lines than its row, fails the\n"
+    "# census (new code opening the ledger file). `--lower` drops a cleared file and never adds one.\n"
 )
 
 
@@ -67,6 +76,12 @@ def main(
         help="where this repository's ratchet file is, in place of the overlay's ratchet_file",
     )
     parser.add_argument(
+        "--per-file",
+        action="store_true",
+        help="also hold the per-file rows of the ratchet file's `files` table: a file with no row, or "
+        "more reader or writer lines than its row, fails",
+    )
+    parser.add_argument(
         "--register",
         default=None,
         metavar="NAME",
@@ -80,6 +95,12 @@ def main(
         "under the overlay roots",
     )
     parser.add_argument("--verbose", action="store_true", help="print every hit")
+    parser.add_argument(
+        "--record",
+        action="store_true",
+        help="after the CENSUS lines, print the daily record (the per-repository counts and the "
+        "runtime-code count) as one typed JSON line, whether the run passed or failed",
+    )
     parser.add_argument(
         "--json-facts",
         action="store_true",
@@ -99,6 +120,16 @@ def main(
                 )
             }
         )
+    # A repository the host reconcile policy declares retired is no longer a registry repository, so the census
+    # neither requires its checkout nor counts it.
+    retired = frozenset(load_retirement_policy().retired_repositories)
+    overlay = overlay.model_copy(
+        update={
+            "repositories": tuple(
+                r for r in overlay.repositories if r.name not in retired
+            )
+        }
+    )
     root_text = env.get(overlay.registry_root_env, "").strip()
     if not root_text:
         sys.stderr.write(f"CENSUS unreadable: {overlay.registry_root_env} is not set\n")
@@ -110,6 +141,11 @@ def main(
     store = YamlRatchetStore(
         Path(args.ratchet_file) if args.ratchet_file else Path(overlay.ratchet_file)
     )
+    baseline = (
+        YamlFileBaselineStore(Path(args.ratchet_file or overlay.ratchet_file))
+        if args.per_file or overlay.per_file
+        else None
+    )
     result = HandlerFileCensus(
         overlay,
         GitRepositorySource(
@@ -120,6 +156,7 @@ def main(
         store,
         sink,
         backend="real" if journal else "in_memory",
+        baseline=baseline,
     ).handle(
         ModelCensusRequest(
             correlation_id=uuid.uuid4().hex,
@@ -145,24 +182,35 @@ def main(
             )
             + "\n"
         )
-        return (
-            0 if result.passed else (1 if result.failure_code == "ratchet-grew" else 69)
-        )
+        return 0 if result.passed else (1 if result.failure_code in _RED else 69)
     for count in result.counts:
         line = "own-line" if count.own_line else "counted"
         sys.stdout.write(
             f"CENSUS {count.repository} {line} state={count.state} files={count.files} "
-            f"readers={count.readers} writers={count.writers} ratchet={count.ratchet}\n"
+            f"runtime={count.runtime_files} readers={count.readers} writers={count.writers} ratchet={count.ratchet}\n"
         )
+        for new in count.new_readers:
+            sys.stdout.write(f"  NEW-READER {new}\n")
         if args.verbose:
             for hit in count.hits:
                 sys.stdout.write(f"  {hit.kind.value} {hit.path}:{hit.line}\n")
     sys.stdout.write(
-        f"CENSUS total={result.total_files} passed={'yes' if result.passed else 'no'} "
+        f"CENSUS total={result.total_files} runtime={result.runtime_files} "
+        f"passed={'yes' if result.passed else 'no'} "
         f"failure={result.failure_code or 'none'} {result.failure_detail}\n"
     )
+    # one line per absent repository, so the run's own output names each one the counts leave out
+    for name in result.absent_repositories:
+        sys.stdout.write(f"CENSUS-ABSENT {name}\n")
+    if args.record:
+        record = ModelCensusDailyRecord.from_result(
+            result, datetime.now(UTC).date().isoformat()
+        )
+        sys.stdout.write(f"CENSUS-RECORD {record.model_dump_json()}\n")
     if result.passed and args.lower:
         store.write(result.lowered_ratchet, _HEADER)
+        if baseline is not None:
+            baseline.write(result.lowered_baseline, _HEADER)
     if result.passed:
         return 0
-    return 1 if result.failure_code == "ratchet-grew" else 69
+    return 1 if result.failure_code in _RED else 69

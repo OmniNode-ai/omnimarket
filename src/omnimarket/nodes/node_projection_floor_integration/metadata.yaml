@@ -1,0 +1,28 @@
+name: node_projection_floor_integration
+description: "Projection writer for the newest floor integration pass, behind the dashboard's Running figure."
+entry_points:
+  onex.nodes:
+    node_projection_floor_integration: "omnimarket.nodes.node_projection_floor_integration"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+side_effect_class: database_write
+dependencies:
+  - "omnibase_core>=0.39.0"
+tags:
+  - projection
+  - floor
+  - integration
+  - OMN-25103
+pack: pipeline
+display_name: Floor Integration Rows Projection
+node_role: reducer
+authors:
+  - OmniNode Platform Team
+license: MIT
+version: "0.1.0"
+omnibase_core_compat: ">=0.39.0,<1.0.0"

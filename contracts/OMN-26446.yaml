@@ -1,0 +1,50 @@
+schema_version: 1.0.0
+title: A push to omnimarket dev with no queue run recording the tree runs the test shards, so two pull requests that pass alone cannot merge into a green dev together
+ticket_id: OMN-26446
+summary: >-
+  The job Dev Push Full Suite Reuse exited 0 on the warning that no merge_queue rule is active on dev, so a dev push
+  read success with every Tests shard skipped. omnimarket#6567 and omnimarket#6580 each passed alone, merged within
+  minutes, and together failed six tests of tests/ci/test_selection_stage_evidence.py on dev (dev CI run 44978250489
+  at e3f5ee61c4 read success). A new probe job records whether the pushed tree is proven by a queue run; when it is
+  not and no merge_queue rule is active, detect-changes and the Tests shards run the full suite on the push (the
+  selector's full-suite matrix, 20 shards), and the verdict job passes only on a proven tree or on those shards
+  passing. The CI Summary requires the whole 20-shard matrix on such a push. No check is widened or skipped. Not in
+  this change: dev branch protection and ruleset settings, and a dedicated dev-push reason code in the selector.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26446-dev-push-runs-shards
+  statement: A dev push whose tree no queue run recorded executes the full-suite Tests shards and reads red when a shard fails.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a push to dev with no producer run executes the Tests shards and does not exit 0 on the no-merge-queue warning alone -- falsifier: uv run pytest tests/ci -q --no-cov -k dev_push_runs_test_shards; restore the warning-only exit and it must fail'
+  - id: AC2
+    statement: 'AC2: a replay of the omnimarket#6567 plus omnimarket#6580 pair against the dev push path reads red -- falsifier: uv run pytest tests/ci -q --no-cov -k dev_push_replay_6567_6580; the fixture is the recorded six failing tests at e3f5ee61c4'
+evidence_requirements:
+- kind: tests
+  description: The dev push admission and replay tests pass at the pushed head.
+  command: uv run --frozen pytest tests/ci/test_dev_push_runs_tests_omn26446.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26446-ac1-dev-push-runs-shards
+  description: 'AC1: the workflow admits detect-changes and the Tests shards on a dev push the probe could not prove, the probe exits 0 on the no-queue warning only to hand the decision to those shards, and the verdict exits 1 unless the shards passed or a queue run recorded the tree. The same checks run against the pre-image of the two jobs read from origin/dev (tests/ci/fixtures/omn26446/pre_image_dev_push_jobs.yml) and fail there.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci -q --no-cov -n 0 -p no:randomly -k dev_push_runs_test_shards
+    cwd: .
+- id: dod-omn26446-ac2-replay-reads-red
+  description: 'AC2: the dev push at e3f5ee61c4 (the omnimarket#6567 plus omnimarket#6580 pair), with the six recorded failing tests of tests/ci/test_selection_stage_evidence.py in the shard that plans that file, reads FAILURE from the verdict job and from the CI Summary; the pre-image jobs read the same push as success, as dev CI run 44978250489 did.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci -q --no-cov -n 0 -p no:randomly -k dev_push_replay_6567_6580
+    cwd: .

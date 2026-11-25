@@ -1,0 +1,111 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: OMN-26365
+title: "A house routing row written by node_house_routing_overlay_effect is read by the router the runtime serves"
+summary: "node_house_routing_overlay_effect wrote its rows and retired them under the house tenant slug, while a runtime configured with the house tenant carries the canonical UUID on every delegation request and the resolver filters on that string, so a declared rung was never read. The node now writes and retires under the UUID, and the two reader sites that compared a tenant against the slug alone (the keyless-overlay drop and the cost label) accept the UUID form of the same house identity."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26365-house-row-visible
+    statement: "A house routing row declared through the node is read by resolve_tenant_overlay for the runtime's tenant id, routes the request, and is removed by a retire through the same node."
+    acceptance:
+      - id: AC1
+        statement: "AC1: a declaration written through the node into a store that answers query by exact filters is returned by resolve_tenant_overlay for the runtime tenant id 820272f9-4aaf-5add-a2df-0af942852ab2, and the same tenant id routes a request to the declared rung -- falsifier: uv run pytest tests/nodes/node_house_routing_overlay_effect/test_omn26365_house_overlay_runtime_tenant.py -k 'declared_row or routing_intent' fails"
+      - id: AC2
+        statement: "AC2: a retire through the node removes the rows the resolver reads, the node writes no row under the slug form, and every store call carries the runtime tenant id -- falsifier: uv run pytest tests/nodes/node_house_routing_overlay_effect/test_omn26365_house_overlay_runtime_tenant.py -k 'retire_removes or every_row_and_store_call' fails"
+      - id: AC3
+        statement: "AC3: a keyless house row read under the UUID form is a route on the cloud surface and is labelled house_overlay, while a keyless customer row is still refused -- falsifier: uv run pytest tests/nodes/node_house_routing_overlay_effect/test_omn26365_house_overlay_runtime_tenant.py -k 'keyless_house_row or labelled_house' fails"
+  - id: req-omn26365-house-route-no-customer-key
+    statement: "A house-tenant routing row that declares no credential reference is an auth-free route at the effect boundary and does not end ONEX_MARKET_EFFECT_CREDENTIAL_UNRESOLVED, while a customer tenant's overlay route still expects the customer's own key."
+    acceptance:
+      - id: AC4
+        statement: "AC4: a tenant_overlay decision stamped house_overlay with no credential reference classifies as no credential required, a house reference classifies as a house key, and a decision built by the reducer from a house row under either form of the house tenant id classifies the same -- falsifier: uv run pytest tests/unit/delegation/test_omn26365_house_route_needs_no_customer_key.py -k 'house' fails"
+      - id: AC5
+        statement: "AC5: a customer tenant's overlay decision with a minted reference, with no reference, or built by the reducer from a customer row still classifies as the customer's key, and the OMN-18201 boundary tests stay green -- falsifier: uv run pytest tests/unit/delegation/test_omn26365_house_route_needs_no_customer_key.py tests/unit/delegation/test_omn18201_effect_boundary_auth_header.py -k 'customer or tenant_overlay or minted' fails"
+  - id: req-omn26365-reasoning-effort-per-backend
+    statement: "Each backend row carries its own reasoning_effort and the request that backend receives on the local dispatch path names it, and only it."
+    acceptance:
+      - id: AC6
+        statement: "AC6: reasoning_effort is a field of the backend row, carried onto the resolved backend, and the request each backend receives carries that row's own value, or no reasoning_effort when the row declares none -- falsifier: a test that passes on origin/dev, or a reasoning_effort value written in code (uv run pytest tests/unit/delegation/test_backend_row_reasoning_effort_omn26365.py)"
+evidence_requirements:
+  - kind: tests
+    description: "The node's tests and the house tenant reader tests at the pushed head."
+    command: "uv run --frozen pytest tests/nodes/node_house_routing_overlay_effect tests/nodes/node_delegation_routing_reducer/test_omn19186_house_tenant_overlay.py -q --no-cov -n 0 -p no:randomly -m 'not kafka'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26365-ac1-declared-row-read
+    description: "The declared row is read back by the real resolver under the runtime tenant id, and the deployed routing handler selects the declared rung for that tenant id."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run --frozen pytest tests/nodes/node_house_routing_overlay_effect/test_omn26365_house_overlay_runtime_tenant.py -k "declared_row or routing_intent" -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn26365-ac2-retire-and-one-form
+    description: "A retire empties the table under the runtime tenant id, nothing is written under the slug, and every store call carries the runtime tenant id."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run --frozen pytest tests/nodes/node_house_routing_overlay_effect/test_omn26365_house_overlay_runtime_tenant.py -k "retire_removes or every_row_and_store_call" -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn26365-ac3-reader-house-uuid
+    description: "The keyless drop and the cost label treat the UUID form as the house, and a keyless customer row is still refused on the cloud surface."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run --frozen pytest tests/nodes/node_house_routing_overlay_effect/test_omn26365_house_overlay_runtime_tenant.py -k "keyless_house_row or labelled_house" -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn26365-ac4-house-route-no-key
+    description: "A house overlay decision with no reference needs no key, with a house reference needs the house key, and the reducer-built house decision agrees for both forms of the house tenant id."
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run --frozen pytest tests/unit/delegation/test_omn26365_house_route_needs_no_customer_key.py -k "house" -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn26365-ac5-customer-key-kept
+    description: "A customer overlay route still expects the customer key with or without a reference, and the OMN-18201 effect boundary tests pass."
+    source: manual
+    binds_ac: [AC5]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run --frozen pytest tests/unit/delegation/test_omn26365_house_route_needs_no_customer_key.py tests/unit/delegation/test_omn18201_effect_boundary_auth_header.py -k "customer or tenant_overlay or minted" -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn26365-integration-proof
+    description: "Run the node's tests and the house tenant reader tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check; the runtime-affecting proof (the dev runtime running the merged fix and a lane call answered by the declared rung) is read from the dev lane after the merge."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26365 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_house_routing_overlay_effect tests/nodes/node_delegation_routing_reducer/test_omn19186_house_tenant_overlay.py -q --no-cov -n 0 -p no:randomly
+  - id: dod-omn26365-ac6-row-to-request
+    description: "The row's reasoning_effort reaches the request of the local dispatch port, each backend with its own value, a backend with none sending none; the test file fails at import on origin/dev."
+    source: manual
+    binds_ac: [AC6]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run --frozen pytest tests/unit/delegation/test_backend_row_reasoning_effort_omn26365.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn26365-reasoning-effort-integration-proof
+    description: "Run the reasoning_effort row-to-request tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26365-effort --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_backend_row_reasoning_effort_omn26365.py -q --no-cov -n 0 -p no:randomly

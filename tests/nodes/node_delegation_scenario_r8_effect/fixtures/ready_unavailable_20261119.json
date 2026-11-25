@@ -1,0 +1,16 @@
+{
+  "journal": [
+    "2026-11-19T02:33:26+00:00 hp-gen9 systemd[1659]: Starting onex-delegation-scenario-r8.service - onex-delegation-scenario-r8: registry module tick omnimarket.nodes.node_delegation_scenario_r8_effect.runtime_scenario_r8_tick...",
+    "2026-11-19T02:33:26+00:00 hp-gen9 systemd[1659]: Starting onex-delegation-scenario-r9.service - onex-delegation-scenario-r9: registry module tick omnimarket.nodes.node_delegation_scenario_r9_effect.runtime_scenario_r9_tick...",
+    "2026-11-19T02:34:45+00:00 hp-gen9 systemd[1659]: onex-delegation-scenario-r8.service: Main process exited, code=exited, status=1/FAILURE",
+    "2026-11-19T02:34:45+00:00 hp-gen9 systemd[1659]: onex-delegation-scenario-r9.service: Main process exited, code=exited, status=1/FAILURE"
+  ],
+  "previous_assertions": {
+    "R8": "-totals_read_before",
+    "R9": "-control_read_completed"
+  },
+  "ready": {
+    "source": "stub; no contemporaneous readiness response persisted",
+    "available": false
+  }
+}

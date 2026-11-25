@@ -812,8 +812,9 @@ def test_red_replay_deploy_gate_red_now_fails() -> None:
 EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
     ("delegation-health-check.yml", "delegation-health-check"): (
         "OMN-25514: a dev signal that reads lab and stability verdicts, in no "
-        "required list; its red row is admitted by a dated sweep exclusion "
-        "until its triggers move to schedule and push on dev."
+        "required list; it runs on schedule and push to dev, and a dated "
+        "sweep exclusion admits the red row a head that ran the old "
+        "pull_request caller still carries."
     ),
     ("omn20025-ac1-postgres-proof.yml", "ac1-postgres16"): (
         "advisory read-only PostgreSQL 16 proof scoped to one PR; emits "
@@ -874,6 +875,10 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
         "post-merge automation (if: pull_request.merged == true) — "
         "structurally cannot gate the merge that already happened."
     ),
+    ("auto-tag-on-merge.yml", "reopen-dev"): (
+        "post-merge automation (needs auto-tag, which runs only on a merged "
+        "release PR) — structurally cannot gate the merge that already happened."
+    ),
     # --- OMN-19554: the report-only contract walker.
     ("contract-walker.yml", "contract-walker"): (
         "self-declared report-only, non-validating job by operator ruling "
@@ -886,6 +891,27 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
         "asserting it would wedge CI Summary. If the walker is ever promoted "
         "to fail on findings, this entry moves to EXPECTED_EXTERNAL_CONTEXTS "
         "in the same PR."
+    ),
+    # The customer installer's real platform runs (OMN-25070). They run on a
+    # push to dev that changes the installer, and on demand, never on a pull
+    # request, so asserting them would wedge CI Summary; a red run turns dev
+    # red. The installer's platform, checksum and conflict cases run in the
+    # Tests job on every pull request.
+    ("onex-installer.yml", "linux-x86_64"): (
+        "installer run on Linux x86_64 after a push to dev; never on a pull "
+        "request, so asserting it would wedge CI Summary."
+    ),
+    ("onex-installer.yml", "linux-arm64"): (
+        "installer run on Linux arm64 after a push to dev; never on a pull "
+        "request, so asserting it would wedge CI Summary."
+    ),
+    ("onex-installer.yml", "macos-arm64"): (
+        "installer run on Apple Silicon macOS after a push to dev; never on a pull "
+        "request, so asserting it would wedge CI Summary."
+    ),
+    ("onex-installer.yml", "macos-intel"): (
+        "installer run on Intel macOS after a push to dev; never on a pull "
+        "request, so asserting it would wedge CI Summary."
     ),
     ("pr-merged-publisher.yml", "publish-pr-merged"): (
         "post-merge automation (if: pull_request.merged == true) — "
@@ -1004,6 +1030,15 @@ _CI_YML_STRUCTURALLY_COVERED_KEYS: frozenset[str] = frozenset(
         "test",  # dynamic "Tests (Split N/M)" matrix — see the matrix rule.
         "merge-hold-gate",  # reusable caller; covered by the L3 default-deny sweep.
         "ci-summary",  # the poller's own job (SELF_JOB_NAME).
+        # OMN-24562: the parallel lint group jobs. The strict `lint` aggregate needs all of them
+        # and fails on any result but success (a skipped or cancelled group included), and the
+        # L3 default-deny sweep fails on a failed group, so no group needs its own entry.
+        "lint-group-1",
+        "lint-group-2",
+        "lint-group-3",
+        "lint-group-4",
+        "lint-group-5",
+        "lint-group-6",
         # OMN-16662: `docs-only-marker` is a SIGNAL job, not a gate. It asserts
         # nothing and can never fail — its whole body is an echo. The poller
         # reads its *conclusion* to derive docs_only (see
@@ -1018,6 +1053,13 @@ _CI_YML_STRUCTURALLY_COVERED_KEYS: frozenset[str] = frozenset(
         # (naming it in STRICT_GATE_JOBS changes the bytes the recorded-head
         # replay pins).
         "overlay-main-load",
+        # Undeclared Read Check (OMN-26424): unconditional apart from the same fork guard; covered by the L3 default-deny sweep.
+        "undeclared-read-check",
+        # OMN-26446: the dev push tree-pass probe. It reports `skipped` on every
+        # pull request and merge group run, and on a dev push a failed probe is a
+        # non-good conclusion the L3 default-deny sweep fails; the verdict job
+        # (`Dev Push Full Suite Reuse`) also reads its result through `needs`.
+        "dev-tree-pass-probe",
     }
 )
 
@@ -2798,3 +2840,128 @@ class TestDelegationHealthCheckLeavesRequiredListsOmn25514:
         report = capsys.readouterr().out
         assert code == EXIT_FAILURE, report
         assert "Unregistered Gate" in report
+
+
+class TestSupersessionWindowWaitsOnOwnJobsOmn16084:
+    """OMN-16084: a wall-clock window must not end the wait while own jobs run.
+
+    Measured on omnimarket#6749 (run started 2026-11-24T19:10Z): ``CI Summary``
+    exited FAILURE at 19:32:44Z, 22 minutes in, while ``lint`` and eight
+    ``Tests (Split n/20)`` rows were still in progress. The cause was not the
+    poll deadline (90 minutes) but a ``skipped`` external row whose
+    EXTERNAL_FAILURE_SUPERSESSION_GRACE_S (1200 s) window, counted from the
+    row's own completion, had closed. FAILURE beats PENDING, so a slow runner
+    start turned a replaceable row into a red verdict.
+    """
+
+    OBSERVED = datetime(2026, 11, 24, 19, 32, 44, tzinfo=UTC)
+
+    @classmethod
+    def _stale_row(cls, conclusion: str = "skipped") -> dict[str, object]:
+        completed = cls.OBSERVED - timedelta(
+            seconds=gate.EXTERNAL_FAILURE_SUPERSESSION_GRACE_S + 60
+        )
+        return {
+            **_check_run("Unregistered Gate", conclusion=conclusion),
+            "completed_at": completed.isoformat().replace("+00:00", "Z"),
+        }
+
+    def _main(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        jobs: list[dict[str, object]],
+        rows: list[dict[str, object]],
+    ) -> int:
+        observed = self.OBSERVED
+
+        class FixedClock(datetime):
+            @classmethod
+            def now(cls, tz: object = None) -> datetime:
+                assert tz is UTC
+                return observed
+
+        monkeypatch.setattr(gate, "datetime", FixedClock)
+        (tmp_path / "jobs.json").write_text(json.dumps(jobs), encoding="utf-8")
+        (tmp_path / "check_runs.json").write_text(json.dumps(rows), encoding="utf-8")
+        return gate.main(
+            [
+                "--jobs-file",
+                str(tmp_path / "jobs.json"),
+                "--check-runs-file",
+                str(tmp_path / "check_runs.json"),
+                "--event",
+                "pull_request",
+            ]
+        )
+
+    def _running(self) -> list[dict[str, object]]:
+        jobs = _healthy_jobs()
+        jobs.append(_job("Tests (Split 13/20)", status="in_progress", conclusion=None))
+        return jobs
+
+    @pytest.mark.parametrize("conclusion", ["skipped", "failure", "cancelled"])
+    def test_expired_window_stays_pending_while_own_jobs_run(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        conclusion: str,
+    ) -> None:
+        rows = [*_healthy_check_runs(), self._stale_row(conclusion)]
+        code = self._main(tmp_path, monkeypatch, self._running(), rows)
+        assert code == EXIT_PENDING
+
+    @pytest.mark.parametrize("conclusion", ["skipped", "failure", "cancelled"])
+    def test_expired_window_fails_once_own_jobs_have_settled(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        conclusion: str,
+    ) -> None:
+        rows = [*_healthy_check_runs(), self._stale_row(conclusion)]
+        code = self._main(tmp_path, monkeypatch, _healthy_jobs(), rows)
+        assert code == EXIT_FAILURE
+
+    def test_own_job_finished_red_fails_at_once_despite_running_jobs(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        jobs = [*self._running(), _job("Runtime Sweep", conclusion="failure")]
+        rows = [*_healthy_check_runs(), self._stale_row()]
+        assert self._main(tmp_path, monkeypatch, jobs, rows) == EXIT_FAILURE
+
+    def test_a_running_job_does_not_hold_a_conclusion_with_no_replacement_class(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """timed_out is never replaced by a re-run, so no hold applies to it."""
+        rows = [*_healthy_check_runs(), self._stale_row("timed_out")]
+        assert self._main(tmp_path, monkeypatch, self._running(), rows) == EXIT_FAILURE
+
+    def test_a_missing_gate_job_stays_pending_for_the_poller_cap(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A job that never starts is PENDING; the poller's cap converts it."""
+        jobs = [j for j in _healthy_jobs() if j["name"] != "Runtime Sweep"]
+        rows = _healthy_check_runs()
+        assert self._main(tmp_path, monkeypatch, jobs, rows) == EXIT_PENDING
+
+    def test_a_future_completion_time_is_not_held(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The hold lifts the upper bound only; a skewed clock still fails."""
+        row = self._stale_row()
+        row["completed_at"] = "2026-11-25T19:32:44Z"
+        rows = [*_healthy_check_runs(), row]
+        assert self._main(tmp_path, monkeypatch, self._running(), rows) == EXIT_FAILURE
+
+    def test_the_hold_is_off_unless_the_caller_proves_own_jobs_pending(self) -> None:
+        """Called directly with no hold, the window is the strict clock reading."""
+        state = gate.CheckRunState(
+            name="x",
+            status="completed",
+            conclusion="skipped",
+            started_at="",
+            id=1,
+            completed_at=str(self._stale_row()["completed_at"]),
+            workflow_run_id=None,
+        )
+        assert gate.verdict_is_provisional(state, self.OBSERVED) is False

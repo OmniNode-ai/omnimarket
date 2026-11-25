@@ -47,6 +47,10 @@ class ModelOverlayStoreRecord(_Frozen):
     source_ref: str = Field(min_length=1)
     loaded_by: str = Field(min_length=1)
     loaded_at: datetime
+    # The settings (paths into the document) an operator set through the store. Every other setting came from the
+    # overlay home and is replaced by it on the next load. Empty is the record of before this field: it is left
+    # out of the published payload, so a load with no operator value reads exactly as it did.
+    operator_paths: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def _digest_is_the_documents(self) -> ModelOverlayStoreRecord:
@@ -60,6 +64,17 @@ class ModelOverlayStoreRecord(_Frozen):
         return self
 
 
+class ModelOverlaySettingRecord(ModelOverlayStoreRecord):
+    """A store record that names the setting paths an operator set: the record a setting set publishes on the loaded topic.
+
+    The projection accepts it beside the loader's plain record and stores the document with its paths, so a later loader
+    run reads them back from the live record and keeps those settings. The loader's own records carry no such field on the
+    wire unless it kept an operator-set setting.
+    """
+
+    operator_paths: tuple[str, ...] = ()
+
+
 class ModelOverlayStoreLoadResult(_Frozen):
     """What one load did."""
 
@@ -68,6 +83,89 @@ class ModelOverlayStoreLoadResult(_Frozen):
     source_ref: str
     topic: str
     loaded_at: datetime
+    correlation_id: str | None = None
+    # The operator-set settings the run kept, and those among them that differ from the overlay home.
+    operator_paths: tuple[str, ...] = ()
+    drifted_paths: tuple[str, ...] = ()
+
+
+class ModelOverlayStoreDrift(_Frozen):
+    """One setting whose overlay home value differs from its live operator-set value: digests, never values."""
+
+    overlay_id: OverlayId
+    setting_path: str = Field(min_length=1)
+    # None when the overlay home no longer holds the setting.
+    repository_digest: str | None = None
+    live_digest: str = Field(min_length=64, max_length=64)
+    source_ref: str = Field(min_length=1)
+    correlation_id: str = Field(min_length=1)
+    observed_at: datetime
+
+
+class ModelOverlayStoreLoadRefusal(_Frozen):
+    """A load that ended without publishing, reported by its overlay and why: no value of any document."""
+
+    overlay_id: OverlayId
+    reason: str = Field(min_length=1)
+    correlation_id: str = Field(min_length=1)
+    observed_at: datetime
+
+
+class ModelOverlayStoreRefusal(_Frozen):
+    """One overlay the loader refused: nothing was published for it and the reason names the cause."""
+
+    overlay_id: str
+    reason: str
+
+
+class ModelOverlayStoreLoadBatch(_Frozen):
+    """What one run over a list of ids did: the loads, and each refusal, in the order the ids were listed."""
+
+    results: tuple[ModelOverlayStoreLoadResult, ...] = ()
+    refused: tuple[ModelOverlayStoreRefusal, ...] = ()
+
+
+class ModelOverlayAssertion(_Frozen):
+    """One loader assertion of one overlay: its id, the digest it asserted and when.
+
+    Kept apart from what a set writes: a set never produces one, so an assertion's age is the loader's liveness for that
+    id and nothing else.
+    """
+
+    overlay_id: OverlayId
+    digest: str = Field(min_length=64, max_length=64)
+    asserted_at: datetime
+
+
+class ModelOverlayAssertionCheck(_Frozen):
+    """The ids a loader lists, the assertions it holds, and the bound past which an id's newest assertion is stale."""
+
+    overlay_ids: tuple[OverlayId, ...]
+    assertions: tuple[ModelOverlayAssertion, ...] = ()
+    now: datetime
+    stale_after_s: int = Field(gt=0)
+    # The role or lane that acts on an alarm; a per-id owner wins over this one.
+    owner: str = Field(min_length=1)
+    owner_by_id: dict[OverlayId, str] = Field(default_factory=dict)
+
+
+class ModelOverlayAssertionStaleAlarm(_Frozen):
+    """The alarm of one overlay whose newest assertion is older than the bound, or that has none."""
+
+    overlay_id: OverlayId
+    owner: str = Field(min_length=1)
+    newest_assertion_at: datetime | None
+    age_s: float | None
+    bound_s: int
+    reason: str
+    raised_at: datetime
+
+
+class ModelOverlayAssertionCheckResult(_Frozen):
+    """One alarm per stale id, and the ids whose newest assertion is inside the bound."""
+
+    alarms: tuple[ModelOverlayAssertionStaleAlarm, ...] = ()
+    fresh: tuple[str, ...] = ()
 
 
 class ModelOverlaySnapshotStamp(_Frozen):
@@ -145,6 +243,15 @@ class ModelOverlayStoreLoadOverlay(_Frozen):
     clone_relpath: str | None = Field(default=None, min_length=1)
     clone_branch: str | None = Field(default=None, min_length=1)
     overlay_ids: tuple[str, ...] = ()
+    # How long a run listens on the snapshot topic for the live record of an overlay before it loads: the record
+    # tells which settings an operator set, and those keep their live value (OMN-26495). Unset, a run reads no live
+    # record and replaces the whole document, as before.
+    live_read_window_s: float | None = Field(default=None, gt=0)
+    # An id whose newest loader assertion is older than this alarms by name (the plan's two hours), and the owner is
+    # the role or lane the alarm names as the one who acts on it; ``alarm_owner_by_id`` overrides it for one id.
+    assertion_stale_after_s: int = Field(default=7200, gt=0)
+    alarm_owner: str = Field(default="overlay-store-owner", min_length=1)
+    alarm_owner_by_id: dict[OverlayId, str] = Field(default_factory=dict)
 
 
 class ModelOverlayReadPolicy(_Frozen):

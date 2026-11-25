@@ -87,6 +87,9 @@ steps:
   - id: ledger_mirror
     node: node_work_ledger_landing_mirror
     role: the decision's STATUS row on the bus ledger
+  - id: running_read_due
+    node: node_running_read_due_compute
+    role: a merged runtime-affecting pull request's due row at merge plus 60 minutes (OMN-26491), and the alarm and Done hold for a due row with no run line
   - id: compare
     node: node_pr_landing_tick_observe_compute
     command_topic: onex.cmd.omnimarket.pr-landing-tick-observe-requested.v1

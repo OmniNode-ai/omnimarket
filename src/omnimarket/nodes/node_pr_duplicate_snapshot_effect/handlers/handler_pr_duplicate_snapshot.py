@@ -3,9 +3,10 @@
 """The snapshot the duplicate-fix pull request guard folds over (OMN-17427).
 
 Reads, never searches GitHub: the PR watcher's state file for the open pull requests of one repository,
-the rolling ledger file, and ``git diff -U0`` for what each open pull request and the new branch change.
-A source it cannot read is ``DuplicateGuardUncheckedError`` with the reason: an unread watcher or ledger never
-means no duplicate, and a lane that cannot be checked does not open a pull request.
+the ledger rows the ledger reader node answers from the bus-fed projection, and ``git diff -U0`` for what each
+open pull request and the new branch change. A source it cannot read is ``DuplicateGuardUncheckedError`` with the
+reason: an unread watcher or ledger never means no duplicate, and a lane that cannot be checked does not open a
+pull request.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ import logging
 import os
 import re
 import subprocess
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime, timedelta
 from functools import cache
 from hashlib import sha1
@@ -24,6 +25,9 @@ from typing import Final
 
 import yaml
 
+from omnimarket.handlers.adapter_work_ledger_rows_reader import (
+    SubprocessLedgerRowsReader,
+)
 from omnimarket.handlers.scm.handler_scm_local_state import (
     WATCHER_SCHEMA,
     default_clone_path,
@@ -48,14 +52,25 @@ from omnimarket.models.model_pr_duplicate_guard import (
 from omnimarket.models.node_overlays.model_node_overlays import (
     ModelDuplicateGuardGeneratedPathsOverlay,
 )
+from omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers.ledger_claims_read import (
+    load_ledger_read_config,
+    read_claims_text,
+)
 from omnimarket.nodes.node_pr_duplicate_snapshot_effect.ports.protocol_open_pr_facts_source import (
     OpenPrFactsUnreadableError,
     ProtocolOpenPrFactsSource,
 )
+from omnimarket.protocols.protocol_ledger_rows_reader import (
+    LedgerReadError,
+    ProtocolLedgerRowsReader,
+)
 
 logger = logging.getLogger(__name__)
 
-LEDGER_ENV: Final[str] = "ONEX_LEDGER_PATH"
+#: The ledger reader node's name for the claims read and the window it covers (a CLAIM older than a week names no live lane).
+#: Both, the rows read and every wait come from this node's contract (``config.ledger_read``, OMN-26433), not from this module.
+LEDGER_READER: Final[str] = load_ledger_read_config().reader
+LEDGER_WINDOW_HOURS: Final[int] = load_ledger_read_config().window_hours
 #: Where a deployment's overlay for the guard is found: the roots every node overlay is read from, then the
 #: workspace configuration root's overlays directory.
 OVERLAY_ROOTS_ENV: Final[str] = "ONEX_SKILL_OVERLAY_ROOTS"
@@ -560,16 +575,12 @@ def _open_pr_state(
             ) from None
 
 
-def _load_ledger(path: Path | None) -> str:
-    if path is None:
-        raise DuplicateGuardUncheckedError(
-            f"{LEDGER_ENV} is not set; it names the rolling work ledger (rule 8)"
-        )
+def _load_ledger(reader_for: Callable[[float], ProtocolLedgerRowsReader]) -> str:
     try:
-        return path.read_text(encoding="utf-8", errors="replace")
-    except OSError as exc:
+        return read_claims_text(reader_for)
+    except LedgerReadError as exc:
         raise DuplicateGuardUncheckedError(
-            f"the ledger {path} is unreadable: {exc}"
+            f"the ledger could not be read ({exc}); an unread ledger never proves no live CLAIM covers this change"
         ) from exc
 
 
@@ -841,7 +852,7 @@ def read_request(
     lane: str | None,
     cause: str | None,
     watcher_state: Path | None = None,
-    ledger: Path | None = None,
+    ledger_reader: ProtocolLedgerRowsReader | None = None,
     clone: Path | None = None,
     worktree: Path | None = None,
     now: datetime | None = None,
@@ -855,8 +866,15 @@ def read_request(
         {} if overlay is None else overlay.shared_catalog_lines
     )
     state = _open_pr_state(repo, watcher_state, moment, open_prs_source)
-    declared = os.environ.get(LEDGER_ENV)
-    ledger_text = _load_ledger(ledger or (Path(declared) if declared else None))
+    ledger_text = _load_ledger(
+        (lambda _timeout: ledger_reader)
+        if ledger_reader is not None
+        else (
+            lambda timeout: SubprocessLedgerRowsReader(
+                os.environ, timeout_seconds=timeout
+            )
+        )
+    )
     where = clone or default_clone_path(repo)
     lane_dir = worktree or Path.cwd()
     dirs = (lane_dir, where)
@@ -910,9 +928,12 @@ class HandlerPrDuplicateSnapshot:
     """Read the watcher state (or the gateway), the ledger and git for one pull request about to be opened."""
 
     def __init__(
-        self, open_prs_source: ProtocolOpenPrFactsSource | None = None
+        self,
+        open_prs_source: ProtocolOpenPrFactsSource | None = None,
+        ledger_reader: ProtocolLedgerRowsReader | None = None,
     ) -> None:
         self._open_prs_source = open_prs_source
+        self._ledger_reader = ledger_reader
 
     def handle(
         self, request: ModelPrDuplicateSnapshotRequest
@@ -929,7 +950,7 @@ class HandlerPrDuplicateSnapshot:
                 watcher_state=Path(request.watcher_state)
                 if request.watcher_state
                 else None,
-                ledger=Path(request.ledger) if request.ledger else None,
+                ledger_reader=self._ledger_reader,
                 clone=Path(request.clone) if request.clone else None,
                 worktree=Path(request.worktree) if request.worktree else None,
                 open_prs_source=self._open_prs_source,

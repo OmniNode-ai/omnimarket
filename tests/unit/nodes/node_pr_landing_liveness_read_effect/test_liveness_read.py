@@ -24,6 +24,11 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
 )
 
 from omnimarket.models.landing_decision import EnumLivenessRead
+from omnimarket.models.pr_landing_liveness_read import (
+    ModelLivenessReadCompleted,
+    ModelLivenessReadFailed,
+    ModelLivenessReadRequest,
+)
 from omnimarket.nodes.node_pr_landing_liveness_read_effect.handlers.adapter_command_reader import (
     CommandLivenessReader,
 )
@@ -36,11 +41,6 @@ from omnimarket.nodes.node_pr_landing_liveness_read_effect.handlers.liveness_rea
 from omnimarket.nodes.node_pr_landing_liveness_read_effect.handlers.liveness_read_ports import (
     InMemoryLivenessReader,
     InMemoryLivenessReadPublisher,
-)
-from omnimarket.nodes.node_pr_landing_liveness_read_effect.models.model_liveness_read import (
-    ModelLivenessReadCompleted,
-    ModelLivenessReadFailed,
-    ModelLivenessReadRequest,
 )
 from omnimarket.nodes.node_pr_landing_liveness_read_effect.overlay import (
     ModelLivenessReadOverlay,
@@ -259,6 +259,15 @@ def test_the_command_reader_refuses_a_checkout_at_another_head(
     registry, internal, _ = checkout
     with pytest.raises(LivenessReadError, match="not the head"):
         _reader(registry, internal, _script(FINDINGS)).read(REPO, HEAD)
+
+
+def test_the_command_reader_refuses_dirty_files_at_the_expected_head(
+    checkout: tuple[Path, Path, str],
+) -> None:
+    registry, internal, head = checkout
+    (registry / "omnimarket" / TIMER).unlink()
+    with pytest.raises(LivenessReadError, match="uncommitted changes"):
+        _reader(registry, internal, _script(FINDINGS)).read(REPO, head)
 
 
 def test_the_command_reader_says_the_read_was_not_made_when_the_reader_times_out(

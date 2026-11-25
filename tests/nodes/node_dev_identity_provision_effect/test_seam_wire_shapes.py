@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The wire shapes the handler sends are the shapes the real Keycloak and onex-api speak (OMN-24115).
+"""The wire shapes the handler sends are the shapes the real Keycloak speaks (OMN-24115).
 
 The strict fake accepts the handler's end-to-end flow: the token form field names, the admin bearer
-on the admin paths, the user create body's keys and the user's bearer on the provision path. Each
+on the admin paths and the user create body's keys. Each
 failing control renames one field of one request at the wire and shows the fake refusing it, so a
 changed wire shape on either side fails here rather than against a real realm. The contract's
 dev_only block and topics are pinned too.
@@ -29,7 +29,12 @@ from omnimarket.nodes.node_dev_identity_provision_effect.overlay import (
     ModelDevIdentityProvisionOverlay,
 )
 
-from .fakes import FakeKeycloakAndApi, FakeKeyGenerator, FakeSettingStore
+from .fakes import (
+    FakeKeycloakAndApi,
+    FakeKeyGenerator,
+    FakeSettingStore,
+    FakeTenantProvisioner,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -41,7 +46,6 @@ CONTRACT_PATH = (
 BASE = "https://keycloak.example.invalid"
 TOKEN_URL = f"{BASE}/realms/omninode/protocol/openid-connect/token"
 USERS_URL = f"{BASE}/admin/realms/omninode/users"
-PROVISION_URL = "https://api.example.invalid/v1/auth/provision"
 
 
 def _overlay(**overrides: object) -> ModelDevIdentityProvisionOverlay:
@@ -70,11 +74,7 @@ def _overlay(**overrides: object) -> ModelDevIdentityProvisionOverlay:
             "password_folder": "/shared/env",
             "password_key": "DEV_PROBE_USER_PASSWORD",
         },
-        "api": {
-            "base_url": "https://api.example.invalid",
-            "provision_path": "/v1/auth/provision",
-            "timeout_seconds": 15.0,
-        },
+        "protected_usernames": [],
         "secret_store": None,
     }
     fields.update(overrides)
@@ -94,6 +94,7 @@ def _rig(
         transport=transport,
         settings_store=store,
         key_generator=gen,
+        tenant_provisioner=FakeTenantProvisioner(),
         contract_path=CONTRACT_PATH,
     )
     return handler, transport
@@ -162,35 +163,6 @@ async def test_failing_control_a_renamed_user_create_body_key_is_refused() -> No
         )
     )
     assert renamed.status == 400
-
-
-async def test_failing_control_a_wrong_bearer_on_provision_is_refused() -> None:
-    """The provision endpoint binds the bearer's user; the admin's bearer is refused there."""
-    transport = FakeKeycloakAndApi()
-    token = await transport.send(
-        ModelIdentityHttpRequest(
-            method="POST",
-            url=TOKEN_URL,
-            form={
-                "grant_type": SecretStr("client_credentials"),
-                "client_id": SecretStr("admin-client"),
-                "client_secret": SecretStr("admin-secret-value"),
-            },
-            timeout_seconds=10.0,
-        )
-    )
-    assert token.status == 200
-    assert token.json_body is not None
-    admin_bearer = SecretStr(token.json_body["access_token"])
-    refused = await transport.send(
-        ModelIdentityHttpRequest(
-            method="POST",
-            url=PROVISION_URL,
-            bearer=admin_bearer,
-            timeout_seconds=15.0,
-        )
-    )
-    assert refused.status == 403
 
 
 def test_the_contract_declares_the_dev_only_block() -> None:

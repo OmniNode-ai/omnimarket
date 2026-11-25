@@ -24,6 +24,7 @@ from omnimarket.nodes.node_silent_failure_alarm_compute.models import (
 from omnimarket.nodes.node_silent_failure_alarm_effect.handlers.quiet_host_repair import (
     QuietHostRepairPlanner,
 )
+from tests.helpers.fake_alarm_ledger import LEDGER_FIXTURE_NAME
 
 pytestmark = pytest.mark.unit
 
@@ -335,16 +336,10 @@ def world(tmp_path):
             }
         )
     )
-    appender = tmp_path / "append.py"
-    appender.write_text(
-        "import sys\nwith open(sys.argv[1], 'a') as f: f.write(sys.argv[3]+'\\n')\n"
-    )
     alerts = tmp_path / "alert.sh"
     alerts.write_text("alert_channel_send() { echo 1234567890.123; }\n")
     return ModelSilentFailureAlarmOptions(
         registry_root=tmp_path,
-        ledger=ledger,
-        ledger_lock=str(appender),
         trend_file=trend,
         watcher_state=watcher,
         controller_state_dir=controller,
@@ -392,7 +387,9 @@ def test_migrated_tick_runs_recorded_rows_through_real_readers_and_keeps_alarm(
     assert len(result.capture_repairs) == 5
     assert len(result.rows) == 1
     assert "hosts=h051,h053,h101,h105,h106" in result.rows[0]
-    assert options.ledger.read_text().count("class=quiet-host") == 1
+    assert (options.registry_root / LEDGER_FIXTURE_NAME).read_text().count(
+        "class=quiet-host"
+    ) == 1
 
 
 def test_remote_observer_cannot_claim_another_hosts_observation(tmp_path) -> None:

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Operator entry point: dry run, then apply, of the contract's declared ACL rows.
+"""Operator entry point: dry run, then apply or reconcile, of the contract's ACL rows.
 
 uv run python -m omnimarket.nodes.node_broker_acl_reconcile_effect --mode dry_run
 """
@@ -19,14 +19,30 @@ from omnimarket.nodes.node_broker_acl_reconcile_effect.handlers.handler_broker_a
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--mode", choices=("dry_run", "apply", "ready_check"), required=True
+        "--mode",
+        choices=("dry_run", "apply", "ready_check", "reconcile"),
+        required=True,
     )
     parser.add_argument("--node", help="the node a ready_check asks about")
     parser.add_argument("--principal", help="the one login a ready_check asks about")
+    parser.add_argument(
+        "--remove-name",
+        action="append",
+        help="a topic name that may be removed (dry_run and reconcile only; repeatable)",
+    )
+    parser.add_argument(
+        "--expected-removals",
+        type=int,
+        help="how many rows mode reconcile expects to remove",
+    )
     args = parser.parse_args(argv)
     try:
         request = ModelBrokerAclReconcileRequest(
-            mode=args.mode, node=args.node, principal=args.principal
+            mode=args.mode,
+            node=args.node,
+            principal=args.principal,
+            remove_names=tuple(args.remove_name or ()),
+            expected_removals=args.expected_removals,
         )
     except ValueError as error:
         parser.error(str(error))

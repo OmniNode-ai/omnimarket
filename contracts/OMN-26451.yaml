@@ -1,0 +1,59 @@
+schema_version: "1.0.0"
+ticket_id: OMN-26451
+title: "On a clean machine onex setup finishes: no hosted bus declared is not a delivery failure"
+summary: >-
+  The runtime bus forwarder (node_runtime_bus_forward_effect) treats a machine with no overlay for the node as a machine that declares no hosted bus. It keeps the run's recorded events in a local record file under the user's .onex directory and answers a receipt that says they were kept locally, so onex setup on a clean machine exits 0 and writes its configuration. An overlay that is declared but whose hosted bus cannot be reached still fails, names the hosted bus and the error, and never says the events were kept locally.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26451-clean-setup
+    statement: onex setup on a clean machine finishes and writes its configuration, and a declared hosted bus that fails is still reported as a failure.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: on a clean machine (no ONEX_* variables, an empty HOME, a fresh empty workspace) the released `onex setup` with the probe''s flags exits 0 and writes its workspace configuration, with no hand edits -- falsifier: an end-to-end test in omnimarket, `uv run pytest tests/e2e/node_onex_setup_effect/test_onex_setup_clean_machine.py -q`, runs the CLI under env -i against a stub model server and fails when setup exits non-zero; it fails on omnimarket dev 49169e870'
+      - id: AC2
+        statement: 'AC2: with no overlay root and no hosted bus declared, the forward node''s absence is not a setup failure, and a hosted bus that is declared but unreachable is reported by name and does not make setup lie about delivery -- falsifier: `uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_setup_no_hosted_bus.py -q` asserts both cases and fails when either case reports the other''s result'
+      - id: AC3
+        statement: 'AC3: a regression test built from this incident''s recorded output (the error text above, saved as a fixture under `tests/fixtures/onboarding_clean_setup_2026_11_22/`) fails on the broken code and passes on the fix -- falsifier: `uv run pytest tests/unit/nodes/node_onex_setup_effect -q -k clean_setup_2026_11_22` in omnimarket'
+evidence_requirements:
+  - kind: tests
+    description: The clean-machine end-to-end test, the no-hosted-bus unit tests and the incident regression.
+    command: uv run --frozen pytest tests/e2e/node_onex_setup_effect/test_onex_setup_clean_machine.py tests/unit/nodes/node_onex_setup_effect/test_onex_setup_no_hosted_bus.py tests/unit/nodes/node_onex_setup_effect/test_onex_setup_clean_setup_2026_11_22.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26451-ac1
+    description: onex setup under env -i on a clean home and an empty workspace exits 0 and writes its configuration.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/e2e/node_onex_setup_effect/test_onex_setup_clean_machine.py -q --no-cov
+        cwd: .
+  - id: dod-omn26451-ac2
+    description: No hosted bus declared keeps the events locally and is healthy; a declared unreachable hosted bus is degraded and named.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_onex_setup_effect/test_onex_setup_no_hosted_bus.py -q --no-cov
+        cwd: .
+  - id: dod-omn26451-ac3
+    description: The regression built from the recorded 2026-11-22 error text.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_onex_setup_effect -q --no-cov -k clean_setup_2026_11_22
+        cwd: .
+  - id: dod-omn26451-integration-proof
+    description: The installed onex command runs setup with an empty home and an empty workspace and exits 0, writing its configuration; on the base revision the same command exits 1 with the runtime bus forwarder's missing overlay.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env -i HOME=/tmp/omn26451-home PATH=.venv/bin:/usr/bin:/bin onex setup --workspace /tmp/omn26451-workspace --path local --component delegation --no-interactive --yes
+        cwd: .

@@ -59,7 +59,10 @@ class ModelUserOverlay(BaseModel):
 
 
 class ModelApiOverlay(BaseModel):
-    """The onex-api the node provisions a probe tenant against."""
+    """The retired onex-api block. Nothing reads it: the runtime's tenant provision command creates the tenant.
+
+    The model still accepts the block so a deployed overlay document that holds it loads until the overlays repository
+    drops it; ``extra="forbid"`` would otherwise refuse the whole document."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -69,7 +72,14 @@ class ModelApiOverlay(BaseModel):
 
 
 class ModelDevIdentityProvisionOverlay(BaseModel):
-    """The whole overlay document; the optional store block means the machine's own store when absent."""
+    """The whole overlay document; the optional store block means the machine's own store when absent.
+
+    ``protected_usernames`` defaults to no one protected, and ``api`` (retired, never read) to absent; these are the two fields with a default: the overlays repository holds the
+    deployed document and its own test holds the R8 probe user in the list, and the list must be able to arrive after this
+    model (the overlay loader refuses a document the model rejects, so a required field would turn the deployed overlay red
+    until the document changed). A username in the list is refused by the handler unless the command carries
+    ``allow_protected``.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -77,7 +87,8 @@ class ModelDevIdentityProvisionOverlay(BaseModel):
     keycloak: ModelKeycloakOverlay
     admin: ModelAdminOverlay
     user: ModelUserOverlay
-    api: ModelApiOverlay
+    api: ModelApiOverlay | None = None
+    protected_usernames: list[str] = Field(default_factory=list)
     secret_store: ModelSecretStoreOverlay | None = None
 
 

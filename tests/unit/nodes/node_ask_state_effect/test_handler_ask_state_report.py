@@ -14,14 +14,17 @@ from omnimarket.nodes.node_ask_state_compute.models.model_ask_state import (
     ModelAskStateConfig,
 )
 from omnimarket.nodes.node_ask_state_effect.handlers.handler_ask_state_report import (
+    ASK_STATE_READER,
     AskStateSourceError,
     load_config,
+    load_contract,
     read_ledger_rows,
     read_prompts,
 )
 from omnimarket.nodes.node_ask_state_effect.runtime_ask_state import (
     main,
 )
+from tests.helpers.fake_ledger_rows import FakeLedgerRows
 
 pytestmark = pytest.mark.unit
 
@@ -98,26 +101,60 @@ def test_read_prompts_refuses_a_missing_store(tmp_path: Path) -> None:
         read_prompts(tmp_path / "nope.jsonl", SINCE)
 
 
-def test_read_ledger_rows_takes_live_and_recent_archives_after_since(
-    tmp_path: Path,
-) -> None:
-    archive = tmp_path / "archive"
-    archive.mkdir()
-    (archive / "ROLLING_WORK_LEDGER_2026-10-30-split.md").write_text(
-        "2026-10-30T10:00:00Z | CLAIM | lane=old\n", encoding="utf-8"
+def test_contract_names_the_bus_reader_and_no_ledger_file() -> None:
+    contract = load_contract()
+    env = contract["env_dependencies"]
+    assert env["ONEX_LEDGER_BUS_APPEND_COMMAND"]["required"] is True
+    assert len(env) == 2
+    assert contract["runtime"] == {"captures_file": "captures.jsonl"}
+
+
+def test_read_ledger_rows_asks_the_named_reader_for_the_window_and_the_fold_kinds() -> (
+    None
+):
+    ledger = FakeLedgerRows(["2026-10-31T01:00:00Z | CLAIM | lane=rolled"])
+    now = datetime(2026, 10, 31, 12, 30, tzinfo=UTC)
+    rows = read_ledger_rows(ledger, SINCE, now)
+    assert rows == ("2026-10-31T01:00:00Z | CLAIM | lane=rolled",)
+    [(reader, window_hours, kinds)] = ledger.calls
+    assert reader == ASK_STATE_READER == "ask-state-rows"
+    assert window_hours == 13  # 12h30m rounds up: a row on the window edge is not lost
+    assert {
+        "CLAIM",
+        "TERMINAL",
+        "STATUS",
+        "HOLD",
+        "RULING",
+        "CORRECTION",
+        "FRICTION",
+        "MSG",
+        "SENT-ON-BEHALF",
+    } <= set(kinds)
+
+
+def test_read_ledger_rows_keeps_only_rows_stamped_at_or_after_since() -> None:
+    ledger = FakeLedgerRows(
+        [
+            "# heading",
+            "2026-10-30T23:59:59Z | CLAIM | lane=just-before",
+            "2026-10-31T00:00:00Z | CLAIM | lane=on-the-edge",
+            "a continuation line of the row above",
+            "2026-10-31T02:00:00Z | CLAIM | lane=live",
+        ]
     )
-    (archive / "ROLLING_WORK_LEDGER_2026-10-31-split.md").write_text(
-        "2026-10-30T23:59:59Z | CLAIM | lane=just-before\n2026-10-31T01:00:00Z | CLAIM | lane=rolled\n",
-        encoding="utf-8",
-    )
-    live = tmp_path / "ROLLING_WORK_LEDGER.md"
-    live.write_text(
-        "# heading\n2026-10-31T02:00:00Z | CLAIM | lane=live\n", encoding="utf-8"
-    )
-    kwargs = {"archive_glob": "*.md", "archive_dir": "archive"}
-    rows = read_ledger_rows(live, SINCE, archives=True, **kwargs)
-    assert [r.split(" | ")[2] for r in rows] == ["lane=rolled", "lane=live"]
-    assert len(read_ledger_rows(live, SINCE, archives=False, **kwargs)) == 1
+    rows = read_ledger_rows(ledger, SINCE, datetime(2026, 11, 1, tzinfo=UTC))
+    assert [r.split(" | ")[2] for r in rows] == ["lane=on-the-edge", "lane=live"]
+
+
+def test_read_ledger_rows_asks_at_least_one_hour() -> None:
+    ledger = FakeLedgerRows()
+    read_ledger_rows(ledger, SINCE, SINCE)
+    assert ledger.calls[0][1] == 1
+
+
+def test_read_ledger_rows_turns_an_unreadable_reader_into_a_source_error() -> None:
+    with pytest.raises(AskStateSourceError, match="exited 69"):
+        read_ledger_rows(FakeLedgerRows(error="exited 69"), SINCE, SINCE)
 
 
 def test_cli_exits_1_while_an_ask_is_dropped_and_0_once_it_is_owned(
@@ -134,42 +171,43 @@ def test_cli_exits_1_while_an_ask_is_dropped_and_0_once_it_is_owned(
             )
         ],
     )
-    ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
-    ledger.write_text("2026-10-31T07:00:00Z | STATUS | lane=x\n", encoding="utf-8")
+    ledger = FakeLedgerRows(["2026-10-31T07:00:00Z | STATUS | lane=x"])
     out = tmp_path / "out" / "report.json"
     argv = [
         "--since", "2026-10-31T00:00:00Z", "--now", "2026-10-31T12:00:00Z",
-        "--ledger", str(ledger), "--captures-dir", str(store), "--out", str(out),
+        "--captures-dir", str(store), "--out", str(out),
     ]  # fmt: skip
-    assert main(argv) == 1
+    assert main(argv, ledger_reader=ledger) == 1
     assert "DROPPED (1)" in capsys.readouterr().out
     assert json.loads(out.read_text())["dropped"] == ["ask-0000000001"]
 
-    ledger.write_text(
-        "2026-10-31T09:00:00Z | CLAIM | lane=lane-a | ticket=OMN-1 | ask=ask-0000000001 | worktree=none | est ~1 lane-hours\n",
-        encoding="utf-8",
-    )
-    assert main([*argv, "--format", "json"]) == 0
+    ledger.lines = [
+        "2026-10-31T09:00:00Z | CLAIM | lane=lane-a | ticket=OMN-1 | ask=ask-0000000001 | worktree=none | est ~1 lane-hours"
+    ]
+    assert main([*argv, "--format", "json"], ledger_reader=ledger) == 0
     assert json.loads(capsys.readouterr().out)["counts"]["owned"] == 1
+    assert {reader for reader, _, _ in ledger.calls} == {ASK_STATE_READER}
 
 
 def test_cli_exits_2_naming_the_missing_source(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.delenv("ONEX_LEDGER_PATH", raising=False)
+    monkeypatch.delenv("ONEX_LEDGER_BUS_APPEND_COMMAND", raising=False)
     store = _store(tmp_path, [])
     assert main(["--since", "2026-10-31T00:00:00Z", "--captures-dir", str(store)]) == 2
-    assert "ONEX_LEDGER_PATH" in capsys.readouterr().err
-    missing = tmp_path / "gone.md"
+    assert "ONEX_LEDGER_BUS_APPEND_COMMAND" in capsys.readouterr().err
     code = main(
-        [
-            "--since",
-            "2026-10-31T00:00:00Z",
-            "--captures-dir",
-            str(store),
-            "--ledger",
-            str(missing),
-        ]
+        ["--since", "2026-10-31T00:00:00Z", "--captures-dir", str(store)],
+        ledger_reader=FakeLedgerRows(error="reader ask-state-rows exited 69"),
     )
     assert code == 2
+    assert "exited 69" in capsys.readouterr().err
+    missing_store = tmp_path / "gone"
+    assert (
+        main(
+            ["--since", "2026-10-31T00:00:00Z", "--captures-dir", str(missing_store)],
+            ledger_reader=FakeLedgerRows(),
+        )
+        == 2
+    )
     assert "not readable" in capsys.readouterr().err

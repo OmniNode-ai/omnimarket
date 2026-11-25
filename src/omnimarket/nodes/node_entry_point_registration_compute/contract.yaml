@@ -47,6 +47,8 @@ event_bus:
   publish_topics: []
 runtime_dispatch:
   external_trigger: "Direct Python invocation of the handler by node-drift-gate and the node inventory test."
+  callers:
+    - path: scripts/validate_node_drift.py
 descriptor:
   node_archetype: compute
   purity: pure
@@ -98,6 +100,8 @@ config:
       reason: "no entry point; listed in the inventory test before this file existed"
     - node: "node_merge_sweep_triage_orchestrator"
       reason: "no entry point; listed in the inventory test before this file existed"
+    - node: "node_metering_tenant_records_effect"
+      reason: "OMN-26449: the tenant-scoped metering records read is called in process by the metering headline refresh (sqlite_metering_summary.py) and onex metering's staleness check (cli_metering.py); it reads the local evidence store read only, publishes nothing and subscribes to no topic, so it has no entry point."
     - node: "node_model_setup_effect"
       reason: "OMN-20817: the model setup effect runs from `onex models`; it returns its status and test results to the CLI shim and subscribes to no topic, so it has no entry point."
     - node: "node_pr_lifecycle_triage_compute"
@@ -118,5 +122,7 @@ config:
       reason: "OMN-24121: the PR lifecycle triage compute is called in process by the PR lifecycle orchestrator since its inventory subscription was removed, and the seam field diff compute and its check effect run from the merge check's own command line; none subscribes to a command topic with a terminal event, so none has an entry point."
     - node: "node_seam_field_diff_compute"
       reason: "OMN-24121: the PR lifecycle triage compute is called in process by the PR lifecycle orchestrator since its inventory subscription was removed, and the seam field diff compute and its check effect run from the merge check's own command line; none subscribes to a command topic with a terminal event, so none has an entry point."
+    - node: "node_undeclared_read_check_compute"
+      reason: "OMN-26424: the undeclared read check is run in process by a CI job and a pre-commit hook over a unified diff, through runtime_undeclared_read_check with python -m; it subscribes to no topic and publishes none, so it has no entry point."
     - node: "node_worktree_reconcile_effect"
       reason: "OMN-19399: the worktree-reconcile effect reads the host's own filesystem, so a host timer runs it from the command line; it publishes events but subscribes to no topic and has no entry point."

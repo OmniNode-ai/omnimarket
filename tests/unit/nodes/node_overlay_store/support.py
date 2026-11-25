@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from importlib import resources
@@ -90,9 +91,13 @@ def overlay_home(tmp_path: Path, table: Mapping[str, Any] = TABLE) -> Path:
 
 
 def record(
-    table: Mapping[str, Any] = TABLE, *, loaded_at: datetime = NOW
+    table: Mapping[str, Any] = TABLE,
+    *,
+    loaded_at: datetime = NOW,
+    operator_paths: tuple[str, ...] = (),
 ) -> ModelOverlayStoreRecord:
     document = dict(table)
+    extra: dict[str, Any] = {"operator_paths": operator_paths} if operator_paths else {}
     return ModelOverlayStoreRecord(
         overlay_id="lab_hosts",
         digest=document_digest(document),
@@ -100,7 +105,26 @@ def record(
         source_ref="lab_hosts@abc",
         loaded_by="test",
         loaded_at=loaded_at,
+        **extra,
     )
+
+
+def declared_topic(suffix: str) -> str:
+    """The loader contract's published topic named ``suffix``; a contract that declares none fails the test."""
+    found = [
+        topic
+        for topic in contract_topics("node_overlay_store_load_effect", "publish_topics")
+        if f".{suffix}." in topic
+    ]
+    assert len(found) == 1, f"the loader contract declares no one topic named {suffix}"
+    return found[0]
+
+
+def table_with(**host1: Any) -> dict[str, Any]:
+    """The table with fields of host h1 replaced, every other value as in TABLE."""
+    table = copy.deepcopy(TABLE)
+    table["hosts"][0].update(host1)
+    return table
 
 
 class FakeBus:
@@ -176,8 +200,10 @@ __all__ = [
     "FakeBus",
     "Reporter",
     "Store",
+    "declared_topic",
     "overlay_home",
     "past_bound",
     "reader",
     "record",
+    "table_with",
 ]

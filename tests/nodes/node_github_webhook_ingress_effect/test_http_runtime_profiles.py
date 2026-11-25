@@ -165,8 +165,8 @@ async def test_runtime_mount_publishes_and_existing_node_folds_delivery(
         server.attach_manifest(manifest)
         assert server._mount_task is not None
         await server._mount_task
-        assert server._runner is not None
-        port = server._runner.addresses[0][1]
+        assert server._site is not None
+        port = server._site.port
         body = json.dumps(
             {
                 "action": "closed",
