@@ -40,6 +40,7 @@ from omnimarket.models.agent_message.model_agent_message_result import (
 from omnimarket.nodes.node_agent_message_client_effect.models.model_agent_message import (
     ModelAgentMessage,
     ModelAgentMessageQuery,
+    ModelAgentMessageReadReport,
 )
 from omnimarket.nodes.node_agent_message_client_effect.models.refusal import (
     AgentMessageRefusalError,
@@ -82,7 +83,7 @@ class _LoopThreadNode:
         future = asyncio.run_coroutine_threadsafe(self._node.send(message), self._loop)
         return future.result(timeout=_CALL_TIMEOUT_SECONDS)
 
-    def read(self, query: ModelAgentMessageQuery) -> tuple[ModelAgentMessage, ...]:
+    def read(self, query: ModelAgentMessageQuery) -> ModelAgentMessageReadReport:
         future = asyncio.run_coroutine_threadsafe(self._node.read(query), self._loop)
         return future.result(timeout=_CALL_TIMEOUT_SECONDS)
 
@@ -215,9 +216,7 @@ class _NodeBackedBusNode:
             )
         return result.event_id
 
-    async def read(
-        self, query: ModelAgentMessageQuery
-    ) -> tuple[ModelAgentMessage, ...]:
+    async def read(self, query: ModelAgentMessageQuery) -> ModelAgentMessageReadReport:
         result = await self._handler.handle(
             ModelNodeRequest(
                 operation=EnumAgentMessageOperation.READ,
@@ -228,7 +227,7 @@ class _NodeBackedBusNode:
             )
         )
         _raise_for_refusal(result)
-        return tuple(
+        messages = tuple(
             ModelAgentMessage(
                 message_id=message_event_id(message),
                 sender=message.sender,
@@ -240,6 +239,11 @@ class _NodeBackedBusNode:
                 sent_at=message.sent_at,
             )
             for message in result.messages
+        )
+        return ModelAgentMessageReadReport(
+            messages=messages,
+            unverified=result.unverified,
+            rejections=result.rejections,
         )
 
 
