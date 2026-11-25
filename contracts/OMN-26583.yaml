@@ -66,3 +66,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/cli/test_agent_message_readme.py -q -m unit -n 0 --no-cov -p no:cacheprovider
     cwd: .
+- id: dod-omn26583-readme-verified-senders
+  description: 'The README states the merged sender behaviour: the read answer keys messages, unverified and rejections, every typed verification reason, the sender_mismatch refusal with exit code 2, the one host that reaches the dev settings store, and that revoke is not merged.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/cli/test_agent_message_readme.py -q -m unit -n 0 --no-cov -p no:cacheprovider
+    cwd: .

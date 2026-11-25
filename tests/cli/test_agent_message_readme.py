@@ -15,14 +15,21 @@ from click.testing import CliRunner
 
 from omnimarket.enums.enum_agent_message_kind import EnumAgentMessageKind
 from omnimarket.enums.enum_agent_message_platform import EnumAgentMessagePlatform
+from omnimarket.enums.enum_agent_message_verification_reason import (
+    EnumAgentMessageVerificationReason,
+)
 from omnimarket.nodes.node_agent_message_client_effect.cli import agent_message_group
 from omnimarket.nodes.node_agent_message_client_effect.mcp_server import (
     READ_TOOL,
     SEND_TOOL,
 )
+from omnimarket.nodes.node_agent_message_client_effect.models.model_agent_message_request import (
+    ModelAgentMessageReadResult,
+)
 from omnimarket.nodes.node_agent_message_client_effect.models.refusal import (
     REFUSAL_EXIT_CODES,
 )
+from omnimarket.nodes.node_agent_message_client_effect.render import read_json
 from tests.cli.agent_message_fakes import FakeAgentMessageNode, make_runtime
 
 pytestmark = pytest.mark.unit
@@ -111,3 +118,14 @@ def test_readme_enum_values_and_exit_codes_match_the_code() -> None:
         for code in re.findall(r"`(\w+)`", cell)
     }
     assert documented == {c.value: n for c, n in REFUSAL_EXIT_CODES.items()}
+
+
+def test_readme_names_the_read_answer_parts_and_the_limits() -> None:
+    text = README.read_text()
+    empty = ModelAgentMessageReadResult(messages=())
+    for key in read_json(empty):
+        assert f"`{key}`" in text
+    for reason in EnumAgentMessageVerificationReason:
+        assert f"`{reason.value}`" in text
+    assert "h053" in text
+    assert "revoke is not merged" in text

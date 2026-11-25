@@ -117,15 +117,50 @@ A refusal prints one line on stderr and exits non-zero with no stack trace:
 
 | Refusal | Exit |
 | -- | -- |
-| `missing_recipient`, `missing_thread`, `empty_text`, `unknown_platform`, `unknown_kind`, `bad_since`, `bad_limit` | 2 |
+| `missing_recipient`, `missing_thread`, `empty_text`, `unknown_platform`, `unknown_kind`, `bad_since`, `bad_limit`, `sender_mismatch` | 2 |
 | `undeclared_broker`, `broker_refused`, `node_unavailable` | 3 |
+
+`sender_mismatch` means the `--from` name is registered to a different broker login than the one
+sending; nothing is published. Any other refusal of the node (for example `unknown_sender` when this
+host holds no signing key for the sender and legacy messages are switched off) comes back as
+`broker_refused`.
 
 A login that holds no grant on the topic is refused by the broker: the command prints
 `broker_refused` with `ClusterAuthorizationFailedError` and exits 3.
 
+## Verified senders
+
+A message carries a proof of its sender: an Ed25519 signature over every typed field, made with the
+key the host's settings store holds for the sender name. `read` returns a message as verified only
+when the registered sender's key signed it. The read answer has three parts, and `--json` prints all three:
+
+- `messages`: the messages returned for the recipient, oldest first. This includes legacy-shape
+  messages, which carry no sender proof and are not marked in the list itself.
+- `unverified`: a count of those legacy-shape messages inside `messages`. They are returned
+  unverified while the settings store row `accept_legacy` is not false (once it is false they are
+  rejected as `missing_proof`); the text output says
+  `N message(s) carry no sender proof (legacy shape)`.
+- `rejections`: each refused record with its typed reason (`sender_mismatch`, `unknown_sender`,
+  `missing_proof`, `malformed_message`, `oversize_body`, `unsupported_schema_version`), its sender and its
+  message id, never its text.
+
+A sender with no key on this host goes out in the legacy shape while `accept_legacy` allows it, so
+its message counts as `unverified` for every reader.
+
+Limits that hold today:
+
+- The dev settings store is reachable from one lab host only (h053). From any other host a send
+  cannot sign and a read shows `unknown_sender` for the senders it cannot look up.
+- A sender registered for a test cannot yet be removed from the real store: the revoke is not merged
+  and the store adapter can create a secret but not delete one. Use a test sender name that you
+  expect to stay registered.
+- A login that can read another agent's key and write to the topic without this client is not stopped.
+
 ## What the lab run showed
 
-On the dev lane, one host, two logins that hold only the topic's write, describe and read rows,
+This run happened before senders were verified, so its messages were legacy shape and would read
+as `unverified` on dev today; it shows the transport and the two clients, not sender proof. On the
+dev lane, one host, two logins that hold only the topic's write, describe and read rows,
 and one thread:
 
 1. A Claude Code client, scratch project config, sender `claude-test-a`, called
@@ -141,3 +176,8 @@ and one thread:
    `broker_refused` (`ClusterAuthorizationFailedError`).
 
 The message text was made up for the run.
+
+A later run on h053 (the one host that reaches the dev settings store) registered a test sender and
+read its messages back verified through both the command line and the MCP tool, and a forged
+`--from` was refused with `sender_mismatch`. The read on h051 showed `unknown_sender`, because
+h051 cannot reach the store.
