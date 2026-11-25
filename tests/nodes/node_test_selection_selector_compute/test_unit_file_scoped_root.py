@@ -11,8 +11,11 @@ path, the surviving tests that name a deleted file, and the old directory when n
 
 from __future__ import annotations
 
+import ast
 import json
+from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -214,19 +217,15 @@ def test_a_second_deleted_file_does_not_reparse_the_tree(
     the shard past its timeout. The parsed references are kept per file text: the first lookup
     parses, the next ones parse nothing.
     """
-    from omnimarket.nodes.node_test_selection_selector_compute.handlers import (
-        handler_test_path_resolution as handler,
-    )
-
     _resolve(tmp_path, ["tests/unit/a/test_gone.py"])
     parses: list[int] = []
-    real_parse = handler.ast.parse
+    real_parse = cast("Callable[..., object]", ast.parse)
 
     def counting_parse(*args: object, **kwargs: object) -> object:
         parses.append(1)
-        return real_parse(*args, **kwargs)  # type: ignore[call-overload]
+        return real_parse(*args, **kwargs)
 
-    monkeypatch.setattr(handler.ast, "parse", counting_parse)
+    monkeypatch.setattr(ast, "parse", counting_parse)
     result = HandlerTestPathResolution().handle(
         ModelPathResolutionRequest(
             changed_files=("tests/unit/a/test_other_gone.py",),
