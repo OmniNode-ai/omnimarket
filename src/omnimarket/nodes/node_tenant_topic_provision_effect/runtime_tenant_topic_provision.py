@@ -3,7 +3,7 @@
 """Operator entry: provision the topics of one or more tenants on a lane's broker and print one JSON line.
 
 ``--tenant`` is repeated for each tenant. One tenant is a single command; several are a backfill over them. The lane, the
-partition count and the replication factor come from the node's overlay unless all three flags are given. With
+partition count and the replication factor come from the node's settings unless all three flags are given. With
 ``--consumer-read-back`` a consumer on the same broker then looks for every topic the run read back, and the line names
 the ones it saw. Exit 0 when every tenant is provisioned, 1 when any is not.
 """
@@ -25,8 +25,12 @@ from omnibase_infra.event_bus.lane_client_transport_binding import (
 from omnimarket.nodes.node_tenant_topic_provision_effect.adapters.consumer_read_back import (
     consumer_visible_topics,
 )
-from omnimarket.nodes.node_tenant_topic_provision_effect.adapters.in_memory_tenant_registry import (
-    InMemoryTenantTopicRegistry,
+from omnimarket.nodes.node_tenant_topic_provision_effect.adapters.in_memory_tenant_marks import (
+    InMemoryTenantTopicMarks,
+)
+from omnimarket.nodes.node_tenant_topic_provision_effect.broker_settings import (
+    ModelTenantTopicProvisionSettings,
+    load_settings,
 )
 from omnimarket.nodes.node_tenant_topic_provision_effect.handlers.handler_tenant_topic_provision import (
     HandlerTenantTopicProvision,
@@ -34,10 +38,6 @@ from omnimarket.nodes.node_tenant_topic_provision_effect.handlers.handler_tenant
 from omnimarket.nodes.node_tenant_topic_provision_effect.models.model_tenant_topic_provision import (
     EnumTenantTopicOutcome,
     ModelTenantTopicProvisionCommand,
-)
-from omnimarket.nodes.node_tenant_topic_provision_effect.overlay import (
-    ModelTenantTopicProvisionOverlay,
-    load_overlay,
 )
 from omnimarket.nodes.node_topic_provision_dry_run_effect.adapters.broker_topics import (
     AiokafkaBrokerTopicCreator,
@@ -47,14 +47,14 @@ from omnimarket.nodes.node_topic_provision_dry_run_effect.adapters.broker_topics
 _OK = {EnumTenantTopicOutcome.PROVISIONED, EnumTenantTopicOutcome.ALREADY_PROVISIONED}
 
 
-def _overlay(args: argparse.Namespace) -> ModelTenantTopicProvisionOverlay:
+def _settings(args: argparse.Namespace) -> ModelTenantTopicProvisionSettings:
     if args.lane and args.partitions and args.replicas:
-        return ModelTenantTopicProvisionOverlay(
+        return ModelTenantTopicProvisionSettings(
             lane=args.lane,
             num_partitions=args.partitions,
             replication_factor=args.replicas,
         )
-    return load_overlay()
+    return load_settings()
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -65,17 +65,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--replicas", type=int)
     parser.add_argument("--consumer-read-back", action="store_true")
     args = parser.parse_args(argv)
-    overlay = _overlay(args)
-    selection, transport = resolve_lane_binding(overlay.lane)
+    settings = _settings(args)
+    selection, transport = resolve_lane_binding(settings.lane)
     if transport is None:
-        raise SystemExit(f"lane {overlay.lane} resolves no client transport")
+        raise SystemExit(f"lane {settings.lane} resolves no client transport")
     tenants = tuple(args.tenant)
     handler = HandlerTenantTopicProvision(
-        registry=InMemoryTenantTopicRegistry(tenants),
+        registry=InMemoryTenantTopicMarks(tenants),
         lister=AiokafkaBrokerTopicLister(selection.bootstrap_servers),
         creator=AiokafkaBrokerTopicCreator(selection.bootstrap_servers),
-        num_partitions=overlay.num_partitions,
-        replication_factor=overlay.replication_factor,
+        num_partitions=settings.num_partitions,
+        replication_factor=settings.replication_factor,
         broker_binding=bind_lane_client_transport(transport),
     )
     command = (

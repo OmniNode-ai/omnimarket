@@ -17,8 +17,8 @@ lifecycle: experimental
 runtime_profiles: [effects]
 description: >
   Creates a tenant's wire topics on the broker from a bus command. The names are the forwarder contract's mirror_topics
-  (inbound and outbound, each once) under the template below; the broker lane, the partition count and the replication
-  factor are overlay values. Every create is read back from the broker, a second run creates none, and a failure names
+  (inbound and outbound, each once) under the template below; the partition count and the replication
+  factor are config values and the broker lane comes from the environment. Every create is read back from the broker, a second run creates none, and a failure names
   the topic and leaves the tenant unprovisioned.
 handler:
   module: omnimarket.nodes.node_tenant_topic_provision_effect.handlers.handler_tenant_topic_provision
@@ -45,6 +45,10 @@ config:
     forwarder_contract_module: omnibase_infra.nodes.node_bus_forwarder_effect
     # How a bare mirror topic name becomes a tenant's wire topic.
     topic_template: "tenant-{slug}.{topic}"
+    num_partitions: 1
+    replication_factor: 1
+    # The environment variable naming the broker lane; it has no default.
+    broker_lane_env: ONEX_TENANT_TOPIC_PROVISION_LANE
 handler_routing:
   routing_strategy: topic_match
   handlers:
@@ -90,9 +94,6 @@ broker_acl_grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-topic-provision-requested.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-topic-provision-completed.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-topic-provision-completed.v1, operation: DESCRIBE}
-overlay:
-  node: node_tenant_topic_provision_effect
-  roots_env: ONEX_SKILL_OVERLAY_ROOTS
 metadata:
   ticket: OMN-26669
   transport_type: kafka

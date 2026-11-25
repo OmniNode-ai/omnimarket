@@ -1,4 +1,0 @@
-# Synthetic example. Copy to <root>/node_tenant_topic_provision_effect/overlay.yaml and set your own values.
-lane: example-lane
-num_partitions: 1
-replication_factor: 1

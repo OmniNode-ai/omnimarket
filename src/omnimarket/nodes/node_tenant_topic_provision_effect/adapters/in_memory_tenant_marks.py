@@ -9,7 +9,7 @@ from omnimarket.nodes.node_tenant_topic_provision_effect.models.model_tenant_top
 )
 
 
-class InMemoryTenantTopicRegistry:
+class InMemoryTenantTopicMarks:
     """Holds slugs and states in memory; a durable registry is injected in its place by a deployment."""
 
     def __init__(self, slugs: tuple[str, ...] = ()) -> None:
@@ -30,4 +30,4 @@ class InMemoryTenantTopicRegistry:
         self.failed_topics[tenant_slug] = failed_topics
 
 
-__all__ = ["InMemoryTenantTopicRegistry"]
+__all__ = ["InMemoryTenantTopicMarks"]

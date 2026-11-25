@@ -50,6 +50,8 @@ async def test_a_bus_command_creates_the_tenant_topics_and_answers_on_completed(
     contract = _contract()
     (route,) = contract["handler_routing"]["handlers"]
     completed = contract["topics"]["tenant_topic_provision"]["completed"]
+    assert completed == "onex.evt.omnimarket.tenant-topic-provision-completed.v1"
+    assert completed in contract["event_bus"]["publish_topics"]
     handler_class = getattr(
         import_module(route["handler"]["module"]), route["handler"]["name"]
     )

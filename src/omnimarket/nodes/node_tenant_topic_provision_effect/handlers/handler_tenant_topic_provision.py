@@ -54,7 +54,7 @@ class HandlerTenantTopicProvision:
     """Creates the mirror set under each tenant's prefix on the injected broker.
 
     Every dependency is a constructor argument. Left out, the mirror source and the template come from this node's
-    contract, the partition and replica counts and the broker lane from its overlay; the registry has no default.
+    contract, the partition and replica counts and the broker lane from its settings; the registry has no default.
     """
 
     def __init__(
@@ -81,7 +81,7 @@ class HandlerTenantTopicProvision:
         self._clock = clock
 
     def _complete(self) -> None:
-        """Fill what the caller left out from the contract and the overlay."""
+        """Fill what the caller left out from the contract and the settings."""
         if self._mirror_source is None or self._template is None:
             settings = _contract_settings()
             if self._mirror_source is None:
@@ -91,18 +91,18 @@ class HandlerTenantTopicProvision:
             if self._template is None:
                 self._template = str(settings["topic_template"])
         if None in (self._lister, self._creator, self._partitions, self._replicas):
-            from omnimarket.nodes.node_tenant_topic_provision_effect.overlay import (
+            from omnimarket.nodes.node_tenant_topic_provision_effect.broker_settings import (
                 build_broker,
-                load_overlay,
+                load_settings,
             )
 
-            overlay = load_overlay()
+            broker = load_settings()
             if self._lister is None or self._creator is None:
-                self._lister, self._creator, self._binding = build_broker(overlay)
+                self._lister, self._creator, self._binding = build_broker(broker)
             if self._partitions is None:
-                self._partitions = overlay.num_partitions
+                self._partitions = broker.num_partitions
             if self._replicas is None:
-                self._replicas = overlay.replication_factor
+                self._replicas = broker.replication_factor
 
     def _answer(
         self,

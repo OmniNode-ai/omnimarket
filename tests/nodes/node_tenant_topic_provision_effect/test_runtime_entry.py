@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The operator entry builds its handler from the lane the overlay or the flags name and prints one JSON line."""
+"""The operator entry builds its handler from the lane the settings or the flags name and prints one JSON line."""
 
 from __future__ import annotations
 
@@ -97,3 +97,61 @@ def test_entry_exits_one_and_names_the_topic_when_a_create_is_refused(
 
 def _names() -> tuple[str, ...]:
     return FakeMirrorSource().mirror_topic_names()
+
+
+def test_ac5_entry_reports_the_topics_a_consumer_saw(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    broker = FakeBroker()
+    _wire_entry(monkeypatch, broker)
+    asked: list[tuple[str, ...]] = []
+
+    async def consumer(bootstrap: str, topics: Any) -> tuple[str, ...]:
+        asked.append(tuple(topics))
+        return tuple(topics)
+
+    monkeypatch.setattr(entry, "consumer_visible_topics", consumer)
+    code = entry.main(
+        [
+            "--tenant",
+            "acme",
+            "--lane",
+            "synthetic",
+            "--partitions",
+            "1",
+            "--replicas",
+            "1",
+            "--consumer-read-back",
+        ]
+    )
+    out = json.loads(capsys.readouterr().out)
+    expected = sorted(wire("acme", _names()))
+    assert code == 0
+    assert sorted(asked[0]) == expected
+    assert sorted(out["consumer_saw"]) == expected
+
+
+def test_ac5_entry_reports_a_topic_no_consumer_saw(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _wire_entry(monkeypatch, FakeBroker())
+
+    async def consumer(bootstrap: str, topics: Any) -> tuple[str, ...]:
+        return tuple(sorted(topics))[1:]
+
+    monkeypatch.setattr(entry, "consumer_visible_topics", consumer)
+    entry.main(
+        [
+            "--tenant",
+            "acme",
+            "--lane",
+            "synthetic",
+            "--partitions",
+            "1",
+            "--replicas",
+            "1",
+            "--consumer-read-back",
+        ]
+    )
+    out = json.loads(capsys.readouterr().out)
+    assert len(out["consumer_saw"]) == len(_names()) - 1
