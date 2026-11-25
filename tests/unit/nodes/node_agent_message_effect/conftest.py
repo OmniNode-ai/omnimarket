@@ -19,6 +19,9 @@ from omnimarket.nodes.node_agent_message_effect.handlers.handler_agent_message i
 from omnimarket.nodes.node_event_emit_effect.handlers.handler_event_emit_effect import (
     HandlerEventEmitEffect,
 )
+from tests.unit.nodes.node_agent_message_effect.agent_directory_fakes import (
+    FakeAgentDirectory,
+)
 
 
 class FakeBus:
@@ -88,7 +91,11 @@ def bus() -> FakeBus:
 def handler(bus: FakeBus, tmp_path: Path) -> HandlerAgentMessage:
     emitter = HandlerEventEmitEffect(publish_adapter=bus, spool_dir=tmp_path / "spool")
     return HandlerAgentMessage(
-        emitter=emitter, bus=bus, read_window_seconds=0.05, quiet_gap_seconds=0.02
+        emitter=emitter,
+        bus=bus,
+        registry=FakeAgentDirectory(),
+        read_window_seconds=0.05,
+        quiet_gap_seconds=0.02,
     )
 
 
