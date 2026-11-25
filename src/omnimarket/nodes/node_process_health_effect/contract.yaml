@@ -41,6 +41,9 @@ event_bus:
   publish_topics: []
 runtime_dispatch:
   external_trigger: "python -m omnimarket.nodes.node_process_health_effect.runtime_process_health"
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_process_health_effect.runtime_process_health
+    owner: OmniNode Platform Team
 descriptor:
   node_archetype: effect
   purity: effectful
