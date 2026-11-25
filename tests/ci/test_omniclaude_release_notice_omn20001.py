@@ -44,6 +44,7 @@ from omnimarket.nodes.node_omniclaude_pin_bump_compute.models.model_omniclaude_p
     EnumPinBumpRefusal,
     ModelOmniclaudePinBumpRequest,
 )
+from tests.ci.lint_jobs import lint_steps
 
 pytestmark = pytest.mark.unit
 
@@ -293,7 +294,7 @@ def _precommit_hook(hook_id: str) -> dict[str, Any]:
 
 
 def test_notice_wired_into_lint_and_precommit() -> None:
-    steps = _load(CI_WORKFLOW)["jobs"]["lint"]["steps"]
+    steps = lint_steps(_load(CI_WORKFLOW))
     matches = [s for s in steps if s.get("name") == GUARD_STEP]
     assert len(matches) == 1
     assert THIS_TEST in str(matches[0]["run"])

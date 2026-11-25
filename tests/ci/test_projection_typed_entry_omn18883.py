@@ -39,6 +39,7 @@ from omnimarket.nodes.node_contract_projection_check_effect.handlers.handler_con
 from omnimarket.nodes.node_contract_projection_check_effect.models import (
     ModelContractProjectionGatherRequest,
 )
+from tests.ci.lint_jobs import lint_steps
 from tests.ci.projection_contract_check_runners import REPO_ROOT, run_main
 
 pytestmark = [pytest.mark.unit]
@@ -278,5 +279,5 @@ def test_the_gate_is_wired_into_ci_and_pre_commit() -> None:
     ci = yaml.safe_load(
         (REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     )
-    lint_steps = ci["jobs"]["lint"]["steps"]
-    assert any(command in str(step.get("run", "")) for step in lint_steps)
+    ci_lint_steps = lint_steps(ci)
+    assert any(command in str(step.get("run", "")) for step in ci_lint_steps)
