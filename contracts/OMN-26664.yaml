@@ -54,7 +54,15 @@ dod_evidence:
     binds_ac: [AC2]
     checks:
       - check_type: command
-        check_value: "! grep -n 'archive_glob\\|live.is_file\\|path.open' src/omnimarket/nodes/node_process_health_effect/handlers/source_readers.py"
+        check_value: "! sed -n '/^def read_ledger(/,/^def read_landing(/p' src/omnimarket/nodes/node_process_health_effect/handlers/source_readers.py | grep -n 'archive_glob\\|is_file\\|\\.open'"
+        cwd: .
+  - id: dod-omn26664-read-ledger-opens-no-file
+    description: read_ledger opens no file, and the no-ledger-file-open check passes at the head and fails on a ledger file open.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest src/omnimarket/nodes/node_process_health_effect/tests/test_ledger_read_opens_no_file.py -q --no-cov -n 0 -p no:randomly
         cwd: .
   - id: dod-omn26664-integration-proof
     description: On a lab host, with the branch checked out at its pushed sha, the history range tests of the rows loader and the process_health tests run. Hosted CI holds no lab host, so only the local Done gate runs this unbound check (the lab reading is in the PR's Lab line).
