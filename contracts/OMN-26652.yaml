@@ -17,6 +17,11 @@ requirements:
     statement: 'AC3: an empty answer, a timeout and a missing credential each grade the declared non-green state, never PASS -- falsifier: any of the three grading PASS'
   - id: AC4
     statement: 'AC4: a table lists every grader that cannot pass on its recorded answer, with the clause and the code line -- falsifier: a check on the board with no row'
+- id: req-omn26652-regression-trigger
+  statement: The delegation check regression node declares a trigger and the real contract dispatches a settings audit row into its handler.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: a settings audit row on onex.evt.omnimarket.overlay-setting-set.v1 reaches HandlerCheckRegressionOnSettingSet through the real contract and the handler builds with no arguments for auto-wiring -- falsifier: the trigger module is absent, or the row does not reach the handler'
 evidence_requirements:
 - kind: tests
   description: The golden-answer tests of the check node, each failing against a weakened grader and passing on the real one.
@@ -65,7 +70,8 @@ dod_evidence:
 - id: dod-omn26652-regression-trigger
   description: The delegation check regression node (node_delegation_check_regression_effect, omnimarket#6703) declares its trigger, the settings audit topic published by node_overlay_setting_set_effect, and the real contract dispatches one audit row through the runtime wiring into the handler, which raises the C14 and C29 alarms; the target lane is the settings' trigger_target.
   source: manual
-  binds_ac: []
+  binds_ac:
+  - AC5
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_check_regression_effect/test_setting_set_trigger.py -q --no-cov -n 0 -p no:randomly
@@ -81,7 +87,8 @@ dod_evidence:
 - id: dod-omn26652-trigger-auto-wires
   description: The settings-change trigger handler builds with no arguments so infra auto-wiring resolves it from the real contract, fails with a RuntimeError naming the missing settings, runner or history when an audit row reaches it, the contract handler block names HandlerCheckRegression, and the completed topic is declared in externally_consumed_topics.
   source: manual
-  binds_ac: []
+  binds_ac:
+  - AC5
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_check_regression_effect/test_setting_set_trigger.py tests/unit/contracts/test_every_node_auto_wires_in_process_omn17427.py -q --no-cov -n 0 -p no:randomly -k 'real_class or constructs_with_no_arguments or missing_dependency or canonical_handler or externally_consumed or type_ignore or delegation_check_regression'
