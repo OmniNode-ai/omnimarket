@@ -46,6 +46,9 @@ event_bus:
   publish_topics: []
 runtime_dispatch:
   external_trigger: "Direct Python invocation to judge host table rows (handle) or place a unit on the advertising pool hosts (place), with the table and weight read through injected sources (onex lab-work and the plugin's lab-run judge command)."
+  callers:
+    - path: src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_tick.py
+    - path: src/omnimarket/lab_work/cli.py
 descriptor:
   node_archetype: compute
   purity: pure
