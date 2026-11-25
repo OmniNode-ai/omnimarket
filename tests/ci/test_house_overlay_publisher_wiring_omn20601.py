@@ -14,6 +14,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.ci.lint_jobs import lint_steps
+
 pytestmark = [pytest.mark.unit]
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -43,10 +45,9 @@ def test_publisher_test_file_exists() -> None:
 
 def test_lint_job_runs_the_publisher_test() -> None:
     workflow = _mapping(yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8")))
-    lint = _mapping(_mapping(workflow["jobs"])["lint"])
     runs = [
         step["run"]
-        for step in _mappings(lint["steps"])
+        for step in _mappings(lint_steps(workflow))
         if isinstance(step.get("run"), str)
     ]
     matching = [run for run in runs if PUBLISHER_TEST in str(run)]

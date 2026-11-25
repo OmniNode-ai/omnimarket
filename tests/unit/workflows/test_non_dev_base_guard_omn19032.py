@@ -12,6 +12,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.ci.lint_jobs import lint_steps
+
 ROOT = Path(__file__).resolve().parents[3]
 pytestmark = pytest.mark.unit
 
@@ -192,7 +194,7 @@ def test_refusal_cannot_be_skipped_by_an_arming_trigger() -> None:
 def test_regression_is_wired_in_required_ci_and_precommit() -> None:
     command = "uv run --frozen pytest tests/unit/workflows/test_non_dev_base_guard_omn19032.py -q -m unit"
     ci = _workflow("ci.yml")
-    assert any(step.get("run") == command for step in ci["jobs"]["lint"]["steps"])
+    assert any(step.get("run") == command for step in lint_steps(ci))
     config = yaml.safe_load((ROOT / ".pre-commit-config.yaml").read_text())
     hook = next(
         hook
