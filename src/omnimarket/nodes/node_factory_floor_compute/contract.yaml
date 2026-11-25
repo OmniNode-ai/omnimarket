@@ -42,6 +42,8 @@ event_bus:
   publish_topics: []
 runtime_dispatch:
   external_trigger: node_factory_floor_effect (runtime_factory_floor.py) reads the sources, calls HandlerFactoryFloor.handle with this contract's config block and writes the JSON.
+  callers:
+    - path: src/omnimarket/nodes/node_factory_floor_effect/handlers/handler_factory_floor_effect.py
 descriptor:
   node_archetype: compute
   purity: pure

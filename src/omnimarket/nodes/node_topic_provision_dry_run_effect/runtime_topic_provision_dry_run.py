@@ -107,6 +107,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "live_topics_outside_rule": plan.live_topics_outside_rule,
                 "live_topics_undeclared": plan.live_topics_undeclared,
                 "service_writer_topics": list(plan.service_writer_topics),
+                "host_unit_publish_topics": list(plan.host_unit_publish_topics),
             }
         )
         + "\n"
