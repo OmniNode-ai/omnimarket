@@ -10,6 +10,7 @@ Each test was red on the previous head (no welcome existed).
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 
 from textual.widgets import Input
@@ -63,7 +64,10 @@ async def test_a_roomy_terminal_shows_the_wordmark_tagline_and_four_cards() -> N
     rows, _ = await _shown(140, 40)
     text = "\n".join(rows)
     assert sum("█" in row for row in rows) >= 5, "the large wordmark is missing"
-    assert "ONEXCLI" in text.replace(" ", ""), "the brand line is missing"
+    assert "WelcomeToOmniNodeDelegation" in text.replace(" ", ""), (
+        "the brand line is missing"
+    )
+    assert re.search(r"v\d+\.\d+\.\d+", text), "the version is missing"
     assert "Delegate tasks to the right model, at the lowest cost." in text
     for title, line in (
         ("Delegate", "Run a task with the best"),
@@ -110,7 +114,7 @@ async def test_clicking_the_delegate_card_puts_the_cursor_in_the_prompt() -> Non
         assert app.focused is app.query_one("#prompt", Input)
 
 
-async def test_the_welcome_steps_aside_once_something_is_submitted() -> None:
+async def test_the_welcome_stays_after_something_is_submitted() -> None:
     app = OnexTui(load_status=_ready, runner=_Quiet())  # type: ignore[arg-type]
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.pause()
@@ -118,5 +122,6 @@ async def test_the_welcome_steps_aside_once_something_is_submitted() -> None:
         await pilot.press(*"/clear", "enter")
         await pilot.pause()
         await pilot.pause()
-        assert app.query_one("#welcome").display is False
-        assert app.query_one("#header").display is True
+        assert app.query_one("#welcome").display is True
+        assert app.query_one("#header").display is False
+        assert app.query_one("#summary").display is False

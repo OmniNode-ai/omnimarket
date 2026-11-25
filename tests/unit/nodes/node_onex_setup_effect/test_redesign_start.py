@@ -50,7 +50,9 @@ def _screen_text(app: OnexTui) -> str:
     out = app.query_one("#output", OutputPane)
     lines = [str(line) for line in out.lines]
     for widget in app.query(Static):
-        lines.append(str(widget.render()))
+        # only what is on screen: a hidden widget (or one inside a hidden parent) is not
+        if widget.display and all(a.display for a in widget.ancestors):
+            lines.append(str(widget.render()))
     return "\n".join(lines)
 
 
@@ -73,11 +75,21 @@ def _fresh_launch_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
 async def test_start_screen_is_a_compact_header_not_the_banner(
     width: int, height: int
 ) -> None:
-    """D1, D2: wordmark, version, first model and folder; no banner, no tagline."""
+    """D1, D2: wordmark, version, first model and folder; no banner, no tagline.
+
+    A roomy terminal (the welcome's minimum size) shows the welcome instead, by the
+    operator's later reference image; the compact header holds below that size.
+    """
     app = OnexTui(load_status=_ready)
     async with app.run_test(size=(width, height)) as pilot:
         await _launch(pilot)
         text = _screen_text(app)
+        welcome = tui_design().welcome
+        if width >= welcome.min_width and height >= welcome.min_height:
+            assert "Welcome To OmniNode Delegation" in text
+            assert app.query_one("#header").display is False
+            assert app.query_one("#prompt", Input).region.bottom <= height
+            return
         assert "WELCOME" not in text.upper()
         assert "run them where it costs least" not in text
         header = str(app.query_one("#header", Static).render())
@@ -120,7 +132,10 @@ async def test_a_failed_status_read_says_it_plainly(
     async with app.run_test(size=(width, height)) as pilot:
         await _launch(pilot)
         text = _screen_text(app)
-        assert plain in text
+        welcome = tui_design().welcome
+        roomy = width >= welcome.min_width and height >= welcome.min_height
+        # the roomy welcome has no status block: the footer carries the short wording
+        assert roomy or plain in text
         for raw in ("Errno", "No such file", str(tmp_path), "FileNotFoundError"):
             assert raw not in text, raw
         assert "status could not be read" not in text
@@ -156,8 +171,8 @@ async def test_the_default_theme_is_onex_dark_on_the_terminal_background() -> No
             "#000000",
             "#0a0a0a",
         )
-        assert theme.primary == "#87AFFF"
-        assert theme.accent == "#D7AFFF"
+        assert theme.primary == "#F0B90B"
+        assert theme.accent == "#FFD866"
         assert theme.success == "#7fd88f"
         assert theme.warning == "#f5a742"
         assert theme.error == "#e06c75"

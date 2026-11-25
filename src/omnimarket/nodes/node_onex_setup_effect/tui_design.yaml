@@ -12,9 +12,9 @@ theme:
   # terminal: the screen shows the terminal's own background (nothing painted);
   # black: the screen is painted with the background, surface and panel below.
   ground: terminal
-  primary: "#87AFFF"
-  secondary: "#79b8ff"
-  accent: "#D7AFFF"
+  primary: "#F0B90B"
+  secondary: "#E5C07B"
+  accent: "#FFD866"
   success: "#7fd88f"
   info: "#79b8ff"
   warning: "#f5a742"
@@ -39,9 +39,9 @@ wordmark:
 # keeps the compact header. Each pixel of a letter is drawn with `pixel`.
 welcome:
   min_width: 100
-  min_height: 30
+  min_height: 34
   tagline: "Delegate tasks to the right model, at the lowest cost."
-  brand: "O N E X   C L I"
+  brand: "Welcome To OmniNode Delegation"
   brand_rule: "──────"
   pixel: "██"
   letter_gap: 2

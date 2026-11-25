@@ -2805,7 +2805,8 @@ def welcome_renderable() -> Text:
         f"{welcome.brand_rule}  {welcome.brand}  {welcome.brand_rule}\n",
         _style("muted"),
     )
-    text.append(welcome.tagline, _style("foreground"))
+    text.append(welcome.tagline + "\n", _style("foreground"))
+    text.append(design.header.version.format(version=_version()), _style("muted"))
     return text
 
 
@@ -2922,7 +2923,6 @@ class OnexTui(App[int]):
             delegation=last_known.get("delegation"),
         )
         self._last_run = ""
-        self._welcome_dismissed = False
         self._active_task: Worker[None] | None = None
         self._task_started = 0.0
         self._ticker: Timer | None = None
@@ -3227,16 +3227,12 @@ class OnexTui(App[int]):
             self.size.width >= welcome.min_width
             and self.size.height >= welcome.min_height
         )
-        showing = roomy and not self._welcome_dismissed
+        showing = roomy  # the welcome stays; results appear below it
         main = self._main()
         main.set_class(roomy, "-roomy")
         main.query_one("#welcome").display = showing
         main.query_one("#header").display = not showing
         main.query_one("#summary").display = not showing
-
-    def _dismiss_welcome(self) -> None:
-        self._welcome_dismissed = True
-        self._layout()
 
     async def welcome_action(self, action: str) -> None:
         """A welcome card was clicked."""
@@ -3360,7 +3356,6 @@ class OnexTui(App[int]):
             return
         self._history.append(text)
         self._recall = len(self._history)
-        self._dismiss_welcome()
         self._main().query_one("#output", OutputPane).follow()
         if not text.startswith("/"):
             if self._active_task is not None:
