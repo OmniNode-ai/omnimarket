@@ -72,6 +72,9 @@ class ModelSessionResumeRequest(BaseModel):
 
     operation: Operation
     ledger_path: str
+    # "file" reads the ledger file and its archive rolls (the old read); "bus" reads the rows through the
+    # bus range reader and opens no file.
+    ledger_source: Literal["file", "bus"] = "file"
     identity_claims: tuple[ModelIdentityClaim, ...] = ()
     overlay_roots: tuple[str, ...] | None = None
     since: Stamp | None = None

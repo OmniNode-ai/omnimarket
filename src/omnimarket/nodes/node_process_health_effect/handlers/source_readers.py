@@ -13,10 +13,12 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from itertools import pairwise
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from pydantic import ValidationError
 
+from omnimarket.handlers.ledger_rows_unreadable_error import LedgerRowsUnreadableError
+from omnimarket.handlers.ledger_rows_via_node import read_ledger_rows_range_via_node
 from omnimarket.models.landing_ledger_row import ModelLandingLedgerRow
 from omnimarket.models.process_health import (
     EnumReadStatus,
@@ -115,50 +117,62 @@ def _jsonl(path: Path) -> Iterable[dict[str, Any]]:
                 yield value
 
 
+class ProtocolRowsReader(Protocol):
+    """The bus rows reader's history-range read (``read_ledger_rows_range_via_node``)."""
+
+    def __call__(
+        self,
+        reader: str,
+        since: datetime,
+        until: datetime | None = None,
+        *,
+        kinds: tuple[str, ...] = ...,
+    ) -> tuple[str, ...]: ...
+
+
 def read_ledger(
-    io: Mapping[str, Any], environ: Mapping[str, str], keep_from: datetime, out: Sources
+    io: Mapping[str, Any],
+    keep_from: datetime,
+    generated_at: datetime,
+    out: Sources,
+    rows_reader: ProtocolRowsReader = read_ledger_rows_range_via_node,
 ) -> None:
-    """The live ledger and its archive splits; rows older than keep_from are kept only if HOLD or RELEASE."""
+    """The ledger rows from the bus rows reader: every row since keep_from, plus HOLD and RELEASE rows of any age the store holds."""
+    reader = str(io["reader"])
+    locator = f"bus rows reader {reader}"
     try:
-        live = Path(expand(io["live"], environ))
-    except UnsetEnvError as exc:
-        out.reads.append(_unread(EnumSourceName.LEDGER, io["live"], str(exc)))
-        return
-    locator = display(live, environ)
-    if not live.is_file():
-        out.reads.append(
-            _unread(EnumSourceName.LEDGER, locator, "the live ledger file is missing")
+        window = rows_reader(reader, keep_from)
+        holds = rows_reader(
+            reader,
+            generated_at - timedelta(days=int(io["hold_history_days"])),
+            kinds=tuple(sorted(_KEEP_ALWAYS)),
         )
+    except LedgerRowsUnreadableError as exc:
+        out.reads.append(_unread(EnumSourceName.LEDGER, locator, str(exc)))
         return
-    files = [
-        *sorted((live.parent / io["archive_dir_name"]).glob(io["archive_glob"])),
-        live,
-    ]
     seen: set[str] = set()
     first: datetime | None = None
     last: datetime | None = None
-    for path in files:
-        with path.open(encoding="utf-8", errors="replace") as handle:
-            for line in handle:
-                match = _ROW.match(line.rstrip("\n"))
-                if match is None or line in seen:
-                    continue
-                seen.add(line)
-                moment = _parse_ts(match.group("ts"))
-                first = moment if first is None else min(first, moment)
-                last = moment if last is None else max(last, moment)
-                if moment < keep_from and match.group("type") not in _KEEP_ALWAYS:
-                    continue
-                rest = match.group("rest").strip()
-                lane = _LANE.search(rest)
-                out.ledger_rows.append(
-                    ModelLandingLedgerRow(
-                        ts=match.group("ts"),
-                        rtype=match.group("type"),
-                        lane=lane.group(1) if lane else None,
-                        text=rest,
-                    )
-                )
+    for line in (*window, *holds):
+        match = _ROW.match(line.rstrip("\n"))
+        if match is None or line in seen:
+            continue
+        seen.add(line)
+        moment = _parse_ts(match.group("ts"))
+        first = moment if first is None else min(first, moment)
+        last = moment if last is None else max(last, moment)
+        if moment < keep_from and match.group("type") not in _KEEP_ALWAYS:
+            continue
+        rest = match.group("rest").strip()
+        lane = _LANE.search(rest)
+        out.ledger_rows.append(
+            ModelLandingLedgerRow(
+                ts=match.group("ts"),
+                rtype=match.group("type"),
+                lane=lane.group(1) if lane else None,
+                text=rest,
+            )
+        )
     if first is None or last is None:
         out.reads.append(
             _unread(EnumSourceName.LEDGER, locator, "no ledger row parsed")
@@ -168,10 +182,11 @@ def read_ledger(
         ModelSourceRead(
             name=EnumSourceName.LEDGER,
             status=EnumReadStatus.READ,
-            locator=f"{locator} and {display(live.parent / io['archive_dir_name'], environ)}/{io['archive_glob']}",
-            reason=f"{len(files)} files, {len(seen)} distinct rows parsed",
+            locator=locator,
+            reason=f"{len(seen)} distinct rows parsed from the bus rows reader",
             covered_from=max(first, keep_from) if first < keep_from else first,
-            covered_to=max(last, datetime.fromtimestamp(live.stat().st_mtime, UTC)),
+            # The reader answered ok (a fresh watermark) at generated_at, so the read reaches it.
+            covered_to=max(last, generated_at),
         )
     )
 

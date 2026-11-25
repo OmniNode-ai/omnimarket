@@ -18,10 +18,13 @@ to) for any CLAIM that is not its own. Nothing here appends to the ledger.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
+from omnimarket.handlers.ledger_rows_unreadable_error import LedgerRowsUnreadableError
+from omnimarket.handlers.ledger_rows_via_node import read_ledger_rows_range_via_node
 from omnimarket.handlers.session_scope import bind_session_scope
 from omnimarket.models.session_scope import ModelSessionScope
 
@@ -29,10 +32,17 @@ from ..models.model_session_resume import (
     ModelSessionResumeRequest,
     ModelSessionResumeResult,
 )
-from .dangling import dangling, dangling_prs, read_ledger
+from .dangling import Ledger, dangling, dangling_prs, read_ledger, read_ledger_rows
 from .rows import RefusalError, close_row, landing_route, relaunch_row, require_owned
 
 STAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+#: The bus rows reader name this node reads under (an entry of the reader overlay's moved readers).
+BUS_READER = "session-resume"
+#: How far back a bus read starts when the request names no ``since``, and the margin before it so a
+#: closing row of an older CLAIM is not lost.
+DEFAULT_LOOKBACK = timedelta(days=7)
+
+RowsReader = Callable[..., tuple[str, ...]]
 
 
 def reconciler_mode(
@@ -43,6 +53,19 @@ def reconciler_mode(
 
 
 class HandlerSessionResume:
+    def __init__(
+        self, rows_reader: RowsReader = read_ledger_rows_range_via_node
+    ) -> None:
+        self._rows_reader = rows_reader
+
+    def _read(self, request: ModelSessionResumeRequest, now: str) -> Ledger:
+        """The ledger rows: from the bus range reader, never the file, when ``ledger_source`` is bus."""
+        since = request.since or (
+            datetime.strptime(now, STAMP_FORMAT).replace(tzinfo=UTC) - DEFAULT_LOOKBACK
+        ).strftime(STAMP_FORMAT)
+        start = datetime.strptime(since, STAMP_FORMAT).replace(tzinfo=UTC)
+        return read_ledger_rows(self._rows_reader(BUS_READER, start))
+
     def handle(self, request: ModelSessionResumeRequest) -> ModelSessionResumeResult:
         scope = bind_session_scope(request.identity_claims, request.overlay_roots)
         base = {
@@ -50,13 +73,21 @@ class HandlerSessionResume:
             "scope": scope,
             "reconciler_mode": reconciler_mode(scope, dry_run=request.dry_run),
         }
-        ledger_path = Path(request.ledger_path)
-        if not ledger_path.is_file():
-            return ModelSessionResumeResult(
-                **base, status="error", reason=f"ledger not found: {ledger_path}"
-            )
-        ledger = read_ledger(ledger_path)
         now = request.now or datetime.now(UTC).strftime(STAMP_FORMAT)
+        if request.ledger_source == "bus":
+            try:
+                ledger = self._read(request, now)
+            except LedgerRowsUnreadableError as exc:
+                return ModelSessionResumeResult(
+                    **base, status="error", reason=f"ledger rows unreadable: {exc}"
+                )
+        else:
+            ledger_path = Path(request.ledger_path)
+            if not ledger_path.is_file():
+                return ModelSessionResumeResult(
+                    **base, status="error", reason=f"ledger not found: {ledger_path}"
+                )
+            ledger = read_ledger(ledger_path)
         if request.operation == "dangling":
             since = request.since or (
                 datetime.strptime(now, STAMP_FORMAT).replace(tzinfo=UTC)

@@ -147,14 +147,14 @@ def test_member_closes_and_relaunches_its_own_lanes(
     assert closed.status == "ok", closed.reason
     assert closed.row is not None
     assert (
-        f"| TERMINAL | lane={lane} | closed-by=sess-a2 | closes-CLAIM={stamp_of(lane)}-{lane} |"
+        f"| TERMINAL | lane={lane} | closed-by=sess-a2 | closes-CLAIM=RID1/CLAIM/{stamp_of(lane)}/{lane} |"
         in closed.row
     )
     relaunched = run(env, MEMBER_A, **relaunch_request(lane))
     assert relaunched.status == "ok"
     assert relaunched.route == "relaunch"
     assert relaunched.row is not None
-    assert f"supersedes-claim={stamp_of(lane)}-{lane}" in relaunched.row
+    assert f"supersedes-claim=RID1/CLAIM/{stamp_of(lane)}/{lane}" in relaunched.row
     assert "parent=sess-a2" in relaunched.row
 
 
