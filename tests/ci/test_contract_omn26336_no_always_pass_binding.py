@@ -11,6 +11,7 @@ this contract turned repo-evidence red as an always-pass control.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import yaml
 
@@ -27,7 +28,10 @@ def _load() -> dict[str, object]:
 def test_contract_acceptance_ids_are_the_ticket_criteria() -> None:
     contract = _load()
     ids: list[str] = []
-    for requirement in contract["requirements"]:  # type: ignore[attr-defined]
+    requirements = cast(
+        "list[dict[str, list[dict[str, str]]]]", contract["requirements"]
+    )
+    for requirement in requirements:
         for criterion in requirement["acceptance"]:
             ids.append(criterion["id"])
     assert sorted(ids) == ["AC1", "AC2", "AC3", "AC4"]
