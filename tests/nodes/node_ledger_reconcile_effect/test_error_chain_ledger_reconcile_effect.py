@@ -51,10 +51,10 @@ def test_a_host_that_cannot_reconcile_says_why_and_returns_no_sources() -> None:
     assert result.error == "gh CLI not on PATH — live PR verification is impossible"
 
 
-def test_a_missing_live_ledger_is_named() -> None:
-    result = _read(FakeHost(ledger_missing=True))
+def test_an_unreadable_ledger_window_is_named_never_read_as_empty() -> None:
+    result = _read(FakeHost(ledger_unreadable="ledger rows unreadable over the bus: x"))
     assert result.sources is None
-    assert result.error == "live ledger missing: /registry/ledger/ledger.md"
+    assert result.error == "ledger rows unreadable over the bus: x"
 
 
 def test_a_missing_roster_file_is_a_hard_failure_never_an_empty_roster() -> None:
@@ -102,28 +102,10 @@ def test_an_unreadable_registry_root_is_named_when_verifying() -> None:
     assert result.facts.prs == ()
 
 
-def test_an_unreadable_ledger_path_is_named_when_appending() -> None:
-    class NoLedger(FakeHost):
-        def ledger_path(self) -> Path:
-            raise ReconcilePortError("ONEX_LEDGER_PATH is not set")
-
-    appender = FakeAppender()
-    result = asyncio.run(
-        HandlerAppendRows(appender=appender, host=NoLedger()).handle(
-            ModelAppendRowsRequest(
-                rows=(ModelPlannedAppend(index=0, kind="terminal", row="r"),)
-            )
-        )
-    )
-    assert result.error == "ledger path unreadable: ONEX_LEDGER_PATH is not set"
-    assert result.outcomes == ()
-    assert appender.rows == []
-
-
 def test_each_failed_row_is_its_own_outcome_and_the_rest_are_still_tried() -> None:
     appender = FakeAppender(error="exit 75 (contention) after 5 attempts")
     result = asyncio.run(
-        HandlerAppendRows(appender=appender, host=FakeHost()).handle(
+        HandlerAppendRows(appender=appender).handle(
             ModelAppendRowsRequest(
                 rows=(
                     ModelPlannedAppend(index=0, kind="terminal", row="a"),

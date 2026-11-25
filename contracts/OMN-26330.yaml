@@ -1,117 +1,138 @@
 schema_version: 1.0.0
 ticket_id: OMN-26330
-title: 'Ledger-file census group 2: its 13 src files read the work ledger through the bus or are deleted, and their census rows are lowered'
-summary: The lab story log CLI and the merged-running count read their ledger rows from the moved work ledger reader node (a rows read through the reader's handler) and no longer open the ledger file or name its path variable, and their census rows are lowered. The iLO redfish CLI reads its consent row through the reader's row-at point read, the remote setup check asks for the ledger bus variables, and their rows are lowered. The reader node gains a history read and a row-at point read. The ledger reconcile compute's line citation pattern no longer carries the ledger file's name, and its row is lowered. The other eight group 2 files are left, each with its reason in the lane report.
+title: Ledger-file census, omnimarket runtime readers move to the bus - ruling recovery and the operator capture one-shot commands read the ledger window from the ledger reader node
+summary: >-
+  The idle-slot-fill ruling recovery and the operator capture's one-shot process and digest commands no
+  longer read the ledger file or its path variable: each asks the work ledger reader node for its window
+  of rows through the shared rows reader port, and an unread window is named unread, never an empty one.
+  The operator capture's appender no longer requires the path variable. Four runtime files leave the
+  census and its per-file ratchet rows are lowered; the other runtime files of the group are classified
+  in the pull request body and stay, each with the reason.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
-  - id: req-omn26330-ledger-census-group-2
-    statement: Group 2 files that read the ledger file read it through the bus reader instead, and the census rows of the cleared files are lowered.
+  - id: req-omn26330-readers-to-bus
+    statement: A ruling-recovery tick and an operator capture one-shot run read their ledger rows through the ledger reader node with the ledger file path variable unset and no ledger file present.
     acceptance:
       - id: AC1
-        statement: 'AC1: after the change, none of the group''s runtime files holds an executable reader or writer of the ledger file or its path variable, and each is moved to the bus or deleted -- falsifier: cd omnimarket && uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --repos omnimarket --directory omnimarket=. --per-file exits non-zero or prints a hit for a group 2 src file'
+        statement: >-
+          AC1: the census prints no hit for handler_ruling_recovery.py, capture_ports.py,
+          runtime_capture_cli.py or the operator capture contract.yaml -- falsifier: the census run
+          with --per-file --verbose prints a hit for one of those four files
       - id: AC2
-        statement: 'AC2: the census ratchet rows for the cleared files are lowered with the census node''s --lower, and no row is raised or added -- falsifier: git diff origin/dev -- src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml shows a raised or added line, or the census run exits non-zero'
+        statement: >-
+          AC2: the ratchet rows of the cleared files are lowered with the census node's --lower and no
+          row is raised or added -- falsifier: git diff origin/dev -- the ratchet file shows an added
+          or raised line, or the census run exits non-zero
       - id: AC3
-        statement: 'AC3: each moved reader or writer has a test that fails on the old code and passes on the change, and every node test of the group stays green -- falsifier: cd omnimarket && uv run pytest tests/nodes/node_idle_slot_fill_effect tests/nodes/node_ilo_redfish_effect tests/nodes/node_lab_fill_effect tests/nodes/node_lab_fill_plan_compute tests/nodes/node_lab_history_archive_effect tests/nodes/node_lab_story_log_effect tests/nodes/node_ledger_reconcile_compute tests/nodes/node_ledger_reconcile_effect tests/nodes/node_merged_running_count_effect tests/nodes/node_operator_access_mode_effect tests/nodes/node_operator_capture_effect -q exits non-zero'
+        statement: >-
+          AC3: each moved reader has a test that fails on the old code and passes on the change, and the
+          node tests stay green -- falsifier: the focused pytest run below exits non-zero
+  - id: req-omn26330-group2-part2
+    statement: The ledger reconciler reads its window of rows and appends its rows over the bus with no ledger file path variable set, and the lab fill lane brief names no ledger file.
+    acceptance:
+      - id: AC4
+        statement: >-
+          AC4: the census prints no hit for local_ledger_reconcile_adapters.py or
+          handler_lab_fill_lane_render.py -- falsifier: the census run with --per-file --verbose
+          prints a hit for one of those two files
+      - id: AC5
+        statement: >-
+          AC5: the ratchet rows of those two files and of the lab fill parity fixture are lowered with
+          the census node's --lower and no row is raised or added -- falsifier: git diff origin/dev
+          -- the ratchet file shows a raised or added row, or the census run exits non-zero
+      - id: AC6
+        statement: >-
+          AC6: the reconciler adapters and the lab fill brief have tests that fail on the old code
+          and pass on the change -- falsifier: the focused pytest run below exits non-zero
 evidence_requirements:
   - kind: tests
-    description: The moved readers' tests and the reader node's rows-read tests at the pushed head.
-    command: uv run pytest tests/unit/nodes/node_lab_story_log_effect tests/nodes/node_merged_running_count_effect tests/unit/nodes/node_work_ledger_reader_effect/test_rows_read.py -q --no-cov
+    description: The ruling recovery and operator capture tests pass at the pushed head; the new bus-read tests fail at the merge base.
+    command: uv run --frozen pytest tests/nodes/node_idle_slot_fill_effect tests/nodes/test_ruling_recovery.py tests/unit/nodes/node_operator_capture_effect tests/unit/nodes/node_operator_capture_compute -q --no-cov -n 0 -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
-  - id: dod-omn26330-ac1
-    description: The lab story log CLI and the merged-running count read their rows through the reader node and name no ledger path variable. At the merge base these tests do not exist, so this fails.
+  - id: dod-omn26330-ac1-census
+    description: The census over this tree exits 0 and prints no hit for the four cleared files (positive control, the same command at the merge base prints the hits).
     source: manual
-    binds_ac:
-      - AC1
+    binds_ac: [AC1]
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'cd "$PWD" && ! env ONEX_LEDGER_CENSUS_ROOT="$(dirname "$PWD")" uv run --frozen python -m omnimarket.nodes.node_work_ledger_file_census_effect --packaged-overlay --repos omnimarket --directory omnimarket="$PWD" --per-file --verbose | grep -E "handler_ruling_recovery.py|node_operator_capture_effect/(contract.yaml|handlers/capture_ports.py|runtime_capture_cli.py)"'
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_omn26330_cleared_files.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn26330-ac2-ratchet
+    description: The census exits 0 with the lowered per-file rows, the ratchet total reads at most 124 and no cleared file keeps a row (at the merge base the ratchet reads 140 and still holds those rows, so this fails there).
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'env ONEX_LEDGER_CENSUS_ROOT="$(dirname "$PWD")" uv run --frozen python -m omnimarket.nodes.node_work_ledger_file_census_effect --packaged-overlay --repos omnimarket --directory omnimarket="$PWD" --per-file && r=src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml && awk "/^  omnimarket: /{exit !(\$2<=124)}" "$r" && ! grep -E "handler_ruling_recovery.py|node_operator_capture_effect/(contract.yaml|handlers/capture_ports.py|runtime_capture_cli.py)" "$r"'
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_omn26330_cleared_files.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn26330-ac3-tests
+    description: The new bus-read tests (ruling recovery, capture digest, capture process, capture CLI, the appender) pass at the head; each fails at the merge base (red then green in the pull request body).
+    source: manual
+    binds_ac: [AC3]
     checks:
       - check_type: test_passes
-        check_value: uv run pytest tests/unit/nodes/node_lab_story_log_effect/test_lab_story_log.py tests/nodes/node_merged_running_count_effect/test_effect_merged_running_count.py -q --no-cov --tb=line -k "reads_the_week_from_the_bus_reader or read_the_ledger_from_the_reader_node"
+        check_value: uv run --frozen pytest tests/nodes/node_idle_slot_fill_effect/test_ruling_recovery_bus_read.py tests/unit/nodes/node_operator_capture_effect/test_capture_bus_read.py -q --no-cov -n 0 -p no:randomly
         cwd: .
-  - id: dod-omn26330-ac2
-    description: The census rows of the two cleared src files are gone from the ratchet and the census run exits 0. At the merge base both rows are present, so this fails.
+  - id: dod-omn26330-ac3-node-tests
+    description: The existing tests of the touched nodes pass with no assertion removed.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_idle_slot_fill_effect tests/nodes/test_ruling_recovery.py tests/unit/nodes/node_operator_capture_effect tests/unit/nodes/node_operator_capture_compute -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn26330-deploy
+    description: 'Deploy probe the hosted runner can run: the rows-narrowing function the capture one-shot commands call exists at the checked-out commit on GitHub; it does not exist at the merge base.'
     source: manual
     checks:
       - check_type: command
-        check_value: bash -c '! grep -qE "node_lab_story_log_effect/cli.py|node_merged_running_count_effect/contract.yaml" src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml && env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --ratchet-file src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml --repos omnimarket --directory omnimarket=.'
+        check_value: >-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_operator_capture_effect/handlers/ledger_read.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "def bus_relevant_rows" > /dev/null'
         cwd: .
-  - id: dod-omn26330-ac3
-    description: The reader node's rows-read helper answers the node's lines and refuses every other outcome, and the group's moved nodes keep their tests green. At the merge base the helper does not exist, so this fails.
+  - id: dod-omn26330-ac4-ac5-cleared
+    description: The census exits 0 and no row of the two cleared files remains (at the merge base both files hold a row, so this fails there).
     source: manual
-    binds_ac:
-      - AC3
+    binds_ac: [AC4, AC5]
     checks:
       - check_type: test_passes
-        check_value: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_rows_read.py tests/unit/nodes/node_lab_story_log_effect tests/nodes/node_merged_running_count_effect -q --no-cov --tb=line
+        check_value: uv run --frozen pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_omn26330_cleared_files.py -q --no-cov -n 0 -p no:randomly
         cwd: .
-  - id: dod-omn26330-ac3-history-verbs
-    description: The reader node answers a history read (an absolute since/until range older than the 30 day window) and a row-at point read (one instant, one kind), and fails closed on a node fault, a stale answer or a reader not moved. At the merge base the read_history_rows and read_row_at helpers do not exist, so this fails.
+  - id: dod-omn26330-ac6-tests
+    description: The reconciler adapter bus tests and the lab fill brief test pass at the head and fail at the merge base.
     source: manual
-    binds_ac:
-      - AC3
+    binds_ac: [AC6]
     checks:
       - check_type: test_passes
-        check_value: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_history_and_row_at.py -q --no-cov --tb=line
+        check_value: uv run --frozen pytest tests/nodes/node_ledger_reconcile_effect tests/nodes/node_ledger_reconcile_orchestrator tests/nodes/node_lab_fill_plan_compute/test_lab_fill_brief_names_no_ledger_file.py -q --no-cov -n 0 -p no:randomly
         cwd: .
-  - id: dod-omn26330-ac1-ilo-consent
-    description: The iLO write path reads its consent row by timestamp and kind through the reader's row-at point read and refuses the write when the answer is unreadable, absent or ambiguous. At the merge base ReaderApprovalSource does not exist, so this fails.
-    source: manual
-    binds_ac:
-      - AC1
-    checks:
-      - check_type: test_passes
-        check_value: uv run pytest tests/nodes/node_ilo_redfish_effect/test_reader_approvals.py -q --no-cov --tb=line
-        cwd: .
-  - id: dod-omn26330-ac1-remote-setup
-    description: The remote setup check asks for the ledger bus variables and not for the ledger file path. At the merge base a ledger file path alone satisfies the check, so this fails.
-    source: manual
-    binds_ac:
-      - AC1
-    checks:
-      - check_type: test_passes
-        check_value: uv run pytest tests/nodes/node_operator_access_mode_effect/test_operator_access_mode.py -q --no-cov --tb=line -k "ledger_file_path_alone or each_gap_is_named or ready_remote_setup"
-        cwd: .
-  - id: dod-omn26330-ac2-more-rows
-    description: The census rows of the iLO redfish CLI and the remote setup check are gone from the ratchet and the census run exits 0. At the merge base both rows are present, so this fails.
+  - id: dod-omn26330-deploy-reconcile
+    description: 'Deploy probe the hosted runner can run: the bus appender class exists in the reconciler adapters at the checked-out commit on GitHub; it does not exist at the merge base.'
     source: manual
     checks:
       - check_type: command
-        check_value: bash -c '! grep -qE "node_ilo_redfish_effect/runtime_ilo_redfish_cli.py|node_operator_access_mode_effect/handlers/handler_remote_setup_check.py" src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml && env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --ratchet-file src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml --repos omnimarket --directory omnimarket=.'
-        cwd: .
-  - id: dod-omn26330-ac1-reconcile-line-ref
-    description: The reconcile compute's line citation pattern reads a cited ledger line without naming the ledger file, and the census run prints no hit for ledger_rows.py. At the merge base the file holds a hit, so the cleared-files test fails.
-    source: manual
-    binds_ac:
-      - AC1
-    checks:
-      - check_type: test_passes
-        check_value: uv run pytest tests/nodes/node_ledger_reconcile_compute/test_line_ref_re.py tests/unit/nodes/node_work_ledger_file_census_effect/test_group2_cleared_files.py -q --no-cov --tb=line
-        cwd: .
-  - id: dod-omn26330-ac2-reconcile-row
-    description: The census row of the reconcile compute's ledger_rows.py is gone from the ratchet and the ratchet count equals the table's rows. At the merge base the row is present, so this fails.
-    source: manual
-    checks:
-      - check_type: command
-        check_value: bash -c '! grep -q "node_ledger_reconcile_compute/handlers/ledger_rows.py" src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml'
-        cwd: .
-  - id: dod-omn26330-ac2-ratchet-test
-    description: The ratchet table holds no row for a cleared group 2 file, read from the live ratchet file; the case fails on the merge base, where the rows still stand.
-    source: manual
-    binds_ac:
-      - AC2
-    checks:
-      - check_type: test_passes
-        check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_group2_cleared_files.py -q --no-cov --tb=line -k "ratchet_table_holds_no_row_for_a_cleared_file"
+        check_value: >-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_ledger_reconcile_effect/protocols/local_ledger_reconcile_adapters.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class BusLedgerAppender" > /dev/null'
         cwd: .
   - id: dod-omn26330-integration-proof
-    description: "Run the focused tests of the moved readers on a lab host at the pushed head; the local Done gate runs this unbound check."
+    description: The pushed head ran the touched node tests on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
     source: manual
     execution_scope: local_done_gate
     checks:
       - check_type: command
-        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26330 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_work_ledger_reader_effect/test_rows_read.py tests/unit/nodes/node_lab_story_log_effect tests/nodes/node_merged_running_count_effect -q --no-cov
+        check_value: >-
+          onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane censusF-0440 -- uv run --frozen pytest tests/nodes/node_idle_slot_fill_effect tests/nodes/test_ruling_recovery.py tests/unit/nodes/node_operator_capture_effect tests/unit/nodes/node_operator_capture_compute -q --no-cov -n 0 -p no:randomly
+        cwd: .

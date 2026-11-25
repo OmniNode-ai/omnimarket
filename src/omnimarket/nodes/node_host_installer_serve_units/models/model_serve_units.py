@@ -49,6 +49,8 @@ class ModelServeUnitsResult(BaseModel):
     stderr: str = ""
     changed: bool = False
     environments: dict[str, str] = Field(default_factory=dict)
+    # The registry root's omni_worktrees: undeclared, would-link, linked, already-linked or held: <n> entries ... (OMN-26371).
+    worktree_root: str = ""
 
 
 class ModelUnitDeclaration(BaseModel):

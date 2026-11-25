@@ -395,6 +395,44 @@ units:
       LAB_WORK_HOST_NAME: "{host_name}"
     evidence_file: .local/state/omni/lane-closeout-sweep/last-run.json
     state_directory: .onex_state/lane-closeout-sweep
+  # The overlay environment probe on a lab host (node_host_installer_overlay_env_probe, OMN-26549): its contract declares direct
+  # invocation by the host installer as its only trigger, and until this unit nothing called it. Every 900 s and at load one tick
+  # reads the overlays under ONEX_SKILL_OVERLAY_ROOTS for this host (LAB_WORK_HOST_NAME), probes each node that has an overlay,
+  # prints one line per declared name as set or unset (names and states, never a value) and keeps the same rows in the unit's
+  # evidence file. A name reads set when the unit's own environment (the environment below and any environment file) carries it.
+  # The 60 s limit is far under the 900 s interval; the probe reads files only.
+  overlay-env-probe-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-overlay-env-probe
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 900
+      run_timeout_s: 60
+      run_at_load: true
+      description: every 900 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_host_installer_overlay_env_probe.runtime_overlay_env_probe_tick
+    entry_file: src/omnimarket/nodes/node_host_installer_overlay_env_probe/runtime_overlay_env_probe_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+      - LAB_WORK_HOST_NAME
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      LAB_WORK_HOST_NAME: "{host_name}"
+    evidence_file: .local/state/omni/overlay-env-probe/last-run.json
+    state_directory: .onex_state/overlay-env-probe
   # The host drift owner step (node_host_drift_owner_dispatch_effect, OMN-24239): every 900 s on a Linux lab host it reads the
   # host drift checker's open items and starts one fix lane per cause no live lane covers. The bounds, the actor, the paths and
   # the runner's settings are the node's overlay in the overlays repository, found under ONEX_SKILL_OVERLAY_ROOTS; this unit
@@ -575,8 +613,9 @@ units:
     evidence_file: .local/state/omni/lane-dispatch/last-run.json
     state_directory: .onex_state/lane-dispatch
   # The daily ledger-file census record (node_work_ledger_file_census_effect): once a day and at load one tick runs the
-  # census over the registry root's omnimarket clone with the overlay and ratchet file packaged with the node, prints the daily
-  # record as one typed JSON line and keeps it in the unit's evidence file. The run limit (300 s) is the node's timeout_ms and
+  # census over every registered repository's clone under the registry root, each against its own ratchet row and per-file
+  # table, with the overlay and ratchet file packaged with the node, prints the daily record (one row per repository and the
+  # runtime-code count) as one typed JSON line and keeps it in the unit's evidence file. The run limit (300 s) is the node's timeout_ms and
   # is under the 86400 s interval. The tick reads and writes no ledger file.
   ledger-file-census-systemd:
     platform: systemd
@@ -676,6 +715,87 @@ units:
     evidence_file: .local/state/omni/tailscale-key-expiry-alarm/last-run.json
     state_directory: .onex_state/tailscale-key-expiry-alarm
     log_directory: .local/state/omni/tailscale-key-expiry-alarm
+  # OMN-26553: the lab alarm's two condition schedules, declared in the lab alarm overlay (condition_schedules) and rendered by the
+  # node's own `schedule install --condition <verb>`, ran nowhere: no installer installed them. A node_schedule unit hands the
+  # render, the load and the removal to that scheduler for the host the request names (--host-name), so the label, the interval and
+  # the host environment stay the overlay's and no second plist is written here. launchd only (the host is the operator Mac).
+  # OMN-26553: the three condition schedules the overlay declares beside the two below (the deploy agent heartbeat, the chain canary and
+  # the work ledger projection), each a node_schedule unit of the same kind, so one host-install run loads every schedule the overlay lists.
+  lab-alarm-dev-tag-heartbeat:
+    platform: launchd
+    kind: node_schedule
+    label: ai.omninode.lab-alarm-dev-tag-heartbeat
+    schedule_node: node_lab_alarm
+    schedule_condition: dev-tag-heartbeat
+    state_directory: .onex_state/lab-alarm
+  lab-alarm-delegation-chain-canary:
+    platform: launchd
+    kind: node_schedule
+    label: ai.omninode.lab-alarm-delegation-chain-canary
+    schedule_node: node_lab_alarm
+    schedule_condition: delegation-chain-canary
+    state_directory: .onex_state/lab-alarm
+  lab-alarm-work-ledger-projection-stale:
+    platform: launchd
+    kind: node_schedule
+    label: ai.omninode.lab-alarm-work-ledger-projection-stale
+    schedule_node: node_lab_alarm
+    schedule_condition: work-ledger-projection-stale
+    state_directory: .onex_state/lab-alarm
+  lab-alarm-container-restarts:
+    platform: launchd
+    kind: node_schedule
+    label: ai.omninode.lab-alarm-container-restarts
+    schedule_node: node_lab_alarm
+    schedule_condition: container-restarts
+    state_directory: .onex_state/lab-alarm
+  lab-alarm-digest:
+    platform: launchd
+    kind: node_schedule
+    label: ai.omninode.lab-alarm-digest
+    schedule_node: node_lab_alarm
+    schedule_condition: alarm-digest
+    state_directory: .onex_state/lab-alarm
+  # OMN-26553: the systemd variant of each lab alarm condition schedule above. A Linux lab host (a systemd user host) was offered none of
+  # them: the launchd units name a launchd label and the node's scheduler only installs for a host the lab alarm overlay lists. Each
+  # twin names the same node and condition and carries a label that is only the name `--list-units` and a plan print (the installed unit is named by
+  # the overlay's unit_name); the node's own scheduler renders the service and the timer for a host the overlay lists with a systemd-user scheduler, so the cadence and the
+  # host environment stay the overlay's and no second unit text is written here.
+  lab-alarm-dev-tag-heartbeat-systemd:
+    platform: systemd
+    kind: node_schedule
+    label: lab-alarm-dev-tag-heartbeat
+    schedule_node: node_lab_alarm
+    schedule_condition: dev-tag-heartbeat
+    state_directory: .onex_state/lab-alarm
+  lab-alarm-delegation-chain-canary-systemd:
+    platform: systemd
+    kind: node_schedule
+    label: lab-alarm-delegation-chain-canary
+    schedule_node: node_lab_alarm
+    schedule_condition: delegation-chain-canary
+    state_directory: .onex_state/lab-alarm
+  lab-alarm-work-ledger-projection-stale-systemd:
+    platform: systemd
+    kind: node_schedule
+    label: lab-alarm-work-ledger-projection-stale
+    schedule_node: node_lab_alarm
+    schedule_condition: work-ledger-projection-stale
+    state_directory: .onex_state/lab-alarm
+  lab-alarm-container-restarts-systemd:
+    platform: systemd
+    kind: node_schedule
+    label: lab-alarm-container-restarts
+    schedule_node: node_lab_alarm
+    schedule_condition: container-restarts
+    state_directory: .onex_state/lab-alarm
+  lab-alarm-digest-systemd:
+    platform: systemd
+    kind: node_schedule
+    label: lab-alarm-digest
+    schedule_node: node_lab_alarm
+    schedule_condition: alarm-digest
+    state_directory: .onex_state/lab-alarm
   capture-silence-watch:
     platform: systemd
     kind: registry_module_tick
@@ -763,6 +883,43 @@ units:
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
     evidence_file: .local/state/omni/c32-auth-boundary-probe/last-run.json
     state_directory: .onex_state/c32-auth-boundary-probe
+  # The delegation checks C13, C14 and C17 (node_delegation_check_probe_effect, OMN-26043), once an hour on a Linux lab host: a
+  # systemd user service and timer. One run sends each check's task through the responder row of the settings store (local
+  # least busy, then openrouter, then claude_api) and publishes each run on the node's result topic, where the beta board reads
+  # the check. The checks, the history size and the responder timeout are the node's overlay and the responder chain is the
+  # settings store's delegation_check_responders row, both found under ONEX_SKILL_OVERLAY_ROOTS; this unit holds none of them.
+  delegation-check-probe:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-delegation-check-probe
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 3600
+      # The node's own timeout_ms is 3600000 (its contract); the unit ends a hung run at 3660 s and exits 124.
+      run_timeout_s: 3660
+      run_at_load: true
+      description: every 3600 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_delegation_check_probe_effect.runtime_delegation_check_probe_tick
+    entry_file: src/omnimarket/nodes/node_delegation_check_probe_effect/runtime_delegation_check_probe_tick.py
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+    evidence_file: .local/state/omni/delegation-check-probe/last-run.json
+    state_directory: .onex_state/delegation-check-probe
   # The overlay store's loader on a Linux pool host (OMN-23353): every 300 s it checks this host's clone of the overlay home,
   # and loads the overlays the loader's overlay names when the clone's main has moved past the revision of the last load
   # (and once an hour to assert an unchanged overlay), and only while that clone is at the head of the branch the overlay
@@ -2048,6 +2205,47 @@ units:
     environment_file: .config/onex/stability-refresh-serve.env
     evidence_file: .local/state/omni/stability-refresh-serve/last-run.json
     state_directory: .onex_state/stability-refresh-serve
+  # The nightly collector's serve tick (OMN-26325): the collector node subscribes to nothing at the runtime (its handlers take their
+  # ports as constructor parameters), so nothing consumed the collect_nightly command the nightly sender publishes. Every 60 s one
+  # pass reads onex.cmd.omnimarket.test-selector-collect-nightly-requested.v1 under the overlay's consumer group, runs each command
+  # through the collect handler with the repository gateway, a first-parent commit range, a durable alarm store and the alarm routing,
+  # and publishes the typed answer on onex.evt.omnimarket.test-selector-collect-completed.v1, which the sender waits for. The host,
+  # lane, group, clone and state directory are the node overlay's serve block (the overlays clone), never this contract's. The run
+  # limit covers the group join and the read plus one collect (the node's descriptor timeout is 300 s);
+  # tests/nodes/node_test_selector_miss_collect_effect/test_collect_serve.py holds that.
+  test-selector-collect-serve-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-test-selector-collect-serve
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 60
+      run_timeout_s: 600
+      run_at_load: true
+      description: every 60 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_test_selector_miss_collect_effect.runtime_collect_serve
+    entry_file: src/omnimarket/nodes/node_test_selector_miss_collect_effect/runtime_collect_serve.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/test-selector-collect-serve/last-run.json
+    state_directory: .onex_state/test-selector-collect-serve
   # The Claude token pool rotation tick (OMN-23887), installed the declared way on every host the pool overlay lists: a
   # unit here, with its own project path and expected revision (the request's project_path and expected_revision), and
   # its own environment, in place of the pool's own `schedule install` (which ran a hand-built venv). One unit per
@@ -2203,8 +2401,8 @@ units:
       # owner's copy is no longer a source (OMN-23950), so the unit names the overlays clone first, then the plugin copy.
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
     # The configuration the alarm reads from ONEX_SILENT_FAILURE_ALARM_CONFIG (OMN-22778), written by the installer so a
-    # reinstall reproduces it and nobody writes it by hand. Built-in placeholders: {home}, {registry_root} and {ledger_path}
-    # (the request's, else the registry's own ledger file). Each input is a request field, else the installing shell's
+    # reinstall reproduces it and nobody writes it by hand. Built-in placeholders: {home} and {registry_root}.
+    # Each input is a request field, else the installing shell's
     # environment variable, else the value the last install recorded. The hosts' event names are not here: the alarm
     # derives them from host_table (OMN-22755).
     config_file:
@@ -2221,10 +2419,7 @@ units:
         - dispatch_command
       document:
         registry_root: "{registry_root}"
-        ledger: "{ledger_path}"
-        # The appender that serialises ledger writes, run by the interpreter of the checkout the request names
-        # (appender_root), because launchd's PATH has none.
-        ledger_lock: "{appender_root}/.venv/bin/onex-ledger"
+        # The interpreter of the checkout the request names (appender_root), because launchd's PATH has none.
         python: "{appender_root}/.venv/bin/python"
         # The runner the alarm starts, detached, for each episode it opens: the alarm adds --brief, --lane, --model and
         # --ticket. remote_lane_runner is the path of the remote-lane runner script of the installed omni plugin; unset,

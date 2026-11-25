@@ -151,7 +151,6 @@ from omnimarket.handlers.handler_size_band_measurement import measure_size_band
 from omnimarket.handlers.local_snapshot_publisher import (
     LocalEvidenceNoRepublishPublisher as _LocalEvidenceNoRepublishPublisher,
 )
-from omnimarket.handlers.model_catalog import call_read_deadline
 from omnimarket.handlers.routing.byok_provider_backends import (
     ModelByokProviderBackend,
     byok_backend_max_retries,
@@ -192,6 +191,9 @@ from omnimarket.handlers.routing.local_byok_route import (
 )
 from omnimarket.handlers.routing.measured_correct_ceiling import (
     refuse_above_measured_correct_ceiling,
+)
+from omnimarket.handlers.routing.spread_load_snapshot import (
+    read_spread_load_snapshot,
 )
 from omnimarket.handlers.tenant_mirror_requirement import require_tenant_mirrored
 from omnimarket.inference import provider_quota_state
@@ -315,6 +317,9 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_named_te
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_shrink_retry import (
     HandlerShrinkRetry,
     unit_slice_text,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.thinking_budget import (
+    bound_thinking_budget_to_answer_room,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegation_dispatch_progress import (
     ModelDelegationDispatchProgress,
@@ -1176,29 +1181,14 @@ def _call_with_model_budget(
 ) -> ModelLlmDelegationCallResult:
     """Read the output ceiling and price entry inside the supervised effect.
 
-    models.dev is read here, inside the cancellable worker, and only when its
-    copy is older than the configured age, within a total deadline taken from
-    the call's remaining time (OMN-23413 AC35).
+    The entry comes from the models.dev copy kept under the ONEX home, else the
+    price list shipped in the install; nothing here reads the network.
     """
-    started = time.monotonic()
-    ceiling, entry = model_output_budget(
-        row,
-        request.model_id,
-        live=True,
-        deadline_seconds=call_read_deadline(request.timeout_seconds),
-    )
-    spent = time.monotonic() - started
+    ceiling, entry = model_output_budget(row, request.model_id)
     limit = resolve_effective_max_tokens(
         requested=requested, backend_max_tokens=ceiling
     )
-    # The read's time comes out of the provider call's own timeout, so optional
-    # price metadata never pushes the call past its deadline.
-    request = request.model_copy(
-        update={
-            "max_tokens": limit,
-            "timeout_seconds": max(request.timeout_seconds - spent, 0.001),
-        }
-    )
+    request = request.model_copy(update={"max_tokens": limit})
     entry_token = current_local_model_entry.set(entry)
     try:
         result = handler(request)
@@ -4803,6 +4793,7 @@ class LocalDelegationDispatchPort:
                 task_type,
                 spread_key=spread_key,
                 prompt=_ACTIVE_PROMPT.get(),
+                load_state=read_spread_load_snapshot(),
                 **byok_kwargs,
             )
             blocked = quota_blocked_backend_refs(quota_state)
@@ -5418,6 +5409,12 @@ class LocalDelegationDispatchPort:
             provider_request_options, outbound_prompt = _apply_class_sampling(
                 provider_request_options, outbound_prompt, class_sampling
             )
+        # OMN-26588: thinking tokens share the output cap with the answer, so
+        # whichever of the profile and the overlay set a budget, it leaves the
+        # answer room.
+        provider_request_options = bound_thinking_budget_to_answer_room(
+            provider_request_options, max_tokens=effective_max_tokens
+        )
         # OMN-19432: the profile's prescribed temperature is a default for a
         # caller that sent none, never a competing writer of the wire key.
         profile_default_temperature = resolve_inference_protocol_default_temperature(
@@ -5749,6 +5746,7 @@ class LocalDelegationDispatchPort:
                 # non-heuristic way to tell the two apart.
                 finish_reason=result.finish_reason,
                 reasoning_stripped_chars=result.reasoning_stripped_chars,
+                output_tokens_spent=result.tokens_out,
                 named_test_run=named_test_run,
                 named_tests_requested=named_tests_requested,
             )
@@ -5856,6 +5854,7 @@ class LocalDelegationDispatchPort:
         deliverable_evidence: ModelDelegationDeliverableEvidence | None = None,
         finish_reason: EnumProviderFinishReason = EnumProviderFinishReason.ABSENT,
         reasoning_stripped_chars: int = 0,
+        output_tokens_spent: int = 0,
         grounding_source: str | None = None,
         named_test_run: ModelNamedTestRun | None = None,
         named_tests_requested: bool = False,
@@ -5923,6 +5922,7 @@ class LocalDelegationDispatchPort:
             else prompt,
             finish_reason=finish_reason,
             reasoning_stripped_chars=reasoning_stripped_chars,
+            output_tokens_spent=output_tokens_spent,
             named_test_run=named_test_run,
             named_tests_requested=named_tests_requested,
         )

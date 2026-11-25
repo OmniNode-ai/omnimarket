@@ -22,6 +22,7 @@ from omnimarket.nodes.node_floor_fill_orchestrator.models import (
     load_floor_fill_schedule,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_live_settings import (
+    SEAM_KEYS,
     ModelFloorFillLiveSettings,
 )
 from omnimarket.nodes.node_floor_fill_orchestrator.runtime_floor_fill_orchestrator import (
@@ -105,7 +106,14 @@ def test_live_profile_unit_exec_carries_profile_and_live_section(
     ]
     assert json.loads(words[4]) == {
         "floor_fill": OVERLAY,
-        "floor_fill_live": section,
+        "floor_fill_live": {
+            **section,
+            "store_dsn_env_file": None,
+            # The optional policy keys the section does not carry, as the settings dump them.
+            "brake_min_admitting_hosts": 1,
+            "stop_modes": None,
+            "stop_enforce_citations": {},
+        },
         "lab_hosts": [{"name": OVERLAY["host_id"], "available": True}],
     }
 
@@ -138,7 +146,14 @@ def test_default_install_unit_is_unchanged_by_the_live_option(
     assert "--profile" not in default_out
 
 
-@pytest.mark.parametrize("key", sorted(ModelFloorFillLiveSettings.model_fields))
+@pytest.mark.parametrize(
+    "key",
+    sorted(
+        name
+        for name, field in ModelFloorFillLiveSettings.model_fields.items()
+        if field.is_required()
+    ),
+)
 def test_live_profile_missing_key_refuses_naming_it(key: str, tmp_path: Path) -> None:
     section = {
         name: value for name, value in live_section(tmp_path).items() if name != key
@@ -148,6 +163,19 @@ def test_live_profile_missing_key_refuses_naming_it(key: str, tmp_path: Path) ->
     assert out == ""
     assert f"floor_fill_live.{key}" in err
     assert not (tmp_path / ".config/systemd/user").exists()
+
+
+@pytest.mark.parametrize("key", SEAM_KEYS)
+def test_live_profile_seam_key_absent_is_accepted_not_refused(
+    key: str, tmp_path: Path
+) -> None:
+    """The six seam keys are optional while overlays main carries none of them: the install is not refused for one."""
+    section = {
+        name: value for name, value in live_section(tmp_path).items() if name != key
+    }
+    code, _out, err = _install_live(tmp_path, section, "--profile", "live")
+    assert code == 0
+    assert f"floor_fill_live.{key}" not in err
 
 
 def test_live_profile_unknown_key_refuses(tmp_path: Path) -> None:

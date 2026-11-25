@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 
 class EnumDevIdentityOutcome(StrEnum):
@@ -26,11 +26,25 @@ class EnumDevIdentityOutcome(StrEnum):
     USER_CREATE_FAILED = "user_create_failed"
     USER_TOKEN_REFUSED = "user_token_refused"
     PROVISION_REFUSED = "provision_refused"
-    API_UNREACHABLE = "api_unreachable"
+    RUNTIME_UNREACHABLE = "runtime_unreachable"
     PROVISION_RESPONSE_INVALID = "provision_response_invalid"
     INVALID_IDENTITY_INPUT = "invalid_identity_input"
     USER_PROTECTED = "user_protected"
     USER_EXISTS_REFUSED = "user_exists_refused"
+    USER_FOUND = "user_found"
+    USER_ABSENT = "user_absent"
+    USER_DELETED = "user_deleted"
+    USER_DELETE_FAILED = "user_delete_failed"
+
+
+class EnumDevIdentityCleanup(StrEnum):
+    """What a run did about the user it created, once it ended."""
+
+    NOT_CREATED = "not_created"
+    DELETED = "deleted"
+    DELETE_FAILED = "delete_failed"
+    KEPT = "kept"
+    KEPT_PROTECTED = "kept_protected"
 
 
 class ModelDevIdentityProvisionCommand(BaseModel):
@@ -39,8 +53,14 @@ class ModelDevIdentityProvisionCommand(BaseModel):
     ``username``, ``email`` and ``password_key_id`` name the identity to provision; each left out is the overlay user's
     value. A username other than the overlay's must carry its own email and password key id, so a new user never borrows
     the overlay user's. An existing user is never given a new password unless ``reset_existing`` is set, and a username in
-    the overlay's ``protected_usernames`` is refused unless ``allow_protected`` is set. The tenant is the one onex-api
-    binds to the user: its provision endpoint takes no body, so the command carries no tenant name.
+    the overlay's ``protected_usernames`` is refused unless ``allow_protected`` is set. The tenant is created by the
+    runtime's tenant provision command, named from the username, so the command carries no tenant name.
+
+    A run deletes the user it created when it ends in any typed failure, and after a success only when ``disposable``
+    is set; a user that existed before the run, and a protected username, is never deleted by a run. ``lookup_user``
+    reads one named user (``write`` false) and ``delete_user`` deletes one named user and reads it gone (``write``
+    true); both need ``username``, exclude each other, and a delete refuses the overlay user and every protected
+    username.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -52,6 +72,21 @@ class ModelDevIdentityProvisionCommand(BaseModel):
     password_key_id: str | None = None
     reset_existing: bool = False
     allow_protected: bool = False
+    disposable: bool = False
+    lookup_user: bool = False
+    delete_user: bool = False
+
+    @model_validator(mode="after")
+    def _user_verbs_name_one_user(self) -> ModelDevIdentityProvisionCommand:
+        if self.lookup_user and self.delete_user:
+            raise ValueError("lookup_user and delete_user exclude each other")
+        if (self.lookup_user or self.delete_user) and not self.username:
+            raise ValueError("lookup_user and delete_user need a username")
+        if self.lookup_user and self.write:
+            raise ValueError("lookup_user reads only: write must be false")
+        if self.delete_user and not self.write:
+            raise ValueError("delete_user writes: write must be true")
+        return self
 
 
 class ModelDevIdentityProvisionResult(BaseModel):
@@ -67,10 +102,13 @@ class ModelDevIdentityProvisionResult(BaseModel):
     user_name: str | None = None
     tenant_id: str | None = None
     tenant_slug: str | None = None
+    user_id: str | None = None
+    cleanup: EnumDevIdentityCleanup | None = None
     expected_secret: str | None = None
 
 
 __all__ = [
+    "EnumDevIdentityCleanup",
     "EnumDevIdentityOutcome",
     "ModelDevIdentityProvisionCommand",
     "ModelDevIdentityProvisionResult",

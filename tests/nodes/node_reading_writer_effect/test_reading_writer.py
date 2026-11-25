@@ -444,6 +444,27 @@ def test_refusal_class_of_a_failed_read_is_kept() -> None:
     assert unnamed.error == "read-command-exit-1"
 
 
+_STUB_BUDGET = """
+import os, sys
+sys.stdin.read()
+budget = os.environ.get("ONEX_LEDGER_BUS_TIMEOUT_S", "unset")
+sys.stderr.write("Error: Work-ledger read refused (Budget" + budget.replace(".", "p") + ")\\n")
+sys.exit(1)
+"""
+
+
+def test_the_read_budget_the_overlay_declares_reaches_the_read_command() -> None:
+    """The read CLI stops at its own 60 s default (ONEX_LEDGER_BUS_TIMEOUT_S) whatever the overlay's timeout_seconds says.
+
+    Measured on h053 on 2026-11-24: the review gate sweep's 14 day STATUS read took about 51 s once and
+    hit the CLI's own 60 s TimeoutError the next time, so an overlay that gave the read 90 s still stopped at 60 s.
+    """
+    read = CommandLedgerRowSource([sys.executable, "-c", _STUB_BUDGET], 90, 1000).read(
+        _query()
+    )
+    assert read.error == "read-command-exit-1:Budget90"
+
+
 _STUB_APPEND = """
 import json, sys
 rows = sys.stdin.read()

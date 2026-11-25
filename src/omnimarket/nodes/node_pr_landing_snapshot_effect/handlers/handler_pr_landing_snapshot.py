@@ -20,7 +20,9 @@ pull-request records of the pull requests in the tick's facts.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
+from uuid import UUID
 
 import yaml
 
@@ -29,9 +31,12 @@ from omnimarket.models.landing_controller_carry import (
     decisions_of,
 )
 from omnimarket.models.landing_decision import (
+    EnumLandingPrState,
+    EnumLivenessRead,
     ModelLandingControllerState,
     ModelLandingExternalJudged,
     ModelLandingFacts,
+    ModelLandingLivenessFacts,
     ModelLandingPrFacts,
 )
 from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.snapshot_errors import (
@@ -229,6 +234,8 @@ class HandlerPrLandingSnapshot:
         recorder: ProtocolLandingTickRecorder | None = None,
         publisher: ProtocolLandingSnapshotPublisher | None = None,
         controller_source: ProtocolLandingControllerSource | None = None,
+        liveness_read: Callable[[UUID, str, str], ModelLandingLivenessFacts]
+        | None = None,
     ) -> None:
         self._overlay = default_overlay() if overlay is None else overlay
         self._facts_source = (
@@ -244,6 +251,26 @@ class HandlerPrLandingSnapshot:
             InMemoryLandingSnapshotPublisher() if publisher is None else publisher
         )
         self._controller_source = controller_source
+        self._liveness_read = liveness_read
+
+    def _fill_liveness(
+        self, facts: ModelLandingFacts, correlation_id: UUID
+    ) -> ModelLandingFacts:
+        read = self._liveness_read
+        if read is None:
+            return facts
+        prs: list[ModelLandingPrFacts] = []
+        for pr in facts.prs:
+            fact = pr.liveness
+            if pr.state is EnumLandingPrState.OPEN and (
+                fact is None
+                or fact.head_sha != pr.head_sha
+                or fact.read is not EnumLivenessRead.READ
+            ):
+                fact = read(correlation_id, pr.pr, pr.head_sha)
+                pr = pr.model_copy(update={"liveness": fact})
+            prs.append(pr)
+        return facts.model_copy(update={"prs": tuple(prs)})
 
     def handle(
         self, request: ModelLandingSnapshotRequest
@@ -296,6 +323,14 @@ class HandlerPrLandingSnapshot:
                     request, EnumSnapshotFailureReason.CONTROLLER_STATE_UNREAD, str(exc)
                 )
             filled = carry_controller_state(filled, carry, self._overlay)
+        try:
+            filled = self._fill_liveness(filled, request.correlation_id)
+        except Exception as exc:  # A failed liveness publish leaves the tick retryable.
+            return self._fail(
+                request,
+                EnumSnapshotFailureReason.PUBLISH_FAILED,
+                f"liveness read: {type(exc).__name__}: {str(exc)[:200]}",
+            )
         provenance = f"{self._facts_source.name}+{self._write_source.name}"
         if carry is not None and self._controller_source is not None:
             provenance += f"+{self._controller_source.name}"
