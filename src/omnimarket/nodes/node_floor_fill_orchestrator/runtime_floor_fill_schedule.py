@@ -23,6 +23,7 @@ import yaml
 from omnimarket.handlers.node_overlay_reader import find_node_overlay
 from omnimarket.handlers.node_overlay_resolved_roots import resolved_overlay_environ
 from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
+from omnimarket.models.overlay_keys.model_overlay_documents import ModelLabHostRow
 from omnimarket.nodes.node_floor_fill_orchestrator.handlers.adapter_floor_fill_schedule import (
     NODE_NAME,
     PROFILES,
@@ -52,6 +53,8 @@ def run_schedule(
     *,
     hosts: Iterable[tuple[str, bool]],
     home: Path,
+    host_rows: Iterable[ModelLabHostRow] = (),
+    environment: Mapping[str, str] | None = None,
     schedule: ModelFloorFillSchedule | None = None,
     run: Runner = run_command,
 ) -> ModelFloorFillScheduleResult:
@@ -89,6 +92,8 @@ def run_schedule(
         home=home,
         run=run,
         live=live,
+        host_rows=host_rows,
+        environment=environment,
     )
     if args.verb == "install":
         if not args.workspace_root:
@@ -131,6 +136,8 @@ def main(argv: Sequence[str]) -> int:
         argv,
         overlay,
         hosts=[(row.name, row.available) for row in table.hosts],
+        host_rows=table.hosts,
+        environment=resolved_overlay_environ(),
         home=Path.home(),
     )
     sys.stdout.write(result.stdout)

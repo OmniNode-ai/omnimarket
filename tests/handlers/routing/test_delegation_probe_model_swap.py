@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 import tempfile
 from collections.abc import Mapping
 from decimal import Decimal
@@ -33,6 +34,9 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_delega
     InMemoryCheckPublisher,
     InMemoryCustomerMachine,
 )
+from omnimarket.nodes.node_delegation_check_probe_effect.handlers.gateway_checks import (
+    GatewayRunSettings,
+)
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.handler_delegation_check_probe import (
     HandlerDelegationCheckProbe,
     contract_topics,
@@ -42,6 +46,20 @@ from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation
     EnumCheckVerdict,
     ModelDelegationCheckRequest,
 )
+
+# The probe node's test module imports its sibling helper by bare name, so the
+# helper's directory must be importable when this file is collected alone.
+sys.path.insert(
+    0,
+    str(
+        Path(__file__).resolve().parents[2]
+        / "nodes"
+        / "node_delegation_check_probe_effect"
+    ),
+)
+
+from _gateway_fake import FakeGateway
+
 from tests.nodes.node_delegation_check_probe_effect.test_delegation_check_probe_node import (
     good_delegation,
     good_routing,
@@ -174,6 +192,8 @@ def probe(
         machine=machine,
         publisher=InMemoryCheckPublisher(),
         topic=contract_topics()[0],
+        gateway=FakeGateway(),
+        gateway_settings=GatewayRunSettings(run_budget_s=5.0, poll_interval_s=0.0),
     )
 
 

@@ -444,7 +444,7 @@ def claude_code_state(document: dict[str, object] | None) -> tuple[str, str]:
         return ("unknown", "")
     named = document.get("claude_code")
     if named in ("not_installed", "signed_out", "ready", "installed"):
-        return (str(named), "" if named == "ready" else str(document.get("fix") or ""))
+        return (str(named), str(document.get("fix") or ""))
     steps = document.get("observations")
     step = next(
         (
@@ -1319,6 +1319,7 @@ class DelegationScreen(_TabbedScreen[None]):
         self._hooks = dict(hooks or {})
         #: Claude Code's state once the check answers; "checking" until then.
         self._claude_state = "checking"
+        self._claude_fix = ""
 
     def compose(self) -> ComposeResult:
         words = tui_design().delegation
@@ -1383,15 +1384,17 @@ class DelegationScreen(_TabbedScreen[None]):
 
     async def _check_claude(self) -> None:
         """Fill the Claude Code line: ready, installed, signed out or missing."""
-        state, _fix = await cast("OnexTui", self.app).claude_code()
+        state, fix = await cast("OnexTui", self.app).claude_code()
         self._claude_state = state
+        self._claude_fix = fix
         line, colour = {
             "ready": (_say("claude_ready"), "success"),
             "installed": (_say("claude_installed"), "info"),
             "signed_out": (_say("claude_signed_out"), "warning"),
             "not_installed": (_say("claude_missing"), "error"),
         }.get(state, (_say("claude_unknown"), "muted"))
-        self.query_one("#claude", Static).update(Text(line, style=_style(colour)))
+        rendered = line if not fix else f"{line}\n{fix}"
+        self.query_one("#claude", Static).update(Text(rendered, style=_style(colour)))
 
     def action_flip(self) -> None:
         """Space switches both: on when any is off, otherwise off."""
@@ -2066,6 +2069,8 @@ class OnexTui(App[int]):
         ]
 
     def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id != "prompt":  # #key and #url bubble up from a tab
+            return
         palette = self.query_one("#palette", OptionList)
         if not event.value.startswith("/"):
             palette.display = False
@@ -2236,6 +2241,8 @@ class OnexTui(App[int]):
         return None
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id != "prompt":  # #key and #url bubble up from a tab
+            return
         text = self._palette_choice(event.value.strip())
         prompt = self.query_one("#prompt", Input)
         prompt.value = ""
@@ -2366,7 +2373,12 @@ class OnexTui(App[int]):
         """Swap the open tab for another: the next one is read first, so the
         main screen never shows between them (OMN-23413)."""
         screen = await self.tab_screen(name)
-        await self.switch_screen(screen)
+        if len(self.screen_stack) < 2:
+            # Esc closed the tab while the next was read: the main screen is on
+            # top, and switch_screen would pop it (OMN-26613). Open, not swap.
+            await self.push_screen(screen)
+        else:
+            await self.switch_screen(screen)
 
     async def _shortcut(self, action: str) -> None:
         if action == "quit":

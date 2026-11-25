@@ -10,8 +10,10 @@ so a test can prove the value never appears in a result, a repr or a log.
 
 from __future__ import annotations
 
+from pathlib import Path
 from uuid import UUID, uuid4
 
+import yaml
 from pydantic import SecretStr
 
 from omnimarket.models.secret_store.model_generate_key_result import (
@@ -126,3 +128,69 @@ class FakeIdentityStore:
         if held == key_hash:
             return EnumApiKeyEnsure.EXISTS
         return EnumApiKeyEnsure.NAME_CONFLICT
+
+
+STORE_CONTRACT = (
+    Path(__file__).resolve().parents[3]
+    / "src/omnimarket/nodes/node_secret_store_effect/contract.yaml"
+)
+
+
+class FakeSecretStore:
+    """One in-memory secret store seen through both seams, resolving key ids by the real secret store contract.
+
+    ``generator`` stands in for the seed node's create-only generate-key operation (an id's folder and key name come from the
+    ``generated_keys`` block of ``node_secret_store_effect/contract.yaml``, a value already there is left as it is and answers
+    ``exists``); ``reader`` is the settings seam. Every write and every read is recorded by (folder, name), so a test can prove
+    which names a run touched and that no stored value changed.
+    """
+
+    def __init__(self, seeded: dict[tuple[str, str], str] | None = None) -> None:
+        self.values: dict[tuple[str, str], str] = dict(seeded or {})
+        self.writes: list[tuple[str, str]] = []
+        self.reads: list[tuple[str, str]] = []
+        self.declared: dict[str, dict[str, object]] = yaml.safe_load(
+            STORE_CONTRACT.read_text(encoding="utf-8")
+        )["generated_keys"]
+        self.generator = _StoreGenerator(self)
+        self.reader = _StoreReader(self)
+
+    def touched(self) -> set[tuple[str, str]]:
+        return set(self.writes) | set(self.reads)
+
+
+class _StoreGenerator:
+    def __init__(self, store: FakeSecretStore) -> None:
+        self._store = store
+        self.calls: list[str] = []
+
+    async def generate(self, name: str) -> ModelGenerateKeyResult:
+        self.calls.append(name)
+        spec = self._store.declared[name]
+        folder, key = str(spec["folder"]), str(spec["key"])
+        if (folder, key) in self._store.values:
+            outcome = EnumSecretStoreOutcome.EXISTS
+        else:
+            self._store.values[(folder, key)] = f"{spec['prefix']}value-for-{key}"
+            self._store.writes.append((folder, key))
+            outcome = EnumSecretStoreOutcome.CREATED
+        return ModelGenerateKeyResult(
+            name=name,
+            reference=f"secret:{folder}/{key}",
+            outcome=outcome,
+            key_length=len(self._store.values[(folder, key)])
+            if outcome is EnumSecretStoreOutcome.CREATED
+            else None,
+            folder=folder,
+            key=key,
+        )
+
+
+class _StoreReader:
+    def __init__(self, store: FakeSecretStore) -> None:
+        self._store = store
+
+    async def read(self, folder: str, name: str) -> SecretStr | None:
+        self._store.reads.append((folder, name))
+        value = self._store.values.get((folder, name))
+        return SecretStr(value) if value is not None else None

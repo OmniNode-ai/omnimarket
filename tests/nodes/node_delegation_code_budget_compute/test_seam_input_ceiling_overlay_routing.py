@@ -57,9 +57,9 @@ OVERLAYS_REPO_KEYS = {
 }
 
 
-# The one optional key (OMN-24061): a document that omits it still loads, so the overlays repository may add it after this model
-# accepts it, and never before (an overlay key no reader accepts stops every consumer of the overlay).
-OPTIONAL_OVERLAY_KEYS = {"class_sampling", "event_bus"}
+# The optional keys (class_sampling OMN-24061, output_budgets OMN-26640): a document that omits one still loads, so the deployment
+# may add it after this model accepts it, and never before (an overlay key no reader accepts stops every consumer of the overlay).
+OPTIONAL_OVERLAY_KEYS = {"class_sampling", "event_bus", "output_budgets"}
 
 
 def _overlay_document() -> dict[str, object]:

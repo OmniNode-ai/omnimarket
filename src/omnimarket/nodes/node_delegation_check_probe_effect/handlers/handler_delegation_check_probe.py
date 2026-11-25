@@ -12,6 +12,7 @@ still emitted: a broken probe must read red, never silent.
 
 from __future__ import annotations
 
+import time
 import uuid
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
@@ -25,6 +26,12 @@ from omnimarket.handlers.routing.delegation_check_responder_chain import (
 )
 from omnimarket.models.overlay_documents.model_delegation_check_responders_overlay import (
     ModelDelegationCheckResponder,
+)
+from omnimarket.nodes.node_delegation_check_probe_effect.handlers.gateway_checks import (
+    CUSTOMER_LOCAL_CHECKS,
+    GATEWAY_ONLY_CHECKS,
+    GatewayRunSettings,
+    run_gateway_check,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.grade_delegation_checks import (
     grade_c13,
@@ -44,6 +51,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.protocols.protocol_dele
     CollectorAbsentError,
     ProtocolCheckResultPublisher,
     ProtocolCustomerMachine,
+    ProtocolGatewayClient,
     ProtocolResponderReader,
 )
 
@@ -73,6 +81,10 @@ class HandlerDelegationCheckProbe:
         topic: str,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         run_id_factory: Callable[[str, datetime], str] = _new_run_id,
+        gateway: ProtocolGatewayClient | None = None,
+        gateway_settings: GatewayRunSettings | None = None,
+        sleep: Callable[[float], None] = time.sleep,
+        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self._responders = tuple(responders)
         self._reader = reader
@@ -81,6 +93,44 @@ class HandlerDelegationCheckProbe:
         self._topic = topic
         self._clock = clock
         self._run_id = run_id_factory
+        self._gateway = gateway
+        self._gateway_settings = gateway_settings or GatewayRunSettings()
+        self._sleep = sleep
+        self._monotonic = monotonic
+
+    def _gateway_check(
+        self, request: ModelDelegationCheckRequest
+    ) -> ModelDelegationCheckReading:
+        """A check a cloud workflow used to grade: graded by requests to the settings store's gateway, and only to it."""
+        if self._gateway is None:
+            return ModelDelegationCheckReading(
+                preconditions=(
+                    ModelCheckPrecondition(
+                        name="gateway_row",
+                        present=False,
+                        detail="the settings store serves no delegation_check_gateway row, so no gateway address is known",
+                    ),
+                )
+            )
+        try:
+            return run_gateway_check(
+                request.check_id,
+                self._gateway,
+                self._gateway_settings,
+                sleep=self._sleep,
+                monotonic=self._monotonic,
+            )
+        except CollectorAbsentError as exc:
+            # The row was read; the run keeps the address and the tenant beside the credential that is absent.
+            return ModelDelegationCheckReading(
+                endpoint=self._gateway.gateway_url,
+                tenant_slug=self._gateway.tenant_slug,
+                preconditions=(
+                    ModelCheckPrecondition(
+                        name=exc.name, present=False, detail=exc.detail
+                    ),
+                ),
+            )
 
     @staticmethod
     def _chain_head(resolution: ModelChainResolution) -> dict[str, object]:
@@ -165,14 +215,43 @@ class HandlerDelegationCheckProbe:
             **head, clauses=grade_c17(observation), preconditions=(precondition,)
         )
 
+    def _with_gateway_leg(
+        self, reading: ModelDelegationCheckReading, request: ModelDelegationCheckRequest
+    ) -> ModelDelegationCheckReading:
+        """A customer-local check is also read from the gateway: its clauses and absent surfaces join the machine reading's."""
+        assert request.check_id in CUSTOMER_LOCAL_CHECKS
+        leg = self._gateway_check(request)
+        return reading.model_copy(
+            update={
+                "clauses": (*reading.clauses, *leg.clauses),
+                "preconditions": (*reading.preconditions, *leg.preconditions),
+                "not_measured": reading.not_measured or leg.not_measured,
+                "endpoint": leg.endpoint,
+                "tenant_slug": leg.tenant_slug,
+            }
+        )
+
     def _reading(
         self, request: ModelDelegationCheckRequest
     ) -> ModelDelegationCheckReading:
-        reading = (
-            self._surface_check()
-            if request.check_id == "C17"
-            else self._task_check(request)
-        )
+        if request.check_id in GATEWAY_ONLY_CHECKS:
+            reading = self._gateway_check(request)
+        else:
+            try:
+                reading = (
+                    self._surface_check()
+                    if request.check_id == "C17"
+                    else self._task_check(request)
+                )
+            except CollectorAbsentError as exc:
+                reading = ModelDelegationCheckReading(
+                    preconditions=(
+                        ModelCheckPrecondition(
+                            name=exc.name, present=False, detail=exc.detail
+                        ),
+                    )
+                )
+            reading = self._with_gateway_leg(reading, request)
         return reading.model_copy(update={"versions": self._machine.versions()})
 
     def handle(
@@ -222,6 +301,8 @@ class HandlerDelegationCheckProbe:
             input_usd_per_million=reading.input_usd_per_million,
             output_usd_per_million=reading.output_usd_per_million,
             versions=reading.versions,
+            gateway_url=reading.endpoint,
+            tenant_slug=reading.tenant_slug,
             error=error
             or (
                 reading.not_measured

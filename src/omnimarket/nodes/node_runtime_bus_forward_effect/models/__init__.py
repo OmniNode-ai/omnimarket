@@ -5,6 +5,8 @@ from omnimarket.nodes.node_runtime_bus_forward_effect.models.model_runtime_bus_f
     ModelForwardRefusal,
     ModelRuntimeBusForwardCommand,
     ModelRuntimeBusForwardResult,
+    ModelRuntimeBusLocalRecordCommand,
+    ModelRuntimeBusLocalRecordResult,
 )
 
 __all__ = [
@@ -12,4 +14,6 @@ __all__ = [
     "ModelForwardRefusal",
     "ModelRuntimeBusForwardCommand",
     "ModelRuntimeBusForwardResult",
+    "ModelRuntimeBusLocalRecordCommand",
+    "ModelRuntimeBusLocalRecordResult",
 ]

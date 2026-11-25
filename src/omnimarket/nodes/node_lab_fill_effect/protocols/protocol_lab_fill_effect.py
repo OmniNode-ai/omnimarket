@@ -52,13 +52,13 @@ class ProtocolLabFillPlacementReader(Protocol):
 class ProtocolLabFillLedgerReader(Protocol):
     """Reads the rolling ledger for this fire's STATUS row."""
 
-    def status_row_time(self, ledger_path: str, run_key: str) -> str | None: ...
+    def status_row_time(self, run_key: str) -> str | None: ...
 
 
 class ProtocolLabFillCloudFacts(Protocol):
     """The ledger's newest host=cloud CLAIM (OMN-21881); LabFillPortError when the ledger is unread."""
 
-    def newest_cloud_claim(self, ledger_path: str) -> str | None: ...
+    def newest_cloud_claim(self) -> str | None: ...
 
 
 class ProtocolLabFillApprovedWork(Protocol):
@@ -124,9 +124,7 @@ class ProtocolLabFillMergedWork(Protocol):
 
     def merged_prs(self, ticket: str, state_path: str) -> Sequence[str]: ...
 
-    def built_reports(
-        self, ticket: str, ledger_path: str
-    ) -> Sequence[ModelLabFillBuiltReport]:
+    def built_reports(self, ticket: str) -> Sequence[ModelLabFillBuiltReport]:
         """The ticket's already-built TERMINALs in the ledger (OMN-23376)."""
         ...
 

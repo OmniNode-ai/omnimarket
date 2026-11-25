@@ -89,6 +89,15 @@ schedule:
   unit_name: onex-floor-fill-tick
   timeout_seconds: 900
   dispatch_venv: .onex-dispatch-venv
+  # The live profile's unit carries these three variables. The ledger append command is built from the fill host's own
+  # row of the lab host table (its ledger_bus_python and ledger_bus_lane, with this entry's module and verb). The overlay
+  # roots are the ordered roots the install itself read the overlay from, and the workspace config root is the installing
+  # host's own declaration of it. One that is not declared refuses the install naming it.
+  ledger_append_entry: omnimarket.work_ledger_bus.cli append
+  unit_environment:
+    ledger_append_command: ONEX_LEDGER_BUS_APPEND_COMMAND
+    workspace_config_root: ONEX_WORKSPACE_CONFIG_ROOT
+    overlay_roots: ONEX_SKILL_OVERLAY_ROOTS
 
 overlay:
   example: "overlay.example.yaml"
