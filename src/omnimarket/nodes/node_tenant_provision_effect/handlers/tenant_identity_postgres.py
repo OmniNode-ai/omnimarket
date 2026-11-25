@@ -74,6 +74,15 @@ VALUES ($1, $2, $3)
 ON CONFLICT DO NOTHING
 RETURNING id
 """
+_LOCK_TENANT_BY_SLUG = "SELECT tenant_id, tenant_slug, provisioning_state FROM tenants WHERE tenant_slug = $1 FOR UPDATE"
+_LOCK_TENANT_BY_ID = _LOCK_TENANT_BY_SLUG.replace("tenant_slug = $1", "tenant_id = $1")
+_LIVE_GATEWAY_KEYS = (
+    "SELECT count(*) FROM tenant_api_keys WHERE tenant_id = $1 AND is_active"
+)
+_LIVE_PROVIDER_KEYS = "SELECT count(*) FROM tenant_inference_credentials WHERE tenant_id = $1 AND revoked_at IS NULL"
+_SUSPEND_TENANT = (
+    "UPDATE tenants SET provisioning_state = 'suspended' WHERE tenant_id = $1"
+)
 _ACTIVE_KEY_HASH_BY_NAME = "SELECT key_hash FROM tenant_api_keys WHERE tenant_id = $1 AND name = $2 AND is_active"
 
 
@@ -103,6 +112,27 @@ class EnumApiKeyKind(StrEnum):
     EXISTS = "exists"
     NAME_CONFLICT = "name_conflict"
     HASH_TAKEN = "hash_taken"
+
+
+class EnumSuspendKind(StrEnum):
+    """What one suspend transaction found and did."""
+
+    SUSPENDED = "suspended"
+    ALREADY_SUSPENDED = "already_suspended"
+    LIVE_KEYS = "live_keys"
+    NOT_FOUND = "not_found"
+
+
+@dataclass(frozen=True)
+class SuspendRecord:
+    """The suspend transaction's result; the key counts are read only when the tenant was not already suspended."""
+
+    kind: EnumSuspendKind
+    tenant_id: UUID | None = None
+    tenant_slug: str | None = None
+    provisioning_state: str | None = None
+    live_gateway_keys: int | None = None
+    live_provider_keys: int | None = None
 
 
 @dataclass(frozen=True)
@@ -273,6 +303,61 @@ class TenantIdentityPostgres:
             return EnumApiKeyKind.EXISTS
         return EnumApiKeyKind.NAME_CONFLICT
 
+    async def suspend(
+        self, *, tenant_id: UUID | None, tenant_slug: str | None
+    ) -> SuspendRecord:
+        """Set ``provisioning_state`` to ``suspended`` unless a live gateway or provider key holds the tenant.
+
+        One transaction locks the tenant row, so a key registered while the suspend runs is either counted or waits.
+        A gateway key is live while ``is_active``; a provider key is live while ``revoked_at`` is null. Suspending a
+        suspended tenant changes nothing.
+        """
+        try:
+            pool = await self._get_pool()
+            async with pool.acquire() as connection, connection.transaction():
+                tenant = (
+                    await connection.fetchrow(_LOCK_TENANT_BY_ID, tenant_id)
+                    if tenant_id is not None
+                    else await connection.fetchrow(_LOCK_TENANT_BY_SLUG, tenant_slug)
+                )
+                if tenant is None:
+                    return SuspendRecord(kind=EnumSuspendKind.NOT_FOUND)
+                found = tenant["tenant_id"]
+                slug = tenant["tenant_slug"]
+                if tenant["provisioning_state"] == "suspended":
+                    return SuspendRecord(
+                        kind=EnumSuspendKind.ALREADY_SUSPENDED,
+                        tenant_id=found,
+                        tenant_slug=slug,
+                        provisioning_state="suspended",
+                    )
+                gateway = int(await connection.fetchval(_LIVE_GATEWAY_KEYS, found))
+                provider = int(
+                    await connection.fetchval(_LIVE_PROVIDER_KEYS, str(found))
+                )
+                if gateway or provider:
+                    return SuspendRecord(
+                        kind=EnumSuspendKind.LIVE_KEYS,
+                        tenant_id=found,
+                        tenant_slug=slug,
+                        provisioning_state=tenant["provisioning_state"],
+                        live_gateway_keys=gateway,
+                        live_provider_keys=provider,
+                    )
+                await connection.execute(_SUSPEND_TENANT, found)
+                return SuspendRecord(
+                    kind=EnumSuspendKind.SUSPENDED,
+                    tenant_id=found,
+                    tenant_slug=slug,
+                    provisioning_state="suspended",
+                    live_gateway_keys=0,
+                    live_provider_keys=0,
+                )
+        except TenantStoreUnavailableError:
+            raise
+        except _DRIVER_ERRORS as exc:
+            raise _unavailable(exc) from None
+
     async def read(
         self, *, tenant_id: UUID | None, tenant_slug: str | None
     ) -> TenantRow | None:
@@ -293,7 +378,9 @@ class TenantIdentityPostgres:
 __all__ = [
     "EnumApiKeyKind",
     "EnumProvisionKind",
+    "EnumSuspendKind",
     "ProvisionRecord",
+    "SuspendRecord",
     "TenantIdentityPostgres",
     "TenantRow",
     "TenantStoreUnavailableError",

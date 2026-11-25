@@ -4,7 +4,9 @@
 
 The tables are the columns of the seam ``docker/migrations/seams/tenant_identity_schema.sql`` (omnibase_infra):
 ``tenants``, ``plan_tiers``, ``tenant_plans`` (keyed by ``plan_code``, no id column) and ``tenant_event_outbox``
-(``topic`` and ``envelope``, no tenant column). The
+(``topic`` and ``envelope``, no tenant column), plus the two key tables the suspend operation reads: ``tenant_api_keys``
+(gateway keys, live while ``is_active``) and ``tenant_inference_credentials`` (provider keys, live while ``revoked_at``
+is null). The
 fixture is CI's provisioned database when ``INTEGRATION_POSTGRES_PASSWORD`` is set, else an owned localhost-only
 container; it never reaches a deployed database.
 """
@@ -70,6 +72,22 @@ CREATE TABLE tenant_event_outbox (
     published_at timestamptz,
     attempts integer NOT NULL DEFAULT 0,
     last_error text
+);
+CREATE TABLE tenant_api_keys (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES tenants (tenant_id),
+    name text NOT NULL,
+    key_hash text NOT NULL UNIQUE,
+    revoked_at timestamptz,
+    is_active boolean NOT NULL DEFAULT true
+);
+CREATE TABLE tenant_inference_credentials (
+    api_key_ref text PRIMARY KEY,
+    tenant_id text NOT NULL,
+    name text NOT NULL,
+    provider text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    revoked_at timestamptz
 );
 INSERT INTO plan_tiers (code, name, is_default) VALUES ('discovery', 'Discovery', true), ('team', 'Team', false);
 """

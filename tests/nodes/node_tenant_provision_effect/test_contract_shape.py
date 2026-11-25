@@ -15,6 +15,7 @@ pytestmark = pytest.mark.unit
 _NODE = "node_tenant_provision_effect"
 PROVISION_REQUESTED = "onex.cmd.omnimarket.tenant-provision-requested.v1"
 READ_REQUESTED = "onex.cmd.omnimarket.tenant-read-requested.v1"
+SUSPEND_REQUESTED = "onex.cmd.omnimarket.tenant-suspend-requested.v1"
 TENANT_EVENTS = "onex.tenant.events"
 
 
@@ -47,6 +48,7 @@ def test_node_type_placement_and_routing() -> None:
     assert {(e["topic"], e["handler"]["name"]) for e in routing["handlers"]} == {
         (PROVISION_REQUESTED, "HandlerTenantProvision"),
         (READ_REQUESTED, "HandlerTenantRead"),
+        (SUSPEND_REQUESTED, "HandlerTenantSuspend"),
     }
 
 
@@ -56,10 +58,12 @@ def test_topics_are_requested_in_completed_out_and_there_is_no_failed_topic() ->
     assert set(contract["event_bus"]["subscribe_topics"]) == {
         PROVISION_REQUESTED,
         READ_REQUESTED,
+        SUSPEND_REQUESTED,
     }
     assert completed == {
         "onex.evt.omnimarket.tenant-provision-completed.v1",
         "onex.evt.omnimarket.tenant-read-completed.v1",
+        "onex.evt.omnimarket.tenant-suspend-completed.v1",
     }
     assert set(contract["event_bus"]["publish_topics"]) == {contract["terminal_event"]}
     assert set(contract["externally_consumed_topics"]) == completed
@@ -91,10 +95,12 @@ def test_broker_grants_follow_the_operator_plane_authority() -> None:
 def test_identity_tables_are_declared_in_the_six_key_shape() -> None:
     tables = {t["name"]: t for t in _contract()["identity_io"]["db_tables"]}
     assert {n: t["access"] for n, t in tables.items()} == {
-        "tenants": "read_insert",
+        "tenants": "read_insert_update",
         "tenant_plans": "read_insert",
         "tenant_event_outbox": "read_insert",
         "plan_tiers": "read",
+        "tenant_api_keys": "read",
+        "tenant_inference_credentials": "read",
     }
     for table in tables.values():
         assert set(table) == {
@@ -111,6 +117,8 @@ def test_identity_tables_are_declared_in_the_six_key_shape() -> None:
     assert {t["migration"] for t in tables.values()} == {
         "20251207_tenants_uuid_pk.sql",
         "20251209_m4_usage_schema.sql",
+        "20251211_m4_api_keys.sql",
+        "0000_create_tenant_inference_credentials.sql",
         "20260816_tenant_event_outbox.sql",
     }
 

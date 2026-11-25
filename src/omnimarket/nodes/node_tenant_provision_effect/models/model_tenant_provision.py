@@ -80,6 +80,17 @@ class EnumTenantReadOutcome(StrEnum):
     FAILED_STORE_UNAVAILABLE = "failed_store_unavailable"
 
 
+class EnumTenantSuspendOutcome(StrEnum):
+    """What a suspend command ended as; only ``suspended`` wrote a row."""
+
+    SUSPENDED = "suspended"
+    ALREADY_SUSPENDED = "already_suspended"
+    REFUSED_LIVE_KEYS = "refused_live_keys"
+    REFUSED_INVALID_REQUEST = "refused_invalid_request"
+    NOT_FOUND = "not_found"
+    FAILED_STORE_UNAVAILABLE = "failed_store_unavailable"
+
+
 class ModelTenantProvisionResult(BaseModel):
     """The answer on ``-completed``. The tenant fields are set for ``created`` and ``already_exists`` only."""
 
@@ -124,15 +135,44 @@ class ModelTenantReadResult(BaseModel):
     emitted_at: datetime
 
 
+class ModelTenantSuspendCommand(BaseModel):
+    """Suspend one tenant by ``tenant_id`` or by ``tenant_slug``; exactly one of the two."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    command_id: UUID
+    tenant_id: UUID | None = None
+    tenant_slug: str | None = None
+
+
+class ModelTenantSuspendResult(BaseModel):
+    """The answer to a suspend: the typed outcome, the tenant and, for a refusal, how many live keys held it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    command_id: UUID
+    outcome: EnumTenantSuspendOutcome
+    detail: str
+    tenant_id: UUID | None = None
+    tenant_slug: str | None = None
+    provisioning_state: str | None = None
+    live_gateway_keys: int | None = None
+    live_provider_keys: int | None = None
+    emitted_at: datetime
+
+
 __all__ = [
     "RESERVED_SLUGS",
     "SLUG_MAX_LENGTH",
     "SLUG_MIN_LENGTH",
     "EnumTenantProvisionOutcome",
     "EnumTenantReadOutcome",
+    "EnumTenantSuspendOutcome",
     "ModelTenantProvisionCommand",
     "ModelTenantProvisionResult",
     "ModelTenantReadCommand",
     "ModelTenantReadResult",
+    "ModelTenantSuspendCommand",
+    "ModelTenantSuspendResult",
     "slug_violation",
 ]
