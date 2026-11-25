@@ -56,6 +56,11 @@ requirements:
   acceptance:
   - id: AC9
     statement: 'AC9: with the shipped adjacency file, each of the four recorded fixture-only merges narrows and no test file naming a changed file is left out of its selection, and a selection with its readers removed reports misses -- falsifier: uv run pytest tests/nodes/node_test_selection_selector_compute/test_data_readers.py -k shipped fails when data_file_readers_enabled is false'
+- id: req-omn24562-responder-reader
+  statement: The delegation check responder reader answers a llama.cpp listing without max_model_len, advances past a dead responder and prefers the least busy one.
+  acceptance:
+  - id: AC10
+    statement: 'AC10: the live reader chooses a responder whose listing carries meta.n_ctx only, skips a dead one and orders by load -- falsifier: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_http_responder_reader_live_shapes.py -q fails'
 evidence_requirements:
 - kind: tests
   description: The inode alarm tests pass at the pushed head.
@@ -161,4 +166,22 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_test_selection_selector_compute/test_data_readers.py -q -n 0 --no-cov -p no:randomly -k shipped
+    cwd: .
+- id: dod-omn24562-responder-reader-ac10
+  description: 'AC10: four tests over real loopback sockets pass; they fail if the reader raises on a listing with no max_model_len, stops at a dead first responder, or ignores load.'
+  source: manual
+  binds_ac:
+  - AC10
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_http_responder_reader_live_shapes.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24562-additive-latency-no-wall-clock
+  description: 'AC10: the two additive latency tests of the hook adapter read the injected clock and the deadline handed to the client, never the runner wall clock; with every wait stretched by 0.7 s the old per_prompt test fails (1.2 s against a 0.9 s limit, as Tests (Split 13/20) failed at 1.15 s) and the file passes.'
+  source: manual
+  binds_ac:
+  - AC10
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_additive_rows_omn22016.py -q --no-cov -n 0 -p no:randomly
     cwd: .
