@@ -10,8 +10,12 @@ unless the caller says the cause was already alerted. A cause is named only from
 """
 
 import re
-from dataclasses import dataclass
 
+from omnimarket.handlers.pr_create_refusal_causes import (
+    CAUSES,
+    KINDS,
+    REFUSAL,
+)
 from omnimarket.nodes.node_pr_create_refusal_alert_compute.models import (
     ModelPrCreateRefusalAlert,
     ModelPrCreateRefusalAlertRequest,
@@ -19,58 +23,7 @@ from omnimarket.nodes.node_pr_create_refusal_alert_compute.models import (
     ModelPrCreateRefusalClass,
 )
 
-_KINDS = frozenset({"STATUS", "TERMINAL"})
 _LANE = re.compile(r"(?:^|[\s|])lane=([^\s|]+)")
-
-
-@dataclass(frozen=True)
-class _Cause:
-    name: str
-    pattern: re.Pattern[str]
-    says: str
-
-
-# Order matters: the first cause whose pattern matches names the row's cause, specific words before the general ones.
-CAUSES: tuple[_Cause, ...] = (
-    _Cause(
-        "reader-exit-69",
-        re.compile(
-            r"exit(?:ed)? 69\b|bus[- ]session[- ]failed[- ]timeouterror|bus session TimeoutError",
-            re.I,
-        ),
-        "the ledger reader answered the duplicate guard with exit 69 (bus session timeout), so pr-create refused unchecked",
-    ),
-    _Cause(
-        "reader-timed-out",
-        re.compile(r"reader \S+ timed out after \d+(?:\.\d+)?s"),
-        "the guard's wait for the ledger reader ended, so pr-create refused unchecked",
-    ),
-    _Cause(
-        "reader-overlay-not-configured",
-        re.compile(
-            r"overlay (?:file )?(?:is )?not configured|NodeOverlayNotFoundError"
-        ),
-        "the ledger reader found no overlay on the host, so pr-create refused unchecked",
-    ),
-    _Cause(
-        "reader-not-moved",
-        re.compile(r"reader-not-in-moved-readers"),
-        "the ledger reader's overlay does not name the guard's reader as moved, so pr-create refused unchecked",
-    ),
-    _Cause(
-        "pr-create-timeout",
-        re.compile(r"pr-create\b[^\n]{0,120}?\b(?:hung|timed out)\b|\brc 124\b"),
-        "onex scm pr-create ran until the lane's own wait ended and opened nothing",
-    ),
-    _Cause(
-        "guard-unchecked",
-        re.compile(r"PR-DUPLICATE-GUARD unchecked"),
-        "the duplicate guard could not read a source, so pr-create refused unchecked",
-    ),
-)
-_REFUSAL = re.compile(
-    r"PR-DUPLICATE-GUARD unchecked|pr-create\b[^\n]{0,120}?\b(?:hung|timed out)\b|\brc 124\b"
-)
 
 
 def _parse(row: str) -> tuple[str, str, str] | None:
@@ -90,11 +43,11 @@ class HandlerPrCreateRefusalAlertCompute:
         considered = 0
         for row in request.rows:
             parsed = _parse(row)
-            if parsed is None or parsed[1] not in _KINDS:
+            if parsed is None or parsed[1] not in KINDS:
                 continue
             considered += 1
             stamp, _, lane = parsed
-            if not _REFUSAL.search(row):
+            if not REFUSAL.search(row):
                 continue
             for declared in CAUSES:
                 if declared.pattern.search(row):

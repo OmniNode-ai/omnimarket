@@ -50,6 +50,8 @@ class ModelCheckOutcome(_Frozen):
     detail: str = ""
     run_id: str = ""
     finished_at: AwareDatetime | None = None
+    #: The module the probe ran as (``python -m <module>``); empty when no probe ran.
+    probe: str = ""
 
 
 class ModelCheckRecord(_Frozen):
@@ -61,6 +63,8 @@ class ModelCheckRecord(_Frozen):
     reading: EnumCheckReading
     detail: str = ""
     run_id: str = ""
+    #: The module the probe ran as; empty when no probe ran (no route of ours for the check).
+    probe: str = ""
     at: AwareDatetime
     #: The merges the build added over the previous recorded build, oldest first.
     merges: tuple[ModelSuspectMerge, ...] = ()
@@ -89,6 +93,8 @@ class EnumBuildChecksStatus(StrEnum):
     ALREADY_RUN = "already_run"
     #: Not a successful rebuild of the dev lane.
     SKIPPED = "skipped"
+    #: The build history cannot be written under the declared state root: nothing ran, and the reason names the path.
+    REFUSED = "refused"
 
 
 class ModelBuildChecksResult(_Frozen):

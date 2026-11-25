@@ -23,6 +23,7 @@ from pathlib import Path
 
 import yaml
 
+from omnimarket.config.state_root import resolve_onex_state_root
 from omnimarket.models.delegation_check_regression import (
     EnumChangeKind,
     EnumRegressionSource,
@@ -68,6 +69,7 @@ from omnimarket.nodes.node_build_delegation_checks.models.model_build_delegation
 )
 from omnimarket.nodes.node_build_delegation_checks.overlay import load_overlay
 from omnimarket.nodes.node_build_delegation_checks.protocols.protocol_build_checks import (
+    BuildStoreUnwritableError,
     ProtocolBuildStore,
     ProtocolCheckRunner,
     ProtocolMergeSource,
@@ -134,7 +136,17 @@ class _BuildChecksRun:
             merges=added,
         )
         # The claim comes before any probe runs: a second event for this build, replayed or concurrent, finds it taken.
-        if not self._store.begin(begun):
+        try:
+            claimed = self._store.begin(begun)
+        except BuildStoreUnwritableError as exc:
+            # Nothing was claimed and no probe has run: the build is refused by name, and a replay runs it once the root is writable.
+            return ModelBuildChecksResult(
+                build_id=build_id,
+                status=EnumBuildChecksStatus.REFUSED,
+                reason=str(exc),
+                previous_build_id=previous_id,
+            )
+        if not claimed:
             return ModelBuildChecksResult(
                 build_id=build_id,
                 status=EnumBuildChecksStatus.ALREADY_RUN,
@@ -156,6 +168,7 @@ class _BuildChecksRun:
                 reading=outcome.reading,
                 detail=outcome.detail,
                 run_id=outcome.run_id,
+                probe=outcome.probe,
                 at=outcome.finished_at or now,
                 merges=added,
             )
@@ -209,6 +222,17 @@ class _BuildChecksRun:
                 )
                 if refusal is not None
             )
+        # One record per check on the per-check topic, so each of the ten checks has its own reading on the bus.
+        failed.extend(
+            refusal
+            for refusal in (
+                self._attempt(
+                    record.check_id, "check", self._sink.publish_check_record, record
+                )
+                for record in records
+            )
+            if refusal is not None
+        )
         try:
             self._sink.publish_result(result)
         except OSError as exc:
@@ -386,23 +410,30 @@ class HandlerBuildDelegationChecks:
         if not home:
             raise OSError(f"{OMNI_HOME_ENV} names no registry root")
         root = Path(home)
+        # The registry root is a read-only mount in the runtime; the build history belongs under the declared writable state root.
+        state_root = resolve_onex_state_root(
+            purpose="node_build_delegation_checks build history"
+        )
         replay = os.environ.get(REPLAY_ENV, "").strip()
         runner: ProtocolCheckRunner = (
             recorded_results(Path(replay))
             if replay
-            else CommandCheckExecutor(settings.check_routes)
+            else CommandCheckExecutor(
+                settings.check_routes, registry_root=root, state_root=state_root
+            )
         )
         self._run = _BuildChecksRun(
             settings=settings,
             runner=runner,
             store=FileBuildStore(
-                root / settings.history_relpath, settings.history_keep
+                state_root / settings.history_relpath, settings.history_keep
             ),
             merges=GitMergeSource(root / settings.merge_clone_relpath),
             sink=BusRegressionSink(
                 regression_topic=topics["regression_detected"],
                 alarm_topic=topics["alarm_delivery_requested"],
                 result_topic=topics["build_checks_recorded"],
+                check_topic=topics["check_recorded"],
                 bus="kafka",
                 lane=settings.bus_lane,
                 workspace=root,

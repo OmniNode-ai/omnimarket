@@ -13,6 +13,7 @@ import json
 import re
 from typing import Literal
 from urllib.parse import urlparse
+from uuid import UUID
 
 from pydantic import (
     BaseModel,
@@ -73,6 +74,7 @@ class ModelLabProofLane(BaseModel):
     projection_url: str
     deploy_agent_url: str
     gateway_url: str | None = None
+    tenant_id: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -103,6 +105,22 @@ class ModelLabProofLane(BaseModel):
         for item in value:
             if not item:
                 raise ValueError("docker_runs_on must be a list of non-empty strings")
+        return value
+
+    @field_validator("tenant_id")
+    @classmethod
+    def _validate_tenant_id(cls, value: str | None) -> str | None:
+        """Refuse a tenant id that is not a canonical lowercase UUID; C15 stamps its bus submission with it."""
+        if value is None:
+            return None
+        try:
+            canonical = str(UUID(value))
+        except ValueError as exc:
+            raise ValueError(f"tenant_id {value!r} must be a UUID") from exc
+        if canonical != value:
+            raise ValueError(
+                f"tenant_id {value!r} must be the lowercase canonical UUID {canonical!r}"
+            )
         return value
 
     @field_validator("ingress_url", "projection_url", "deploy_agent_url", "gateway_url")

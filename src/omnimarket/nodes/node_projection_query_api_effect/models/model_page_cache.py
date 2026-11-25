@@ -27,7 +27,24 @@ class ModelPageCacheSettings(BaseModel):
 
     ttl_seconds: int = Field(
         ge=1,
-        description="How long a served page is held; a read after this misses and recomputes.",
+        description=(
+            "How long a held page is fresh; a read after this serves the held page as stale "
+            "and refreshes it behind the response, until stale_seconds more have passed."
+        ),
+    )
+    stale_seconds: int = Field(
+        ge=1,
+        description=(
+            "How long past ttl_seconds a held page may still be served while it is refreshed; "
+            "a read after ttl_seconds + stale_seconds finds nothing and recomputes the page."
+        ),
+    )
+    refresh_lock_seconds: int = Field(
+        ge=1,
+        description=(
+            "How long one runtime's claim to refresh a page lasts in the shared Valkey, so one "
+            "refresh per page runs across every runtime; it ends sooner when the refresh ends."
+        ),
     )
     key_prefix: str = Field(min_length=1)
     valkey: ModelPageCacheValkey

@@ -25,23 +25,45 @@ descriptor:
   runtime_profiles: [effects]
 runtime_dispatch:
   external_trigger: true
+  # The loader runs from the declared systemd unit of node_host_installer_registry_units, one tick per timer interval.
   host_unit:
     unit: overlay-store-load-systemd
 event_bus:
   subscribe_topics: []
   publish_topics:
     - onex.evt.omnimarket.overlay-store-loaded.v1
+    # OMN-26495: a setting an operator set differs from the overlay home (digests, never values), and a run
+    # refused because the live record could not be read.
+    - onex.evt.omnimarket.overlay-store-drift.v1
+    - onex.evt.omnimarket.overlay-store-refused.v1
     # One alarm per overlay whose newest loader assertion is older than the overlay's bound, keyed by the id, naming its owner.
     - onex.evt.omnimarket.overlay-store-assertion-stale.v1
-# The alarm topic is read by the overlay owner's tooling and the operator's alarm view, outside this repository's contracts.
+# OMN-26495: drift and refusal reports, and the stale-assertion alarm (read by the overlay owner's tooling and the
+# operator's alarm view), are read by operators and monitors outside the repo's contracts.
 externally_consumed_topics:
+  - onex.evt.omnimarket.overlay-store-drift.v1
+  - onex.evt.omnimarket.overlay-store-refused.v1
   - onex.evt.omnimarket.overlay-store-assertion-stale.v1
-# The loader runs under the host login (the overlay scope broker_acl_principals): it writes the alarm topic beside the loaded topic.
+# OMN-26495: the loader runs hourly on h053 under that host's login, which ONEX_ACL_HOST_RECONCILER_PRINCIPAL names alone
+# (the overlay scope broker_acl_principals); the rows below are what the new topics and the live read's consumer groups need.
+# The loaded topic's own row stays declared in the overlay scope broker_acls_overlay_store_dev_lane.
 broker_acl_grants:
   - principal: "${ONEX_ACL_HOST_RECONCILER_PRINCIPAL}"
     grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-store-drift.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-store-drift.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-store-refused.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-store-refused.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-store-assertion-stale.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-store-assertion-stale.v1, operation: DESCRIBE}
+      - {resource_type: GROUP, pattern: PREFIXED, name: node_overlay_store_load_effect.live., operation: READ}
+      - {resource_type: GROUP, pattern: PREFIXED, name: node_overlay_store_load_effect.live., operation: DESCRIBE}
+# OMN-26495: read directly within live_read_window_s by the loader, never dispatched by a runtime, so it is no
+# subscription of this node: node_projection_overlay_store publishes it. The live record says which settings an
+# operator set.
+snapshot_read:
+  # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+  topic: onex.snapshot.projection.overlay-store.v1
 overlay:
   node: node_overlay_store_load_effect
   roots_env: ONEX_SKILL_OVERLAY_ROOTS

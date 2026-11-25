@@ -24,7 +24,7 @@ pytestmark = pytest.mark.unit
 _SEND_ARGS: dict[str, Any] = {
     "to": "codex:review",
     "thread": "t-9",
-    "kind": "request",
+    "kind": "question",
     "platform": "claude",
     "text": "hello",
 }
@@ -37,8 +37,15 @@ def test_lists_exactly_the_send_and_read_tools_with_closed_enums() -> None:
     send = next(t for t in tools if t.name == SEND_TOOL)
     props = send.input_schema["properties"]
     assert set(props) == {"to", "thread", "kind", "platform", "text"}
-    assert props["kind"]["enum"] == ["request", "reply", "status", "handoff"]
-    assert props["platform"]["enum"] == ["claude", "codex", "glm", "hermes", "gemini"]
+    assert props["kind"]["enum"] == ["message", "question", "answer", "notice"]
+    assert props["platform"]["enum"] == [
+        "claude",
+        "codex",
+        "glm",
+        "hermes",
+        "gemini",
+        "other",
+    ]
     read = next(t for t in tools if t.name == READ_TOOL)
     assert set(read.input_schema["properties"]) == {"to", "thread", "since", "limit"}
 
