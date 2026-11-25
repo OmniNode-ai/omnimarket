@@ -26,6 +26,7 @@ from omnibase_core.validation.validator_duplicate_config_ids import (
 )
 
 from scripts.ci.ci_summary_gate import STRICT_GATE_JOBS
+from tests.ci.lint_jobs import lint_steps
 
 _ROOT = Path(__file__).resolve().parents[2]
 _MANIFEST = _ROOT / ".duplicate-id-registries.yaml"
@@ -101,11 +102,10 @@ def test_hook_runs_for_every_manifest_registry() -> None:
 @pytest.mark.unit
 def test_ci_runs_manifest_validator_in_required_lint_job() -> None:
     workflow = yaml.safe_load((_ROOT / ".github/workflows/ci.yml").read_text())
-    lint = workflow["jobs"]["lint"]
-    assert lint.get("name", "lint") in STRICT_GATE_JOBS
+    assert workflow["jobs"]["lint"].get("name", "lint") in STRICT_GATE_JOBS
     step = next(
         step
-        for step in lint["steps"]
+        for step in lint_steps(workflow)
         if step.get("name") == "Duplicate registry IDs gate (enforce)"
     )
     assert "if" not in step

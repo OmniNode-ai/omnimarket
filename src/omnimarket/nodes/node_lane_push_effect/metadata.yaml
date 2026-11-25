@@ -1,0 +1,23 @@
+name: node_lane_push_effect
+version: "1.0.0"
+description: "A lane hands repository, branch, expected remote head and commits to this node over the bus; the node runs every push check once, pushes with the writer App credential and answers pushed, refused with the reason, or moved (EFFECT)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_lane_push_effect: "omnimarket.nodes.node_lane_push_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: true
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: effectful
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "github", "push"]
+pack: "pr-lifecycle"
+display_name: "Lane Push"
+node_role: "effect"

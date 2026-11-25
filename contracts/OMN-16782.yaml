@@ -45,3 +45,14 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-16782 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_registry_units -q --no-cov
+- id: project-never-a-linked-worktree-after-dev-merge
+  description: 'AC1, AC2, AC3 again at the head that carries the dev merge: the installer refuses a linked worktree project and accepts a main checkout, and the omni_worktrees refusal tests still pass beside it.'
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_project_never_a_linked_worktree.py tests/nodes/node_host_installer_registry_units/test_project_never_a_worktree.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .

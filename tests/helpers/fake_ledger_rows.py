@@ -5,9 +5,16 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import UTC, datetime
 
 from omnimarket.handlers.handler_ledger_claims import claim_lane
 from omnimarket.protocols.protocol_ledger_rows_reader import LedgerReadError
+
+
+def quiet_heartbeat_row() -> str:
+    """One quiet lane's STATUS row stamped now: a live ledger always has a row in its last hour, and it opens no claim."""
+    stamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return f"{stamp} | STATUS | lane=ledger-heartbeat | principal=p | alive"
 
 
 class FakeLedgerRows:

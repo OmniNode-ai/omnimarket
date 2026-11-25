@@ -33,6 +33,9 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.gateway_checks
     GatewayRunSettings,
     run_gateway_check,
 )
+from omnimarket.nodes.node_delegation_check_probe_effect.handlers.grade_dashboard_session import (
+    grade_c30_dashboard,
+)
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.grade_delegation_checks import (
     grade_c13,
     grade_c14,
@@ -51,6 +54,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.protocols.protocol_dele
     CollectorAbsentError,
     ProtocolCheckResultPublisher,
     ProtocolCustomerMachine,
+    ProtocolDashboardMachine,
     ProtocolGatewayClient,
     ProtocolResponderReader,
 )
@@ -74,7 +78,7 @@ class HandlerDelegationCheckProbe:
     def __init__(
         self,
         *,
-        responders: Sequence[ModelDelegationCheckResponder],
+        responders: Sequence[ModelDelegationCheckResponder] | None,
         reader: ProtocolResponderReader,
         machine: ProtocolCustomerMachine,
         publisher: ProtocolCheckResultPublisher,
@@ -86,7 +90,7 @@ class HandlerDelegationCheckProbe:
         sleep: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
-        self._responders = tuple(responders)
+        self._responders = None if responders is None else tuple(responders)
         self._reader = reader
         self._machine = machine
         self._publisher = publisher
@@ -135,6 +139,16 @@ class HandlerDelegationCheckProbe:
     def _task_check(
         self, request: ModelDelegationCheckRequest
     ) -> ModelDelegationCheckReading:
+        if self._responders is None:
+            return ModelDelegationCheckReading(
+                preconditions=(
+                    ModelCheckPrecondition(
+                        name="responders_row",
+                        present=False,
+                        detail="the settings store serves no delegation_check_responders row, so no responder chain is known",
+                    ),
+                )
+            )
         resolution = resolve_chain(self._responders, self._reader.read)
         head = {
             "chain": resolution.attempts,
@@ -194,6 +208,47 @@ class HandlerDelegationCheckProbe:
             clauses=grade_c17(observation), preconditions=(precondition,)
         )
 
+    def _dashboard_leg(
+        self, reading: ModelDelegationCheckReading
+    ) -> ModelDelegationCheckReading:
+        """C30 on a machine with a dashboard collector: the customer path's clauses join the gateway reading's."""
+        if not isinstance(self._machine, ProtocolDashboardMachine):
+            return reading
+        if self._responders is None:
+            absent: tuple[ModelCheckPrecondition, ...] = (
+                ModelCheckPrecondition(
+                    name="responders_row",
+                    present=False,
+                    detail="the settings store serves no delegation_check_responders row, so the dashboard run has no model to delegate to",
+                ),
+            )
+            return reading.model_copy(
+                update={"preconditions": (*reading.preconditions, *absent)}
+            )
+        resolution = resolve_chain(self._responders, self._reader.read)
+        if not resolution.is_local or not resolution.base_url:
+            return reading.model_copy(
+                update={
+                    "not_measured": reading.not_measured
+                    or f"no local responder served a model with a window; the dashboard run was not made ({resolution.tier})"
+                }
+            )
+        try:
+            clauses, preconditions = grade_c30_dashboard(
+                self._machine.collect_dashboard(resolution)
+            )
+        except CollectorAbsentError as exc:
+            clauses = ()
+            preconditions = (
+                ModelCheckPrecondition(name=exc.name, present=False, detail=exc.detail),
+            )
+        return reading.model_copy(
+            update={
+                "clauses": (*reading.clauses, *clauses),
+                "preconditions": (*reading.preconditions, *preconditions),
+            }
+        )
+
     def _with_gateway_leg(
         self, reading: ModelDelegationCheckReading, request: ModelDelegationCheckRequest
     ) -> ModelDelegationCheckReading:
@@ -215,6 +270,8 @@ class HandlerDelegationCheckProbe:
     ) -> ModelDelegationCheckReading:
         if request.check_id in GATEWAY_ONLY_CHECKS:
             reading = self._gateway_check(request)
+            if request.check_id == "C30":
+                reading = self._dashboard_leg(reading)
         else:
             try:
                 reading = (
