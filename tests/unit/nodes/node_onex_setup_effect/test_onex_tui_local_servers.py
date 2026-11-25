@@ -250,10 +250,10 @@ async def test_config_shows_what_is_set_up_and_offers_the_users_own_server() -> 
     async with app.run_test(size=(170, 46)) as pilot:
         await _open(pilot, "/config")
         assert isinstance(app.screen, SetupScreen)
+        # OMN-26620: the Selected line holds what is ticked this visit; the
+        # models already set up are the Model tab's.
         basket = str(app.screen.query_one("#basket", Static).render())
-        assert "none yet" not in basket
-        assert f"{_MODEL} on vllm.test:8000" in basket
-        assert f"{_MODEL} on llama.test:8000" in basket
+        assert basket == "Selected  none yet"
         app.screen.query_one("#provider").value = "local"
         await pilot.pause()
         assert app.screen.query_one("#url", Input).value == _VLLM

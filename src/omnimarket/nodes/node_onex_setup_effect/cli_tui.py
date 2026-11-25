@@ -34,9 +34,16 @@ from rich.console import Group
 from rich.markdown import Markdown
 from rich.text import Text
 from textual import events, on
-from textual.app import App, ComposeResult, SuspendNotSupported, SystemCommand
+from textual.app import (
+    App,
+    ComposeResult,
+    RenderResult,
+    SuspendNotSupported,
+    SystemCommand,
+)
 from textual.binding import Binding, BindingType
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Container, Horizontal, Vertical
+from textual.content import Content
 from textual.css.query import NoMatches
 from textual.screen import ModalScreen, Screen
 from textual.theme import Theme
@@ -45,7 +52,6 @@ from textual.widgets import (
     Button,
     DataTable,
     Input,
-    Label,
     OptionList,
     RadioButton,
     RadioSet,
@@ -55,6 +61,7 @@ from textual.widgets import (
     Tab,
     Tabs,
 )
+from textual.widgets._tabs import Underline
 from textual.widgets.option_list import Option
 from textual.worker import Worker
 
@@ -79,7 +86,6 @@ from omnimarket.models.model_local_server_details import ModelLocalServerDetails
 from omnimarket.nodes.node_onex_setup_effect.cli_model_table import (
     ModelTable,
     entry_key,
-    keycaps,
 )
 from omnimarket.nodes.node_onex_setup_effect.doctor_page import (
     DoctorPage,
@@ -688,15 +694,56 @@ def _server_entry(
 _ResultT = TypeVar("_ResultT")
 
 
+class _TabRule(Underline):
+    """The heavy rule under the open tab only, as wide as its label."""
+
+    def render(self) -> RenderResult:
+        start, end = self._highlight_range
+        start = max(0, round(start))
+        rule = _say("tab_rule") * max(0, round(end) - start)
+        return Text(" " * start + rule, style=_style("primary", "bold"), no_wrap=True)
+
+
+class _TabBar(Tabs):
+    """The tab strip: plain labels, three spaces apart, a rule under the open one."""
+
+    DEFAULT_CSS = """
+    _TabBar Tab { padding: 0; margin: 0 3 0 0; color: $text-muted; }
+    _TabBar Tab.-active { color: $text; text-style: bold; background: transparent; }
+    _TabBar Tab:hover { background: transparent; }
+    _TabBar Underline { width: 1fr; }
+    """
+
+    def compose(self) -> ComposeResult:
+        with Container(id="tabs-scroll"), Vertical(id="tabs-list-bar"):
+            with Horizontal(id="tabs-list"):
+                yield from self._tabs
+            yield _TabRule()
+
+
 def _tab_strip(current: str) -> Tabs:
-    """The same strip on /config, /model and /delegation, the current one lit."""
-    strip = Tabs(
+    """The same strip on all four tabs, the current one underlined."""
+    strip = _TabBar(
         *(Tab(spec.label, id=f"tab-{spec.id}") for spec in tui_design().tabs),
         active=f"tab-{current}",
         id="tabs",
     )
     strip.can_focus = False
     return strip
+
+
+def _tab_hint(name: str) -> Text:
+    """A tab's one footer line: each part's first word is its key, in bold."""
+    text = Text(no_wrap=True, overflow="ellipsis")
+    separator = _say("hint_separator")
+    for position, part in enumerate(_say(name).split(separator)):
+        key, _, action = part.partition(" ")
+        if position:
+            text.append(separator, style=_style("muted"))
+        text.append(key, style=_style("foreground", "bold"))
+        if action:
+            text.append(f" {action}", style=_style("muted"))
+    return text
 
 
 def _summary(selection: ModelTuiSelection) -> Static:
@@ -777,7 +824,26 @@ class _TabbedScreen(ModalScreen[_ResultT]):
             return
         self.dismiss(cast(_ResultT, None))
 
+    #: The words key of this tab's plain problem sentence (tui_design.yaml).
+    PROBLEM: ClassVar[str] = "problem_config"
+
+    def _calm(self, text: Text | str) -> Text | str:
+        """A line that carries a raw cause (an errno, a path, an exception or an
+        environment name) goes to the log; the screen says what to do instead."""
+        plain = text.plain if isinstance(text, Text) else text
+        if re.search(tui_design().words["raw_text_pattern"], plain):
+            _LOG.warning("tab problem: %s", plain)
+            return Text(_say(self.PROBLEM), style=_style("warning"))
+        return text
+
+    def _problem(self, error: BaseException) -> None:
+        """An action or a read raised: log it, tell the user in plain words."""
+        _LOG.warning("tab problem: %r", error)
+        with contextlib.suppress(NoMatches):
+            self._note(Text(_say(self.PROBLEM), style=_style("warning")))
+
     def _note(self, text: Text | str, style: str = "muted") -> None:
+        text = self._calm(text)
         line = text if isinstance(text, Text) else Text(text, style=_style(style))
         self.query_one(self.NOTE, Static).update(line)
 
@@ -797,6 +863,8 @@ class _TabbedScreen(ModalScreen[_ResultT]):
                 self._show_selection()
                 if outcome is not None:
                     self._note(outcome)
+            except Exception as error:
+                self._problem(error)
             finally:
                 self._busy = False
 
@@ -812,8 +880,11 @@ class _TabbedScreen(ModalScreen[_ResultT]):
             return
 
         async def go() -> None:
-            self._selection = await app.load_selection()
-            self._show_selection()
+            try:
+                self._selection = await app.load_selection()
+                self._show_selection()
+            except Exception as error:
+                self._problem(error)
 
         self.run_worker(go(), exclusive=True, group="tab-refresh")
 
@@ -831,14 +902,21 @@ class SetupScreen(_TabbedScreen[None]):
     CSS = """
     SetupScreen { align: center middle; }
     #form { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
-    #form .summary { height: 1; margin: 0 0 1 0; }
-    #form Input { margin-bottom: 0; }
-    #provider { width: 100%; border: none; padding: 0 1; margin-bottom: 1; }
+    #form .summary { display: none; }
+    #cfg-head { height: 1; }
+    #cfg-title { width: 1fr; text-style: bold; color: $primary; }
+    #cfg-step { width: auto; color: $text-muted; }
+    #cfg-row { height: auto; }
+    #provider { width: 24; height: auto; border: round $border; border-title-color: $text-muted; padding: 0 1; background: transparent; }
+    #keybox { width: 1fr; height: 3; border: round $border; border-title-color: $text-muted; margin-left: 2; }
+    #keybox Input { width: 1fr; height: 1; border: none; padding: 0 1; background: transparent; }
+    #keymark { width: auto; padding: 0 1; }
     #found { height: 1fr; min-height: 3; display: none; }
     #note { color: $text-muted; height: auto; }
     #basket { color: $success; height: auto; }
-    #keys { color: $text-muted; height: auto; }
-    #buttons { height: 3; dock: bottom; align-horizontal: right; }
+    #keys { height: 1; }
+    #buttons { height: 1; align-horizontal: right; }
+    #buttons Button { height: 1; min-width: 8; border: none; margin: 0 0 0 2; }
     """
     BINDINGS = [
         Binding("escape", "cancel", "Back"),
@@ -868,34 +946,73 @@ class SetupScreen(_TabbedScreen[None]):
         with Vertical(id="form"):
             yield _tab_strip(self.TAB)
             yield _summary(self._selection)
-            yield Label(_say("config_title"))
+            with Horizontal(id="cfg-head"):
+                yield Static(_say("add_title"), id="cfg-title")
+                yield Static(self._step_text(1), id="cfg-step")
             choices = _picker()
             first = choices[0]
-            yield Choice(
-                [(e.label, e.provider) for e in choices], first.provider, id="provider"
-            )
-            yield Input(placeholder=_say("key_placeholder"), password=True, id="key")
-            yield Input(
-                value=self._stored_url(first.provider) or "",
-                placeholder=_say("url_placeholder"),
-                id="url",
-            )
+            with Horizontal(id="cfg-row"):
+                yield Choice(
+                    [(e.label, e.provider) for e in choices],
+                    first.provider,
+                    id="provider",
+                )
+                with Horizontal(id="keybox"):
+                    yield Input(
+                        placeholder=_say("key_placeholder"), password=True, id="key"
+                    )
+                    yield Input(
+                        value=self._stored_url(first.provider) or "",
+                        placeholder=_say("url_placeholder"),
+                        id="url",
+                    )
+                    yield Static("", id="keymark")
             yield Static("", id="note")
             yield ModelTable(
                 selectable=True,
                 provider_labels={e.provider: e.label for e in choices},
                 id="found",
+                layout="found",
             )
-            yield Static(self._current_line(), id="basket")
-            yield Static(keycaps(tui_design().model_table.help["config"]), id="keys")
+            yield Static(self._selected_line(), id="basket")
             with Horizontal(id="buttons"):
                 yield Button(_say("button_guided_setup"), id="guided-setup")
                 yield Button(_say("button_add"), id="add")
                 yield Button(_say("button_save"), variant="primary", id="save")
                 yield Button(_say("button_cancel"), id="cancel")
+            yield Static(_tab_hint("tab_hint_config"), id="keys")
+
+    def _step_text(self, step: int) -> Text:
+        return Text(_say("step_of", step=step), style=_style("muted"))
+
+    def _step(self) -> int:
+        """1 choosing a provider and key, 2 models found, 3 something chosen."""
+        table = self.query_one("#found", ModelTable)
+        if self._basket or table.ticked:
+            return 3
+        return 2 if table.entries else 1
+
+    def _show_step(self) -> None:
+        self.query_one("#cfg-step", Static).update(self._step_text(self._step()))
+
+    def _selected_line(self) -> str:
+        """The models ticked or added, each with the model mark; or none yet."""
+        chosen: list[str] = []
+        for pick in self._basket.values():
+            chosen.extend(pick.models)
+        if self.is_mounted:
+            chosen.extend(
+                e.model_id for e in self.query_one("#found", ModelTable).ticked
+            )
+        names = list(dict.fromkeys(chosen))
+        if not names:
+            return _say("selected_none")
+        mark = _say("model_glyph")
+        return _say("selected", models="  ".join(f"{mark} {n}" for n in names))
 
     def on_mount(self) -> None:
         self.query_one("#found").display = False
+        self.query_one("#provider").border_title = _say("provider_box")
         self._show_fields()
         self.query_one("#note", Static).update(_hint(self._provider()))
         self._schedule_find()
@@ -964,6 +1081,19 @@ class SetupScreen(_TabbedScreen[None]):
             url.value = self._stored_url(self._provider()) or ""
         self.query_one("#key").display = hosted
         self.query_one("#url").display = not hosted
+        self.query_one("#keybox").border_title = _say(
+            "key_box" if hosted else "url_box"
+        )
+        self._mark_key(None)
+
+    def _mark_key(self, word: str | None) -> None:
+        """The mark beside the key: valid or not accepted, from the list read with it."""
+        mark = self.query_one("#keymark", Static)
+        if word is None:
+            mark.update("")
+            return
+        colour = "success" if word in ("key_valid", "url_valid") else "warning"
+        mark.update(Text(_say(word), style=_style(colour)))
 
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
         self._show_fields()
@@ -1003,6 +1133,9 @@ class SetupScreen(_TabbedScreen[None]):
             await self._fetch(note, provider, wanted)
         except NoMatches:  # the user left this tab while the list was loading
             return
+        except Exception as error:  # a listing that raised: say so, calmly
+            self._problem(error)
+            self._mark_key(None)
         finally:
             self._loading = False
 
@@ -1020,6 +1153,8 @@ class SetupScreen(_TabbedScreen[None]):
             )
             entries = [_listed_entry(provider, m, index) for m in listing.models]
             message = listing.message
+            accepted = listing.outcome == "listed"
+            rejected = listing.outcome == "rejected"
         else:
             (_, out, err), index = await asyncio.gather(
                 self._runner.capture(
@@ -1035,13 +1170,26 @@ class SetupScreen(_TabbedScreen[None]):
                 _server_entry(provider, model, index, said.get(model))
                 for model in found
             ]
+            accepted, rejected = bool(found), False
         if self._source() != wanted:  # the key, URL or provider changed meanwhile
             return
         entries = [self._as_stored(e, wanted[1]) for e in entries]
         self._show_rows(entries)
         if entries:
             self.query_one("#found", ModelTable).focus_rows()
-        note.update(message or _say("found", count=len(entries)))
+        hosted = _hosted(provider)
+        if accepted:
+            self._mark_key("key_valid" if hosted else "url_valid")
+        elif rejected:
+            self._mark_key("key_rejected")
+        if not entries:
+            say = message or _say("none_found")
+        elif len(entries) == 1:
+            say = _say("models_found_one")
+        else:
+            say = _say("models_found", count=len(entries))
+        note.update(say)
+        self._show_step()
 
     def _load_index(self) -> ModelsDevIndex:
         return _safe_index(self._load)
@@ -1052,10 +1200,18 @@ class SetupScreen(_TabbedScreen[None]):
         table.set_ticked(())
         table.set_entries(entries)
         table.display = bool(entries)
+        self._show_step()
+        self.query_one("#basket", Static).update(self._basket_line())
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id in ("key", "url"):
+            self._mark_key(None)
             self._schedule_find()
+
+    @on(ModelTable.Ticked)
+    def _ticked(self) -> None:
+        self.query_one("#basket", Static).update(self._basket_line())
+        self._show_step()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         """Enter in the key or URL field moves on to the list, loading it if needed."""
@@ -1089,18 +1245,12 @@ class SetupScreen(_TabbedScreen[None]):
         )
         table.set_ticked(())
         self.query_one("#basket", Static).update(self._basket_line())
+        self._show_step()
         return True
 
     def _basket_line(self) -> str:
         """What is added and not yet set up, or what is set up when nothing is."""
-        if not self._basket:
-            return self._current_line()
-        return _say(
-            "basket",
-            choices="   ·   ".join(
-                f"{c.provider}: {', '.join(c.models)}" for c in self._basket.values()
-            ),
-        )
+        return self._selected_line()
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         note = self.query_one("#note", Static)
@@ -1264,6 +1414,22 @@ class ModelTuiDelegationChoice(BaseModel):
     done: str | None = None
 
 
+class _Radio(RadioButton):
+    """A radio button drawn as one marker, filled or hollow, from the design."""
+
+    DEFAULT_CSS = """
+    _Radio { padding: 0; background: transparent; }
+    _Radio > .toggle--button { background: transparent; color: $text-muted; }
+    _Radio.-on > .toggle--button { color: $primary; }
+    _Radio.-selected { background: $boost; }
+    """
+
+    @property
+    def _button(self) -> Content:
+        glyph = _say("radio_on" if self.value else "radio_off")
+        return Content.assemble((glyph, self.get_visual_style("toggle--button")))
+
+
 class Choice(RadioSet):
     """A choice with every option shown and one marked; the TUI has no dropdown.
 
@@ -1283,7 +1449,7 @@ class Choice(RadioSet):
         self._value = value if value in self._ids else self._ids[0]
         super().__init__(
             *(
-                RadioButton(label, value=option_id == self._value, name=option_id)
+                _Radio(label, value=option_id == self._value, name=option_id)
                 for label, option_id in options
             ),
             id=id,
@@ -1315,28 +1481,27 @@ class DelegationScreen(_TabbedScreen[None]):
     CSS = """
     DelegationScreen { align: center middle; }
     #deleg { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
-    #deleg .summary { height: 1; margin: 0 0 1 0; }
-    .hook-switch { height: auto; }
-    .hook-switch Label { width: 24; padding: 1 1 0 0; }
-    .hook-switch Switch { width: 12; border: tall $primary; background: $surface; }
-    .hook-switch Switch .switch--slider { color: $error 70%; background: $boost; }
-    .hook-switch Switch.-on .switch--slider { color: $success; }
-    .hook-text { width: 1fr; height: 3; padding: 0 0 0 2; }
-    .hook, .hook-what { height: 1; text-wrap: nowrap; text-overflow: ellipsis; }
-    .hook { margin-top: 1; }
-    .hook-what { color: $text-muted; }
-    #on-state { height: auto; padding: 0 0 0 2; text-style: bold; }
-    #hooks-title { margin-bottom: 1; }
-    #hooks-end { height: 1; }
-    #dbody { height: 1fr; scrollbar-size-vertical: 1; }
-    #selected { min-height: 4; }
+    #deleg .summary { display: none; }
+    #dhead { height: 1; }
+    #dtitle { width: 1fr; text-style: bold; color: $primary; }
+    #on-state { width: auto; text-style: bold; }
+    #hooks-title { color: $text-muted; height: 1; }
+    #dturn { width: auto; min-width: 12; height: 1; border: none; margin: 1 0; }
+    #dswitches { display: none; height: 0; }
+    .hook { height: 1; text-wrap: nowrap; text-overflow: ellipsis; }
+    #dorder-title { color: $text-muted; height: 1; margin-top: 1; }
+    #selected { height: 1fr; }
+    #selected DataTable { height: auto; max-height: 100%; }
+    #claude { height: auto; }
     #dfoot { height: auto; }
     #dnote { color: $text-muted; height: auto; }
-    #dkeys { color: $text-muted; height: auto; }
-    #dbuttons { height: 3; align-horizontal: right; }
+    #dkeys { height: 1; }
+    #dbuttons { height: 1; align-horizontal: right; }
+    #dbuttons Button { height: 1; min-width: 8; border: none; margin: 0 0 0 2; }
     """
     TAB = "delegation"
     NOTE = "#dnote"
+    PROBLEM = "problem_delegation"
     BINDINGS = [
         Binding("escape", "cancel", _say("button_cancel")),
         Binding("ctrl+s", "save", _say("button_save"), priority=True),
@@ -1368,50 +1533,45 @@ class DelegationScreen(_TabbedScreen[None]):
         with Vertical(id="deleg"):
             yield _tab_strip(self.TAB)
             yield _summary(self._selection)
-            # Review 2026-11-15: at 80x24 the parts above the buttons need more
-            # rows than there are, so they scroll; the note, the key line and
-            # the buttons always show under them.
-            with VerticalScroll(id="dbody"):
-                yield Label(Text(words.title, style=_style("primary", "bold")))
-                yield Label(
-                    Text(words.hooks_title, style=_style("muted")), id="hooks-title"
-                )
+            with Horizontal(id="dhead"):
+                yield Static(Text(words.title), id="dtitle")
+                yield Static(self._state_text(), id="on-state")
+            yield Static(
+                Text(_say("delegation_about"), style=_style("muted")), id="hooks-title"
+            )
+            yield Button(
+                _say("turn_off" if any(self._saved_boxes().values()) else "turn_on"),
+                id="dturn",
+            )
+            # The switches hold the pending state; the button and Space move them.
+            with Horizontal(id="dswitches"):
                 saved = self._saved_boxes()
                 for hook in words.hooks:
-                    # Operator 2026-11-15: one switch per hook; both off removes
-                    # the hooks, one off pauses that hook.
                     with Horizontal(classes="hook-switch"):
-                        yield Label(hook.label)
                         yield Switch(value=saved[hook.key], id=f"use-{hook.key}")
-                        # Two lines beside the switch, so 80 columns keep the
-                        # state word: the hook and its state, then what it does.
-                        with Vertical(classes="hook-text"):
-                            yield Static(
-                                self._hook_text(hook.key),
-                                id=f"hook-{hook.key}",
-                                classes="hook",
-                            )
-                            yield Static(hook.what, classes="hook-what")
-                yield Static(self._state_text(), id="on-state")
-                yield Static("", id="hooks-end")
-                # OMN-23413: is Claude Code there? Read from setup's own check.
+            for hook in words.hooks:
                 yield Static(
-                    Text(_say("claude_checking"), style=_style("muted")), id="claude"
+                    self._hook_text(hook.key), id=f"hook-{hook.key}", classes="hook"
                 )
-                yield Label(Text(words.table_title, style=_style("muted")))
-                yield ModelTable(
-                    selectable=False,
-                    provider_labels={e.provider: e.label for e in _picker()},
-                    id="selected",
-                )
+            # OMN-23413: is Claude Code there? Read from setup's own check.
+            yield Static(
+                Text(_say("claude_checking"), style=_style("muted")), id="claude"
+            )
+            yield Static(
+                Text(_say("order_title"), style=_style("muted")), id="dorder-title"
+            )
+            yield ModelTable(
+                selectable=False,
+                provider_labels={e.provider: e.label for e in _picker()},
+                id="selected",
+                layout="order",
+            )
             with Vertical(id="dfoot"):
                 yield Static("", id="dnote")
-                yield Static(
-                    keycaps(tui_design().model_table.help["delegation"]), id="dkeys"
-                )
                 with Horizontal(id="dbuttons"):
                     yield Button(_say("button_save"), variant="primary", id="dsave")
                     yield Button(_say("button_cancel"), id="dcancel")
+                yield Static(_tab_hint("tab_hint_delegation"), id="dkeys")
 
     def on_mount(self) -> None:
         self.run_worker(self._check_claude(), group="claude", exclusive=True)
@@ -1425,7 +1585,7 @@ class DelegationScreen(_TabbedScreen[None]):
             note.update(Text(words.no_models, style=_style("warning")))
 
     async def _check_claude(self) -> None:
-        """Fill the Claude Code line: ready, installed, signed out or missing."""
+        """Fill the Claude Code line: shown only when Claude Code is not ready."""
         state, fix = await cast("OnexTui", self.app).claude_code()
         self._claude_state = state
         self._claude_fix = fix
@@ -1436,7 +1596,10 @@ class DelegationScreen(_TabbedScreen[None]):
             "not_installed": (_say("claude_missing"), "error"),
         }.get(state, (_say("claude_unknown"), "muted"))
         rendered = line if not fix else f"{line}\n{fix}"
-        self.query_one("#claude", Static).update(Text(rendered, style=_style(colour)))
+        shown = self._calm(Text(rendered, style=_style(colour)))
+        widget = self.query_one("#claude", Static)
+        widget.update(shown)
+        widget.display = state != "ready"
 
     def action_flip(self) -> None:
         """Space switches both: on when any is off, otherwise off."""
@@ -1496,21 +1659,19 @@ class DelegationScreen(_TabbedScreen[None]):
         return {key: drawn.get(f"use-{key}", saved[key]) for key in saved}
 
     def _hook_text(self, key: str) -> Text:
-        """One hook's line: its name and whether Claude Code has it; what it
-        does is the line under it (review 2026-11-15, 80 columns)."""
-        words = tui_design().delegation
-        hook = next(h for h in words.hooks if h.key == key)
+        """The hook line: its label, then whether Claude Code has the hook."""
         state = self._hooks.get(key)
-        unread = words.hook_unread if self._saved == "unknown" else words.hook_unknown
-        word, colour, glyph = {
-            "installed": (words.hook_installed, "success", words.glyph_on),
-            "missing": (words.hook_missing, "warning", words.glyph_off),
-            "paused": (words.hook_paused, "warning", words.glyph_off),
-        }.get(state or "", (unread, "muted", words.glyph_off))
+        unread = (
+            "hook_state_unread" if self._saved == "unknown" else "hook_state_unknown"
+        )
+        word, colour = {
+            "installed": ("hook_state_installed", "success"),
+            "missing": ("hook_state_missing", "warning"),
+            "paused": ("hook_state_paused", "warning"),
+        }.get(state or "", (unread, "muted"))
         return Text.assemble(
-            (f"{glyph} ", _style(colour)),
-            (f"{hook.name}  ", _style("primary", "bold")),
-            (word, _style(colour, "bold")),
+            (f"{_say('hook_label')}   ", _style("primary", "bold")),
+            (_say(word), _style(colour)),
         )
 
     def show_state(
@@ -1533,9 +1694,17 @@ class DelegationScreen(_TabbedScreen[None]):
             for key, value in self._saved_boxes().items():
                 self.query_one(f"#use-{key}", Switch).value = value
         self.query_one("#on-state", Static).update(self._state_text())
+        self._show_turn()
 
     def on_switch_changed(self, _event: Switch.Changed) -> None:
         self.query_one("#on-state", Static).update(self._state_text())
+        self._show_turn()
+
+    def _show_turn(self) -> None:
+        """The button names what pressing it does: switch off while on, else on."""
+        self.query_one("#dturn", Button).label = _say(
+            "turn_off" if self.any_on() else "turn_on"
+        )
 
     def action_save(self) -> None:
         """Switch here and stay; the outcome shows on this tab."""
@@ -1581,6 +1750,8 @@ class DelegationScreen(_TabbedScreen[None]):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "dcancel":
             self._close()
+        elif event.button.id == "dturn":
+            self.action_flip()
         else:
             self.action_save()
 
@@ -1593,19 +1764,23 @@ class ModelPickScreen(_TabbedScreen[None]):
 
     TAB = "model"
     NOTE = "#pnote"
+    PROBLEM = "problem_model"
 
     CSS = """
     ModelPickScreen { align: center middle; }
     #pick { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
-    #pick .summary { height: 1; margin: 0 0 1 0; }
+    #pick .summary { display: none; }
+    #pnow { height: 1; text-style: bold; }
+    #models { height: 1fr; }
     #pnote { color: $text-muted; height: auto; }
-    #pkeys { color: $text-muted; height: auto; }
-    #auto { width: auto; margin-bottom: 0; }
+    #pkeys { height: 1; }
+    #auto { width: auto; height: 1; min-width: 8; border: none; margin: 0; }
     """
     BINDINGS = [
         Binding("escape", "cancel", _say("button_cancel")),
         Binding("a", "auto", "Auto", show=False),
         Binding("r,delete", "remove", "Remove", show=False),
+        Binding("d", "details", "Details", show=False),
     ]
 
     def __init__(self, selection: ModelTuiSelection) -> None:
@@ -1619,24 +1794,30 @@ class ModelPickScreen(_TabbedScreen[None]):
         with Vertical(id="pick"):
             yield _tab_strip(self.TAB)
             yield _summary(self._selection)
-            yield Label(
-                Text(
-                    _say("model_title"),
-                    style=_style("primary", "bold"),
-                )
-            )
             yield Static(self._now(), id="pnow")
-            yield Button(words.auto_label + "  (A)", id="auto")
             yield ModelTable(
                 selectable=False,
                 provider_labels={e.provider: e.label for e in _picker()},
                 id="models",
+                layout="pick",
             )
             yield Static("", id="pnote")
-            yield Static(keycaps(words.help["model"]), id="pkeys")
+            yield Button(words.auto_label + "  (A)", id="auto")
+            yield Static(_tab_hint("tab_hint_model"), id="pkeys")
+
+    def _first_key(self) -> str | None:
+        """The table key of the model tried first, when one is chosen."""
+        first = self._selection.first
+        if first is None:
+            return None
+        key = f"{first[0]}\t{first[1]}"
+        return (
+            f"{key}\t{self._selection.first_url}" if self._selection.first_url else key
+        )
 
     def on_mount(self) -> None:
         table = self.query_one("#models", ModelTable)
+        table.set_first(self._first_key())
         table.set_entries(self._selection.entries)
         table.query_one("DataTable").focus()
         if not self._selection.entries:
@@ -1644,16 +1825,22 @@ class ModelPickScreen(_TabbedScreen[None]):
 
     def _now(self) -> Text:
         first = self._selection.first
-        current = (
-            _first_text(first[0], first[1], self._selection.first_url)
-            if first
-            else _say("summary_auto")
-        )
-        return Text(_say("model_now", current=current), style=_style("success"))
+        mark = _say("model_glyph")
+        if first is None:
+            line = _say("tried_first_auto", mark=mark)
+        else:
+            line = _say(
+                "tried_first",
+                mark=mark,
+                model=_on_server(first[1], self._selection.first_url),
+            )
+        return Text(line, style=_style("primary", "bold"))
 
     def _show_selection(self) -> None:
         super()._show_selection()
-        self.query_one("#models", ModelTable).set_entries(self._selection.entries)
+        table = self.query_one("#models", ModelTable)
+        table.set_first(self._first_key())
+        table.set_entries(self._selection.entries)
         self.query_one("#pnow", Static).update(self._now())
 
     @on(ModelTable.Chosen)
@@ -1664,7 +1851,7 @@ class ModelPickScreen(_TabbedScreen[None]):
                 entry.status_reason
                 or tui_design().model_table.status[entry.status].text
             )
-            self.query_one("#pnote", Static).update(
+            self._note(
                 Text(
                     _say("cannot_be_first", model=entry.model_id, reason=reason),
                     style=_style("warning"),
@@ -1680,6 +1867,9 @@ class ModelPickScreen(_TabbedScreen[None]):
 
     def action_auto(self) -> None:
         self._run(lambda app: app.apply_model(("", "", "")))
+
+    def action_details(self) -> None:
+        self.query_one("#models", ModelTable).action_details()
 
     @on(DataTable.RowHighlighted)
     def _moved(self) -> None:
@@ -1718,19 +1908,24 @@ class DashboardScreen(_TabbedScreen[None]):
 
     TAB = "dashboard"
     NOTE = "#bnote"
+    PROBLEM = "problem_dashboard"
 
     CSS = """
     DashboardScreen { align: center middle; }
     #board { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
-    #board .summary { height: 1; margin: 0 0 1 0; }
-    #bstate { height: auto; margin: 1 0; }
+    #board .summary { display: none; }
+    #bhead { height: 1; }
+    #btitle { width: 1fr; text-style: bold; color: $primary; }
+    #bstate { width: auto; text-style: bold; }
+    #baddr { height: 1; color: $accent; }
+    #bbuttons { height: 1; margin: 1 0; }
+    #bbuttons Button { height: 1; min-width: 8; width: auto; border: none; margin: 0 2 0 0; }
     #bnote { height: auto; }
-    #bkeys { color: $text-muted; height: 1; }
-    #bbuttons { height: 3; dock: bottom; align-horizontal: right; }
+    #bkeys { height: 1; dock: bottom; }
     """
     BINDINGS = [
         Binding("escape", "cancel", _say("button_cancel")),
-        Binding("s", "start", _say("button_start"), show=False),
+        Binding("s", "start_or_stop", "Start or stop", show=False),
         Binding("enter", "open", _say("button_open"), show=False),
         Binding("x", "stop", _say("button_stop"), show=False),
     ]
@@ -1738,39 +1933,61 @@ class DashboardScreen(_TabbedScreen[None]):
     def __init__(self, selection: ModelTuiSelection) -> None:
         super().__init__()
         self._selection = selection
+        #: Whether the dashboard runs, once its state was read; ``None`` before.
+        self._dash_running: bool | None = None
 
     def compose(self) -> ComposeResult:
         words = tui_design().dashboard
         with Vertical(id="board"):
             yield _tab_strip(self.TAB)
             yield _summary(self._selection)
-            yield Label(Text(words.title, style=_style("primary", "bold")))
-            yield Static(
-                Text(_say("status_reading"), style=_style("muted")), id="bstate"
-            )
-            yield Static("", id="bnote")
-            yield Static(
-                keycaps(tui_design().model_table.help["dashboard"]), id="bkeys"
-            )
+            with Horizontal(id="bhead"):
+                yield Static(Text(words.title), id="btitle")
+                yield Static(self._state_line(None), id="bstate")
+            yield Static("", id="baddr")
             with Horizontal(id="bbuttons"):
                 # The keys are S, Enter and X; a focused button would take Enter
-                # for itself and start instead of open. They stay clickable.
+                # for itself. The buttons stay clickable.
                 for label, button_id in (
-                    ("button_start", "bstart"),
-                    ("button_open", "bopen"),
-                    ("button_stop", "bstop"),
-                    ("button_cancel", "bcancel"),
+                    (_say("button_start"), "bstart"),
+                    (words.button_open, "bopen"),
+                    (_say("button_stop"), "bstop"),
                 ):
                     button = Button(
-                        _say(label),
+                        label,
                         variant="primary" if button_id == "bstart" else "default",
                         id=button_id,
                     )
                     button.can_focus = False
+                    button.display = False
                     yield button
+            yield Static("", id="bnote")
+            yield Static(_tab_hint("tab_hint_dashboard_stopped"), id="bkeys")
 
     def on_mount(self) -> None:
         self._read_state()
+
+    def _state_line(self, state: Mapping[str, object] | None) -> Text:
+        """The word beside the title: running with its pid, stopped, or not read."""
+        words = tui_design().dashboard
+        if state is None:
+            return Text(
+                words.state_reading.format(dot_reading=words.dot_reading),
+                style=_style("muted", "bold"),
+            )
+        evidence = state.get("evidence")
+        found = evidence if isinstance(evidence, Mapping) else {}
+        if state.get("status") == "success" and found.get("url"):
+            pid = found.get("pid")
+            sentence = words.state_running if pid else words.state_running_nopid
+            return Text(
+                sentence.format(dot=words.dot_on, pid=pid),
+                style=_style("success", "bold"),
+            )
+        return Text(
+            words.state_stopped.format(dot_off=words.dot_off),
+            style=_style("muted", "bold"),
+        )
 
     def _read_state(self) -> None:
         app = self.app
@@ -1778,47 +1995,102 @@ class DashboardScreen(_TabbedScreen[None]):
             return
 
         async def go() -> None:
-            self._show_state(await app.dashboard_state())
+            try:
+                self._show_state(await app.dashboard_state())
+            except NoMatches:  # the user left this tab while it was read
+                return
+            except Exception as error:
+                self._read_failed(error)
 
         self.run_worker(go(), exclusive=True, group="dashboard-state")
 
-    def _show_state(self, state: Mapping[str, object]) -> None:
+    def _read_failed(self, error: BaseException) -> None:
+        _LOG.warning("dashboard state could not be read: %r", error)
         words = tui_design().dashboard
+        self._dash_running = None
+        with contextlib.suppress(NoMatches):
+            self.query_one("#bstate", Static).update(
+                Text(
+                    words.state_unread.format(dot_reading=words.dot_reading),
+                    style=_style("warning", "bold"),
+                )
+            )
+            self._note(Text(words.could_not_read, style=_style("warning")))
+
+    def _show_state(self, state: Mapping[str, object]) -> None:
         evidence = state.get("evidence")
         found = evidence if isinstance(evidence, Mapping) else {}
-        if state.get("status") == "success" and found.get("url"):
-            line = Text(
-                f"{tui_design().model_table.status_pill} "
-                + words.running.format(url=found.get("url"), pid=found.get("pid", "")),
-                style=_style("success", "bold"),
+        running = state.get("status") == "success" and bool(found.get("url"))
+        self._dash_running = running
+        self.query_one("#bstate", Static).update(self._state_line(state))
+        self.query_one("#baddr", Static).update(
+            Text(str(found.get("url")), style=_style("accent")) if running else ""
+        )
+        self.query_one("#bstart").display = not running
+        self.query_one("#bopen").display = running
+        self.query_one("#bstop").display = running
+        self.query_one("#bkeys", Static).update(
+            _tab_hint(
+                "tab_hint_dashboard_running"
+                if running
+                else "tab_hint_dashboard_stopped"
             )
-        else:
-            line = Text(
-                f"{tui_design().model_table.status_pill} "
-                + words.not_running.format(fix=state.get("fix") or ""),
-                style=_style("warning"),
-            )
-        self.query_one("#bstate", Static).update(line)
+        )
 
     def _show_selection(self) -> None:
         super()._show_selection()
         self._read_state()
 
+    async def _act(self, app: OnexTui, name: str) -> Text | str | None:
+        """Run one dashboard command; a failure is one plain sentence, the raw
+        cause goes to the log (OMN-26620 AC9)."""
+        words = tui_design().dashboard
+        argv = {"start": words.start, "open": words.open, "stop": words.stop}[name]
+        code, out, err = await app._runner.capture(  # noqa: SLF001 - the screen and the app are one module
+            tuple(argv)
+        )
+        document = _last_json_object(out) or {}
+        if code or document.get("status") != "success":
+            _LOG.warning(
+                "dashboard %s failed: %s",
+                name,
+                document.get("fix") or _last_line(out, err),
+            )
+            line = Text(words.could_not.format(action=name), style=_style("error"))
+            self.app.notify(
+                line.plain,
+                title=_say("toast_failed"),
+                severity="error",
+                timeout=tui_design().toast_seconds,
+            )
+            return line
+        if name == "open":
+            return Text(words.note_opened, style=_style("success"))
+        return ""
+
+    def action_start_or_stop(self) -> None:
+        if self._dash_running is None:
+            return
+        if self._dash_running:
+            self.action_stop()
+        else:
+            self.action_start()
+
     def action_start(self) -> None:
-        self._run(lambda app: app.dashboard_action("start"))
+        self._run(lambda app: self._act(app, "start"))
 
     def action_open(self) -> None:
-        self._run(lambda app: app.dashboard_action("open"))
+        if self._dash_running:
+            self._run(lambda app: self._act(app, "open"))
 
     def action_stop(self) -> None:
-        self._run(lambda app: app.dashboard_action("stop"))
+        self._run(lambda app: self._act(app, "stop"))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         pressed = {
             "bstart": self.action_start,
             "bopen": self.action_open,
             "bstop": self.action_stop,
-            "bcancel": self.action_cancel,
         }.get(event.button.id or "")
         if pressed is not None:
             pressed()

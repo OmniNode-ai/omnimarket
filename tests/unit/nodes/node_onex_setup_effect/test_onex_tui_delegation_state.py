@@ -349,7 +349,7 @@ async def test_a_tab_after_a_failed_read_says_so_and_save_sends_nothing(
     assert "exit 1" not in log
     assert words.state_off not in label, label
     assert words.state_unread in label
-    assert _state(row) == words.hook_unread
+    assert tui_design().words["hook_state_unread"] in row  # OMN-26620
     assert _switches(runner) == []
     assert words.save_unread in note
 

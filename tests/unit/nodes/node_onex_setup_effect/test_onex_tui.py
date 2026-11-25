@@ -622,8 +622,8 @@ async def test_config_takes_several_providers_and_keeps_keys_out_of_argv_and_log
         _tick(app, "llama3.2")
         await _press(pilot, app, "add")
         basket = str(screen.query_one("#basket").render())
-        assert "openrouter: qwen/qwen3.8-27b" in basket
-        assert "local: llama3.2" in basket
+        assert "◈ qwen/qwen3.8-27b" in basket  # OMN-26620: no provider prefix
+        assert "◈ llama3.2" in basket
         await _press(pilot, app, "save")
         await pilot.pause()
         for _ in range(6):
@@ -667,7 +667,7 @@ async def test_a_long_list_is_searchable_and_ticks_survive_searching() -> None:
             "qwen/qwen3.8-27b",
         ]
         await _press(pilot, app, "add")
-        assert "openrouter: vendor/model-07, qwen/qwen3.8-27b" in str(
+        assert "◈ vendor/model-07  ◈ qwen/qwen3.8-27b" in str(
             screen.query_one("#basket").render()
         )
 
@@ -893,9 +893,7 @@ async def test_model_lists_set_up_models_and_makes_the_choice_first() -> None:
         await pilot.pause()
         table = app.screen.query_one("#models")
         assert [e.model_id for e in table.entries] == ["llama3.2", "qwen3:8b"]
-        assert "Now: llama3.2 (Local Model)" in str(
-            app.screen.query_one("#pnow").render()
-        )
+        assert "Tried first: ◈ llama3.2" in str(app.screen.query_one("#pnow").render())
         assert table.query_one(DataTable).has_focus
         await pilot.press("down", "enter")
         for _ in range(6):
@@ -951,7 +949,7 @@ async def test_the_table_says_when_a_provider_list_has_expired(
 
     # No list was ever kept: nothing has expired, so no marker either.
     never = await shown_row()
-    assert "262K" in never
+    assert "262k" in never
     assert configured not in never, never
 
     model_catalog.remember_provider_listing(
@@ -966,12 +964,12 @@ async def test_the_table_says_when_a_provider_list_has_expired(
         )
     )
     fresh = await shown_row()
-    assert "16K" in fresh  # the provider's own list
+    assert "16k" in fresh  # the provider's own list
     assert configured not in fresh, fresh
 
     os.utime(model_catalog._listing_path("openrouter", tmp_path), (0, 0))
     expired = await shown_row()
-    assert "262K" in expired  # models.dev fills the facts
+    assert "262k" in expired  # models.dev fills the facts
     assert configured in expired, (
         f"the table shows no {configured!r} marker after the provider list "
         f"expired: {expired}"
@@ -1058,7 +1056,7 @@ async def test_entering_a_key_loads_the_models_without_pressing_find() -> None:
         await pilot.pause(1.5)
         assert seen == [("openrouter", "sk-or-final-key-value")]
         assert len(_found(app).entries) == 2
-        assert "2 found" in str(screen.query_one("#note").render())
+        assert "2 models found" in str(screen.query_one("#note").render())
 
 
 async def test_enter_on_a_partial_command_runs_the_highlighted_entry() -> None:
@@ -1090,7 +1088,7 @@ async def test_every_model_is_listed_with_no_cap_and_any_number_can_be_ticked() 
         await pilot.pause()
         await _press(pilot, app, "add")
         basket = str(screen.query_one("#basket").render())
-        assert basket.count(",") == 465
+        assert basket.count("◈") == 466  # one mark per model
 
 
 async def test_a_failed_setup_step_shows_its_fix_and_no_ready_line(
@@ -1201,10 +1199,9 @@ async def test_save_stays_on_screen_with_a_long_list_and_ctrl_s_saves(
             region = screen.query_one(f"#{button}").region
             assert region.height > 0, button
             assert region.bottom <= 30, button
-        from omnimarket.nodes.node_onex_setup_effect.cli_model_table import keycaps
-
-        assert str(screen.query_one("#keys").render()) == str(
-            keycaps(tui_design().model_table.help["config"])
+        assert (
+            str(screen.query_one("#keys").render())
+            == (tui_design().words["tab_hint_config"])
         )
         _tick(app, "qwen/qwen3.8-27b")
         await pilot.pause()
@@ -1330,23 +1327,18 @@ async def test_model_names_each_local_model_by_the_server_that_runs_it() -> None
             ("http://vllm.test:8000", ("Qwen3.8-27B",)),
         ]
         grid = app.screen.query_one("#models").query_one(DataTable)
+        # OMN-26620: the Model tab names the server in the model cell.
         cells = {
-            str(grid.get_row_at(i)[1]): [str(c) for c in grid.get_row_at(i)]
+            str(grid.get_row_at(i)[0]): [str(c) for c in grid.get_row_at(i)]
             for i in range(grid.row_count)
         }
         mark = tui_design().model_table.unknown_mark
-        bar = tui_design().model_table.row_bar
-        assert (
-            cells["saluki:latest"][0]
-            == f"{bar} Local Model · Ollama  ollama.test:11434"
-        )
-        assert cells["saluki:latest"][2] == "41K"
-        columns = [c.key for c in tui_design().model_table.columns if c.key != "pick"]
-        caps = columns.index("capabilities")
-        assert "Tools" in cells["saluki:latest"][caps]
-        assert cells["Qwen3.8-27B"][0] == f"{bar} Local Model · vLLM  vllm.test:8000"
-        assert cells["Qwen3.8-27B"][2] == mark
-        assert cells["Qwen3.8-27B"][caps] == mark
+        ollama = next(v for k, v in cells.items() if "saluki:latest" in k)
+        vllm = next(v for k, v in cells.items() if "Qwen3.8-27B" in k)
+        assert "saluki:latest on ollama.test:11434" in ollama[0]
+        assert ollama[1] == "41k"
+        assert "Qwen3.8-27B on vllm.test:8000" in vllm[0]
+        assert vllm[1] == mark
         assert not any("?" in c for row in cells.values() for c in row)
         assert isinstance(grid.get_row_at(0)[0], Text)
 
@@ -1460,7 +1452,7 @@ async def test_one_click_ticks_a_row_and_the_list_takes_focus_when_it_loads() ->
         await _wait_for_models(pilot)
         rows = _found(app).query_one(DataTable)
         assert rows.has_focus
-        await pilot.click(rows, offset=(30, 2))  # the second data row, once
+        await pilot.click(rows, offset=(30, 1))  # the second row (no header), once
         await pilot.pause()
         assert len(_found(app).ticked) == 1
 

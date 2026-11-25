@@ -70,6 +70,61 @@ def context_text(tokens: int | None) -> str:
     return f"{round(tokens / 1000)}K"
 
 
+def _named(entry: ModelCatalogEntry) -> str:
+    """The model's name, and the server that runs it when it runs on one, so two
+    servers running a model of one name stay two different rows."""
+    if not entry.server_url:
+        return entry.model_id
+    host = urlparse(entry.server_url).netloc or entry.server_url
+    return (
+        tui_design().words["model_on_server"].format(model=entry.model_id, server=host)
+    )
+
+
+def _say_expired(text: Text, entry: ModelCatalogEntry) -> None:
+    """AC4: a provider's kept list that has expired is said beside its models."""
+    if entry.provider_list_expired:
+        text.append(f"  {_table().listing_expired}", style=_colour("warning"))
+
+
+def context_words(tokens: int | None) -> str:
+    """'32k' or '1M' for a tab table; the unknown mark when no source says."""
+    words = _table().tab_table
+    if tokens is None:
+        return _table().unknown_mark
+    if tokens >= 1_000_000:
+        whole, rest = divmod(tokens, 1_000_000)
+        number = f"{whole}" if rest == 0 else f"{tokens / 1_000_000:.1f}"
+        return number + words.context_million
+    return f"{round(tokens / 1000)}{words.context_thousand}"
+
+
+def price_in_words(entry: ModelCatalogEntry, *, output: bool = False) -> str:
+    """One price as '$0.10'; the local word for a local model; never free when unknown."""
+    if entry.deployment == "local":
+        return _table().price_local
+    value = entry.output_usd_per_million if output else entry.input_usd_per_million
+    return _money(value) if value is not None else _table().price_unknown
+
+
+def price_words(entry: ModelCatalogEntry) -> str:
+    """'$0.10 in · $0.30 out', the way the mockup reads it."""
+    if entry.deployment == "local":
+        return _table().price_local
+    return _table().tab_table.price_in_out.format(
+        input=price_in_words(entry), output=price_in_words(entry, output=True)
+    )
+
+
+def capability_words(entry: ModelCatalogEntry) -> Text:
+    """'tools, vision': the supported capabilities in plain lower-case words."""
+    supported = [label for label, state in entry.capabilities.items() if state == "yes"]
+    if not supported:
+        return Text(_table().unknown_mark, style=_colour("muted"))
+    joined = _table().tab_table.capability_join.join(s.lower() for s in supported)
+    return Text(joined, style=_colour("muted"))
+
+
 def capability_text(entry: ModelCatalogEntry) -> Text:
     """Supported capabilities as coloured badges; the unknown mark when none is."""
     colours = _table().capability_colours
@@ -211,8 +266,14 @@ class ModelTable(Widget):
         selectable: bool,
         provider_labels: dict[str, str] | None = None,
         id: str | None = None,
+        layout: str | None = None,
     ) -> None:
         super().__init__(id=id)
+        #: A tab layout from tui_design.yaml (model_table.tab_table.layouts), or
+        #: None for the classic table with its search, filter and sort bar.
+        self._layout = layout
+        #: The row tried first, drawn with the first marker (the Model tab).
+        self._first: str | None = None
         self._selectable = selectable
         self._labels = provider_labels or {}
         self._entries: tuple[ModelCatalogEntry, ...] = ()
@@ -227,11 +288,28 @@ class ModelTable(Widget):
 
     def on_mount(self) -> None:
         rows = self.query_one("#mt-rows", DataTable)
-        for column in _table().columns:
-            if column.key == "pick" and not self._selectable:
-                continue
-            rows.add_column(column.title, key=column.key)
+        if self._layout is not None:
+            spec = _table().tab_table.layouts[self._layout]
+            rows.show_header = spec.header
+            rows.zebra_stripes = False
+            self.query_one("#mt-search").display = False
+            self.query_one("#mt-bar").display = False
+            for tab_column in spec.columns:
+                if tab_column.key == "pick" and not self._selectable:
+                    continue
+                rows.add_column(tab_column.title, key=tab_column.key)
+        else:
+            for column in _table().columns:
+                if column.key == "pick" and not self._selectable:
+                    continue
+                rows.add_column(column.title, key=column.key)
         self._redraw()
+
+    def set_first(self, key: str | None) -> None:
+        """Mark one row (by entry_key) as the model tried first."""
+        self._first = key
+        if self.is_mounted:
+            self._redraw()
 
     def _label(self, entry: ModelCatalogEntry) -> str:
         """The row's own label (a local server's kind) before the provider's."""
@@ -285,9 +363,64 @@ class ModelTable(Widget):
             if (self._filter == _table().filters[0] or e.deployment == self._filter)
             and all(w in _search_blob(e, self._label(e)) for w in words)
         ]
+        if self._layout is not None:  # a tab keeps the order delegation tries them in
+            return shown
         return sorted(shown, key=lambda e: _sort_key(e, self._sort))
 
-    def _cells(self, entry: ModelCatalogEntry) -> list[object]:
+    def _tab_cells(self, entry: ModelCatalogEntry, position: int) -> list[object]:
+        """A row of a tab layout: plain words, no coloured pills."""
+        words = _table().tab_table
+        cells: list[object] = []
+        for column in words.layouts[self._layout or ""].columns:
+            key = column.key
+            if key == "pick":
+                if self._selectable:
+                    on = entry_key(entry) in self._ticked
+                    cells.append(
+                        Text(
+                            words.ticked if on else words.unticked,
+                            style=_colour("success" if on else "muted"),
+                        )
+                    )
+            elif key == "model":
+                named = Text(_named(entry), style=_colour("foreground"))
+                _say_expired(named, entry)
+                cells.append(named)
+            elif key == "position":
+                cells.append(Text(str(position), style=_colour("muted")))
+            elif key == "model_mark":
+                mark = tui_design().words["model_glyph"]
+                named = Text(f"{mark} ", style=_colour("primary"))
+                named.append(_named(entry), style=_colour("foreground"))
+                _say_expired(named, entry)
+                cells.append(named)
+            elif key == "model_marked":
+                first = entry_key(entry) == self._first
+                marked = Text(
+                    (words.marker_first if first else words.marker_other) + " ",
+                    style=_colour("primary" if first else "muted"),
+                )
+                marked.append(_named(entry), style=_colour("foreground"))
+                _say_expired(marked, entry)
+                cells.append(marked)
+            elif key == "context":
+                cells.append(Text(context_words(entry.context_tokens)))
+            elif key == "price_words":
+                cells.append(Text(price_words(entry), style=_colour("accent")))
+            elif key == "price_in":
+                cells.append(Text(price_in_words(entry)))
+            elif key == "price_out":
+                cells.append(Text(price_in_words(entry, output=True)))
+            elif key == "capabilities":
+                cells.append(capability_words(entry))
+            elif key == "status":
+                word = words.status[entry.status]
+                cells.append(Text(word.text, style=_colour(word.colour)))
+        return cells
+
+    def _cells(self, entry: ModelCatalogEntry, position: int = 0) -> list[object]:
+        if self._layout is not None:
+            return self._tab_cells(entry, position)
         words = _table()
         cells: list[object] = []
         for column in words.columns:
@@ -322,8 +455,8 @@ class ModelTable(Widget):
         keep = self.current()
         rows.clear()
         visible = self._visible()
-        for entry in visible:
-            rows.add_row(*self._cells(entry), key=entry_key(entry))
+        for position, entry in enumerate(visible, start=1):
+            rows.add_row(*self._cells(entry, position), key=entry_key(entry))
         words = _table()
         ticked = (
             words.bar_ticked.format(count=len(self._ticked)) if self._selectable else ""

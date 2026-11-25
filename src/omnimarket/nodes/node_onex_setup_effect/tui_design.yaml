@@ -186,6 +186,47 @@ model_table:
     model: "Tab next screen · Enter selects · A auto · R remove · I details · / search · F filter · S sort · Esc back"
     delegation: "Tab next screen · Space switches · I details · Ctrl+S saves · Esc back"
     dashboard: "Tab next screen · S start · Enter opens · X stop · Esc back"
+  # The tables on the Config tab (found models, tick boxes) and the Model tab
+  # (the set-up models, the one tried first marked), mockups pages 4 and 5.
+  tab_table:
+    ticked: "[✓]"
+    unticked: "[ ]"
+    marker_first: "◉"
+    marker_other: "○"
+    context_thousand: k
+    context_million: M
+    price_in_out: "{input} in · {output} out"
+    capability_join: ", "
+    status:
+      ready: {text: "✓ ready", colour: success}
+      listed: {text: "· available", colour: info}
+      untested: {text: "· not tested yet", colour: warning}
+      failed: {text: "✗ not working", colour: error}
+      unavailable: {text: "! needs a key", colour: warning}
+    layouts:
+      order:
+        header: false
+        columns:
+          - {key: position, title: " "}
+          - {key: model_mark, title: Model}
+          - {key: status, title: Status}
+      found:
+        header: false
+        columns:
+          - {key: pick, title: " "}
+          - {key: model, title: Model}
+          - {key: context, title: Context}
+          - {key: price_words, title: Price}
+          - {key: capabilities, title: Capabilities}
+      pick:
+        header: true
+        columns:
+          # The marker leads the model name; the title is indented past it.
+          - {key: model_marked, title: "  Model"}
+          - {key: context, title: Context}
+          - {key: price_in, title: "In $/1M"}
+          - {key: price_out, title: "Out $/1M"}
+          - {key: status, title: Status}
 
 # /delegation: one switch, the prompt hook; subagents always run on Claude (OMN-23413).
 delegation:
@@ -246,14 +287,28 @@ dashboard:
   opened: "Opened in your browser. Press Enter, use the Open button, or run onex dashboard open to open it again."
   stopped: "Dashboard stopped"
   failed: "Dashboard {action} did not work: {reason}"
+  # The Dashboard tab (OMN-26620 mockup page 7): state beside the title, the
+  # address under it, one footer line; a failure is one plain sentence.
+  state_running: "{dot} Running · pid {pid}"
+  state_running_nopid: "{dot} Running"
+  state_stopped: "{dot_off} Stopped"
+  state_reading: "{dot_reading} checking…"
+  state_unread: "{dot_reading} status unknown"
+  dot_on: "●"
+  dot_off: "○"
+  dot_reading: "◌"
+  button_open: Open in browser
+  note_opened: "Opened in your browser."
+  could_not: "Could not {action} the dashboard. Run /doctor."
+  could_not_read: "Could not read the dashboard. Run /doctor."
 
 # /config, /model and /delegation are three tabs of one place: Tab and
 # Shift+Tab move between them, and a click on a tab opens it.
 tabs:
-  - {id: config, label: "  Config  "}
-  - {id: model, label: "  Model  "}
-  - {id: delegation, label: "  Delegation  "}
-  - {id: dashboard, label: "  Dashboard  "}
+  - {id: config, label: Config}
+  - {id: model, label: Model}
+  - {id: delegation, label: Delegation}
+  - {id: dashboard, label: Dashboard}
 
 # Every word the /config, /model and /delegation screens show; {name} parts
 # are filled in. The screens hold no sentence of their own (OMN-23413 AC27).
@@ -310,6 +365,54 @@ words:
   toast_added: Added
   still_working: "still working… the tab closes or changes once this finishes"
   tab_loading: "opening {tab}…"
+  # The heavy rule under the open tab, and the footer line of each tab: the
+  # first word of each part is its key, drawn bold (mockups pages 4 to 7).
+  tab_rule: "━"
+  hint_separator: " · "
+  # A problem is said in plain words with the next step; the raw cause goes to
+  # the log only (OMN-26620 AC9). A line holding an errno, a path, an exception
+  # name or an environment name is replaced by its tab's sentence.
+  raw_text_pattern: '\[Errno|Traceback|\w+(Error|Exception)\b|(?:^|[\s(\x27"])(?:/[\w.\-]+){2,}|~/[\w.\-]+|\b[A-Za-z]:\\|\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b'
+  problem_config: "Could not add the models. Run /doctor."
+  problem_model: "Could not change the model. Run /doctor."
+  problem_delegation: "Could not change delegation. Run /doctor."
+  problem_dashboard: "Could not start the dashboard. Run /doctor."
+  # Config tab (mockup page 4).
+  add_title: Add models
+  step_of: "step {step} of 3"
+  provider_box: Provider
+  key_box: Key
+  url_box: Server URL
+  key_valid: "✓ valid"
+  key_rejected: "! not accepted"
+  url_valid: "✓ reachable"
+  radio_on: "●"
+  radio_off: "○"
+  models_found: "{count} models found · Space to tick"
+  models_found_one: "1 model found · Space to tick"
+  model_glyph: "◈"
+  selected: "Selected  {models}"
+  selected_none: "Selected  none yet"
+  # Model tab (mockup page 5).
+  tried_first: "Tried first: {mark} {model}"
+  tried_first_auto: "Tried first: {mark} Auto picks per task"
+  # Delegation tab (mockup page 6).
+  delegation_about: "Prompts go to your models first. Claude Code is the fallback."
+  turn_on: "Turn on"
+  turn_off: "Turn off"
+  hook_label: Hook
+  hook_state_installed: "✓ installed in Claude Code"
+  hook_state_missing: "! not installed"
+  hook_state_paused: "! paused"
+  hook_state_unknown: "– not read yet"
+  hook_state_unread: "! could not be read"
+  order_title: "Tried in this order"
+  order_none: "No models yet. Run /config."
+  tab_hint_config: "tab next · space tick · ctrl+s save · esc close"
+  tab_hint_model: "↑↓ move · enter make first · d details · esc close"
+  tab_hint_delegation: "space switch · ctrl+s save · esc close"
+  tab_hint_dashboard_stopped: "s start · esc close"
+  tab_hint_dashboard_running: "enter open · s stop · esc close"
   # The one line under the tabs: how many models, on how many servers, and the first.
   summary: "{dot} {models} · {servers} · {first}"
   summary_no_servers: "{dot} {models} · {first}"
