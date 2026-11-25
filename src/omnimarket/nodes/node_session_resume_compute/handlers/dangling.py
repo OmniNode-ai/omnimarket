@@ -9,7 +9,9 @@ A CLAIM is closed when a later row names it: a TERMINAL (or a legacy type mapped
 ``closes-CLAIM=`` names it; a TERMINAL naming no claim whose ``claim-lane=`` (else ``lane=``) is the
 claim's lane; a CLAIM whose ``supersedes-claim=`` names it; a RELEASE whose ``re=`` names it.
 
-A reference names a claim, strongest first: an LCT1 claim token (bound by its row digest), a claim
+A reference names a claim, strongest first: a row identity ``RID1/<KIND>/<stamp>/<lane>`` (needs no
+file and no line, so it binds a row read from the bus), an LCT1 claim token (bound by its row digest;
+an old form), a claim
 id ``<stamp>-<lane>``, ``lane=<lane>[,<stamp>]``, a live-ledger line pointer bound only to a related
 claim, or a bare stamp bound by tier (``claim-lane=``, ``lane=``, a ``-r`` relaunch lane, a shared
 ticket); a tier that matches two claims binds none and is reported AMBIGUOUS.
@@ -42,6 +44,11 @@ from .ledger_grammar import (
     parse_row,
 )
 
+#: The old closing forms (an LCT1 token, a ledger line pointer) stay readable for a closing row stamped
+#: before this instant; the writer mints ``RID1`` only. A later closing row naming an old form binds
+#: nothing and is noted LEGACY-TOKEN-EXPIRED.
+LEGACY_TOKEN_SUNSET = "2026-12-25T00:00:00Z"
+RID_RE = re.compile(rf"RID1/([A-Z][A-Z-]*)/({STAMP})/([A-Za-z0-9][A-Za-z0-9._:-]*)")
 ARCHIVE_GLOB = "ROLLING_WORK_LEDGER_*.md"
 STAMP_RE = re.compile(rf"^{STAMP}$")
 STAMP_SEARCH = re.compile(STAMP)
@@ -65,6 +72,11 @@ class Rec:
     lane: str = ""
     tickets: set[str] = field(default_factory=set)
 
+    @property
+    def identity(self) -> str:
+        """The row identity that survives without the file: kind, stamp and lane, never a line."""
+        return row_identity(self.rtype, self.row.stamp, self.lane)
+
     def __post_init__(self) -> None:
         self.lane = self.row.token("lane") or ""
         self.tickets = set(
@@ -72,6 +84,10 @@ class Rec:
                 " ".join(self.row.value(k) or "" for k in ("ticket", "tickets"))
             )
         )
+
+
+def row_identity(kind: str, stamp: str, lane: str) -> str:
+    return f"RID1/{kind}/{stamp}/{lane}"
 
 
 def split_parts(value: str | None) -> list[str]:
@@ -89,7 +105,9 @@ class Resolver:
         self.by_lane: dict[str, list[Rec]] = {}
         self.by_line: dict[int, Rec] = {}
         self.by_digest: dict[str, list[Rec]] = {}
+        self.by_identity: dict[str, list[Rec]] = {}
         for c in claims:
+            self.by_identity.setdefault(c.identity, []).append(c)
             self.by_stamp.setdefault(c.row.stamp, []).append(c)
             if c.lane:
                 self.by_lane.setdefault(c.lane, []).append(c)
@@ -137,7 +155,8 @@ class Resolver:
 
     def names_any(self, value: str) -> bool:
         return bool(
-            TOKEN_RE.search(value)
+            RID_RE.search(value)
+            or TOKEN_RE.search(value)
             or LANE_REF_RE.match(value)
             or STAMP_SEARCH.search(value)
             or any(LINE_PTR_RE.search(p) for p in split_parts(value))
@@ -146,7 +165,26 @@ class Resolver:
     def resolve(self, value: str, closer: Rec) -> list[Rec]:
         bound: list[Rec] = []
         rest = value
-        tokens = list(TOKEN_RE.finditer(value))
+        for ident in RID_RE.finditer(value):
+            bound.extend(
+                c
+                for c in self.by_identity.get(ident.group(0), [])
+                if c.seq < closer.seq
+            )
+        if bound:
+            return bound
+        rest = RID_RE.sub(" ", rest)
+        if closer.row.stamp >= LEGACY_TOKEN_SUNSET and (
+            TOKEN_RE.search(rest)
+            or any(LINE_PTR_RE.search(p) for p in split_parts(rest))
+        ):
+            self.notes.append(
+                f"LEGACY-TOKEN-EXPIRED at {closer.source}: an LCT1 token or a ledger line pointer "
+                f"in a row stamped {closer.row.stamp} binds nothing after {LEGACY_TOKEN_SUNSET}; "
+                "name the CLAIM by RID1/CLAIM/<stamp>/<lane>"
+            )
+            return bound
+        tokens = list(TOKEN_RE.finditer(rest))
         if tokens:
             for t in tokens:
                 hits = [
@@ -160,7 +198,7 @@ class Resolver:
                         "with a lane= field in the files read has its digest"
                     )
                 bound.extend(pick)
-            rest = TOKEN_RE.sub(" ", value)
+            rest = TOKEN_RE.sub(" ", rest)
         lane_ref = LANE_REF_RE.match(rest)
         if lane_ref:
             lane = lane_ref.group(1)
@@ -240,6 +278,34 @@ def read_ledger(ledger: Path, *, fs: ProtocolSessionFiles | None = None) -> Ledg
                 )
             )
     return Ledger([p for p, _ in files], recs, skipped)
+
+
+def read_ledger_rows(rows: Iterable[str], *, source: str = "bus") -> Ledger:
+    """The parsed rows a bus range read printed, in the order read.
+
+    A bus row has no file and no line: ``live`` is False and ``lineno`` 0, so a ledger line pointer
+    binds none of them and only row identity, a token digest, a claim id or a lane does.
+    """
+    recs: list[Rec] = []
+    skipped = 0
+    for seq, line in enumerate(rows, 1):
+        row = parse_row(line)
+        if row is None:
+            if opens_a_row(line):
+                skipped += 1
+            continue
+        recs.append(
+            Rec(
+                row=row,
+                seq=seq,
+                source=f"{source}:{row.stamp}",
+                lineno=0,
+                live=False,
+                rtype=LEGACY_TYPE_MAP.get(row.row_type, row.row_type),
+                raw=line.rstrip("\n"),
+            )
+        )
+    return Ledger([], recs, skipped)
 
 
 def closed_claims(ledger: Ledger, resolver: Resolver) -> set[int]:

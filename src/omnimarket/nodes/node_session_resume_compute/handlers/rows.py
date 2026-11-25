@@ -23,7 +23,7 @@ import re
 from omnimarket.models.session_scope import ModelSessionScope
 
 from ..models.model_session_resume import ModelCloseSpec, ModelRelaunchSpec
-from .dangling import FULL_TOKEN_RE, Ledger, Ownership, find_claims
+from .dangling import FULL_TOKEN_RE, Ledger, Ownership, find_claims, row_identity
 from .ledger_grammar import STAMP, parse_row
 
 STAMP_RE = re.compile(rf"^{STAMP}$")
@@ -38,10 +38,14 @@ class RefusalError(Exception):
 
 
 def claim_ref(dead_claim: str, dead_lane: str) -> str:
-    """The unique reference for the stopped CLAIM: its token, or ``<stamp>-<lane>``."""
+    """The unique reference for the stopped CLAIM: ``RID1/CLAIM/<stamp>/<lane>``, which needs no file.
+
+    A full LCT1 token the caller already holds is passed through (the old form, read until
+    ``LEGACY_TOKEN_SUNSET``).
+    """
     if FULL_TOKEN_RE.match(dead_claim):
         return dead_claim
-    return f"{dead_claim}-{dead_lane}"
+    return row_identity("CLAIM", dead_claim, dead_lane)
 
 
 def require_owned(
