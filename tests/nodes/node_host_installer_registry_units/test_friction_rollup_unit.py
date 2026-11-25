@@ -97,6 +97,46 @@ def test_install_renders_a_7200_second_agent_running_the_module_from_the_branch_
 
 
 @pytest.mark.usefixtures("canonical")
+def test_the_unit_reads_and_appends_over_the_bus_and_names_no_ledger_file(
+    tmp_path: Path,
+) -> None:
+    """OMN-26329: at the merge base the unit carried a ledger file path and the file-appending command, so this fails there."""
+    branch = tmp_path / "branch"
+    revision = make_checkout(branch, entry=ENTRY)
+    result = HandlerRegistryUnits(Recorder()).handle(
+        request(
+            tmp_path,
+            unit=UNIT,
+            mode="install",
+            project_path=str(branch),
+            expected_revision=revision,
+        )
+    )
+    assert result.status == "success", result.stderr
+    env = plist_of(result.rendered)["EnvironmentVariables"]
+    assert env["ONEX_LEDGER_BUS_READ_COMMAND"].endswith("onex ledger query --stdin")
+    assert (
+        "work_ledger_bus.cli append --bus-lane dev"
+        in (env["ONEX_LEDGER_BUS_APPEND_COMMAND"])
+    )
+    assert env["ONEX_LEDGER_HOST_NAME"] == "lab-ledger-host"
+    # No variable names a ledger file or the file-appending command: the bus commands are the only ledger routes.
+    assert sorted(name for name in env if "LEDGER" in name) == [
+        "ONEX_LEDGER_BUS_APPEND_COMMAND",
+        "ONEX_LEDGER_BUS_READ_COMMAND",
+        "ONEX_LEDGER_HOST_NAME",
+    ]
+    assert not [name for name, value in env.items() if value.endswith(".md")]
+
+
+def test_the_unit_requires_the_host_name_the_append_command_writes_as() -> None:
+    unit = load_units()[UNIT]
+    assert unit["environment_inputs"] == {"ONEX_LEDGER_HOST_NAME": "ledger_host_name"}
+    assert unit["required_environment_inputs"] == ["ONEX_LEDGER_HOST_NAME"]
+    assert "ONEX_LEDGER_COMMAND" not in unit.get("environment_path_overrides", [])
+
+
+@pytest.mark.usefixtures("canonical")
 def test_a_checkout_without_the_tick_entry_file_is_refused(tmp_path: Path) -> None:
     """Error chain: the installer refuses a branch that does not carry the friction rollup entry file."""
     branch = tmp_path / "branch"

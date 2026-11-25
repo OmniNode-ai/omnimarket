@@ -4,7 +4,7 @@
 
 The unit passes ``--omni-home`` and ``--state-dir`` and declares ``ONEX_LEDGER_BUS_READ_COMMAND``. The mirror is
 ``<omni-home>/.onex_state/ledger-mirror/host-ledger-mirror.md`` (authority rows, 1 day) and
-``host-ledger-rulings.md`` (rulings and consents, 30 days). ``last-run.json`` in the state directory holds
+``host-ledger-rulings.md`` (rulings and consents, 30 days) and ``archive/pinned-rulings-split.md`` (the rulings a brief cites, any age, copied from the host archive rolls). ``last-run.json`` in the state directory holds
 the tick's receipt, with the mirror's lag behind the record, so the unit's installer can tell a ticking unit from a
 silent one. Exit 0: the mirror holds every row the record held at the read. Exit 1: the read failed or the page
 bound ended the tick; the next tick resumes. Exit 3: the unit supplies no read command.
@@ -25,7 +25,13 @@ from omnimarket.nodes.node_work_ledger_host_mirror_effect.handlers.adapter_bus_r
     BusLedgerRowsReader,
 )
 from omnimarket.nodes.node_work_ledger_host_mirror_effect.handlers.handler_work_ledger_host_mirror import (
+    HandlerPinnedRulingsMirror,
     HandlerWorkLedgerHostMirror,
+)
+from omnimarket.nodes.node_work_ledger_host_mirror_effect.models.model_pinned_rulings_mirror import (
+    EnumPinnedRulingsStatus,
+    ModelPinnedRuling,
+    ModelPinnedRulingsRequest,
 )
 from omnimarket.nodes.node_work_ledger_host_mirror_effect.models.model_work_ledger_host_mirror import (
     EnumHostMirrorStatus,
@@ -66,6 +72,14 @@ STREAMS = (
     Stream("host-ledger-mirror", AUTHORITY_KINDS, DAY_SECONDS),
     Stream("host-ledger-rulings", RULING_KINDS, 30 * DAY_SECONDS),
 )
+# The rulings a brief template cites by stamp and lane, carried on every host's mirror whatever their age (OMN-26412). The
+# 30 day stream above drops them: the standing landing ruling is older, so a brief built on a lab host stopped at
+# `lane_brief.py constraints` exit 3. Each is copied verbatim from the host's own archive rolls (the registry clone
+# tracks them; the bus projection holds no row that old) onto `archive/pinned-rulings-split.md` beside the mirror, where
+# the brief reader already looks. A template that cites another old ruling adds its stamp and lane here.
+PINNED_RULINGS = (ModelPinnedRuling(ts="2026-09-29T06:34:17Z", lane="orchestrator-83"),)
+ARCHIVE_ROLLS_DIRECTORY = "docs/tracking/archive"
+PINNED_ROLL = "archive/pinned-rulings-split.md"
 # One read answers in 5 to 12 s; two streams of up to ten pages each end inside the contract's 100 s run limit,
 # and a read that hangs ends at this bound with the pages before it kept.
 READ_TIMEOUT_SECONDS = 25.0
@@ -107,9 +121,17 @@ def main(argv: list[str] | None = None) -> int:
                 window_seconds=stream.window_seconds,
             )
         )
+    pinned = HandlerPinnedRulingsMirror().handle(
+        ModelPinnedRulingsRequest(
+            rolls_directory=args.registry_root / ARCHIVE_ROLLS_DIRECTORY,
+            target_path=args.registry_root / MIRROR_DIRECTORY / PINNED_ROLL,
+            pinned=PINNED_RULINGS,
+        )
+    )
     code = (
         0
         if all(r.status is EnumHostMirrorStatus.MIRRORED for r in results.values())
+        and pinned.status is EnumPinnedRulingsStatus.MIRRORED
         else 1
     )
     for name, result in results.items():
@@ -117,6 +139,9 @@ def main(argv: list[str] | None = None) -> int:
             f"{NODE_NAME} {name} {result.status.value} rows_appended={result.rows_appended} "
             f"lag_seconds={result.lag_seconds} {result.detail}\n"
         )
+    sys.stdout.write(
+        f"{NODE_NAME} pinned-rulings {pinned.status.value} rows_written={pinned.rows_written} {pinned.detail}\n"
+    )
     _write_atomically(
         args.state_dir / "last-run.json",
         json.dumps(
@@ -124,6 +149,7 @@ def main(argv: list[str] | None = None) -> int:
                 "ran_at": ran_at,
                 "exit_code": code,
                 "results": {n: r.model_dump(mode="json") for n, r in results.items()},
+                "pinned_rulings": pinned.model_dump(mode="json"),
             }
         ),
     )

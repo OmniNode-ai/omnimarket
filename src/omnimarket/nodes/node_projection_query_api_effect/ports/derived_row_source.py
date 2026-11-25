@@ -29,19 +29,21 @@ from typing import Any
 
 import asyncpg
 
+from omnimarket.handlers.projection_table_sql import (
+    order_clause,
+    physical_key_columns,
+    quote_identifier,
+    select_list,
+    serialise_row,
+)
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.table_reader import (
     RETAINED_WINDOW_FACTOR,
     ProjectionReadError,
     TableRowSource,
     _read_failure,
-    order_clause,
-    physical_key_columns,
     qualified_relation,
-    quote_identifier,
     recency_column,
-    select_list,
-    serialise_row,
 )
 from omnimarket.projection.tenant_isolation import TENANT_GUC
 
@@ -164,11 +166,18 @@ class DerivedReadRowSource(TableRowSource):
         since: str | None = None,
         correlation_id: str | None = None,
         selection: str = "newest",
+        window_seconds: int | None = None,
+        row_cap: int | None = None,
     ) -> list[dict[str, Any]]:
         """The exposure's served window; a view's is one held pass over it."""
         keyed = bool(cfg.key_columns) and recency_column(cfg) is not None
         scoped = cfg.tenant_column is None or tenant_id is not None
-        plain = since is None and correlation_id is None and selection == "newest"
+        plain = (
+            since is None
+            and correlation_id is None
+            and selection == "newest"
+            and window_seconds is None
+        )
         if not (keyed and scoped and plain) or not await self._is_derived(cfg):
             return await super().rows(
                 cfg,
@@ -177,6 +186,8 @@ class DerivedReadRowSource(TableRowSource):
                 since=since,
                 correlation_id=correlation_id,
                 selection=selection,
+                window_seconds=window_seconds,
+                row_cap=row_cap,
             )
         return await self._derived_windows.read(
             (qualified_relation(cfg), tenant_id, order_spec),

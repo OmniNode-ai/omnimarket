@@ -23,7 +23,9 @@ POLICY_PATH = (
 
 def load_policy(path: Path = POLICY_PATH) -> ModelSelectorPolicy:
     with path.open() as handle:
-        return ModelSelectorPolicy.model_validate(yaml.safe_load(handle))
+        policy = ModelSelectorPolicy.model_validate(yaml.safe_load(handle))
+    policy.closure_settings()  # a policy file must set the closure keys: a snapshot alone may omit them
+    return policy
 
 
 CONTRACT_PATH = POLICY_PATH.with_name("contract.yaml")
@@ -38,3 +40,8 @@ def selector_version(path: Path = CONTRACT_PATH) -> str:
     """The selector node's version, as its contract declares it."""
     with path.open() as handle:
         return str(yaml.safe_load(handle)["node_version"])
+
+
+def repo_root() -> Path:
+    """The checkout the selector node lives in: the root the receipts' recorded-set paths are relative to."""
+    return POLICY_PATH.parents[4]

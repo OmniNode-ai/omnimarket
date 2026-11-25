@@ -37,6 +37,8 @@ class ModelRowsWindowOverlay(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     default_rows_window_days: int = Field(ge=1)
+    # The default count cap of a rows read; absent means the contract's rows_default_limit.
+    default_rows_limit: int | None = Field(default=None, ge=1)
     # The held rows window (OMN-24031): optional, read by work_ledger_rows_window_cache; absent
     # means the contract's work_ledger_query.rows_window_cache values.
     rows_window_cache_ttl_seconds: int | None = Field(default=None, ge=1)
@@ -72,16 +74,54 @@ def load_rows_window(
     return timedelta(days=overlay.default_rows_window_days)
 
 
+def _contract_rows_limit(contract_path: Path) -> int:
+    """The contract's ``work_ledger_query.rows_default_limit`` (positive int)."""
+    with contract_path.open(encoding="utf-8") as handle:
+        contract = yaml.safe_load(handle)
+    section = contract.get("work_ledger_query") or {}
+    limit = section.get("rows_default_limit")
+    if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+        raise ValueError("work_ledger_query.rows_default_limit must be a positive int")
+    return limit
+
+
+def load_rows_limit(
+    contract_path: Path, environ: Mapping[str, str] | None = None
+) -> int:
+    """The default count cap of a rows read: the overlay's, else the contract's."""
+    try:
+        overlay = load_structured_overlay(
+            NODE_NAME, ModelRowsWindowOverlay, environ, file_env=OVERLAY_FILE_ENV
+        )
+    except NodeOverlayNotFoundError:
+        return _contract_rows_limit(contract_path)
+    if overlay.default_rows_limit is not None:
+        return overlay.default_rows_limit
+    return _contract_rows_limit(contract_path)
+
+
+def count_bounded(request: ModelWorkLedgerQueryRequest) -> bool:
+    """True when a rows read takes the default count cap: no limit, page, history or full flag."""
+    return (
+        request.query is EnumWorkLedgerQueryKind.ROWS
+        and request.limit is None
+        and request.page_size is None
+        and request.history is None
+        and not request.full
+    )
+
+
 def bounded_since(
     request: ModelWorkLedgerQueryRequest, until: datetime, window: timedelta
 ) -> datetime | None:
     """The effective start of a bounded rows query, else None.
 
-    Bounded only when the query is ``rows`` with no ``since``, ``row_ref`` or
+    Bounded only when the query is ``rows`` with no ``full`` flag, ``since``, ``row_ref`` or
     ``history``; every other request is not bounded and behaves as before.
     """
     if (
         request.query is EnumWorkLedgerQueryKind.ROWS
+        and not request.full
         and request.since is None
         and request.row_ref is None
         and request.history is None

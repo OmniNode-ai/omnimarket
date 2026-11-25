@@ -15,15 +15,12 @@ from omnimarket.models.friction_rollup import (
 
 
 class ModelFrictionRollupTickRequest(BaseModel):
-    """What a launchd plist passes as a small JSON input: where the registry and the ledger are."""
+    """What a launchd plist passes as a small JSON input: where the registry is. The ledger is read and appended over the bus."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     registry_root: str = Field(
         min_length=1, description="Root that holds the default state directory."
-    )
-    ledger_path: str = Field(
-        min_length=1, description="The rolling work ledger to read and append to."
     )
     now: str | None = Field(
         default=None, description="UTC timestamp used instead of the clock."
@@ -32,10 +29,6 @@ class ModelFrictionRollupTickRequest(BaseModel):
     state_dir: str | None = Field(
         default=None,
         description="Where reports are written; default under registry_root.",
-    )
-    archive_dir: str | None = Field(
-        default=None,
-        description="Where the *-split.md files are; default beside the ledger.",
     )
 
 
@@ -46,6 +39,20 @@ class ModelFrictionClassOverlay(BaseModel):
 
     class_rules: tuple[ModelFrictionClassRule, ...]
     class_owners: tuple[ModelFrictionClassOwner, ...] = ()
+
+
+class ModelTickLedgerRead(BaseModel):
+    """One paged read of the ledger: the row kinds and, when the rollup needs only some of them, the term that narrows them."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kinds: tuple[str, ...] = Field(min_length=1)
+    term: str | None = Field(
+        default=None,
+        min_length=1,
+        description="A case-insensitive substring a row's first line must hold; the read node narrows in the store.",
+    )
+    why: str = Field(min_length=1, description="What the rollup takes from these rows.")
 
 
 class ModelTickWindow(BaseModel):
@@ -73,13 +80,35 @@ class ModelFrictionRollupTickSettings(BaseModel):
     bucket_hours: int = Field(ge=1)
     state_subdir: str = Field(min_length=1)
     latest_stem: str = Field(min_length=1)
-    archive_subdir: str = Field(min_length=1)
-    archive_glob: str = Field(min_length=1)
     top_budget_chars: int = Field(ge=1)
     new_classes_budget_chars: int = Field(ge=1)
     needs_ticket_budget_chars: int = Field(ge=1)
-    appender_command: tuple[str, ...] = Field(min_length=1)
+    ledger_read_command_env: str = Field(
+        min_length=1,
+        description="The variable that holds the bus read command; the ledger is read through the bus, never from a file.",
+    )
+    ledger_append_command_env: str = Field(
+        min_length=1,
+        description="The variable that holds the bus append command that puts the STATUS row on the ledger.",
+    )
+    ledger_host_env: str = Field(
+        min_length=1,
+        description="The variable that names the host the append command writes as.",
+    )
     appender_timeout_seconds: int = Field(ge=1)
+    ledger_page_timeout_seconds: int = Field(ge=1, le=600)
+    ledger_page_size: int = Field(
+        ge=1,
+        description="Rows one page asks for, sized so a page stays under the read node's answer bound.",
+    )
+    ledger_max_pages: int = Field(
+        ge=1,
+        description="Pages one read may take; a cursor still open after this many pages is an unread read, never a short one.",
+    )
+    ledger_time_budget_seconds: int = Field(
+        ge=1, description="Wall time for every page of every read together."
+    )
+    ledger_reads: tuple[ModelTickLedgerRead, ...] = Field(min_length=1)
     class_overlay_id: str = Field(min_length=1)
     class_overlay_file_env: str = Field(min_length=1)
 
@@ -91,6 +120,11 @@ class ModelFrictionRollupTickSettings(BaseModel):
         if len(set(names)) != len(names):
             raise ValueError("a window is declared twice")
         return self
+
+    @property
+    def window_hours(self) -> int:
+        """The longest window: the one read covers every window."""
+        return max(window.hours for window in self.windows)
 
     @property
     def primary(self) -> ModelTickWindow:

@@ -55,6 +55,8 @@ from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_r
 )
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_rows_bound import (
     bounded_since,
+    count_bounded,
+    load_rows_limit,
     load_rows_window,
 )
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_rows_page import (
@@ -114,6 +116,7 @@ class HandlerWorkLedgerQuery:
         self._answer_bound = load_work_ledger_answer_bound(self._contract_path)
         self._hold_stale_after = load_hold_stale_after(self._contract_path)
         self._rows_window = load_rows_window(self._contract_path)
+        self._rows_limit = load_rows_limit(self._contract_path)
         self._latest_page_size = load_latest_default_page_size(self._contract_path)
         self._held_windows = (
             rows_window_cache
@@ -135,7 +138,33 @@ class HandlerWorkLedgerQuery:
         """Answer the request, or refuse it when its answer would not fit the bound."""
         if not isinstance(request, ModelWorkLedgerQueryRequest):
             raise TypeError("work ledger query handler requires its contract payload")
+        if request.deadline is not None and self._now() >= request.deadline:
+            return self._expired(request)
         return bound_answer(request, self._answer_request(request), self._answer_bound)
+
+    def _expired(
+        self, request: ModelWorkLedgerQueryRequest
+    ) -> ModelWorkLedgerQueryResult:
+        """The caller's deadline passed before the request was read: no store is touched (OMN-26609).
+
+        A typed error answer, never an empty one, so a late reader that still holds the correlation
+        id cannot mistake it for "no rows". It is cheap: the work a stale request costs is the
+        answer's publish only.
+        """
+        now = self._now()
+        assert request.deadline is not None
+        late = int((now - request.deadline).total_seconds())
+        return ModelWorkLedgerQueryResult(
+            correlation_id=request.correlation_id,
+            query=request.query,
+            window_since=request.since,
+            window_until=now,
+            status="error",
+            error=(
+                f"deadline_expired: the caller's deadline {request.deadline.isoformat()} "
+                f"passed {late}s before the request was read; it was not worked"
+            ),
+        )
 
     def _answer_request(
         self, request: ModelWorkLedgerQueryRequest
@@ -255,7 +284,16 @@ class HandlerWorkLedgerQuery:
             freshness = window
         else:
             assert read is not None
-            answer = self._answer(request, read.parsed, now, self._hold_stale_after)
+            capped = count_bounded(request)
+            asked = (
+                request.model_copy(update={"limit": self._rows_limit})
+                if capped
+                else request
+            )
+            answer = self._answer(asked, read.parsed, now, self._hold_stale_after)
+            if capped:
+                answer["bounded_rows_limit"] = self._rows_limit
+                answer["truncated"] = int(str(answer["matched"])) > self._rows_limit
             freshness = read
         return base.model_copy(
             update={

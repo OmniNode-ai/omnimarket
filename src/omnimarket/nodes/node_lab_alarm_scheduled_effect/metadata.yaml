@@ -1,6 +1,6 @@
 name: node_lab_alarm_scheduled_effect
 version: "0.1.0"
-description: "Runs the lab alarm's broker-lag handler on the runtime tick in place of the lab host timer unit"
+description: "Runs the lab alarm's broker-lag handler and optional container restart probe on the runtime tick"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:

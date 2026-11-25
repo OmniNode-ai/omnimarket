@@ -18,6 +18,7 @@ from omnimarket.nodes.node_ilo_redfish_effect.handlers.handler_ilo_redfish impor
     HandlerIloRedfish,
 )
 from omnimarket.nodes.node_ilo_redfish_effect.handlers.protocols import (
+    ProtocolApprovalSource,
     ProtocolRedfishTransport,
 )
 from tests.nodes.node_ilo_redfish_effect.ilo_fakes import (
@@ -99,6 +100,7 @@ def build(
     live: bool = True,
     serial: str | None = "default",
     approvals: tuple[ModelIloApproval, ...] = (),
+    approval_source: ProtocolApprovalSource | None = None,
     credentials: dict[str, str] | None = None,
     journal: MemoryJournal | None = None,
     device: FakeIloTransport | None = None,
@@ -130,7 +132,7 @@ def build(
         overlay=overlay,
         transport_factory=factory,
         credentials=store,
-        approvals=MapApprovals(*approvals),
+        approvals=approval_source or MapApprovals(*approvals),
         journal=journal,
         clock=clock,
         sleeper=no_sleep,

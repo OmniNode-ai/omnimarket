@@ -21,6 +21,8 @@ from typing import Any
 import pytest
 import yaml
 
+from tests.ci.lint_jobs import lint_steps
+
 pytestmark = [pytest.mark.unit]
 
 _WORKFLOWS = Path(__file__).resolve().parents[2] / ".github" / "workflows"
@@ -366,8 +368,8 @@ _THIS_TEST = "tests/ci/test_hostile_reviewer_voters_overlay_omn20910.py"
 def test_voter_model_from_overlay_ratchet_is_wired_as_ci_step_and_hook() -> None:
     """The ratchet runs in a job the required ``lint`` context covers, and in pre-commit."""
     ci = yaml.safe_load((_WORKFLOWS / "ci.yml").read_text(encoding="utf-8"))
-    lint_steps = ci["jobs"]["lint"]["steps"]
-    assert any(_THIS_TEST in str(step.get("run", "")) for step in lint_steps)
+    ci_lint_steps = lint_steps(ci)
+    assert any(_THIS_TEST in str(step.get("run", "")) for step in ci_lint_steps)
     required = yaml.safe_load(
         (_REPO / ".github" / "required-checks.yaml").read_text(encoding="utf-8")
     )

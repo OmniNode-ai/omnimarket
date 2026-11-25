@@ -130,11 +130,19 @@ class ModelWorkLedgerQueryRequest(BaseModel):
     to: str | None = Field(default=None, pattern=_LANE)
     claims_since: str | None = None
     limit: int | None = Field(default=None, ge=1)
+    # The explicit full read: no default time window and no default count cap. Without it a rows
+    # read is bounded (the overlay's or the contract's window and count).
+    full: bool = False
     principal: str | None = Field(default=None, min_length=1)
     run: str | None = Field(default=None, min_length=1)
     history: ModelWorkLedgerHistoryRange | None = None
     cursor: str | None = Field(default=None, min_length=1, max_length=4096)
     page_size: int | None = Field(default=None, ge=1, le=MAX_POINT_PAGE_SIZE)
+    # The instant the caller stops waiting (OMN-26609). A request read at or after it is not worked:
+    # the answerer returns a typed ``deadline_expired`` error answer and touches no store, so a burst
+    # of requests whose callers timed out cannot become a backlog that every new read waits behind.
+    # Absent means no deadline, and the request is worked whatever its age.
+    deadline: AwareDatetime | None = None
     # A paged rows answer carries lines and no typed rows; the reader prints lines only.
     lines_only: bool = False
     # latest-state (OMN-23606): which kind of subject to read (a lane or a ticket), the tickets to read
@@ -142,6 +150,12 @@ class ModelWorkLedgerQueryRequest(BaseModel):
     # (``since``) the entries are narrowed to.
     subject_kind: EnumWorkLedgerLatestSubject | None = None
     tickets: tuple[Annotated[str, Field(pattern=_TICKET)], ...] = ()
+    # Request expiry (OMN-26433): when the caller sent the request, and how long it waits for the
+    # answer. The node drops a request older than its bound and publishes no answer for it. A request
+    # with a send time and no bound takes the contract's work_ledger_query.request_expiry default; a
+    # request with no send time cannot be aged and is answered as before.
+    requested_at: AwareDatetime | None = None
+    max_age_seconds: float | None = Field(default=None, gt=0, allow_inf_nan=False)
 
     @model_validator(mode="after")
     def _history_boundary(self) -> ModelWorkLedgerQueryRequest:
@@ -333,6 +347,11 @@ class ModelWorkLedgerQueryResult(BaseModel):
     # contract's), so a caller can see the answer is not the whole table.
     bounded: bool = False
     bounded_window_days: int | None = None
+    # A rows read with no limit, page_size or full flag is also cut to the newest
+    # ``bounded_rows_limit`` rows (the overlay's default_rows_limit, else the contract's
+    # rows_default_limit); ``truncated`` is True when rows matched beyond that, ``matched`` the count.
+    bounded_rows_limit: int | None = None
+    truncated: bool = False
     # latest-state (OMN-23606): one keyset page of newest-row-per-subject entries; ``watermark`` and
     # ``page_size`` and ``next_cursor`` are the point queries' own fields.
     latest: tuple[ModelWorkLedgerLatestEntry, ...] = ()

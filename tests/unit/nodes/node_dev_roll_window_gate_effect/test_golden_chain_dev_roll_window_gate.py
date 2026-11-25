@@ -85,6 +85,11 @@ async def test_golden_three_commands_are_held_then_released_together_in_order() 
     gate.clock.advance(WINDOW)
     await _send_tick(transport, gate)
     assert await dispatch.drain() == 1
+    while (
+        gate.store.load().outbox
+    ):  # the publisher hands the runtime one event per tick (OMN-26501)
+        await _send_tick(transport, gate)
+        assert await dispatch.drain() == 1
     out = [
         ModelDeployPublishCommand.model_validate(m.payload)
         for m in on(broker, DEPLOY_PUBLISH_TOPIC)

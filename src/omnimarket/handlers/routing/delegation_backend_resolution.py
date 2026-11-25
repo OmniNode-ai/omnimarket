@@ -206,6 +206,15 @@ class ModelResolvedDelegationBackend(BaseModel):
     )
     extra_headers: dict[str, str] = Field(default_factory=dict)
     inline_reasoning_terminator: str | None = Field(default=None, min_length=1)
+    reasoning_effort: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "OMN-26365: the backend row's own ``reasoning_effort``, sent as a "
+            "request option to this backend only. None: the row declares none "
+            "and the request carries none."
+        ),
+    )
     secret_ref: str | None = Field(
         default=None,
         description=(
@@ -668,6 +677,23 @@ def describe_model_name_source(
     return None
 
 
+def with_backend_reasoning_effort(
+    request_options: dict[str, Any],
+    reasoning_effort: str | None,
+) -> dict[str, Any]:
+    """The request options with the backend row's own ``reasoning_effort`` (OMN-26365).
+
+    A backend row that declares a value sends it as the ``reasoning_effort``
+    request option, over whatever a protocol profile matched by model name set.
+    A row that declares none leaves the options as the profile built them, so a
+    backend that takes no such option receives none. The options passed in are
+    never changed.
+    """
+    if reasoning_effort is None:
+        return dict(request_options)
+    return {**request_options, "reasoning_effort": reasoning_effort}
+
+
 def resolve_delegation_backend(
     task_type: str,
     *,
@@ -840,6 +866,7 @@ def resolve_delegation_backend(
         timeout_ms=raw_timeout_ms,
         extra_headers=extra_headers,
         inline_reasoning_terminator=backend.get("inline_reasoning_terminator"),
+        reasoning_effort=backend.get("reasoning_effort"),
         secret_ref=secret_ref,
         api_key_env=api_key_env,
         supports_response_format_json_schema=bool(

@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Install request ACL COMPUTE (OMN-24546)
+#
+# One install request effect overlay: derive the broker permission declaration, one principal per login, so a SASL broker
+# lets each login write only its own writer topic. Pure: no clock, no I/O. Exemplar: node_install_request_decision_compute.
+name: node_install_request_acl_compute
+contract_name: node_install_request_acl_compute
+node_name: node_install_request_acl_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: []
+
+description: >
+  Derives, from an install request effect overlay, the broker permission declaration: one principal per login, each writing
+  only its own writer topic. A publishing login holds WRITE and DESCRIBE, TOPIC, LITERAL, on its own writer command topic and
+  nothing else for that role; a host principal holds, for every login its rows allow, READ and DESCRIBE, TOPIC, LITERAL, on
+  that login's writer topic, and WRITE and DESCRIBE, TOPIC, LITERAL, on its own result topic and the shared success and failure
+  terminals, and READ and DESCRIBE, GROUP, PREFIXED, on the group prefix. A login that is both is one principal holding the
+  union of its grants, with no duplicate grant. Principals are sorted by login and grants by (resource type, name, operation),
+  so the output is deterministic.
+
+handler:
+  module: omnimarket.nodes.node_install_request_acl_compute.handlers.handler_install_request_acl
+  class: HandlerInstallRequestAcl
+  input_model: omnimarket.nodes.node_install_request_acl_compute.models.model_install_request_acl.ModelInstallAclRequest
+  output_model: omnimarket.models.broker_acl.model_broker_acl_overlay.ModelBrokerAclScopeOverlay
+
+input_model:
+  name: ModelInstallAclRequest
+  module: omnimarket.nodes.node_install_request_acl_compute.models.model_install_request_acl
+  description: The scope cells the operator names, the install request effect overlay and the node's topic names.
+output_model:
+  name: ModelBrokerAclScopeOverlay
+  module: omnimarket.models.broker_acl.model_broker_acl_overlay
+  description: The broker permission declaration, the scope cells and the principals with their grants.
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  runtime_profiles: []
+  timeout_ms: 1000
+
+# The caller invokes the handler in process; the node has no bus surface of its own.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+runtime_dispatch:
+  external_trigger: Direct Python invocation with the scope cells, the install request effect overlay and the node's topic names.
+metadata:
+  ticket: OMN-24546
+  transport_type: local

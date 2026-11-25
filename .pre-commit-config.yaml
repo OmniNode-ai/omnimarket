@@ -24,6 +24,15 @@
 repos:
   - repo: local
     hooks:
+      # OMN-26638: no store address, port, database, key prefix or implementation kind is written into the settings-store
+      # surface of source or contracts; the wiring gives every value. The CI gate is tests/settings_store/test_no_reader_backend_choice.py.
+      - id: settings-store-address-check
+        name: Settings store surface holds no address, port, prefix or kind (OMN-26638)
+        entry: uv run --frozen python -m omnimarket.handlers.overlay_store.store_address_check
+        language: system
+        files: ^(src/omnimarket/handlers/(overlay_store/.*|floor_fill_scheduled_tick\.py)|src/omnimarket/nodes/(node_floor_fill_scheduled_effect|node_host_table_keys_ingest_effect)/.*)$
+        pass_filenames: false
+        stages: [pre-commit]
       - id: github-webhook-http
         name: GitHub webhook runtime HTTP boundary
         entry: uv run --frozen pytest tests/nodes/node_github_webhook_ingress_effect/test_http_ingress.py tests/nodes/node_github_webhook_ingress_effect/test_http_runtime_profiles.py -q --no-cov
@@ -1211,7 +1220,7 @@ repos:
       - id: ledger-file-census
         name: Ledger file census ratchet
         language: system
-        entry: env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --repos omnimarket --directory omnimarket=. --per-file
+        entry: env ONEX_LEDGER_CENSUS_ROOT=. ONEX_LEDGER_CENSUS_OVERLAY=src/omnimarket/nodes/node_work_ledger_file_census_effect/overlay.example.yaml uv run python -m omnimarket.nodes.node_work_ledger_file_census_effect --ratchet-file src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml --repos omnimarket --directory omnimarket=. --per-file
         pass_filenames: false
         files: '\.(py|sh|bash|zsh|ya?ml|json|toml|plist|service|timer|cfg|ini|js|ts|mjs|cjs|tmpl|j2)$'
         stages: [pre-commit]
@@ -1558,6 +1567,18 @@ repos:
         language: system
         entry: uv run --frozen pytest tests/unit/nodes/node_llm_delegation_call_effect/test_delegation_targets.py -q --no-cov
         files: ^(src/omnimarket/models/delegation/model_delegation_target\.py|src/omnimarket/nodes/(node_llm_delegation_call_effect|node_model_router|node_lab_job_reducer|node_lab_job_submit_effect|node_projection_lab_job)/.*|tests/unit/nodes/node_llm_delegation_call_effect/test_delegation_targets\.py)$
+        pass_filenames: false
+        require_serial: true
+        stages: [pre-commit]
+
+      # OMN-26424: a staged change that ADDS a read of a setting (an environment variable, a workflow `vars.` variable, an image build
+      # argument) that no overlay declares is refused. Reads the declared_settings register under the overlay roots of this host
+      # (ONEX_SKILL_OVERLAY_ROOTS); a staged diff that adds no read passes without them. A merge commit is judged against the merged-in branch, so only this change counts and not what that branch brought. SYNC with ci.yml job undeclared-read-check.
+      - id: undeclared-read-check
+        name: Undeclared read check (OMN-26424)
+        language: system
+        entry: bash -c 'base=HEAD; test -f "$(git rev-parse --git-path MERGE_HEAD)" && base=MERGE_HEAD; git diff --cached -U0 --no-color --no-renames "$base" | uv run python -m omnimarket.nodes.node_undeclared_read_check_compute.runtime_undeclared_read_check --overlays-root "${ONEX_SKILL_OVERLAY_ROOTS:-}"'
+        files: ^(src/|scripts/|docker/|\.github/workflows/|Dockerfile)
         pass_filenames: false
         require_serial: true
         stages: [pre-commit]

@@ -16,7 +16,10 @@ Failure modes each test is written against:
   own catalogue row, and by a planted read that names the other tenant's rows
   and gets none;
 * (F4) the isolation proof is vacuous because the planted rows are not there --
-  the superuser reads both tenants' rows as the positive control.
+  the superuser reads both tenants' rows as the positive control;
+* (F5) OMN-24458: a page held past its freshness is served stale without a
+  table read in its request, and the refresh behind it reads the real table
+  and holds the new rows, so the next read is a hit that carries them.
 """
 
 from __future__ import annotations
@@ -35,10 +38,19 @@ import asyncpg
 import httpx
 import pytest
 
+from omnimarket.nodes.node_projection_query_api_effect.handlers.handler_projection_query import (
+    HandlerProjectionQuery,
+)
 from omnimarket.nodes.node_projection_query_api_effect.ports.asgi_app import (
     create_app,
     get_row_source,
     get_topic_map,
+)
+from omnimarket.nodes.node_projection_query_api_effect.ports.contract_routes import (
+    contract_page_cache,
+)
+from omnimarket.nodes.node_projection_query_api_effect.ports.page_cache import (
+    ValkeyPageCache,
 )
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.table_reader import TableRowSource
@@ -351,3 +363,106 @@ async def test_a_planted_read_of_the_other_tenants_rows_under_the_role_returns_n
         f"SELECT row_id FROM {_SCHEMA}.{_TABLE} WHERE tenant_id = $1", _TENANT_B
     )
     assert len(visible) == 3
+
+
+class _Clock:
+    now = 0.0
+
+
+class _Valkey:
+    """The client calls the page cache makes, with a clock so a held page ages as its ``ex`` says."""
+
+    def __init__(self, clock: _Clock) -> None:
+        self._clock = clock
+        self.held: dict[str, tuple[float, str]] = {}
+
+    async def get(self, key: str) -> str | None:
+        found = self.held.get(key)
+        return None if found is None or found[0] <= self._clock.now else found[1]
+
+    async def set(self, key: str, value: str, ex: int, nx: bool = False) -> bool | None:
+        found = self.held.get(key)
+        if nx and found is not None and found[0] > self._clock.now:
+            return None
+        self.held[key] = (self._clock.now + ex, value)
+        return True
+
+    async def delete(self, key: str) -> int:
+        return 1 if self.held.pop(key, None) is not None else 0
+
+
+class _CountingSource:
+    """The real table reader, with a count of the table reads it is asked for."""
+
+    def __init__(self, inner: TableRowSource) -> None:
+        self._inner = inner
+        self.reads = 0
+
+    async def rows(self, *args: Any, **kwargs: Any) -> Any:
+        self.reads += 1
+        return await self._inner.rows(*args, **kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+
+@pytest.fixture
+async def cached_client(
+    postgres: _Postgres, planted: asyncpg.Connection, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[tuple[httpx.AsyncClient, _CountingSource, _Clock]]:
+    """The node app with its page cache on a fake Valkey, reading the real table as the NOBYPASSRLS role."""
+    monkeypatch.delenv("ONEX_TENANT_ID", raising=False)
+    dsn = (
+        f"postgresql://{_ROLE}:{_ROLE_SECRET}"
+        f"@{postgres.host}:{postgres.port}/{postgres.database}"
+    )
+    real = TableRowSource.for_database_url(dsn)
+    source = _CountingSource(real)
+    clock = _Clock()
+    app = create_app()
+    topics = {_TOPIC: _exposure()}
+    app.dependency_overrides[get_row_source] = lambda: source
+    app.dependency_overrides[get_topic_map] = lambda: topics
+    app.state.page_cache = ValkeyPageCache(
+        contract_page_cache(), _Valkey(clock), clock=lambda: clock.now
+    )
+    transport = httpx.ASGITransport(app=app)
+    try:
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+            yield c, source, clock
+    finally:
+        await real.close()
+
+
+@pytest.mark.integration
+async def test_a_stale_page_is_served_at_once_and_refreshed_from_the_real_table(
+    cached_client: tuple[httpx.AsyncClient, _CountingSource, _Clock],
+    planted: asyncpg.Connection,
+) -> None:
+    client, source, clock = cached_client
+    _, first = await _rows(client, _TENANT_A)
+    assert first["cache"]["state"] == "miss"
+    assert sorted(r["row_id"] for r in first["rows"]) == ["a-1", "a-2"]
+    assert source.reads == 1
+
+    await planted.execute(
+        f"INSERT INTO {_SCHEMA}.{_TABLE} (row_id, tenant_id, created_at) "
+        "VALUES ('a-3', $1, now())",
+        _TENANT_A,
+    )
+    clock.now = contract_page_cache().ttl_seconds + 5
+    _, stale = await _rows(client, _TENANT_A)
+    assert stale["cache"]["state"] == "stale"
+    assert sorted(r["row_id"] for r in stale["rows"]) == ["a-1", "a-2"]
+
+    await asyncio.gather(*HandlerProjectionQuery.pending_refreshes())
+    assert source.reads == 2
+    _, fresh = await _rows(client, _TENANT_A)
+    assert fresh["cache"]["state"] == "hit"
+    assert sorted(r["row_id"] for r in fresh["rows"]) == ["a-1", "a-2", "a-3"]
+    assert source.reads == 2
+
+    # the other tenant's page is its own page: no rows of A, and its own first read
+    _, other = await _rows(client, _TENANT_B)
+    assert other["cache"]["state"] == "miss"
+    assert {r["tenant_id"] for r in other["rows"]} == {_TENANT_B}

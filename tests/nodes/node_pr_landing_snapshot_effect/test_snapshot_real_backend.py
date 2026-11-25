@@ -18,10 +18,14 @@ its facts, loses the first tick after the second.
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
 from omnimarket.models.landing_decision import ModelLandingFacts
 from omnimarket.nodes.node_pr_landing_snapshot_effect.handlers.handler_pr_landing_snapshot import (
@@ -157,6 +161,104 @@ def _emissions(tmp: Path) -> list[dict[str, object]]:
     return [
         json.loads(line) for line in (tmp / "emissions.jsonl").read_text().splitlines()
     ]
+
+
+def test_runtime_reads_liveness_at_the_snapshot_pr_head(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    sink: InMemoryLandingSnapshotPublisher,
+) -> None:
+    checkout = tmp_path / "infra"
+    checkout.mkdir()
+
+    def git(*args: str) -> str:
+        return subprocess.check_output(
+            ["git", "-C", str(checkout), *args],
+            env=scrub_git_location_env(os.environ),
+            text=True,
+        ).strip()
+
+    git("init", "-q")
+    git(
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.com",
+        "commit",
+        "--allow-empty",
+        "-qm",
+        "base",
+    )
+    git("branch", "base")
+    timer = "onex-new.timer"
+    (checkout / timer).touch()
+    git("add", timer)
+    git(
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.com",
+        "commit",
+        "-qm",
+        "add timer",
+    )
+    head = git("rev-parse", "HEAD")
+    facts = _unfilled(FIRST)
+    first, second = facts.prs
+    facts = facts.model_copy(
+        update={"prs": (first.model_copy(update={"head_sha": head}), second)}
+    )
+    _write(tmp_path / "last-facts.json", facts.model_dump_json())
+    _write(tmp_path / "state.json", _watcher_state((FIRST,)))
+    liveness_dir = tmp_path / "node_pr_landing_liveness_read_effect"
+    liveness_dir.mkdir()
+    completed = "onex.evt.omnimarket.pr-landing-liveness-read-completed.v1"
+    failed = "onex.evt.omnimarket.pr-landing-liveness-read-failed.v1"
+    _write(
+        liveness_dir / "overlay.yaml",
+        {
+            "reader": {
+                "backend": "command",
+                "argv": [
+                    sys.executable,
+                    "-c",
+                    f"print('undeclared_source: infra/{timer}: fixture')",
+                ],
+            },
+            "checkout": {
+                "internal_root_env": "SNAPSHOT_TEST_LIVENESS_ROOT",
+                "registry_root_env": "SNAPSHOT_TEST_LIVENESS_ROOT",
+                "base_ref": "base",
+            },
+            "timeouts": {"git_seconds": 5, "read_seconds": 5},
+            "topics": {"completed": completed, "failed": failed},
+        },
+    )
+    monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", str(tmp_path))
+    monkeypatch.setenv("SNAPSHOT_TEST_LIVENESS_ROOT", str(tmp_path))
+    snapshot = ModelSnapshotOverlay.model_validate(
+        {
+            **_real_overlay(tmp_path).model_dump(),
+            "read_liveness": True,
+        }
+    )
+
+    code, _ = _pass(snapshot, sink)
+
+    assert code == 0
+    assert [topic for topic, _ in sink.published] == [
+        completed,
+        failed,
+        snapshot.record_topic,
+    ]
+    record = JsonlLandingTickRecorder(tmp_path / "records.jsonl").recorded()[0]
+    read, unread = (pr.liveness for pr in record.facts.prs)
+    assert read is not None
+    assert read.head_sha == head
+    assert read.undeclared_sources == (timer,)
+    assert unread is not None
+    assert unread.head_sha == second.head_sha
+    assert unread.read.value == "unreadable"
 
 
 def test_watcher_source_reads_node_ids_and_the_heads_failed_run_ids_once_each(

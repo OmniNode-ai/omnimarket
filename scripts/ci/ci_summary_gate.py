@@ -333,6 +333,7 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     # out no onex_change_control; it keeps its context name.
     "ONEX Change Control Schema Compatibility",
     "PR Arch Review Gate",
+    "Node Trigger Declaration Check",
     "Precommit Fail-Loud Gate",
     "Projection Exposure Drift Gate",
     "Repository Structure Validation",
@@ -735,7 +736,9 @@ def dedup_latest(
         conclusion = raw.get("conclusion")
         current = JobState(
             name=name,
-            status=str(raw.get("status") or ""),
+            # OMN-26563: a row whose conclusion is set is done, even while the
+            # API still reads status in_progress beside it.
+            status=str(raw.get("status") or "") if conclusion is None else "completed",
             conclusion=None if conclusion is None else str(conclusion),
             run_attempt=attempt,
             completed_at=(
@@ -872,11 +875,7 @@ def evaluate(
     # Relaxed ⊆ strict_gates: a name that is not strict cannot be "relaxed" into
     # existence, so a tier entry dropped from STRICT_GATE_JOBS degrades to a
     # no-op here instead of silently becoming permanently skippable.
-    relaxed = (
-        frozenset(docs_only_gates) & frozenset(strict_gates)
-        if docs_only
-        else frozenset()
-    )
+    relaxed = frozenset(docs_only_gates if docs_only else ()) & frozenset(strict_gates)
     # A verified tree pass admits only the heavy tier NOT running on this dev
     # push: each strict heavy gate it relaxes must have concluded `skipped`.
     # Any other conclusion (success, failure, cancelled, neutral) means the gate
@@ -983,7 +982,9 @@ def evaluate(
     )
 
     # (3) Test-matrix completeness (dynamic split jobs).
-    matrix_state = _evaluate_test_matrix(latest, require_full_suite=queue_run)
+    # OMN-26446: a dev push whose Detect Changes succeeded ran the Tests shards itself (no queue
+    # run recorded its tree), so its matrix must be the whole full suite; a partial one waits.
+    matrix = _evaluate_test_matrix(latest, require_full_suite=queue_run or dev_push)
 
     # Completeness anchor: every named gate present AND completed.
     gate_missing_or_pending = [
@@ -1008,7 +1009,7 @@ def evaluate(
             skippable_failures,
             sweep_failures,
             gate_missing_or_pending,
-            matrix_state,
+            matrix,
             docs_only=docs_only,
             relaxed=relaxed,
             reuse_skips=reuse_skips,
@@ -1022,7 +1023,7 @@ def evaluate(
     if (
         gate_missing_or_pending
         or sweep_running
-        or matrix_state == "pending"
+        or matrix == "pending"
         or provisional_own_cancellations
     ):
         return EXIT_PENDING, _rep("PENDING")
@@ -1434,6 +1435,19 @@ def _parse_timestamp(raw: str | None) -> datetime | None:
     return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
+# OMN-16084: set by :func:`main` from the verdict of this run's OWN jobs (layers
+# 1-3) and read by :func:`_within`. While those jobs are still running, the
+# supersession windows below are measured by the jobs' state, not by the wall
+# clock: a replacement producer queues behind the same slow runners the run's own
+# jobs are waiting on, so the closing of a window says nothing about whether the
+# replacement is coming. Only the UPPER bound lifts; the lower bound (a completion
+# time in the future of the poller's clock) still fails now. It is False unless
+# main() proves the own jobs PENDING, so every other caller reads the strict
+# clock. The poller's deadline (DEADLINE_MINUTES in ci.yml) still ends the wait,
+# and once the own jobs settle the windows read the wall clock again.
+OWN_JOBS_PENDING: bool = False
+
+
 def _within(state: CheckRunState, now: datetime | None, grace_s: int) -> bool:
     """True when ``state`` concluded within ``grace_s`` either side of ``now``.
 
@@ -1444,12 +1458,11 @@ def _within(state: CheckRunState, now: datetime | None, grace_s: int) -> bool:
     waiting forever on it.
     """
 
-    if now is None:
-        return False
     completed = _parse_timestamp(state.completed_at)
-    if completed is None:
+    if now is None or completed is None:
         return False
-    return -grace_s <= (now - completed).total_seconds() <= grace_s
+    delta = (now - completed).total_seconds()
+    return -grace_s <= delta and (OWN_JOBS_PENDING or delta <= grace_s)
 
 
 def cancellation_is_provisional(state: CheckRunState, now: datetime | None) -> bool:
@@ -1950,8 +1963,7 @@ def _load_check_runs(path: str | None) -> list[dict[str, object]] | None:
     if path is None:
         return None
     try:
-        with open(path, encoding="utf-8") as handle:
-            raw = handle.read()
+        raw = Path(path).read_text(encoding="utf-8")
     except OSError:
         return None
     if not raw.strip():
@@ -1971,8 +1983,7 @@ def _load_workflow_runs(path: str | None) -> list[dict[str, object]] | None:
     if path is None:
         return None
     try:
-        with open(path, encoding="utf-8") as handle:
-            data = json.load(handle)
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     workflow_runs = data.get("workflow_runs", []) if isinstance(data, dict) else data
@@ -2075,6 +2086,8 @@ def main(argv: list[str] | None = None) -> int:
         ref_name=args.ref_name,
     )
     print(report)
+    global OWN_JOBS_PENDING
+    OWN_JOBS_PENDING = code == EXIT_PENDING
 
     if args.check_runs_file is not None:
         check_runs = _load_check_runs(args.check_runs_file)

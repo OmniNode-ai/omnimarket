@@ -1,0 +1,65 @@
+# OMN-26446: the pre-image of the dev push admission, read with
+#   git show origin/dev:.github/workflows/ci.yml   (dev at 53eb69ee30)
+# and cut to the two jobs that decided a dev push: `dev-suite-reuse-verdict` whole, and
+# `detect-changes` with its name, needs and if (its steps are not part of the decision).
+# tests/ci/test_dev_push_runs_tests_omn26446.py runs the same checks against this file and
+# requires every one to fail: it is the RED control for the dev push test shards.
+dev-suite-reuse-verdict:
+  name: Dev Push Full Suite Reuse
+  needs: dev-full-suite-reuse
+  if: always() && github.event_name == 'push' && github.ref == 'refs/heads/dev'
+  runs-on: ubuntu-latest
+  timeout-minutes: 5
+  permissions:
+    actions: read
+    contents: read
+  steps:
+  - name: Require the queued tree's full-suite pass
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REUSE: ${{ needs.dev-full-suite-reuse.outputs.reuse }}
+      PRODUCER_RUN: ${{ needs.dev-full-suite-reuse.outputs.producer_run }}
+    run: |
+      set -euo pipefail
+      if [ "$REUSE" = "true" ] && [ -n "$PRODUCER_RUN" ]; then
+        echo "Full suite inherited from run $PRODUCER_RUN."
+        exit 0
+      fi
+      # OMN-19998: a squash can change the commit identity while preserving
+      # the queued tree. Core's probe binds to producer commit heads; in
+      # that case require a queue producer, this workflow, the exact tree
+      # on BOTH commits and its successful CI Summary, never a PR marker.
+      tree="$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$GITHUB_SHA" --jq .tree.sha)"
+      printf '%s' "$tree" | grep -Eqx '[0-9a-f]{40}'
+      markers="$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/artifacts?name=full-suite-pass-$tree&per_page=100" \
+        --jq '.artifacts[] | select(.expired == false) | "\(.workflow_run.id) \(.workflow_run.head_sha)"')"
+      while read -r producer head; do
+        [[ "$producer" =~ ^[1-9][0-9]*$ && "$head" =~ ^[0-9a-f]{40}$ ]] || continue
+        identity="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$producer" \
+          --jq '"\(.event) \(.path | split("@")[0]) \(.head_sha)"')" || continue
+        [ "$identity" = "merge_group .github/workflows/ci.yml $head" ] || continue
+        producer_tree="$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$head" --jq .tree.sha)" || continue
+        [ "$producer_tree" = "$tree" ] || continue
+        verdict="$(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$producer/jobs?filter=latest&per_page=100" \
+          --jq '.jobs[] | select(.name == "CI Summary") | "\(.status) \(.conclusion // "none")"')" || continue
+        if [ "$verdict" = "completed success" ]; then
+          echo "Full suite inherited from queue run $producer for tree $tree."
+          exit 0
+        fi
+      done <<< "$markers"
+      # OMN-19998: while the dev merge queue ruleset is off no merge_group
+      # producer can exist; stay strict whenever a merge_queue rule is active on dev.
+      queue_rules="$(gh api "repos/$GITHUB_REPOSITORY/rules/branches/dev?per_page=100" \
+        --jq '[.[] | select(.type == "merge_queue")] | length')"
+      if [ "$queue_rules" = "0" ]; then
+        echo "::warning::No merge_queue rule is active on dev, so no queue run can record a tree pass; the pull request ran its selected tests, which are the full suite only when the change forces it (OMN-17232). Strict again once the dev merge queue ruleset is enabled (OMN-19998)."
+        exit 0
+      fi
+      echo "::error::No verified full-suite pass for this dev tree; heavy tests stay in the queue."
+      exit 1
+detect-changes:
+  name: Detect Changes
+  needs:
+  - repo-evidence-preflight
+  - zone-filter
+  if: needs.repo-evidence-preflight.result == 'success' && (github.event_name == 'merge_group' || needs.zone-filter.outputs.docs_only != 'true') && !(github.event_name == 'push' && github.ref == 'refs/heads/dev')

@@ -49,7 +49,7 @@ class ModelQueryRoute(BaseModel):
     methods: tuple[Literal["GET", "POST"], ...]
     paths: tuple[str, ...]
     query: tuple[ModelQueryParam, ...] = ()
-    dependencies: tuple[Literal["topic_map", "row_source"], ...] = ()
+    dependencies: tuple[Literal["topic_map", "row_source", "page_cache"], ...] = ()
     topic: str | None = Field(
         default=None, description="The projection topic an evidence route reads."
     )

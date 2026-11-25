@@ -28,6 +28,7 @@ from typing import Literal
 import yaml
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
+from omnimarket.handlers.repository_retirement_policy import load_retirement_policy
 from omnimarket.models.model_clone_lock_policy import ModelCloneLockPolicy
 from omnimarket.models.model_host_reconcile import (
     ModelGatePurityFact,
@@ -64,10 +65,7 @@ from .reconcile_failure_alarm import (
     failure_alert_text,
     failure_friction_row,
 )
-from .retired_repositories import (
-    load_retirement_policy,
-    retired_repository_findings,
-)
+from .retired_repositories import retired_repository_findings
 from .venv_build_lock_facts import venv_build_lock_fact
 
 
@@ -172,8 +170,8 @@ class HandlerHostReconcileEffect:
         receipt = reconcile.receipt_path()
         notes: list[str] = []
         failed = append_friction(
-            ledger=command.ledger,
             append_command=command.ledger_append_command,
+            host=result.host,
             row=failure_friction_row(
                 at=datetime.now(UTC),
                 host=result.host,
@@ -825,8 +823,6 @@ class _ReconcilePass:
                     repo,
                     "--state-dir",
                     str(self.root / ".onex_state"),
-                    "--ledger",
-                    self.request.ledger,
                     "--lock-age-s",
                     str(self.request.step_timeout_s),
                 ]

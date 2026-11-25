@@ -48,7 +48,12 @@ UPLOAD_ACTION = (
     "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"  # v4.6.2
 )
 ADJACENCY_DEFAULT = REPO_ROOT / "scripts" / "ci" / "test_selection_adjacency.yaml"
-FLAG_EXPRESSION = "${{ vars.ENABLE_SMART_TESTS == 'true' && 'on' || 'off' }}"
+# OMN-26446: a dev push is a merged tree and takes the full-suite matrix, flag or not.
+FLAG_EXPRESSION = (
+    "${{ (vars.ENABLE_SMART_TESTS == 'true' && "
+    "!(github.event_name == 'push' && github.ref == 'refs/heads/dev')) "
+    "&& 'on' || 'off' }}"
+)
 NARROWABLE = ["src/omnimarket/intelligence/client.py"]
 
 
@@ -62,6 +67,16 @@ def _step(name_part: str) -> dict[str, Any]:
     matches = [s for s in _detect_steps() if name_part in str(s.get("name", ""))]
     assert len(matches) == 1, f"expected one step named like {name_part!r}"
     return matches[0]
+
+
+def _narrowed_selection() -> ModelTestSelection:
+    """A fixed narrowed selection, so the flag tests do not walk the repository's import graph."""
+    return ModelTestSelection(
+        selected_paths=["tests/intelligence/"],
+        split_count=2,
+        is_full_suite=False,
+        matrix=[1, 2],
+    )
 
 
 @functools.cache
@@ -95,6 +110,11 @@ def _request(
     )
 
 
+def _stage_entries(selection: ModelTestSelection) -> dict[int, ModelTestSelection]:
+    """The entries the workflow passes: the one selection under stage 0 and stage 1."""
+    return {0: selection, 1: selection}
+
+
 def _handler() -> HandlerSelectionRecord:
     policy = load_policy()
     selector = HandlerTestSelectionSelector(
@@ -113,10 +133,27 @@ def test_workflow_passes_the_flag_from_the_repository_variable() -> None:
     assert 'FLAG: "on"' not in WORKFLOW.read_text(encoding="utf-8")
 
 
+def test_policy_selection_stage_is_one_and_the_workflow_feeds_that_stage() -> None:
+    # The pin: the stage the policy names is 1, and the record step passes an entry for it, so the
+    # executed selection is that entry and never the selection_unavailable full suite.
+    policy = load_policy()
+    assert policy.selection_stage == 1
+    run = str(_step("Build selection record")["run"])
+    assert f"--stage-selection {policy.selection_stage}=" in run
+    assert "--stage-selection 0=selection-stage-0.json" in run
+    assert "--stage-selection 1=selection-stage-1.json" in run
+    narrowed = _narrowed_selection()
+    record = _handler().handle(_request(_stage_entries(narrowed), flag=True))
+    assert record.selection_stage == 1
+    assert record.executed_selection.kind == "narrowed"
+    assert record.executed_selection.reason_code is None
+    assert record.executed_selection.selected_paths == narrowed.selected_paths
+
+
 def test_flag_states_same_input() -> None:
-    narrowed = _stage0_selection()
+    narrowed = _narrowed_selection()
     assert narrowed.is_full_suite is False
-    entries = {0: narrowed}
+    entries = _stage_entries(narrowed)
     on = _handler().handle(_request(entries, flag=True))
     off = _handler().handle(_request(entries, flag=False))
     assert on.executed_selection.kind == "narrowed"
@@ -131,33 +168,42 @@ def test_flag_states_same_input() -> None:
 
 def test_flag_off_full_matrix() -> None:
     full_split_count = load_policy().full_split_count
-    off = _handler().handle(_request({0: _stage0_selection()}, flag=False))
+    off = _handler().handle(_request(_stage_entries(_narrowed_selection()), flag=False))
     assert off.executed_selection.split_count == full_split_count
     detect_off = _stage0_selection(flag=False)
     assert detect_off.split_count == full_split_count
     assert detect_off.matrix == list(range(1, full_split_count + 1))
 
 
-def test_stage_zero_flag_on_runs_what_the_existing_selector_decides() -> None:
+def _assert_executed_matches_decided(changed: list[str], ref: str) -> None:
+    decided = compute_selection(
+        changed_files=changed,
+        adjacency_path=ADJACENCY_DEFAULT,
+        ref_name=ref,
+        event_name="pull_request",
+        feature_flag_enabled=True,
+    )
+    record = _handler().handle(_request(_stage_entries(decided), flag=True))
+    executed = record.executed_selection
+    assert executed.selected_paths == decided.selected_paths
+    assert executed.split_count == decided.split_count
+    assert (executed.kind == "full_suite") is decided.is_full_suite
+    assert executed.reason_code == decided.full_suite_reason
+
+
+def test_flag_on_runs_what_the_existing_selector_decides() -> None:
     for changed, ref in (
-        (NARROWABLE, "feature/branch"),
         (["src/omnimarket/models/x.py"], "feature/branch"),
         (["pyproject.toml"], "feature/branch"),
         (NARROWABLE, "main"),
     ):
-        decided = compute_selection(
-            changed_files=changed,
-            adjacency_path=ADJACENCY_DEFAULT,
-            ref_name=ref,
-            event_name="pull_request",
-            feature_flag_enabled=True,
-        )
-        record = _handler().handle(_request({0: decided}, flag=True))
-        executed = record.executed_selection
-        assert executed.selected_paths == decided.selected_paths
-        assert executed.split_count == decided.split_count
-        assert (executed.kind == "full_suite") is decided.is_full_suite
-        assert executed.reason_code == decided.full_suite_reason
+        _assert_executed_matches_decided(changed, ref)
+
+
+def test_narrowed_input_matches_the_graph_selector() -> None:
+    # Walks the repository's whole import graph (about a minute), so the Done gate's 30 s
+    # per-check ceiling cannot hold it; hosted CI runs it.
+    _assert_executed_matches_decided(NARROWABLE, "feature/branch")
 
 
 # -- the upload ---------------------------------------------------------------
@@ -197,7 +243,7 @@ def test_record_retention_comes_from_the_policy_not_the_workflow() -> None:
 
 
 def _record_with_differing_entries() -> ModelTestSelectionRecord:
-    narrowed = _stage0_selection()
+    narrowed = _narrowed_selection()
     stage_one = ModelTestSelection(
         selected_paths=["tests/a/"], split_count=1, is_full_suite=False, matrix=[1]
     )
@@ -262,13 +308,19 @@ def test_detect_changes_keeps_its_needs_and_outputs() -> None:
     workflow = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
     job = workflow["jobs"]["detect-changes"]
     assert job["name"] == "Detect Changes"
-    assert job["needs"] == ["repo-evidence-preflight", "zone-filter"]
+    assert job["needs"] == [
+        "repo-evidence-preflight",
+        "zone-filter",
+        "dev-tree-pass-probe",
+    ]
     assert set(job["outputs"]) == {
         "is_full_suite",
         "full_suite_reason",
         "split_count",
         "matrix",
         "selected_paths",
+        # OMN-26277: read by the one whole-tree collection job, which follows this job.
+        "collection_gate",
     }
     assert workflow["jobs"]["test"]["needs"] == [
         "repo-evidence-preflight",

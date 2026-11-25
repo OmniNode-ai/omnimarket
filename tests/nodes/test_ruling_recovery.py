@@ -18,6 +18,7 @@ from omnimarket.nodes.node_idle_slot_fill_effect.handlers.ruling_recovery import
     detect_relaunches,
     parse_rows,
 )
+from tests.helpers.fake_ledger_rows import FakeLedgerRows
 
 NOW = datetime(2026, 10, 26, 14, tzinfo=UTC)
 RULING = "2026-10-20T21:56:19Z"
@@ -188,9 +189,6 @@ def _tick(
 
     monkeypatch.setenv("ONEX_SKILL_OVERLAY_ROOTS", ENV["ONEX_SKILL_OVERLAY_ROOTS"])
     monkeypatch.setenv("OMNI_LAB_FILL_GENERATE", "off")
-    ledger_path = tmp_path / "ROLLING_WORK_LEDGER.md"
-    ledger_path.write_text(text)
-    monkeypatch.setenv("ONEX_LEDGER_PATH", str(ledger_path))
     backlog = tmp_path / "backlog.json"
     backlog.write_text(json.dumps({"items": []}))
     runner = tmp_path / "runner.py"
@@ -198,9 +196,10 @@ def _tick(
         "import sys\nprint('DETACHED lane=' + sys.argv[sys.argv.index('--lane') + 1])\n"
     )
     monitor = HandlerRulingRecovery(
-        live_reader or (lambda _check: RuntimeError("fixture unread"))
+        live_reader or (lambda _check: RuntimeError("fixture unread")),
+        ledger_reader=FakeLedgerRows(text.splitlines()),
     )
-    return HandlerLabFill(monitor).handle(
+    return HandlerLabFill(monitor, ledger_reader=FakeLedgerRows()).handle(
         ModelLabFillRequest(
             now=now,
             request={

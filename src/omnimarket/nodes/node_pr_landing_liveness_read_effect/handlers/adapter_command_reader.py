@@ -51,7 +51,7 @@ class CommandLivenessReader:
     def _git(self, checkout: Path, *args: str) -> str:
         try:
             done = subprocess.run(
-                ["git", "-C", str(checkout), *args],
+                ["git", "--no-optional-locks", "-C", str(checkout), *args],
                 capture_output=True,
                 text=True,
                 check=False,
@@ -69,6 +69,17 @@ class CommandLivenessReader:
             )
         return done.stdout
 
+    def _require_head(self, checkout: Path, repository: str, head_sha: str) -> None:
+        at = self._git(checkout, "rev-parse", "HEAD").strip()
+        if at != head_sha:
+            raise LivenessReadError(
+                f"the checkout of {repository} is at {at}, not the head {head_sha}"
+            )
+        if self._git(checkout, "status", "--porcelain", "--untracked-files=normal"):
+            raise LivenessReadError(
+                f"the checkout of {repository} has uncommitted changes"
+            )
+
     def read(self, repository: str, head_sha: str) -> tuple[str, ...]:
         checkout_cfg = self._overlay.checkout
         internal = self._env_path(checkout_cfg.internal_root_env)
@@ -79,15 +90,11 @@ class CommandLivenessReader:
             raise LivenessReadError(
                 f"no checkout of {repository} under the registry root"
             )
-        at = self._git(checkout, "rev-parse", "HEAD").strip()
-        if at != head_sha:
-            raise LivenessReadError(
-                f"the checkout of {repository} is at {at}, not the head {head_sha}"
-            )
+        self._require_head(checkout, repository, head_sha)
         changed = {
             line.strip()
             for line in self._git(
-                checkout, "diff", "--name-only", f"{checkout_cfg.base_ref}...HEAD"
+                checkout, "diff", "--name-only", f"{checkout_cfg.base_ref}...{head_sha}"
             ).splitlines()
             if line.strip()
         }
@@ -115,6 +122,7 @@ class CommandLivenessReader:
             raise LivenessReadError(
                 f"the liveness reader exited {done.returncode}: {first}"
             )
+        self._require_head(checkout, repository, head_sha)
         found: set[str] = set()
         for line in done.stdout.splitlines():
             if (

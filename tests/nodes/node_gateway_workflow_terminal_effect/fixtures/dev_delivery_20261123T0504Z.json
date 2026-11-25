@@ -1,0 +1,55 @@
+{
+  "recorded": "2026-11-23T05:04:13Z",
+  "host": "omni-201",
+  "container": "omninode-runtime (dev lane, built 2026-11-23T04:46:47Z, omnimarket 7d286be2f7)",
+  "scrubbed": "correlation_id replaced with a fixed placeholder; the runtime log holds only the error lines, so every wire field other than model_used (glm-5.3-flash, from the same second's acceptance decision line) is a test-supplied value",
+  "log_lines": [
+    "2026-11-23 05:04:13 [ERROR] omnibase_infra.runtime.service_kernel: Dispatcher 'dispatcher.auto.node_gateway_workflow_terminal_effect.HandlerGatewayWorkflowTerminal.apply_delegation_completed_99b6bce4' failed: ValueError: delivery '' is not declared by the contract",
+    "2026-11-23 05:04:13 [ERROR] omnibase_infra.runtime.auto_wiring.handler_wiring: Auto-wiring callback error: topic=onex.evt.omnibase-infra.delegation-completed.v1 error_type=HandlerDispatchFailureError error=HandlerDispatchFailureError: dispatch to topic=onex.evt.omnibase-infra.delegation-completed.v1 returned status=handler_error with no terminal output (dispatcher_id=): Dispatcher 'dispatcher.auto.node_gateway_workflow_terminal_effect.HandlerGatewayWorkflowTerminal.apply_delegation_completed_99b6bce4' failed: ValueError: delivery '' is not declared by the contract correlation_id=00000000-0000-4000-8000-000000000001"
+  ],
+  "dispatch_boundary": {
+    "measured_with": "omnibase_infra origin/dev dadd796d1 runtime/auto_wiring/handler_wiring.py (md5 0392613f36be021b36164125a987f665, identical to the file in the dev container), _make_dispatch_callback fed the engine's materialized mapping",
+    "engine_mapping_keys": [
+      "payload",
+      "__bindings",
+      "__debug_trace"
+    ],
+    "handler_receives": {
+      "topic": "",
+      "event_type": "",
+      "payload_keys": [
+        "content",
+        "correlation_id",
+        "credential_source",
+        "failure_reason",
+        "latency_ms",
+        "model_used",
+        "provider",
+        "route",
+        "rule_evaluations",
+        "tenant_id",
+        "terminal_failure_reason",
+        "total_tokens"
+      ]
+    }
+  },
+  "delivery": {
+    "correlation_id": "00000000-0000-4000-8000-000000000001",
+    "tenant_id": "00000000-0000-4000-8000-000000000002",
+    "model_used": "glm-5.3-flash",
+    "route": "byok-glm-general",
+    "provider": "glm",
+    "credential_source": "customer_key",
+    "content": "The sky is blue.",
+    "latency_ms": 7389,
+    "total_tokens": 298,
+    "failure_reason": "",
+    "terminal_failure_reason": null,
+    "rule_evaluations": [
+      {
+        "rule": "no_refusal",
+        "passed": true
+      }
+    ]
+  }
+}

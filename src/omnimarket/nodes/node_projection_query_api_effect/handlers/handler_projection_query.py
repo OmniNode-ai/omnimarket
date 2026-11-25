@@ -17,6 +17,8 @@ names a path or a topic.
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
 from datetime import UTC, datetime
 from typing import Any, assert_never
@@ -30,6 +32,11 @@ from omnimarket.nodes.node_projection_query_api_effect.models import (
 )
 from omnimarket.nodes.node_projection_query_api_effect.ports.contract_routes import (
     contract_route,
+)
+from omnimarket.nodes.node_projection_query_api_effect.ports.page_cache import (
+    PageCacheUnavailableError,
+    ProtocolPageCache,
+    page_cache_key,
 )
 from omnimarket.projection.discovery import build_projection_topic_map
 from omnimarket.projection.generation_publisher import publish_generation_request
@@ -61,6 +68,14 @@ from omnimarket.projection.table_reader import (
     TableRowSource,
 )
 
+_LOG = logging.getLogger(__name__)
+
+# The page refreshes this process has started and not yet finished. The app builds
+# one handler per request and a refresh outlives its request, so the set lives
+# here: it keeps each task referenced until it ends. One refresh per page is the
+# claim in the shared Valkey, not this set.
+_REFRESHES: set[asyncio.Task[None]] = set()
+
 
 def _json(status_code: int, body: Any) -> ModelProjectionQueryResponse:
     return ModelProjectionQueryResponse(
@@ -72,6 +87,14 @@ def _column_value(row: dict[str, Any], column: str | None) -> Any:
     if column is None:
         return None
     return row.get(column)
+
+
+def _unavailable_cache_state() -> dict[str, Any]:
+    return {
+        "state": "unavailable",
+        "fallback": True,
+        "detail": "the Valkey page cache did not answer; this page was read from the store",
+    }
 
 
 class HandlerProjectionQuery:
@@ -88,9 +111,13 @@ class HandlerProjectionQuery:
         *,
         topic_map: dict[str, ProjectionTableConfig] | None = None,
         row_source: ProtocolProjectionRowSource | None = None,
+        page_cache: ProtocolPageCache | None = None,
+        page_cache_key_prefix: str = "",
     ) -> None:
         self._topic_map = topic_map
         self._row_source = row_source
+        self._page_cache = page_cache
+        self._page_cache_key_prefix = page_cache_key_prefix
         self._owned_source: TableRowSource | None = None
 
     def _topics(self) -> dict[str, ProjectionTableConfig]:
@@ -104,6 +131,11 @@ class HandlerProjectionQuery:
         if self._owned_source is None:
             self._owned_source = TableRowSource()
         return self._owned_source
+
+    @staticmethod
+    def pending_refreshes() -> tuple[asyncio.Task[None], ...]:
+        """The page refreshes this process has started and not yet finished."""
+        return tuple(task for task in _REFRESHES if not task.done())
 
     async def close(self) -> None:
         """Close the pools of a row source this handler opened itself."""
@@ -232,7 +264,7 @@ class HandlerProjectionQuery:
             text=render_morning_page(page),
         )
 
-    async def _projection_page(
+    async def _read_page(
         self, request: ModelProjectionQueryRequest
     ) -> ModelProjectionQueryResponse:
         # The page is read by the same function the runtime-resident
@@ -247,8 +279,114 @@ class HandlerProjectionQuery:
             order=request.order,
             order_by=request.order_by,
             tenant=request.tenant,
+            window=request.window,
         )
         return _json(page.status_code, page.body)
+
+    async def _projection_page(
+        self, request: ModelProjectionQueryRequest
+    ) -> ModelProjectionQueryResponse:
+        """One page, from the cache while fresh, or stale while it is refreshed, else from the windowed store read.
+
+        A page inside ``ttl_seconds`` is answered from the cache. A page past
+        it and inside ``stale_seconds`` more is answered from the cache too,
+        marked stale with its age, and recomputed from the store behind the
+        response, so the read that finds it stale does not wait for the store.
+        Only a read that finds nothing (the page was never held, or its time
+        ran out) recomputes before answering, and holds the page. A cache that
+        does not answer serves the store read and says so in the answer
+        (``cache.fallback``); a failed or refused read is never held.
+        """
+        cache = self._page_cache
+        if cache is None or request.correlation_id is not None:
+            return await self._read_page(request)
+        key = page_cache_key(self._page_cache_key_prefix, request)
+        state: dict[str, Any] = {"state": "miss", "ttl_seconds": cache.ttl_seconds}
+        try:
+            held = await cache.get(key)
+        except PageCacheUnavailableError:
+            held = None
+            state = _unavailable_cache_state()
+        if held is not None:
+            if held.age_seconds < cache.ttl_seconds:
+                return _json(
+                    200,
+                    {
+                        **held.page,
+                        "cache": {"state": "hit", "ttl_seconds": cache.ttl_seconds},
+                    },
+                )
+            self._start_refresh(key, request, cache)
+            return _json(
+                200,
+                {
+                    **held.page,
+                    "cache": {
+                        "state": "stale",
+                        "ttl_seconds": cache.ttl_seconds,
+                        "stale_seconds": cache.stale_seconds,
+                        "age_seconds": round(held.age_seconds, 3),
+                        "refreshing": True,
+                    },
+                },
+            )
+        answer = await self._read_page(request)
+        if answer.status_code != 200 or not isinstance(answer.body, dict):
+            return answer
+        if state["state"] == "miss":
+            try:
+                await cache.put(key, answer.body)
+            except PageCacheUnavailableError:
+                state = _unavailable_cache_state()
+        return _json(200, {**answer.body, "cache": state})
+
+    def _start_refresh(
+        self,
+        key: str,
+        request: ModelProjectionQueryRequest,
+        cache: ProtocolPageCache,
+    ) -> None:
+        """Recompute one stale page behind the response; the task takes the page's claim first."""
+        task = asyncio.create_task(self._refresh_page(key, request, cache))
+        _REFRESHES.add(task)
+        task.add_done_callback(_REFRESHES.discard)
+
+    async def _refresh_page(
+        self,
+        key: str,
+        request: ModelProjectionQueryRequest,
+        cache: ProtocolPageCache,
+    ) -> None:
+        """Recompute and hold one page when this runtime wins the page's claim in the shared Valkey.
+
+        A runtime that loses the claim leaves the refresh to the one that holds
+        it. A Valkey that does not answer, or a read that fails, leaves the held
+        page as it is and says so in the log; the next stale read tries again.
+        """
+        try:
+            if not await cache.claim_refresh(key):
+                return
+        except PageCacheUnavailableError as exc:
+            _LOG.warning("page refresh not started, cache unavailable: %s", exc)
+            return
+        try:
+            answer = await self._read_page(request)
+            if answer.status_code == 200 and isinstance(answer.body, dict):
+                await cache.put(key, answer.body)
+            else:
+                _LOG.warning(
+                    "page refresh read answered %s; the held page is kept",
+                    answer.status_code,
+                )
+        except PageCacheUnavailableError as exc:
+            _LOG.warning("page refresh not held, cache unavailable: %s", exc)
+        except Exception:
+            _LOG.exception("page refresh read failed; the held page is kept")
+        finally:
+            try:
+                await cache.release_refresh(key)
+            except PageCacheUnavailableError as exc:
+                _LOG.warning("page refresh claim not released: %s", exc)
 
     async def _evidence_page(
         self, route: ModelQueryRoute, request: ModelProjectionQueryRequest

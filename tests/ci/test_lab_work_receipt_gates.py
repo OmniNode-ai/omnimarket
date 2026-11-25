@@ -9,6 +9,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.ci.lint_jobs import lint_jobs, lint_steps
+
 pytestmark = pytest.mark.unit
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -47,12 +49,12 @@ def test_lab_work_receipt_gates_run_acceptance_files(
     workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
     steps = [
         step
-        for step in workflow["jobs"]["lint"]["steps"]
+        for step in lint_steps(workflow)
         if step.get("run", "").strip() == hook["entry"]
     ]
     assert len(steps) == 1
     assert not steps[0].get("continue-on-error", False)
-    assert not workflow["jobs"]["lint"].get("continue-on-error", False)
+    assert not any(job.get("continue-on-error", False) for job in lint_jobs(workflow))
     required = yaml.safe_load((ROOT / ".github/required-checks.yaml").read_text())
     assert any(
         gate["name"] == "lint" and gate["mode"] == "REQUIRED"

@@ -1,0 +1,519 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""``onex scm pr-create``'s duplicate guard answers from a bounded claims read when the dev broker's replies are late (OMN-26433).
+
+On 2026-11-22 lab lanes on h053 and h201 were refused ``PR-DUPLICATE-GUARD unchecked``: the ledger reader answered the guard's
+168 hour, every-row-type read with exit 69 ``bus-session-failed-timeouterror``, and a pr-create waited 200 to 300 seconds with no
+output. The seam-deadline probe on h053 measured the work-ledger query's replies at 55 to 137 seconds (deadline 30 seconds), or
+none, for each request. A read that needs dozens of reply pages cannot answer inside any bound; one that needs a page or two can.
+
+The tests replay the reader subprocess (``subprocess.run``) over a broker whose reply latency is the recorded one: a read takes
+pages x latency, and is a timeout when that is more than the wait the guard gave it. The ledger it serves is the measured one
+(h202, 2026-11-22T04:15Z): 84,000 rows in the 168 hour window, 24,640 of them CLAIM, TERMINAL or RELEASE rows, about 580 rows and
+70 lanes in the last hour, and a page of 1,000 rows (the query node refuses an answer over 917,516 bytes). The guard's whole-window
+read needs 84 pages and its claim-kinds read 25; its one hour read needs one and the claim rows of that hour's lanes need one.
+
+The guard is never weakened: the narrowed reads must give the same live claims as the whole-window read (a lane with an old CLAIM
+and a recent row of any type still holds it), and when no read answers the guard refuses ``unchecked`` and opens nothing.
+
+A read that fails is retried once with the same bounded shape (OMN-26387): the 168 hour every-row read does not finish in 400
+seconds even on a responsive answerer (measured on h053, 2026-11-24), so it is never the fallback.
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from collections.abc import Sequence
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+import pytest
+import yaml
+
+from omnimarket.handlers.adapter_work_ledger_rows_reader import (
+    INTERPRETER_ENV,
+    SubprocessLedgerRowsReader,
+)
+from omnimarket.handlers.handler_ledger_claims import claim_lane
+from omnimarket.handlers.scm import scm_cli
+from omnimarket.handlers.scm.scm_duplicate_guard import EXIT_CLEAR, EXIT_UNCHECKED
+from omnimarket.models.model_ledger_claims_read import ModelLedgerClaimsReadConfig
+from omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers import (
+    handler_pr_duplicate_snapshot as snapshot_module,
+)
+from omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers.ledger_claims_read import (
+    read_claims_text,
+)
+from omnimarket.protocols.protocol_ledger_rows_reader import LedgerReadError
+from tests.unit.handlers.scm.test_scm_duplicate_guard import (
+    CAUSE,
+    CREATE_ARGS,
+    LANE,
+    World,
+    _row,
+    invoke,
+)
+
+pytestmark = pytest.mark.unit
+
+FIXTURE = (
+    Path(__file__).resolve().parents[3]
+    / "fixtures"
+    / "work_ledger_reader"
+    / "pr_duplicate_guard_claims_2026_11_22.json"
+)
+RECORDED: dict[str, Any] = json.loads(FIXTURE.read_text())
+RECORDS: list[dict[str, Any]] = RECORDED["recorded"]
+CONTRACT = (
+    Path(snapshot_module.__file__).resolve().parents[1] / "contract.yaml"
+)  # the guard's declared bounds
+INTERPRETER = "/lab/venv/bin/python"
+#: Rows one reply page carries, and the measured rows of the 168 hour window (all types, and the CLAIM, TERMINAL and RELEASE rows).
+PAGE_ROWS = 1000
+WINDOW_ROWS = 84_000
+CLAIM_KIND_ROWS = 24_640
+#: The last hour's rows, in the lanes that wrote them (70 lanes, as measured).
+HOUR_LANES = 70
+HOUR_ROWS = 580
+#: The recorded reply latency of one page, the seam probe's middle answer in seconds.
+SEAM_REPLIES_S = sorted(
+    ms / 1000 for ms in RECORDED["seam_probe"]["replies_ms"] if ms is not None
+)
+PAGE_LATENCY_S = SEAM_REPLIES_S[len(SEAM_REPLIES_S) // 2]
+HOSTS = ("h053", "h201", "h202")
+
+
+def record(host: str) -> dict[str, Any]:
+    return next(r for r in RECORDS if r["host"] == host)
+
+
+def stamp_of(row: str) -> datetime:
+    return datetime.fromisoformat(row.split(" | ")[0].replace("Z", "+00:00"))
+
+
+class Broker:
+    """``subprocess.run`` for the reader module over the dev broker with the recorded page latency.
+
+    A read of N matching rows takes ``ceil(N / PAGE_ROWS)`` pages of ``PAGE_LATENCY_S`` each. When that is more than the wait the
+    caller passed, the caller's own timeout fires (``subprocess.TimeoutExpired``); otherwise the reader answers with its rows.
+    ``refuse_all`` answers every read with the host's recorded exit 69 instead, ``refuse_lanes`` only a read that names lanes
+    (a reader older than the lane filter). ``window_rows`` is the whole window's size, small for a test of the fallback.
+    """
+
+    def __init__(
+        self,
+        rows: Sequence[str],
+        host: str,
+        *,
+        refuse_all: bool = False,
+        refuse_lanes: bool = False,
+        window_rows: int = WINDOW_ROWS,
+        hour_lanes: int = HOUR_LANES,
+        late_first_reads: int = 0,
+    ) -> None:
+        # The last hour's other lanes: HOUR_ROWS STATUS rows spread over hour_lanes lanes.
+        busy = [
+            _row(20, "STATUS", f"busy-{i % hour_lanes:02d}", "working")
+            for i in range(HOUR_ROWS if hour_lanes else 0)
+        ]
+        self.rows = [*rows, *busy]
+        self.recorded = record(host)
+        self.refuse_all = refuse_all
+        self.refuse_lanes = refuse_lanes
+        self.window_rows = window_rows
+        # The first reads of the run the answerer answers after the caller's wait (the stall of 2026-11-24).
+        self.late_first_reads = late_first_reads
+        self.argvs: list[list[str]] = []
+        self.timeouts: list[float] = []
+
+    def __call__(
+        self, argv: list[str], **kwargs: Any
+    ) -> subprocess.CompletedProcess[str]:
+        self.argvs.append(argv)
+        timeout = float(kwargs["timeout"])
+        self.timeouts.append(timeout)
+        hours = int(argv[argv.index("--window-hours") + 1])
+        kinds = [argv[i + 1] for i, word in enumerate(argv) if word == "--kind"]
+        lanes = [argv[i + 1] for i, word in enumerate(argv) if word == "--row-lane"]
+        if len(self.argvs) <= self.late_first_reads:
+            raise subprocess.TimeoutExpired(argv, timeout)
+        if self.refuse_all or (self.refuse_lanes and lanes):
+            return subprocess.CompletedProcess(
+                argv, self.recorded["exit"], "", self.recorded["stderr"]
+            )
+        now = datetime.now(UTC)
+        kept = [
+            row
+            for row in self.rows
+            if (now - stamp_of(row)).total_seconds() <= hours * 3600
+            and (not kinds or row.split(" | ")[1] in kinds)
+            and (not lanes or claim_lane(row) in lanes)
+        ]
+        # The rows of the window that no test row stands for: every other lane's, unless the read names lanes or the hour.
+        elsewhere = 0
+        if not lanes and hours > 1:
+            elsewhere = CLAIM_KIND_ROWS if kinds else self.window_rows
+        pages = max(1, -(-(len(kept) + elsewhere) // PAGE_ROWS))
+        if pages * PAGE_LATENCY_S > timeout:
+            raise subprocess.TimeoutExpired(argv, timeout)
+        return subprocess.CompletedProcess(
+            argv, 0, "\n".join(kept), "READER status=ok source=node"
+        )
+
+
+@pytest.fixture
+def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
+    built = World(tmp_path)
+    monkeypatch.setenv("ONEX_PR_WATCHER_STATE", str(built.state))
+    monkeypatch.setenv("ONEX_SCM_CLONE_ROOT", str(built.root))
+    built.lane_branch("src/metrics.py", 15)
+    monkeypatch.chdir(built.lane)
+    return built
+
+
+@pytest.fixture
+def sent(monkeypatch: pytest.MonkeyPatch) -> list[object]:
+    calls: list[object] = []
+
+    def fake(*args: object, **kwargs: object) -> int:
+        calls.append(args)
+        return 0
+
+    monkeypatch.setattr(scm_cli, "_call_bus", fake)
+    return calls
+
+
+def use_broker(monkeypatch: pytest.MonkeyPatch, broker: Broker) -> Broker:
+    """The guard's production adapter, with only the subprocess replayed."""
+    monkeypatch.setenv(INTERPRETER_ENV, f"{INTERPRETER} -m some.module append")
+    monkeypatch.setattr(
+        snapshot_module,
+        "SubprocessLedgerRowsReader",
+        lambda environ, **kwargs: SubprocessLedgerRowsReader(
+            environ, run=broker, **kwargs
+        ),
+    )
+    return broker
+
+
+def other_lane_claim_rows() -> list[str]:
+    """Another lane's CLAIM on our cause 100 hours ago with a STATUS heartbeat 10 minutes ago, and our own CLAIM."""
+    return [
+        _row(100 * 60, "CLAIM", "cause-core-0010", CAUSE, "pr=omnibase_core#2159"),
+        _row(10, "STATUS", "cause-core-0010", "working"),
+        _row(5, "CLAIM", LANE, CAUSE, "mine"),
+    ]
+
+
+def ledger_read_contract() -> dict[str, Any] | None:
+    config = yaml.safe_load(CONTRACT.read_text(encoding="utf-8")).get("config", {})
+    declared = config.get("ledger_read")
+    return declared if isinstance(declared, dict) else None
+
+
+@pytest.mark.parametrize("host", HOSTS)
+def test_recorded_2026_11_22_the_whole_window_read_that_timed_out_no_longer_refuses_pr_create(
+    world: World,
+    monkeypatch: pytest.MonkeyPatch,
+    sent: list[object],
+    host: str,
+) -> None:
+    """The recorded state: the 168 hour every-row read cannot finish, so the guard must read the claims another way."""
+    recorded = record(host)
+    assert recorded["exit"] == 69
+    assert "bus-session-failed-timeouterror" in recorded["stderr"]
+    broker = use_broker(monkeypatch, Broker(other_lane_claim_rows(), host))
+
+    result = invoke(world.check_args())
+
+    assert result.exit_code == scm_cli.EXIT_DUPLICATE, (
+        f"{host}: exit {result.exit_code}; {result.stderr}; reads {broker.argvs}"
+    )
+    answer = json.loads(result.stdout)
+    assert answer["adopt_lane"] == "cause-core-0010"
+    assert sent == []
+
+
+@pytest.mark.parametrize("host", HOSTS)
+def test_recorded_2026_11_22_pr_create_goes_on_when_the_bounded_read_finds_no_other_claim(
+    world: World,
+    monkeypatch: pytest.MonkeyPatch,
+    sent: list[object],
+    capsys: pytest.CaptureFixture[str],
+    host: str,
+) -> None:
+    """Printed ``clear`` follows rows that were read: our own CLAIM is in them, and ``pr-create`` reaches the bus call."""
+    broker = use_broker(
+        monkeypatch, Broker([_row(5, "CLAIM", LANE, CAUSE, "mine")], host)
+    )
+
+    with pytest.raises(SystemExit) as stopped:
+        scm_cli.scm_group.main(CREATE_ARGS, standalone_mode=False)
+
+    err = capsys.readouterr().err
+    assert stopped.value.code == 0, err
+    assert "PR-DUPLICATE-GUARD clear" in err
+    assert "unchecked" not in err
+    assert len(sent) == 1
+    assert broker.argvs, "clear was printed with no claims read"
+
+
+def test_the_narrowed_read_holds_the_same_live_claims_as_the_whole_window(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Control: no weakening. An old CLAIM of a lane quiet for three hours is not live, a lane with a recent row of any type is."""
+    quiet = [
+        _row(100 * 60, "CLAIM", "cause-core-0010", CAUSE, "pr=omnibase_core#2159"),
+        _row(180, "STATUS", "cause-core-0010", "last word"),
+        _row(5, "CLAIM", LANE, CAUSE, "mine"),
+    ]
+    use_broker(monkeypatch, Broker(quiet, "h053"))
+
+    result = invoke(world.check_args())
+
+    assert result.exit_code == EXIT_CLEAR, result.output
+
+
+def is_whole_window_read(argv: Sequence[str]) -> bool:
+    """The 168 hour read of every row of every lane: no kind filter, no lane filter, a window over the heartbeat hour."""
+    return (
+        "--kind" not in argv
+        and "--row-lane" not in argv
+        and int(argv[argv.index("--window-hours") + 1]) > 1
+    )
+
+
+def test_a_reader_that_refuses_the_lane_scoped_read_leaves_the_guard_unchecked_and_the_window_unread(
+    world: World,
+    monkeypatch: pytest.MonkeyPatch,
+    sent: list[object],
+) -> None:
+    """The whole-window read is no fallback: a reader that refuses the lane filter makes the guard refuse, never clear."""
+    broker = use_broker(
+        monkeypatch,
+        Broker(other_lane_claim_rows(), "h201", refuse_lanes=True, window_rows=2000),
+    )
+
+    result = invoke(world.check_args())
+
+    assert result.exit_code == EXIT_UNCHECKED, f"{result.output}; reads {broker.argvs}"
+    assert not any(is_whole_window_read(argv) for argv in broker.argvs)
+    assert sent == []
+
+
+@pytest.mark.parametrize("host", HOSTS)
+def test_a_late_first_answer_is_retried_as_the_bounded_read_and_never_as_the_whole_window(
+    world: World,
+    monkeypatch: pytest.MonkeyPatch,
+    host: str,
+) -> None:
+    """OMN-26387: the answerer stalls past the wait of the first read; the guard asks the same bounded read once more and finds the claim."""
+    broker = use_broker(
+        monkeypatch, Broker(other_lane_claim_rows(), host, late_first_reads=1)
+    )
+
+    result = invoke(world.check_args())
+
+    assert result.exit_code == scm_cli.EXIT_DUPLICATE, (
+        f"{host}: exit {result.exit_code}; {result.stderr}; reads {broker.argvs}"
+    )
+    assert json.loads(result.stdout)["adopt_lane"] == "cause-core-0010"
+    assert not any(is_whole_window_read(argv) for argv in broker.argvs), (
+        f"a whole-window read was made: {broker.argvs}"
+    )
+    first, retry = broker.argvs[0], broker.argvs[1]
+    assert retry == first, "the retry is the same read as the one that was late"
+
+
+def test_two_late_answers_leave_the_guard_unchecked_after_one_retry_and_no_wider_read(
+    world: World, monkeypatch: pytest.MonkeyPatch, sent: list[object]
+) -> None:
+    broker = use_broker(
+        monkeypatch, Broker(other_lane_claim_rows(), "h053", late_first_reads=99)
+    )
+
+    result = invoke(world.check_args())
+
+    assert result.exit_code == EXIT_UNCHECKED, result.output
+    assert len(broker.argvs) == 2, f"one read and one retry, not {broker.argvs}"
+    assert not any(is_whole_window_read(argv) for argv in broker.argvs)
+    assert sent == []
+
+
+class StubReader:
+    """A ``ProtocolLedgerRowsReader`` that answers or fails by script, remembering the wait it was built with."""
+
+    def __init__(self, wait: float, script: list[object], log: list[float]) -> None:
+        self.wait = wait
+        self.script = script
+        self.log = log
+
+    def rows(
+        self,
+        *,
+        reader: str,
+        window_hours: int,
+        kinds: Sequence[str] = (),
+        lanes: Sequence[str] = (),
+    ) -> tuple[str, ...]:
+        self.log.append(self.wait)
+        step = self.script.pop(0)
+        if isinstance(step, LedgerReadError):
+            raise step
+        assert isinstance(step, tuple)
+        return step
+
+
+def stub_config(**changes: float) -> ModelLedgerClaimsReadConfig:
+    declared: dict[str, Any] = {
+        "reader": "pr-duplicate-guard-claims",
+        "window_hours": 168,
+        "heartbeat_window_hours": 1,
+        "claim_kinds": ["CLAIM"],
+        "primary_timeout_s": 10,
+        "retry_timeout_s": 10,
+        "total_budget_s": 40,
+    }
+    declared.update(changes)
+    return ModelLedgerClaimsReadConfig.model_validate(declared)
+
+
+def test_the_retry_waits_only_what_is_left_of_the_declared_budget() -> None:
+    """Every wait is the declared one or what the injected clock says is left of the total, never more."""
+    now = [0.0]
+    log: list[float] = []
+    row = _row(5, "CLAIM", LANE, CAUSE, "mine")
+    script: list[object] = [LedgerReadError("timed out"), (row,), (row,)]
+
+    def reader_for(wait: float) -> StubReader:
+        now[0] += 35.0 if not log else 0.0  # the first read used 35 of the 40 seconds
+        return StubReader(wait, script, log)
+
+    text = read_claims_text(reader_for, stub_config(), clock=lambda: now[0])
+
+    assert row in text
+    assert log[0] == 10, log
+    assert log[1] == pytest.approx(5.0), log
+
+
+def test_a_spent_budget_ends_the_claims_read_without_another_read() -> None:
+    now = [0.0]
+    log: list[float] = []
+    script: list[object] = [
+        LedgerReadError("timed out"),
+        (_row(5, "CLAIM", LANE, CAUSE, "mine"),),
+    ]
+
+    def reader_for(wait: float) -> StubReader:
+        now[0] += 50.0  # past the 40 second total after the first read
+        return StubReader(wait, script, log)
+
+    with pytest.raises(LedgerReadError, match="budget"):
+        read_claims_text(reader_for, stub_config(), clock=lambda: now[0])
+
+    assert len(log) == 1, "no read after the budget was spent"
+
+
+def test_the_node_contract_declares_one_retry_wait_and_no_whole_window_fallback() -> (
+    None
+):
+    declared = ledger_read_contract()
+    assert declared is not None
+    assert "fallback_timeout_s" not in declared
+    assert declared["retry_timeout_s"] > 0
+    assert (
+        2 * (declared["primary_timeout_s"] + declared["retry_timeout_s"])
+        <= declared["total_budget_s"]
+    )
+
+
+@pytest.mark.parametrize("host", HOSTS)
+def test_never_clear_unread_when_every_read_exits_69(
+    world: World,
+    monkeypatch: pytest.MonkeyPatch,
+    sent: list[object],
+    capsys: pytest.CaptureFixture[str],
+    host: str,
+) -> None:
+    """With the primary and the fallback both unreadable the guard refuses ``unchecked``, after trying, and opens nothing."""
+    broker = use_broker(monkeypatch, Broker([], host, refuse_all=True))
+
+    with pytest.raises(SystemExit) as stopped:
+        scm_cli.scm_group.main(CREATE_ARGS, standalone_mode=False)
+
+    err = capsys.readouterr().err
+    assert stopped.value.code == scm_cli.EXIT_LOCAL_UNANSWERED, err
+    assert "PR-DUPLICATE-GUARD unchecked, no pull request opened" in err
+    assert "PR-DUPLICATE-GUARD clear" not in err
+    assert broker.argvs, "the guard refused without trying to read the claims"
+    assert sent == []
+
+
+def test_never_clear_unread_when_no_read_answers_inside_its_bound(
+    world: World, monkeypatch: pytest.MonkeyPatch, sent: list[object]
+) -> None:
+    """A broker too slow for even one page: every read hits its own bound and the guard refuses, never clear."""
+    use_broker(monkeypatch, Broker([_row(5, "CLAIM", LANE, CAUSE, "mine")], "h053"))
+    # One page takes longer than any declared bound.
+    monkeypatch.setattr(sys.modules[__name__], "PAGE_LATENCY_S", 10_000.0)
+
+    result = invoke(world.check_args())
+
+    assert result.exit_code == EXIT_UNCHECKED, result.output
+    assert json.loads(result.stdout)["state"] == "unchecked"
+    assert "timed out" in result.stdout
+    assert sent == []
+
+
+def test_the_bounds_of_the_claims_read_are_declared_in_the_node_contract_and_used(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC2: the wait of every read the guard makes is a value of the node contract, and the two tiers fit its total."""
+    declared = ledger_read_contract()
+    assert declared is not None, (
+        "the guard node contract declares no config.ledger_read"
+    )
+    broker = use_broker(monkeypatch, Broker(other_lane_claim_rows(), "h053"))
+    invoke(world.check_args())
+    assert broker.timeouts
+    primary = declared["primary_timeout_s"]
+    assert broker.timeouts == [primary, primary]
+    assert 2 * (primary + declared["retry_timeout_s"]) <= declared["total_budget_s"]
+    assert declared["heartbeat_window_hours"] * 3600 >= 0.75 * 3600, (
+        "the heartbeat read must cover a CLAIM's live hours"
+    )
+
+
+def test_the_declared_claim_row_types_hold_every_row_that_opens_or_closes_a_claim() -> (
+    None
+):
+    declared = ledger_read_contract()
+    assert declared is not None, (
+        "the guard node contract declares no config.ledger_read"
+    )
+    assert {"CLAIM", "TERMINAL", "RELEASE"} <= set(declared["claim_kinds"])
+    assert declared["reader"] == "pr-duplicate-guard-claims"
+    assert declared["window_hours"] == 168
+
+
+def test_the_claims_read_names_the_lanes_the_last_hour_holds_and_no_other(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The second read is scoped to the heartbeat hour's lanes: a lane quiet for three hours is not asked for."""
+    rows = [
+        *other_lane_claim_rows(),
+        _row(180, "CLAIM", "quiet-0100", CAUSE, "old"),
+        _row(180, "STATUS", "quiet-0100", "last word"),
+    ]
+    broker = use_broker(monkeypatch, Broker(rows, "h053"))
+
+    invoke(world.check_args())
+
+    claims_argv = broker.argvs[1]
+    named = [claims_argv[i + 1] for i, w in enumerate(claims_argv) if w == "--row-lane"]
+    assert "quiet-0100" not in named
+    assert {"cause-core-0010", LANE} <= set(named)
+    assert len(named) == len(set(named)) == HOUR_LANES + 2

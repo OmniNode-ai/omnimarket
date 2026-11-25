@@ -119,10 +119,15 @@ def test_stack_reconciliation_uses_owner_and_detects_changed_configuration(
         ModelSetupCommandResult,
     )
 
+    async def read_engine(timeout_seconds: float) -> tuple[int, str, str]:
+        return 0, "", json.dumps({"NCPU": 1, "MemTotal": 256 * 1024 * 1024})
+
+    monkeypatch.setattr(
+        "omnibase_infra.handlers.handler_local_engine_info._read_engine", read_engine
+    )
+
     def requirements_transport(self, request):
-        if "info" in request.argv:
-            body = {"NCPU": 1, "MemTotal": 256 * 1024 * 1024}
-        elif "config" in request.argv:
+        if "config" in request.argv:
             body = {"services": {"chosen-worker": {}}}
         elif "ps" in request.argv:
             body = [

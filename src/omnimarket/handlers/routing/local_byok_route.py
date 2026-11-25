@@ -54,6 +54,7 @@ from pathlib import Path
 
 from omnibase_infra.errors import ProtocolConfigurationError
 
+from omnimarket.handlers.model_catalog import catalog_config, runtime_catalog_entry
 from omnimarket.handlers.openai_compatible_endpoint import registered_endpoint_url
 from omnimarket.handlers.routing.byok_provider_backends import (
     BYOK_MODEL_UNRESOLVED,
@@ -83,6 +84,7 @@ from omnimarket.inference.provider_quota_state import (
     ModelProviderQuotaSnapshot,
     quota_block_for_backend,
 )
+from omnimarket.models.model_catalog_entry import ModelCatalogEntry
 from omnimarket.nodes.node_model_setup_effect.connection_storage import (
     read_named_connections,
 )
@@ -197,15 +199,56 @@ def _keep_eval_arm_model(
     arm = overlay.eval_arms.arm_by_backend_id().get(replaced.backend_id)
     if arm is None:
         return route
-    return route.model_copy(
+    return with_byok_model(route, arm.slug).model_copy(
         update={
-            "model_id": arm.slug,
             "model_id_source": (
                 f"eval arm {replaced.backend_id} slug, from the delegation routing "
                 "overlay eval_arms (OMN-23751)"
             ),
         }
     )
+
+
+def model_output_budget(
+    row: ModelByokProviderBackend, model_id: str
+) -> tuple[int, ModelCatalogEntry]:
+    """The request ceiling and the same entry used to price the call.
+
+    Route resolution and the call both read only the models.dev copy kept under
+    the ONEX home, else the price list shipped in the install, never the network.
+    """
+    entry = runtime_catalog_entry(row.provider, model_id)
+    limit = entry.max_output_tokens
+    if limit is None:
+        limit = row.max_tokens or int(
+            catalog_config()["output_budget"]["fallback_tokens"]
+        )
+    elif row.max_tokens is not None:
+        limit = min(row.max_tokens, limit)
+    return limit, entry
+
+
+def model_budget_backend(backend_id: str) -> ModelByokProviderBackend | None:
+    row = resolve_byok_backend_by_id(backend_id)
+    if (
+        row is not None
+        and row.provider in catalog_config()["output_budget"]["providers"]
+    ):
+        return row
+    return None
+
+
+def with_byok_model(
+    route: ModelResolvedDelegationBackend, model_id: str
+) -> ModelResolvedDelegationBackend:
+    """Carry the selected model's own budget through a pin, choice or retry."""
+    if route.model_id == model_id:
+        return route
+    row = model_budget_backend(route.backend_id)
+    budget = route.max_tokens
+    if row is not None:
+        budget, _ = model_output_budget(row, model_id)
+    return route.model_copy(update={"model_id": model_id, "max_tokens": budget})
 
 
 def _registered_byok_route(
@@ -261,7 +304,11 @@ def _registered_byok_route(
         byok.provider,
         byok.backend_id,
     )
-    max_tokens = byok.max_tokens or (replaced.max_tokens if replaced else None)
+    max_tokens: int | None
+    if slug in catalog_config()["output_budget"]["providers"]:
+        max_tokens, _ = model_output_budget(byok, model_id)
+    else:
+        max_tokens = byok.max_tokens or (replaced.max_tokens if replaced else None)
     timeout_ms = byok.timeout_ms or (replaced.timeout_ms if replaced else None)
     if max_tokens is None or timeout_ms is None:
         # A route with no house rung to inherit a budget from must declare its
@@ -525,10 +572,11 @@ def next_chosen_model_byok_route(
         )
         if route is None:
             return None
+        selected = with_byok_model(failed, model_id)
         candidate = route.model_copy(
             update={
-                "model_id": model_id,
-                "max_tokens": failed.max_tokens,
+                "model_id": selected.model_id,
+                "max_tokens": selected.max_tokens,
                 "timeout_ms": failed.timeout_ms,
                 "extra_headers": dict(failed.extra_headers),
                 "substituted_from_backend_id": failed.substituted_from_backend_id,
@@ -612,10 +660,13 @@ __all__: list[str] = [
     "house_provider_slug",
     "is_local_url_backend",
     "local_url_backend_id",
+    "model_budget_backend",
+    "model_output_budget",
     "next_chosen_model_byok_route",
     "next_registered_byok_route",
     "registered_local_model_routes",
     "resolve_pinned_byok_route",
     "substitute_any_registered_byok_route",
     "substitute_local_byok_route",
+    "with_byok_model",
 ]

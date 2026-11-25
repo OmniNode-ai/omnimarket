@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: MIT
 """``python -m omnimarket.nodes.node_work_ledger_file_census_effect``: the census against its ratchet.
 
-Exit 0: every counted repository is at or under its ratchet row. Exit 1: a count grew past its row
-(red). Exit 69: a repository is absent or unreadable, a repository has no ratchet row, or the ratchet
-file is unreadable: nothing is passed on a read that failed. ``--lower`` rewrites the ratchet file with
+Exit 0: every counted repository is at or under its ratchet row; a repository with no clone is not counted and is
+named on a ``CENSUS-ABSENT`` line, never a reason to print no count (operator ruling 2026-11-24T16:19:26Z). Exit 1: a
+count grew past its row (red). Exit 69: no repository is present, a repository is unreadable, a repository has no
+ratchet row, or the ratchet file is unreadable: nothing is passed on a read that failed. ``--lower`` rewrites the ratchet file with
 every lowerable count lowered after a passing run; it never raises a row.
 """
 
@@ -16,6 +17,7 @@ import os
 import sys
 import uuid
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 
 from omnimarket.handlers.emission_sink import (
@@ -23,6 +25,7 @@ from omnimarket.handlers.emission_sink import (
     JsonlEmissionSink,
     ProtocolEmissionSink,
 )
+from omnimarket.handlers.repository_retirement_policy import load_retirement_policy
 from omnimarket.nodes.node_work_ledger_file_census_effect.adapters import (
     GitRepositorySource,
     YamlFileBaselineStore,
@@ -32,6 +35,7 @@ from omnimarket.nodes.node_work_ledger_file_census_effect.handlers import (
     HandlerFileCensus,
 )
 from omnimarket.nodes.node_work_ledger_file_census_effect.models import (
+    ModelCensusDailyRecord,
     ModelCensusRepository,
     ModelCensusRequest,
 )
@@ -92,6 +96,12 @@ def main(
     )
     parser.add_argument("--verbose", action="store_true", help="print every hit")
     parser.add_argument(
+        "--record",
+        action="store_true",
+        help="after the CENSUS lines, print the daily record (the per-repository counts and the "
+        "runtime-code count) as one typed JSON line, whether the run passed or failed",
+    )
+    parser.add_argument(
         "--json-facts",
         action="store_true",
         help="print only the facts reading 2 of the no-file readings takes, as JSON",
@@ -110,6 +120,16 @@ def main(
                 )
             }
         )
+    # A repository the host reconcile policy declares retired is no longer a registry repository, so the census
+    # neither requires its checkout nor counts it.
+    retired = frozenset(load_retirement_policy().retired_repositories)
+    overlay = overlay.model_copy(
+        update={
+            "repositories": tuple(
+                r for r in overlay.repositories if r.name not in retired
+            )
+        }
+    )
     root_text = env.get(overlay.registry_root_env, "").strip()
     if not root_text:
         sys.stderr.write(f"CENSUS unreadable: {overlay.registry_root_env} is not set\n")
@@ -167,7 +187,7 @@ def main(
         line = "own-line" if count.own_line else "counted"
         sys.stdout.write(
             f"CENSUS {count.repository} {line} state={count.state} files={count.files} "
-            f"readers={count.readers} writers={count.writers} ratchet={count.ratchet}\n"
+            f"runtime={count.runtime_files} readers={count.readers} writers={count.writers} ratchet={count.ratchet}\n"
         )
         for new in count.new_readers:
             sys.stdout.write(f"  NEW-READER {new}\n")
@@ -175,9 +195,18 @@ def main(
             for hit in count.hits:
                 sys.stdout.write(f"  {hit.kind.value} {hit.path}:{hit.line}\n")
     sys.stdout.write(
-        f"CENSUS total={result.total_files} passed={'yes' if result.passed else 'no'} "
+        f"CENSUS total={result.total_files} runtime={result.runtime_files} "
+        f"passed={'yes' if result.passed else 'no'} "
         f"failure={result.failure_code or 'none'} {result.failure_detail}\n"
     )
+    # one line per absent repository, so the run's own output names each one the counts leave out
+    for name in result.absent_repositories:
+        sys.stdout.write(f"CENSUS-ABSENT {name}\n")
+    if args.record:
+        record = ModelCensusDailyRecord.from_result(
+            result, datetime.now(UTC).date().isoformat()
+        )
+        sys.stdout.write(f"CENSUS-RECORD {record.model_dump_json()}\n")
     if result.passed and args.lower:
         store.write(result.lowered_ratchet, _HEADER)
         if baseline is not None:

@@ -1,0 +1,66 @@
+schema_version: 1.0.0
+ticket_id: OMN-26636
+title: Overlay loads reach the settings store every hour, a refused id does not stop the rest, and a stopped id raises an alarm naming it
+summary: The hourly overlay store loader tick raised its stale-assertion alarm only after a load that ran to the end, so a tick that loaded nothing (a clone that is not at the head of its branch, a run the overlay refuses, a broker that does not answer) named no id however long it had been since the id was asserted. The tick now judges and names every stale id on every way it can end; the assertion record, the continue-past-a-refusal load and the alarm topic are those of the loader tick already on dev.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26636-loads-reach-the-store
+  statement: Each id the loader lists is asserted at least hourly, with an unchanged clone too, so the newest assertion of every listed id stays under two hours old.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: integrated: each id the loader lists has an assertion under two hours old at two readings an hour apart, including with an unchanged clone -- falsifier: select overlay_id, max(asserted_at) from the assertion record per id, run on a lab host against the running dev lane and read back twice an hour apart'
+- id: req-omn26636-refusal-isolated
+  statement: A refusal planted on one id raises the alarm for that id only while the ids after it still publish.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a refusal planted on the second id raises the alarm for that id only while the ids after it still publish -- falsifier: uv run pytest on the loader handler test that plants a refused second id and reads the published ids and alarm rows'
+- id: req-omn26636-stop-is-named
+  statement: An id with no assertion for two hours has an alarm naming it, whatever stopped the load.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: an id with no assertion for two hours always has an alarm naming it -- falsifier: uv run pytest on the alarm test that ages one id past two hours and lists alarm rows by id'
+evidence_requirements:
+- kind: tests
+  description: The overlay store tests pass at the pushed head, including the tick tests that stop the load three ways and read the alarm rows.
+  command: uv run pytest tests/unit/nodes/node_overlay_store -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26636-ac1
+  description: 'hosted proxy for AC1: an unchanged clone asserts each id again once an hour has passed and not before; the reading of every listed id on h053 against the running dev lane, twice an hour apart, is in the pull request lab line and its lab comment'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_store/test_overlay_store_load_continue.py -q -n 0 --no-cov -p no:cacheprovider -k "unchanged_clone or not_at_origin_still_alarms"
+    cwd: .
+- id: dod-omn26636-ac2
+  description: 'AC2: a refusal planted on the second of three ids leaves the first and third published and the alarm names the second only'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_store/test_overlay_store_load_continue.py -q -n 0 --no-cov -p no:cacheprovider -k "second_id or stale_ids_by_name"
+    cwd: .
+- id: dod-omn26636-ac3
+  description: 'AC3: an id older than two hours alarms by name when the load ran, when the clone is not at origin, when the run is refused and when the broker does not answer the load; the three stop tests failed on origin/dev before the change'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_store/test_overlay_store_load_continue.py tests/unit/nodes/node_overlay_store/test_overlay_assertion_stale.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26636-integration-proof
+  description: the tick tests, the three stop paths included, run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26636 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_overlay_store -q -n 0 --no-cov -p no:cacheprovider
