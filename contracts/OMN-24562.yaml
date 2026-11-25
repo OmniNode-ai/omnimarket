@@ -21,6 +21,11 @@ requirements:
   acceptance:
   - id: AC3
     statement: 'AC3: ModelHostThermalGuardOverlay validates the overlay document of the thermal guard node and refuses a malformed one -- falsifier: tests/unit/models/test_host_thermal_guard_overlay_document_omn24562.py fails collection or any of its tests fails'
+- id: req-omn24562-tenant-outbox-flush
+  statement: The TENANT_CREATED rows node_tenant_provision_effect leaves unpublished in tenant_event_outbox are published to the tenant events topic by one node, each marked published only after the broker acknowledges.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: node_tenant_outbox_flush_effect publishes each unpublished outbox row once, leaves a row whose publish failed unmarked for the next pass, and never reads a row already marked published -- falsifier: uv run pytest tests/nodes/node_tenant_outbox_flush_effect -q fails when the mark is moved before the publish or a failed row is marked'
 evidence_requirements:
 - kind: tests
   description: The inode alarm tests pass at the pushed head.
@@ -63,4 +68,13 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/models/test_host_thermal_guard_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24562-tenant-outbox-flush-ac4
+  description: 'AC4: a published row is not sent twice, a failed publish leaves the row and records the error, a mark follows only an ack, a store that cannot be read is a typed outcome (failing control: the tests fail at the merge base, where the node does not exist).'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_tenant_outbox_flush_effect -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
