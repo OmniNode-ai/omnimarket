@@ -14,10 +14,14 @@ set, hard-fails.
 
 from __future__ import annotations
 
+import functools
 from pathlib import Path
 
 import pytest
+import yaml
 
+from omnimarket.handlers import libyaml_loader
+from scripts.ci import check_contract_publish_parity
 from scripts.ci.check_contract_publish_parity import (
     ModelPublishParityFinding,
     nodes_root,
@@ -35,10 +39,20 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+@functools.cache
+def _real_tree_findings() -> tuple[ModelPublishParityFinding, ...]:
+    """One scan of the real tree for every test of this module (OMN-26270).
+
+    This file is in the always set, so a pull request that changes only a ticket contract or
+    the changelog runs it. Each test used to scan every node contract again: four scans of
+    about 14 seconds each, which alone took the always set past the 51 second bound.
+    """
+    return tuple(scan_publish_parity(nodes_root(_repo_root())))
+
+
 @pytest.mark.unit
 def test_no_new_publish_parity_offenders() -> None:
-    findings = scan_publish_parity(nodes_root(_repo_root()))
-    new = sorted({f.node for f in findings} - set(PARITY_DEBT))
+    new = sorted({f.node for f in _real_tree_findings()} - set(PARITY_DEBT))
 
     assert not new, (
         "contract declares publish topics with no matching publish/emit call in "
@@ -49,7 +63,7 @@ def test_no_new_publish_parity_offenders() -> None:
 
 @pytest.mark.unit
 def test_baseline_only_shrinks() -> None:
-    findings = {f.node for f in scan_publish_parity(nodes_root(_repo_root()))}
+    findings = {f.node for f in _real_tree_findings()}
     stale = sorted(set(PARITY_DEBT) - findings)
 
     assert not stale, (
@@ -68,11 +82,30 @@ def test_repaired_nodes_are_not_in_the_debt_baseline(node: str) -> None:
 @pytest.mark.unit
 @pytest.mark.parametrize("node", _REPAIRED_NODES)
 def test_repaired_nodes_declare_only_publishable_topics(node: str) -> None:
-    findings = scan_publish_parity(nodes_root(_repo_root()))
-
-    assert not [f for f in findings if f.node == node], (
+    assert not [f for f in _real_tree_findings() if f.node == node], (
         f"{node} still declares an unpublished topic"
     )
+
+
+@pytest.mark.unit
+def test_the_real_tree_is_scanned_once_per_session() -> None:
+    """The tests above share one scan of the real tree, not one scan each."""
+    _real_tree_findings.cache_clear()
+    first = _real_tree_findings()
+    second = _real_tree_findings()
+
+    assert first is second
+    assert _real_tree_findings.cache_info().misses == 1
+
+
+@pytest.mark.unit
+def test_the_scanner_parses_contracts_with_the_libyaml_loader_when_present() -> None:
+    """The pure-Python loader is ~10x slower and was nearly all of the gate's time."""
+    expected = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
+    assert libyaml_loader.YAML_LOADER is expected
+    assert check_contract_publish_parity.load_yaml_text is libyaml_loader.load_yaml_text
+    assert libyaml_loader.load_yaml_text("a: [1, 2]\n") == {"a": [1, 2]}
 
 
 @pytest.mark.unit

@@ -41,6 +41,11 @@ event_bus:
 runtime_dispatch:
   external_trigger: The onex-service-principal-mint console script (runtime_service_principal_mint) on a lab host that holds
     the secret store identity and an ssh path to the broker host; the overlay file is read from ONEX_SKILL_OVERLAY_ROOTS.
+  # Minting a login and delivering its credential file never runs on a timer: a lane or an operator runs it once per
+  # declared principal, with --check first, on a host that holds the secret store identity.
+  on_demand:
+    command: uv run onex-service-principal-mint --principal <name> [--check]
+    owner: OmniNode Platform Team
 descriptor:
   node_archetype: effect
   purity: side_effect

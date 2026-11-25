@@ -196,15 +196,13 @@ class ModelRunnerGroup(_Frozen):
         return self
 
 
-class ModelUvCacheCap(_Frozen):
-    """The size cap of a uv cache.
+class _UvEvictionBuckets(_Frozen):
+    """The folders of a uv cache a pass may evict whole entries from, and how old an entry must be.
 
-    When the cache still holds more than ``cap_gib`` after the prune, the whole entries of each bucket
-    (a path relative to the cache, whose depth the contract declares) are evicted oldest first until the
-    cache is at or under the cap. An entry changed inside ``keep_days`` is never evicted.
+    ``buckets`` are paths relative to the cache whose depth the contract declares. An entry changed inside
+    ``keep_days`` is never evicted.
     """
 
-    cap_gib: float = Field(gt=0)
     buckets: Annotated[tuple[NonEmptyStr, ...], Field(min_length=1)]
     keep_days: float = Field(gt=0)
 
@@ -221,6 +219,39 @@ class ModelUvCacheCap(_Frozen):
         return self
 
 
+class ModelUvCacheCap(_UvEvictionBuckets):
+    """The size cap of a uv cache.
+
+    When the cache still holds more than ``cap_gib`` after the prune, the whole entries of each bucket
+    (a path relative to the cache, whose depth the contract declares) are evicted oldest first until the
+    cache is at or under the cap. An entry changed inside ``keep_days`` is never evicted.
+    """
+
+    cap_gib: float = Field(gt=0)
+
+
+class ModelUvFreeDiskRule(_UvEvictionBuckets):
+    """The free-disk and age rule of a uv cache: no size is ever measured.
+
+    The pass reads the free space of the filesystem the cache sits on (one cheap call). At or above
+    ``min_free_gib`` it does nothing. Below it, whole entries of each bucket are evicted oldest first,
+    only those untouched for ``keep_days``, until the entries' own bytes bring the free space to ``target_free_gib``.
+    The walk of the buckets happens only below ``min_free_gib``, never on a healthy host.
+    """
+
+    min_free_gib: float = Field(gt=0)
+    target_free_gib: float = Field(gt=0)
+
+    @model_validator(mode="after")
+    def target_not_below_min(self) -> Self:
+        if self.target_free_gib < self.min_free_gib:
+            raise ValueError(
+                f"target_free_gib {self.target_free_gib} must be at least "
+                f"min_free_gib {self.min_free_gib}"
+            )
+        return self
+
+
 class ModelUvArchiveEntry(_Frozen):
     """One whole entry of a uv cache bucket: ``name`` is its path relative to the bucket."""
 
@@ -232,20 +263,34 @@ class ModelUvArchiveEntry(_Frozen):
 
 
 class ModelUvCache(_Frozen):
-    """One uv cache directory to prune when it exceeds ``min_gib``."""
+    """One uv cache directory, held under control by exactly one of two rules.
+
+    ``min_gib``: measure the cache (``uv cache size`` walks every file) and ``uv cache prune`` it once it holds ``min_gib``,
+    with an optional size ``cap``. ``free_disk``: read the free space of the cache's filesystem and evict old entries only
+    when it is low; the cache is never measured and ``uv_binary`` is not run.
+    """
 
     path: HostPath
     uv_binary: NonEmptyStr
-    min_gib: float = Field(ge=0)
+    min_gib: float | None = Field(default=None, ge=0)
     ci_prune: bool = False
     timeout_seconds: float = Field(
         gt=0
-    )  # `uv cache size` walks every file of the cache and can take minutes
+    )  # `uv cache size` walks every file of the cache and can take minutes; also the bucket scan's deadline
     cap: ModelUvCacheCap | None = None
+    free_disk: ModelUvFreeDiskRule | None = None
 
     @model_validator(mode="after")
-    def cap_not_below_min(self) -> Self:
-        if self.cap is not None and self.cap.cap_gib < self.min_gib:
+    def one_rule(self) -> Self:
+        if (self.min_gib is None) == (self.free_disk is None):
+            raise ValueError("declare exactly one of min_gib and free_disk")
+        if self.free_disk is not None and self.cap is not None:
+            raise ValueError("a free_disk rule takes no cap")
+        if (
+            self.cap is not None
+            and self.min_gib is not None
+            and self.cap.cap_gib < self.min_gib
+        ):
             raise ValueError(
                 f"cap_gib {self.cap.cap_gib} must be at least min_gib {self.min_gib}"
             )
@@ -407,6 +452,7 @@ class ModelRetentionKept(_Frozen):
         "protected",
         "under_budget",
         "below_min",
+        "free_disk_ok",
         "store_locked",
         "terminal_too_new",
         "lane_unnamed",
@@ -426,6 +472,7 @@ class ModelDiskReading(_Frozen):
     used_bytes: int
     total_bytes: int
     used_percent: float
+    free_bytes: int = Field(ge=0)  # what a non-root user can still write
 
 
 class ModelClassTotals(_Frozen):

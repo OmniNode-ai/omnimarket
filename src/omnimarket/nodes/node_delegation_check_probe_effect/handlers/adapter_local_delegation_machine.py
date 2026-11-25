@@ -364,7 +364,7 @@ class ProtocolCommandRunner(Protocol):
     ) -> CommandResult: ...
 
 
-class HandlerSubprocessCommand:
+class SubprocessCommandHandler:
     def run(
         self,
         argv: Sequence[str],
@@ -460,7 +460,7 @@ class LocalDelegationCustomerMachine:
         prompt: str = PROMPT,
         base_dirs: Sequence[Path] | None = None,
     ) -> None:
-        self._runner = runner or HandlerSubprocessCommand()
+        self._runner = runner or SubprocessCommandHandler()
         self._metrics = metrics_reader
         self._uv = uv
         self._strace = strace
@@ -861,9 +861,9 @@ class LocalDelegationCustomerMachine:
 
 __all__ = [
     "CommandResult",
-    "HandlerSubprocessCommand",
     "LocalDelegationCustomerMachine",
     "ProtocolCommandRunner",
+    "SubprocessCommandHandler",
     "find_source_trees",
     "git_ancestor",
     "read_metrics",
