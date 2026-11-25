@@ -277,17 +277,6 @@ class ModelDelegationBackendConfig(BaseModel):
             "nothing is stripped at the response adapter."
         ),
     )
-    reasoning_effort: str | None = Field(
-        default=None,
-        min_length=1,
-        description=(
-            "OMN-26365: the reasoning effort this backend's model is asked for, "
-            "sent as the ``reasoning_effort`` request option to this backend and "
-            "to no other. The value is the row's own (committed contract or "
-            "overlay); no code supplies one. None means the backend takes no "
-            "such option and the request carries none."
-        ),
-    )
     capabilities: tuple[str, ...] = Field(
         default_factory=tuple,
         description="Capabilities this backend supports.",

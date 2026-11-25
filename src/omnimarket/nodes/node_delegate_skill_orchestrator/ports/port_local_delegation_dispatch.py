@@ -174,6 +174,7 @@ from omnimarket.handlers.routing.delegation_backend_resolution import (
     resolve_declared_local_model,
     resolve_effective_max_tokens,
     resolve_timeout_seconds,
+    with_backend_reasoning_effort,
 )
 from omnimarket.handlers.routing.delegation_backend_resolution import (
     resolve_delegation_backend as _resolve_delegation_backend_uncustomized,
@@ -205,7 +206,6 @@ from omnimarket.inference import provider_quota_state
 from omnimarket.inference.protocol_config import (
     apply_inference_protocol,
     resolve_inference_protocol_default_temperature,
-    with_backend_reasoning_effort,
 )
 from omnimarket.inference.provider_finish_reason import (
     EnumProviderFinishReason,

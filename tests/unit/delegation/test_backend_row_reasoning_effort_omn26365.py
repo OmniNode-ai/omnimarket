@@ -23,8 +23,14 @@ from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReaso
 from omnimarket.handlers.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
     resolve_delegation_backend,
+    with_backend_reasoning_effort,
 )
-from omnimarket.inference.protocol_config import with_backend_reasoning_effort
+from omnimarket.models.delegation.model_delegation_backend_placement import (
+    wire_backend_entry,
+)
+from omnimarket.models.delegation.model_local_endpoints_overlay import (
+    ModelLocalEndpoint,
+)
 from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
     ModelDelegationBackendConfig,
 )
@@ -53,18 +59,35 @@ def _row(**overrides: Any) -> dict[str, Any]:
 
 
 @pytest.mark.unit
-def test_the_wire_row_declares_reasoning_effort_and_defaults_to_none() -> None:
-    assert ModelDelegationBackendConfig.model_validate(_row()).reasoning_effort is None
-    declared = ModelDelegationBackendConfig.model_validate(
-        _row(reasoning_effort="medium")
-    )
+def test_the_wire_model_keeps_the_shape_every_pinned_consumer_decodes() -> None:
+    # The wire gate (OMN-18868) refuses a new key on a wire model a pinned
+    # consumer cannot decode, so the field lives on the local row, not the wire.
+    assert "reasoning_effort" not in ModelDelegationBackendConfig.model_fields
+    with pytest.raises(ValidationError):
+        ModelDelegationBackendConfig.model_validate(_row(reasoning_effort="medium"))
+
+
+@pytest.mark.unit
+def test_the_local_row_declares_reasoning_effort_and_defaults_to_none() -> None:
+    assert ModelLocalEndpoint.model_validate(_row()).reasoning_effort is None
+    declared = ModelLocalEndpoint.model_validate(_row(reasoning_effort="medium"))
     assert declared.reasoning_effort == "medium"
 
 
 @pytest.mark.unit
 def test_a_blank_reasoning_effort_is_refused() -> None:
     with pytest.raises(ValidationError):
-        ModelDelegationBackendConfig.model_validate(_row(reasoning_effort=""))
+        ModelLocalEndpoint.model_validate(_row(reasoning_effort=""))
+
+
+@pytest.mark.unit
+def test_the_loader_lifts_the_row_value_off_before_the_wire_model_validates() -> None:
+    entry = _row(reasoning_effort="high", placement={"tier": "local"})
+    lifted = wire_backend_entry(entry)
+    assert "reasoning_effort" not in lifted
+    assert "placement" not in lifted
+    assert entry["reasoning_effort"] == "high"
+    ModelDelegationBackendConfig.model_validate(lifted)
 
 
 @pytest.mark.unit

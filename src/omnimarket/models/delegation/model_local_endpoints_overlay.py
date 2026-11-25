@@ -47,6 +47,17 @@ class ModelLocalEndpoint(ModelDelegationBackendConfig):
     """
 
     placement: ModelDelegationBackendPlacement | None = None
+    reasoning_effort: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "OMN-26365: the reasoning effort this backend's model is asked for, "
+            "sent as the ``reasoning_effort`` request option to this backend "
+            "only. A row-level field the loader lifts off before the wire model "
+            "validates, so pinned consumers keep decoding the wire shape. None: "
+            "the request carries none."
+        ),
+    )
 
 
 class ModelLocalEndpointsOverlay(BaseModel):
