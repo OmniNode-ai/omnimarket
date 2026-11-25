@@ -1725,14 +1725,17 @@ class ModelPickScreen(_TabbedScreen[None]):
 
     TAB = "model"
     NOTE = "#pnote"
+    PROBLEM = "problem_model"
 
     CSS = """
     ModelPickScreen { align: center middle; }
     #pick { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
     #pick .summary { display: none; }
+    #pnow { height: 1; text-style: bold; }
+    #models { height: 1fr; }
     #pnote { color: $text-muted; height: auto; }
-    #pkeys { color: $text-muted; height: auto; }
-    #auto { width: auto; margin-bottom: 0; }
+    #pkeys { height: 1; }
+    #auto { width: auto; height: 1; min-width: 8; border: none; margin: 0; }
     """
     BINDINGS = [
         Binding("escape", "cancel", _say("button_cancel")),
@@ -1752,24 +1755,30 @@ class ModelPickScreen(_TabbedScreen[None]):
         with Vertical(id="pick"):
             yield _tab_strip(self.TAB)
             yield _summary(self._selection)
-            yield Label(
-                Text(
-                    _say("model_title"),
-                    style=_style("primary", "bold"),
-                )
-            )
             yield Static(self._now(), id="pnow")
-            yield Button(words.auto_label + "  (A)", id="auto")
             yield ModelTable(
                 selectable=False,
                 provider_labels={e.provider: e.label for e in _picker()},
                 id="models",
+                layout="pick",
             )
             yield Static("", id="pnote")
+            yield Button(words.auto_label + "  (A)", id="auto")
             yield Static(_tab_hint("tab_hint_model"), id="pkeys")
+
+    def _first_key(self) -> str | None:
+        """The table key of the model tried first, when one is chosen."""
+        first = self._selection.first
+        if first is None:
+            return None
+        key = f"{first[0]}\t{first[1]}"
+        return (
+            f"{key}\t{self._selection.first_url}" if self._selection.first_url else key
+        )
 
     def on_mount(self) -> None:
         table = self.query_one("#models", ModelTable)
+        table.set_first(self._first_key())
         table.set_entries(self._selection.entries)
         table.query_one("DataTable").focus()
         if not self._selection.entries:
@@ -1777,16 +1786,22 @@ class ModelPickScreen(_TabbedScreen[None]):
 
     def _now(self) -> Text:
         first = self._selection.first
-        current = (
-            _first_text(first[0], first[1], self._selection.first_url)
-            if first
-            else _say("summary_auto")
-        )
-        return Text(_say("model_now", current=current), style=_style("success"))
+        mark = _say("model_glyph")
+        if first is None:
+            line = _say("tried_first_auto", mark=mark)
+        else:
+            line = _say(
+                "tried_first",
+                mark=mark,
+                model=_on_server(first[1], self._selection.first_url),
+            )
+        return Text(line, style=_style("primary", "bold"))
 
     def _show_selection(self) -> None:
         super()._show_selection()
-        self.query_one("#models", ModelTable).set_entries(self._selection.entries)
+        table = self.query_one("#models", ModelTable)
+        table.set_first(self._first_key())
+        table.set_entries(self._selection.entries)
         self.query_one("#pnow", Static).update(self._now())
 
     @on(ModelTable.Chosen)
@@ -1797,7 +1812,7 @@ class ModelPickScreen(_TabbedScreen[None]):
                 entry.status_reason
                 or tui_design().model_table.status[entry.status].text
             )
-            self.query_one("#pnote", Static).update(
+            self._note(
                 Text(
                     _say("cannot_be_first", model=entry.model_id, reason=reason),
                     style=_style("warning"),

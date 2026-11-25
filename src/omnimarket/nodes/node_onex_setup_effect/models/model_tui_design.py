@@ -144,8 +144,8 @@ class ModelTuiLayoutColumn(BaseModel):
 
     key: Literal[
         "pick",
-        "marker",
         "model",
+        "model_marked",
         "context",
         "price_words",
         "price_in",

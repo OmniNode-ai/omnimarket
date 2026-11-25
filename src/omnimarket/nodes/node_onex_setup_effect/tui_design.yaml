@@ -214,8 +214,8 @@ model_table:
       pick:
         header: true
         columns:
-          - {key: marker, title: " "}
-          - {key: model, title: Model}
+          # The marker leads the model name; the title is indented past it.
+          - {key: model_marked, title: "  Model"}
           - {key: context, title: Context}
           - {key: price_in, title: "In $/1M"}
           - {key: price_out, title: "Out $/1M"}
@@ -372,6 +372,9 @@ words:
   model_glyph: "◈"
   selected: "Selected  {models}"
   selected_none: "Selected  none yet"
+  # Model tab (mockup page 5).
+  tried_first: "Tried first: {mark} {model}"
+  tried_first_auto: "Tried first: {mark} Auto picks per task"
   tab_hint_config: "tab next · space tick · ctrl+s save · esc close"
   tab_hint_model: "↑↓ move · enter make first · d details · esc close"
   tab_hint_delegation: "space switch · ctrl+s save · esc close"

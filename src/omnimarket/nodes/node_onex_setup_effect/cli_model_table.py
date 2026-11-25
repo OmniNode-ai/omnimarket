@@ -70,6 +70,23 @@ def context_text(tokens: int | None) -> str:
     return f"{round(tokens / 1000)}K"
 
 
+def _named(entry: ModelCatalogEntry) -> str:
+    """The model's name, and the server that runs it when it runs on one, so two
+    servers running a model of one name stay two different rows."""
+    if not entry.server_url:
+        return entry.model_id
+    host = urlparse(entry.server_url).netloc or entry.server_url
+    return (
+        tui_design().words["model_on_server"].format(model=entry.model_id, server=host)
+    )
+
+
+def _say_expired(text: Text, entry: ModelCatalogEntry) -> None:
+    """AC4: a provider's kept list that has expired is said beside its models."""
+    if entry.provider_list_expired:
+        text.append(f"  {_table().listing_expired}", style=_colour("warning"))
+
+
 def context_words(tokens: int | None) -> str:
     """'32k' or '1M' for a tab table; the unknown mark when no source says."""
     words = _table().tab_table
@@ -346,6 +363,8 @@ class ModelTable(Widget):
             if (self._filter == _table().filters[0] or e.deployment == self._filter)
             and all(w in _search_blob(e, self._label(e)) for w in words)
         ]
+        if self._layout is not None:  # a tab keeps the order delegation tries them in
+            return shown
         return sorted(shown, key=lambda e: _sort_key(e, self._sort))
 
     def _tab_cells(self, entry: ModelCatalogEntry) -> list[object]:
@@ -363,16 +382,19 @@ class ModelTable(Widget):
                             style=_colour("success" if on else "muted"),
                         )
                     )
-            elif key == "marker":
-                first = entry_key(entry) == self._first
-                cells.append(
-                    Text(
-                        words.marker_first if first else words.marker_other,
-                        style=_colour("primary" if first else "muted"),
-                    )
-                )
             elif key == "model":
-                cells.append(Text(entry.model_id, style=_colour("foreground")))
+                named = Text(_named(entry), style=_colour("foreground"))
+                _say_expired(named, entry)
+                cells.append(named)
+            elif key == "model_marked":
+                first = entry_key(entry) == self._first
+                marked = Text(
+                    (words.marker_first if first else words.marker_other) + " ",
+                    style=_colour("primary" if first else "muted"),
+                )
+                marked.append(_named(entry), style=_colour("foreground"))
+                _say_expired(marked, entry)
+                cells.append(marked)
             elif key == "context":
                 cells.append(Text(context_words(entry.context_tokens)))
             elif key == "price_words":

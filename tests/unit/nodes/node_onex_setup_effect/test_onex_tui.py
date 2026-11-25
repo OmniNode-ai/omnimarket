@@ -890,9 +890,7 @@ async def test_model_lists_set_up_models_and_makes_the_choice_first() -> None:
         await pilot.pause()
         table = app.screen.query_one("#models")
         assert [e.model_id for e in table.entries] == ["llama3.2", "qwen3:8b"]
-        assert "Now: llama3.2 (Local Model)" in str(
-            app.screen.query_one("#pnow").render()
-        )
+        assert "Tried first: ◈ llama3.2" in str(app.screen.query_one("#pnow").render())
         assert table.query_one(DataTable).has_focus
         await pilot.press("down", "enter")
         for _ in range(6):
@@ -948,7 +946,7 @@ async def test_the_table_says_when_a_provider_list_has_expired(
 
     # No list was ever kept: nothing has expired, so no marker either.
     never = await shown_row()
-    assert "262K" in never
+    assert "262k" in never
     assert configured not in never, never
 
     model_catalog.remember_provider_listing(
@@ -963,12 +961,12 @@ async def test_the_table_says_when_a_provider_list_has_expired(
         )
     )
     fresh = await shown_row()
-    assert "16K" in fresh  # the provider's own list
+    assert "16k" in fresh  # the provider's own list
     assert configured not in fresh, fresh
 
     os.utime(model_catalog._listing_path("openrouter", tmp_path), (0, 0))
     expired = await shown_row()
-    assert "262K" in expired  # models.dev fills the facts
+    assert "262k" in expired  # models.dev fills the facts
     assert configured in expired, (
         f"the table shows no {configured!r} marker after the provider list "
         f"expired: {expired}"
@@ -1326,23 +1324,18 @@ async def test_model_names_each_local_model_by_the_server_that_runs_it() -> None
             ("http://vllm.test:8000", ("Qwen3.8-27B",)),
         ]
         grid = app.screen.query_one("#models").query_one(DataTable)
+        # OMN-26620: the Model tab names the server in the model cell.
         cells = {
-            str(grid.get_row_at(i)[1]): [str(c) for c in grid.get_row_at(i)]
+            str(grid.get_row_at(i)[0]): [str(c) for c in grid.get_row_at(i)]
             for i in range(grid.row_count)
         }
         mark = tui_design().model_table.unknown_mark
-        bar = tui_design().model_table.row_bar
-        assert (
-            cells["saluki:latest"][0]
-            == f"{bar} Local Model · Ollama  ollama.test:11434"
-        )
-        assert cells["saluki:latest"][2] == "41K"
-        columns = [c.key for c in tui_design().model_table.columns if c.key != "pick"]
-        caps = columns.index("capabilities")
-        assert "Tools" in cells["saluki:latest"][caps]
-        assert cells["Qwen3.8-27B"][0] == f"{bar} Local Model · vLLM  vllm.test:8000"
-        assert cells["Qwen3.8-27B"][2] == mark
-        assert cells["Qwen3.8-27B"][caps] == mark
+        ollama = next(v for k, v in cells.items() if "saluki:latest" in k)
+        vllm = next(v for k, v in cells.items() if "Qwen3.8-27B" in k)
+        assert "saluki:latest on ollama.test:11434" in ollama[0]
+        assert ollama[1] == "41k"
+        assert "Qwen3.8-27B on vllm.test:8000" in vllm[0]
+        assert vllm[1] == mark
         assert not any("?" in c for row in cells.values() for c in row)
         assert isinstance(grid.get_row_at(0)[0], Text)
 
