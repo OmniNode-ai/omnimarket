@@ -21,6 +21,11 @@ requirements:
   acceptance:
   - id: AC3
     statement: 'AC3: ModelHostThermalGuardOverlay validates the overlay document of the thermal guard node and refuses a malformed one -- falsifier: tests/unit/models/test_host_thermal_guard_overlay_document_omn24562.py fails collection or any of its tests fails'
+- id: req-omn24562-regression-overlay-model
+  statement: The delegation check regression node's overlay document has a typed model in omnimarket that the overlay home can pin ahead of the node.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: ModelRegressionSettings validates the overlay document of the delegation check regression node and refuses a malformed one -- falsifier: tests/unit/models/test_delegation_check_regression_overlay_document_omn24562.py fails collection or any of its tests fails'
 evidence_requirements:
 - kind: tests
   description: The inode alarm tests pass at the pushed head.
@@ -63,4 +68,13 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/models/test_host_thermal_guard_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24562-regression-overlay-model-tests
+  description: The overlay document model for the delegation check regression node accepts a valid document and refuses malformed ones; the test file fails at collection with ModuleNotFoundError before the model module exists and passes after.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_delegation_check_regression_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
     cwd: .
