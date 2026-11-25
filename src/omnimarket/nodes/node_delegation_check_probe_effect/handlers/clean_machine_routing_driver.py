@@ -193,7 +193,7 @@ class EgressRecorder:
                         address, parts.port or 80, timeout=900
                     )
                     headers["Host"] = parts.netloc
-                    safe_path = quote(path, safe="/?&=%:@+,;~!$'()*-._")
+                    safe_path = "/" + quote(path[1:], safe="/?&=%:@+,;~!$'()*-._")
                     conn.request(self.command, safe_path, body=body, headers=headers)
                     response = conn.getresponse()
                     payload = response.read()
@@ -207,7 +207,10 @@ class EgressRecorder:
                         "connection",
                         "content-length",
                     }:
-                        self.send_header(key, value)
+                        self.send_header(
+                            key.replace("\r", "").replace("\n", ""),
+                            value.replace("\r", "").replace("\n", ""),
+                        )
                 self.send_header("Content-Length", str(len(payload)))
                 self.send_header("Connection", "close")
                 self.end_headers()
