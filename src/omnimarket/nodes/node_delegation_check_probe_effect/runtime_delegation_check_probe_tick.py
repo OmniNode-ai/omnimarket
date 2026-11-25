@@ -29,7 +29,9 @@ from typing import Any, get_args
 
 import yaml
 
-from omnimarket.events.emit_effect_topic_publisher import EmitEffectTopicPublisher
+from omnimarket.handlers.bus_binding.declared_broker_publisher import (
+    DeclaredBrokerPublisher,
+)
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     NodeOverlayNotFoundError,
@@ -213,7 +215,7 @@ def main(
         or CleanInstallCustomerMachine(
             sources=GitCloneSurfaceSources(args.registry_root)
         ),
-        publisher=publisher or EmitEffectTopicPublisher(),
+        publisher=publisher or DeclaredBrokerPublisher(NODE),
         topic=overlay.result_topic,
         gateway=gateway,
     )

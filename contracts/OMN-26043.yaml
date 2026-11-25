@@ -156,3 +156,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_delegation_check_probe_bus_env.py -q --no-cov -n 0 -p no:randomly -k snapshot_root
     cwd: .
+- id: dod-omn26043-probe-delivers-on-declared-broker
+  description: "The probe tick publishes its run record through the declared broker publisher, which reads the lane from the node overlay's event_bus and never from KAFKA_BOOTSTRAP_SERVERS, and the publisher passes the check id as the partition key. The new test file fails on the previous commit, where the tick defaulted to the emit effect and a lab host's tick ended with KeyError KAFKA_BOOTSTRAP_SERVERS and exit 3, and passes after the change; a tick whose overlay declares no event_bus still exits 3. This binds no criterion of this ticket."
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_probe_delivery_declared_broker.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
