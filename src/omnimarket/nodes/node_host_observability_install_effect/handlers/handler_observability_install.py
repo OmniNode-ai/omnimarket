@@ -31,8 +31,11 @@ from omnimarket.nodes.node_host_observability_install_effect.handlers.render_obs
     PROCESS_CPU,
     PROMETHEUS_CONFIG,
     PROMETHEUS_RULES,
+    launchd_plist_path,
+    lint_launchd_plist,
     render_container_units_overlay,
     render_host_files,
+    render_launchd_plist,
     units_for_host,
 )
 from omnimarket.nodes.node_host_observability_install_effect.models.model_observability import (
@@ -127,6 +130,9 @@ class HandlerObservabilityInstall:
                 stderr=f"{request.host_name} takes no unit of the observability overlay\n",
                 uncovered_hosts=uncovered,
             )
+        target = overlay.targets.get(request.host_name)
+        if target is not None and target.exporter == "launchd":
+            return self._launchd(overlay, request.host_name, request.mode, uncovered)
         if request.mode == "dry_run":
             return self._dry_run(overlay, request.host_name, uncovered)
         if request.mode == "status":
@@ -161,6 +167,72 @@ class HandlerObservabilityInstall:
             exit_code=0, stdout=out, uncovered_hosts=uncovered
         )
 
+    def _launchd(
+        self,
+        overlay: ModelObservabilityOverlay,
+        host: str,
+        mode: str,
+        uncovered: tuple[str, ...],
+    ) -> ModelObservabilityInstallResult:
+        """A Mac host: the exporter is a launchd job; the property list is linted before anything is written."""
+        mac = overlay.launchd_exporter
+        assert (
+            mac is not None
+        )  # the overlay model refuses a launchd target without the section
+        plist = launchd_plist_path(overlay)
+        text = render_launchd_plist(overlay, host)
+        problems = lint_launchd_plist(text, overlay)
+        if mode == "status":
+            done = self.run(["launchctl", "print", f"{mac.domain}/{mac.label}"])
+            return ModelObservabilityInstallResult(
+                exit_code=done.returncode,
+                stdout=f"== status {mac.label} exit {done.returncode}\n{done.stdout}",
+                stderr=done.stderr,
+                uncovered_hosts=uncovered,
+            )
+        verdict = (
+            "LINT OK\n"
+            if not problems
+            else "".join(f"LINT FAIL {p}\n" for p in problems)
+        )
+        if mode == "dry_run":
+            return ModelObservabilityInstallResult(
+                exit_code=1 if problems else 0,
+                stdout=f"--- {plist}\n{text}{verdict}",
+                uncovered_hosts=uncovered,
+            )
+        if problems:
+            return ModelObservabilityInstallResult(
+                exit_code=1,
+                stdout=verdict,
+                stderr=f"the property list for {mac.label} fails its lint; nothing written\n",
+                uncovered_hosts=uncovered,
+            )
+        try:
+            self._mkdir(Path(mac.plist_directory))
+            wrote = self._write(Path(plist), text)
+        except OSError as exc:
+            return ModelObservabilityInstallResult(
+                exit_code=1,
+                stderr=f"cannot write {plist}: {type(exc).__name__}\n",
+                uncovered_hosts=uncovered,
+            )
+        out = f"{'wrote' if wrote else 'unchanged'} {plist}\n"
+        if not wrote:
+            return ModelObservabilityInstallResult(
+                exit_code=0, stdout=out, uncovered_hosts=uncovered
+            )
+        # A changed list replaces the running job: take the old one down first (a missing job is no error).
+        self.run(["launchctl", "bootout", f"{mac.domain}/{mac.label}"])
+        done = self.run(["launchctl", "bootstrap", mac.domain, plist])
+        return ModelObservabilityInstallResult(
+            exit_code=done.returncode,
+            stdout=out
+            + f"== bootstrap {mac.label} exit {done.returncode}\n{done.stdout}",
+            stderr=done.stderr,
+            uncovered_hosts=uncovered,
+        )
+
     def _install(
         self,
         overlay: ModelObservabilityOverlay,
@@ -175,7 +247,11 @@ class HandlerObservabilityInstall:
         try:
             self._mkdir(root)
             if target is not None and target.exporter == "install":
-                self._mkdir(Path(overlay.exporter.textfile_directory))
+                self._mkdir(
+                    Path(
+                        target.textfile_directory or overlay.exporter.textfile_directory
+                    )
+                )
             for relative, text in render_host_files(overlay, host).items():
                 wrote = self._write(root / relative, text)
                 out += f"{'wrote' if wrote else 'unchanged'} {root / relative}\n"

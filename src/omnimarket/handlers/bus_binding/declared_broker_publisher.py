@@ -27,7 +27,12 @@ class DeclaredBrokerPublisher:
     The unit's environment names no broker: the lane id comes from the node's overlay, the address and the client
     transport from the lane declaration table, exactly as the capture silence watch tick publishes (OMN-24342).
     ``KAFKA_BOOTSTRAP_SERVERS`` is never read. Delivery never raises: a refusal returns False and the tick exits 3.
+
+    ``node`` names the node whose overlay declares the broker; it defaults to the host job claim node, the first caller.
     """
+
+    def __init__(self, node: str = NODE) -> None:
+        self._node = node
 
     def publish(
         self,
@@ -40,7 +45,9 @@ class DeclaredBrokerPublisher:
     ) -> bool:
         try:
             asyncio.run(
-                self._send(topic, event_type, payload, event_id, correlation_id)
+                self._send(
+                    self._node, topic, event_type, payload, event_id, correlation_id
+                )
             )
         except Exception as exc:
             sys.stderr.write(f"PUBLISH REFUSED {type(exc).__name__}: {exc}\n")
@@ -49,6 +56,7 @@ class DeclaredBrokerPublisher:
 
     @staticmethod
     async def _send(
+        node: str,
         topic: str,
         event_type: str,
         payload: Mapping[str, object],
@@ -57,7 +65,7 @@ class DeclaredBrokerPublisher:
     ) -> None:
         from aiokafka import AIOKafkaProducer
 
-        broker = resolve_dialable_broker(NODE)
+        broker = resolve_dialable_broker(node)
         options: dict[str, str] = {}
         if broker.sasl_mechanism is not None:
             options["sasl_mechanism"] = broker.sasl_mechanism

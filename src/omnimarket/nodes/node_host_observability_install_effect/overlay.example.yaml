@@ -16,7 +16,8 @@ max_reading_age_seconds: 60
 targets:
   host-a:
     address: host-a.example.test
-    exporter: install      # this installer keeps the exporter container running there
+    exporter: install      # this installer keeps the exporter container running there; "launchd" keeps it as a launchd job on a Mac host (see launchd_exporter)
+    # textfile_directory: /var/lib/example/other   # this host's own directory; unset, exporter.textfile_directory applies
     port: 9100
     processes: true        # and the per process exporter (CPU per process name) on process_exporter.port
   host-b:
@@ -41,6 +42,15 @@ exporter:
   systemd_unit_include: "(omni|onex).*\\.(service|timer)"
   memory_gib: 1
   memory_swap_gib: 1
+# Needed only when a target says exporter: launchd. The node renders and lints the property list; a dry run writes nothing.
+# launchd_exporter:
+#   label: test.example.node-exporter
+#   binary: /opt/example/bin/node_exporter
+#   plist_directory: /Library/LaunchDaemons
+#   log_directory: /var/log/example
+#   textfile_directory: /opt/example/textfile
+#   domain: system
+#   enable_collectors: [textfile]
 process_exporter:
   image: example/process-exporter:1.0
   container: example-process-exporter

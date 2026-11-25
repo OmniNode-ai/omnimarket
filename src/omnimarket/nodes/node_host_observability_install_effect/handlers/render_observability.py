@@ -8,6 +8,7 @@ Nothing here reads the host or the network: every value is an overlay field.
 from __future__ import annotations
 
 import json
+import plistlib
 from pathlib import Path
 from typing import Any
 
@@ -446,6 +447,73 @@ def render_host_files(overlay: ModelObservabilityOverlay, host: str) -> dict[str
     return {}
 
 
+def launchd_plist_path(overlay: ModelObservabilityOverlay) -> str:
+    """Where the exporter's property list is written on a Mac host."""
+    mac = overlay.launchd_exporter
+    if mac is None:
+        raise ValueError("the settings declare no launchd_exporter section")
+    return f"{mac.plist_directory}/{mac.label}.plist"
+
+
+def render_launchd_plist(overlay: ModelObservabilityOverlay, host: str) -> str:
+    """The launchd property list that keeps the exporter running on a Mac host."""
+    mac = overlay.launchd_exporter
+    target = overlay.targets.get(host)
+    if mac is None or target is None or target.exporter != "launchd":
+        raise ValueError(f"{host} takes no launchd exporter")
+    textfile = target.textfile_directory or mac.textfile_directory
+    document: dict[str, Any] = {
+        "Label": mac.label,
+        "ProgramArguments": [
+            mac.binary,
+            f"--web.listen-address={target.address}:{target.port}",
+            f"--collector.textfile.directory={textfile}",
+            *[f"--collector.{name}" for name in mac.enable_collectors],
+        ],
+        "RunAtLoad": True,
+        "KeepAlive": True,
+        "ProcessType": "Background",
+        "StandardOutPath": f"{mac.log_directory}/{mac.label}.out.log",
+        "StandardErrorPath": f"{mac.log_directory}/{mac.label}.err.log",
+    }
+    return plistlib.dumps(document).decode("utf-8")
+
+
+def lint_launchd_plist(text: str, overlay: ModelObservabilityOverlay) -> list[str]:
+    """Problems found in a rendered property list; an empty list reads clean."""
+    mac = overlay.launchd_exporter
+    try:
+        document = plistlib.loads(text.encode("utf-8"))
+    except Exception as exc:  # plistlib raises several unrelated types on bad input
+        return [f"not a property list: {type(exc).__name__}"]
+    if not isinstance(document, dict):
+        return ["not a property list: the top level is not a dictionary"]
+    problems: list[str] = []
+    label = document.get("Label")
+    if not isinstance(label, str) or not label:
+        problems.append("Label is missing")
+    elif mac is not None and label != mac.label:
+        problems.append(f"Label {label} is not the declared {mac.label}")
+    args = document.get("ProgramArguments")
+    if (
+        not isinstance(args, list)
+        or not args
+        or not all(isinstance(a, str) for a in args)
+    ):
+        problems.append("ProgramArguments is not a list of strings")
+    elif not args[0].startswith("/"):
+        problems.append(f"ProgramArguments[0] {args[0]} is not an absolute path")
+    if document.get("RunAtLoad") is not True:
+        problems.append("RunAtLoad is not true")
+    if not document.get("KeepAlive"):
+        problems.append("KeepAlive is not set")
+    for key in ("StandardOutPath", "StandardErrorPath"):
+        value = document.get(key)
+        if value is not None and not (isinstance(value, str) and value.startswith("/")):
+            problems.append(f"{key} is not an absolute path")
+    return problems
+
+
 def _unit_base(
     overlay: ModelObservabilityOverlay, host: str, name: str, container: str
 ) -> dict[str, Any]:
@@ -467,6 +535,12 @@ def units_for_host(overlay: ModelObservabilityOverlay, host: str) -> list[str]:
     names: list[str] = []
     if target is not None and target.exporter == "install":
         names.append(overlay.exporter.unit)
+    if (
+        target is not None
+        and target.exporter == "launchd"
+        and overlay.launchd_exporter is not None
+    ):
+        names.append(overlay.launchd_exporter.label)
     if target is not None and target.processes and overlay.process_exporter is not None:
         names.append(overlay.process_exporter.unit)
     if host == overlay.observer_host:
@@ -506,7 +580,7 @@ def render_container_units_overlay(
                     ],
                     "volumes": [
                         f"{ex.rootfs_mount}:/host:ro,rslave",
-                        f"{ex.textfile_directory}:/textfile:ro",
+                        f"{target.textfile_directory or ex.textfile_directory}:/textfile:ro",
                         *ex.host_mounts,
                     ],
                     "restart_policy": overlay.restart_policy,
