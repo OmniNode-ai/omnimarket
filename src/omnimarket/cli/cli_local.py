@@ -218,9 +218,7 @@ def dashboard_command(ctx: click.Context, overlay_path: Path | None) -> None:
     # from it (handler_setup_dashboard). The rest of the line says it needs
     # this start's token, so the address is never offered as the thing to open.
     click.echo(
-        f"onex dashboard: http://{host}:{port}/ is serving and needs this start's token;"
-        " to open the dashboard, press Enter in the TUI, use the Open button,"
-        " or run `onex dashboard open`."
+        f"onex dashboard: http://{host}:{port}/ is serving and needs this start's token; to open the dashboard, press Enter in the TUI, use the Open button, or run `onex dashboard open`."
     )
     asyncio.run(HandlerLocalDashboardServe(pages=pages).handle(request))
 
