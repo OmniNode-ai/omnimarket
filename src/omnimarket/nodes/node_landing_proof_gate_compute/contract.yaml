@@ -14,7 +14,7 @@ node_version: "1.0.0"
 description: >-
   Decide whether a pull request may merge or be armed. It answers PROVEN only when the lab proof it carries is for
   the change that merges: a Lab line naming a commit that is the head or has the head's patch id (base...sha), so only a
-  base merge may differ. A change to a grader, check, gate or judge also names a known good answer that passed and a
+  base merge may differ; a Lab line recording a refused or failed run (exit other than 0, PUBLISH REFUSED) is no proof. A change to a grader, check, gate or judge also names a known good answer that passed and a
   known bad one that failed. An open HOLD row or do-not-land message naming the pull request answers DRAFT whatever is
   green, until a RELEASE lifts it. A documentation-only or test-duration-only change needs no Lab line. A proof, a patch
   id or a ledger that cannot be read answers DRAFT with the reason "proof unreadable". The pull request reader, the
