@@ -637,7 +637,7 @@ def routing_walk() -> dict[
     return out
 
 
-def main(argv: list[str] | None = None) -> int:
+def drive(argv: list[str]) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--onex", required=True)
     parser.add_argument("--root", required=True)
@@ -688,7 +688,3 @@ def main(argv: list[str] | None = None) -> int:
         document["routing"] = {"collect_error": f"{type(exc).__name__}: {exc}"[:1500]}
     sys.stdout.write(json.dumps(document))
     return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

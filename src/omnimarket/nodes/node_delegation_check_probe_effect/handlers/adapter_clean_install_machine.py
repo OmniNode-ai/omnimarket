@@ -347,7 +347,8 @@ class CleanInstallCustomerMachine:
                 timeout_s=DRIVER_TIMEOUT_S,
                 stdin=Path(clean_machine_routing_driver.__file__).read_text(
                     encoding="utf-8"
-                ),
+                )
+                + "\nimport sys as _sys\n_sys.exit(drive(_sys.argv[1:]))\n",
             )
         try:
             document = json.loads(drove.stdout)
