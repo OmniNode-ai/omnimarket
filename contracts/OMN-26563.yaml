@@ -65,3 +65,11 @@ dod_evidence:
       tests/nodes/node_delegation_replay_route_compute/test_replay_route.py
       -q -n 0 --no-cov --refuse-skips
     cwd: .
+- id: dod-omn26563-ci-summary-concluded-job
+  description: 'CI Summary poll: a job whose conclusion is set counts as done (in_progress + success is green, in_progress + failure is red, in_progress + no conclusion waits), the jobs read pages at 30 then 10, and a job with no conclusion fails closed 45 minutes after the last other job completed. This local completion proof carries no hosted AC bindings.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_ci_summary_running_conclusion_omn26563.py -q -p no:randomly --no-cov
+    cwd: .
