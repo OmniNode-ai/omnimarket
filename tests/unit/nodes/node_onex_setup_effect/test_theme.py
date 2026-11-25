@@ -35,7 +35,7 @@ async def test_theme_applies() -> None:
     async with app.run_test() as pilot:
         await pilot.pause()
         registered = set(app.available_themes)
-        assert {"onex", "onex-light"} <= registered, (
+        assert {"onex-dark", "onex-light"} <= registered, (
             f"both onex themes must be registered, got {registered}"
         )
         for builtin in ("textual-dark", "textual-light"):

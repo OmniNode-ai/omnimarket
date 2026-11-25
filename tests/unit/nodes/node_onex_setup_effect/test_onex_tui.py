@@ -848,24 +848,6 @@ async def test_delegation_refuses_to_turn_on_with_no_selected_model() -> None:
         assert len(runner.calls) == before
 
 
-def test_welcome_banner_names_omninode_delegation_and_the_main_commands() -> None:
-    from omnimarket.nodes.node_onex_setup_effect.cli_tui import welcome_banner
-
-    text = welcome_banner().plain
-    from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
-        tui_design,
-    )
-
-    design = tui_design()
-    for word in ("WELCOME TO", "OMNINODE", "DELEGATION"):
-        first_row = "  ".join(design.font[c][0] for c in word)
-        assert first_row in text, word  # every banner word drawn big
-    assert "█" in text
-    for command in ("/config", "/model", "/delegation"):
-        assert command in text
-    assert "/setup" not in text
-
-
 async def test_model_lists_set_up_models_and_makes_the_choice_first() -> None:
     """F9: /model shows the same table; Enter makes a model first, A goes back to Auto."""
     from textual.widgets import DataTable
@@ -1174,44 +1156,6 @@ async def test_guided_setup_uses_the_cli_terminal_from_the_config_tab(
         if code:
             assert "3" in str(app.screen.query_one("#note").render())
         assert not [call for call in runner.calls if call[:2] == ("models", "add")]
-
-
-async def test_the_banner_sits_in_the_middle_of_a_wide_screen() -> None:
-    app = _app(_Runner([]))
-    async with app.run_test(size=(140, 40)) as pilot:
-        await pilot.pause()
-        lines = [str(line.text) for line in app.query_one("#output").lines]
-        tagline = next(line for line in lines if "costs least" in line)
-        left = len(tagline) - len(tagline.lstrip())
-        assert left > 20  # centred, not pinned to the left edge
-
-
-async def test_centred_banner_keeps_letters_and_tips_aligned() -> None:
-    """Each section is centred as a block: a word's three rows, and the tips,
-    start in the same column."""
-    app = _app(_Runner([]))
-    async with app.run_test(size=(140, 40)) as pilot:
-        await pilot.pause()
-        lines = [str(line.text) for line in app.query_one("#output").lines]
-
-        def start(line: str) -> int:
-            return len(line) - len(line.lstrip())
-
-        from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
-            tui_design,
-        )
-
-        design = tui_design()
-        for word in design.banner.words:
-            rows = ["  ".join(design.font[c][r] for c in word.text) for r in range(3)]
-            columns = {
-                next(line.index(row) for line in lines if row in line) for row in rows
-            }
-            assert len(columns) == 1, word.text  # all three rows share one column
-        keys = [tip.key for tip in design.banner.tips]
-        tips = [line for line in lines if any(f" {key}" in line for key in keys[1:3])]
-        assert len({start(t) for t in tips}) == 1
-        assert start(tips[0]) > 20
 
 
 async def test_save_stays_on_screen_with_a_long_list_and_ctrl_s_saves(

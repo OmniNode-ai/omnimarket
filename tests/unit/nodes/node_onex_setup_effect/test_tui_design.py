@@ -79,11 +79,10 @@ def _changed(tmp_path: Path, change: dict[str, Any]) -> Path:
 @pytest.mark.parametrize(
     ("change", "message"),
     [
-        ({"banner.words.0.text": "OMNIX"}, "font lacks"),
-        ({"banner.words.0.gradient": "nowhere"}, "no gradient"),
         ({"theme.primary": "blue"}, "#rrggbb"),
         ({"aliases.setup": "missing"}, "names no shortcut"),
-        ({"font.O": ["▄▀▀▄", "█ █", " ▀▀ "]}, "rows differ"),
+        ({"wordmark.rows": ["▄▀▄", "▀▄▀▄"]}, "rows differ"),
+        ({"theme.boost": "#ffffff"}, "#rrggbbaa"),
         ({"min_key_length": 0}, "greater than or equal"),
         ({"glyphs.done": ""}, "at least 1 character"),
     ],
@@ -94,21 +93,3 @@ def test_a_design_that_would_draw_wrongly_is_refused_on_load(
     """F2."""
     with pytest.raises(ValidationError, match=message):
         load_tui_design(_changed(tmp_path, change))
-
-
-def test_changing_the_design_file_changes_the_banner(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """F1: the banner is drawn from whatever the file says."""
-    from omnimarket.nodes.node_onex_setup_effect import cli_tui
-
-    custom = load_tui_design(
-        _changed(
-            tmp_path,
-            {"banner.greeting": "Hello from", "banner.tagline": "Tagline X"},
-        )
-    )
-    monkeypatch.setattr(cli_tui, "tui_design", lambda: custom)
-    text = cli_tui.welcome_banner().plain
-    assert "Hello from" in text
-    assert "Tagline X" in text

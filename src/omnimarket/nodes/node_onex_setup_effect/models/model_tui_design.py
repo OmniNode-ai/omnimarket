@@ -48,6 +48,12 @@ class ModelTuiTheme(BaseModel):
     background: str
     surface: str
     panel: str
+    #: A faint lift over a surface, with alpha (#rrggbbaa).
+    boost: str
+    border: str
+    #: A task card's bar for a cheap model, and for the Claude fallback.
+    route_cheap: str
+    route_fallback: str
 
     @field_validator(
         "primary",
@@ -62,34 +68,35 @@ class ModelTuiTheme(BaseModel):
         "background",
         "surface",
         "panel",
+        "border",
+        "route_cheap",
+        "route_fallback",
     )
     @classmethod
     def _is_colour(cls, value: str) -> str:
         return _colour(value)
 
+    @field_validator("boost")
+    @classmethod
+    def _is_boost(cls, value: str) -> str:
+        if not re.fullmatch(r"#[0-9a-fA-F]{8}", value):
+            raise ValueError(f"{value!r} is not a #rrggbbaa colour")
+        return value
 
-class ModelTuiBannerWord(BaseModel):
+
+class ModelTuiWordmark(BaseModel):
+    """The ONEX wordmark: the same number of rows, all of one width."""
+
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    text: str = Field(min_length=1)
-    gradient: str
+    rows: tuple[str, ...] = Field(min_length=2, max_length=2)
+    style: str
 
-
-class ModelTuiTip(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    key: str
-    text: str
-
-
-class ModelTuiBanner(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    greeting: str = ""  # small italic line above the words; empty for none
-    words: tuple[ModelTuiBannerWord, ...] = Field(min_length=1)
-    tagline: str
-    tips: tuple[ModelTuiTip, ...]
-    compact: bool = True
+    @model_validator(mode="after")
+    def _rows_align(self) -> ModelTuiWordmark:
+        if len({len(row) for row in self.rows}) != 1:
+            raise ValueError("wordmark rows differ in width")
+        return self
 
 
 class ModelTuiShortcut(BaseModel):
@@ -108,6 +115,8 @@ class ModelTuiGlyphs(BaseModel):
     done: str = Field(min_length=1)
     unchanged: str = Field(min_length=1)
     failed: str = Field(min_length=1)
+    dot_on: str = Field(min_length=1)
+    dot_off: str = Field(min_length=1)
 
 
 class ModelTuiTableColumn(BaseModel):
@@ -259,7 +268,11 @@ class ModelTuiHeader(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    lines: tuple[str, ...] = Field(min_length=1)
+    lines: tuple[str, ...] = Field(min_length=1, max_length=4)
+    version: str = Field(min_length=1)
+    packages: tuple[str, ...] = Field(min_length=1)
+    home: str = Field(min_length=1)
+    ellipsis: str = Field(min_length=1)
     compact: bool = True
 
 
@@ -320,15 +333,11 @@ class ModelTuiDesign(BaseModel):
     #: Optional additional themes selectable via /theme (OMN-26620 AC5).
     themes: dict[str, ModelTuiTheme] = Field(default_factory=dict)
     header: ModelTuiHeader
-    first_launch: bool = True
-    launch_count: int = 0
     task_card: ModelTuiTaskCard
     footer: ModelTuiFooter
     icons: ModelTuiIcons = Field(default_factory=ModelTuiIcons)
     last_known: dict[str, str] = Field(default_factory=dict)
-    gradients: dict[str, tuple[str, ...]]
-    font: dict[str, tuple[str, str, str]]
-    banner: ModelTuiBanner
+    wordmark: ModelTuiWordmark
     shortcuts: tuple[ModelTuiShortcut, ...] = Field(min_length=1)
     aliases: dict[str, str]
     #: CLI command paths a shortcut replaces: the TUI neither lists nor runs them.
@@ -357,22 +366,6 @@ class ModelTuiDesign(BaseModel):
 
     @model_validator(mode="after")
     def _draws_correctly(self) -> ModelTuiDesign:
-        for name, ramp in self.gradients.items():
-            if not ramp:
-                raise ValueError(f"gradient {name!r} has no colours")
-            for colour in ramp:
-                _colour(colour)
-        for word in self.banner.words:
-            if word.gradient not in self.gradients:
-                raise ValueError(
-                    f"banner word {word.text!r}: no gradient {word.gradient!r}"
-                )
-            missing = sorted({c for c in word.text if c not in self.font})
-            if missing:
-                raise ValueError(f"banner word {word.text!r}: font lacks {missing}")
-        for letter, rows in self.font.items():
-            if len({len(row) for row in rows}) != 1:
-                raise ValueError(f"font letter {letter!r}: rows differ in width")
         names = {s.path for s in self.shortcuts}
         if len(names) != len(self.shortcuts):
             raise ValueError("two shortcuts share a path")

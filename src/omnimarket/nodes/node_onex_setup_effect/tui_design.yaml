@@ -7,56 +7,29 @@
 # the row cursor and buttons; teal for the summary and keys; violet highlights;
 # green for success; cyan for information; on warm charcoal.
 theme:
-  name: onex
+  name: onex-dark
   dark: true
-  primary: "#f2c14e"
-  secondary: "#2ec4b6"
-  accent: "#b48ead"
-  success: "#8ac926"
-  info: "#56c7dc"
-  warning: "#f4a259"
-  error: "#e76f51"
-  foreground: "#efe7dc"
-  muted: "#a39686"
-  background: "#1c1915"
-  surface: "#241f1a"
-  panel: "#2c2620"
+  primary: "#87AFFF"
+  secondary: "#79b8ff"
+  accent: "#D7AFFF"
+  success: "#7fd88f"
+  info: "#79b8ff"
+  warning: "#f5a742"
+  error: "#e06c75"
+  foreground: "#eeeeee"
+  muted: "#808080"
+  background: "#000000"
+  surface: "#000000"
+  panel: "#0a0a0a"
+  boost: "#FFFFFF08"
+  border: "#484848"
+  route_cheap: "#79b8ff"
+  route_fallback: "#ffea7f"
 
-# Left-to-right colour ramps for the banner words, from the same five colours.
-gradients:
-  cool: ["#56c7dc", "#2ec4b6", "#8ac926", "#f2c14e"]
-  warm: ["#f2c14e", "#f4a259", "#d08c9a", "#b48ead"]
-  fresh: ["#8ac926", "#2ec4b6", "#56c7dc", "#b48ead"]
-
-# Three-row block letters for the banner words.
-font:
-  " ": ["  ", "  ", "  "]
-  A: ["▄▀▀▄", "█▀▀█", "▀  ▀"]
-  C: ["▄▀▀▀", "█   ", " ▀▀▀"]
-  D: ["█▀▀▄", "█  █", "▀▀▀ "]
-  E: ["█▀▀▀", "█▀▀ ", "▀▀▀▀"]
-  G: ["▄▀▀▀", "█ ▀█", " ▀▀▀"]
-  I: ["█", "█", "▀"]
-  L: ["█   ", "█   ", "▀▀▀▀"]
-  M: ["█▄ ▄█", "█ ▀ █", "▀   ▀"]
-  N: ["█▄  █", "█ ▀▄█", "▀   ▀"]
-  O: ["▄▀▀▄", "█  █", " ▀▀ "]
-  T: ["▀█▀", " █ ", " ▀ "]
-  W: ["█   █", "█ █ █", " ▀ ▀ "]
-
-banner:
-  greeting: ""
-  words:
-    - {text: WELCOME TO, gradient: fresh}
-    - {text: OMNINODE, gradient: cool}
-    - {text: DELEGATION, gradient: warm}
-  tagline: "Your tasks, your models: run them where it costs least."
-  tips:
-    - {key: type a task, text: and press Enter to delegate it}
-    - {key: /config, text: "providers, keys and models"}
-    - {key: /model, text: pick the model to use first}
-    - {key: /delegation, text: Claude Code on or off}
-    - {key: /, text: "every command   ·   ↑↓ history   ·   ctrl+c quit"}
+# The two-row ONEX wordmark on the start screen (OMN-26620 AC2).
+wordmark:
+  rows: ["▄▀▄ █▄ █ █▀▀ ▀▄▀", "▀▄▀ █ ▀█ ██▄ █ █"]
+  style: primary
 
 # Shortcuts lead the / palette in this order; every onex CLI command follows.
 shortcuts:
@@ -86,6 +59,8 @@ glyphs:
   done: "✓"
   unchanged: "·"
   failed: "✗"
+  dot_on: "●"
+  dot_off: "○"
 
 prompt_placeholder: Ask ONEX to delegate a task, or type / for commands
 help: >-
@@ -336,12 +311,21 @@ words:
   delegation_hook: "delegation on"
   delegation_hook_paused: "delegation on · paused"
   delegation_reading: "delegation: checking…"
-  delegation_unknown: "delegation: status could not be read"
-  delegation_unreadable: "could not read delegation's state ({reason}); /delegation shows it as not read"
+  delegation_unknown: "Could not read the delegation status. Run /doctor."
+  # The start screen's status block and first-launch tip (OMN-26620 AC2).
+  tips_first_launch: "Type a task and press Enter, or try /config or /doctor"
+  summary_on: "Delegation on"
+  summary_on_note: "Claude Code sends tasks to your models"
+  summary_off: "Delegation off"
+  summary_off_note: "Claude Code uses its own model"
+  summary_models: "{count} models ready"
+  start_first: "{model} is tried first"
+  summary_none: "No models set up"
+  summary_none_note: "Run /config to add one"
   status_no_line: "no status line"
   status_working: "working {seconds}s · esc cancels"
   status_hint: "/ commands · ctrl+c quit"
-  status_unavailable: "status unavailable: {error}"
+  status_unreadable: "Could not read the delegation status. Run /doctor."
   # Buttons on /config and /delegation.
   button_add: Add
   button_guided_setup: Guided setup
@@ -387,17 +371,17 @@ words:
   last_run: "last run {model} ${cost}"
   last_run_unmeasured: "last run {model} · cost not measured"
 
-# Compact header on the start screen (OMN-26620 AC2): at most four lines.
+# Compact header on the start screen (OMN-26620 AC2): two rows, one per
+# wordmark row; {version} {model} {folder} are filled in at run time.
 header:
   lines:
-    - "onex"
-    - "v1"
-    - "first model"
-    - "folder"
+    - "{mark}   {version}"
+    - "{mark}   {model} · {folder}"
+  version: "v{version}"
+  packages: [omninode-onex, omnimarket]
+  home: "~"
+  ellipsis: "…"
   compact: true
-
-first_launch: true
-launch_count: 0
 
 # Delegated task card (OMN-26620 AC3).
 task_card:
@@ -417,21 +401,6 @@ footer:
 
 # /theme registry (OMN-26620 AC5).
 themes:
-  onex:
-    name: onex
-    dark: true
-    primary: "#f2c14e"
-    secondary: "#2ec4b6"
-    accent: "#b48ead"
-    success: "#8ac926"
-    info: "#56c7dc"
-    warning: "#f4a259"
-    error: "#e76f51"
-    foreground: "#efe7dc"
-    muted: "#a39686"
-    background: "#1c1915"
-    surface: "#241f1a"
-    panel: "#2c2620"
   onex-light:
     name: onex-light
     dark: false
@@ -447,6 +416,10 @@ themes:
     background: "#f4efe6"
     surface: "#ece6dc"
     panel: "#e3ddd2"
+    boost: "#00000008"
+    border: "#b8b0a2"
+    route_cheap: "#1b6f8a"
+    route_fallback: "#8a6a00"
 
 # Nerd Font icons (OMN-26620 AC6): off by default (plain).
 icons:

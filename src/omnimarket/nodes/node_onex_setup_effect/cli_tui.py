@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import importlib.metadata
 import json
+import logging
 import re
 import shlex
 import signal
@@ -27,7 +29,6 @@ from urllib.parse import urlparse
 import click
 from omnibase_core.cli.cli_user_config import user_config_path
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
-from rich.align import Align
 from rich.console import Group
 from rich.markdown import Markdown
 from rich.text import Text
@@ -101,6 +102,9 @@ def _shortcut_paths() -> dict[tuple[str, ...], str]:
 def _alias_paths() -> set[tuple[str, ...]]:
     """Typed-only names (an alias) never listed in the palette."""
     return {(alias,) for alias in tui_design().aliases}
+
+
+_LOG = logging.getLogger(__name__)
 
 
 def _style(token: str, *extra: str) -> str:
@@ -1786,58 +1790,89 @@ class DashboardScreen(_TabbedScreen[None]):
         self._close()
 
 
-def _big_word(word: str, gradient: tuple[str, ...]) -> Text:
-    """``word`` in the design font, coloured left to right along ``gradient``."""
-    font = tui_design().font
-    rows = ["  ".join(font[c][r] for c in word) for r in range(3)]
-    width = max(len(row) for row in rows)
-    block = Text(no_wrap=True)
-    for index, row in enumerate(rows):
-        if index:
-            block.append("\n")
-        for column, char in enumerate(row.ljust(width)):
-            block.append(
-                char, style=f"bold {gradient[column * len(gradient) // width]}"
-            )
-    return block
+def _version() -> str:
+    """The installed version of the customer package (names from the design)."""
+    for package in tui_design().header.packages:
+        try:
+            return importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            continue
+    return ""
 
 
-def welcome_sections() -> list[Text]:
-    """Greeting, banner words, tagline and tips, each its own block."""
+def _folder(room: int) -> str:
+    """The working folder, ``~`` for home, its tail kept when ``room`` is short."""
+    header = tui_design().header
+    here = Path.cwd()
+    try:
+        shown = header.home + "/" + str(here.relative_to(Path.home()))
+        if here == Path.home():
+            shown = header.home
+    except ValueError:
+        shown = str(here)
+    if len(shown) > room > len(header.ellipsis):
+        shown = header.ellipsis + shown[-(room - len(header.ellipsis)) :]
+    return shown
+
+
+def header_renderable(model: str | None, width: int) -> Text:
+    """The two header rows: wordmark with the version, then model and folder."""
     design = tui_design()
-    sections = (
-        [Text(design.banner.greeting, style=_style("muted", "italic"))]
-        if design.banner.greeting
-        else []
+    mark = design.wordmark
+    version = design.header.version.format(version=_version())
+    detail = model or ""
+    first, second = design.header.lines
+    template_room = len(second.format(mark=mark.rows[1], model=detail, folder=""))
+    folder = _folder(max(width - template_room - 2, 0))
+    text = Text(no_wrap=True, overflow="crop")
+    text.append(first.format(mark=mark.rows[0], version=version) + "\n", style="")
+    text.append(second.format(mark=mark.rows[1], model=detail, folder=folder))
+    text.stylize(_style(mark.style, "bold"), 0, len(mark.rows[0]))
+    start = len(first.format(mark=mark.rows[0], version=version)) + 1
+    text.stylize(_style(mark.style, "bold"), start, start + len(mark.rows[1]))
+    text.stylize(
+        _style("muted"),
+        len(mark.rows[0]) + 3,
+        len(first.format(mark=mark.rows[0], version=version)),
     )
-    sections += [
-        _big_word(word.text, design.gradients[word.gradient])
-        for word in design.banner.words
-    ]
-    sections.append(Text(design.banner.tagline, style=_style("muted", "italic")))
-    key_width = max(len(tip.key) for tip in design.banner.tips) + 3
-    tips = Text(no_wrap=True)
-    for index, tip in enumerate(design.banner.tips):
-        if index:
-            tips.append("\n")
-        tips.append(f"{design.glyphs.tip} ", style=_style("primary"))
-        tips.append(f"{tip.key:<{key_width}}", style=_style("secondary", "bold"))
-        tips.append(tip.text, style=_style("foreground"))
-    sections.append(tips)
-    return sections
+    return text
 
 
-def welcome_banner() -> Text:
-    """The welcome sections as one plain block (what the screen shows, uncentred)."""
-    return Text("\n\n").join(welcome_sections())
-
-
-def welcome_renderable() -> Group:
-    """Each section centred as a block, so letters and tips stay aligned inside."""
-    parts: list[Align | Text] = [Text("")]
-    for section in welcome_sections():
-        parts += [Align.center(section), Text("")]
-    return Group(*parts)
+def summary_renderable(status: ModelTuiStatus | None) -> Text:
+    """The start screen's two-line status block; always two lines, so nothing jumps."""
+    design = tui_design()
+    glyphs = design.glyphs
+    if status is None or (status.delegation is None and status.models is None):
+        return Text(
+            f"{glyphs.dot_off} {_say('status_reading')}\n", style=_style("muted")
+        )
+    on = status.delegation == "hook"
+    first = Text(no_wrap=True, overflow="crop")
+    first.append(
+        f"{glyphs.dot_on if on else glyphs.dot_off} "
+        f"{_say('summary_on' if on else 'summary_off')}",
+        style=_style("success" if on else "muted"),
+    )
+    first.append(
+        "   " + _say("summary_on_note" if on else "summary_off_note"),
+        style=_style("muted"),
+    )
+    second = Text(no_wrap=True, overflow="crop")
+    if status.models:
+        second.append(
+            f"{glyphs.done} {_say('summary_models', count=status.models)}",
+            style=_style("success"),
+        )
+        if status.model:
+            second.append(
+                "   " + _say("start_first", model=status.model), style=_style("muted")
+            )
+    else:
+        second.append(
+            f"{glyphs.dot_off} {_say('summary_none')}", style=_style("warning")
+        )
+        second.append("   " + _say("summary_none_note"), style=_style("muted"))
+    return Text("\n").join([first, second])
 
 
 def tips_visible(launch_count: int = 0) -> bool:
@@ -1912,6 +1947,26 @@ class ThemeStore:
             return None
 
 
+class LaunchStore:
+    """How many times the TUI has started on this machine (OMN-26620 AC2)."""
+
+    _path = Path.home() / ".cache" / "onex-tui-launches"
+
+    @classmethod
+    def bump(cls) -> int:
+        """Count this launch; return how many came before it."""
+        try:
+            before = int(cls._path.read_text().strip() or 0)
+        except (OSError, ValueError):
+            before = 0
+        try:
+            cls._path.parent.mkdir(parents=True, exist_ok=True)
+            cls._path.write_text(str(before + 1))
+        except OSError:
+            _LOG.warning("could not record the TUI launch count", exc_info=True)
+        return before
+
+
 async def apply_theme(app: App[int], name: str) -> None:
     """Apply (and persist) a registered theme (OMN-26620 AC5)."""
     ThemeStore.save(name)
@@ -1944,7 +1999,6 @@ class TaskCard:
         )
 
     def render(self) -> object:
-        from rich.console import Group
         from rich.text import Text
 
         design = tui_design()
@@ -2008,7 +2062,9 @@ class OnexTui(App[int]):
     TITLE = "onex"
     CSS = """
     Screen { layout: vertical; }
-    #conversation { height: 1fr; border: round $primary-background; }
+    #header { height: 2; padding: 0 1; margin-top: 1; }
+    #summary { height: 2; padding: 0 1; margin-top: 1; }
+    #conversation { height: 1fr; }
     #output { height: auto; max-height: 100%; padding: 0 1; }
     #palette { height: auto; max-height: 12; border: round $accent; display: none; }
     #prompt { border: round $accent; }
@@ -2053,6 +2109,12 @@ class OnexTui(App[int]):
                     background=tokens.background,
                     surface=tokens.surface,
                     panel=tokens.panel,
+                    boost=tokens.boost,
+                    variables={
+                        "border": tokens.border,
+                        "route-cheap": tokens.route_cheap,
+                        "route-fallback": tokens.route_fallback,
+                    },
                 )
             )
         saved_theme = ThemeStore.load()
@@ -2105,6 +2167,8 @@ class OnexTui(App[int]):
         # OMN-23413: the log grows with what it holds and the live line sits
         # right under its last line, as in a coding agent's CLI, not at the
         # bottom of the window (operator 2026-11-13: "why too much gap").
+        yield Static(id="header")
+        yield Static(id="summary")
         with Vertical(id="conversation"):
             yield RichLog(id="output", wrap=True, markup=False, highlight=False)
             yield Static(id="activity")
@@ -2116,7 +2180,8 @@ class OnexTui(App[int]):
         yield Static(id="status")
 
     async def on_mount(self) -> None:
-        self.query_one("#output", RichLog).write(welcome_renderable(), expand=True)
+        if tips_visible(LaunchStore.bump()):
+            self._write(Text(_say("tips_first_launch"), style=_style("muted")))
         self._render_status()
         self.query_one("#prompt", Input).focus()
         self.run_worker(self._refresh_status(), exclusive=True, group="status")
@@ -2128,18 +2193,15 @@ class OnexTui(App[int]):
         try:
             status = await self._load_status()
         except Exception as error:  # status is a convenience; never crash on it
-            self._write(_say("status_unavailable", error=error))
+            _LOG.warning("the delegation status read failed: %s", error, exc_info=True)
+            self._write(Text(_say("status_unreadable"), style=_style("warning")))
             status = self._status.model_copy(
                 update={"delegation": "unknown", "hooks": {}, "problem": str(error)}
             )
         else:
-            if status.problem:  # a failed read says why (review 2026-11-15)
-                self._write(
-                    Text(
-                        _say("delegation_unreadable", reason=status.problem),
-                        style=_style("warning"),
-                    )
-                )
+            if status.problem:  # a failed read is said plainly, its cause logged
+                _LOG.warning("the delegation status was unreadable: %s", status.problem)
+                self._write(Text(_say("status_unreadable"), style=_style("warning")))
         self._show_status(status)
 
     def _show_status(self, status: ModelTuiStatus) -> None:
@@ -2163,6 +2225,13 @@ class OnexTui(App[int]):
     def _render_status(self) -> None:
         sep = ("  ·  ", _style("muted"))
         status = self._status
+        main = self._main()
+        main.query_one("#header", Static).update(
+            header_renderable(status.model, max(self.size.width - 2, 0))
+        )
+        main.query_one("#summary", Static).update(
+            summary_renderable(status if self._status_read else None)
+        )
         if status.models is None and status.model is None:
             routing = (_say("status_reading"), _style("muted", "italic"))
         elif status.model:
