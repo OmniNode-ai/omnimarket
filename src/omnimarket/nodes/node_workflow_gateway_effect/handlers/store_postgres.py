@@ -4,8 +4,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -127,6 +129,24 @@ class PostgresWorkflowStore:
         self._rpm_metric_key = rpm_metric_key
         self._rpm_window_key = rpm_window_key
         self._clock = clock
+        # OMN-26681: one in-process gate per tenant, taken BEFORE a pooled connection, so a
+        # burst from one tenant waits here (holding nothing) rather than parking pool
+        # connections on that tenant's advisory lock. Entries are dropped when idle.
+        self._tenant_gates: dict[UUID, tuple[asyncio.Lock, int]] = {}
+
+    @asynccontextmanager
+    async def _tenant_gate(self, tenant_id: UUID) -> AsyncIterator[None]:
+        gate, users = self._tenant_gates.get(tenant_id, (asyncio.Lock(), 0))
+        self._tenant_gates[tenant_id] = (gate, users + 1)
+        try:
+            async with gate:
+                yield
+        finally:
+            gate, users = self._tenant_gates[tenant_id]
+            if users <= 1:
+                del self._tenant_gates[tenant_id]
+            else:
+                self._tenant_gates[tenant_id] = (gate, users - 1)
 
     @staticmethod
     async def _plan_code(
@@ -176,7 +196,10 @@ class PostgresWorkflowStore:
         served there during the overlap serialize on the same tenant lock.
         """
         lock_key = advisory_lock_key(self._lock_namespace, str(caller.tenant_id))
-        async with self._pool.transaction() as tx:
+        async with (
+            self._tenant_gate(caller.tenant_id),
+            self._pool.transaction() as tx,
+        ):
             await tx.execute("SELECT pg_advisory_xact_lock($1)", lock_key)
             quota = await self._quota(tx, caller.tenant_id)
             if quota.status == "hard_limit_hit":
