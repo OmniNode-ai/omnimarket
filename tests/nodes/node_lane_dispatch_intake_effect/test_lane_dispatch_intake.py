@@ -325,9 +325,9 @@ def test_the_brief_builder_uses_the_skill_scripts_in_order_with_the_timeout_and_
         return subprocess.CompletedProcess(argv, 0, "check x: PASS", "")
 
     request = _req("lane-a", "h201")
-    path = adapter.ScriptBriefBuilder(Path("/plugin"), tmp_path, run=run).build(
-        request, "orch"
-    )
+    path = adapter.ScriptBriefBuilder(
+        Path("/plugin"), tmp_path, run=run, model="test-model"
+    ).build(request, "orch")
     text = path.read_text()
     assert [Path(argv[1]).name for argv, _ in calls] == [
         "lane_rules_block.py",
@@ -362,9 +362,9 @@ def test_the_brief_builder_refuses_a_brief_the_skill_check_refuses(
         )
 
     with pytest.raises(BriefError, match="check refused"):
-        adapter.ScriptBriefBuilder(Path("/plugin"), tmp_path, run=run).build(
-            _req("lane-a"), "orch"
-        )
+        adapter.ScriptBriefBuilder(
+            Path("/plugin"), tmp_path, run=run, model="test-model"
+        ).build(_req("lane-a"), "orch")
 
 
 def test_the_tick_exits_3_when_the_unit_declares_no_ledger_or_append_command(
@@ -481,7 +481,7 @@ def test_the_builder_and_the_placer_pass_the_ledger_option_the_skill_scripts_and
 
     mirror = tmp_path / "mirror.md"
     brief = adapter.ScriptBriefBuilder(
-        Path("/plugin"), tmp_path, mirror, run=run
+        Path("/plugin"), tmp_path, mirror, run=run, model="test-model"
     ).build(_req("lane-a"), "orch")
     adapter.RemoteLanePlacer(
         Path("/r/onex_remote_lane.py"), "labdispatch", ledger=mirror, run=run
