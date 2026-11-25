@@ -40,7 +40,7 @@ requirements:
   statement: Every exposure that declares a freshness_column answers the 1d, 7d and 30d windowed read through the real store path, including one whose freshness column is not a served column, without growing the baselined table reader.
   acceptance:
   - id: AC7
-    statement: 'AC7: the 1d, 7d and 30d windowed read answers 200 for every node contract declaring a freshness_column on real Postgres, and table_reader.py stays at or under its 914 code lines -- falsifier: uv run pytest tests/test_omn24562_windowed_read_every_exposure_real_postgres.py tests/test_omn24562_table_reader_baseline.py fails when the window order alias is dropped or the reader grows'
+    statement: 'AC7: the 1d, 7d and 30d windowed read answers 200 for every node contract declaring a freshness_column on real Postgres, and table_reader.py stays at or under its 914 code lines -- falsifier: uv run pytest tests/test_omn24562_windowed_read_every_exposure_real_postgres.py tests/test_omn24562_table_reader_unserved_freshness.py fails when the window order alias is dropped or the reader grows'
 evidence_requirements:
 - kind: tests
   description: The inode alarm tests pass at the pushed head.
@@ -118,5 +118,5 @@ dod_evidence:
   - AC7
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/test_omn24562_windowed_read_every_exposure_real_postgres.py tests/test_omn24562_table_reader_baseline.py -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/test_omn24562_windowed_read_every_exposure_real_postgres.py tests/test_omn24562_table_reader_unserved_freshness.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
