@@ -55,8 +55,8 @@ dod_evidence:
   execution_scope: hosted_and_local
   binds_ac: [AC2]
   checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_context_install_confirm_trigger_effect/test_recorded_applied_event_omn22478.py -q --no-cov -k error
+  - check_type: command
+    check_value: uv run --frozen pytest tests/nodes/node_context_install_confirm_trigger_effect/test_recorded_applied_event_omn22478.py -q --no-cov -k error
     cwd: .
 context:
   ac_binding_provenance:
