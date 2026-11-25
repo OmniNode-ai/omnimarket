@@ -81,26 +81,33 @@ def normalise_test_repositories(names: Sequence[str]) -> frozenset[str]:
 class HandlerLanePushEffect:
     def __init__(
         self,
+        container: object | None = None,
         *,
-        remote_head_reader: ProtocolRemoteHeadReader,
-        source_materializer: ProtocolSourceMaterializer,
-        checks: Sequence[ProtocolLanePushCheck],
-        credential_issuer: ProtocolCredentialIssuer,
-        pusher: ProtocolPusher,
+        remote_head_reader: ProtocolRemoteHeadReader | None = None,
+        source_materializer: ProtocolSourceMaterializer | None = None,
+        checks: Sequence[ProtocolLanePushCheck] | None = None,
+        credential_issuer: ProtocolCredentialIssuer | None = None,
+        pusher: ProtocolPusher | None = None,
         test_repositories: Sequence[str] | None = None,
     ) -> None:
+        # The runtime builds a handler from its injectable params alone, so every port
+        # defaults to None. A handler with a port missing fails closed at the push
+        # (``_require_wired``), never at boot and never by pushing without a check.
+        self._container = container
         declared = declared_check_ids()
-        have = [check.check_id for check in checks]
-        missing = [c for c in declared if c not in have]
-        extra = [c for c in have if c not in declared]
-        duplicated = sorted({c for c in have if have.count(c) > 1})
-        if missing or extra or duplicated:
-            raise ValueError(
-                f"lane push checks do not match the contract: missing {missing}, "
-                f"undeclared {extra}, duplicated {duplicated}"
-            )
-        by_id = {check.check_id: check for check in checks}
-        self._checks = [by_id[c] for c in declared]
+        self._checks: list[ProtocolLanePushCheck] | None = None
+        if checks is not None:
+            have = [check.check_id for check in checks]
+            missing = [c for c in declared if c not in have]
+            extra = [c for c in have if c not in declared]
+            duplicated = sorted({c for c in have if have.count(c) > 1})
+            if missing or extra or duplicated:
+                raise ValueError(
+                    f"lane push checks do not match the contract: missing {missing}, "
+                    f"undeclared {extra}, duplicated {duplicated}"
+                )
+            by_id = {check.check_id: check for check in checks}
+            self._checks = [by_id[c] for c in declared]
         self._remote = remote_head_reader
         self._materializer = source_materializer
         self._issuer = credential_issuer
@@ -111,6 +118,45 @@ class HandlerLanePushEffect:
             else normalise_test_repositories(test_repositories)
         )
         self._refused_branches = declared_refused_branches()
+
+    def _require_wired(
+        self,
+    ) -> tuple[
+        ProtocolRemoteHeadReader,
+        ProtocolSourceMaterializer,
+        list[ProtocolLanePushCheck],
+        ProtocolCredentialIssuer,
+        ProtocolPusher,
+    ]:
+        unwired = [
+            name
+            for name, port in (
+                ("remote_head_reader", self._remote),
+                ("source_materializer", self._materializer),
+                ("checks", self._checks),
+                ("credential_issuer", self._issuer),
+                ("pusher", self._pusher),
+            )
+            if port is None
+        ]
+        if (
+            unwired
+            or self._remote is None
+            or self._materializer is None
+            or self._checks is None
+            or self._issuer is None
+            or self._pusher is None
+        ):
+            raise RuntimeError(
+                f"lane push handler is not wired: no {', '.join(unwired)}; nothing was read or pushed"
+            )
+        return (
+            self._remote,
+            self._materializer,
+            self._checks,
+            self._issuer,
+            self._pusher,
+        )
 
     @staticmethod
     def _answer(
@@ -154,11 +200,12 @@ class HandlerLanePushEffect:
                 EnumLanePushRefusal.PROTECTED_BRANCH,
                 f"{request.branch} is protected",
             )
-        remote = self._remote.read(request.repository, request.branch)
+        remote_reader, materializer, checks, issuer, pusher = self._require_wired()
+        remote = remote_reader.read(request.repository, request.branch)
         if remote != request.expected_remote_head:
             return self._answer(request, EnumLanePushOutcome.MOVED, remote_head=remote)
-        materialized = self._materializer.materialize(request.source, request)
-        for check in self._checks:
+        materialized = materializer.materialize(request.source, request)
+        for check in checks:
             verdict = check.run(request, materialized)
             if not verdict.passed:
                 return self._refused(
@@ -167,11 +214,11 @@ class HandlerLanePushEffect:
                     f"{check.check_id}: {verdict.finding}",
                     check.check_id,
                 )
-        remote = self._remote.read(request.repository, request.branch)
+        remote = remote_reader.read(request.repository, request.branch)
         if remote != request.expected_remote_head:
             return self._answer(request, EnumLanePushOutcome.MOVED, remote_head=remote)
-        credential = self._issuer.issue(request.repository, request.correlation_id)
-        attempt = self._pusher.push(
+        credential = issuer.issue(request.repository, request.correlation_id)
+        attempt = pusher.push(
             request.repository,
             request.branch,
             request.source.head_sha,

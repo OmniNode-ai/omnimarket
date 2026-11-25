@@ -329,3 +329,44 @@ def test_ac2_the_credential_is_asked_for_only_after_every_check_passed() -> None
     _run(handler, _request(models))
     assert parts["credential_issuer"].calls == [f"issue:{TEST_REPO}"]
     assert parts["pusher"].calls == ["push"]
+
+
+# ------------------------------------------------------------------ boot shape (the runtime builds the handler)
+
+
+def test_boot_the_runtime_can_build_the_handler_from_its_injectable_params_alone() -> (
+    None
+):
+    """The runtime resolves a handler from event_bus/container/ownership_query only."""
+    import inspect
+
+    handler_cls = _import(HANDLER).HandlerLanePushEffect
+    required = [
+        name
+        for name, param in inspect.signature(handler_cls).parameters.items()
+        if param.default is inspect.Parameter.empty
+        and param.kind
+        in (
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        )
+        and name not in {"event_bus", "container", "ownership_query"}
+    ]
+    assert required == []
+    handler_cls()
+
+
+def test_boot_an_unwired_handler_pushes_nothing_and_asks_for_no_credential() -> None:
+    """Built with no ports, a push for a test repository fails loud; it never reads pushed."""
+    models = _import(MODELS)
+    handler = _import(HANDLER).HandlerLanePushEffect()
+    with pytest.raises(RuntimeError, match="remote_head_reader"):
+        _run(handler, _request(models))
+
+
+def test_boot_an_unwired_handler_still_refuses_a_non_test_repository() -> None:
+    models = _import(MODELS)
+    handler = _import(HANDLER).HandlerLanePushEffect()
+    result = _run(handler, _request(models, repository="OmniNode-ai/omnimarket"))
+    assert result.outcome.value == "refused"
+    assert result.refusal.value == "not_a_test_repository"
