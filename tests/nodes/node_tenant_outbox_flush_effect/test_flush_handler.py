@@ -171,3 +171,12 @@ def test_a_row_with_no_envelope_tenant_is_keyed_by_row_id() -> None:
     store, bus = FakeStore([row]), Bus()
     asyncio.run(_handler(store, bus).handle(_cmd()))
     assert bus.sent[0][1] == "9"
+
+
+def test_the_runtime_builds_the_handler_bare_and_it_answers_without_a_store() -> None:
+    """The runtime's auto-wiring constructs the handler with no arguments; with no store and bus it answers a typed outcome."""
+    handler = HandlerTenantOutboxFlush()
+    result = asyncio.run(
+        handler.handle(ModelTenantOutboxFlushCommand(command_id=uuid4(), batch_limit=5))
+    )
+    assert result.outcome is EnumTenantOutboxFlushOutcome.FAILED_STORE_UNAVAILABLE
