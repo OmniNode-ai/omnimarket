@@ -16,6 +16,10 @@ requirements:
     statement: 'AC6: a second request inside page_cache.ttl_seconds is served from the cache, a request after it is not, and the expiry is the contract value, not a literal in a handler -- falsifier: uv run pytest tests/unit/projection/test_omn24458_windowed_read_and_page_cache.py -k "c1 or c2" -q'
   - id: AC7
     statement: 'AC7: a Valkey that raises serves the windowed store read with cache.fallback true, never an empty or invented page -- falsifier: uv run pytest tests/unit/projection/test_omn24458_windowed_read_and_page_cache.py -k "c3 or c5" -q'
+  - id: AC8
+    statement: 'AC8: a page read after page_cache.ttl_seconds and inside page_cache.stale_seconds more is answered from the held page with cache.state stale and its age, without waiting for the store, and the store read that refreshes it runs behind the response -- falsifier: uv run pytest tests/unit/projection/test_omn24458_windowed_read_and_page_cache.py -k "s1 or s2" -q'
+  - id: AC9
+    statement: 'AC9: one page is refreshed by one store read across repeated stale reads and across runtimes (a claim in the shared Valkey), a failed refresh keeps the held page and releases the claim, and a page past the stale window is recomputed before it is answered -- falsifier: uv run pytest tests/unit/projection/test_omn24458_windowed_read_and_page_cache.py -k "s3 or s4 or s5 or s6" -q'
 evidence_requirements:
 - kind: tests
   description: The windowed read and page cache tests pass at the pushed head.
@@ -51,6 +55,24 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/projection/test_omn24458_windowed_read_and_page_cache.py -k "c3 or c5" -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24458-ac8
+  description: 'AC8: a stale page is answered at once and refreshed behind the response.'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn24458_windowed_read_and_page_cache.py -k "s1 or s2" -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24458-ac9
+  description: 'AC9: one refresh per page across runtimes, a failed refresh keeps the page, a page past the stale window is recomputed first.'
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/projection/test_omn24458_windowed_read_and_page_cache.py -k "s3 or s4 or s5 or s6" -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn24458-integration-proof
   description: the windowed read and page cache tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
