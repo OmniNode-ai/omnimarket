@@ -219,7 +219,9 @@ def test_data_readers_catalog_yaml_selects_the_tests_that_name_it(
     changed = [
         "tests/nodes/node_workflow_gateway_effect/fixtures/workflow_catalog.yaml"
     ]
-    selection = _selection(changed, _adjacency(tmp_path))
+    # The mechanism over the wide roots: the shipped roots are the fixture tree only (OMN-24562).
+    wide = ["tests/", "contracts/", "src/omnimarket/nodes/"]
+    selection = _selection(changed, _adjacency(tmp_path, data_reader_roots=wide))
     assert not selection.is_full_suite
     hits = [
         p.relative_to(REPO_ROOT).as_posix()
