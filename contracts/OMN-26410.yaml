@@ -14,6 +14,11 @@ requirements:
         statement: "AC2: a regression test built from the recorded writer log lines and dead-letter record of that build (fixture path named in the PR) shows that a valid judged eval event leads the writer to upsert one row and a malformed one to dead-letter -- falsifier: uv run pytest tests/nodes/node_projection_eval_results -q -k eval_rows_upserted fails at omnimarket origin/dev and passes on the PR branch"
       - id: AC3
         statement: "AC3: the health gate, the boot guard and the compose files are unchanged by the PR -- falsifier: git diff origin/dev --stat on the PR branch lists no health gate setting, no boot guard file and no compose file, run with uv run pytest tests/nodes/node_projection_eval_results -q"
+  - id: req-omn26410-alert-liveness-attests-skipped
+    statement: The alert channel liveness writer attests a throttled tick as a designed zero-row delivery, so the runtime does not log it as a lost write.
+    acceptance:
+      - id: AC5
+        statement: "AC5: a throttled alert channel liveness tick leads the writer to attest projection_noop_reason skipped, and a measured verdict that writes its row carries no attestation -- falsifier: uv run pytest tests/test_projection_alert_channel_liveness.py -q -k attests_a_skipped fails at omnimarket origin/dev and passes on the PR branch"
 evidence_requirements:
   - kind: tests
     description: The eval results writer tests at the pushed head, with the goal trace writer golden chain.
@@ -65,6 +70,7 @@ dod_evidence:
   - id: dod-omn26410-alert-liveness-skipped
     description: The alert channel liveness writer attests skipped for a throttled tick (a designed zero-row delivery) and attests nothing for a measured verdict that writes its row; the test fails at origin/dev.
     source: manual
+    binds_ac: [AC5]
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/test_projection_alert_channel_liveness.py -q --no-cov -k attests_a_skipped
