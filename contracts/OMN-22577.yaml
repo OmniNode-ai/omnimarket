@@ -61,8 +61,8 @@ dod_evidence:
     source: manual
     binds_ac: [AC1]
     checks:
-      - check_type: command
-        check_value: env -u PYTHONPATH uv run --frozen pytest tests/unit/bus_binding/test_node_event_bus_overlay_model_omn22478.py::test_loads_the_way_the_overlay_home_loads_it tests/unit/bus_binding/test_node_event_bus_overlay_model_omn22478.py::test_a_wrong_document_refuses -q --no-cov -p no:cacheprovider
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/bus_binding/test_node_event_bus_overlay_model_omn22478.py::test_loads_the_way_the_overlay_home_loads_it tests/unit/bus_binding/test_node_event_bus_overlay_model_omn22478.py::test_a_wrong_document_refuses -q --no-cov -p no:cacheprovider
         cwd: .
   - id: dod-omn22577-ac2-accepted-20261125t0345z
     description: 'AC2: a fresh subprocess imports ModelNodeEventBusOverlay and none of omnibase_core, omnibase_infra or omnibase_spi is in sys.modules. Fails at the parent of omnimarket#5155, where ModelNodeEventBusOverlay does not exist.'
