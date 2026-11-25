@@ -1,0 +1,89 @@
+schema_version: 1.0.0
+ticket_id: OMN-26677
+title: 'Agent messages can be read in one place: a projection of the agent message topic and a page that lists and filters it'
+summary: A projection node consumes the agent message topic into one row per record (a counted refused row for a record that is dropped, unreadable or refused), the projection API serves the table cached in the shared Valkey, and the factory floor page lists the newest messages, filters them by agent, thread and platform, shows one thread in order, marks every sender unverified until the sender proof is deployed and shows the refused counter.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26677-agent-message-view
+  statement: The messages agents exchanged can be read in one place, and a message that cannot be shown is counted.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a projection node consumes onex.evt.omnimarket.agent-message.v1 and writes one row per message (from, to, thread, kind, platform, sent time, broker time, partition, offset, text) -- falsifier: a message sent on h201 and read on h053 has no row within 60 s'
+  - id: AC2
+    statement: 'AC2: the factory floor page lists the newest messages, filters by agent, thread and platform, and shows one thread in order -- falsifier: the page shows no row for a message the client can read'
+  - id: AC3
+    statement: 'AC3: the page marks the sender unverified until the sender proof is deployed -- falsifier: a message with a claimed sender shows as verified'
+  - id: AC4
+    statement: 'AC4: a dropped or unreadable message is counted and shown -- falsifier: a message the model refuses disappears with no count'
+evidence_requirements:
+- kind: tests
+  description: The projection node's focused tests and the page section's tests, each failing before the node and the section existed.
+  command: uv run pytest tests/unit/nodes/node_projection_agent_message -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26677-one-row-per-record
+  description: A readable message is one row with every field; the same offset twice is one row; the same offset on two partitions is two rows; the insert keeps the first row for a partition and offset in SQL.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_projection_agent_message/test_agent_message_projection.py tests/unit/nodes/node_projection_agent_message/test_agent_message_contract.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26677-migration-reviewed
+  description: 'The migration is reviewed by its own test: every statement runs twice, nothing is dropped, every relation is qualified, the key is partition and offset, and the grant is no wider than the node''s writes.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_projection_agent_message/test_agent_message_migration.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26677-page-lists-filters-orders
+  description: The floor page section lists the newest messages first, filters by agent, thread and platform, shows one thread oldest first, and says so when the read failed.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_projection_agent_message/test_floor_page_messages_section.py -q --no-cov -n 0 -p no:randomly -k "newest_first or filters or oldest_first or failed_read or reads_the_projection"
+    cwd: .
+- id: dod-omn26677-sender-unverified
+  description: A row is shown unverified unless the projection marks it verified, and the projection never marks a sender verified while no sender proof is deployed.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_projection_agent_message -q --no-cov -n 0 -p no:randomly -k "unverified or verified or sender_proof"
+    cwd: .
+- id: dod-omn26677-refusals-counted
+  description: A dropped, an unreadable and a refused record each become a counted refused row and the page shows the counter with the three reasons.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_projection_agent_message -q --no-cov -n 0 -p no:randomly -k "dropped or unreadable or model_refuses or refused_counter or counter_says_zero"
+    cwd: .
+- id: dod-omn26677-hosted-deploy-check
+  description: 'Deploy check the hosted runner can run: the node is registered under onex.nodes. This binds no criterion by itself.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: grep -q 'node_projection_agent_message = ' pyproject.toml
+    cwd: .
+
+- id: dod-omn26677-integration-proof
+  description: the projection node's tests and the floor page section's tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26677 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_projection_agent_message -q --no-cov
+    cwd: .

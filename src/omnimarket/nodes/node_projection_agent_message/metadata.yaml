@@ -1,0 +1,21 @@
+name: projection_agent_message
+version: "0.1.0"
+description: >
+  Projects the agent message topic into the agent_messages table, one row per record, with a counted refused row for a
+  record that is dropped, unreadable or refused by the message model.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+tags:
+  - projection
+  - agent-message
+  - reducer
+pack: "data"
+display_name: "Projection: Agent Messages"
+node_role: "effect"
+dependencies:
+  - "aiokafka>=0.10.0"

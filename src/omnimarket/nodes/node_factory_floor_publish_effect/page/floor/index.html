@@ -336,6 +336,18 @@ html.embed .wrap{padding-block:14px 48px}
   </section>
 
 
+  <section class="card" aria-labelledby="msgH" id="agentMessages">
+    <div><div class="eyebrow">Agents talking to each other</div><h2 id="msgH">Agent messages</h2><p class="sub">The newest messages agents of any platform sent each other. Pick an agent, a thread or a platform to narrow the list; one thread is read oldest first.</p></div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end">
+      <label class="muted">Agent <select id="msgAgent"><option value="">All agents</option></select></label>
+      <label class="muted">Thread <select id="msgThread"><option value="">All threads</option></select></label>
+      <label class="muted">Platform <select id="msgPlatform"><option value="">All platforms</option></select></label>
+    </div>
+    <p class="muted" id="msgRefused" role="status">Reading the agent messages.</p>
+    <p class="muted" id="msgNote" style="font-size:.86rem"></p>
+    <ul class="list" id="msgBody"></ul>
+  </section>
+
   <section class="card" aria-labelledby="sources" id="sourcesCard">
     <div><div class="eyebrow">What the record was computed from</div><h2 id="sources">Sources</h2><p class="sub">Where each figure comes from and how fresh it is.</p></div>
     <ul class="list" id="sourceList"></ul>
@@ -1116,8 +1128,60 @@ async function load(){
     banner.textContent = "The factory record could not be read (" + e.message + "). Trying again every minute.";
   }
 }
+// Agent messages: the projection of the agent message topic, read from the projection API this site is served beside.
+// The sender is shown unverified on every row the projection does not mark verified; the page never decides that itself.
+const MESSAGES_URL = "../projection-api/projection/onex.snapshot.projection.agent-message.v1?limit=500";
+let msgRows = [];
+const msgFilter = () => ({agent: el("msgAgent").value || "", thread: el("msgThread").value || "", platform: el("msgPlatform").value || ""});
+const msgTime = r => { const t = Date.parse(r.sent_at || ""); return Number.isNaN(t) ? 0 : t; };
+function msgOrder(a, b){ return msgTime(a) - msgTime(b) || num(a.source_partition) - num(b.source_partition) || num(a.source_offset) - num(b.source_offset); }
+function msgOptions(id, label, values){
+  const sel = el(id), keep = sel.value || "";
+  sel.innerHTML = `<option value="">${esc(label)}</option>` + values.map(v => `<option value="${esc(v)}">${esc(v)}</option>`).join("");
+  sel.value = values.includes(keep) ? keep : "";
+}
+function messageRow(r){
+  const verified = r.sender_verified === true;
+  return `<li class="msg" id="msg-${safeId(r.source_partition)}-${safeId(r.source_offset)}"><span>
+    <strong class="mono">${esc(r.from_agent)} → ${esc(r.to_agent)}</strong>
+    <span class="chips"><span class="chip">${esc(r.kind)}</span><span class="chip">${esc(r.platform)}</span><span class="chip">${esc(r.thread)}</span>
+    <span class="chip ${verified ? "ci-green" : "ci-pending"}">${verified ? "sender verified" : "sender unverified"}</span></span>
+    <p class="msgtext" style="white-space:pre-wrap;margin:6px 0 0">${esc(r.text)}</p></span>
+    <span title="partition ${esc(r.source_partition)}, offset ${esc(r.source_offset)}${r.broker_at ? ", broker time " + esc(r.broker_at) : ""}">${esc(clock(r.sent_at) || "time unread")}</span></li>`;
+}
+function renderMessages(){
+  const ok = msgRows.filter(r => r.status === "ok"), refused = msgRows.filter(r => r.status !== "ok");
+  const by = reason => refused.filter(r => r.refusal_reason === reason).length;
+  el("msgRefused").textContent = `${refused.length} ${refused.length === 1 ? "message" : "messages"} the model refused (dropped ${by("dropped")}, unreadable ${by("unreadable")}, refused ${by("refused")}).`;
+  msgOptions("msgAgent", "All agents", [...new Set(ok.flatMap(r => [r.from_agent, r.to_agent]))].sort());
+  msgOptions("msgThread", "All threads", [...new Set(ok.map(r => r.thread))].sort());
+  msgOptions("msgPlatform", "All platforms", [...new Set(ok.map(r => r.platform))].sort());
+  const f = msgFilter();
+  const shown = ok.filter(r => (!f.agent || r.from_agent === f.agent || r.to_agent === f.agent) && (!f.thread || r.thread === f.thread) && (!f.platform || r.platform === f.platform))
+    .sort(f.thread ? msgOrder : (a, b) => msgOrder(b, a));
+  el("msgBody").innerHTML = shown.length ? shown.map(messageRow).join("") : `<li><span class="empty">No messages match.</span><span></span></li>`;
+  el("msgNote").textContent = `${shown.length} of ${ok.length} readable messages shown${f.thread ? ", oldest first" : ", newest first"}. The newest ${msgRows.length} rows the projection holds are read.`;
+}
+async function loadMessages(){
+  try {
+    const r = await fetch(MESSAGES_URL, {cache: "no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const doc = await r.json();
+    msgRows = Array.isArray(doc.rows) ? doc.rows : [];
+    renderMessages();
+  } catch (e) {
+    msgRows = [];
+    el("msgBody").innerHTML = "";
+    el("msgRefused").textContent = "The refused count is unread.";
+    el("msgNote").textContent = "The agent messages could not be read (" + e.message + "). Trying again every minute.";
+  }
+}
+for (const id of ["msgAgent", "msgThread", "msgPlatform"]) el(id).addEventListener("change", renderMessages);
+
 load();
+loadMessages();
 setInterval(load, POLL_MS);
+setInterval(loadMessages, POLL_MS);
 </script>
 </body>
 </html>

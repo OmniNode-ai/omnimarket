@@ -1,0 +1,128 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: projection_agent_message
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+# The tenant projection runtime consumes this node's topic and holds the database credential.
+runtime_profiles:
+  - tenant-projection
+node_version: {major: 0, minor: 1, patch: 0}
+lifecycle: experimental
+description: >
+  Projects the agent message topic into the agent_messages table, one row per record, so the messages agents of any
+  platform exchanged can be read in one place. A readable message is an ok row (from, to, thread, kind, platform, sent
+  time, broker time when the reader has it, partition, offset, text). A record with nothing in it (dropped), bytes that
+  are not a JSON object (unreadable) or a message the agent message model refuses (refused) is a refused row that names
+  the reason, so the page can count what it could not show. The primary key is the record's partition and offset: a
+  replay of a record is one row, and the same offset on another partition is another row. The sender is never marked
+  verified while sender_proof.deployed is false. The reader and the store are injected (ProtocolAgentMessageReader,
+  ProtocolAgentMessageStore); the projection API serves the table, cached in the shared Valkey as the other dashboard
+  projections are.
+
+handler:
+  module: omnimarket.nodes.node_projection_agent_message.handlers.handler_projection_agent_message
+  class: HandlerProjectionAgentMessage
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - topic: onex.evt.omnimarket.agent-message.v1
+      message_category: event
+      operation: agent_message_projection_writer
+      handler:
+        name: AgentMessageProjectionWriter
+        module: omnimarket.nodes.node_projection_agent_message.handlers.handler_agent_message_writer
+      handler_module: omnimarket.nodes.node_projection_agent_message.handlers.handler_agent_message_writer
+
+# The injected reader and store. HandlerAgentMessageIngest (handlers/handler_agent_message_ingest.py) takes them through its
+# constructor and runs one pass of reader into store; the runtime path writes through AgentMessageProjectionWriter above.
+injected_ports:
+  reader: omnimarket.nodes.node_projection_agent_message.ports.protocol_agent_message_reader.ProtocolAgentMessageReader
+  store: omnimarket.nodes.node_projection_agent_message.ports.protocol_agent_message_store.ProtocolAgentMessageStore
+
+# The sender proof is a separate change. Until it is deployed no row is marked verified and the page says so on every row.
+sender_proof:
+  deployed: false
+
+golden_path:
+  - "Consume a record of the agent message topic"
+  - "Validate it against the shared agent message model; a dropped, unreadable or refused record becomes a counted refused row"
+  - "INSERT the row keyed by partition and offset; a replay conflicts on the key and changes nothing"
+  - "The projection API serves the newest rows; the factory floor page lists, filters and counts them"
+
+dod_evidence:
+  - test: tests/unit/nodes/node_projection_agent_message/test_agent_message_projection.py::test_the_same_offset_on_two_partitions_is_two_rows
+    description: "The same offset on two partitions is two rows"
+  - test: tests/unit/nodes/node_projection_agent_message/test_agent_message_projection.py::test_the_same_offset_delivered_twice_is_one_row
+    description: "A record delivered twice is one row"
+  - test: tests/unit/nodes/node_projection_agent_message/test_agent_message_projection.py::test_a_dropped_message_is_a_counted_row_not_a_gap
+    description: "A dropped record is a counted refused row"
+  - test: tests/unit/nodes/node_projection_agent_message/test_agent_message_projection.py::test_an_unreadable_message_is_a_counted_row_that_keeps_what_was_read
+    description: "An unreadable record is a counted refused row that keeps an excerpt"
+  - test: tests/unit/nodes/node_projection_agent_message/test_agent_message_migration.py::test_every_statement_can_run_twice
+    description: "The migration is reviewed by its own test"
+
+db_io:
+  db_tables:
+    - name: agent_messages
+      database_ref: application
+      schema: public
+      migration: "0000_create_agent_messages.sql"
+      access: write
+      role: agent_messages
+  dedupe_key: [source_partition, source_offset]
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.agent-message.v1
+  # A dropped, unreadable or refused record is counted as a refused row and also copied here, so it can be read and replayed.
+  publish_topics:
+    - onex.evt.omnimarket.agent-message-dlq.v1
+  dlq_topics:
+    - onex.evt.omnimarket.agent-message-dlq.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.agent-message-dlq.v1
+
+# The runtime principal writes the dead-letter copy; the grants on the agent message topic itself are declared by node_agent_message_effect.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.agent-message-dlq.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.agent-message-dlq.v1, operation: DESCRIBE}
+
+# The generic projection API serves the table and holds its page in the shared Valkey (page_cache of
+# node_projection_query_api_effect); the factory floor page reads this route. A refused row has empty message
+# fields, so the page counts refused rows from the same read.
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.agent-message.v1"  # onex-topic-allow: projection-snapshot
+  topic_config:
+    kafka_config:
+      "cleanup.policy": "compact"
+  key_grain: "mutable"
+  table: "agent_messages"
+  schema: "public"
+  columns:
+    - "source_partition"
+    - "source_offset"
+    - "status"
+    - "refusal_reason"
+    - "refusal_detail"
+    - "from_agent"
+    - "to_agent"
+    - "thread"
+    - "kind"
+    - "platform"
+    - "text"
+    - "sent_at"
+    - "broker_at"
+    - "sender_verified"
+    - "projected_at"
+  order_by: "projected_at DESC"
+  freshness_column: "projected_at"
+  limit: 500
+
+metadata:
+  transport_type: kafka
