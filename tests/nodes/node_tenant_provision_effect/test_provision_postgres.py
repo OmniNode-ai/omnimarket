@@ -99,6 +99,10 @@ async def test_b_double_run_of_one_slug_gives_one_tenant_one_plan_one_outbox_row
         envelope = await admin.fetchval(
             "SELECT envelope::text FROM tenant_event_outbox"
         )
+        assert (
+            await admin.fetchval("SELECT topic FROM tenant_event_outbox")
+            == "onex.tenant.events"
+        )
         parsed = ModelTenantRegistryEvent.from_envelope(json.loads(envelope))
         assert parsed.operation == "TENANT_CREATED"
         assert parsed.tenant.status == "active"

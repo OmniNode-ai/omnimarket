@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT
 """A scratch PostgreSQL 16 holding the identity tables the tenant provision node writes.
 
-The tables are the dev ``omninode_cloud`` identity tables: ``tenants`` as read from the dev columns, ``plan_tiers`` and
-``tenant_plans`` with the active-plan unique index, and ``tenant_event_outbox`` holding the envelope as JSON. The
+The tables are the columns of the seam ``docker/migrations/seams/tenant_identity_schema.sql`` (omnibase_infra):
+``tenants``, ``plan_tiers``, ``tenant_plans`` (keyed by ``plan_code``, no id column) and ``tenant_event_outbox``
+(``topic`` and ``envelope``, no tenant column). The
 fixture is CI's provisioned database when ``INTEGRATION_POSTGRES_PASSWORD`` is set, else an owned localhost-only
 container; it never reaches a deployed database.
 """
@@ -45,17 +46,22 @@ CREATE UNIQUE INDEX uniq_tenants_principal_id ON tenants (principal_id) WHERE pr
 CREATE TABLE plan_tiers (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     code text UNIQUE NOT NULL,
-    is_default boolean NOT NULL DEFAULT false
+    name text NOT NULL,
+    description text,
+    is_default boolean NOT NULL DEFAULT false,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    stripe_price_id text
 );
 CREATE TABLE tenant_plans (
-    tenant_id uuid NOT NULL REFERENCES tenants (tenant_id),
-    plan_code text NOT NULL REFERENCES plan_tiers (code),
+    tenant_id uuid NOT NULL,
+    plan_code text NOT NULL,
     is_active boolean NOT NULL DEFAULT true,
     started_at timestamptz NOT NULL DEFAULT now(),
     ended_at timestamptz,
-    PRIMARY KEY (tenant_id, plan_code, started_at)
+    CONSTRAINT tenant_plans_pkey PRIMARY KEY (tenant_id, plan_code, started_at)
 );
-CREATE UNIQUE INDEX uniq_tenant_plans_active ON tenant_plans (tenant_id) WHERE is_active;
+CREATE UNIQUE INDEX idx_tenant_plans_one_active_per_tenant ON tenant_plans (tenant_id) WHERE is_active = true AND ended_at IS NULL;
+CREATE UNIQUE INDEX uniq_tenant_plans_active ON tenant_plans (tenant_id) WHERE is_active = true;
 CREATE TABLE tenant_event_outbox (
     id bigserial PRIMARY KEY,
     topic text NOT NULL,
@@ -65,7 +71,7 @@ CREATE TABLE tenant_event_outbox (
     attempts integer NOT NULL DEFAULT 0,
     last_error text
 );
-INSERT INTO plan_tiers (code, is_default) VALUES ('discovery', true), ('team', false);
+INSERT INTO plan_tiers (code, name, is_default) VALUES ('discovery', 'Discovery', true), ('team', 'Team', false);
 """
 
 

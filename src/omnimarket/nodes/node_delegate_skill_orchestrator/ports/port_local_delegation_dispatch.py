@@ -174,6 +174,7 @@ from omnimarket.handlers.routing.delegation_backend_resolution import (
     resolve_declared_local_model,
     resolve_effective_max_tokens,
     resolve_timeout_seconds,
+    with_backend_reasoning_effort,
 )
 from omnimarket.handlers.routing.delegation_backend_resolution import (
     resolve_delegation_backend as _resolve_delegation_backend_uncustomized,
@@ -385,6 +386,7 @@ from omnimarket.nodes.node_delegation_escalation_decision_compute.handlers.handl
 # AND not a deterministic-floor rejection — resolved from the task-class contract.
 from omnimarket.nodes.node_delegation_orchestrator.quality_bar_authority import (
     RequiredBarAuthorityError,
+    checks_in_force_under_response_contract,
     is_quality_accepted,
     resolve_required_bar_authority,
     with_executed_check_verdict,
@@ -595,6 +597,20 @@ def _acceptance_by_executed_tests(task_type: str) -> bool:
     except RequiredBarAuthorityError:
         return False
     return authority.acceptance_by_executed_tests
+
+
+def _declared_checks_in_force(
+    task_type: str, prompt: str, *, response_contract_governed: bool
+) -> tuple[str, ...]:
+    """The class's deterministic checks a decision is judged against (OMN-26656)."""
+    class_checks = resolve_task_class_dod_checks(task_type, prompt=prompt)[0]
+    try:
+        authority = resolve_required_bar_authority(task_type=task_type)
+    except RequiredBarAuthorityError:
+        return () if response_contract_governed else class_checks
+    return checks_in_force_under_response_contract(
+        class_checks, authority, response_contract_governed=response_contract_governed
+    )
 
 
 def _named_blocking_vetoes(
@@ -3750,11 +3766,13 @@ class LocalDelegationDispatchPort:
             # gate passed with no executed test run is refused as the gate
             # refuses it, before anything decides.
             # A response contract replaces the class DoD at the gate
-            # (OMN-15193), so the check set in force is then empty.
-            declared_deterministic = (
-                ()
-                if attempt_outcome.response_contract_governed
-                else resolve_task_class_dod_checks(task_type, prompt=prompt)[0]
+            # (OMN-15193) for a class not accepted by executed tests; for a code
+            # class it adds to the executed checks and never empties them
+            # (OMN-26656).
+            declared_deterministic = _declared_checks_in_force(
+                task_type,
+                prompt,
+                response_contract_governed=attempt_outcome.response_contract_governed,
             )
             gate_result = _with_executed_check_verdict(
                 task_type, gate_result, declared_deterministic
@@ -5471,6 +5489,11 @@ class LocalDelegationDispatchPort:
         # answer room.
         provider_request_options = bound_thinking_budget_to_answer_room(
             provider_request_options, max_tokens=effective_max_tokens
+        )
+        # OMN-26365: the backend row's own reasoning effort goes to this backend
+        # only; a row that declares none sends none.
+        provider_request_options = with_backend_reasoning_effort(
+            provider_request_options, backend.reasoning_effort
         )
         # OMN-19432: the profile's prescribed temperature is a default for a
         # caller that sent none, never a competing writer of the wire key.

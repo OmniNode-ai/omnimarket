@@ -23,6 +23,7 @@ import asyncpg
 
 from omnimarket.nodes.node_tenant_provision_effect.handlers.tenant_created_envelope import (
     TENANT_CREATED,
+    TENANT_EVENTS_TOPIC,
     build_tenant_created_envelope,
 )
 from omnimarket.nodes.node_tenant_provision_effect.models.model_tenant_provision import (
@@ -66,7 +67,6 @@ ON CONFLICT (tenant_id) WHERE is_active = true DO NOTHING
 """
 # The live outbox (the identity schema seam) carries the destination topic and the envelope, never a tenant id column: the
 # tenant is read back from the envelope's payload.
-_TENANT_EVENTS_TOPIC = "onex.tenant.events"  # onex-topic-allow: control-plane tenant lifecycle topic the outbox flush writes
 _INSERT_OUTBOX = (
     "INSERT INTO tenant_event_outbox (topic, envelope) VALUES ($1, $2::jsonb)"
 )
@@ -231,7 +231,7 @@ class TenantIdentityPostgres:
             plan_code=plan["code"],
         )
         await connection.execute(
-            _INSERT_OUTBOX, _TENANT_EVENTS_TOPIC, json.dumps(envelope)
+            _INSERT_OUTBOX, TENANT_EVENTS_TOPIC, json.dumps(envelope)
         )
         return ProvisionRecord(kind=EnumProvisionKind.CREATED, envelope=envelope)
 
