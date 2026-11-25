@@ -45,6 +45,11 @@ config:
     bootstrap_servers_env: "KAFKA_BOOTSTRAP_SERVERS"
   http:
     max_body_bytes: 1048576
+runtime_dispatch:
+  # The runtime serves this node by mounting http_mount.factory below at the path prefix; it has no timer.
+  on_demand:
+    command: uv run onex node node_workflow_gateway_effect
+    owner: OmniNode Platform Team
 http_mount:
   factory: "omnimarket.nodes.node_workflow_gateway_effect.handlers.http_app:create_app"
   path_prefix: "/v1/workflows"

@@ -1,0 +1,122 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_tenant_api_key_effect
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+lifecycle: experimental
+# runtime_profiles is effects, like every command-consuming effect node: placement is by runtime_profiles alone, and no
+# runtime_lanes is declared (a lane id added to a public repository is refused by the public-repo hygiene gate's lab-config
+# class, and a main-owned lane-scoped contract must list one, tests/validation/test_runtime_profile_contracts.py). The dev lane's
+# overlay merges the fail-closed TENANT_IDENTITY_DATABASE_DSN into runtime-effects as well as omninode-runtime, so the node
+# resolves its identity database there; where the address is not set it answers store_unavailable.
+runtime_profiles: [effects]
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.tenant-api-key-register-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.tenant-api-key-register-completed.v1
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: false
+description: >
+  Registers a gateway key by the sha256 digest of a key the caller holds, and revokes a key by id. The key itself is
+  generated in the caller's process and never travels on the bus: the command carries the tenant, a name, the digest and
+  an optional expiry, and the node stores the digest only. Every refusal and every handled error is a typed outcome on
+  the completed topic; there is no failed topic. The gateway resolver (node_workflow_gateway_effect) refuses an expired
+  key and a key of a tenant that is not active.
+input_model: omnimarket.nodes.node_tenant_api_key_effect.models.model_tenant_api_key_register_request.ModelTenantApiKeyRegisterRequest
+output_model: omnimarket.nodes.node_tenant_api_key_effect.models.model_tenant_api_key_register_result.ModelTenantApiKeyRegisterResult
+handler:
+  module: omnimarket.nodes.node_tenant_api_key_effect.handlers.handler_tenant_api_key_register
+  class: HandlerTenantApiKeyRegister
+  input_model: omnimarket.nodes.node_tenant_api_key_effect.models.model_tenant_api_key_register_request.ModelTenantApiKeyRegisterRequest
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - operation: tenant_api_key_register_requested
+      topic: onex.cmd.omnimarket.tenant-api-key-register-requested.v1
+      message_category: command
+      event_model: omnimarket.nodes.node_tenant_api_key_effect.models.model_tenant_api_key_register_request.ModelTenantApiKeyRegisterRequest
+      handler_module: omnimarket.nodes.node_tenant_api_key_effect.handlers.handler_tenant_api_key_register
+      handler:
+        name: HandlerTenantApiKeyRegister
+        module: omnimarket.nodes.node_tenant_api_key_effect.handlers.handler_tenant_api_key_register
+    - operation: tenant_api_key_revoke_requested
+      topic: onex.cmd.omnimarket.tenant-api-key-revoke-requested.v1
+      message_category: command
+      event_model: omnimarket.nodes.node_tenant_api_key_effect.models.model_tenant_api_key_revoke_request.ModelTenantApiKeyRevokeRequest
+      handler_module: omnimarket.nodes.node_tenant_api_key_effect.handlers.handler_tenant_api_key_revoke
+      handler:
+        name: HandlerTenantApiKeyRevoke
+        module: omnimarket.nodes.node_tenant_api_key_effect.handlers.handler_tenant_api_key_revoke
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.tenant-api-key-register-requested.v1
+    - onex.cmd.omnimarket.tenant-api-key-revoke-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.tenant-api-key-register-completed.v1
+    - onex.evt.omnimarket.tenant-api-key-revoke-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.tenant-api-key-register-completed.v1
+  - onex.evt.omnimarket.tenant-api-key-revoke-completed.v1
+# The revoke command is published by the operator's onex CLI; runtime_dispatch carries only the one register command topic.
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.tenant-api-key-revoke-requested.v1
+    producer: "the operator's onex CLI (`onex run-node`), which publishes this revoke command directly -- not a node contract"
+published_events:
+  - event_type: ModelTenantApiKeyRegisterResult
+    topic: onex.evt.omnimarket.tenant-api-key-register-completed.v1
+    description: The outcome of one register command; ids and times only, never a key or a digest.
+  - event_type: ModelTenantApiKeyRevokeResult
+    topic: onex.evt.omnimarket.tenant-api-key-revoke-completed.v1
+    description: The outcome of one revoke command.
+# The command topics are the operator plane (D4a): published by the operator's onex CLI and the dev provisioning node, and
+# by nothing else. WRITE on a requested topic is a working credential for any tenant, so no tenant principal holds it.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_TENANT_OPERATOR_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-api-key-register-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-api-key-register-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-api-key-revoke-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-api-key-revoke-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-api-key-register-completed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-api-key-register-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-api-key-revoke-completed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-api-key-revoke-completed.v1, operation: DESCRIBE}
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-api-key-register-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-api-key-register-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-api-key-revoke-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-api-key-revoke-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-api-key-register-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-api-key-register-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-api-key-revoke-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-api-key-revoke-completed.v1, operation: DESCRIBE}
+# The identity database. The value is the NAME of the environment variable the runtime fills; no DSN lives here.
+tenant_identity:
+  database:
+    dsn_env: TENANT_IDENTITY_DATABASE_DSN
+# The identity tables live in the omninode_cloud database (omnibase_core's public migration inventory: tenant_api_keys from
+# 20251211_m4_api_keys.sql read_write, tenants from 20251207_tenants_uuid_pk.sql read). No db_io block is declared: the
+# omnibase_infra topology carries no omninode_cloud database entry, so a database_ref omninode_cloud resolves nowhere and
+# the event chain gate's tenant enumeration refuses the contract. Add the block once a pin carries that topology entry.
+overlay:
+  node: node_tenant_api_key_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+dev_only:
+  # the guard reads this block from this file, never from code
+  lane: dev
+dod_evidence:
+  - test: tests/nodes/node_tenant_api_key_effect/test_register.py
+    description: "Register dedup, refusals, and the two-connection race, on a scratch Postgres"
+  - test: tests/nodes/node_tenant_api_key_effect/test_payload_key_sets_exact.py
+    description: "No result payload carries a field or value shaped like a key or a digest"
+  - test: tests/nodes/node_tenant_api_key_effect/test_golden_chain_tenant_api_key_effect.py
+    description: "Each command arrives on its completed topic through topic_match routing"
+metadata:
+  transport_type: database
+  related_tickets: [OMN-26474]

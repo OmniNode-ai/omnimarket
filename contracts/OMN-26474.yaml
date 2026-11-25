@@ -1,0 +1,91 @@
+schema_version: 1.0.0
+ticket_id: OMN-26474
+title: "omnimarket: node_tenant_api_key_effect registers and revokes gateway keys by hash and the resolver refuses expired keys"
+summary: "A new node, node_tenant_api_key_effect, registers a gateway key by the sha256 digest of a key the caller holds and revokes a key by id; the key itself never travels on the bus and every answer is a typed outcome on a -completed topic. The gateway resolver now refuses an expired key and a key of a tenant that is not active, compares the prefix as UTF-8 bytes, and at build probes for the expires_at column: when it is absent every API-key request answers 503 with the code api_key_store_schema_outdated and the bearer path is unaffected. The node contract declares broker_acl_grants, runtime_profiles main, the identity database dsn env name, and a dev_only block holding only the lane name. No db_io block is declared because the omnibase_infra topology carries no omninode_cloud database entry; it is added once a pin carries it."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26474-register-revoke-and-expiry
+  statement: Gateway keys are registered and revoked by digest through a node, and the resolver refuses an expired key and a key of a tenant that is not active.
+  acceptance:
+  - id: AC1
+    statement: "AC1: expired and suspended-tenant keys resolve None, a revoked key resolves None on the next call, an absent column gives 503 with the code, and the register and revoke outcomes each arrive on -completed through topic_match routing -- falsifier: `uv run pytest tests/nodes/node_tenant_api_key_effect tests/nodes/node_workflow_gateway_effect -q` fails, or the expiry or suspended-tenant case passes on the commit before the change"
+  - id: AC2
+    statement: "AC2: no event payload of this node carries a field named or valued like a key -- falsifier: `uv run pytest tests/nodes/node_tenant_api_key_effect -q -k payload_key_sets_exact` fails, or `git grep -n -E 'plaintext|onxk_' -- src/omnimarket/nodes/node_tenant_api_key_effect` prints a line outside a test fixture"
+  - id: AC3
+    statement: "AC3: the coverage gate covers every topic use -- falsifier: the [OMN-24005](https://linear.app/omninode/issue/OMN-24005) gate reports an uncovered use, or the PR adds an exception row"
+  - id: AC4
+    statement: "AC4: register dedups correctly and two racing identical commands insert once -- falsifier: `uv run pytest tests/nodes/node_tenant_api_key_effect -q -k register` fails, or the two-connection test does not show one insert and one already_registered"
+  - id: AC5
+    statement: "AC5: the hand-made dev tenant's shape is untouched by a register for another tenant -- falsifier: `uv run pytest tests/nodes/node_tenant_api_key_effect -q -k hand_made_tenant` shows any row changed"
+evidence_requirements:
+- kind: tests
+  description: The node and gateway tests pass at the pushed head on a scratch Postgres, and the expiry and suspended-tenant cases fail at the base commit.
+  command: uv run pytest tests/nodes/node_tenant_api_key_effect tests/nodes/node_workflow_gateway_effect -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26474-ac1
+  description: 'AC1: expired and suspended-tenant keys resolve None, a revoked key resolves None on the next call, an absent column answers 503 with api_key_store_schema_outdated beside a bearer request that still answers 202, and each register and revoke outcome arrives on its -completed topic through topic_match routing; the expiry and suspended-tenant cases fail on the commit before the change.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_tenant_api_key_effect tests/nodes/node_workflow_gateway_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26474-ac2-payload
+  description: 'AC2: the result payloads carry exactly the declared key sets, no field or value shaped like a key or a digest.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_tenant_api_key_effect -q -n 0 --no-cov -p no:cacheprovider -k payload_key_sets_exact
+    cwd: .
+- id: dod-omn26474-ac2-grep
+  description: 'AC2: the node source names no key literal: the grep prints no line.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_tenant_api_key_effect/test_no_key_literal.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26474-ac3-tests
+  description: 'AC3: the coverage gate tests of OMN-24005 pass and the node contract adds no use without a declared grant.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_broker_acl_overlay_render_compute/test_coverage_gate.py tests/nodes/node_tenant_api_key_effect/test_contract_shape.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26474-ac4
+  description: 'AC4: register dedups by the active-name index and the digest, and the two-connection test shows one insert and one already_registered.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_tenant_api_key_effect -q -n 0 --no-cov -p no:cacheprovider -k register
+    cwd: .
+- id: dod-omn26474-ac5
+  description: 'AC5: a register or a revoke for another tenant changes no row of the hand-made dev tenant or its key named hermes.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_tenant_api_key_effect -q -n 0 --no-cov -p no:cacheprovider -k hand_made_tenant
+    cwd: .
+- id: dod-omn26474-integration-proof
+  description: 'Run the node and gateway tests on a lab host at the pushed head on a scratch Postgres. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26474 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run pytest tests/nodes/node_tenant_api_key_effect tests/nodes/node_workflow_gateway_effect -q --no-cov -p no:cacheprovider
