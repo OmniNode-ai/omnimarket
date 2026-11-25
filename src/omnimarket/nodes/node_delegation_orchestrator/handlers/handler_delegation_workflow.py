@@ -273,6 +273,7 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_stale_inference_
 from omnimarket.nodes.node_delegation_orchestrator.quality_bar_authority import (
     RequiredBarAuthority,
     RequiredBarAuthorityError,
+    checks_in_force_under_response_contract,
     is_quality_accepted,
     resolve_required_bar_authority,
     with_executed_check_verdict,
@@ -4425,12 +4426,13 @@ class HandlerDelegationWorkflow:
 
         # OMN-21077: a code answer the gate passed with no executed test run is
         # refused here exactly as the gate refuses it, before anything decides.
-        # A response contract replaces the class DoD at the gate (OMN-15193), so
-        # the check set in force is then empty and the schema alone decides.
-        declared_deterministic = (
-            ()
-            if workflow.effective_response_contract is not None
-            else workflow.routing_decision.dod_deterministic
+        # A response contract replaces the class DoD at the gate (OMN-15193) for
+        # a class not accepted by executed tests. For a code class it adds to
+        # the executed checks and never empties them (OMN-26656).
+        declared_deterministic = checks_in_force_under_response_contract(
+            workflow.routing_decision.dod_deterministic,
+            required_bar_authority,
+            response_contract_governed=workflow.effective_response_contract is not None,
         )
         result = with_executed_check_verdict(
             result,
