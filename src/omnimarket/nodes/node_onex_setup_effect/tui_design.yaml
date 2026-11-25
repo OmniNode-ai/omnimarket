@@ -401,7 +401,8 @@ header:
 # Delegated task card (OMN-26620 AC3).
 task_card:
   state_bar_colour: success
-  facts_template: "{model} · ↓{tokens_in} in · ↑{tokens_out} out · {seconds} s · ${cost}"
+  facts_template: "{model} · {tokens} tokens · {seconds} s · ${cost}"
+  fallback_facts_template: "{model} · {tokens} tokens · {seconds} s"
   failure_template: "Could not reach {model}. Check its key with /config."
   glyphs:
     running: "⠋"
