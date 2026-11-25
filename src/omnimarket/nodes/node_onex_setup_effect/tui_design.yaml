@@ -487,6 +487,10 @@ words:
   hook_state_unknown: "– not read yet"
   hook_state_unread: "! could not be read"
   order_title: "Tried in this order"
+  models_box_title: "Your models"
+  # Short, so it shares the bottom row with the key hints at any width.
+  auto_button: "Use Auto (A)"
+  dashboard_about: "A local web page with your tasks, cost and savings over time, in your browser."
   order_none: "No models yet. Run /config."
   tab_hint_config: "tab next · space tick · ctrl+s save · esc close"
   tab_hint_model: "↑↓ move · enter make first · d details · esc close"

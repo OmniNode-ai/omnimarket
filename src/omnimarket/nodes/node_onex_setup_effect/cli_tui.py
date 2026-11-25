@@ -31,6 +31,7 @@ from urllib.parse import urlparse
 import click
 from omnibase_core.cli.cli_user_config import user_config_path
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from rich.cells import cell_len
 from rich.console import Group
 from rich.markdown import Markdown
 from rich.table import Table
@@ -835,6 +836,30 @@ class _TabbedScreen(ModalScreen[_ResultT]):
     NOTE: ClassVar[str] = ""
     _busy: bool = False
 
+    #: The footer row, its key hints and its buttons, by id: in a narrow window
+    #: the row stacks, hints above and buttons below, so neither is cut off.
+    FOOT: ClassVar[tuple[str, str, str] | None] = None
+
+    def on_resize(self) -> None:
+        self.call_after_refresh(self._fit_footer)
+
+    def _fit_footer(self) -> None:
+        if self.FOOT is None:
+            return
+        foot_id, keys_id, buttons_id = self.FOOT
+        found = self.query(foot_id)
+        if not found:  # the tab is closing
+            return
+        foot = found.first()
+        hints = cell_len(str(self.query_one(keys_id, Static).render()))
+        buttons = sum(
+            button.outer_size.width + 2
+            for button in self.query_one(buttons_id).query(Button)
+            if button.display
+        )
+        width = foot.size.width  # docked: as wide as the panel's inside
+        foot.set_class(hints + buttons + 2 > width, "-stacked")
+
     def _leave(self, target: str) -> None:
         """Swap this tab for another; this one stays up while the next is read."""
         app = self.app
@@ -930,6 +955,7 @@ class SetupScreen(_TabbedScreen[None]):
 
     TAB = "config"
     NOTE = "#note"
+    FOOT = ("#cfg-foot", "#keys", "#buttons")
 
     CSS = """
     SetupScreen { align: center middle; }
@@ -946,8 +972,13 @@ class SetupScreen(_TabbedScreen[None]):
     #found { height: 1fr; min-height: 3; display: none; }
     #note { color: $text-muted; height: auto; }
     #basket { color: $success; height: auto; }
-    #keys { height: 1; }
-    #buttons { height: 1; align-horizontal: right; }
+    #basket.-empty { color: $text-muted; }
+    #cfg-foot { dock: bottom; height: 1; }
+    #cfg-foot.-stacked { layout: vertical; height: 2; }
+    #cfg-foot.-stacked #keys { width: 100%; }
+    #cfg-foot.-stacked #buttons { width: 100%; align-horizontal: right; }
+    #keys { width: 1fr; height: 1; }
+    #buttons { width: auto; height: 1; }
     #buttons Button { height: 1; min-width: 8; border: none; margin: 0 0 0 2; }
     """
     BINDINGS = [
@@ -1006,13 +1037,28 @@ class SetupScreen(_TabbedScreen[None]):
                 id="found",
                 layout="found",
             )
-            yield Static(self._selected_line(), id="basket")
-            with Horizontal(id="buttons"):
-                yield Button(_say("button_guided_setup"), id="guided-setup")
-                yield Button(_say("button_add"), id="add")
-                yield Button(_say("button_save"), variant="primary", id="save")
-                yield Button(_say("button_cancel"), id="cancel")
-            yield Static(_tab_hint("tab_hint_config"), id="keys")
+            line = self._selected_line()
+            yield Static(
+                line, id="basket", classes="-empty" if self._is_empty(line) else ""
+            )
+            with Horizontal(id="cfg-foot"):
+                yield Static(_tab_hint("tab_hint_config"), id="keys")
+                with Horizontal(id="buttons"):
+                    yield Button(_say("button_guided_setup"), id="guided-setup")
+                    yield Button(_say("button_add"), id="add")
+                    yield Button(_say("button_save"), variant="primary", id="save")
+                    yield Button(_say("button_cancel"), id="cancel")
+
+    @staticmethod
+    def _is_empty(line: object) -> bool:
+        """Nothing set up or chosen yet: the line is muted, not a green success."""
+        return str(line) == _say("basket_empty")
+
+    def _paint_basket(self) -> None:
+        line = self._basket_line()
+        basket = self.query_one("#basket", Static)
+        basket.update(line)
+        basket.set_class(self._is_empty(line), "-empty")
 
     def _step_text(self, step: int) -> Text:
         return Text(_say("step_of", step=step), style=_style("muted"))
@@ -1233,7 +1279,7 @@ class SetupScreen(_TabbedScreen[None]):
         table.set_entries(entries)
         table.display = bool(entries)
         self._show_step()
-        self.query_one("#basket", Static).update(self._basket_line())
+        self._paint_basket()
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id in ("key", "url"):
@@ -1242,7 +1288,7 @@ class SetupScreen(_TabbedScreen[None]):
 
     @on(ModelTable.Ticked)
     def _ticked(self) -> None:
-        self.query_one("#basket", Static).update(self._basket_line())
+        self._paint_basket()
         self._show_step()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -1518,21 +1564,27 @@ class DelegationScreen(_TabbedScreen[None]):
     #dtitle { width: 1fr; text-style: bold; color: $primary; }
     #on-state { width: auto; text-style: bold; }
     #hooks-title { color: $text-muted; height: 1; }
-    #dturn { width: auto; min-width: 12; height: 1; border: none; margin: 1 0; }
+    #dturn { width: auto; min-width: 12; height: 1; border: none; margin: 1 0 0 0; }
     #dswitches { display: none; height: 0; }
     .hook { height: 1; text-wrap: nowrap; text-overflow: ellipsis; }
-    #dorder-title { color: $text-muted; height: 1; margin-top: 1; }
-    #selected { height: 1fr; border: round $border; padding: 0 1; }
+    #dstate { height: auto; border: round $border; padding: 0 1; }
+    #dorder-title { display: none; }
+    #selected { height: 1fr; border: round $border; padding: 0 1; margin-top: 1; }
     #selected DataTable { height: auto; max-height: 100%; }
     #claude { height: auto; }
-    #dfoot { height: auto; }
+    #dfoot { dock: bottom; height: auto; }
     #dnote { color: $text-muted; height: auto; }
-    #dkeys { height: 1; }
-    #dbuttons { height: 1; align-horizontal: right; }
+    #dbar { height: 1; }
+    #dbar.-stacked { layout: vertical; height: 2; }
+    #dbar.-stacked #dkeys { width: 100%; }
+    #dbar.-stacked #dbuttons { width: 100%; align-horizontal: right; }
+    #dkeys { width: 1fr; height: 1; }
+    #dbuttons { width: auto; height: 1; }
     #dbuttons Button { height: 1; min-width: 8; border: none; margin: 0 0 0 2; }
     """
     TAB = "delegation"
     NOTE = "#dnote"
+    FOOT = ("#dbar", "#dkeys", "#dbuttons")
     PROBLEM = "problem_delegation"
     BINDINGS = [
         Binding("escape", "cancel", _say("button_cancel")),
@@ -1565,30 +1617,34 @@ class DelegationScreen(_TabbedScreen[None]):
         with Vertical(id="deleg"):
             yield _tab_strip(self.TAB)
             yield _summary(self._selection)
-            with Horizontal(id="dhead"):
-                yield Static(Text(words.title), id="dtitle")
-                yield Static(self._state_text(), id="on-state")
-            yield Static(
-                Text(_say("delegation_about"), style=_style("muted")), id="hooks-title"
-            )
-            yield Button(
-                _say("turn_off" if any(self._saved_boxes().values()) else "turn_on"),
-                id="dturn",
-            )
-            # The switches hold the pending state; the button and Space move them.
-            with Horizontal(id="dswitches"):
-                saved = self._saved_boxes()
-                for hook in words.hooks:
-                    with Horizontal(classes="hook-switch"):
-                        yield Switch(value=saved[hook.key], id=f"use-{hook.key}")
-            for hook in words.hooks:
+            with Vertical(id="dstate"):
+                with Horizontal(id="dhead"):
+                    yield Static(Text(words.title), id="dtitle")
+                    yield Static(self._state_text(), id="on-state")
                 yield Static(
-                    self._hook_text(hook.key), id=f"hook-{hook.key}", classes="hook"
+                    Text(_say("delegation_about"), style=_style("muted")),
+                    id="hooks-title",
                 )
-            # OMN-23413: is Claude Code there? Read from setup's own check.
-            yield Static(
-                Text(_say("claude_checking"), style=_style("muted")), id="claude"
-            )
+                yield Button(
+                    _say(
+                        "turn_off" if any(self._saved_boxes().values()) else "turn_on"
+                    ),
+                    id="dturn",
+                )
+                # The switches hold the pending state; the button and Space move them.
+                with Horizontal(id="dswitches"):
+                    saved = self._saved_boxes()
+                    for hook in words.hooks:
+                        with Horizontal(classes="hook-switch"):
+                            yield Switch(value=saved[hook.key], id=f"use-{hook.key}")
+                for hook in words.hooks:
+                    yield Static(
+                        self._hook_text(hook.key), id=f"hook-{hook.key}", classes="hook"
+                    )
+                # OMN-23413: is Claude Code there? Read from setup's own check.
+                yield Static(
+                    Text(_say("claude_checking"), style=_style("muted")), id="claude"
+                )
             yield Static(
                 Text(_say("order_title"), style=_style("muted")), id="dorder-title"
             )
@@ -1600,14 +1656,16 @@ class DelegationScreen(_TabbedScreen[None]):
             )
             with Vertical(id="dfoot"):
                 yield Static("", id="dnote")
-                with Horizontal(id="dbuttons"):
-                    yield Button(_say("button_save"), variant="primary", id="dsave")
-                    yield Button(_say("button_cancel"), id="dcancel")
-                yield Static(_tab_hint("tab_hint_delegation"), id="dkeys")
+                with Horizontal(id="dbar"):
+                    yield Static(_tab_hint("tab_hint_delegation"), id="dkeys")
+                    with Horizontal(id="dbuttons"):
+                        yield Button(_say("button_save"), variant="primary", id="dsave")
+                        yield Button(_say("button_cancel"), id="dcancel")
 
     def on_mount(self) -> None:
         self.run_worker(self._check_claude(), group="claude", exclusive=True)
         table = self.query_one("#selected", ModelTable)
+        table.border_title = _say("order_title")
         table.set_entries(self._selection.entries)
         # The keyboard goes to the list without scrolling the switch away.
         table.query_one("#mt-rows", DataTable).focus(scroll_visible=False)
@@ -1811,7 +1869,8 @@ class ModelPickScreen(_TabbedScreen[None]):
     #pnow { height: 1; text-style: bold; }
     #models { height: 1fr; border: round $border; padding: 0 1; margin-top: 1; }
     #pnote { color: $text-muted; height: auto; }
-    #pkeys { height: 1; }
+    #pfoot { dock: bottom; height: 1; }
+    #pkeys { width: 1fr; height: 1; }
     #auto { width: auto; height: 1; min-width: 8; border: none; margin: 0; }
     """
     BINDINGS = [
@@ -1828,7 +1887,6 @@ class ModelPickScreen(_TabbedScreen[None]):
         self._removing: str | None = None
 
     def compose(self) -> ComposeResult:
-        words = tui_design().model_table
         with Vertical(id="pick"):
             yield _tab_strip(self.TAB)
             yield _summary(self._selection)
@@ -1840,8 +1898,9 @@ class ModelPickScreen(_TabbedScreen[None]):
                 layout="pick",
             )
             yield Static("", id="pnote")
-            yield Button(words.auto_label + "  (A)", id="auto")
-            yield Static(_tab_hint("tab_hint_model"), id="pkeys")
+            with Horizontal(id="pfoot"):
+                yield Static(_tab_hint("tab_hint_model"), id="pkeys")
+                yield Button(_say("auto_button"), id="auto")
 
     def _first_key(self) -> str | None:
         """The table key of the model tried first, when one is chosen."""
@@ -1855,6 +1914,7 @@ class ModelPickScreen(_TabbedScreen[None]):
 
     def on_mount(self) -> None:
         table = self.query_one("#models", ModelTable)
+        table.border_title = _say("models_box_title")
         table.set_first(self._first_key())
         table.set_entries(self._selection.entries)
         table.query_one("DataTable").focus()
@@ -1952,6 +2012,8 @@ class DashboardScreen(_TabbedScreen[None]):
     DashboardScreen { align: center middle; }
     #board { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
     #board .summary { display: none; }
+    #bbox { height: auto; border: round $border; padding: 0 1; margin-top: 1; }
+    #babout { height: auto; color: $text-muted; margin-bottom: 1; }
     #bhead { height: 1; }
     #btitle { width: 1fr; text-style: bold; color: $primary; }
     #bstate { width: auto; text-style: bold; }
@@ -1979,26 +2041,28 @@ class DashboardScreen(_TabbedScreen[None]):
         with Vertical(id="board"):
             yield _tab_strip(self.TAB)
             yield _summary(self._selection)
-            with Horizontal(id="bhead"):
-                yield Static(Text(words.title), id="btitle")
-                yield Static(self._state_line(None), id="bstate")
-            yield Static("", id="baddr")
-            with Horizontal(id="bbuttons"):
-                # The keys are S, Enter and X; a focused button would take Enter
-                # for itself. The buttons stay clickable.
-                for label, button_id in (
-                    (_say("button_start"), "bstart"),
-                    (words.button_open, "bopen"),
-                    (_say("button_stop"), "bstop"),
-                ):
-                    button = Button(
-                        label,
-                        variant="primary" if button_id == "bstart" else "default",
-                        id=button_id,
-                    )
-                    button.can_focus = False
-                    button.display = False
-                    yield button
+            with Vertical(id="bbox"):
+                with Horizontal(id="bhead"):
+                    yield Static(Text(words.title), id="btitle")
+                    yield Static(self._state_line(None), id="bstate")
+                yield Static("", id="baddr")
+                with Horizontal(id="bbuttons"):
+                    # The keys are S, Enter and X; a focused button would take Enter
+                    # for itself. The buttons stay clickable.
+                    for label, button_id in (
+                        (_say("button_start"), "bstart"),
+                        (words.button_open, "bopen"),
+                        (_say("button_stop"), "bstop"),
+                    ):
+                        button = Button(
+                            label,
+                            variant="primary" if button_id == "bstart" else "default",
+                            id=button_id,
+                        )
+                        button.can_focus = False
+                        button.display = False
+                        yield button
+                yield Static(_say("dashboard_about"), id="babout")
             yield Static("", id="bnote")
             yield Static(_tab_hint("tab_hint_dashboard_stopped"), id="bkeys")
 
@@ -3375,6 +3439,10 @@ class OnexTui(App[int]):
     TITLE = "onex"
     CSS = """
     Screen { layout: vertical; }
+    /* A tab covers the main screen: the welcome behind must not show at its edges
+       (Textual leaves a modal screen transparent in ANSI colour). */
+    _TabbedScreen { background: $background; }
+    _TabbedScreen:ansi { background: ansi_default; }
     #header { height: 2; padding: 0 1; margin-top: 1; }
     #welcome { display: none; height: auto; margin-top: 1; }
     #bigmark { width: 100%; height: auto; text-align: center; }
