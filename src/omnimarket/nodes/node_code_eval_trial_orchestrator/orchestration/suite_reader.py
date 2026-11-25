@@ -34,6 +34,8 @@ from omnimarket.models.delegation.model_size_band import (
     ModelSizeBand,
     ModelSizeBandRequest,
 )
+from omnimarket.models.eval_suite_census.committed_suite import load_committed_suite
+from omnimarket.models.eval_suite_census.model_suite_task import ModelCodeEvalSuiteTask
 from omnimarket.models.model_code_score import (
     ModelCodeScoreCheckFile,
     ModelCodeScoreContractRef,
@@ -61,6 +63,7 @@ class _MaterialState:
     check_files: tuple[ModelCodeScoreCheckFile, ...] = ()
     held_diff: str = ""
     band: str = "S"
+    check_item_ids: tuple[str, ...] = ()
 
 
 class GitCodeEvalSuiteReader:
@@ -72,7 +75,11 @@ class GitCodeEvalSuiteReader:
         score_overlay: ModelCodeScoreOverlay,
         size_band: HandlerDelegationSizeBand | None = None,
         max_task_chars: int,
+        recorded_tasks: Sequence[ModelCodeEvalSuiteTask] = (),
     ) -> None:
+        self._recorded = {
+            (task.repository, task.contract_id): task for task in recorded_tasks
+        }
         self._score_overlay = score_overlay
         self._size_band = (
             size_band if size_band is not None else HandlerDelegationSizeBand()
@@ -90,6 +97,7 @@ class GitCodeEvalSuiteReader:
         return cls(
             score_overlay=overlay,
             max_task_chars=LOOP_REQUEST_TASK_MAX_CHARS,
+            recorded_tasks=load_committed_suite().tasks,
         )
 
     def read(
@@ -120,7 +128,14 @@ class GitCodeEvalSuiteReader:
                 candidate, contract_path, state, "contract_unreadable"
             )
 
+        recorded = self._recorded_task(candidate)
         bound = self._bound_checks(contract)
+        if recorded is not None:
+            item_ids = {check.item_id for check in recorded.checks}
+            bound = [entry for entry in bound if entry[0] in item_ids]
+            state.check_item_ids = tuple(
+                dict.fromkeys(c.item_id for c in recorded.checks)
+            )
         if not bound:
             return self._material(candidate, contract_path, state, "check_not_runnable")
         for _item_id, check_type, _check_value in bound:
@@ -138,21 +153,28 @@ class GitCodeEvalSuiteReader:
         if changed is None:
             return self._material(candidate, contract_path, state, "no_base_commit")
 
-        for _item_id, _check_type, check_value in bound:
-            if not self._names_a_changed_path(check_value, changed):
-                return self._material(
-                    candidate, contract_path, state, "check_names_no_changed_path"
-                )
-
-        check_files = self._check_files(root, candidate.merge_commit, bound, changed)
+        if recorded is None:
+            for _item_id, _check_type, check_value in bound:
+                if not self._names_a_changed_path(check_value, changed):
+                    return self._material(
+                        candidate, contract_path, state, "check_names_no_changed_path"
+                    )
+            check_files = self._check_files(
+                root, candidate.merge_commit, bound, changed
+            )
+            check_paths = {file.path for file in check_files}
+            held = tuple(
+                path
+                for path in changed
+                if path != contract_path and path not in check_paths
+            )
+        else:
+            check_files = self._recorded_check_files(
+                root, candidate.merge_commit, recorded
+            )
+            held = tuple(path for path in changed if path in recorded.held_paths)
         state.check_files = check_files
 
-        check_paths = {file.path for file in check_files}
-        held = tuple(
-            path
-            for path in changed
-            if path != contract_path and path not in check_paths
-        )
         protected = self._score_overlay.protected_paths.get(candidate.repository, ())
         for path in held:
             if self._is_protected(path, protected):
@@ -211,11 +233,39 @@ class GitCodeEvalSuiteReader:
                 sha256=state.contract_sha256,
             ),
             check_files=state.check_files,
+            check_item_ids=state.check_item_ids,
             held_diff=state.held_diff,
             band=state.band,
             material_hash=material_hash,
             excluded_reason=excluded_reason,
         )
+
+    def _recorded_task(
+        self, candidate: ModelCodeEvalCandidate
+    ) -> ModelCodeEvalSuiteTask | None:
+        """The committed suite's task for this candidate, when it names the same merge commit."""
+        task = self._recorded.get((candidate.repository, candidate.contract_id))
+        if task is None or task.merge_commit != candidate.merge_commit:
+            return None
+        return task
+
+    def _recorded_check_files(
+        self, root: str, merge_commit: str, recorded: ModelCodeEvalSuiteTask
+    ) -> tuple[ModelCodeScoreCheckFile, ...]:
+        """The recorded check files as the merge holds them; one missing at the merge is left out."""
+        files: list[ModelCodeScoreCheckFile] = []
+        for path in recorded.check_files:
+            data = self._show_blob(root, merge_commit, path)
+            if data is None:
+                continue
+            files.append(
+                ModelCodeScoreCheckFile(
+                    path=path,
+                    sha256=hashlib.sha256(data).hexdigest(),
+                    revision=merge_commit,
+                )
+            )
+        return tuple(files)
 
     def _show_blob(self, root: str, revision: str, path: str) -> bytes | None:
         done = _git(root, "show", f"{revision}:{path}")
