@@ -3159,19 +3159,29 @@ class MeteringScreen(_TabbedScreen[None]):
             card.append(values[kind], _style(role, "bold"))
             self.query_one(f"#mcard-{kind}", Static).update(card)
         top = max((row[1] for row in summary.models), default=1) or 1
-        table = Text(no_wrap=True, overflow="ellipsis")
-        table.append(
-            f"{_say('metering_col_model'):<30}{_say('metering_col_tasks'):>8}  "
-            f"{'':<22}{_say('metering_col_tokens'):>9}{_say('metering_col_cost'):>16}\n",
-            _style("muted", "bold"),
+        # A real table: the columns line up under their headings and shrink with
+        # the terminal (the model name gives way first), never wrapping a row.
+        table = Table(
+            box=None,
+            expand=True,
+            pad_edge=False,
+            padding=(0, 1),
+            header_style=_style("muted", "bold"),
         )
+        table.add_column(
+            _say("metering_col_model"), ratio=1, no_wrap=True, overflow="ellipsis"
+        )
+        table.add_column(_say("metering_col_tasks"), justify="right", no_wrap=True)
+        table.add_column("", width=16, no_wrap=True)
+        table.add_column(_say("metering_col_tokens"), justify="right", no_wrap=True)
+        table.add_column(_say("metering_col_cost"), justify="right", no_wrap=True)
         for name, runs, tokens, cost in summary.models:
-            table.append(f"{name[:28]:<30}", _style("foreground", "bold"))
-            table.append(f"{runs:>8}  ", _style("foreground"))
-            table.append(_bar(runs / top, 22), _style("primary"))
-            table.append(f"{tokens:>9}", _style("info"))
-            table.append(
-                f"{cost:>16}\n", _style("success" if cost[:1] == "$" else "muted")
+            table.add_row(
+                Text(name, _style("foreground", "bold")),
+                Text(f"{runs:,}", _style("foreground")),
+                Text(_bar(runs / top, 16), _style("primary")),
+                Text(tokens, _style("info")),
+                Text(cost, _style("success" if cost[:1] == "$" else "muted")),
             )
         self.query_one("#mmodels", Static).update(table)
         self._note(Text(_say("metering_note"), style=_style("muted")))
