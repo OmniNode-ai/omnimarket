@@ -164,6 +164,11 @@ def recency_column(cfg: ProjectionTableConfig) -> str | None:
     return cfg.cursor_column or cfg.freshness_column
 
 
+#: The alias under which a windowed read carries its freshness instant when the
+#: freshness column is not one of the exposure's served columns.
+_WINDOW_ORDER_ALIAS = '"__window_instant"'
+
+
 @dataclass(frozen=True)
 class WindowQuery:
     """One read of an exposure's window, as SQL text and its parameters."""
@@ -285,6 +290,13 @@ def build_window_query(
             f"now() - (${len(params)}::double precision * interval '1 second')"
         )
     newest_by_recency = False
+    hidden_window_order = (
+        window_seconds is not None
+        and since is None
+        and cfg.columns != ("*",)
+        and window_column is not None
+        and window_column.strip('"') not in {c.strip('"') for c in cfg.columns}
+    )
     if window_seconds is not None and since is None:
         # A windowed read is the newest rows inside the window, never the
         # ascending walk from the oldest row of the table.
@@ -337,13 +349,27 @@ def build_window_query(
     else:
         where_sql = f" WHERE {' AND '.join(where)}" if where else ""
         inner_order = f" ORDER BY {window_order}" if window_order else ""
-        inner = f"SELECT {columns} FROM {source}{where_sql}{inner_order} LIMIT {retain}"
+        inner_columns = columns
+        if hidden_window_order:
+            inner_columns = f"{columns}, {window_instant} AS {_WINDOW_ORDER_ALIAS}"
+        inner = (
+            f"SELECT {inner_columns} FROM {source}{where_sql}{inner_order} "
+            f"LIMIT {retain}"
+        )
     outer_order = order_clause(order_spec)
+    outer_columns = "*"
     if window_seconds is not None and since is None:
         # The page cuts its first rows, so a windowed page must hand it the newest first.
         assert window_column is not None
         outer_order = f"{quote_identifier(window_column)} DESC"
-    sql = f"SELECT * FROM ({inner}) AS served_window" + (
+        if hidden_window_order:
+            # The freshness column is not one the exposure serves, so the outer
+            # query cannot order by it: the inner read carries the instant under
+            # an alias and the outer read serves the declared columns only
+            # (OMN-24562).
+            outer_order = f"{_WINDOW_ORDER_ALIAS} DESC"
+            outer_columns = columns
+    sql = f"SELECT {outer_columns} FROM ({inner}) AS served_window" + (
         f" ORDER BY {outer_order}" if outer_order else ""
     )
     return WindowQuery(sql=sql, params=tuple(params))

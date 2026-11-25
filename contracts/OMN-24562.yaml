@@ -106,3 +106,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/ci/test_lint_split_omn24562.py tests/ci/test_direct_model_call_ci_gate.py -q -n 0 --no-cov -p no:randomly
     cwd: .
+- id: dod-omn24562-windowed-read-every-exposure
+  description: 'Every node contract that declares a freshness_column (61) answers the 1d, 7d and 30d windowed read through the real store path on real Postgres, built from its own migrations (failing control: the same walk answers 503 for a TEXT freshness column under the window expression before OMN-21288, and for an exposure whose freshness column is not a served column before this change).'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn24562_windowed_read_every_exposure_real_postgres.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
