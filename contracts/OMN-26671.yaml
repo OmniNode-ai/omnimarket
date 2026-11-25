@@ -1,0 +1,91 @@
+schema_version: 1.0.0
+ticket_id: OMN-26671
+title: The landing controller merges only a pull request whose lab proof is for the change that merges, and refuses one under a do-not-land
+summary: 'A new compute node, node_landing_proof_gate_compute, holds one pure decision over three injected readers (the pull request text reader, the ledger reader and the patch-id reader). It answers PROVEN or DRAFT with the reasons named, fails closed to DRAFT with the reason "proof unreadable", and ships one command that prints the answer as typed output. auto-merge.yml gains one step that asks the node at the live head and arms only on PROVEN. The replay of the last 20 merged pull requests is a test fixture.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26671-proof-gate
+  statement: A pull request merges, or is armed, only when its lab proof is for the change that merges and no do-not-land or hold names it; otherwise the answer is DRAFT.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a pull request with no Lab line, or whose Lab commits differ from the head by more than a base merge (patch-id of base...sha), is refused with the missing item named -- falsifier: a replay of omnimarket#6765 at its merged head is admitted'
+  - id: AC2
+    statement: 'AC2: a pull request that touches a grader, check, gate or judge is refused unless it names a known good answer that passed and a known bad one that failed -- falsifier: one with unit tests only is admitted'
+  - id: AC3
+    statement: 'AC3: an open HOLD row or do-not-land message naming the pull request refuses it whatever is green, until it is released -- falsifier: the 2026-11-24T16:00:51Z message does not refuse'
+  - id: AC4
+    statement: 'AC4: documentation-only and test-duration-only changes are admitted without a Lab line -- falsifier: either is refused'
+  - id: AC5
+    statement: 'AC5: proven by replaying the last 20 merged pull requests: the report names how many would have been refused and why -- falsifier: no report'
+evidence_requirements:
+- kind: tests
+  description: The proof gate tests and the auto-merge arming tests pass at the pushed head.
+  command: uv run --frozen pytest tests/test_landing_proof_gate.py tests/ci/test_auto_merge_proof_gate.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26671-ac1
+  description: 'AC1: the replay of omnimarket#6765 at its merged head answers DRAFT (lab_proof_other_change); the controls that name the head, or a head with the same patch id, answer PROVEN.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_landing_proof_gate.py -q --no-cov -n 0 -p no:randomly -k "6765 or lab_commit_as_the_head or base_merge or no_lab_line or lab_heading"
+    cwd: .
+- id: dod-omn26671-ac2
+  description: 'AC2: a grader change with unit tests only answers DRAFT naming both missing answers; naming one answers DRAFT for the other; naming both answers PROVEN.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_landing_proof_gate.py -q --no-cov -n 0 -p no:randomly -k "grader"
+    cwd: .
+- id: dod-omn26671-ac3
+  description: 'AC3: the do-not-land message of 2026-11-24T16:00:51Z and an open HOLD row each answer DRAFT whatever is green; a RELEASE naming the row lifts it.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_landing_proof_gate.py -q --no-cov -n 0 -p no:randomly -k "do_not_land or release or hold_row or names_only"
+    cwd: .
+- id: dod-omn26671-ac4
+  description: 'AC4: a documentation-only change and a test-duration-only change answer PROVEN with no Lab line; a Python file is never exempt.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_landing_proof_gate.py -q --no-cov -n 0 -p no:randomly -k "documentation_only or python_file or exempt"
+    cwd: .
+- id: dod-omn26671-ac5
+  description: 'AC5: the replay of the last 20 merged omnimarket pull requests refuses 16 (lab_proof_other_change 12, lab_line_missing 3, known_good_missing 4, known_bad_missing 4) and proves 4.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_landing_proof_gate.py -q --no-cov -n 0 -p no:randomly -k "replay"
+    cwd: .
+- id: dod-omn26671-arming
+  description: 'auto-merge.yml arms only after the proof gate step answers PROVEN; the hold gate, the author check and the feature-base refusal are unchanged.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_auto_merge_proof_gate.py tests/ci/test_auto_merge_hold_omn18179.py tests/ci/test_auto_merge_ready_for_review_omn19216.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26671-integration-proof
+  description: the gate tests, the arming tests and the command run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26671 --kind test -- env PYTHONDONTWRITEBYTECODE=1
+      uv run --frozen pytest tests/test_landing_proof_gate.py tests/ci/test_auto_merge_proof_gate.py -q --no-cov
+    cwd: .
