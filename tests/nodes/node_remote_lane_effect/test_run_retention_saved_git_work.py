@@ -80,6 +80,8 @@ def test_bundle_and_patch_named_by_no_receipt_are_archived_before_removal(run):
     nested = tree / "deep/er"
     nested.mkdir(parents=True)
     (nested / "other.patch").write_text("nested patch")
+    temp = scratch / "unreferenced.tmp"
+    temp.write_text("scratch noise")
 
     result = retain_run(root, receipt, ledger, delete=True)
 
@@ -92,9 +94,12 @@ def test_bundle_and_patch_named_by_no_receipt_are_archived_before_removal(run):
         b"bundle bytes"
     )
     assert (archive / "runs/run-1/deep/er/other.patch").read_text() == "nested patch"
+    assert "runs/run-1.ctx/scratch/unreferenced.tmp" not in files
+    assert not (archive / "runs/run-1.ctx/scratch/unreferenced.tmp").exists()
     assert result["removed"] == ["run-1", "run-1.ctx"]
     assert not tree.exists()
     assert not ctx.exists()
+    assert not temp.exists()
 
 
 def test_symlinked_bundle_and_outside_files_are_not_followed(run, tmp_path):
