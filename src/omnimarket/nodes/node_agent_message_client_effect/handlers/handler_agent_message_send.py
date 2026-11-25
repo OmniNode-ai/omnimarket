@@ -122,5 +122,7 @@ class HandlerAgentMessageSend:
             text=request.text,
             sent_at=self._clock().astimezone(UTC),
         )
-        self._node.send(message)
+        event_id = self._node.send(message)
+        if event_id:
+            message = message.model_copy(update={"message_id": event_id})
         return ModelAgentMessageSendResult(message=message)

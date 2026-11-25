@@ -53,6 +53,23 @@ class ModelServicePrincipalDelivery(BaseModel):
     owner: str = Field(min_length=1)
     mode: str = Field(pattern=r"^[0-7]{3,4}$")
     privilege_argv: tuple[str, ...] = ()
+    #: The OS account whose home the folder is relative to. With none, an absolute folder stands as written and a relative
+    #: one is relative to the ssh login's home. With one, the delivery script reads that account's home on the target with
+    #: `getent passwd`, and refuses an unknown account, a uid that differs from the owner's, a home that is a symlink and a
+    #: home that does not exist.
+    account: str | None = Field(
+        default=None, pattern=r"^[A-Za-z_][A-Za-z0-9_.-]{0,63}$"
+    )
+
+    @model_validator(mode="after")
+    def _account_folder_stays_under_the_home(self) -> ModelServicePrincipalDelivery:
+        if self.account is not None and (
+            self.folder.startswith("/") or ".." in self.folder.split("/")
+        ):
+            raise ValueError(
+                "a delivery row with an account takes a folder relative to that account's home, with no '..' segment"
+            )
+        return self
 
 
 class ModelServicePrincipalDeclaration(BaseModel):

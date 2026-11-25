@@ -646,7 +646,7 @@ def test_pyproject_sections_git_adapter_reports_an_unknown_ref_as_a_parse_failur
 # --- the shipped settings and the selector around the handler -------------------------------------
 
 
-def test_pyproject_sections_shipped_adjacency_declares_the_rule_and_keeps_it_off() -> (
+def test_pyproject_sections_shipped_adjacency_declares_the_rule_and_turns_it_on() -> (
     None
 ):
     config = load_adjacency_map(SHIPPED_ADJACENCY)
@@ -654,20 +654,84 @@ def test_pyproject_sections_shipped_adjacency_declares_the_rule_and_keeps_it_off
     assert config.pyproject_reader_globs
     assert config.pyproject_paths == ["pyproject.toml"]
     assert config.pyproject_lock_paths == ["uv.lock"]
-    # The rule is the stage 2 entry: nothing a pull request runs at stage 0 or 1 changes with it.
-    assert config.pyproject_section_selection_enabled is False
+    # The rule is the stage 2 entry and the shipped file turns it on: the two files it decides leave the
+    # infrastructure list the replay and the selector read, every other entry stays.
+    assert config.pyproject_section_selection_enabled is True
     assert "pyproject.toml" in config.test_infrastructure_paths
-    assert (
-        config.effective_test_infrastructure_paths() == config.test_infrastructure_paths
-    )
+    effective = config.effective_test_infrastructure_paths()
+    assert "pyproject.toml" not in effective
+    assert "uv.lock" not in effective
+    assert ".github/" in effective
+    assert "scripts/" in effective
 
 
-def test_pyproject_sections_a_pyproject_change_stays_full_while_the_rule_is_off() -> (
-    None
-):
+def test_pyproject_sections_a_pyproject_change_with_no_base_ref_stays_full() -> None:
     selection = compute_selection(["pyproject.toml"], SHIPPED_ADJACENCY, "feature")
     assert selection.is_full_suite
     assert selection.full_suite_reason is EnumFullSuiteReason.TEST_INFRASTRUCTURE
+
+
+def _shipped_section_config() -> ModelAdjacencyMap:
+    """The fixture config carrying the shipped file's switch and section settings."""
+    shipped = load_adjacency_map(SHIPPED_ADJACENCY)
+    return _config().model_copy(
+        update={
+            name: getattr(shipped, name)
+            for name in (
+                "pyproject_section_selection_enabled",
+                "pyproject_paths",
+                "pyproject_lock_paths",
+                "pyproject_narrowable_keys",
+                "pyproject_reader_globs",
+            )
+        }
+    )
+
+
+def test_pyproject_sections_shipped_settings_narrow_an_entry_point_change(
+    tmp_path: Path,
+) -> None:
+    result = _resolve(
+        tmp_path, ["pyproject.toml"], head=ADD_NODE_B, config=_shipped_section_config()
+    )
+    assert result.full_suite_reason is None
+    assert "tests/" not in result.selected_paths
+    assert "tests/nodes/node_b/" in result.selected_paths
+
+
+@pytest.mark.parametrize(
+    "head",
+    [
+        BASE_PYPROJECT.replace(
+            'dependencies = ["pydantic>=2.11.0"]',
+            'dependencies = ["pydantic>=2.11.0", "httpx>=0.27"]',
+        ),
+        BASE_PYPROJECT.replace('"pydantic>=2.11.0"', '"pydantic>=2.12.0"'),
+    ],
+    ids=["dependency-added", "dependency-bound-raised"],
+)
+def test_pyproject_sections_shipped_settings_keep_a_dependency_change_full(
+    head: str, tmp_path: Path
+) -> None:
+    result = _resolve(
+        tmp_path, ["pyproject.toml"], head=head, config=_shipped_section_config()
+    )
+    assert result.full_suite_reason is EnumFullSuiteReason.TEST_INFRASTRUCTURE
+    assert result.selected_paths == ()
+
+
+def test_pyproject_sections_shipped_settings_keep_a_lock_change_beyond_the_version_full(
+    tmp_path: Path,
+) -> None:
+    result = _resolve(
+        tmp_path,
+        ["pyproject.toml", "uv.lock"],
+        base=BASE_PYPROJECT,
+        head=BUMPED,
+        lock=(_lock(own="0.4.1"), _lock(own="0.4.2", other="2.12.0")),
+        config=_shipped_section_config(),
+    )
+    assert result.full_suite_reason is EnumFullSuiteReason.TEST_INFRASTRUCTURE
 
 
 def _selector_fixture(

@@ -94,12 +94,11 @@ class HandlerOverlayStoreProjectionRunner(BaseProjectionRunner):
     ) -> bool:
         payload = strip_runner_injected_keys(data)
         payload.pop("_db", None)
-        # A setting set publishes the loader's record plus ``operator_paths``: both are stored as the document they carry.
+        # A setting set publishes the loader's record plus ``operator_paths``: the store keeps both, because the paths
+        # are what lets the next loader run keep the value instead of replacing it from the overlay home (OMN-26495).
         loaded = ModelOverlaySettingRecord.model_validate(payload)
         store = PostgresOverlayStore(self.db_for(_STORE_TABLE, operation="write").pool)
-        await store.write_version(
-            loaded.model_dump(mode="json", exclude={"operator_paths"})
-        )
+        await store.write_version(loaded.model_dump(mode="json"))
         current = await store.read_current(loaded.overlay_id)
         publish = await self.get_keyed_publish_fn()
         if publish is not None and current is not None:
@@ -107,7 +106,7 @@ class HandlerOverlayStoreProjectionRunner(BaseProjectionRunner):
                 self._snapshot_topic,
                 loaded.overlay_id.encode("utf-8"),
                 ModelOverlayStoreRecord.model_validate(current)
-                .model_dump_json()
+                .model_dump_json(exclude_defaults=True)
                 .encode("utf-8"),
             )
         return True
