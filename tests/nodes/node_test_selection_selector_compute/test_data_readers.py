@@ -95,7 +95,8 @@ def _covers(selected: tuple[str, ...] | list[str], path: str) -> bool:
 
 def test_data_readers_shipped_adjacency_declares_the_rule_and_turns_it_on() -> None:
     config = load_adjacency_map(ADJACENCY)
-    assert config.data_reader_roots == ["tests/", "contracts/", "src/omnimarket/nodes/"]
+    # OMN-24562: on for the fixture tree only; contracts/ and a node's own data files keep their present rules.
+    assert config.data_reader_roots == ["tests/fixtures/"]
     assert config.data_reader_fixture_roots == ["tests/fixtures/"]
     # OMN-24562: the shipped switch is on, so a changed fixture selects its readers and no longer takes the
     # full suite. Off is still the escalation it had (test_data_readers_a_fixture_keeps_the_full_suite_while_the_rule_is_off).

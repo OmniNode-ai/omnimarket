@@ -104,10 +104,11 @@ data_reader_overrides: {}
 # tests/fixtures/ alone stopped). The replay of those 4 narrows all four with no test that names a changed
 # file left out of the selection; the two merges that also change uv.lock stay full.
 data_file_readers_enabled: true
+# OMN-24562: the rule is on for the fixture tree only. A node's own contract.yaml and a contracts/ file are
+# read by many tests that only name the file kind, so under the wider roots their change selects too much and
+# takes the full suite (narrowed_selection_too_heavy) where it narrows today; those keep their present rules.
 data_reader_roots:
-  - tests/
-  - contracts/
-  - src/omnimarket/nodes/
+  - tests/fixtures/
 data_reader_fixture_roots:
   - tests/fixtures/
 data_reader_gated_infrastructure_paths:
