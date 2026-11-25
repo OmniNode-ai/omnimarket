@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""HandlerWriterTopicApply: create each planned service writer topic the broker does not hold."""
+"""HandlerWriterTopicApply: create each planned service writer and host-timer publish topic the broker does not hold."""
 
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ class HandlerWriterTopicApply:
         live = set(await self._lister.list_topics())
         created: list[str] = []
         existing: list[str] = []
-        for topic in plan.service_writer_topics:
+        for topic in (*plan.service_writer_topics, *plan.host_unit_publish_topics):
             if topic in live:
                 existing.append(topic)
             elif await self._creator.create_topic(
@@ -55,6 +55,7 @@ class HandlerWriterTopicApply:
                 existing.append(topic)
         return ModelWriterTopicApplyResult(
             planned=plan.service_writer_topics,
+            host_unit_planned=plan.host_unit_publish_topics,
             created=tuple(created),
             existing=tuple(existing),
             num_partitions=WRITER_TOPIC_PARTITIONS,
