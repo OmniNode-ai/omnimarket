@@ -27,10 +27,11 @@ _DRIVER_ERRORS = (
     TimeoutError,
 )
 
-_TRACKING_COLUMNS = """
+_REQUIRED_COLUMNS = ("id", "envelope", "created_at", "published_at")
+_TRACKING_NAMES = frozenset({"attempts", "last_error"})
+_TABLE_COLUMNS = """
 SELECT column_name FROM information_schema.columns
 WHERE table_name = 'tenant_event_outbox' AND table_schema = ANY (current_schemas(false))
-AND column_name IN ('attempts', 'last_error')
 """
 _FETCH_UNPUBLISHED = """
 SELECT id::text AS id, envelope, {attempts} AS attempts
@@ -53,6 +54,10 @@ WHERE id::text = $1 AND published_at IS NULL
 
 class TenantOutboxStoreUnavailableError(Exception):
     """The outbox database could not be reached or refused the statement; carries the class name only."""
+
+
+class TenantOutboxSchemaError(TenantOutboxStoreUnavailableError):
+    """The outbox table is absent or lacks a column the flush needs; the message names the table or the columns."""
 
 
 def _unavailable(exc: BaseException) -> TenantOutboxStoreUnavailableError:
@@ -98,14 +103,25 @@ class TenantOutboxPostgres:
         return self._pool
 
     async def _tracking(self, pool: asyncpg.Pool) -> bool:
-        """Whether the table has the ``attempts`` and ``last_error`` columns.
+        """Whether the table has the ``attempts`` and ``last_error`` columns; refuses a table the flush cannot use.
 
-        The dev table ``node_tenant_provision_effect`` writes has neither; naming them there is an UndefinedColumnError on
-        every statement. Without them a failure is reported in the flush result only and every row reads as zero attempts.
+        The dev table ``node_tenant_provision_effect`` writes has neither tracking column; naming them there is an
+        UndefinedColumnError on every statement. Without them a failure is reported in the flush result only and every row
+        reads as zero attempts. A table that lacks a required column, or is absent, is refused here, by name, before any row
+        statement is sent.
         """
         if self._tracks_failures is None:
-            found = {r["column_name"] for r in await pool.fetch(_TRACKING_COLUMNS)}
-            self._tracks_failures = found == {"attempts", "last_error"}
+            found = {r["column_name"] for r in await pool.fetch(_TABLE_COLUMNS)}
+            if not found:
+                raise TenantOutboxSchemaError(
+                    "table tenant_event_outbox not found in the search path"
+                )
+            absent = [c for c in _REQUIRED_COLUMNS if c not in found]
+            if absent:
+                raise TenantOutboxSchemaError(
+                    f"table tenant_event_outbox lacks column(s): {', '.join(absent)}"
+                )
+            self._tracks_failures = found >= _TRACKING_NAMES
         return self._tracks_failures
 
     async def close(self) -> None:
@@ -162,4 +178,8 @@ class TenantOutboxPostgres:
             raise _unavailable(exc) from None
 
 
-__all__ = ["TenantOutboxPostgres", "TenantOutboxStoreUnavailableError"]
+__all__ = [
+    "TenantOutboxPostgres",
+    "TenantOutboxSchemaError",
+    "TenantOutboxStoreUnavailableError",
+]

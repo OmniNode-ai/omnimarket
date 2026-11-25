@@ -12,10 +12,11 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
 
-from pydantic import BaseModel, ConfigDict, Field
-
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
-from omnimarket.models.bus_binding.model_node_event_bus import ModelNodeEventBus
+from omnimarket.models.overlay_documents.model_tenant_outbox_flush_overlay import (
+    ModelOutboxDatabaseOverlay,
+    ModelTenantOutboxFlushOverlay,
+)
 from omnimarket.nodes.node_tenant_outbox_flush_effect.handlers.handler_tenant_outbox_flush import (
     HandlerTenantOutboxFlush,
 )
@@ -29,28 +30,6 @@ from omnimarket.nodes.node_tenant_outbox_flush_effect.handlers.tenant_outbox_pos
 )
 
 NODE_NAME = "node_tenant_outbox_flush_effect"
-
-
-class ModelOutboxDatabaseOverlay(BaseModel):
-    """Where the identity database's DSN is found, and the pool's bounds."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    dsn_secret: str = Field(min_length=1)
-    secret_resolver_config_path: str = Field(min_length=1)
-    max_pool_size: int = Field(ge=1)
-    query_timeout_seconds: float = Field(gt=0)
-
-
-class ModelTenantOutboxFlushOverlay(BaseModel):
-    """The whole overlay document."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    lane: str = Field(min_length=1)
-    batch_limit: int = Field(ge=1, le=1000)
-    database: ModelOutboxDatabaseOverlay
-    event_bus: ModelNodeEventBus
 
 
 def load_overlay(

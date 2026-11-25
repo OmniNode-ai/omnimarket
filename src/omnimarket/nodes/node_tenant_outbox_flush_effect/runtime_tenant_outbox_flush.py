@@ -27,6 +27,7 @@ from omnimarket.nodes.node_tenant_outbox_flush_effect.models.model_tenant_outbox
     ModelTenantOutboxFlushCommand,
 )
 from omnimarket.nodes.node_tenant_outbox_flush_effect.overlay import (
+    NODE_NAME,
     ModelTenantOutboxFlushOverlay,
     build_flush,
     load_overlay,
@@ -50,7 +51,10 @@ async def _run(overlay: ModelTenantOutboxFlushOverlay) -> tuple[bool, str]:
         )
     finally:
         for close in closers:
-            await close()
+            try:
+                await close()
+            except Exception as exc:
+                sys.stderr.write(f"close failed: {type(exc).__name__}\n")
     return result.outcome in _OK_OUTCOMES, result.model_dump_json()
 
 
@@ -79,8 +83,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             return 0
         ok, answer = asyncio.run(_run(overlay))
-    except (NodeOverlayError, ValidationError, OSError, ValueError) as exc:
-        sys.stderr.write(f"INDETERMINATE: {type(exc).__name__}\n")
+    except NodeOverlayError as exc:
+        sys.stderr.write(
+            f"INDETERMINATE: {NODE_NAME} overlay refused ({type(exc).__name__}): {exc}\n"
+        )
+        return 3
+    except (ValidationError, OSError, ValueError) as exc:
+        sys.stderr.write(f"INDETERMINATE: {NODE_NAME} {type(exc).__name__}\n")
         return 3
     sys.stdout.write(answer + "\n")
     return 0 if ok else 1

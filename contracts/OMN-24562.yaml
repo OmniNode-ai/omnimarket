@@ -152,3 +152,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_code_eval_trial_orchestrator/test_suite_admission_both_ways.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn24562-outbox-flush-refusals-by-name
+  description: 'AC8: a missing overlay is refused with exit 3 naming the node and the overlay file, a missing outbox table or column is refused by name before any row statement is sent, and a closer that raises is a stderr line and not a traceback (failing control: before the change the first seven tests failed and the closer test ended in an uncaught RuntimeError).'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_tenant_outbox_flush_effect/test_refusals_by_name_omn24562.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .

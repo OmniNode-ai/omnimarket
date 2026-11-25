@@ -17,6 +17,9 @@ from typing import Any
 
 import yaml
 
+from omnimarket.nodes.node_tenant_outbox_flush_effect.handlers.tenant_outbox_postgres import (
+    TenantOutboxSchemaError,
+)
 from omnimarket.nodes.node_tenant_outbox_flush_effect.models.model_tenant_outbox_flush import (
     EnumTenantOutboxFlushOutcome,
     ModelOutboxRow,
@@ -91,10 +94,11 @@ class HandlerTenantOutboxFlush:
         try:
             rows = await store.fetch_unpublished(request.batch_limit)
         except Exception as exc:
+            named = f": {exc}" if isinstance(exc, TenantOutboxSchemaError) else ""
             return ModelTenantOutboxFlushResult(
                 command_id=request.command_id,
                 outcome=EnumTenantOutboxFlushOutcome.FAILED_STORE_UNAVAILABLE,
-                detail=f"outbox store unavailable: {type(exc).__name__}",
+                detail=f"outbox store unavailable: {type(exc).__name__}{named}",
                 emitted_at=now,
             )
         if not rows:

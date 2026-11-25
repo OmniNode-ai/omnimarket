@@ -33,7 +33,17 @@ class RecordingPool:
         if "information_schema.columns" in sql:
             self._record(sql, args)
             self.calls.pop()
-            return [{"column_name": "attempts"}, {"column_name": "last_error"}]
+            return [
+                {"column_name": c}
+                for c in (
+                    "id",
+                    "envelope",
+                    "created_at",
+                    "published_at",
+                    "attempts",
+                    "last_error",
+                )
+            ]
         self._record(sql, args)
         return self._rows
 

@@ -17,8 +17,16 @@ from uuid import uuid4
 import asyncpg
 import pytest
 
+from omnimarket.nodes.node_tenant_outbox_flush_effect.handlers.handler_tenant_outbox_flush import (
+    HandlerTenantOutboxFlush,
+)
 from omnimarket.nodes.node_tenant_outbox_flush_effect.handlers.tenant_outbox_postgres import (
     TenantOutboxPostgres,
+)
+from omnimarket.nodes.node_tenant_outbox_flush_effect.models.model_tenant_outbox_flush import (
+    EnumTenantOutboxFlushOutcome,
+    ModelTenantOutboxFlushCommand,
+    ModelTenantOutboxFlushResult,
 )
 from tests.nodes.node_tenant_provision_effect.postgres_support import connect_kwargs
 
@@ -148,3 +156,76 @@ async def test_a_table_with_the_tracking_columns_counts_attempts_and_keeps_the_e
         )
         assert stored is not None
         assert (stored["published_at"], stored["last_error"]) == (NOW, None)
+
+
+class _Bus:
+    """A broker double: records what it acknowledged, or refuses every publish."""
+
+    def __init__(self, refuse: bool = False) -> None:
+        self.sent: list[tuple[str, str]] = []
+        self._refuse = refuse
+
+    async def publish(self, topic: str, key: str, envelope: dict[str, object]) -> None:
+        if self._refuse:
+            raise TimeoutError("broker refused")
+        self.sent.append((topic, str(envelope["correlation_id"])))
+
+
+async def _flush(pool: asyncpg.Pool, bus: _Bus) -> ModelTenantOutboxFlushResult:
+    handler = HandlerTenantOutboxFlush(
+        TenantOutboxPostgres(pool=pool), bus, topic="onex.tenant.events"
+    )
+    return await handler.handle(
+        ModelTenantOutboxFlushCommand(command_id=uuid4(), batch_limit=10)
+    )
+
+
+async def test_an_event_is_published_once_marked_and_a_second_run_sends_nothing(
+    port: int,
+) -> None:
+    async with identity_tables(port) as (admin, pool):
+        (row_id,) = await _seed(admin, 1)
+        first_bus, second_bus = _Bus(), _Bus()
+        first = await _flush(pool, first_bus)
+        second = await _flush(pool, second_bus)
+        assert first.outcome is EnumTenantOutboxFlushOutcome.FLUSHED
+        assert first_bus.sent == [("onex.tenant.events", "c0")]
+        assert (
+            await admin.fetchval(
+                "SELECT published_at IS NOT NULL FROM tenant_event_outbox WHERE id::text = $1",
+                row_id,
+            )
+            is True
+        )
+        assert second.outcome is EnumTenantOutboxFlushOutcome.NOTHING_TO_FLUSH
+        assert second_bus.sent == []
+
+
+async def test_a_broker_refusal_keeps_the_row_for_the_next_run(port: int) -> None:
+    async with identity_tables(port) as (admin, pool):
+        (row_id,) = await _seed(admin, 1)
+        refused = await _flush(pool, _Bus(refuse=True))
+        assert refused.outcome is EnumTenantOutboxFlushOutcome.PARTIAL
+        assert refused.failed == 1
+        assert (
+            await admin.fetchval(
+                "SELECT published_at IS NULL FROM tenant_event_outbox WHERE id::text = $1",
+                row_id,
+            )
+            is True
+        )
+        retry_bus = _Bus()
+        retried = await _flush(pool, retry_bus)
+        assert retried.outcome is EnumTenantOutboxFlushOutcome.FLUSHED
+        assert retry_bus.sent == [("onex.tenant.events", "c0")]
+
+
+async def test_a_real_table_without_published_at_is_refused_naming_the_column(
+    port: int,
+) -> None:
+    async with identity_tables(port) as (admin, pool):
+        await _seed(admin, 1)
+        await admin.execute("ALTER TABLE tenant_event_outbox DROP COLUMN published_at")
+        result = await _flush(pool, _Bus())
+        assert result.outcome is EnumTenantOutboxFlushOutcome.FAILED_STORE_UNAVAILABLE
+        assert "published_at" in result.detail
