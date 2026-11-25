@@ -23,13 +23,40 @@ description: >
   green, or was red already, raises nothing. A prod target is refused.
 
 handler:
-  module: omnimarket.nodes.node_delegation_check_regression_effect.handlers.handler_check_regression
-  class: HandlerCheckRegression
-  input_model: omnimarket.nodes.node_delegation_check_regression_effect.models.model_check_regression.ModelCheckRegressionRequest
+  module: omnimarket.nodes.node_delegation_check_regression_effect.handlers.handler_setting_set_trigger
+  class: HandlerCheckRegressionOnSettingSet
+  input_model: omnimarket.nodes.node_overlay_setting_set_effect.models.model_overlay_setting_audit.ModelOverlaySettingAudit
 
-# Not a runtime-dispatched handler: the handler takes the settings, the check runner, the check history, the alarm delivery
-# and a clock as constructor parameters, so the node runs through its own command (runtime_check_regression). It declares no
-# topic of its own: the alarm delivery owns the ledger's and the channel's.
+# Trigger: a settings-store change reaches the bus as one audit row per set on the topic below, published by
+# node_overlay_setting_set_effect; HandlerCheckRegressionOnSettingSet turns the row into one settings_store change and runs
+# HandlerCheckRegression. The handler takes the settings, the check runner, the check history, the alarm delivery and a clock
+# as constructor parameters, which the deployment supplies; the replay command (runtime_check_regression) runs it from a
+# recorded incident. Each run's result goes out on the completed topic; the alarm delivery owns the ledger's and the channel's.
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - operation: handle
+      handler:
+        name: HandlerCheckRegressionOnSettingSet
+        module: omnimarket.nodes.node_delegation_check_regression_effect.handlers.handler_setting_set_trigger
+      event_model:
+        name: ModelOverlaySettingAudit
+        module: omnimarket.nodes.node_overlay_setting_set_effect.models.model_overlay_setting_audit
+      topic: onex.evt.omnimarket.overlay-setting-set.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.overlay-setting-set.v1
+  publish_topics:
+    - onex.evt.omnimarket.delegation-check-regression-completed.v1
+terminal_event: onex.evt.omnimarket.delegation-check-regression-completed.v1
+broker_acl_grants:
+  - principal: "${ONEX_ACL_DEV_RUNTIME_EFFECTS_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-setting-set.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-setting-set.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-check-regression-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-check-regression-completed.v1, operation: DESCRIBE}
 
 descriptor:
   node_archetype: effect
@@ -55,8 +82,9 @@ settings:
 
 runtime_dispatch:
   external_trigger: true
-  # A change that can turn a delegation check red is replayed, or applied, by a lane or an operator who runs the command
-  # below; it never runs on a timer.
+  command_topic: onex.evt.omnimarket.overlay-setting-set.v1
+  # A change that can turn a delegation check red arrives as a settings audit row on the topic above; a recorded incident is
+  # replayed by the command below. It never runs on a timer.
   on_demand:
     command: uv run python -m omnimarket.nodes.node_delegation_check_regression_effect --replay-fixture tests/fixtures/delegation_check_regression/incident_2026_11_23.json --change host_model
     owner: OmniNode Platform Team
@@ -68,6 +96,8 @@ dod_evidence:
     description: "AC2 a red check raises one alarm with a named owner; a green check raises none"
   - test: tests/nodes/node_delegation_check_regression_effect/test_delegation_check_regression.py::test_delegation_check_regression_overlay_defaults_declare_every_threshold_and_owner
     description: "AC5 the overlay defaults declare every threshold and owner, and a prod target is refused"
+  - test: tests/nodes/node_delegation_check_regression_effect/test_setting_set_trigger.py::test_the_audit_row_on_the_bus_fires_the_real_contract_and_raises_the_alarms
+    description: "OMN-26652 a settings audit row on the bus fires the real contract and raises the C14 and C29 alarms"
   - test: tests/nodes/node_delegation_check_regression_effect/test_delegation_check_regression.py::test_delegation_check_regression_replays_the_recorded_transition_into_alarm_rows_for_c14_and_c29
     description: "AC6 the recorded 2026-11-23 transition raises alarms for C14 and C29"
 
