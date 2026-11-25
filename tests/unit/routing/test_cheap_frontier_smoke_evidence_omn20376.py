@@ -124,6 +124,7 @@ def test_both_dated_smokes_are_read_and_the_latest_sets_the_bar() -> None:
     assert [fixture.name for fixture in FIXTURES] == [
         "cheap_frontier_smokes_2026_10_25.json",
         "cheap_frontier_smokes_2026_11_20.json",
+        "cheap_frontier_smokes_2026_11_24.json",
     ]
     smokes = _smokes()
     assert smokes["nvidia/nemotron-3.5-super-vl:free"]["accepted"] == 10

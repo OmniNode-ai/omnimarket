@@ -6,6 +6,7 @@ from omnimarket.nodes.node_dev_identity_provision_effect.protocols.protocol_dev_
     ProtocolDevIdentityTransport,
     ProtocolKeyGenerator,
     ProtocolTenantProvisioner,
+    ProtocolTenantReader,
     TenantProvisionUnavailableError,
 )
 
@@ -13,5 +14,6 @@ __all__ = [
     "ProtocolDevIdentityTransport",
     "ProtocolKeyGenerator",
     "ProtocolTenantProvisioner",
+    "ProtocolTenantReader",
     "TenantProvisionUnavailableError",
 ]

@@ -10,10 +10,16 @@ one) and only when the store holds none from the installed onex-overlays plugin 
 routing overlay is (OMN-23826). A document that is present and broken refuses with the key it was
 found under and its path; a broken store document never falls through to the plugin path. A document
 found in neither place is ``None``: the rule is off.
+
+The goal's ticket rule is read from the settings store before either (``load_goal_ticket_rule``'s ``store``, the omnibase_spi overlay
+store protocol the settings store injects): the document the store holds as the overlay's current version, which a set of the
+``ticket_roots`` setting writes. A store that holds none falls to the file root and the plugin path; a store document that is present and
+broken refuses naming the store and the overlay id, and never falls through to the files.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
@@ -22,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from omnibase_spi.protocols.storage import ProtocolOverlayStore
 
 from omnimarket.handlers.node_overlay_reader import OVERLAY_ROOTS_ENV, find_node_overlay
 from omnimarket.models.goal_scope_admission import (
@@ -32,6 +39,7 @@ from omnimarket.models.goal_scope_admission import (
 GOAL_RULE_OVERLAY_ID = "goal_scope_ticket_rule"
 TICKET_SCOPE_OVERLAY_ID = "ticket_scope"
 PLUGIN_OVERLAY_SOURCE = "the onex-overlays plugin path"
+SETTINGS_STORE_SOURCE = "the settings store"
 OVERLAY_PLUGIN_NAME = "onex-overlays"
 
 _COMMON_SCALARS = frozenset(
@@ -126,6 +134,11 @@ def _read_document(
         raise GoalScopeOverlayError(
             f"{where} is unreadable ({type(exc).__name__})"
         ) from None
+    return _checked_keys(doc, where, keys), where
+
+
+def _checked_keys(doc: object, where: str, keys: frozenset[str]) -> dict[str, Any]:
+    """``doc`` as a mapping; refuses a document that is not one, or is short of or past ``keys``."""
     if not isinstance(doc, dict):
         raise GoalScopeOverlayError(f"{where} must be a mapping")
     missing, unknown = sorted(keys - set(doc)), sorted(set(doc) - keys)
@@ -139,7 +152,21 @@ def _read_document(
             if part
         )
         raise GoalScopeOverlayError(f"{where} {why}")
-    return doc, where
+    return doc
+
+
+def _read_store_document(
+    store: ProtocolOverlayStore, overlay_id: str, keys: frozenset[str]
+) -> tuple[dict[str, Any], str] | None:
+    """The overlay's document as the store holds it and its error prefix, or ``None`` when the store holds no record of it.
+
+    A record that holds no document refuses; it is never read as an absent overlay.
+    """
+    record = asyncio.run(store.read_current(overlay_id))
+    if record is None:
+        return None
+    where = f"{SETTINGS_STORE_SOURCE}: overlay {overlay_id}"
+    return _checked_keys(record.get("document"), where, keys), where
 
 
 def _whole_numbers(
@@ -164,16 +191,26 @@ def _endpoint(doc: Mapping[str, Any], where: str) -> str:
 
 def load_goal_ticket_rule(
     environ: Mapping[str, str] | None = None,
+    *,
+    store: ProtocolOverlayStore | None = None,
 ) -> ModelGoalTicketRule | None:
-    """The goal's ticket rule, store first; ``None`` when no ``goal_scope_ticket_rule`` document is installed.
+    """The goal's ticket rule, the settings store first; ``None`` when no ``goal_scope_ticket_rule`` document is held anywhere.
 
-    Raises :class:`GoalScopeOverlayError` naming the key and path when a document is present and wrong.
+    The order is the injected ``store``, then the overlay file root, then the plugin path. Raises :class:`GoalScopeOverlayError`
+    naming the key and the path or overlay id when a document is present and wrong, whichever source holds it.
     """
-    found = find_goal_overlay(GOAL_RULE_OVERLAY_ID, environ)
-    if found is None:
-        return None
-    path, key = found
-    doc, where = _read_document(path, key, _RULE_KEYS)
+    read = (
+        None
+        if store is None
+        else _read_store_document(store, GOAL_RULE_OVERLAY_ID, _RULE_KEYS)
+    )
+    if read is None:
+        found = find_goal_overlay(GOAL_RULE_OVERLAY_ID, environ)
+        if found is None:
+            return None
+        path, key = found
+        read = _read_document(path, key, _RULE_KEYS)
+    doc, where = read
     roots = doc["ticket_roots"]
     if (
         not isinstance(roots, list)
@@ -221,6 +258,7 @@ def load_ticket_scope(
 __all__ = [
     "GOAL_RULE_OVERLAY_ID",
     "PLUGIN_OVERLAY_SOURCE",
+    "SETTINGS_STORE_SOURCE",
     "TICKET_SCOPE_OVERLAY_ID",
     "GoalScopeOverlayError",
     "find_goal_overlay",

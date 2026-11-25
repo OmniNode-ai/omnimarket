@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import os
 import textwrap
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -27,6 +28,7 @@ from omnimarket.nodes.node_lab_fill_effect.protocols.local_lab_fill_adapters imp
     appender_from_environment,
     resolve_skills_dir,
 )
+from omnimarket.protocols.protocol_ledger_rows_reader import LedgerReadError
 
 
 def _skills(
@@ -71,29 +73,40 @@ def test_skills_dir_prefers_the_newest_installed_version(tmp_path: Path) -> None
     assert resolve_skills_dir({"HOME": str(tmp_path)}).parent.name == "0.4.100"
 
 
-def test_ledger_reader_finds_this_fires_status_row_and_only_that(
-    tmp_path: Path,
-) -> None:
-    ledger = tmp_path / "L.md"
-    ledger.write_text(
-        "2026-10-09T00:40:00Z | STATUS | lane=lab-fill | run=2026-10-09T0020Z | x=1\n"
-        "2026-10-09T01:00:05Z | STATUS | lane=lab-fill | run=2026-10-09T0100Z | x=2\n"
-        "2026-10-09T01:00:06Z | STATUS | lane=other | run=2026-10-09T0200Z | x=3\n"
-        "2026-10-09T01:00:07Z | CLAIM | lane=lab-fill | run=2026-10-09T0300Z | x=4\n"
+class _Rows:
+    """The bus rows reader the ledger port reads: fixed rows, or a failure when ``fail`` is set."""
+
+    def __init__(self, lines: tuple[str, ...] = (), fail: str = "") -> None:
+        self._lines, self._fail = lines, fail
+
+    def rows(
+        self,
+        *,
+        reader: str,
+        window_hours: int,
+        kinds: Sequence[str] = (),
+        lanes: Sequence[str] = (),
+    ) -> tuple[str, ...]:
+        if self._fail:
+            raise LedgerReadError(self._fail)
+        return self._lines
+
+
+def test_ledger_reader_finds_this_fires_status_row_and_only_that() -> None:
+    rows = _Rows(
+        (
+            "2026-10-09T00:40:00Z | STATUS | lane=lab-fill | run=2026-10-09T0020Z | x=1",
+            "2026-10-09T01:00:05Z | STATUS | lane=lab-fill | run=2026-10-09T0100Z | x=2",
+            "2026-10-09T01:00:06Z | STATUS | lane=other | run=2026-10-09T0200Z | x=3",
+            "2026-10-09T01:00:07Z | CLAIM | lane=lab-fill | run=2026-10-09T0300Z | x=4",
+        )
     )
-    reader = LocalLedgerReader()
-    assert (
-        reader.status_row_time(str(ledger), "2026-10-09T0100Z")
-        == "2026-10-09T01:00:05Z"
-    )
-    assert (
-        reader.status_row_time(str(ledger), "2026-10-09T0200Z") is None
-    )  # another lane's row
-    assert (
-        reader.status_row_time(str(ledger), "2026-10-09T0300Z") is None
-    )  # not a STATUS row
+    reader = LocalLedgerReader(rows=rows)
+    assert reader.status_row_time("2026-10-09T0100Z") == "2026-10-09T01:00:05Z"
+    assert reader.status_row_time("2026-10-09T0200Z") is None  # another lane's row
+    assert reader.status_row_time("2026-10-09T0300Z") is None  # not a STATUS row
     with pytest.raises(LabFillPortError, match="ledger unreadable"):
-        reader.status_row_time(str(tmp_path / "missing.md"), "k")
+        LocalLedgerReader(rows=_Rows(fail="reader exited 69")).status_row_time("k")
 
 
 def test_approved_work_depth_and_row_by_id(tmp_path: Path) -> None:
