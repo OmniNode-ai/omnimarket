@@ -783,15 +783,6 @@ async def revoke_inference_credential(
         # revoke can be retried against a row that is still whole.
         try:
             deleted = await store.delete_secret(api_key_ref)
-            if not deleted:
-                raise CredentialStoreDeleteRejectedError(
-                    "BYOK credential revoke published credential-revoked but "
-                    "did not remove the key: the managed secret store declined "
-                    f"the delete for ref {api_key_ref!r} (tenant "
-                    f"{tenant_id!r}) by returning False. Retry the revoke."
-                )
-        except CredentialStoreDeleteRejectedError:
-            raise
         except Exception as exc:
             raise CredentialStoreDeleteRejectedError(
                 "BYOK credential revoke published credential-revoked but could "
@@ -799,6 +790,13 @@ async def revoke_inference_credential(
                 f"{api_key_ref!r} (tenant {tenant_id!r}). Retry the revoke. "
                 f"Underlying error type: {type(exc).__name__}."
             ) from exc
+        if not deleted:
+            raise CredentialStoreDeleteRejectedError(
+                "BYOK credential revoke published credential-revoked but "
+                "did not remove the key: the managed secret store declined "
+                f"the delete for ref {api_key_ref!r} (tenant "
+                f"{tenant_id!r}) by returning False. Retry the revoke."
+            )
     finally:
         if owns_store:
             await store.close()
