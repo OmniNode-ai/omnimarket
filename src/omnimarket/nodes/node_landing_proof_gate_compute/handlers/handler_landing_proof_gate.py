@@ -135,11 +135,24 @@ class HandlerLandingProofGate:
         lab = re.compile(self._policy.lab_line)
         sha = re.compile(self._policy.sha)
         failed = re.compile(self._policy.lab_failed)
+        exit_zero = re.compile(self._policy.lab_exit_zero)
+        passed = re.compile(self._policy.lab_passed)
+        failed_result = re.compile(self._policy.lab_failed_result)
+
+        def _failed_run(ln: str) -> bool:
+            # The run's own result decides. Exit 0 passed, so a known-bad control that "was refused" stays proof.
+            # With no exit 0, N passed counts only when no refused word, failed count or nonzero exit sits beside it.
+            if exit_zero.search(ln):
+                return False
+            if passed.search(ln) and not failed_result.search(ln):
+                return False
+            return bool(failed.search(ln))
+
         lab_lines = [
             ln for ln in self._all_lines(text) if lab.match(ln) and sha.search(ln)
         ]
         shas = sorted(
-            {x for ln in lab_lines if not failed.search(ln) for x in sha.findall(ln)}
+            {x for ln in lab_lines if not _failed_run(ln) for x in sha.findall(ln)}
         )
         if lab_lines and not shas:
             reasons.append(

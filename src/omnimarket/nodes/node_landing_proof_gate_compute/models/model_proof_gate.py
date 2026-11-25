@@ -31,6 +31,9 @@ class ModelProofGatePolicy(BaseModel):
 
     lab_line: str  # a regex; a line that matches is a Lab line
     sha: str  # a regex; a commit a Lab line names
+    lab_exit_zero: str  # a regex; the run's own result: exit 0, read before any refused or failed word
+    lab_passed: str  # a regex; N passed (N > 0) when the line states no exit code
+    lab_failed_result: str  # a regex; a nonzero exit or a failed count: the run itself failed, whatever else the line says
     lab_failed: str  # a regex; a Lab line that matches records a refused or failed run, which is no proof
     gated_words: tuple[
         str, ...
