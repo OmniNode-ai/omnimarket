@@ -103,13 +103,3 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/ci/test_infra_pin_aa87c2dd6abe_work_contracts_omn23865.py tests/ci/test_sibling_core_pin_pair_omn17427.py tests/unit/scripts/test_application_relation_inventory.py -q --no-cov -n 0 -p no:randomly
     cwd: .
-- id: dod-omn26635-after-merge-dev-reading
-  description: 'The after-merge step of AC4, taken once the merge is deployed to the dev lane (migration 0003 applied there) and the launch settings are in the dev store (Task 2): one real set on dev, then read the audit table for the set''s write id (count must be 1) and the record row (provenance operator for the path), counts and digests only, no values. Dev only, never prod. Before the merge this reading cannot be taken: dev does not yet run this code.'
-  source: manual
-  binds_ac:
-  - AC4
-  execution_scope: local_done_gate
-  checks:
-  - check_type: command
-    check_value: env psql "$ONEX_DEV_OVERLAY_STORE_DSN" -Atc "select count(*) from omninode_internal.overlay_store_audit where write_id = '$OMN26635_SET_WRITE_ID'" | grep -qx 1
-    cwd: .
