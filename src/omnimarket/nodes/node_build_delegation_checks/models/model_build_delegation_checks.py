@@ -93,6 +93,8 @@ class EnumBuildChecksStatus(StrEnum):
     ALREADY_RUN = "already_run"
     #: Not a successful rebuild of the dev lane.
     SKIPPED = "skipped"
+    #: The build history cannot be written under the declared state root: nothing ran, and the reason names the path.
+    REFUSED = "refused"
 
 
 class ModelBuildChecksResult(_Frozen):

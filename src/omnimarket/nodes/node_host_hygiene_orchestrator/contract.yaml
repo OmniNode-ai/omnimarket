@@ -59,6 +59,24 @@ handler_routing:
     event_model:
       name: ModelHostDiskReadFailed
       module: omnimarket.models.model_host_disk_reading
+  - operation: host_hygiene.unit_completed
+    topic: onex.evt.omnimarket.lab-work-unit-completed.v1
+    message_category: event
+    handler:
+      name: HandlerHostHygieneUnitCompleted
+      module: omnimarket.nodes.node_host_hygiene_orchestrator.handlers.handler_host_hygiene_receipt
+    event_model:
+      name: ModelLabWorkUnitReceipt
+      module: omnimarket.models.model_lab_work_unit
+  - operation: host_hygiene.unit_failed
+    topic: onex.evt.omnimarket.lab-work-unit-failed.v1
+    message_category: event
+    handler:
+      name: HandlerHostHygieneUnitFailed
+      module: omnimarket.nodes.node_host_hygiene_orchestrator.handlers.handler_host_hygiene_receipt
+    event_model:
+      name: ModelLabWorkCommandFailure
+      module: omnimarket.lab_work.bus
   - operation: host_hygiene.scheduled_run
     topic: onex.intent.platform.runtime-tick.v1
     handler:
@@ -73,6 +91,10 @@ input_subscriptions:
   operation: host_hygiene.run_requested
 - topic: onex.intent.platform.runtime-tick.v1
   operation: host_hygiene.scheduled_run
+- topic: onex.evt.omnimarket.lab-work-unit-completed.v1
+  operation: host_hygiene.unit_completed
+- topic: onex.evt.omnimarket.lab-work-unit-failed.v1
+  operation: host_hygiene.unit_failed
 runtime_dispatch:
   # `onex run-node` is this command's producer; declared so the topic graph sees a sender.
   command_topic: onex.cmd.omnimarket.host-hygiene-run-requested.v1
@@ -84,11 +106,16 @@ event_bus:
   - onex.evt.omnimarket.host-disk-read.v1
   - onex.evt.omnimarket.host-disk-read-failed.v1
   - onex.intent.platform.runtime-tick.v1
+  - onex.evt.omnimarket.lab-work-unit-completed.v1
+  - onex.evt.omnimarket.lab-work-unit-failed.v1
   publish_topics:
+  - onex.cmd.omnimarket.lab-work-unit-requested.v1
   - onex.evt.omnimarket.host-hygiene-run-completed.v1
   - onex.evt.omnimarket.schedule-run.v1
 terminal_event: onex.evt.omnimarket.host-hygiene-run-completed.v1
 published_events:
+- topic: onex.cmd.omnimarket.lab-work-unit-requested.v1
+  event_type: ModelHostHygieneUnitCommand
 - topic: onex.evt.omnimarket.host-hygiene-run-completed.v1
   event_type: ModelHostHygieneRunCompleted
 - topic: onex.evt.omnimarket.schedule-run.v1
@@ -135,6 +162,12 @@ broker_acl_grants:
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-disk-read.v1, operation: DESCRIBE}
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-disk-read-failed.v1, operation: READ}
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-disk-read-failed.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-work-unit-requested.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-work-unit-requested.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-work-unit-completed.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-work-unit-completed.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-work-unit-failed.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-work-unit-failed.v1, operation: DESCRIBE}
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-hygiene-run-completed.v1, operation: WRITE}
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-hygiene-run-completed.v1, operation: DESCRIBE}
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.schedule-run.v1, operation: WRITE}

@@ -18,3 +18,4 @@ class ModelTopicProvisionContract(BaseModel):
     runtime_profiles: tuple[str, ...] = ()
     topics: tuple[str, ...] = ()
     writer_topics: ModelWriterTopicsTemplate | None = None
+    host_unit_publish_topics: tuple[str, ...] = ()

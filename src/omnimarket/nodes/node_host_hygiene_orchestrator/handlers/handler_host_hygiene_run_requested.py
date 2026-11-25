@@ -50,6 +50,7 @@ class HandlerHostHygieneRunRequested(HostHygieneRunBase):
     """ORCHESTRATOR handler: a run-requested command in, the hygiene run event out."""
 
     HANDLER_ID = f"{NODE_NAME}.host_hygiene.run_requested"
+    SHARES_PENDING_RUNS = False
 
     async def handle(
         self, request: ModelHostHygieneRunRequested

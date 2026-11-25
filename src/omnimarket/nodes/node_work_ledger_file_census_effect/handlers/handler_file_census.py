@@ -6,8 +6,10 @@
 holding an executable reader or writer of the ledger file's name or its path variable, and compares
 each count with the shrink-only ratchet. A count above its ratchet row is red (``ratchet-grew``); a
 count below it passes and is returned lowered in ``lowered_ratchet`` for the caller to write. An
-absent repository, an unreadable one, a repository with no ratchet row and an unreadable ratchet
-file are typed failures, never a pass. Each run is one chain under the emission contract.
+unreadable repository, a repository with no ratchet row and an unreadable ratchet file are typed failures, never a
+pass. A registered repository with no clone is not a failure of the run (operator ruling 2026-11-24T16:19:26Z): the run
+counts every present repository, passes or fails on those rows, and names each absent repository in
+``absent_repositories``; only a run in which no repository is present fails (``repo-absent``). Each run is one chain under the emission contract.
 """
 
 from __future__ import annotations
@@ -124,8 +126,8 @@ class HandlerFileCensus:
                     for hit in count.hits:
                         held[hit.path] = held.get(hit.path, 0) + 1
                     lowered_baseline[count.repository] = held
+        absent = tuple(c.repository for c in counts if c.state == "absent")
         codes = {
-            "absent": "repo-absent",
             "unreadable": "repo-unreadable",
             "unratcheted": "ratchet-missing-row",
             "unbaselined": "baseline-missing-row",
@@ -133,14 +135,28 @@ class HandlerFileCensus:
             "new-reader": "new-file-reader",
         }
         failing = [c for c in counts if c.state in codes]
+        if len(absent) == len(counts):
+            # nothing was counted, so there is no count to pass: the run fails and still names every absent repository
+            return self._fail(
+                chain,
+                request,
+                counts,
+                "repo-absent",
+                ",".join(absent),
+                total,
+                lowered,
+                runtime_total,
+                absent,
+            )
         if not failing:
-            chain.success({"files": total, "repositories": len(counts)})
+            chain.success({"files": total, "repositories": len(counts) - len(absent)})
             return ModelCensusResult(
                 correlation_id=request.correlation_id,
                 passed=True,
                 total_files=total,
                 runtime_files=runtime_total,
                 counts=counts,
+                absent_repositories=absent,
                 lowered_ratchet=lowered,
                 lowered_baseline=lowered_baseline,
             )
@@ -155,7 +171,7 @@ class HandlerFileCensus:
             if codes[c.state] == code
         )
         return self._fail(
-            chain, request, counts, code, detail, total, lowered, runtime_total
+            chain, request, counts, code, detail, total, lowered, runtime_total, absent
         )
 
     def _fail(
@@ -168,6 +184,7 @@ class HandlerFileCensus:
         total: int = 0,
         lowered: dict[str, int] | None = None,
         runtime_total: int = 0,
+        absent: tuple[str, ...] = (),
     ) -> ModelCensusResult:
         chain.failure(code, detail)
         return ModelCensusResult(
@@ -176,6 +193,7 @@ class HandlerFileCensus:
             total_files=total,
             runtime_files=runtime_total,
             counts=counts,
+            absent_repositories=absent,
             failure_code=code,
             failure_detail=detail[:300],
             lowered_ratchet=lowered or {},
