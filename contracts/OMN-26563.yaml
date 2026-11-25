@@ -15,6 +15,11 @@ requirements:
     statement: 'AC2: a repository-edit task with no repository, no recoverable source sha or no check is refused with a typed refusal that names the task, and is never replayed as a chat call -- falsifier: the refusal tests of the named focused test file pass on the pushed branch and fail at the base branch'
   - id: AC3
     statement: 'AC3: a self-contained prompt with no repository still routes to a chat call scored by the chat gate -- falsifier: the self-contained test of the named focused test file fails on the pushed branch'
+- id: req-omn26563-ci-summary-concluded-job
+  statement: The CI Summary poll counts a job whose conclusion is set as done, pages the jobs read at 30 then 10, and fails closed naming the job when a job has no conclusion 45 minutes after the last other job completed.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: the CI Summary gate treats in_progress with a conclusion as completed and fails closed on a stalled job with no conclusion -- falsifier: uv run pytest tests/ci/test_ci_summary_running_conclusion_omn26563.py fails at the base branch, where in_progress with a conclusion is waited on, and passes on the pushed branch'
 evidence_requirements:
 - kind: tests
   description: The named focused tests pass at the pushed head.
@@ -66,9 +71,10 @@ dod_evidence:
       -q -n 0 --no-cov --refuse-skips
     cwd: .
 - id: dod-omn26563-ci-summary-concluded-job
-  description: 'CI Summary poll: a job whose conclusion is set counts as done (in_progress + success is green, in_progress + failure is red, in_progress + no conclusion waits), the jobs read pages at 30 then 10, and a job with no conclusion fails closed 45 minutes after the last other job completed. This local completion proof carries no hosted AC bindings.'
+  description: 'CI Summary poll: a job whose conclusion is set counts as done (in_progress + success is green, in_progress + failure is red, in_progress + no conclusion waits), the jobs read pages at 30 then 10, and a job with no conclusion fails closed 45 minutes after the last other job completed. AC4: this check runs on a hosted runner.'
   source: manual
-  execution_scope: local_done_gate
+  binds_ac:
+  - AC4
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/ci/test_ci_summary_running_conclusion_omn26563.py -q -p no:randomly --no-cov
