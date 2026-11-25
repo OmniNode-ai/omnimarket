@@ -58,27 +58,38 @@ def _error_text(exc: BaseException) -> str:
 
 
 class HandlerTenantOutboxFlush:
-    """Constructed by the runtime with its store and bus; nothing here opens a connection."""
+    """Built bare by the runtime's auto-wiring, and with its store and bus by ``overlay.build_flush``.
+
+    Without a store and a bus a command answers ``FAILED_STORE_UNAVAILABLE``; nothing here opens a connection.
+    """
 
     def __init__(
         self,
-        store: ProtocolTenantOutboxStore,
-        publisher: ProtocolTenantEventPublisher,
+        store: ProtocolTenantOutboxStore | None = None,
+        publisher: ProtocolTenantEventPublisher | None = None,
         *,
-        topic: str,
+        topic: str | None = None,
         clock: Callable[[], datetime] = utc_now,
     ) -> None:
         self._store = store
         self._publisher = publisher
-        self._topic = topic
+        self._topic = topic or publish_topic_from_contract()
         self._clock = clock
 
     async def handle(
         self, request: ModelTenantOutboxFlushCommand
     ) -> ModelTenantOutboxFlushResult:
         now = self._clock()
+        store, publisher = self._store, self._publisher
+        if store is None or publisher is None:
+            return ModelTenantOutboxFlushResult(
+                command_id=request.command_id,
+                outcome=EnumTenantOutboxFlushOutcome.FAILED_STORE_UNAVAILABLE,
+                detail="outbox flush has no store and bus wired",
+                emitted_at=now,
+            )
         try:
-            rows = await self._store.fetch_unpublished(request.batch_limit)
+            rows = await store.fetch_unpublished(request.batch_limit)
         except Exception as exc:
             return ModelTenantOutboxFlushResult(
                 command_id=request.command_id,
@@ -96,15 +107,13 @@ class HandlerTenantOutboxFlush:
         published = failed = mark_failed = 0
         for row in rows:
             try:
-                await self._publisher.publish(
-                    self._topic, _message_key(row), row.envelope
-                )
+                await publisher.publish(self._topic, _message_key(row), row.envelope)
             except Exception as exc:
                 failed += 1
-                await self._record_failure(row.row_id, exc)
+                await self._record_failure(store, row.row_id, exc)
                 continue
             try:
-                await self._store.mark_published(row.row_id, self._clock())
+                await store.mark_published(row.row_id, self._clock())
             except Exception:
                 mark_failed += 1
                 continue
@@ -127,9 +136,11 @@ class HandlerTenantOutboxFlush:
             emitted_at=now,
         )
 
-    async def _record_failure(self, row_id: str, exc: BaseException) -> None:
+    async def _record_failure(
+        self, store: ProtocolTenantOutboxStore, row_id: str, exc: BaseException
+    ) -> None:
         try:
-            await self._store.record_failure(row_id, _error_text(exc))
+            await store.record_failure(row_id, _error_text(exc))
         except Exception:
             return
 

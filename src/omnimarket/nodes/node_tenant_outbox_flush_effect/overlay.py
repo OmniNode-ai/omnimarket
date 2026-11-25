@@ -74,12 +74,13 @@ async def _build_producer() -> ProtocolKafkaProducer:
         options["sasl_plain_username"] = broker.sasl_username
     if broker.sasl_password is not None:
         options["sasl_plain_password"] = broker.sasl_password.get_secret_value()
-    return AIOKafkaProducer(  # type: ignore[no-any-return]
+    producer: ProtocolKafkaProducer = AIOKafkaProducer(
         bootstrap_servers=broker.bootstrap_servers,
         security_protocol=broker.security_protocol or "PLAINTEXT",
         acks="all",
         **options,
     )
+    return producer
 
 
 def build_flush(

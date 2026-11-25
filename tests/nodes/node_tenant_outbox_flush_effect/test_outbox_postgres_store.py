@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import asyncpg
 import pytest
@@ -48,7 +48,7 @@ class RecordingPool:
 
 
 def _store(pool: RecordingPool) -> TenantOutboxPostgres:
-    return TenantOutboxPostgres(pool=pool)  # type: ignore[arg-type]
+    return TenantOutboxPostgres(pool=cast(asyncpg.Pool, pool))
 
 
 async def test_fetch_reads_only_unpublished_oldest_first_with_the_limit() -> None:

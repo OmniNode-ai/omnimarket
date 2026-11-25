@@ -3,12 +3,14 @@
 """The Postgres store of the outbox flush against a scratch PostgreSQL 16 holding the dev ``tenant_event_outbox`` shape.
 
 The table is the one ``node_tenant_provision_effect`` writes (id, tenant_id, envelope, created_at, published_at), created
-by the provision node's scratch DDL. A recording pool cannot tell whether the store's statements name columns the table has.
+here in a schema of its own. A recording pool cannot tell whether the store's statements name columns the table has.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -18,12 +20,47 @@ import pytest
 from omnimarket.nodes.node_tenant_outbox_flush_effect.handlers.tenant_outbox_postgres import (
     TenantOutboxPostgres,
 )
-from tests.nodes.node_tenant_provision_effect.conftest import port  # noqa: F401
-from tests.nodes.node_tenant_provision_effect.postgres_support import identity_tables
+from tests.nodes.node_tenant_provision_effect.postgres_support import connect_kwargs
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
 NOW = datetime(2026, 11, 25, 7, 0, tzinfo=UTC)
+
+OUTBOX_DDL = """
+CREATE SCHEMA {schema};
+SET search_path TO {schema};
+CREATE TABLE tenants (
+    tenant_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_slug text UNIQUE NOT NULL
+);
+CREATE TABLE tenant_event_outbox (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES tenants (tenant_id),
+    envelope jsonb NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    published_at timestamptz
+);
+"""
+
+
+@asynccontextmanager
+async def identity_tables(
+    port: int,
+) -> AsyncIterator[tuple[asyncpg.Connection, asyncpg.Pool]]:
+    """The dev outbox shape in a schema of its own, so no other test's tables share its name."""
+    schema = f"outbox_flush_{uuid4().hex[:12]}"
+    settings = {"search_path": schema}
+    admin = await asyncpg.connect(**connect_kwargs(port), server_settings=settings)
+    pool = await asyncpg.create_pool(
+        **connect_kwargs(port), min_size=1, max_size=2, server_settings=settings
+    )
+    try:
+        await admin.execute(OUTBOX_DDL.format(schema=schema))
+        yield admin, pool
+    finally:
+        await pool.close()
+        await admin.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+        await admin.close()
 
 
 async def _seed(admin: asyncpg.Connection, count: int) -> list[str]:
@@ -45,7 +82,7 @@ async def _seed(admin: asyncpg.Connection, count: int) -> list[str]:
     return ids
 
 
-async def test_fetch_returns_unpublished_rows_oldest_first(port: int) -> None:  # noqa: F811
+async def test_fetch_returns_unpublished_rows_oldest_first(port: int) -> None:
     async with identity_tables(port) as (admin, pool):
         ids = await _seed(admin, 3)
         rows = await TenantOutboxPostgres(pool=pool).fetch_unpublished(10)
@@ -53,7 +90,7 @@ async def test_fetch_returns_unpublished_rows_oldest_first(port: int) -> None:  
         assert rows[0].envelope["correlation_id"] == "c0"
 
 
-async def test_a_marked_row_is_not_fetched_again(port: int) -> None:  # noqa: F811
+async def test_a_marked_row_is_not_fetched_again(port: int) -> None:
     async with identity_tables(port) as (admin, pool):
         ids = await _seed(admin, 2)
         store = TenantOutboxPostgres(pool=pool)
@@ -67,7 +104,7 @@ async def test_a_marked_row_is_not_fetched_again(port: int) -> None:  # noqa: F8
 
 
 async def test_a_failed_publish_leaves_the_row_unpublished_and_fetchable(
-    port: int,  # noqa: F811
+    port: int,
 ) -> None:
     async with identity_tables(port) as (admin, pool):
         ids = await _seed(admin, 1)
@@ -84,7 +121,7 @@ async def test_a_failed_publish_leaves_the_row_unpublished_and_fetchable(
         )
 
 
-async def test_limit_bounds_the_batch(port: int) -> None:  # noqa: F811
+async def test_limit_bounds_the_batch(port: int) -> None:
     async with identity_tables(port) as (admin, pool):
         ids = await _seed(admin, 4)
         rows = await TenantOutboxPostgres(pool=pool).fetch_unpublished(2)
@@ -92,7 +129,7 @@ async def test_limit_bounds_the_batch(port: int) -> None:  # noqa: F811
 
 
 async def test_a_table_with_the_tracking_columns_counts_attempts_and_keeps_the_error(
-    port: int,  # noqa: F811
+    port: int,
 ) -> None:
     async with identity_tables(port) as (admin, pool):
         await admin.execute(
