@@ -1,7 +1,7 @@
 schema_version: 1.0.0
 ticket_id: OMN-26117
 title: The M4 beta board check C11 (probe c11-negative-paths) reads green against what exists now, or its real product defect is named with a ticket
-summary: The C11 probe read red at its credential-fetch step because the store name STABILITY_TEST_CHAIN_CANARY_GATEWAY_API_KEY held no secret at dev/shared/env/ (HTTP 404; runs 45340216110 and 45346783411). One dev-scoped key for the house tenant of the dev-201 lane was minted and stored there, and dispatched run 45351153694 read green with wrong_tenant 404 and malformed 422. The fix is store only, so no probe clause is removed or changed and nothing retired is restored.
+summary: The C11 delegation check reads the test tenant's credential from the secret store, by the name the dev tenant node declares, and sends only that key. A local gateway that accepts one key proves it - the key the store holds grades every clause PASS, a store holding another key fails the tenant arms, a store holding nothing is PRECONDITION-ABSENT. The earlier probe red was a missing store entry (run 45340216110); the entry was stored and run 45351153694 read green. No probe clause is removed or changed and nothing retired is restored.
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -22,62 +22,43 @@ requirements:
   - id: AC3
     statement: "AC3: the lane writes one STATUS row `crit=C11 probe=c11-negative-paths verdict=<green|red> read_at=<UTC>` -- falsifier: a ledger grep for `crit=C11 probe=c11-negative-paths` finds no STATUS row after this ticket's creation"
 evidence_requirements:
-- kind: manual
-  description: The failed credential-fetch line of the newest completed C11 run read back from the job log.
-  command: onex scm job-log OmniNode-ai/omnibase_infra --job-id 138261791367
+- kind: tests
+  description: The C11 credential-from-store tests, each failing against a credential path that ignores the store and passing on the real one.
+  command: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_c11_credential_from_store.py -q --no-cov -n 0 -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
-- id: dod-omn26117-c11-cause-line
-  description: The job log of run 45340216110 (job 138261791367) holds the line naming CHAIN_CANARY_GATEWAY_API_KEY as not readable from dev/shared/env/ with HTTP 404 (the store name behind it is STABILITY_TEST_CHAIN_CANARY_GATEWAY_API_KEY, which held no secret). Read through the watcher-backed job-log verb, so only the local Done gate runs it.
+- id: dod-omn26117-c11-cause
+  description: The C11 credential reader raises PRECONDITION-ABSENT when the store holds nothing under the declared name, the state the red run 45340216110 hit (HTTP 404 from the store).
   source: manual
-  execution_scope: local_done_gate
   binds_ac:
   - AC1
   checks:
-  - check_type: command
-    check_value: sh -c 'onex scm job-log OmniNode-ai/omnibase_infra --job-id 138261791367 | grep -F "is not readable from dev/shared/env/ (HTTP 404)"'
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_c11_credential_from_store.py -q --no-cov -n 0 -p no:randomly -k nothing
     cwd: .
-- id: dod-omn26117-c11-newest-run-green
-  description: The newest scheduled run of chain-canary-c11-negative-paths.yml concluded success, and the dispatched run 45351153694 (job 138297640014, created 2026-11-24T07:50:50Z) logged C11 GREEN with the wrong_tenant 404 and malformed 422 arms after the key was stored where the fetch step reads it.
+- id: dod-omn26117-c11-reads-store
+  description: With the store holding the gateway's key, C11 grades positive_control, wrong_key, absent_key, wrong_tenant and malformed all PASS, and the store was read once under the declared folder and name.
   source: manual
-  execution_scope: local_done_gate
   binds_ac:
   - AC2
   checks:
-  - check_type: command
-    check_value: sh -c 'onex scm run-list OmniNode-ai/omnibase_infra --workflow chain-canary-c11-negative-paths.yml --limit 1 | grep -F "\"conclusion\":\"success\""'
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_c11_credential_from_store.py -q --no-cov -n 0 -p no:randomly -k known_good
     cwd: .
-  - check_type: command
-    check_value: sh -c 'onex scm job-log OmniNode-ai/omnibase_infra --job-id 138297640014 | grep -F "wrong_tenant      expected=404 observed=404"'
-    cwd: .
-  - check_type: command
-    check_value: sh -c 'onex scm job-log OmniNode-ai/omnibase_infra --job-id 138297640014 | grep -F "malformed         expected=422 observed=422"'
-    cwd: .
-- id: dod-omn26117-hosted-ac1-red-run-readback
-  description: Hosted-runner readback of the run named as the cause. Run 45340216110 of the C11 probe in OmniNode-ai/omnibase_infra concluded failure, so AC1 names a real red run. The check fails if the run concluded anything else.
+- id: dod-omn26117-c11-wrong-store-key
+  description: A store holding another key fails wrong_tenant and malformed, so a green reading cannot come from any key but the stored one.
   source: manual
-  execution_scope: hosted_and_local
-  binds_ac:
-  - AC1
-  checks:
-  - check_type: command
-    check_value: sh -c 'test "$(gh api repos/OmniNode-ai/omnibase_infra/actions/runs/45340216110 --jq .conclusion)" = failure'
-    cwd: .
-- id: dod-omn26117-hosted-ac2-green-run-readback
-  description: Hosted-runner readback of the green run. Dispatched run 45351153694 of the C11 probe in OmniNode-ai/omnibase_infra concluded success after the key was stored. The check fails if the run concluded anything else.
-  source: manual
-  execution_scope: hosted_and_local
   binds_ac:
   - AC2
   checks:
-  - check_type: command
-    check_value: sh -c 'test "$(gh api repos/OmniNode-ai/omnibase_infra/actions/runs/45351153694 --jq .conclusion)" = success'
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_c11_credential_from_store.py -q --no-cov -n 0 -p no:randomly -k another_key
     cwd: .
 - id: dod-omn26117-c11-status-row
-  description: The rolling ledger holds the STATUS row of the C11 green reading written by lane c11key-0815 for run 45351153694.
+  description: The rolling ledger holds the STATUS row of the C11 green reading written by lane c11key-0815 for run 45351153694. Read through the ledger, so only the local Done gate runs it.
   source: manual
   execution_scope: local_done_gate
   binds_ac:
