@@ -47,6 +47,7 @@ from omnimarket.events.topics import (
     GITHUB_BRANCH_HEAD_TOPIC_V1,
     PR_STATE_OBSERVED_TOPIC_V1,
 )
+from tests.ci.lint_jobs import lint_steps
 
 pytestmark = pytest.mark.unit
 
@@ -329,5 +330,5 @@ def test_required_lint_job_runs_this_file() -> None:
     workflow = yaml.safe_load(
         (_ROOT / ".github" / "workflows" / "ci.yml").read_text("utf-8")
     )
-    runs = [str(step.get("run", "")) for step in workflow["jobs"]["lint"]["steps"]]
+    runs = [str(step.get("run", "")) for step in lint_steps(workflow)]
     assert any(_THIS_TEST in run and "pytest" in run for run in runs)

@@ -29,19 +29,21 @@ from typing import Any
 
 import asyncpg
 
+from omnimarket.handlers.projection_table_sql import (
+    order_clause,
+    physical_key_columns,
+    quote_identifier,
+    select_list,
+    serialise_row,
+)
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.table_reader import (
     RETAINED_WINDOW_FACTOR,
     ProjectionReadError,
     TableRowSource,
     _read_failure,
-    order_clause,
-    physical_key_columns,
     qualified_relation,
-    quote_identifier,
     recency_column,
-    select_list,
-    serialise_row,
 )
 from omnimarket.projection.tenant_isolation import TENANT_GUC
 

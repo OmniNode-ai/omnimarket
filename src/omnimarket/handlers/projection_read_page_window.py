@@ -4,7 +4,10 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 
 class InvalidWindowError(ValueError):
@@ -34,13 +37,42 @@ def window_read_kwargs(window_seconds: int | None, limit: int) -> dict[str, int]
 
 
 def window_body(
-    window: str | None, window_seconds: int | None, rows_read: int
+    window: str | None,
+    window_seconds: int | None,
+    rows_read: int,
+    undated_rows: int | None = None,
 ) -> dict[str, Any] | None:
-    """What the page says about its window: the request, the bound and the rows the store read."""
+    """What the page says about its window: the request, the bound and the rows the store read.
+
+    ``undated_rows`` names the rows a text freshness column left out of the window
+    because their value is not an instant; it is absent when the source cannot count them.
+    """
     if window is None or window_seconds is None:
         return None
-    return {
+    body: dict[str, Any] = {
         "requested": window,
         "seconds": window_seconds,
         "rows_read": rows_read,
     }
+    if undated_rows is not None:
+        body["undated_rows"] = undated_rows
+    return body
+
+
+async def window_page(
+    source: Any, cfg: Any, tenant_id: str | None, window: str | None, rows: list[Any]
+) -> dict[str, Any] | None:
+    """:func:`window_body` with the rows the source left out as no instant.
+
+    A source that cannot count them, or whose count fails after the page was
+    read, leaves ``undated_rows`` absent and says so in the log.
+    """
+    window_seconds = parse_window_seconds(window) if window is not None else None
+    counter = getattr(source, "undated_window_rows", None)
+    undated = None
+    if counter is not None:
+        try:
+            undated = await counter(cfg, tenant_id=tenant_id)
+        except Exception as exc:  # the page was read; its count is advisory
+            log.warning("window undated-row count unavailable: %r", exc)
+    return window_body(window, window_seconds, len(rows), undated)

@@ -103,7 +103,7 @@ def _run_read(
 ) -> tuple[ModelAgentMessage, ...]:
     async def go() -> tuple[ModelAgentMessage, ...]:
         async with _node(handler) as node:
-            return await node.read(query)
+            return (await node.read(query)).messages
 
     return asyncio.run(go())
 
