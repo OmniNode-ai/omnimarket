@@ -74,7 +74,7 @@ class HandlerDelegationCheckProbe:
     def __init__(
         self,
         *,
-        responders: Sequence[ModelDelegationCheckResponder],
+        responders: Sequence[ModelDelegationCheckResponder] | None,
         reader: ProtocolResponderReader,
         machine: ProtocolCustomerMachine,
         publisher: ProtocolCheckResultPublisher,
@@ -86,7 +86,7 @@ class HandlerDelegationCheckProbe:
         sleep: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
-        self._responders = tuple(responders)
+        self._responders = None if responders is None else tuple(responders)
         self._reader = reader
         self._machine = machine
         self._publisher = publisher
@@ -135,6 +135,16 @@ class HandlerDelegationCheckProbe:
     def _task_check(
         self, request: ModelDelegationCheckRequest
     ) -> ModelDelegationCheckReading:
+        if self._responders is None:
+            return ModelDelegationCheckReading(
+                preconditions=(
+                    ModelCheckPrecondition(
+                        name="responders_row",
+                        present=False,
+                        detail="the settings store serves no delegation_check_responders row, so no responder chain is known",
+                    ),
+                )
+            )
         resolution = resolve_chain(self._responders, self._reader.read)
         head = {
             "chain": resolution.attempts,

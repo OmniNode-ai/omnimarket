@@ -23,17 +23,38 @@ from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayNotFoundError
 from omnimarket.models.model_host_hygiene_orchestrator import (
+    EnumHostHygieneBackend,
     EnumHostHygieneRunOutcome,
     EnumHostHygieneRunTrigger,
     EnumHostHygieneUnitOutcome,
+    ModelHostHygieneOrchestratorOverlay,
+    ModelHostHygieneUnitResult,
+)
+from omnimarket.models.model_host_hygiene_unit_command import (
+    ModelHostHygieneUnitCommand,
+)
+from omnimarket.models.model_lab_work_unit import (
+    ModelLabWorkUnitReceipt,
+    ModelLabWorkUnitRequest,
 )
 from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.contract_config import (
+    lab_work_command_topic,
     run_completed_topic,
     schedule_run_topic,
+)
+from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.dispatch_host_hygiene import (
+    DispatchHostHygieneUnits,
+)
+from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.handler_host_hygiene_receipt import (
+    settled_events,
 )
 from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.host_hygiene_run import (
     NODE_NAME,
     HostHygieneRunBase,
+)
+from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.pending_runs import (
+    DEADLINE_SLACK_SECONDS,
+    PendingRun,
 )
 from omnimarket.nodes.node_host_hygiene_orchestrator.handlers.protocols import (
     ProtocolHostHygieneLabWorkSender,
@@ -62,6 +83,9 @@ class HandlerHostHygieneScheduled(HostHygieneRunBase):
         if not self._gate.due(now):
             return self._output(correlation_id, ())
         self._gate.mark(now)
+
+        if overlay.backend is EnumHostHygieneBackend.LAB_WORK:
+            return self._publish_units(overlay, request, correlation_id, now)
 
         sender: ProtocolHostHygieneLabWorkSender = (
             self._sender if self._sender is not None else build_sender(overlay)
@@ -99,6 +123,78 @@ class HandlerHostHygieneScheduled(HostHygieneRunBase):
             event_type=schedule_run_topic(),
         )
         return self._output(correlation_id, (run_envelope, schedule_envelope))
+
+    def _publish_units(
+        self,
+        overlay: ModelHostHygieneOrchestratorOverlay,
+        request: ModelRuntimeTick,
+        correlation_id: uuid.UUID,
+        now: dt.datetime,
+    ) -> ModelHandlerOutput[None]:
+        """Put each due unit on the lab work command topic and return; the receipts settle the run.
+
+        Waiting here for the hosts held this dispatch for the sum of the units' timeouts, hourly, which is the
+        orphaned dispatch the runtime counts against its limit. A run still open past its deadline is settled
+        here as never answered, so a host that does not serve cannot leave it open for ever.
+        """
+        events: list[ModelEventEnvelope[object]] = []
+        expired = self._pending.expire(
+            now, detail="a later tick found its deadline past"
+        )
+        for stale in expired:
+            events.extend(settled_events(self._gate, stale, finished_at=now))
+
+        tick_id = str(request.tick_id)
+        run_id = f"{overlay.job_id}-{tick_id}"
+        decision = self._decide(overlay, now)
+        planned = DispatchHostHygieneUnits(overlay, _NoSender()).plan(
+            decision.due_items()
+        )
+        slots: list[ModelHostHygieneUnitResult | str] = []
+        open_units: dict[str, tuple[str, str]] = {}
+        for item, unit, refused in planned:
+            if unit is None:
+                assert refused is not None
+                slots.append(refused)
+                continue
+            slots.append(unit.work_unit_id)
+            open_units[unit.work_unit_id] = (item.host, item.cleanup_id)
+            events.append(
+                ModelEventEnvelope(
+                    payload=ModelHostHygieneUnitCommand.model_validate(
+                        unit.model_dump()
+                    ),
+                    correlation_id=correlation_id,
+                    event_type=lab_work_command_topic(),
+                )
+            )
+        run = PendingRun(
+            run_id=run_id,
+            job_id=overlay.job_id,
+            tick_id=tick_id,
+            started_at=now,
+            scheduled_for=request.now,
+            deadline=now
+            + dt.timedelta(
+                seconds=max((c.timeout_seconds for c in overlay.cleanups), default=0)
+                + DEADLINE_SLACK_SECONDS
+            ),
+            decided=decision.items,
+            slots=slots,
+            open_units=open_units,
+        )
+        if open_units:
+            self._pending.add(run)
+        else:
+            events.extend(settled_events(self._gate, run, finished_at=self._clock()))
+        return self._output(correlation_id, tuple(events))
+
+
+class _NoSender:
+    """The planner never sends; a send would be the blocking call this route exists to avoid."""
+
+    def send(self, request: ModelLabWorkUnitRequest) -> ModelLabWorkUnitReceipt:
+        raise AssertionError("the tick route publishes units; it never sends")
 
 
 __all__: list[str] = ["NODE_NAME", "HandlerHostHygieneScheduled"]

@@ -1248,6 +1248,19 @@ db_io:
       migration: docker/migrations/forward/116_create_branch_deploy_state.sql
       access: read_write
       role: branch_deploy_orchestrator_state
+    # OMN-26495: the overlay store, one row per overlay id and digest, created by
+    # node_projection_overlay_store's own node-owned migration 0000. Migration 0002
+    # (operator_paths) alters it, and the OMN-15361 SQL ownership gate on the
+    # omnibase_infra pull request that vendors 0002 resolves an owner for every
+    # table an ALTER names; without this entry that pull request is refused with
+    # "requires exactly one ownership declaration". `access: read_write` and
+    # `role: overlay_store` mirror the node contract's own db_io.db_tables entry.
+    - name: overlay_store
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_overlay_store/migrations/0000_create_overlay_store.sql
+      access: read_write
+      role: overlay_store
 
 database_objects:
   # OMN-23888: the trigger helper migration 114 creates for code_eval_trial_state.

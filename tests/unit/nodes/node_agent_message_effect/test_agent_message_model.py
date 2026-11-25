@@ -93,7 +93,7 @@ def test_an_extra_field_is_refused() -> None:
 
 def test_the_wire_form_spells_the_sender_from() -> None:
     wire = ModelAgentMessage.model_validate(message_fields()).model_dump(
-        mode="json", by_alias=True
+        mode="json", by_alias=True, exclude_none=True
     )
     assert set(wire) == set(REQUIRED)
     assert wire["from"] == "lane-a"
