@@ -49,7 +49,8 @@ _WORKFLOWS: Final[Path] = _REPO_ROOT / ".github" / "workflows"
 # the omniclaude pin notice job (its app-token step) from runtime-rebuild-trigger.yml in OMN-23498,
 # and the rate-limit pin move (imperative-contract-guard and kb-doc-gate callers) in OMN-23542,
 # and the test-duration-record-freshness workflow (checkout and setup-uv v4) in OMN-23537,
-# and the reopen-dev action both release paths run (a setup-uv use in auto-tag-on-merge.yml).
+# and the reopen-dev action both release paths run (a setup-uv use in auto-tag-on-merge.yml),
+# and the omnimarket runtime image workflow (OMN-23563: checkout, AWS credentials, ECR login, Trivy, upload-artifact).
 _GOLDEN: Final[Path] = (
     Path(__file__).resolve().parent / "fixtures" / "omn20558_workflow_action_refs.json"
 )
