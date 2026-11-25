@@ -108,10 +108,10 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: >-
-          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run
+          uv run onex lab-work run
           --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
           --lane dod-integration-proof-26226 --kind test --
-          env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest
+          uv run --frozen pytest
           tests/unit/nodes/node_onex_setup_effect/test_dashboard_open_instruction.py
           tests/unit/nodes/node_local_dashboard_serve_effect/test_bare_address_page.py
           tests/unit/nodes/node_onex_setup_effect/test_dashboard_no_token_shown.py
