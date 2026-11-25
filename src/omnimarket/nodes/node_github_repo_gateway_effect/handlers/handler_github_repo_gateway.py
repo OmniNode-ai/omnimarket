@@ -40,7 +40,10 @@ from omnimarket.handlers.node_overlay_reader import (
     find_node_overlay,
     load_structured_overlay,
 )
-from omnimarket.models.github_landing.model_transport_error import GitHubTransportError
+from omnimarket.models.github_landing.model_transport_error import (
+    GitHubTransportError,
+    rate_limit_refusal,
+)
 from omnimarket.models.model_github_gateway_io import (
     DEFAULT_LOG_TAIL_BYTES,
     EnumGithubGatewayOperation,
@@ -350,6 +353,16 @@ class JobLogCacheTransport:
                 )
                 response = transport.send_bytes_window_sync(request, window=window)
                 if response.status != 200 or response.over_limit:
+                    refusal = rate_limit_refusal(
+                        status=response.status,
+                        headers=response.headers,
+                        message=response.content[:1000].decode(
+                            "utf-8", errors="replace"
+                        ),
+                        request_line=f"GitHub GET {request.path}",
+                    )
+                    if refusal is not None:
+                        raise refusal
                     raise GitHubTransportError(
                         f"job log not cached: HTTP {response.status}, "
                         f"read_ceiling_hit={response.over_limit}"

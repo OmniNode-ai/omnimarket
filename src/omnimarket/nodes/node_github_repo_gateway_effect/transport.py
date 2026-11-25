@@ -43,7 +43,10 @@ from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubHttpRequest,
     ModelGithubHttpResponse,
 )
-from omnimarket.models.github_landing.model_transport_error import GitHubTransportError
+from omnimarket.models.github_landing.model_transport_error import (
+    GitHubTransportError,
+    rate_limit_refusal,
+)
 
 # Single-PR query mirroring the fields the read functions consume. Uses the same
 # inline-fragment shape as the merge-sweep list query (fragments live inside
@@ -92,6 +95,20 @@ query($owner: String!, $name: String!, $number: Int!) {
   }
 }
 """
+
+
+def _api_failure(exc: GitHubApiError) -> GitHubTransportError:
+    """The transport error for a helper failure: a spent quota stays typed (OMN-26326)."""
+    if exc.status_code is not None:
+        refusal = rate_limit_refusal(
+            status=exc.status_code,
+            headers=exc.headers,
+            message=str(exc),
+            request_line="GitHub request",
+        )
+        if refusal is not None:
+            return refusal
+    return GitHubTransportError(f"GitHub request failed: {exc}")
 
 
 @runtime_checkable
@@ -226,13 +243,13 @@ class RealGitHubReadTransport(GitHubReadTransportProtocol):
         try:
             return self._client.fetch_open_prs(repo)
         except GitHubApiError as exc:
-            raise GitHubTransportError(f"GitHub request failed: {exc}") from exc
+            raise _api_failure(exc) from exc
 
     def fetch_branch_protection(self, repo: str) -> int | None:
         try:
             return self._client.fetch_branch_protection(repo)
         except GitHubApiError as exc:
-            raise GitHubTransportError(f"GitHub request failed: {exc}") from exc
+            raise _api_failure(exc) from exc
 
     def fetch_pr_detail(self, repo: str, pr_number: int) -> dict[str, Any]:
         owner, name = split_repo(repo)
@@ -243,7 +260,7 @@ class RealGitHubReadTransport(GitHubReadTransportProtocol):
                 token=self._token,
             )
         except GitHubApiError as exc:
-            raise GitHubTransportError(f"GitHub request failed: {exc}") from exc
+            raise _api_failure(exc) from exc
         pr = ((data.get("repository") or {}).get("pullRequest")) or {}
         if not pr:
             raise RuntimeError(f"PR not found: {repo}#{pr_number}")

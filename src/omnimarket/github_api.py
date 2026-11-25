@@ -19,6 +19,8 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Mapping
+from email.message import Message
 from pathlib import Path
 from typing import Any
 
@@ -47,9 +49,25 @@ class GitHubApiError(RuntimeError):
     message.
     """
 
-    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
+        # The response headers of an HTTP failure (x-ratelimit-*, retry-after),
+        # so a caller can tell a spent quota from a refusal (OMN-26326).
+        self.headers: dict[str, str] = dict(headers or {})
+
+
+def _header_map(message: Message | None) -> dict[str, str]:
+    """An HTTP error's response headers as a plain mapping (empty when it has none)."""
+    if message is None:
+        return {}
+    return {str(k): str(v) for k, v in message.items()}
 
 
 def split_repo(repo: str) -> tuple[str, str]:
@@ -108,7 +126,9 @@ def download_release_asset(url: str, to: Path) -> None:
             return
         except urllib.error.HTTPError as exc:
             if exc.code not in _ASSET_RETRY_POLICY.statuses or attempt == attempts - 1:
-                raise GitHubApiError(str(exc), status_code=exc.code) from exc
+                raise GitHubApiError(
+                    str(exc), status_code=exc.code, headers=_header_map(exc.headers)
+                ) from exc
             exc.close()
             time.sleep(_ASSET_RETRY_POLICY.delays_seconds[attempt])
         except (urllib.error.URLError, OSError) as exc:
@@ -135,7 +155,11 @@ def _rest_raw(
             return bytes(resp.read())
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace").strip()
-        raise GitHubApiError(detail or str(exc), status_code=exc.code) from exc
+        raise GitHubApiError(
+            detail or str(exc),
+            status_code=exc.code,
+            headers=_header_map(exc.headers),
+        ) from exc
     except (urllib.error.URLError, OSError) as exc:
         raise GitHubApiError(str(exc)) from exc
 
@@ -245,7 +269,11 @@ def rest_no_content(
             return
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace").strip()
-        raise GitHubApiError(detail or str(exc), status_code=exc.code) from exc
+        raise GitHubApiError(
+            detail or str(exc),
+            status_code=exc.code,
+            headers=_header_map(exc.headers),
+        ) from exc
     except (urllib.error.URLError, OSError) as exc:
         raise GitHubApiError(str(exc)) from exc
 
@@ -279,7 +307,11 @@ def graphql(
             body = json.loads(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace").strip()
-        raise GitHubApiError(detail or str(exc), status_code=exc.code) from exc
+        raise GitHubApiError(
+            detail or str(exc),
+            status_code=exc.code,
+            headers=_header_map(exc.headers),
+        ) from exc
     except (urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
         raise GitHubApiError(str(exc)) from exc
     if body.get("errors"):

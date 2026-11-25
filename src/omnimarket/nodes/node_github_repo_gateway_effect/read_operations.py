@@ -49,7 +49,10 @@ from omnimarket.github_landing.model_github_http_exchange import (
     ModelGithubHttpRequest,
     ModelGithubHttpResponse,
 )
-from omnimarket.models.github_landing.model_transport_error import GitHubTransportError
+from omnimarket.models.github_landing.model_transport_error import (
+    GitHubTransportError,
+    rate_limit_refusal,
+)
 from omnimarket.models.model_github_gateway_io import (
     DEFAULT_ARTIFACT_MAX_BYTES,
     DEFAULT_LOG_TAIL_BYTES,
@@ -286,8 +289,19 @@ def read_ticket_ref(
 def _checked(
     request: ModelGithubHttpRequest, response: ModelGithubHttpResponse
 ) -> dict[str, object]:
-    """The response body of a 2xx answer; any other status raises."""
+    """The response body of a 2xx answer; any other status raises.
+
+    A rate-limit answer raises ``GitHubRateLimitedError`` carrying its reset time.
+    """
     if not 200 <= response.status < 300:
+        refusal = rate_limit_refusal(
+            status=response.status,
+            headers=response.headers,
+            message=response.message(),
+            request_line=f"GitHub {request.method} {request.path}",
+        )
+        if refusal is not None:
+            raise refusal
         raise GitHubTransportError(
             f"GitHub {request.method} {request.path} answered HTTP "
             f"{response.status}: {response.message()}"
@@ -481,6 +495,14 @@ def _check_log(
     log_request: ModelGithubHttpRequest, response: ModelGithubBytesResponse
 ) -> None:
     if not 200 <= response.status < 300:
+        refusal = rate_limit_refusal(
+            status=response.status,
+            headers=response.headers,
+            message=response.content.decode("utf-8", errors="replace"),
+            request_line=f"GitHub GET {log_request.path}",
+        )
+        if refusal is not None:
+            raise refusal
         raise GitHubTransportError(
             f"GitHub GET {log_request.path} answered HTTP {response.status}: "
             f"{response.content.decode('utf-8', errors='replace')}"
@@ -635,6 +657,14 @@ def _fetch_artifact(
         archive_request, limit=request.max_bytes, keep="head"
     )
     if not 200 <= archive.status < 300:
+        refusal = rate_limit_refusal(
+            status=archive.status,
+            headers=archive.headers,
+            message=archive.content.decode("utf-8", errors="replace"),
+            request_line=f"GitHub GET {archive_request.path}",
+        )
+        if refusal is not None:
+            raise refusal
         raise GitHubTransportError(
             f"GitHub GET {archive_request.path} answered HTTP {archive.status}"
         )
@@ -948,6 +978,17 @@ def _alert_unavailable_reason(
 ) -> Literal["no_analysis", "not_enabled", "forbidden"] | None:
     """Why GitHub has no alerts to give for the ref, or None for any other answer."""
     if response.status not in (403, 404):
+        return None
+    # A spent quota is not "forbidden": the caller's `_checked` raises the typed refusal.
+    if (
+        rate_limit_refusal(
+            status=response.status,
+            headers=response.headers,
+            message=response.message(),
+            request_line="",
+        )
+        is not None
+    ):
         return None
     message = response.message().lower()
     if "no analysis found" in message:
