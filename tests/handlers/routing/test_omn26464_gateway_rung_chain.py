@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 
 from omnimarket.handlers.delegation_readiness_probe import (
+    Behaviour,
     LegTransportScope,
     LoopbackStubServers,
     ModelLegOutcome,
@@ -42,17 +43,20 @@ OPENROUTER = "openrouter-nemotron-ultra"
 CLAUDE_API = "claude-api"
 
 
-def _local(**kw: object) -> ModelRungScript:
+def _local(behaviour: Behaviour, status_code: int | None = None) -> ModelRungScript:
     return ModelRungScript(
         backend_id=LOCAL,
         model_id="Qwen3.8-27B",
         tier="local",
         timeout_ms=5000,
-        **kw,  # type: ignore[arg-type]
+        behaviour=behaviour,
+        status_code=status_code,
     )
 
 
-def _openrouter(**kw: object) -> ModelRungScript:
+def _openrouter(
+    behaviour: Behaviour, status_code: int | None = None
+) -> ModelRungScript:
     return ModelRungScript(
         backend_id=OPENROUTER,
         model_id="nvidia/nemotron-ultra",
@@ -60,11 +64,12 @@ def _openrouter(**kw: object) -> ModelRungScript:
         cost_class="paid",
         scripted_cost_usd="0.0004",
         timeout_ms=5000,
-        **kw,  # type: ignore[arg-type]
+        behaviour=behaviour,
+        status_code=status_code,
     )
 
 
-def _claude(**kw: object) -> ModelRungScript:
+def _claude(behaviour: Behaviour, status_code: int | None = None) -> ModelRungScript:
     return ModelRungScript(
         backend_id=CLAUDE_API,
         model_id="claude-sonnet-5-5",
@@ -72,7 +77,8 @@ def _claude(**kw: object) -> ModelRungScript:
         cost_class="paid",
         scripted_cost_usd="0.0123",
         timeout_ms=5000,
-        **kw,  # type: ignore[arg-type]
+        behaviour=behaviour,
+        status_code=status_code,
     )
 
 
