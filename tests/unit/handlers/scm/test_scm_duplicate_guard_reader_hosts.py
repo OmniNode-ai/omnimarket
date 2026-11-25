@@ -294,7 +294,7 @@ def test_the_guard_waits_for_the_reader_as_long_as_a_loaded_host_needed(
     monkeypatch: pytest.MonkeyPatch,
     opened_files: list[str],
 ) -> None:
-    """The 168 hour whole-window read took 253 seconds on h051 under load: the fallback's declared wait is longer, the primary's is not (OMN-26433)."""
+    """A loaded host's read took 253 seconds (h051, 2026-11-21): the guard's first wait is above the reader's own 120 second default and its reads are the bounded ones (OMN-26387)."""
     world.lane_branch("src/metrics.py", 15)
     loaded = record("h051", "after-fix-loaded")
     replay = use_reader(
@@ -305,5 +305,5 @@ def test_the_guard_waits_for_the_reader_as_long_as_a_loaded_host_needed(
 
     declared = load_ledger_read_config()
     assert loaded["elapsed_s"] > 120
-    assert declared.fallback_timeout_s > loaded["elapsed_s"]
+    assert declared.primary_timeout_s > 120
     assert replay.timeouts == [declared.primary_timeout_s] * 2

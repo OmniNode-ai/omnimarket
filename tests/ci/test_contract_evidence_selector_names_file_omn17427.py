@@ -19,6 +19,12 @@ from tests.ci.test_repo_evidence_caller_workflow import (
 
 pytestmark = pytest.mark.unit
 
+#: libyaml's loader reads the same documents about ten times faster than the pure-Python one. This
+#: file reads every ticket contract, and it is selected for a data-only pull request (OMN-26270).
+_CONTRACT_LOADER: type[yaml.SafeLoader] | type[yaml.CSafeLoader] = getattr(
+    yaml, "CSafeLoader", yaml.SafeLoader
+)
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -38,7 +44,9 @@ def test_every_bound_pytest_check_names_a_repo_test_file_or_tests_directory() ->
     assert contracts, "expected at least one repo-owned contracts/OMN-*.yaml"
     offenders: list[str] = []
     for path in contracts:
-        contract: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8"))
+        contract: dict[str, Any] = yaml.load(
+            path.read_text(encoding="utf-8"), Loader=_CONTRACT_LOADER
+        )
         for item in contract.get("dod_evidence", []):
             if "binds_ac" not in item:
                 continue
@@ -68,7 +76,9 @@ def test_every_bound_pytest_check_names_a_repo_test_file_or_tests_directory() ->
 
 def test_omn20429_ac4_names_the_existing_golden_chain_test_file() -> None:
     path = REPO_ROOT / "contracts" / "OMN-20429.yaml"
-    contract: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8"))
+    contract: dict[str, Any] = yaml.load(
+        path.read_text(encoding="utf-8"), Loader=_CONTRACT_LOADER
+    )
     item = next(
         item for item in contract["dod_evidence"] if item["id"] == "dod-omn-20429-ac4"
     )
@@ -89,7 +99,9 @@ def test_omn20429_ac4_names_the_existing_golden_chain_test_file() -> None:
 
 def test_omn20890_park_ladder_checks_name_the_causes_test_file() -> None:
     path = REPO_ROOT / "contracts" / "OMN-20890.yaml"
-    contract: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8"))
+    contract: dict[str, Any] = yaml.load(
+        path.read_text(encoding="utf-8"), Loader=_CONTRACT_LOADER
+    )
     expected = (
         "tests/unit/nodes/node_pr_landing_decision_compute/"
         "test_landing_decision_causes.py"
@@ -115,7 +127,9 @@ def test_omn20890_park_ladder_checks_name_the_causes_test_file() -> None:
 
 def test_omn21335_compact_binding_checks_name_the_test_file_and_bind_tests() -> None:
     path = REPO_ROOT / "contracts" / "OMN-21335.yaml"
-    contract: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8"))
+    contract: dict[str, Any] = yaml.load(
+        path.read_text(encoding="utf-8"), Loader=_CONTRACT_LOADER
+    )
     expected = (
         "tests/nodes/node_claude_code_hook_adapter_effect/"
         "test_adapter_template_compact_binding.py"
