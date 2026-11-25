@@ -14,11 +14,14 @@ import json
 import stat
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import pytest
 from _gateway_fake import FakeClock, FakeGateway
 
+from omnimarket.handlers.routing.delegation_check_responder_chain import (
+    ModelChainResolution,
+)
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers import (
     clean_machine_driver as driver,
 )
@@ -444,9 +447,12 @@ def test_a_guide_with_two_install_lines_reads_fail_not_a_pick_of_one(
     assert runner.calls == []
 
 
-def test_c13_and_c14_keep_reading_precondition_absent_on_this_machine(
+def test_c13_and_c14_read_precondition_absent_when_no_local_responder_was_resolved(
     tmp_path: Path,
 ) -> None:
-    machine = _machine(tmp_path, _Runner(_document()))
+    """The collector is wired now (OMN-26046); with no local responder in the chain there is nothing to run it against."""
+    runner = _Runner(_document())
+    machine = _machine(tmp_path, runner)
     with pytest.raises(CollectorAbsentError):
-        machine.collect_routing(cast("Any", None))
+        machine.collect_routing(ModelChainResolution(tier="openrouter"))
+    assert runner.calls == []

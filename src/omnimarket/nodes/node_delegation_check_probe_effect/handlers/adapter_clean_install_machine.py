@@ -27,6 +27,7 @@ from omnimarket.handlers.routing.delegation_check_responder_chain import (
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers import (
     clean_machine_driver,
+    clean_machine_routing_driver,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.grade_customer_guide import (
     InstallLine,
@@ -34,6 +35,10 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.grade_customer
     guide_leads_with_local,
     install_lines,
     interpreter_matches,
+)
+from omnimarket.nodes.node_delegation_check_probe_effect.handlers.observe_clean_machine_session import (
+    delegate_observation_from_document,
+    routing_from_document,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe import (
     CheckId,
@@ -69,10 +74,10 @@ PASSTHROUGH_ENV = (
 INSTALL_TIMEOUT_S = 900
 DRIVER_TIMEOUT_S = 900
 SOURCE_TIMEOUT_S = 60
-DELEGATION_ABSENT = (
-    "no customer-machine collector is wired to this node for delegation runs or the routing walk yet: the fresh-container "
-    "install, the egress recorder and the routing walk still run in the producer workflows"
-)
+DELEGATE_TIMEOUT_S = 600
+#: The prompt and class of the one real delegation: a class the shipped local rungs name, answered by the local model.
+DELEGATE_PROMPT = "explain what a calendar app needs"
+DELEGATE_TASK_TYPE = "document"
 
 
 @dataclass(frozen=True)
@@ -244,16 +249,122 @@ class CleanInstallCustomerMachine:
         process_env = os.environ  # ONEX_FLAG_EXEMPT: host environment of the run
         self._host_env = process_env if host_env is None else host_env
         self._versions: dict[str, str] = {}
+        self._sessions: dict[tuple[str, str, int], Mapping[str, Any]] = {}
 
     def run_delegation(
         self, check_id: CheckId, responder: ModelChainResolution
     ) -> ModelDelegateObservation:
-        raise CollectorAbsentError("customer_machine", DELEGATION_ABSENT)
+        return delegate_observation_from_document(
+            self._session(responder), responder_base=responder.base_url or ""
+        )
 
     def collect_routing(
         self, responder: ModelChainResolution
     ) -> ModelRoutingCollection:
-        raise CollectorAbsentError("customer_machine", DELEGATION_ABSENT)
+        return routing_from_document(self._session(responder))
+
+    def _session(self, responder: ModelChainResolution) -> Mapping[str, Any]:
+        """One clean install, one real delegation and one routing walk per responder, shared by C13 and C14.
+
+        Every host, model and window handed to the machine is the responder the settings row's chain resolved; nothing is
+        read from this host's own environment. An install that did not complete is a document that says so, which grades FAIL.
+        """
+        if not responder.base_url or not responder.served_model or not responder.window:
+            raise CollectorAbsentError(
+                "customer_machine",
+                "the responder chain resolved no local responder with a served model and a window",
+            )
+        key = (responder.base_url, responder.served_model, responder.window)
+        if key not in self._sessions:
+            self._sessions[key] = self._measure_session(
+                responder.base_url, responder.served_model, responder.window
+            )
+        return self._sessions[key]
+
+    def _measure_session(
+        self, base_url: str, served_model: str, window: int
+    ) -> Mapping[str, Any]:
+        guide_name, guide_text = self._sources.guide()
+        del guide_name
+        lines = install_lines(guide_text)
+        usable = lines[0] if len(lines) == 1 else None
+        if usable is None or usable.argv is None:
+            why = (
+                usable.refusal
+                if usable is not None
+                else f"the guide carries {len(lines)} install lines, not one"
+            )
+            return {
+                "install_failed": f"the guide's own line is not a runnable install: {why}"
+            }
+        uv = self._find_uv()
+        with tempfile.TemporaryDirectory(prefix="c13-clean-") as tmp:
+            root = Path(tmp)
+            env = self._clean_env(root, uv)
+            if shutil.which("onex", path=env["PATH"]):
+                raise CollectorAbsentError(
+                    "clean_machine", "an onex already resolves on the clean PATH"
+                )
+            install = self._runner.run(
+                usable.argv, env=env, cwd=root, timeout_s=INSTALL_TIMEOUT_S
+            )
+            if install.rc != 0:
+                return {
+                    "install_failed": f"the install exited {install.rc}: {install.stderr.strip()[-300:]}"
+                }
+            # A customer's install puts its own bin directory on PATH (uv tool update-shell); nothing else of the host does.
+            session_env = {
+                **env,
+                "PATH": os.pathsep.join([str(root / "bin"), env["PATH"]]),
+            }
+            python = root / "tool" / (usable.package or "") / "bin" / "python"
+            drove = self._runner.run(
+                [
+                    str(python),
+                    "-I",
+                    "-",
+                    "--onex",
+                    str(root / "bin" / "onex"),
+                    "--root",
+                    str(root),
+                    "--base-url",
+                    base_url,
+                    "--served-model",
+                    served_model,
+                    "--window",
+                    str(window),
+                    "--prompt",
+                    DELEGATE_PROMPT,
+                    "--task-type",
+                    DELEGATE_TASK_TYPE,
+                    "--timeout",
+                    str(DELEGATE_TIMEOUT_S),
+                    "--packages",
+                    *TOOL_PACKAGES,
+                ],
+                env=session_env,
+                cwd=root,
+                timeout_s=DRIVER_TIMEOUT_S,
+                stdin=Path(clean_machine_routing_driver.__file__).read_text(
+                    encoding="utf-8"
+                ),
+            )
+        try:
+            document = json.loads(drove.stdout)
+        except ValueError as exc:
+            raise CollectorAbsentError(
+                "clean_machine_driver",
+                f"the in-machine driver produced no record (rc {drove.rc}): {drove.stderr.strip()[-500:]} ({exc})",
+            ) from exc
+        if not isinstance(document, dict):
+            raise CollectorAbsentError(
+                "clean_machine_driver",
+                "the in-machine driver's record is not an object",
+            )
+        self._versions = {
+            str(k): str(v) for k, v in (document.get("versions") or {}).items()
+        }
+        return document
 
     def versions(self) -> dict[str, str]:
         return dict(self._versions)
