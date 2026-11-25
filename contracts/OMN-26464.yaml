@@ -23,10 +23,18 @@ requirements:
     statement: 'AC2: one POST /v1/workflows with workflow_type delegation-inference is accepted, GET status reaches a terminal state, and GET receipt names the answering model -- falsifier: the receipt read returns no model name or a 4xx/5xx'
   - id: AC6
     statement: 'AC6: integrated: on the running dev runtime on omni-201, one delegation-inference workflow submitted through POST /v1/workflows reaches a terminal status and its receipt read back names the answering model -- falsifier: onex node run on the dev lane of GET status and GET receipt for that workflow id, read back, shows a non-terminal status or a receipt with no model name'
+- id: req-omn26464-rung-chain
+  statement: The rung after an unreachable rung answers, the receipt names the rung that answered, and a rejected own key ends the run on its own rung with no successor called.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: the first failure, if any, is fixed to a pull request that is green on every required check -- falsifier: onex scm pr-checks lists a required check red at the fix head'
 evidence_requirements:
 - kind: tests
   description: The terminal writer unit tests and the store SQL tests pass at the pushed head.
   command: uv run --frozen pytest tests/nodes/node_gateway_workflow_terminal_effect -q --no-cov -n 0 -p no:randomly -k "not real_postgres"
+- kind: tests
+  description: The rung chain tests pass at the pushed head, scripted and over loopback HTTP.
+  command: uv run --frozen pytest tests/handlers/routing/test_omn26464_gateway_rung_chain.py -q -m unit --no-cov -n 0 -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
@@ -57,4 +65,13 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26464 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_gateway_workflow_terminal_effect -m integration -q --no-cov -n 0 -p no:randomly'
+    cwd: .
+- id: dod-omn26464-ac4-rung-chain
+  description: 'AC4 (hosted proxy): the scripted probe harness classifies 401 and 403 through failure_class_for_status, the one classifier the real delegation effect uses, and the rung chain tests show the OpenRouter rung answering after an unreachable local rung, the Claude API rung answering after two unreachable rungs, and a rejected own key refused with no successor called. The runs on the running dev runtime are not claimed here.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/handlers/routing/test_omn26464_gateway_rung_chain.py -q -m unit --no-cov -n 0 -p no:randomly
     cwd: .
