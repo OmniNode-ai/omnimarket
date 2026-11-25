@@ -1354,7 +1354,11 @@ class HandlerDodEvidenceGithubEffect:
             # The PR's own head is no commit the clone holds; a lane may not read
             # GitHub, so the gateway reads the file there.
             path = f"contracts/{ticket_id}.yaml"
-            read = repo_contract_from_gateway(self.gateway_repo_file(repo, sha, path))
+            read = repo_contract_from_gateway(
+                self.gateway_repo_file(repo, sha, path),
+                cache=self._local.contract_cache,
+                path=path,
+            )
         return ModelDodEvidenceGithubLookupResultEvent(
             correlation_id=command.correlation_id,
             operation=command.operation,
