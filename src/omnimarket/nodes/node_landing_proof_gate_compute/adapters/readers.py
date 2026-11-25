@@ -44,15 +44,15 @@ def _cells(text: str) -> dict[str, str]:
 class FileProofReader:
     """A pull request's text kept as one JSON file: ``body``, ``comments`` (strings) and ``files`` (paths)."""
 
-    def __init__(self, path: str) -> None:
+    def __init__(self, path: str, load: Callable[[Path], str] = Path.read_text) -> None:
         self._path = path
+        self._load = load
 
     def read(
         self, repo: str, number: int, base: str, head: str
     ) -> ModelProofText | None:
         try:
-            path = Path(self._path)
-            raw = json.loads(path.read_text())  # node-purity-ok: reader boundary
+            raw = json.loads(self._load(Path(self._path)))
             comments = tuple(str(c) for c in raw["comments"])
             files = tuple(str(f) for f in raw["files"])
             return ModelProofText(
@@ -77,7 +77,7 @@ class LedgerFileReader:
 
     def _files(self) -> list[Path] | None:
         live = Path(self._path)
-        if not self._path or not live.is_file():  # node-purity-ok: reader boundary
+        if not self._path or not live.is_file():
             return None
         horizon = (self._now() - timedelta(days=self._policy.ledger_days)).strftime(
             "%Y-%m-%d"
@@ -95,9 +95,7 @@ class LedgerFileReader:
         out: list[tuple[str, str, str]] = []
         for f in files:
             row: list[str] | None = None
-            for line in f.read_text(
-                errors="replace"
-            ).splitlines():  # node-purity-ok: reader boundary
+            for line in f.read_text(errors="replace").splitlines():
                 m = ROW_RE.match(line)
                 if m:
                     if row is not None and (row[1] == "RELEASE" or number in row[2]):
@@ -162,15 +160,13 @@ class GitPatchIdReader:
         self._clone, self._deadline_at, self._now = clone, deadline_at, now
 
     def patch_id(self, repo: str, base: str, sha: str) -> str | None:
-        env = {
-            k: v for k, v in os.environ.items() if not k.startswith("GIT_")
-        }  # node-purity-ok: reader boundary
+        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
         git = ["git", "-C", self._clone]
         try:
             left = self._deadline_at - self._now()
             if left <= 0:
                 return None
-            diff = subprocess.run(  # node-purity-ok: reader boundary
+            diff = subprocess.run(
                 [*git, "diff", f"origin/{base}...{sha}"],
                 capture_output=True,
                 timeout=left,
@@ -180,7 +176,7 @@ class GitPatchIdReader:
             left = self._deadline_at - self._now()
             if diff.returncode != 0 or not diff.stdout or left <= 0:
                 return None
-            pid = subprocess.run(  # node-purity-ok: reader boundary
+            pid = subprocess.run(
                 [*git, "patch-id", "--stable"],
                 input=diff.stdout,
                 capture_output=True,

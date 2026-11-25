@@ -338,6 +338,14 @@ def _run_cli(
     return code, json.loads(capsys.readouterr().out)
 
 
+def _first_reason(out: dict[str, object]) -> dict[str, object]:
+    reasons = out["reasons"]
+    assert isinstance(reasons, list)
+    first = reasons[0]
+    assert isinstance(first, dict)
+    return first
+
+
 def test_the_command_prints_proven_as_typed_output(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -361,7 +369,7 @@ def test_the_command_prints_draft_with_the_reason_named(
     )  # fmt: skip
     assert code == 1
     assert out["answer"] == "DRAFT"
-    assert out["reasons"][0]["code"] == "do_not_land"  # type: ignore[index]
+    assert _first_reason(out)["code"] == "do_not_land"
 
 
 def test_the_command_with_no_pr_text_is_draft_proof_unreadable(
@@ -374,7 +382,7 @@ def test_the_command_with_no_pr_text_is_draft_proof_unreadable(
         "--ledger-path", str(ledger),
     )  # fmt: skip
     assert code == 1
-    assert out["reasons"][0]["detail"] == "proof unreadable"  # type: ignore[index]
+    assert _first_reason(out)["detail"] == "proof unreadable"
 
 
 def test_the_command_without_the_ledger_says_so(
@@ -426,11 +434,10 @@ def _replay() -> list[dict[str, object]]:
 def _replay_one(row: dict[str, object]) -> ModelProofGateResult:
     ids = row["patch_ids"]
     assert isinstance(ids, dict)
-    text = ModelProofText(
-        body="\n".join(row["text_lines"]),  # type: ignore[arg-type]
-        comments=(),
-        files=tuple(row["files"]),  # type: ignore[arg-type]
-    )
+    lines, files = row["text_lines"], row["files"]
+    assert isinstance(lines, list)
+    assert isinstance(files, list)
+    text = ModelProofText(body="\n".join(lines), comments=(), files=tuple(files))
     return gate(text, ids=ids).handle(
         ModelProofGateRequest(
             repo="omnimarket",
