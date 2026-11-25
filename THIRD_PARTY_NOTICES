@@ -1,0 +1,28 @@
+Third-party notices
+===================
+
+This file lists every piece of code copied into this repository from another
+project: its source, its licence and the commit it was taken from. Only MIT,
+Apache-2.0 and BSD code may be copied, with its licence header kept. Code under
+the AGPL, GPL, LGPL or a source-available licence is never copied; it may be
+read for ideas and then written again from public APIs.
+
+OMN-26620 (the onex TUI redesign)
+---------------------------------
+
+Copied code: none.
+
+The redesign was written from Textual's public APIs (Theme, SystemCommand,
+OptionList, ModalScreen) and from the approved mockups. Textual itself is a
+dependency, installed from its package, not copied. The theme preview screen,
+the palette rows, the footer line and the start screen are original to this
+repository.
+
+Copied pieces are listed below, one block each, in this form:
+
+  File:    path in this repository
+  Source:  project and file
+  Licence: SPDX identifier
+  Commit:  full commit sha the code was taken from
+
+(No entries yet.)

@@ -404,7 +404,15 @@ task_card:
 
 # Key footer (OMN-26620 AC4): per-screen keys and drop order.
 footer:
+  separator: " · "
   screens:
+    main:
+      keys:
+        - {label: "/", words: commands}
+        - {label: "↑↓", words: history}
+        - {label: ctrl+p, words: palette}
+        - {label: ctrl+c, words: quit}
+      drop_order: [ctrl+p, "↑↓", "/"]
     config:
       keys:
         - {label: Space}

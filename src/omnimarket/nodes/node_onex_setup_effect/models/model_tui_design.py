@@ -289,18 +289,31 @@ class ModelTuiFooterKey(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     label: str = Field(min_length=1)
+    #: What the key does, in the muted words after it ("" for a bare label).
+    words: str = ""
 
 
 class ModelTuiFooterScreen(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     keys: tuple[ModelTuiFooterKey, ...] = Field(min_length=1)
+    #: Keys to drop first when the line is too narrow, first dropped first.
     drop_order: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _drops_only_its_own_keys(self) -> ModelTuiFooterScreen:
+        labels = {key.label for key in self.keys}
+        for label in self.drop_order:
+            if label not in labels:
+                raise ValueError(f"drop order names {label!r}, which is not a key")
+        return self
 
 
 class ModelTuiFooter(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    #: Between two hints on one line (a middle dot).
+    separator: str = Field(min_length=1)
     screens: dict[str, ModelTuiFooterScreen] = Field(default_factory=dict)
 
 

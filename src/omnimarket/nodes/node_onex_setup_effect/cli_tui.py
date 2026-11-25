@@ -89,6 +89,7 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits 
     setup_provider_traits,
 )
 from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
+    ModelTuiFooterKey,
     tui_design,
 )
 
@@ -2028,6 +2029,34 @@ class TaskCard:
 class KeyFooter:
     """One-line key footer that drops keys when narrow (OMN-26620 AC4)."""
 
+    def render(self, screen: str, width: int) -> Text:
+        """The hint line: bold keys, muted words, the design's separator. Keys
+        drop in the screen's declared order until it fits ``width``; if even one
+        does not fit the line is empty."""
+        design = tui_design()
+        spec = design.footer.screens.get(screen)
+        if spec is None:
+            return Text()
+        keys = list(spec.keys)
+        for label in spec.drop_order:
+            if len(self._plain(keys, design.footer.separator)) <= width:
+                break
+            keys = [key for key in keys if key.label != label]
+        if len(self._plain(keys, design.footer.separator)) > width:
+            return Text()
+        line = Text(no_wrap=True)
+        for index, key in enumerate(keys):
+            if index:
+                line.append(design.footer.separator, style=_style("muted"))
+            line.append(key.label, style=_style("foreground", "bold"))
+            if key.words:
+                line.append(f" {key.words}", style=_style("muted"))
+        return line
+
+    @staticmethod
+    def _plain(keys: list[ModelTuiFooterKey], separator: str) -> str:
+        return separator.join(f"{key.label} {key.words}".rstrip() for key in keys)
+
     def for_screen(self, screen: str, width: int = 140) -> str:
         design = tui_design()
         footer = getattr(design, "footer", None)
@@ -2324,9 +2353,14 @@ class OnexTui(App[int]):
         ]
         if self._last_run:
             parts += [sep, (self._last_run, _style("accent"))]
+        line = Text.assemble(*parts)
         if self._active_task is None:  # while one runs, the live line says so
-            parts += [sep, (_say("status_hint"), _style("muted"))]
-        self._main().query_one("#status", Static).update(Text.assemble(*parts))
+            room = self.size.width - 2 - len(line.plain) - len(sep[0])
+            hint = KeyFooter().render("main", room)
+            if hint.plain:
+                line.append(sep[0], style=sep[1])
+                line.append_text(hint)
+        self._main().query_one("#status", Static).update(line)
 
     def _main(self) -> Screen[object]:
         """The main screen: its log and status bar, even while a tab is open."""
@@ -2462,6 +2496,7 @@ class OnexTui(App[int]):
         )
 
     def on_resize(self) -> None:
+        self._render_status()  # the hint line is fitted to the width
         if self._active_task is not None:
             self._fit_log()
 
