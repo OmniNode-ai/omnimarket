@@ -80,8 +80,16 @@ from omnimarket.nodes.node_onex_setup_effect.cli_model_table import (
     entry_key,
     keycaps,
 )
+from omnimarket.nodes.node_onex_setup_effect.doctor_page import (
+    DoctorPage,
+    render_doctor_page,
+)
 from omnimarket.nodes.node_onex_setup_effect.handlers.handler_onex_command import (
     HandlerOnexCommand,
+)
+from omnimarket.nodes.node_onex_setup_effect.metering_page import (
+    MeteringPage,
+    render_metering_page,
 )
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
     ModelSetupPickerProvider,
@@ -89,6 +97,9 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits 
 )
 from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
     tui_design,
+)
+from omnimarket.nodes.node_onex_setup_effect.plain_messages import (
+    plain_message,
 )
 
 _PROMPTING_OPTIONS = frozenset(("interactive", "yes"))
@@ -2204,7 +2215,16 @@ class OnexTui(App[int]):
             status = await self._load_status()
         except Exception as error:  # status is a convenience; never crash on it
             _LOG.warning("the delegation status read failed: %s", error, exc_info=True)
-            self._write(Text(_say("status_unreadable"), style=_style("warning")))
+            self._write(
+                Text(
+                    plain_message(
+                        error,
+                        what="read the delegation status",
+                        next_step="Run /doctor.",
+                    ),
+                    style=_style("warning"),
+                )
+            )
             status = self._status.model_copy(
                 update={"delegation": "unknown", "hooks": {}, "problem": str(error)}
             )
@@ -2513,7 +2533,16 @@ class OnexTui(App[int]):
         try:
             words = shlex.split(text[1:])
         except ValueError as error:
-            self._write(_say("unreadable_command", error=error))
+            self._write(
+                Text(
+                    plain_message(
+                        error,
+                        what="read that command",
+                        next_step="Type /help for commands.",
+                    ),
+                    style=_style("warning"),
+                )
+            )
             return
         shortcut = tui_design().shortcut_for(words)
         if shortcut is not None:
@@ -2554,6 +2583,68 @@ class OnexTui(App[int]):
 
     async def _run(self, entry: ModelTuiCommand, argv: tuple[str, ...]) -> None:
         self._write(Text(f"$ onex {shlex.join(argv)}", style=_style("muted")))
+        if entry.path in (("doctor",), ("metering",)) and not entry.needs_terminal:
+            json_argv = argv if "--json" in argv else (*argv, "--json")
+            collected: list[str] = []
+            code = 0
+            raw_output = ""
+            runner = self._runner
+            by_command = getattr(runner, "_by_command", {}) or {}
+            lines_attr = getattr(runner, "_lines", None)
+            captured_attr = getattr(runner, "_captured", None)
+            if captured_attr in (None, ""):
+                captured_attr = getattr(runner, "captured", None)
+            # Prefer an invocation the test/runner has data for.
+            if json_argv[:2] in by_command:
+                chosen_argv = json_argv
+            elif argv[:2] in by_command or lines_attr:
+                chosen_argv = argv
+            elif captured_attr not in (None, ""):
+                chosen_argv = json_argv
+            else:
+                chosen_argv = json_argv
+            if (
+                captured_attr not in (None, "")
+                and chosen_argv == json_argv
+                and not lines_attr
+                and json_argv[:2] not in by_command
+                and argv[:2] not in by_command
+            ):
+                got = await runner.capture(json_argv)
+                code, out, err = got if isinstance(got, tuple) else (0, str(got), "")
+                raw_output = out if out else err
+                code = code if isinstance(code, int) else 0
+            else:
+                code = await runner.stream(chosen_argv, collected.append)
+                raw_output = "\n".join(collected)
+            width = max(getattr(self.size, "width", 0) or 0, 80)
+            if entry.path == ("doctor",):
+                parsed = DoctorPage.parse(raw_output)
+            else:
+                parsed = MeteringPage.parse(raw_output)
+            if parsed is None:
+                if collected:
+                    for line in collected:
+                        self._write(Text(str(line)))
+                elif raw_output.strip():
+                    for line in raw_output.splitlines():
+                        self._write(Text(str(line)))
+                if code:
+                    self._write(_say("exit_code", code=code))
+                return
+            if entry.path == ("doctor",):
+                lines = render_doctor_page(text=raw_output, raw=raw_output, width=width)
+            else:
+                lines = render_metering_page(
+                    text=raw_output, raw=raw_output, width=width
+                )
+            if raw_output.strip():
+                _LOG.warning("raw page output hidden: %s", raw_output)
+            for line in lines:
+                self._write(Text(str(line)))
+            if code:
+                self._write(_say("exit_code", code=code))
+            return
         if entry.needs_terminal:
             code = self._in_terminal(argv)
         else:
