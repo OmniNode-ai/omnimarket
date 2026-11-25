@@ -67,11 +67,13 @@ class ModelScopeTextStateRow(BaseModel):
 
     model_config = _STRICT
     id: str = Field(min_length=1)
-    error: str = ""
     last_closeout_comment_at: str = ""
     text_sha: str = ""
     held_text_sha: str = ""
     waiting_on: list[str] = Field(default_factory=list)
+    # The text-state command writes ``error`` on every row: empty when the ticket was read, the
+    # reason when its read failed (that row carries empty hashes, so it is never held).
+    error: str = ""
 
 
 class ModelScopeContractStateRow(BaseModel):

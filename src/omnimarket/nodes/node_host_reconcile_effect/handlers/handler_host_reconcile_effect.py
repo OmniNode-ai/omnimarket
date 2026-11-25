@@ -172,8 +172,8 @@ class HandlerHostReconcileEffect:
         receipt = reconcile.receipt_path()
         notes: list[str] = []
         failed = append_friction(
-            ledger=command.ledger,
             append_command=command.ledger_append_command,
+            host=result.host,
             row=failure_friction_row(
                 at=datetime.now(UTC),
                 host=result.host,
@@ -825,8 +825,6 @@ class _ReconcilePass:
                     repo,
                     "--state-dir",
                     str(self.root / ".onex_state"),
-                    "--ledger",
-                    self.request.ledger,
                     "--lock-age-s",
                     str(self.request.step_timeout_s),
                 ]

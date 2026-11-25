@@ -14,7 +14,10 @@
 # runner_groups: per runner, only while its container runs no job; the entries matching disposable_patterns of each mount are
 #   evicted largest first down to keep_gib. The work folder's `_actions`, `_temp` and `_PipelineMapping` are never evicted
 #   (the contract's protected names).
-# uv_caches: `uv cache prune` once the cache holds min_gib; `uv cache size` walks every file, so its timeout is minutes.
+# uv_caches: one rule per cache. `min_gib`: `uv cache prune` once the cache holds min_gib; `uv cache size` walks every file, so its
+#   timeout is minutes (it held a Mac's cores for over half an hour). `free_disk`: no size is ever read; the free space of the cache's
+#   filesystem is read once, and only below min_free_gib are entries untouched for keep_days evicted, oldest first, until the entries'
+#   own bytes bring the free space to target_free_gib.
 # docker_timeout_seconds: the most one docker call may take; past it the runner state or the container mounts read as unreadable.
 hosts:
   - name: pool-a
@@ -195,6 +198,9 @@ hosts:
     uv_caches:
       - path: ~/.cache/uv
         uv_binary: ~/.local/bin/uv
-        min_gib: 10
-        ci_prune: false
         timeout_seconds: 1800
+        free_disk:
+          min_free_gib: 30
+          target_free_gib: 50
+          buckets: [archive-v0, git-v0/checkouts]
+          keep_days: 14

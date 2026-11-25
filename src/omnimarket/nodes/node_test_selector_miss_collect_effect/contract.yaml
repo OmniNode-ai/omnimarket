@@ -1,0 +1,149 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Test Selector Miss Collect Effect
+#
+# Reads one nightly's junit artifacts and the merged pull requests' selection records through the repository gateway,
+# checks the night is complete, attributes each red test file with the reading node's pure rules, and raises one keyed
+# alarm to the owner role the overlay declares. A second operation, check_slot_result, is the dead-man check keyed by
+# the nightly's slot date; the lab status tick invokes it as its own process. A third, publish_attribution_record,
+# publishes one public-safe record per night through the repository gateway, bound to the nightly run it describes.
+name: node_test_selector_miss_collect_effect
+contract_name: node_test_selector_miss_collect_effect
+node_name: node_test_selector_miss_collect_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Collect a nightly's results, attribute each red test file to the merged pull requests whose executed selection skipped
+  it, and raise one alarm per (repository, nightly slot date, test file or *) to the owner role in the overlay. An
+  incomplete night (fewer than nightly_shard_count artifacts, a shard in error, a run that is not terminal, too few test
+  files) raises an alarm and is never a clean night. check_slot_result raises the alarm when no collector result exists
+  within collector_max_lag_hours of the slot, also when the collector is disabled. The effect refuses to start when the
+  overlay's owner_role is unset. A detector with named limits, not proof of cause.
+
+# Both handlers take their ports and the overlay's settings as constructor parameters, so the runtime cannot construct
+# them at boot (tests/test_handler_routing_boot_resolvable.py); they are built by this node's own process, like
+# node_lab_alarm's cli_handlers, and the node declares no handler_routing.
+cli_handlers:
+  - operation: collect_nightly
+    handler:
+      name: HandlerCollectNightly
+      module: omnimarket.nodes.node_test_selector_miss_collect_effect.handlers.handler_collect_nightly
+    input_model: omnimarket.nodes.node_test_selector_miss_collect_effect.models.model_miss_collect.ModelCollectRequest
+    output_model: omnimarket.nodes.node_test_selector_miss_collect_effect.models.model_miss_collect.ModelCollectResult
+  - operation: check_slot_result
+    handler:
+      name: HandlerCheckSlotResult
+      module: omnimarket.nodes.node_test_selector_miss_collect_effect.handlers.handler_check_slot_result
+    input_model: omnimarket.nodes.node_test_selector_miss_collect_effect.models.model_miss_collect.ModelSlotCheckRequest
+    output_model: omnimarket.nodes.node_test_selector_miss_collect_effect.models.model_miss_collect.ModelSlotCheckResult
+
+  - operation: publish_attribution_record
+    handler:
+      name: HandlerPublishAttributionRecord
+      module: omnimarket.nodes.node_test_selector_miss_collect_effect.handlers.handler_publish_attribution_record
+    input_model: omnimarket.nodes.node_test_selector_miss_collect_effect.models.model_attribution_record.ModelPublishRecordRequest
+    output_model: omnimarket.nodes.node_test_selector_miss_collect_effect.models.model_attribution_record.ModelPublishRecordResult
+
+handler:
+  module: omnimarket.nodes.node_test_selector_miss_collect_effect.handlers.handler_collect_nightly
+  class: HandlerCollectNightly
+  input_model: omnimarket.nodes.node_test_selector_miss_collect_effect.models.model_miss_collect.ModelCollectRequest
+
+input_model:
+  name: ModelCollectRequest
+  module: omnimarket.nodes.node_test_selector_miss_collect_effect.models.model_miss_collect
+  description: The nightly slot date and the read time.
+output_model:
+  name: ModelCollectResult
+  module: omnimarket.nodes.node_test_selector_miss_collect_effect.models.model_miss_collect
+  description: The collection status, the attribution, and the alarm keys created, delivered or left pending.
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 300000
+  side_effects:
+    - reads the nightly run, its junit artifacts and the pull request records through the repository gateway
+    - upserts one keyed alarm row per (repository, slot date, test file) and delivers it to the alarm routing
+    - upserts one keyed record row per (repository, slot date) and writes it through the repository gateway as one check run on the tested head commit (publish_attribution_record)
+
+input_subscriptions:
+  - topic: "onex.cmd.omnimarket.test-selector-collect-nightly-requested.v1"
+    operation: "collect_nightly"
+  - topic: "onex.cmd.omnimarket.test-selector-slot-check-requested.v1"
+    operation: "check_slot_result"
+  - topic: "onex.cmd.omnimarket.test-selector-publish-record-requested.v1"
+    operation: "publish_attribution_record"
+
+terminal_event: onex.evt.omnimarket.test-selector-collect-completed.v1
+
+# Both handlers take their ports (gateway, alarm store, receiver) and the overlay's settings as constructor parameters,
+# which the runtime's auto-wiring cannot supply, so the runtime subscribes to nothing for this node: its own serve
+# process (runtime_collect_serve, started by the registry unit test-selector-collect-serve-systemd on the host the overlay's
+# serve block names) reads the collect_nightly command topic, builds the handler with real ports and publishes the
+# terminal event. The slot check and the record publication are not served yet. Its command topics are declared under
+# externally_produced_topics below.
+event_bus:
+  subscribe_topics: []
+  publish_topics:
+    - onex.evt.omnimarket.test-selector-collect-completed.v1
+
+runtime_dispatch:
+  external_trigger: true
+  command_topic: onex.cmd.omnimarket.test-selector-collect-nightly-requested.v1
+
+# A lab host polls the nightly's run (onex scm run-list) after its scheduled time and the lab status tick sends the
+# slot check; neither sender is a node contract.
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.test-selector-collect-nightly-requested.v1
+    producer: "a lab host's poller of the nightly workflow's runs, after the scheduled time; not a node contract"
+  - topic: onex.cmd.omnimarket.test-selector-slot-check-requested.v1
+    producer: "the lab's recurring status tick, as its own process; not a node contract"
+  - topic: onex.cmd.omnimarket.test-selector-publish-record-requested.v1
+    producer: "a lab host's poller of the nightly workflow's runs, after its collect_nightly call for the same slot date; not a node contract"
+externally_consumed_topics:
+  - onex.evt.omnimarket.test-selector-collect-completed.v1
+  - onex.evt.omnimarket.test-selector-record-published.v1
+
+# The publication's schedule is the existing poll of the nightly workflow, declared above: after collect_nightly returns
+# COLLECTED for a slot date the same poller sends publish_attribution_record for that date. No new script, workflow or
+# timer: tests/ci/test_nightly_record_schedule.py asserts it. A night with no collector result sends nothing, and the
+# status tick's check_slot_result raises the alarm after collector_max_lag_hours.
+schedule:
+  trigger: nightly_workflow_run_poll
+  workflow_file: nightly-full-suite.yml
+  operations_in_order: [collect_nightly, publish_attribution_record]
+  command_topic: onex.cmd.omnimarket.test-selector-publish-record-requested.v1
+  new_script: false
+
+overlay:
+  id: node_test_selector_miss_collect_effect
+  file_env: ONEX_TEST_SELECTOR_MISS_COLLECT_OVERLAY
+  example: overlay.example.yaml
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.test-selector-collect-nightly-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.test-selector-collect-nightly-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.test-selector-slot-check-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.test-selector-slot-check-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.test-selector-publish-record-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.test-selector-publish-record-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.test-selector-collect-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.test-selector-collect-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.test-selector-record-published.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.test-selector-record-published.v1, operation: DESCRIBE}
+
+metadata:
+  description: "Nightly red results attributed to merged pull requests, with a completeness check, a keyed alarm and a declared owner role"
+  author: "OmniNode Team"
+  license: MIT
+  created: "2026-11-21"
+  tags: [effect, test-selector, nightly, alarm]
+  related_tickets: ["OMN-26271", "OMN-26325"]

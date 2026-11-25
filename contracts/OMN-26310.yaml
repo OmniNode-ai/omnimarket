@@ -19,10 +19,20 @@ requirements:
         statement: "AC4: the dispatch deadline, the boot guard and the broker health check are unchanged, and the PR changes no compose file by hand; if the 3.22 GiB runtime memory ceiling is a declared compose setting the PR comment names the file, the value and the measured need -- falsifier: git diff origin/dev --stat on the PR branch lists no dispatch deadline setting, no boot guard file, no health check file and no compose file, run with uv run pytest tests/nodes/node_projection_eval_results -q"
       - id: AC5
         statement: "AC5: on the dev runtime after the deploy agent applies the branch, the group local.omnimarket.projection_eval_results.consume.1.0.0 reads STATE Stable with its committed offset advancing across two reads 10 minutes apart and dev /health event_bus reports orphaned dispatches at or below 3 -- falsifier: rpk group describe on the dev broker shows an unchanged committed offset across the two reads or /health event_bus still reads unhealthy"
+      - id: AC6
+        statement: "AC6: a judged or code-try delivery whose envelope tenant stamp is no uuid is dead-lettered once with a typed invalid_event refusal naming the tenant, and a dead letter that is not confirmed published raises so the offset stays -- falsifier: uv run pytest tests/nodes/node_projection_eval_results/test_writer.py -k tenant -q fails at omnimarket origin/dev and passes with the fix"
+  - id: req-omn26310-on-merge-dispatch-budget
+    statement: A node_dod_verify dispatch for onex.evt.github.pr-merged.v1 returns inside a declared wall-clock budget well under the 600 s dispatch deadline, and any check it cannot run inside the budget is deferred with a typed reason and never counted as a pass. Measured on the dev runtime, on-merge dispatches ran every check of each merged PR's contract in series with no bound on the sum. This requirement addresses node_dod_verify dispatch time only; AC1 to AC5 above describe node_projection_eval_results and are not claimed by it.
+    acceptance:
+      - id: AC7
+        statement: "AC7: one on-merge dispatch whose checks each finish inside their own ceiling but whose sum exceeds the budget returns inside the declared bound, and the checks it could not start are SKIPPED with CHECK_BUDGET_EXCEEDED and the verdict is not VERIFIED -- falsifier: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_26310_on_merge_dispatch_budget.py fails at omnimarket dev (the dispatch takes the unbounded 4.8 s) and passes with the change."
 evidence_requirements:
   - kind: tests
     description: The node tests, including the tick_deadline and not_materialized selections, pass at the pushed head.
     command: uv run pytest tests/nodes/node_projection_eval_results -q --no-cov -p no:cacheprovider
+  - kind: tests
+    description: The on-merge dispatch budget tests pass at the pushed head.
+    command: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_26310_on_merge_dispatch_budget.py -q -p no:randomly --no-cov
 emergency_bypass:
   enabled: false
   justification: ""
@@ -68,6 +78,14 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest tests/nodes/node_projection_eval_results -q --no-cov -p no:cacheprovider
         cwd: .
+  - id: dod-omn26310-tenant-stamp-dead-letter
+    description: "A judged or code-try delivery whose envelope tenant stamp is no uuid is dead-lettered once with a typed invalid_event refusal naming the tenant, a dead letter that is not confirmed published is raised, and a lane's own configured tenant that is no uuid still raises; the dev runtime logged this as ValueError badly formed hexadecimal UUID string and withheld the offset. It binds AC6."
+    source: manual
+    binds_ac: [AC6]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_projection_eval_results/test_writer.py -k tenant -q --no-cov -p no:cacheprovider
+        cwd: .
   - id: dod-omn26310-integration-proof
     description: 'Run the node tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. It binds no acceptance criterion: the dev runtime install of the branch is read under AC5 after the deploy agent applies it.'
     source: manual
@@ -75,4 +93,12 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26310 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_projection_eval_results -q --no-cov
+        cwd: .
+  - id: dod-omn26310-dispatch-budget
+    description: "AC7: the on-merge dispatch budget test file. Its dispatch-bound and typed-deferral cases fail on omnimarket dev 0ec8fc327f (dispatch took 4.83 s against a 2.5 s bound, no check deferred) and pass with the change."
+    source: manual
+    binds_ac: [AC7]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_26310_on_merge_dispatch_budget.py -q -p no:randomly --no-cov
         cwd: .

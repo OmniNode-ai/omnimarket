@@ -35,6 +35,7 @@ from omnimarket.nodes.node_projection_eval_results.models.model_eval_projection_
     TOPIC_CODE_TRY,
     TOPIC_JUDGED,
     TOPIC_RUN_CLOSED,
+    TOPIC_TICK,
 )
 from omnimarket.nodes.node_projection_eval_results.models.model_eval_rows import (
     ModelEvalItemRow,
@@ -351,6 +352,46 @@ async def test_a_judged_delivery_with_no_judge_run_id_writes_no_row_and_reaches_
 
 
 @pytest.mark.integration
+async def test_a_judged_delivery_with_a_tenant_stamp_that_is_no_uuid_writes_no_row_and_reaches_the_dlq() -> (
+    None
+):
+    """A stamp that is no uuid is dead-lettered once and raises nothing; the same event with a uuid still lands."""
+    call = "00000000-0000-0000-0000-00000000c002"
+    async with _migrated_schema() as (db, _admin):
+        writer = EvalResultsProjectionWriter(overlay=overlay(), clock=lambda: at(100))
+        cast(Any, writer)._db = db
+        published: list[tuple[str, dict[str, Any]]] = []
+
+        async def publish(topic: str, value: bytes) -> None:
+            published.append((topic, json.loads(value)))
+
+        writer._publish_fn = publish
+
+        async def deliver_judged(tenant: str) -> dict[str, Any]:
+            return await writer._project(
+                TOPIC_JUDGED,
+                {
+                    **judged_event(call),
+                    "_envelope_timestamp": at(2).isoformat(),
+                    "_tenant_id": tenant,
+                },
+                MessageMeta(partition=0, offset=0, fallback_id="", topic=TOPIC_JUDGED),
+            )
+
+        refused = await deliver_judged("omninode")
+        assert refused["dlq_routed"] == 1
+        assert [r["reason"] for r in refused["refused"]] == ["invalid_event"]
+        assert (await _counts(db))["eval_item_scores"] == 0
+        assert [topic for topic, _ in published] == [
+            "onex.dlq.omnimarket.projection-eval-results-malformed.v1"
+        ]
+
+        landed = await deliver_judged(TENANT)
+        assert landed["dlq_routed"] == 0
+        assert (await _counts(db))["eval_item_scores"] == 1
+
+
+@pytest.mark.integration
 async def test_not_materialized_a_missing_table_is_withheld_then_dead_lettered() -> (
     None
 ):
@@ -391,3 +432,45 @@ async def test_not_materialized_a_missing_table_is_withheld_then_dead_lettered()
         outcome = await writer._project(TOPIC_JUDGED, dict(payload), meta)
         assert outcome["refused"][0]["reason"] == "not_materialized"
         assert [t for t, _ in published if t.startswith("onex.dlq.")]
+
+
+@pytest.mark.integration
+async def test_omn26410_a_tick_attests_a_noop_and_a_judged_event_upserts_its_row_unattested() -> (
+    None
+):
+    """On a real schema: a tick writes no row and says why; a source event writes its row and says nothing."""
+    call = "00000000-0000-0000-0000-00000000c001"
+    async with _migrated_schema() as (db, _admin):
+        writer = EvalResultsProjectionWriter(overlay=overlay(), clock=lambda: at(100))
+        cast(Any, writer)._db = db
+        published: list[tuple[str, dict[str, Any]]] = []
+
+        async def publish(topic: str, value: bytes) -> None:
+            published.append((topic, json.loads(value)))
+
+        writer._publish_fn = publish
+
+        async def deliver(topic: str, payload: dict[str, Any]) -> dict[str, Any]:
+            return await writer._project(
+                topic,
+                {
+                    **payload,
+                    "_envelope_timestamp": at(2).isoformat(),
+                    "_tenant_id": TENANT,
+                },
+                MessageMeta(partition=0, offset=0, fallback_id="", topic=topic),
+            )
+
+        first = await deliver(TOPIC_TICK, {"now": at(100).isoformat()})
+        assert first["rows_upserted"] == 0
+        assert first["snapshot"]["published"] is True
+        assert first["projection_noop_reason"] == "tick"
+        second = await deliver(TOPIC_TICK, {"now": at(101).isoformat()})
+        assert second["snapshot"] == {"published": False, "reason": "interval"}
+        assert second["projection_noop_reason"] == "tick"
+        assert (await _counts(db))["eval_item_scores"] == 0
+
+        landed = await deliver(TOPIC_JUDGED, judged_event(call))
+        assert landed["rows_upserted"] >= 1
+        assert "projection_noop_reason" not in landed
+        assert (await _counts(db))["eval_item_scores"] == 1

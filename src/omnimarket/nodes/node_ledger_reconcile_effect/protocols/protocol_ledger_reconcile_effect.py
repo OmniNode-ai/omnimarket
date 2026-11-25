@@ -29,18 +29,16 @@ class ReconcilePortError(RuntimeError):
 
 
 class ProtocolReconcileHost(Protocol):
-    """The operator's files: ledger, archives, clone registry, roster and overlay."""
+    """The operator's host: the ledger rows (read over the bus), clone registry, roster and overlay."""
 
     def prerequisites(self) -> str:
         """Why a reconciliation cannot run on this host, or ''."""
         ...
 
-    def ledger_path(self) -> Path: ...
-
     def registry_root(self) -> Path: ...
 
     def read_ledger(
-        self, ledger: Path
+        self,
     ) -> tuple[ModelReconcileSource, tuple[ModelReconcileSource, ...]]: ...
 
     def clone_names(self, root: Path) -> tuple[str, ...]: ...
@@ -63,8 +61,8 @@ class ProtocolReconcileGit(Protocol):
 
 
 class ProtocolReconcileAppender(Protocol):
-    def append(self, ledger: Path, row: str) -> str:
-        """Append one row; '' on success, else the error text."""
+    def append(self, row: str) -> str:
+        """Append one row over the bus; '' on success, else the error text."""
         ...
 
 

@@ -350,6 +350,10 @@ def _nested_str(raw: object, key: str) -> str:
     return ""
 
 
+def _nested_raw(raw: object, key: str) -> object:
+    return raw.get(key) if isinstance(raw, dict) else None
+
+
 def _cut(text: object) -> tuple[str, bool]:
     value = text if isinstance(text, str) else ""
     return value[:MAX_TEXT_CHARS], len(value) > MAX_TEXT_CHARS
@@ -916,6 +920,12 @@ def read_commit_check_runs(
                     "app_slug": _nested_str(run.get("app"), "slug") or None,
                     "head_branch": _nested_str(run.get("check_suite"), "head_branch")
                     or None,
+                    "output_summary": (
+                        _cut(_nested_raw(run.get("output"), "summary"))[0]
+                        if request.include_output
+                        and _nested_raw(run.get("output"), "summary") is not None
+                        else None
+                    ),
                 },
             )
             for run in raw

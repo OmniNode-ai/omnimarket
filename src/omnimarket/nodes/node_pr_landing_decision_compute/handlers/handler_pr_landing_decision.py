@@ -82,6 +82,7 @@ from omnimarket.handlers.cause_signature import (
     cause_key,
     normalize_signature,
 )
+from omnimarket.models.model_downstream_gate import EnumDownstreamGateVerdict
 from omnimarket.models.model_landing_review import (
     EnumReviewGateVerdict,
 )
@@ -92,6 +93,10 @@ from omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_lane_prior
 )
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     resolve_lane_model,
+)
+from omnimarket.nodes.node_pr_landing_decision_compute.downstream_gate import (
+    SKIP_FOR_DOWNSTREAM,
+    read_downstream_gate,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.lab_check import (
     SKIP_FOR_VERDICT,
@@ -1718,6 +1723,13 @@ def _merge(t: _Tick, p: ModelLandingPrFacts) -> None:
     status = read_review_status_gate(p, t.facts.policy)
     if status is not None and status.verdict is not EnumReviewStatusVerdict.PASS:
         t.skips[p.pr] = SKIP_FOR_REVIEW_STATUS[status.verdict]
+        return
+    downstream = read_downstream_gate(p, t.facts.policy)
+    if (
+        downstream is not None
+        and downstream.verdict is not EnumDownstreamGateVerdict.PASS
+    ):
+        t.skips[p.pr] = SKIP_FOR_DOWNSTREAM[downstream.verdict]
         return
     undeclared = _liveness_undeclared(p)
     if undeclared:

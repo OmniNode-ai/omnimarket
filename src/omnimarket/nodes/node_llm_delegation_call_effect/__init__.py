@@ -49,6 +49,10 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_lab_job_d
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_delegation_call import (
     HandlerLlmDelegationCall,
     current_call_observer,
+    current_local_model_entry,
+)
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.transport import (
+    post_chat_completion,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_codex_harness_attempt import (
     ModelCodexHarnessPolicy,
@@ -94,4 +98,6 @@ __all__ = [
     "NodeLlmDelegationCallEffect",
     "cloud_start_script",
     "current_call_observer",
+    "current_local_model_entry",
+    "post_chat_completion",
 ]

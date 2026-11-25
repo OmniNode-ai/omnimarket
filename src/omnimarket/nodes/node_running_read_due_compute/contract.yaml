@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_running_read_due_compute
+node_type: compute
+lifecycle: experimental
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  The running-read due row (OMN-26491). A merged runtime-affecting pull request maps to one STATUS row,
+  kind=running-read-due, due at merge plus 60 minutes, with the ticket, its owner and the reading the pull
+  request body names (a "Running read:" line: node and topic, unit and host, or overlay and reader; none named
+  writes reading=unnamed). The row is appended with append_if_absent keyed on its id, so a replayed merge leaves
+  one row. A second operation reads ledger text at a time: a due row with no later STATUS row citing its id as
+  due_id with both observed= and read_at= raises one MSG to the owner once its due time has passed (the alarm
+  request id is keyed on the due id, and an alarm row already on the ledger raises none), and every ticket with
+  an open due row, before or after its due time, is reported blocked from Done. Pure: no file, clock, bus or
+  model call. The ledger grammar has no DUE row type, so the due row is a STATUS row; AC3's week-one figure is
+  read from those rows (merged runtime changes with a closing row inside 60 minutes over all due rows).
+input_model:
+  name: ModelRunningReadDueRequest
+  module: omnimarket.models.running_read_due
+output_model:
+  name: ModelRunningReadDueResult
+  module: omnimarket.models.running_read_due
+handler:
+  module: omnimarket.nodes.node_running_read_due_compute.handlers.handler_running_read_due
+  class: HandlerRunningReadDue
+  input_model: omnimarket.models.running_read_due.ModelRunningReadDueRequest
+  output_model: omnimarket.models.running_read_due.ModelRunningReadDueResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_running_read_due_compute.handlers.handler_running_read_due:HandlerRunningReadDue
+  handlers:
+    - operation: write_due_row
+      handler:
+        name: HandlerRunningReadDue
+        module: omnimarket.nodes.node_running_read_due_compute.handlers.handler_running_read_due
+    - operation: read_due_rows
+      handler:
+        name: HandlerRunningReadDue
+        module: omnimarket.nodes.node_running_read_due_compute.handlers.handler_running_read_due
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+inputs:
+  operation: {type: str, required: true, enum: [write_due_row, read_due_rows], description: Which question is asked.}
+  merged: {type: object, required: false, description: The merged pull request, for write_due_row.}
+  ledger_text: {type: str, required: false, description: The ledger text to read, for read_due_rows.}
+  now: {type: datetime, required: false, description: The time to read at, for read_due_rows.}
+outputs:
+  operation: {type: str}
+  due_id: {type: str}
+  append_request: {type: object}
+  refusal: {type: str}
+  open_due_ids: {type: list}
+  alarms: {type: list}
+  blocked_tickets: {type: list}
+  blocked_reason: {type: str}
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: "Direct Python invocation of the handler: at a merge (write_due_row) and at each tick (read_due_rows); no topic is declared, so no broker permission row is owed. The call line a schedule or a merge step runs is python -m omnimarket.nodes.node_running_read_due_compute <write-due|read-due> (runtime_running_read_due.py), which takes its input on stdin, prints the rows owed and appends nothing."
+  callers:
+    - path: "src/omnimarket/nodes/node_pr_landing_tick_orchestrator/handlers/tick_running_read.py"
+metadata:
+  transport_type: local
+  description: running-read due rows and their alarms
+  author: OmniNode Team
+  created: "2026-11-23"
+  related_tickets: [OMN-26491]

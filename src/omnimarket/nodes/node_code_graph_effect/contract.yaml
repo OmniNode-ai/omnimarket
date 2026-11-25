@@ -26,7 +26,15 @@ description: >
   answers from Memgraph by Cypher and falls back to the file store, with a typed reason on the answer,
   only when Memgraph is unreachable. Its locate question (OMN-26202) answers where a node, its
   contract.yaml, metadata.yaml, overlay.yaml or overlay.example.yaml and the workflow files that name it
-  live, from the stored version, indexed through the overlay's contract_globs and command_globs. An unreadable
+  live, from the stored version, indexed through the overlay's contract_globs and command_globs. The
+  compare_selection operation (OMN-26273) asks REACH of the graph for a merged pull request's changed files and
+  compares its test files with the parse selection, in a worker terminated at the overlay's lookup deadline, with
+  a separate fallback deadline for the file store; selection_verdict writes the two-part verdict over the rows.
+  Its handlers
+  question answers one row per operation of each contract's handler_routing: the handler class and module, the
+  input and output model, the topics, the declared failure causes and examples, read through the contract graph
+  import and resolved against the version's definition index; a reference it cannot place is marked UNRESOLVED and
+  an operation with no command topic and no subscribed topic with an observable output is NO_ROUTE. An unreadable
   repository, pull request source or an append that does not land are typed failures.
 
 handler:
@@ -58,6 +66,18 @@ handler_routing:
         module: omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph_requested
       input_model: omnimarket.models.model_code_graph_lookup.ModelCodeGraphLookupCommand
       output_model: omnimarket.models.model_code_graph_lookup.ModelCodeGraphLookupResult
+    - operation: compare_selection
+      handler:
+        name: HandlerCodeGraphCompareSelectionRequested
+        module: omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph_requested
+      input_model: omnimarket.models.model_code_graph_selection_compare.ModelSelectionCompareCommand
+      output_model: omnimarket.models.model_code_graph_selection_compare.ModelSelectionCompareResult
+    - operation: selection_verdict
+      handler:
+        name: HandlerCodeGraphSelectionVerdictRequested
+        module: omnimarket.nodes.node_code_graph_effect.handlers.handler_code_graph_requested
+      input_model: omnimarket.models.model_code_graph_selection_verdict.ModelSelectionVerdictRequest
+      output_model: omnimarket.models.model_code_graph_selection_verdict.ModelSelectionVerdict
 
 descriptor:
   node_archetype: effect
@@ -95,6 +115,10 @@ topics:
   code_graph_shadow_failed: onex.evt.omnimarket.code-graph-shadow-failed.v1
   code_graph_lookup_requested: onex.cmd.omnimarket.code-graph-lookup-requested.v1
   code_graph_lookup_answered: onex.evt.omnimarket.code-graph-lookup-answered.v1
+  code_graph_compare_selection_requested: onex.cmd.omnimarket.code-graph-compare-selection-requested.v1
+  code_graph_selection_compared: onex.evt.omnimarket.code-graph-selection-compared.v1
+  code_graph_selection_verdict_requested: onex.cmd.omnimarket.code-graph-selection-verdict-requested.v1
+  code_graph_selection_verdict_written: onex.evt.omnimarket.code-graph-selection-verdict-written.v1
 
 event_bus:
   subscribe_topics: []
@@ -109,6 +133,8 @@ externally_consumed_topics:
   - onex.evt.omnimarket.code-graph-shadow-completed.v1
   - onex.evt.omnimarket.code-graph-shadow-failed.v1
   - onex.evt.omnimarket.code-graph-lookup-answered.v1
+  - onex.evt.omnimarket.code-graph-selection-compared.v1
+  - onex.evt.omnimarket.code-graph-selection-verdict-written.v1
 
 # The node's own nightly schedule, installed by `schedule install --host <name>` as a systemd user
 # timer on a host the overlay declares, removed by `schedule uninstall` (the rollback).

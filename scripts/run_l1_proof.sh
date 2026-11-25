@@ -17,7 +17,7 @@ echo "Input    : ${INPUT}"
 echo "State    : ${STATE_DIR}"
 echo "---"
 
-uv run onex node node_merge_sweep --input "${INPUT}" --state-root "${STATE_DIR}" --timeout 30
+uv run python -m omnibase_core.cli.cli_commands node node_merge_sweep --input "${INPUT}" --state-root "${STATE_DIR}" --timeout 30
 
 echo "---"
 echo "State file:"

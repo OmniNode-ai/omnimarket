@@ -30,6 +30,11 @@ from omnimarket.nodes.node_code_graph_effect.handlers.code_graph_lookup import (
     CodeGraphLookup,
 )
 
+_NOT_IN_MEMGRAPH = {
+    EnumCodeGraphQuestion.USERS: "the users question reads the imports as written",
+    EnumCodeGraphQuestion.HANDLERS: "the handlers question reads the contracts' handler routing",
+}
+
 
 class MemgraphFirstLookup:
     """Answer from Memgraph; answer from the fallback, with the typed reason, when it is unreachable."""
@@ -46,13 +51,15 @@ class MemgraphFirstLookup:
     def handle(
         self, command: ModelCodeGraphLookupCommand
     ) -> ModelCodeGraphLookupResult:
-        if command.question is EnumCodeGraphQuestion.USERS:
-            # Memgraph holds no written imports yet: its answer would be a clean negative.
+        held_back = _NOT_IN_MEMGRAPH.get(command.question)
+        if held_back is not None:
+            # Memgraph holds neither the written imports nor the handler rows: its answer would be
+            # a clean negative.
             return self._fallback(command).model_copy(
                 update={
                     "served_from": EnumLookupServedFrom.FILE_STORE,
                     "fallback_reason": EnumLookupFallbackReason.QUESTION_NOT_IN_MEMGRAPH,
-                    "fallback_detail": "the users question reads the imports as written",
+                    "fallback_detail": held_back,
                 }
             )
         store: MemgraphVersionStore | None = None

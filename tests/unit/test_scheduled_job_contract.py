@@ -167,6 +167,60 @@ def test_scheduled_job_contract_input_rows_are_models_not_coerced_dicts() -> Non
         )
 
 
+# The rows the closeout text-state command prints: every row carries ``error`` (empty when the
+# ticket was read, the reason when its read failed), spelled here as that command writes them.
+TEXT_STATE_ROW_READ: dict[str, Any] = {
+    "id": "OMN-1",
+    "text_sha": "0123456789abcdef",
+    "last_closeout_comment_at": "2026-11-20T10:00:00Z",
+    "held_text_sha": "",
+    "waiting_on": [],
+    "error": "",
+}
+TEXT_STATE_ROW_FAILED: dict[str, Any] = {
+    "id": "OMN-2",
+    "text_sha": "",
+    "last_closeout_comment_at": "",
+    "held_text_sha": "",
+    "waiting_on": [],
+    "error": "URLError: <urlopen error timed out>",
+}
+
+
+def test_text_state_rows_with_their_error_field_are_read_as_typed_rows() -> None:
+    rows = parse_scope_rows(
+        json.dumps([TEXT_STATE_ROW_READ, TEXT_STATE_ROW_FAILED]),
+        ModelScopeTextStateRow,
+        file="--text-state t.json",
+    )
+    assert [r.error for r in rows] == ["", "URLError: <urlopen error timed out>"]
+
+
+def test_text_state_row_still_refuses_a_field_the_model_does_not_declare() -> None:
+    with pytest.raises(ScopeContractError, match="sneaky"):
+        parse_scope_rows(
+            json.dumps([{**TEXT_STATE_ROW_READ, "sneaky": 1}]),
+            ModelScopeTextStateRow,
+            file="--text-state t.json",
+        )
+
+
+def test_bundle_reads_a_text_state_file_whose_rows_carry_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    argv = _write_inputs(tmp_path)
+    parity = json.loads(PARITY.read_text())
+    first, second = (c["id"] for c in parity["candidates"][:2])
+    rows = [
+        {**TEXT_STATE_ROW_READ, "id": first},
+        {**TEXT_STATE_ROW_FAILED, "id": second},
+    ]
+    (tmp_path / "text_state.json").write_text(json.dumps(rows))
+    assert runtime.main(argv) == 0
+    printed = capsys.readouterr().out
+    assert parse_scope_bundle(printed, file="b").schema_version == "scope_bundle.v1"
+
+
 def test_scheduled_job_contract_valid_inputs_produce_a_bundle_the_reader_accepts(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

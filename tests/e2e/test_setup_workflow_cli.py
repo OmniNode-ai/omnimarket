@@ -154,11 +154,143 @@ def test_installed_verify_observes_empty_install_without_writes(
     } <= observations.keys()
     assert observations["workspace"].status == "unavailable"
     assert observations["identity"].status == "unavailable"
-    assert observations["models"].status == "action_required"
+    # No model server is named, so the models step is optional on the customer path:
+    # verify reports it skipped with the one bring-your-own-key line, not a required action.
+    models = observations["models"]
+    assert models.status == "skipped"
+    assert "bring your own key" in models.evidence["skipped"]
     assert "workspace-repositories" not in observations
     assert "base-tools" not in observations
     assert all(not item.changed for item in journal.observations)
     assert _snapshot(tmp_path) == before
+
+
+def _conflicted_shell_home(tmp_path: Path) -> tuple[Path, dict[str, str]]:
+    """A fake HOME with one legacy profile line, an inherited legacy variable and a
+    shadow `onex` on PATH, so the shell-safety step reports one conflict of each
+    non-profile-ambiguous kind (OMN-26614)."""
+    home = tmp_path / "home"
+    home.mkdir()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (home / ".bashrc").write_text(
+        "# my shell config\nexport KAFKA_BROKERS=kafka:9092\n"
+    )
+    shadow = tmp_path / "shadow"
+    shadow.mkdir()
+    (shadow / "onex").write_text("#!/bin/sh\nexit 0\n")
+    os.chmod(shadow / "onex", 0o700)
+    cli = str(Path(sys.executable).parent / "onex")
+    environment = {
+        "HOME": str(home),
+        "PATH": str(shadow) + os.pathsep + str(Path(cli).parent) + ":/usr/bin:/bin",
+        "ONEX_STATE_DIR": str(tmp_path / "state"),
+        "OMNI_HOME": str(tmp_path / "inherited-elsewhere"),
+    }
+    return home, environment
+
+
+def test_shell_conflicts_print_one_plain_line_per_conflict(
+    tmp_path: Path,
+) -> None:
+    """OMN-26614 AC1 and AC2: the human setup output (no --json) names each shell
+    conflict in plain words, one line per conflict, and each line says whether
+    --set-aside fixes it or it must be fixed by hand; the raw JSON blob the
+    shell-safety step stores is never printed.
+
+    The fixture uses an old KAFKA_BROKERS profile line instead of the PATH line the
+    ticket names, because setup does not flag plain PATH lines: PATH is not a legacy
+    variable in shell_policy.yaml, so a bare `export PATH=...` is never a conflict,
+    while `^KAFKA_[A-Z_]+$` is. The PATH case the ticket's wording points at is the
+    executable kind, fired here by a shadow `onex` earlier on PATH.
+    """
+    _, environment = _conflicted_shell_home(tmp_path)
+    result = subprocess.run(
+        (
+            str(Path(sys.executable).parent / "onex"),
+            "setup",
+            "--action",
+            "verify",
+            "--component",
+            "delegation",
+            "--workspace",
+            str(tmp_path / "workspace"),
+            "--no-interactive",
+        ),
+        env=environment,
+        cwd=tmp_path / "workspace",
+        capture_output=True,
+        text=True,
+        input="",
+        timeout=45,
+        check=False,
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    out = result.stdout
+    assert "conflicts: [{" not in out, out + result.stderr
+    assert ".bashrc line 2: KAFKA_BROKERS is set by this profile line" in out
+    assert (
+        "current environment: OMNI_HOME is inherited from the current environment"
+        in out
+    )
+    assert "PATH: another onex executable resolves first on PATH" in out
+    assert "--set-aside preserves and disables it when setup runs again" in out, (
+        out + result.stderr
+    )
+    assert out.count("resolve it by hand") >= 2, out + result.stderr
+
+
+def test_json_output_keeps_structured_conflict_list(tmp_path: Path) -> None:
+    """OMN-26614 AC3: the structured conflict list is carried by the --json output,
+    and only there: the same run without --json prints plain words, not that list."""
+    _, environment = _conflicted_shell_home(tmp_path)
+    command = (
+        str(Path(sys.executable).parent / "onex"),
+        "setup",
+        "--action",
+        "verify",
+        "--component",
+        "delegation",
+        "--workspace",
+        str(tmp_path / "workspace"),
+        "--no-interactive",
+    )
+    result = subprocess.run(
+        (*command, "--json"),
+        env=environment,
+        cwd=tmp_path / "workspace",
+        capture_output=True,
+        text=True,
+        input="",
+        timeout=45,
+        check=False,
+    )
+    assert result.stdout.startswith("{"), result.stdout + result.stderr
+    journal = ModelSetupJournal.model_validate_json(result.stdout)
+    shell = next(item for item in journal.observations if item.step == "shell-safety")
+    conflicts = json.loads(shell.evidence["conflicts"])
+    by_kind = {(row["kind"], row["name"]): row for row in conflicts}
+    profile = by_kind[("profile", "KAFKA_BROKERS")]
+    assert (profile["location"], profile["line"], profile["recoverable"]) == (
+        ".bashrc",
+        2,
+        True,
+    )
+    assert ("environment", "OMNI_HOME") in by_kind
+    assert ("executable", "onex") in by_kind
+
+    human = subprocess.run(
+        command,
+        env=environment,
+        cwd=tmp_path / "workspace",
+        capture_output=True,
+        text=True,
+        input="",
+        timeout=45,
+        check=False,
+    )
+    assert '"kind"' not in human.stdout, human.stdout + human.stderr
+    assert ".bashrc line 2: KAFKA_BROKERS" in human.stdout, human.stdout
 
 
 def test_secret_bearing_plan_is_refused_before_writes(tmp_path: Path) -> None:

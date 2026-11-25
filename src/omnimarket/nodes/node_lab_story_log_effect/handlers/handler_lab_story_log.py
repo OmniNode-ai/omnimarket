@@ -62,7 +62,7 @@ class HandlerLabStoryLog:
             request.person_names_path,
             request.lab_vocabulary_path,
         )
-        rows = read_week(request.ledger_paths, start, end)
+        rows = read_week(request.ledger_lines, start, end)
         prs = list(merged_prs(rows))
         markdown = render_log(
             week_label=label, start=start, end=end, rows=rows, prs=prs, clean=clean

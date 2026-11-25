@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# Synthetic values. A deployment's real overlay lives in the overlays repository.
+# Synthetic values. Supply the deployment overlay through ONEX_SKILL_OVERLAY_ROOTS.
 # The hosted bus lane the recorded events are carried to (resolved to its broker from the lane declaration).
 event_bus:
   type: kafka
@@ -10,3 +10,28 @@ flush_timeout_seconds: 10
 allowed_topic_prefixes:
   - "example.evt."
   - "example.cmd."
+
+# HTTPS example. The dotted references resolve at the effect boundary.
+# event_bus:
+#   type: https
+#   ingest_url_ref: gateway.ingest.url
+#   auth_ref: gateway.ingest.token
+#   max_batch_records: 4
+#   max_event_bytes: 512
+#   max_batch_bytes: 4096
+#   max_authorization_bytes: 4096
+#   max_key_bytes: 32
+#   max_value_bytes: 128
+#   max_record_headers: 6
+#   max_header_name_chars: 24
+#   max_header_value_chars: 32
+#   max_topic_chars: 80
+#   request_timeout_seconds: 3
+#   door_record_confirm_timeout_seconds: 0.5
+#   request_margin_seconds: 0.5
+#   max_attempts: 2
+#   retry_backoff_seconds: 0.2
+# max_events: 20
+# flush_timeout_seconds: 40
+# allowed_topic_prefixes:
+#   - "example.evt."

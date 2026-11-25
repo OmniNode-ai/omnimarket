@@ -2,16 +2,30 @@
 # SPDX-License-Identifier: MIT
 """Wire types of the test-path resolution handler and the module adjacency map (OMN-23719).
 
-The adjacency map models moved here from scripts/ci/test_selection_loader.py, which keeps loading the
-YAML and re-exports them.
+The adjacency map models live here; ``adapters/adjacency_file.py`` loads the YAML.
 """
 
 from __future__ import annotations
 
+from enum import StrEnum
 from fnmatch import fnmatchcase
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from omnimarket.nodes.node_test_selection_selector_compute.models.model_test_selection_record import (
+    EnumFullSuiteReason,
+)
+
+
+class EnumClosurePyprojectRule(StrEnum):
+    """How a ``pyproject.toml`` or ``uv.lock`` change combines with the file-level closure."""
+
+    #: Any change to a declared project or lock file takes the full suite (the closure reads neither).
+    FULL_SUITE = "full_suite"
+    #: The closure runs and the section rule adds its tests to the selection; an escalation of the
+    #: section rule (a key off the allowlist, an unread diff, a lock change beyond the version line) wins.
+    SEEDS = "seeds"
 
 
 class ModelAdjacencyEntry(BaseModel):
@@ -117,6 +131,77 @@ class ModelAdjacencyMap(BaseModel):
     data_reader_overrides: dict[str, list[str]] = Field(default_factory=dict)
     """Data glob -> test files (or directories) that read a matching file in a way no test text shows."""
 
+    data_file_readers_enabled: bool = False
+    """Whether a changed fixture or data file selects the tests that read it instead of the full suite.
+
+    For a changed non-Python file under one of ``data_reader_roots`` the readers are the tests whose text
+    spells its path, its file name or a directory between a ``data_reader_fixture_roots`` entry and the
+    file, the tests that enumerate its directory, the reverse import closure of any helper among those
+    tests, the tests that import a ``src/`` file naming it, and ``data_reader_overrides``. A file with no
+    reader selects the always set only. The rule changes what a pull request runs, so it is a switch the
+    change that turns it on owns: off, a fixture under ``data_reader_gated_infrastructure_paths`` keeps the
+    full-suite escalation it had.
+    """
+
+    data_reader_roots: list[str] = Field(default_factory=list)
+    """Repo-relative prefixes under which a non-Python file is a data file the rule covers."""
+
+    data_reader_fixture_roots: list[str] = Field(default_factory=list)
+    """Prefixes below which the name of each directory between the prefix and the file also finds readers."""
+
+    data_reader_gated_infrastructure_paths: list[str] = Field(default_factory=list)
+    """Test infrastructure only while ``data_file_readers_enabled`` is off, or for a Python file.
+
+    A non-Python data file under one of these paths is handled by the readers rule when it is on; with it
+    off, and for any Python file beneath them, the path forces the full suite like ``test_infrastructure_paths``.
+    """
+
+    pyproject_section_selection_enabled: bool = False
+    """Whether a ``pyproject.toml`` change narrows by section instead of taking the full suite.
+
+    The stage 2 entry of the selection record. Off, a path in ``pyproject_paths`` or
+    ``pyproject_lock_paths`` that ``test_infrastructure_paths`` names keeps the unconditional full-suite
+    rule. On, the handler compares the changed keys of the file (``data_file_changes``) with
+    ``pyproject_narrowable_keys`` and narrows only when every one matches.
+    """
+
+    pyproject_paths: list[str] = Field(default_factory=list)
+    """Repo-relative paths of the project files the section rule reads (``pyproject.toml``)."""
+
+    pyproject_lock_paths: list[str] = Field(default_factory=list)
+    """Repo-relative paths of their lock files (``uv.lock``): narrowable only beside a version change."""
+
+    pyproject_narrowable_keys: list[str] = Field(default_factory=list)
+    """Dotted key patterns (fnmatch) a ``pyproject.toml`` change may touch and still narrow.
+
+    An allowlist: a changed key no pattern matches, including one the list has never seen, escalates.
+    """
+
+    pyproject_reader_globs: list[str] = Field(default_factory=list)
+    """Repo-relative globs of the non-test files whose text is indexed for a read of the project file.
+
+    A file that opens ``pyproject.toml`` or reads entry-point metadata (``importlib.metadata``,
+    ``entry_points(``) makes every test that imports it, transitively, a reader.
+    """
+
+    closure_stage_pyproject_rule: EnumClosurePyprojectRule = (
+        EnumClosurePyprojectRule.FULL_SUITE
+    )
+    """The rule for a project or lock file change at or above the policy's ``file_level_closure_stage``.
+
+    The file-level closure reads no ``pyproject.toml``, so with ``pyproject_section_selection_enabled`` on
+    the file would reach the closure as a file with no source. ``seeds`` (option b of the OMN-26487 choice) runs
+    the closure and unions the section rule's tests, the allowlist ``pyproject_narrowable_keys`` and the
+    lock's version-line rule included; ``full_suite``, the default for an absent entry, escalates the change.
+    """
+
+    def effective_test_infrastructure_paths(self) -> list[str]:
+        """``test_infrastructure_paths`` less the files the section rule decides, when it is on."""
+        if not self.pyproject_section_selection_enabled:
+            return self.test_infrastructure_paths
+        decided = {*self.pyproject_paths, *self.pyproject_lock_paths}
+        return [p for p in self.test_infrastructure_paths if p not in decided]
+
     @model_validator(mode="after")
     def validate_data_reader_overrides(self) -> ModelAdjacencyMap:
         for glob, paths in self.data_reader_overrides.items():
@@ -160,6 +245,21 @@ class ModelAdjacencyMap(BaseModel):
                     )
         return self
 
+    def is_reader_data_file(self, path: str) -> bool:
+        """Whether the readers rule is on and ``path`` is a non-Python file under a data-reader root."""
+        return (
+            self.data_file_readers_enabled
+            and not path.endswith(".py")
+            and any(path.startswith(root) for root in self.data_reader_roots)
+        )
+
+    def is_test_infrastructure(self, path: str) -> bool:
+        """Whether a changed ``path`` invalidates narrowing: the full suite runs."""
+        paths = self.effective_test_infrastructure_paths()
+        if not self.is_reader_data_file(path):
+            paths = [*paths, *self.data_reader_gated_infrastructure_paths]
+        return any(path == p or path.startswith(p.rstrip("/") + "/") for p in paths)
+
     def narrowed_extra_paths(self, changed_files: list[str]) -> set[str]:
         """Always-selected tests plus those a matching changed file triggers."""
         triggered = {
@@ -175,6 +275,30 @@ class ModelAdjacencyMap(BaseModel):
         return set(self.always_selected_paths) | triggered
 
 
+class ModelKeyChange(BaseModel):
+    """One changed key of a TOML file: its dotted path and its value on each side (None: absent)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    key: str = Field(min_length=1)
+    base_value: str | None = None
+    head_value: str | None = None
+
+
+class ModelDataFileChange(BaseModel):
+    """The keys that differ between the base and head text of one declared data file.
+
+    ``parse_failed`` is set when either side is absent or is not TOML: the keys are then unknown and the
+    rule fails closed.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    path: str = Field(min_length=1)
+    parse_failed: bool = False
+    changed_keys: tuple[ModelKeyChange, ...] = ()
+
+
 class ModelPathResolutionRequest(BaseModel):
     """The changed files, the adjacency map and the repository root to read."""
 
@@ -183,6 +307,8 @@ class ModelPathResolutionRequest(BaseModel):
     changed_files: tuple[str, ...]
     adjacency: ModelAdjacencyMap
     repo_root: str = Field(min_length=1)
+    data_file_changes: tuple[ModelDataFileChange, ...] = ()
+    """The changed keys of each declared data file, from a source-diff adapter. Empty when not read."""
 
 
 class ModelPathResolutionResult(BaseModel):
@@ -197,3 +323,6 @@ class ModelPathResolutionResult(BaseModel):
     Such a change may select no test of its own (the always set is added by the caller), so an empty
     ``selected_paths`` is a narrowed answer, not an unattributable one.
     """
+    full_suite_reason: EnumFullSuiteReason | None = None
+    """Set when the change cannot be narrowed (a ``pyproject.toml`` key outside the allowlist, an
+    unparseable side, a lock change beyond the version line): the caller takes the full suite with it."""

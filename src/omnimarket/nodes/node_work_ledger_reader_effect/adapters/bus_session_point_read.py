@@ -16,10 +16,12 @@ import asyncio
 import contextlib
 import uuid
 from collections.abc import Callable
+from datetime import datetime, timedelta
 from types import TracebackType
 from typing import Any, Protocol
 
 from omnimarket.nodes.node_work_ledger_reader_effect.adapters.point_read_adapters import (
+    _now,
     _request,
     answer_from_json,
 )
@@ -54,10 +56,15 @@ class BusSessionPointRead:
         client_factory: Callable[[], ProtocolBusQueryClient],
         timeout_seconds: int,
         new_id: Callable[[], str] = lambda: str(uuid.uuid4()),
+        *,
+        stamp_deadline: bool = False,
+        clock: Callable[[], datetime] = _now,
     ) -> None:
         self._client_factory = client_factory
         self._timeout = timeout_seconds
         self._new_id = new_id
+        self._stamp_deadline = stamp_deadline
+        self._clock = clock
         self._runner: asyncio.Runner | None = None
         self._stack: contextlib.AsyncExitStack | None = None
         self._client: ProtocolBusQueryClient | None = None
@@ -66,7 +73,12 @@ class BusSessionPointRead:
 
     def read(self, query: ModelPointQuery) -> ModelPointAnswer:
         correlation_id = self._new_id()
-        request = _request(query, correlation_id)
+        deadline = (
+            self._clock() + timedelta(seconds=self._timeout)
+            if self._stamp_deadline
+            else None
+        )
+        request = _request(query, correlation_id, deadline=deadline)
         try:
             runner, client = self._session()
             answer = runner.run(client.query(request, timeout_s=self._timeout))
@@ -78,6 +90,11 @@ class BusSessionPointRead:
                 error=f"bus-session-failed:{type(exc).__name__}:{str(exc)[:160]}"
             )
         return answer_from_json(answer, correlation_id)
+
+    @property
+    def stamps_deadline(self) -> bool:
+        """Whether each request carries the deadline this port will wait to (OMN-26609)."""
+        return self._stamp_deadline
 
     def _session(self) -> tuple[asyncio.Runner, ProtocolBusQueryClient]:
         if self._runner is not None and self._client is not None:

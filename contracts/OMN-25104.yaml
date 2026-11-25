@@ -1,0 +1,83 @@
+schema_version: 1.0.0
+ticket_id: OMN-25104
+title: The dashboard's Done figure counts done work items from a served projection, never merged ones
+summary: node_done_items_compute folds work-ledger events into done items (a TERMINAL row whose outcome is done; merged-only and handed-off tickets are not items; a ticket done twice keeps its newest done event). node_projection_done_items consumes onex.evt.omnimarket.work-ledger-terminal.v1 and v2, upserts one row per done ticket into done_items (newer-only), and exposes onex.snapshot.projection.done-items.v1 for the local dashboard. The omnidash Done figure (AC3) is the dashboard lane's own pull request.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+  - topics
+  - public_api
+requirements:
+  - id: req-omn25104-compute
+    statement: A pure compute node folds ledger events into done items and a projection writer serves them.
+    acceptance:
+      - id: AC1
+        statement: 'AC1: a pure compute node folds ledger events into done items and a projection writer serves them as onex.snapshot.projection.done-items.v1; a merged item with no done event is not counted -- falsifier: uv run --frozen pytest tests/nodes/node_done_items_compute tests/nodes/node_projection_done_items -q -n 0 -p no:randomly --no-cov -k ''done_items_from_ledger_events or done_items_exposure_served or golden_chain''; on the base commit the modules do not exist'
+  - id: req-omn25104-replay
+    statement: Replaying the same ledger events leaves the same served rows, and an older done event never replaces a newer one.
+    acceptance:
+      - id: AC2
+        statement: 'AC2: replaying the same ledger events leaves the same served rows, and an older done event never replaces a newer one -- falsifier: uv run --frozen pytest tests/nodes/node_done_items_compute tests/nodes/node_projection_done_items -q -n 0 -p no:randomly --no-cov -k ''replay or older_done_event''; with the writer''s newer-only WHERE guard removed, the replay and older-event tests fail'
+  - id: req-omn25104-database
+    statement: The writer's upsert binds and orders on real Postgres.
+    acceptance:
+      - id: AC4
+        statement: 'AC4: the writer''s upsert binds and orders on real Postgres -- falsifier: INTEGRATION_POSTGRES_* set, uv run --frozen pytest tests/nodes/node_projection_done_items/test_done_items_real_postgres.py -q -n 0 -p no:randomly --no-cov; with the guard removed two tests fail'
+  - id: req-omn25104-contract
+    statement: This file is the definition of done for the ticket and names the runnable checks.
+    acceptance:
+      - id: AC7
+        statement: 'AC7: this definition-of-done contract exists at contracts/OMN-25104.yaml -- falsifier: the dod-verify check in CI'
+evidence_requirements:
+  - kind: tests
+    description: The done-items compute and projection writer cases.
+    command: uv run --frozen pytest tests/nodes/node_done_items_compute tests/nodes/node_projection_done_items -q -n 0 -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn25104-ac1
+    description: AC1 is the golden compute and exposure cases.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_done_items_compute tests/nodes/node_projection_done_items -q -n 0 -p no:randomly --no-cov -k "done_items_from_ledger_events or done_items_exposure_served or golden_chain"
+        cwd: .
+  - id: dod-omn25104-ac2
+    description: AC2 is the replay and older-event cases.
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_done_items_compute tests/nodes/node_projection_done_items -q -n 0 -p no:randomly --no-cov -k "replay or older_done_event"
+        cwd: .
+  - id: dod-omn25104-ac4
+    description: AC4 is the real Postgres upsert cases.
+    source: manual
+    binds_ac:
+      - AC4
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_projection_done_items/test_done_items_real_postgres.py -q -n 0 -p no:randomly --no-cov
+        cwd: .
+  - id: dod-omn25104-ac7
+    description: AC7 is this contract read by dod-verify against the pull request; the check reads the new exposure and topics from the node contract the merge base lacks.
+    source: manual
+    binds_ac:
+      - AC7
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_projection_done_items/test_golden_chain_done_items.py -q -n 0 -p no:randomly --no-cov -k hops_are_the_declared_topics
+        cwd: .
+  - id: dod-omn25104-integration-proof
+    description: The pushed head runs the done-items compute and projection suites, including the golden chain through the writer, on a lab host. The node directories do not exist at the merge base, so the run is red there. Hosted CI cannot dispatch lab work, so only the local Done gate runs this unbound check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25104 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_projection_done_items tests/nodes/node_done_items_compute -q --no-cov -m 'not kafka'
+        cwd: .

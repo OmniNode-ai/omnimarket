@@ -14,9 +14,20 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
+
+from omnimarket.nodes.node_lab_fill_effect.models.model_lab_fill_tick_overlay import (
+    ModelLabFillTickOverlay,
+)
 
 from .test_lab_fill_select import FakeLedgerRows
-from .test_runtime_lab_fill_tick import MAX_AGE_S, run, write_snapshot, write_unit
+from .test_runtime_lab_fill_tick import (
+    MAX_AGE_S,
+    run,
+    tick_overlay,
+    write_snapshot,
+    write_unit,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -66,15 +77,108 @@ def test_a_ledger_read_that_is_not_ok_launches_nothing(
     assert runner.calls == []
 
 
-def test_an_unreadable_approved_work_list_launches_nothing(tmp_path: Path) -> None:
+def test_an_unreadable_work_source_launches_nothing(tmp_path: Path) -> None:
+    """A declared source that cannot be read refuses the pass and is named; it is never an empty green pass."""
     env = write_unit(tmp_path)
     write_snapshot(tmp_path)
-    (tmp_path / "approved-work.json").write_text("{not json", encoding="utf-8")
+    (tmp_path / "watcher-state.json").write_text("{not json", encoding="utf-8")
     code, out, err, runner = run(env, tmp_path)
     assert code == 69
     assert out == ""
-    assert "REFUSED reason=approved-work" in err
+    assert "REFUSED reason=work-source:pr-watcher" in err
     assert runner.calls == []
+
+
+def test_an_absent_work_source_launches_nothing(tmp_path: Path) -> None:
+    env = write_unit(tmp_path)
+    write_snapshot(tmp_path)
+    (tmp_path / "watcher-state.json").unlink()
+    code, out, err, runner = run(env, tmp_path)
+    assert code == 69
+    assert out == ""
+    assert "REFUSED reason=work-source:pr-watcher" in err
+    assert "approved-work" not in err
+    assert runner.calls == []
+
+
+def test_a_stale_work_source_launches_nothing(tmp_path: Path) -> None:
+    env = write_unit(tmp_path)
+    write_snapshot(tmp_path)
+    path = tmp_path / "watcher-state.json"
+    state = json.loads(path.read_text("utf-8"))
+    state["last_tick"] = "2000-01-01T00:00:00Z"
+    path.write_text(json.dumps(state), encoding="utf-8")
+    code, out, err, runner = run(env, tmp_path)
+    assert code == 69
+    assert out == ""
+    assert "REFUSED reason=work-source:pr-watcher" in err
+    assert runner.calls == []
+
+
+def test_an_overlay_written_before_work_sources_loads_and_refuses_naming_them(
+    tmp_path: Path,
+) -> None:
+    """The overlay on the overlays repository's main branch still names the retired list and no work_sources: it must load through
+    this model (the overlay main load check reads it), and the pass must refuse naming the missing key, never read a list."""
+    env = write_unit(tmp_path)
+    write_snapshot(tmp_path)
+    document = tick_overlay(tmp_path)
+    document.pop("work_sources")
+    document["approved_work_path"] = str(tmp_path / "retired-approved-work.json")
+    ModelLabFillTickOverlay.model_validate(document)
+    overlay_file = tmp_path / "overlays" / "node_lab_fill_effect" / "overlay.yaml"
+    overlay_file.write_text(yaml.safe_dump(document), encoding="utf-8")
+    code, out, err, runner = run(env, tmp_path)
+    assert code == 69
+    assert out == ""
+    assert (
+        "REFUSED reason=work-source detail=the overlay declares no work_sources" in err
+    )
+    assert runner.calls == []
+
+
+def test_a_missing_selection_overlay_names_its_id_and_the_roots_searched(
+    tmp_path: Path,
+) -> None:
+    """The select step's overlay is a second overlay: the refusal line must tell it from the unit's own."""
+    env = write_unit(tmp_path)
+    write_snapshot(tmp_path)
+    (
+        tmp_path / "overlays" / "node_lab_fill_selection_compute" / "overlay.yaml"
+    ).unlink()
+    code, out, err, runner = run(env, tmp_path)
+    assert code == 78
+    assert out == ""
+    assert "REFUSED reason=overlay detail=NodeOverlayNotFoundError" in err
+    assert "node_lab_fill_selection_compute" in err
+    assert str(tmp_path / "overlays") in err
+    assert runner.calls == []
+
+
+def test_a_missing_unit_overlay_names_its_id_and_the_roots_searched(
+    tmp_path: Path,
+) -> None:
+    env = write_unit(tmp_path)
+    write_snapshot(tmp_path)
+    (tmp_path / "overlays" / "node_lab_fill_effect" / "overlay.yaml").unlink()
+    code, _, err, runner = run(env, tmp_path)
+    assert code == 78
+    assert "REFUSED reason=overlay detail=NodeOverlayNotFoundError" in err
+    assert "node_lab_fill_effect" in err
+    assert str(tmp_path / "overlays") in err
+    assert runner.calls == []
+
+
+def test_an_invalid_overlay_names_only_its_error_type(tmp_path: Path) -> None:
+    """The control: an overlay that loads wrong may hold private values, so only the type is written."""
+    env = write_unit(tmp_path)
+    write_snapshot(tmp_path)
+    overlay_file = tmp_path / "overlays" / "node_lab_fill_effect" / "overlay.yaml"
+    overlay_file.write_text("parent: SECRET-VALUE-9\n", encoding="utf-8")
+    code, _, err, _ = run(env, tmp_path)
+    assert code == 78
+    assert "SECRET-VALUE-9" not in err
+    assert "REFUSED reason=overlay detail=NodeOverlayError\n" in err
 
 
 def test_an_overlay_that_does_not_load_is_exit_78(tmp_path: Path) -> None:

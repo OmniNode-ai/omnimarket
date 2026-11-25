@@ -284,7 +284,6 @@ def bound_environ(tmp_path: Path) -> dict[str, str]:
         "ONEX_STATE_DIR": str(tmp_path / "state"),
         "OMNI_HOME": str(registry),
         "ONEX_OMNIINTELLIGENCE_CHECKOUT": str(checkout),
-        "OMNI_PLUGIN_ROOT": str(tmp_path / "plugin"),
         "ONEX_HOST_ENV_FILE": str(tmp_path / "absent.env"),
     }
 

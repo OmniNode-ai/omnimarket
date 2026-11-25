@@ -8,14 +8,14 @@
     onex-handoff-check resume       read the newest handoff, re-probe its stale lines, list changes
     onex-handoff-check record-slice record a scrubbed ledger slice as a test fixture
 
-Exit: 0 ok, 1 refused, 2 bad input, 3 no handoff found (resume). The same request goes over
+Exit: 0 ok, 1 refused, 2 bad input, 3 no handoff found (resume), 69 the ledger rows were
+not readable from the bus reader node (the ledger is never read from a file). The same request goes over
 the bus through ``onex run-node node_handoff_check_effect --input <json>``.
 """
 
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -28,6 +28,7 @@ from omnimarket.nodes.node_handoff_check_effect.models import (
     EnumHandoffCommand,
     ModelHandoffCheckRequest,
 )
+from omnimarket.nodes.node_handoff_check_effect.protocols import ProtocolLedgerRows
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -39,8 +40,6 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="cmd", required=True)
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--contract", default=str(CONTRACT_PATH))
-    common.add_argument("--ledger", default=os.environ.get("ONEX_LEDGER_PATH"))
-    common.add_argument("--archive-dir")
     common.add_argument(
         "--now", help="UTC time to evaluate at (tests); default is the clock"
     )
@@ -88,12 +87,14 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    ledger_rows: ProtocolLedgerRows | None = None,
+) -> int:
     args = build_parser().parse_args(argv)
     request = ModelHandoffCheckRequest(
         command=EnumHandoffCommand(args.cmd),
-        ledger=args.ledger,
-        archive_dir=args.archive_dir,
         now=args.now,
         pr_reads=args.pr_reads,
         probes=args.probes,
@@ -114,7 +115,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         until=getattr(args, "until", None),
         out=getattr(args, "out", None),
     )
-    result = HandlerHandoffCheck(Path(args.contract)).handle(request)
+    result = HandlerHandoffCheck(Path(args.contract), ledger_rows).handle(request)
     for line in result.output:
         sys.stdout.write(line + "\n")
     for line in result.errors:

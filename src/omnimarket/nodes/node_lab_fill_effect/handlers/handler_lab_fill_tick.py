@@ -399,8 +399,7 @@ class HandlerLabFillTick:
             verdict = f"placement=none reason=no row reached a slot ({result.outcome})"
         try:
             age = _age(
-                self._cloud_facts.newest_cloud_claim(request.ledger_path),
-                self._clock.now_epoch_s(),
+                self._cloud_facts.newest_cloud_claim(), self._clock.now_epoch_s()
             )
         except LabFillPortError:
             age = "unreadable"

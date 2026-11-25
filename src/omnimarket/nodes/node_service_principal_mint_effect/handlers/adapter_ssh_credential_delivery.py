@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Deliver a credential env file to a declared folder on a host, over ssh or locally (OMN-24256).
 
-One fixed bash script does the whole delivery. Every variable (folder, file name, owner, mode, apply flag, the privilege
+One fixed bash script does the whole delivery. Every variable (folder, file name, owner, mode, the optional account, apply flag, the privilege
 prefix) and the file content travel on standard input, never on a command line, so the content is on no process list.
 The file is written next to its destination with the declared owner and mode and renamed into place, then read back:
 the reading names the owner and mode the host holds, never the content. Shape followed:
@@ -30,6 +30,7 @@ IFS= read -r folder
 IFS= read -r filename
 IFS= read -r owner
 IFS= read -r mode
+IFS= read -r account
 IFS= read -r apply
 IFS= read -r nprefix
 privs=()
@@ -42,13 +43,41 @@ done
 tmp="$(mktemp)"
 trap 'rm -f -- "$tmp"' EXIT
 cat > "$tmp"
-case "$folder" in
-    /*) dir="$folder" ;;
-    *) dir="$HOME/$folder" ;;
-esac
-dest="$dir/$filename"
 want_mode="$(printf '%o' "0$mode")"
 run() { ${privs[@]+"${privs[@]}"} "$@"; }
+if [ -n "$account" ]; then
+    case "$account" in
+        -*|[0-9]*|*[!A-Za-z0-9_.-]*) echo "refused: not an account name" >&2; exit 5 ;;
+    esac
+    case "$folder" in
+        /*) echo "refused: an account delivery takes a folder relative to the account home" >&2; exit 5 ;;
+    esac
+    case "/$folder/" in
+        */../*) echo "refused: the folder of an account delivery has a '..' segment" >&2; exit 5 ;;
+    esac
+    entry="$(getent passwd "$account")" || { echo "unknown account on this host: $account" >&2; exit 2; }
+    IFS=: read -r _ _ acct_uid _ _ acct_home _ <<< "$entry"
+    if [ "$acct_uid" != "${owner%%:*}" ]; then
+        echo "refused: the uid of account $account is $acct_uid, not the declared owner's ${owner%%:*}" >&2
+        exit 3
+    fi
+    case "$acct_home" in
+        /?*) ;;
+        *) echo "refused: account $account has no absolute home" >&2; exit 3 ;;
+    esac
+    if run test -L "$acct_home"; then
+        echo "refused: the home of account $account is a symlink" >&2
+        exit 3
+    fi
+    run test -d "$acct_home" || { echo "refused: the home of account $account does not exist" >&2; exit 3; }
+    dir="$acct_home/$folder"
+else
+    case "$folder" in
+        /*) dir="$folder" ;;
+        *) dir="$HOME/$folder" ;;
+    esac
+fi
+dest="$dir/$filename"
 state=would-write
 cur=""
 if run test -f "$dest" && run cmp -s -- "$dest" "$tmp"; then
@@ -116,6 +145,7 @@ class SshCredentialDelivery:
             target.filename,
             target.owner,
             target.mode,
+            target.account or "",
             "yes" if apply else "no",
             str(len(target.privilege_argv)),
             *target.privilege_argv,
