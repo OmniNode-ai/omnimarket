@@ -93,7 +93,7 @@ async def test_b_double_run_of_one_slug_gives_one_tenant_one_plan_one_outbox_row
             None,
         )
         plan = await admin.fetchval(
-            "SELECT t.code FROM tenant_plans p JOIN plan_tiers t ON t.id = p.plan_id WHERE p.is_active"
+            "SELECT plan_code FROM tenant_plans WHERE is_active"
         )
         assert plan == "discovery"
         envelope = await admin.fetchval(

@@ -48,19 +48,22 @@ CREATE TABLE plan_tiers (
     is_default boolean NOT NULL DEFAULT false
 );
 CREATE TABLE tenant_plans (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES tenants (tenant_id),
-    plan_id uuid NOT NULL REFERENCES plan_tiers (id),
+    plan_code text NOT NULL REFERENCES plan_tiers (code),
     is_active boolean NOT NULL DEFAULT true,
-    started_at timestamptz NOT NULL DEFAULT now()
+    started_at timestamptz NOT NULL DEFAULT now(),
+    ended_at timestamptz,
+    PRIMARY KEY (tenant_id, plan_code, started_at)
 );
 CREATE UNIQUE INDEX uniq_tenant_plans_active ON tenant_plans (tenant_id) WHERE is_active;
 CREATE TABLE tenant_event_outbox (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id uuid NOT NULL REFERENCES tenants (tenant_id),
+    id bigserial PRIMARY KEY,
+    topic text NOT NULL,
     envelope jsonb NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
-    published_at timestamptz
+    published_at timestamptz,
+    attempts integer NOT NULL DEFAULT 0,
+    last_error text
 );
 INSERT INTO plan_tiers (code, is_default) VALUES ('discovery', true), ('team', false);
 """
