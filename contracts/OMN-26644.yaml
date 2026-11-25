@@ -114,3 +114,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_agent_sender_registry_effect/test_node_shape.py tests/unit/nodes/node_agent_sender_registry_effect/test_sender_registry_cli.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26644-evidence-contracts-green-on-dev
+  description: With dev merged into the branch, every repo contract binds every criterion and none hides a pytest run behind uv run --frozen; these two contract-wide checks failed on the branch head before the merge (Tests split 18/20) and pass after it. This binds no criterion by itself.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
