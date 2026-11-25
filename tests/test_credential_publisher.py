@@ -9,7 +9,7 @@ Covers the ticket's hard security constraints:
 - api_key_ref is minted (tenant-scoped, collision-safe), never caller-supplied
 - set_secret is called with the minted ref + the submitted value, exactly once
 - the response body never contains the value
-- revoke calls delete_secret FIRST, then publishes credential-revoked (OMN-18086)
+- revoke publishes credential-revoked FIRST, then calls delete_secret
 - a failed delete raises CredentialStoreDeleteRejectedError with no event published
 """
 
@@ -301,8 +301,8 @@ async def test_missing_broker_raises_runtime_error(
 
 
 @pytest.mark.asyncio
-async def test_revoke_deletes_secret_then_publishes_credential_revoked() -> None:
-    """delete_secret is called before publish_envelope (OMN-18086 sequencing)."""
+async def test_revoke_publishes_credential_revoked_then_deletes_secret() -> None:
+    """publish_envelope is called before delete_secret."""
     import inspect
 
     call_log: list[str] = []
@@ -328,8 +328,8 @@ async def test_revoke_deletes_secret_then_publishes_credential_revoked() -> None
     assert resp.status == "revocation-published"
     assert resp.api_key_ref == "cred_t1_openrouter_abc"
 
-    assert call_log == ["delete_secret", "publish_envelope"], (
-        f"Expected delete before publish; got: {call_log}"
+    assert call_log == ["publish_envelope", "delete_secret"], (
+        f"Expected publish before delete; got: {call_log}"
     )
 
     args, _kwargs = event_bus.publish_envelope.await_args
@@ -345,8 +345,26 @@ async def test_revoke_deletes_secret_then_publishes_credential_revoked() -> None
 
 
 @pytest.mark.asyncio
-async def test_revoke_raises_and_does_not_publish_when_delete_fails() -> None:
-    """A failed delete_secret raises CredentialStoreDeleteRejectedError; no event is published."""
+async def test_revoke_refused_publish_keeps_the_secret() -> None:
+    """A refused publish raises and the stored secret is not deleted."""
+    event_bus = AsyncMock(spec=EventBusKafka)
+    event_bus.publish_envelope.side_effect = RuntimeError("broker refused")
+    secret_store = AsyncMock()
+
+    with pytest.raises(RuntimeError, match="broker refused"):
+        await revoke_inference_credential(
+            "cred_t1_openrouter_abc",
+            tenant_id="t1",
+            secret_store=secret_store,
+            event_bus=event_bus,
+        )
+
+    secret_store.delete_secret.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_revoke_failed_delete_after_publish_raises_rejected() -> None:
+    """A failed delete_secret after the publish raises CredentialStoreDeleteRejectedError."""
     from omnimarket.projection.credential_publisher import (
         CredentialStoreDeleteRejectedError,
     )
@@ -363,21 +381,14 @@ async def test_revoke_raises_and_does_not_publish_when_delete_fails() -> None:
             event_bus=event_bus,
         )
 
-    event_bus.publish_envelope.assert_not_awaited()
+    event_bus.publish_envelope.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_revoke_retry_succeeds_when_secret_already_absent() -> None:
-    """Retry after (delete ok, publish failed) must complete revocation.
-
-    Scenario: first call deleted the key from Infisical but Kafka publish
-    failed. On retry, delete_secret returns True (idempotent -- the adapter
-    treats 404 as success) and publish succeeds. The caller must get a
-    successful revocation-published response, not a CredentialStoreDeleteRejectedError.
-    """
+    """Retry after (publish ok, delete failed) completes: delete is idempotent."""
     event_bus = AsyncMock(spec=EventBusKafka)
     secret_store = AsyncMock()
-    # Simulate the retry: secret is already gone (adapter returns True for 404).
     secret_store.delete_secret.return_value = True
 
     resp = await revoke_inference_credential(
