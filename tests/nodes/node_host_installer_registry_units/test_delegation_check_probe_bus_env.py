@@ -133,3 +133,45 @@ def test_another_units_render_is_unchanged(tmp_path: Path) -> None:
     assert f'"OMNIBASE_PATH={tmp_path}/omni"' in service
     assert f'"ONEX_WORKSPACE_CONFIG_ROOT={tmp_path}/config-root"' in service
     assert "ONEX_STATE_DIR" not in service
+
+
+SNAPSHOT_ROOT = ".local/state/onex/overlay-store"
+
+
+def test_the_declared_unit_reads_the_overlay_store_snapshot_root() -> None:
+    """The reader keeps delegation_check_responders and delegation_check_gateway in the snapshot directory; a unit whose
+    overlay roots omit it finds neither row and every check reads PRECONDITION-ABSENT (measured on h051, 2026-11-25)."""
+    appended = load_units()[UNIT]["environment_append_roots"][
+        "ONEX_SKILL_OVERLAY_ROOTS"
+    ]
+    assert appended == ["{home}/" + SNAPSHOT_ROOT]
+
+
+def test_the_rendered_service_names_the_snapshot_root_last(
+    tmp_path: Path,
+) -> None:
+    path, revision = _checkout(tmp_path)
+    result = HandlerRegistryUnits(base.Recorder()).handle(
+        base.request(
+            tmp_path,
+            unit=UNIT,
+            mode="install",
+            project_path=str(path),
+            expected_revision=revision,
+            path_overrides={},
+            workspace_config_root=str(tmp_path / "config-root"),
+            marketplace_root=str(tmp_path / "market"),
+        )
+    )
+    assert result.status == "success", result.stderr
+    service = (tmp_path / "home/.config/systemd/user" / f"{LABEL}.service").read_text(
+        encoding="utf-8"
+    )
+    snapshot = f"{tmp_path}/home/{SNAPSHOT_ROOT}"
+    roots = next(
+        line.split("ONEX_SKILL_OVERLAY_ROOTS=")[1].split('"')[0]
+        for line in service.splitlines()
+        if "ONEX_SKILL_OVERLAY_ROOTS=" in line
+    ).split(":")
+    assert snapshot in roots
+    assert roots.index(snapshot) > 0

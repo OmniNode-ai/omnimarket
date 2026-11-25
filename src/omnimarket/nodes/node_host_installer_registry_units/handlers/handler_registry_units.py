@@ -531,6 +531,25 @@ class HandlerRegistryUnits:
                     f"{name} names {left.group(0)}, which this request does not set"
                 )
             filled[str(name)] = request.path_overrides.get(str(name), text)
+        for name, tails in (unit.get("environment_append_roots") or {}).items():
+            if str(name) not in filled:
+                raise ValueError(
+                    f"{request.unit} appends roots to {name}, which it does not declare"
+                )
+            if str(name) in request.path_overrides:
+                continue
+            appended: list[str] = []
+            for tail in tails:
+                text = str(tail)
+                for key, value in values.items():
+                    text = text.replace("{" + key + "}", value)
+                left = PLACEHOLDER.search(text)
+                if left is not None:
+                    raise ValueError(
+                        f"{name} appends {left.group(0)}, which this request does not set"
+                    )
+                appended.append(text)
+            filled[str(name)] = os.pathsep.join([filled[str(name)], *appended])
         for name, field in (unit.get("environment_inputs") or {}).items():
             if not NAME.fullmatch(str(name)):
                 raise ValueError(f"invalid unit environment name {name!r}")

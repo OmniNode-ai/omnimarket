@@ -149,3 +149,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_delegation_check_probe_bus_env.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26043-probe-unit-overlay-snapshot-root
+  description: "The delegation-check-probe registry unit names the overlay store reader's snapshot directory (home/.local/state/onex/overlay-store) as the last of its overlay roots, so the probe finds the delegation_check_responders and delegation_check_gateway rows the reader keeps; the rendered service carries it after every root the unit declares. The two new tests fail on the previous commit, where the unit named no snapshot directory among its roots (measured on h051: C13 and C14 PRECONDITION-ABSENT with responders_row and gateway_row absent, C17 gateway_row absent). This binds no criterion of this ticket."
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_delegation_check_probe_bus_env.py -q --no-cov -n 0 -p no:randomly -k snapshot_root
+    cwd: .

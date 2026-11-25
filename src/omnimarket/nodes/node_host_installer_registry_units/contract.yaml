@@ -915,6 +915,12 @@ units:
       - ONEX_SKILL_OVERLAY_ROOTS
     # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    # OMN-26043: the settings store reader keeps the probe's two settings rows (delegation_check_responders and
+    # delegation_check_gateway) in its snapshot directory, which has the layout of a root of node settings. It is appended
+    # as the last root, so every root declared above still answers first. With it absent the probe found neither row (measured on h051).
+    environment_append_roots:
+      ONEX_SKILL_OVERLAY_ROOTS:
+        - "{home}/.local/state/onex/overlay-store"
     environment:
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
