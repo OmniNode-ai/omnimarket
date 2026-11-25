@@ -194,3 +194,20 @@ def test_failure_terminal_without_a_failure_cause_is_still_an_offender(
             undeclared_topics=("onex.evt.omnimarket.example-failed.v1",),
         )
     ]
+
+
+@pytest.mark.unit
+def test_provisioning_only_topics_are_exempt(tmp_path: Path) -> None:
+    node = tmp_path / "node_x"
+    node.mkdir()
+    (node / "contract.yaml").write_text(
+        "event_bus:\n"
+        "  publish_topics: [t.a, t.b]\n"
+        "provisioning_only_publish_topics: [t.a]\n",
+        encoding="utf-8",
+    )
+    (node / "handler.py").write_text("x = 1\n", encoding="utf-8")
+
+    findings = scan_publish_parity(tmp_path)
+
+    assert [f.undeclared_topics for f in findings] == [("t.b",)]

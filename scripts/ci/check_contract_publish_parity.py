@@ -21,7 +21,10 @@ because the runtime publishes it on the handler's behalf. So is a declared
 failure terminal (``runtime_dispatch.terminal_events.failure``) when the node's
 Python carries ``terminal_failure_cause``: the runtime's failure-terminal guard
 publishes a result carrying one on that topic (OMN-20867). Without that field no
-result can reach the failure terminal, and it stays an offender.
+result can reach the failure terminal, and it stays an offender. A topic named
+in the contract's ``provisioning_only_publish_topics`` is exempt too: it is
+listed under ``event_bus.publish_topics`` only so boot provisions and grants it,
+and the contract says so in the open.
 
 The gate is a burn-down ratchet against
 ``scripts/ci/contract_publish_parity_baseline.py``: the frozen set may only
@@ -87,6 +90,7 @@ def scan_publish_parity(root: Path) -> list[ModelPublishParityFinding]:
             continue
         node_dir = contract_path.parent
         exempt = {str(raw.get("terminal_event"))}
+        exempt |= _provisioning_only(raw)
         if _returns_failure_cause(node_dir):
             exempt |= _failure_terminals(raw)
         candidates = sorted({str(topic) for topic in declared} - exempt)
@@ -101,6 +105,14 @@ def scan_publish_parity(root: Path) -> list[ModelPublishParityFinding]:
             )
         )
     return findings
+
+
+def _provisioning_only(raw: dict[str, object]) -> set[str]:
+    """Topics the contract lists only so boot provisions and grants them."""
+    declared = raw.get("provisioning_only_publish_topics") or []
+    if not isinstance(declared, list):
+        return set()
+    return {str(topic) for topic in declared}
 
 
 def _failure_terminals(raw: dict[str, object]) -> set[str]:
