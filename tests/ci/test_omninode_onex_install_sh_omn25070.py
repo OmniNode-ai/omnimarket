@@ -61,7 +61,7 @@ TARGETS = (
 BASE_TOOLS = (
     "bash", "curl", "tar", "mktemp", "awk", "sed", "grep", "uname", "basename",
     "cat", "cp", "mv", "mkdir", "rm", "chmod", "dirname", "env", "gzip",
-    "sha256sum", "shasum", "perl", "ldd", "sysctl",
+    "sha256sum", "shasum", "perl", "ldd", "sysctl", "sleep",
 )  # fmt: skip
 
 

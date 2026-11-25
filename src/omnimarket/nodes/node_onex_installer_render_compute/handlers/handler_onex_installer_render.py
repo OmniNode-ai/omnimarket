@@ -34,24 +34,33 @@ _TEMPLATE = r"""
 # What it does, in order:
 #   1. Detects the OS and CPU (Apple Silicon macOS, Linux x86_64 or arm64); refuses the rest.
 #   2. Checks the tools it needs (curl, tar, mktemp, a sha256 tool).
-#   3. Uses uv if a recent one is already on PATH; otherwise downloads the
+#   3. Shows the plan: the package, where onex will go, which uv and Python it
+#      uses, and the log file. In a terminal it asks before changing anything
+#      (Enter installs; anything else stops with nothing changed). Without a
+#      terminal, or with --yes or ONEX_INSTALL_YES=1, it does not ask.
+#   4. Uses uv if a recent one is already on PATH; otherwise downloads the
 #      pinned uv release from GitHub, checks its sha256 against the value
 #      written in this script, and keeps it in a private directory
 #      (~/.local/share/omninode/uv). It never changes your own uv.
-#   4. Refuses, before installing anything, if an onex it did
+#   5. Refuses, before installing anything, if an onex it did
 #      not install is already in uv's bin directory, and names the file.
-#   5. Runs `uv tool install --python 3.12 --no-build omninode-onex==<version>`
-#      from PyPI. uv downloads Python 3.12 itself if you do not have it.
-#      Running the installer again is safe: the same version is a no-op and a
-#      newer installer upgrades in place.
-#   6. Runs `onex --version` and tells you how to put uv's bin directory on
-#      PATH if it is not there yet.
+#   6. Runs `uv tool install --python 3.12 --no-build --compile-bytecode
+#      omninode-onex==<version>` from PyPI. uv downloads Python 3.12 itself if
+#      you do not have it. Compiling at install makes the first `onex` as fast
+#      as every later one. Running the installer again is safe: the same
+#      version is a no-op and a newer installer upgrades in place.
+#   7. Runs `onex --version` and `onex --help`, and tells you how to put uv's
+#      bin directory on PATH if it is not there yet.
 #
-# No sudo, no git, no repository clone. Everything is written under $HOME.
+# Each step shows a spinner in a terminal and a plain line otherwise; what uv
+# prints goes to ~/.local/state/omninode/install.log, and its last lines are
+# shown if a step fails. No sudo, no git, no repository clone. Everything is
+# written under $HOME.
 #
 # Settings for support and tests (not needed for a normal install):
 #   ONEX_INSTALL_DRY_RUN=1      detect the platform, check tools, print the
 #                               plan and stop before any download.
+#   ONEX_INSTALL_YES=1          do not ask before installing (same as --yes).
 #   ONEX_INSTALL_FIND_LINKS=DIR extra local directory of wheels for uv.
 #   ONEX_INSTALL_UV_BASE_URL=U  where the pinned uv release is fetched from;
 #                               the sha256 check still applies.
@@ -71,34 +80,150 @@ UV_DEFAULT_BASE_URL="@UV_DOWNLOAD_BASE_URL@"
 SUPPORT_URL="@SUPPORT_URL@"
 
 TMP_DIR=""
+LOG_FILE="/dev/null"
+UV_BIN=""
+STEP=0
+STEPS=3
+STEP_LABEL=""
+STEP_STARTED=0
+SPIN_PID=""
 
+# A terminal gets colour and spinners; a pipe or a log gets plain lines only.
 if [ -t 2 ]; then
+    TTY=1
     BOLD="$(printf '\033[1m')"
+    DIM="$(printf '\033[2m')"
     RED="$(printf '\033[31m')"
+    GREEN="$(printf '\033[32m')"
     YELLOW="$(printf '\033[33m')"
+    CYAN="$(printf '\033[36m')"
     RESET="$(printf '\033[0m')"
 else
+    TTY=0
     BOLD=""
+    DIM=""
     RED=""
+    GREEN=""
     YELLOW=""
+    CYAN=""
     RESET=""
 fi
+case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
+    *UTF-8* | *utf-8* | *UTF8* | *utf8*)
+        MARK_OK="✓"
+        MARK_FAIL="✗"
+        MARK_WARN="!"
+        MARK_HEAD="◆"
+        MARK_TO="→"
+        FRAMES="⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏"
+        ;;
+    *)
+        MARK_OK="ok"
+        MARK_FAIL="x"
+        MARK_WARN="!"
+        MARK_HEAD="*"
+        MARK_TO="->"
+        FRAMES="- \\ | /"
+        ;;
+esac
 
-say() { printf '%s==>%s %s\n' "$BOLD" "$RESET" "$*" >&2; }
-warn() { printf '%swarning:%s %s\n' "$YELLOW" "$RESET" "$*" >&2; }
+say() { printf '  %s\n' "$*" >&2; }
+warn() { printf '  %s%s warning:%s %s\n' "$YELLOW" "$MARK_WARN" "$RESET" "$*" >&2; }
+
+spinner_stop() {
+    if [ -n "$SPIN_PID" ]; then
+        kill "$SPIN_PID" 2>/dev/null || true
+        wait "$SPIN_PID" 2>/dev/null || true
+        SPIN_PID=""
+        printf '\r\033[2K\033[?25h' >&2
+    fi
+}
+
+# The step that is running is marked failed before the error is printed.
+step_failed() {
+    spinner_stop
+    if [ -n "$STEP_LABEL" ]; then
+        printf '  [%d/%d] %s%s%s %s\n' "$STEP" "$STEPS" "$RED" "$MARK_FAIL" "$RESET" "$STEP_LABEL" >&2
+        STEP_LABEL=""
+    fi
+}
+
 fail() {
-    printf '%serror:%s %s\n' "$RED" "$RESET" "$1" >&2
+    step_failed
+    printf '  %s%s error:%s %s\n' "$RED" "$MARK_FAIL" "$RESET" "$1" >&2
     shift
     while [ "$#" -gt 0 ]; do
-        printf '       %s\n' "$1" >&2
+        printf '          %s\n' "$1" >&2
         shift
     done
     exit 1
 }
 
 cleanup() {
+    spinner_stop
     if [ -n "$TMP_DIR" ] && [ -d "$TMP_DIR" ]; then
         rm -rf "$TMP_DIR"
+    fi
+}
+
+interrupted() {
+    step_failed
+    printf '\n  Stopped. Nothing more was changed; run the installer again to finish.\n' >&2
+    exit 130
+}
+
+# ~ for the home directory, so paths read the way people type them.
+tilde() {
+    case "$1" in
+        "$HOME"/*) printf '~%s' "${1#"$HOME"}" ;;
+        *) printf '%s' "$1" ;;
+    esac
+}
+
+elapsed() {
+    local seconds="$1"
+    if [ "$seconds" -lt 1 ]; then
+        printf '<1s'
+    elif [ "$seconds" -lt 60 ]; then
+        printf '%ds' "$seconds"
+    else
+        printf '%dm %02ds' "$((seconds / 60))" "$((seconds % 60))"
+    fi
+}
+
+step_start() {
+    STEP=$((STEP + 1))
+    STEP_LABEL="$1"
+    STEP_STARTED=$SECONDS
+    if [ "$TTY" = "1" ] && command -v sleep >/dev/null 2>&1; then
+        printf '\033[?25l' >&2
+        (
+            while :; do
+                for frame in $FRAMES; do
+                    printf '\r\033[2K  [%d/%d] %s%s%s %s' "$STEP" "$STEPS" "$CYAN" "$frame" "$RESET" "$STEP_LABEL" >&2
+                    sleep 0.1
+                done
+            done
+        ) &
+        SPIN_PID=$!
+    else
+        printf '  [%d/%d] %s ...\n' "$STEP" "$STEPS" "$STEP_LABEL" >&2
+    fi
+}
+
+step_done() {
+    spinner_stop
+    printf '  [%d/%d] %s%s%s %s %s(%s)%s\n' "$STEP" "$STEPS" "$GREEN" "$MARK_OK" "$RESET" \
+        "$1" "$DIM" "$(elapsed $((SECONDS - STEP_STARTED)))" "$RESET" >&2
+    STEP_LABEL=""
+}
+
+# The last lines of the log, after a step failed, so the cause is on screen.
+show_log() {
+    if [ -s "$LOG_FILE" ]; then
+        printf '\n' >&2
+        awk '{ kept[NR % 12] = $0 } END { for (i = NR - 11; i <= NR; i++) if (i > 0) print "        | " kept[i % 12] }' "$LOG_FILE" >&2
+        printf '\n' >&2
     fi
 }
 
@@ -190,39 +315,107 @@ detect_target() {
     esac
 }
 
+platform_words() {
+    case "$1" in
+        aarch64-apple-darwin) echo "macOS on Apple Silicon" ;;
+        x86_64-unknown-linux-gnu) echo "Linux on x86_64" ;;
+        aarch64-unknown-linux-gnu) echo "Linux on arm64" ;;
+        *) echo "$1" ;;
+    esac
+}
+
 private_uv_dir() {
     echo "${XDG_DATA_HOME:-$HOME/.local/share}/omninode/uv"
 }
 
-# Prints the path of a uv this installer may use, downloading the pinned one
-# when no recent uv is on PATH.
-ensure_uv() {
-    local target="$1" found version dir url archive expected actual
+# Where uv puts tool commands, by uv's own rule; the real uv confirms it later.
+expected_bin_dir() {
+    if [ -n "${UV_TOOL_BIN_DIR:-}" ]; then
+        echo "$UV_TOOL_BIN_DIR"
+    elif [ -n "${XDG_BIN_HOME:-}" ]; then
+        echo "$XDG_BIN_HOME"
+    elif [ -n "${XDG_DATA_HOME:-}" ]; then
+        echo "$XDG_DATA_HOME/../bin"
+    else
+        echo "$HOME/.local/bin"
+    fi
+}
+
+# A recent uv on PATH, as "path version", or nothing.
+usable_uv() {
+    local found version
     found="$(command -v uv 2>/dev/null || true)"
-    if [ -n "$found" ]; then
-        version="$("$found" --version 2>/dev/null | awk '{print $2}')"
-        if [ -n "$version" ] && version_ge "$version" "$UV_MIN_VERSION"; then
-            say "Using uv $version from $found" >&2
-            echo "$found"
-            return 0
-        fi
-        warn "uv ${version:-of unknown version} at $found is older than $UV_MIN_VERSION; using a private copy instead."
+    [ -n "$found" ] || return 0
+    version="$("$found" --version 2>/dev/null | awk '{print $2}')"
+    if [ -n "$version" ] && version_ge "$version" "$UV_MIN_VERSION"; then
+        echo "$found $version"
+    fi
+}
+
+show_plan() {
+    local target="$1" bin_dir="$2" uv_found="$3" uv_words
+    if [ -n "$uv_found" ]; then
+        uv_words="your uv ${uv_found#* } ($(tilde "${uv_found%% *}"))"
+    else
+        uv_words="uv $UV_VERSION, kept privately in $(tilde "$(private_uv_dir)") (checksum verified)"
+    fi
+    printf '\n  %s%s%s %sOmniNode onex installer%s\n\n' "$CYAN" "$MARK_HEAD" "$RESET" "$BOLD" "$RESET" >&2
+    printf '    %-9s %s\n' "Package" "$ONEX_PACKAGE $ONEX_VERSION" >&2
+    printf '    %-9s %s\n' "Platform" "$(platform_words "$target") ($target)" >&2
+    printf '    %-9s %s %s %s\n' "Command" "onex" "$MARK_TO" "$(tilde "$bin_dir")/onex" >&2
+    printf '    %-9s %s\n' "Python" "$ONEX_PYTHON, through uv (downloaded if you do not have it)" >&2
+    printf '    %-9s %s\n' "uv" "$uv_words" >&2
+    printf '    %-9s %s\n' "Log" "$(tilde "$LOG_FILE")" >&2
+    printf '\n    %sNo sudo. Nothing is written outside your home folder.%s\n\n' "$DIM" "$RESET" >&2
+}
+
+# In a terminal, ask before changing anything. `curl | bash` gives the script
+# on stdin, so the answer is read from the terminal itself.
+confirm() {
+    if [ "${ONEX_INSTALL_YES:-0}" = "1" ] || [ -n "${CI:-}" ] || [ "$TTY" != "1" ]; then
+        return 0
+    fi
+    if ! { : </dev/tty; } 2>/dev/null; then
+        return 0
+    fi
+    local answer=""
+    printf '  Press %sEnter%s to install, or type %sn%s to stop: ' "$BOLD" "$RESET" "$BOLD" "$RESET" >&2
+    IFS= read -r answer </dev/tty || answer="n"
+    case "$answer" in
+        "" | y | Y | yes | Yes | YES) printf '\n' >&2 ;;
+        *)
+            say "Stopped. Nothing was changed."
+            exit 1
+            ;;
+    esac
+}
+
+# Sets UV_BIN to a uv this installer may use, downloading the pinned one when
+# no recent uv is on PATH.
+ensure_uv() {
+    local target="$1" uv_found="$2" dir url archive expected actual
+    if [ -n "$uv_found" ]; then
+        step_start "Checking uv"
+        UV_BIN="${uv_found%% *}"
+        step_done "Using your uv ${uv_found#* } ($(tilde "$UV_BIN"))"
+        return 0
     fi
     dir="$(private_uv_dir)"
     if [ -x "$dir/uv" ] && [ "$("$dir/uv" --version 2>/dev/null | awk '{print $2}')" = "$UV_VERSION" ]; then
-        say "Using uv $UV_VERSION from $dir" >&2
-        echo "$dir/uv"
+        step_start "Checking uv"
+        UV_BIN="$dir/uv"
+        step_done "Using uv $UV_VERSION ($(tilde "$dir"))"
         return 0
     fi
+    step_start "Downloading uv $UV_VERSION"
     expected="$(uv_sha256 "$target")"
     [ -n "$expected" ] || fail "no pinned uv checksum for '$target'."
     url="${ONEX_INSTALL_UV_BASE_URL:-$UV_DEFAULT_BASE_URL}/$UV_VERSION/uv-$target.tar.gz"
     archive="$TMP_DIR/uv-$target.tar.gz"
-    say "Downloading uv $UV_VERSION for $target" >&2
     case "$url" in
-        https://*) curl --proto '=https' --tlsv1.2 -fsSL --retry 3 -o "$archive" "$url" ||
+        https://*) curl --proto '=https' --tlsv1.2 -fsSL --retry 3 -o "$archive" "$url" >>"$LOG_FILE" 2>&1 ||
             fail "could not download uv from $url." "Check your network connection (and any proxy) and run the installer again." ;;
-        *) curl -fsSL -o "$archive" "$url" || fail "could not download uv from $url." ;;
+        *) curl -fsSL -o "$archive" "$url" >>"$LOG_FILE" 2>&1 || fail "could not download uv from $url." ;;
     esac
     actual="$(sha256_of "$archive")"
     if [ "$actual" != "$expected" ]; then
@@ -230,14 +423,14 @@ ensure_uv() {
             "expected $expected" "got      $actual" \
             "Nothing was changed. Try again later, or report it at $SUPPORT_URL."
     fi
-    tar -xzf "$archive" -C "$TMP_DIR" || fail "could not unpack the uv archive."
+    tar -xzf "$archive" -C "$TMP_DIR" >>"$LOG_FILE" 2>&1 || fail "could not unpack the uv archive."
     [ -x "$TMP_DIR/uv-$target/uv" ] || fail "the uv archive did not contain uv-$target/uv."
     mkdir -p "$dir"
     cp "$TMP_DIR/uv-$target/uv" "$dir/uv.new"
     chmod 755 "$dir/uv.new"
     mv -f "$dir/uv.new" "$dir/uv"
-    say "Installed uv $UV_VERSION in $dir (checksum verified)" >&2
-    echo "$dir/uv"
+    UV_BIN="$dir/uv"
+    step_done "Installed uv $UV_VERSION in $(tilde "$dir") (checksum verified)"
 }
 
 # Refuse when a launcher already in uv's bin directory belongs to anything
@@ -266,6 +459,11 @@ check_conflicts() {
     done
 }
 
+# The version of this package uv already has, or nothing.
+installed_version() {
+    "$1" tool list 2>/dev/null | awk -v want="$ONEX_PACKAGE" '$1 == want { sub(/^v/, "", $2); print $2; exit }'
+}
+
 path_guidance() {
     local bin_dir="$1" shell_name rc
     case ":$PATH:" in
@@ -277,29 +475,43 @@ path_guidance() {
         bash) if [ "$(uname -s)" = "Darwin" ]; then rc="$HOME/.bash_profile"; else rc="$HOME/.bashrc"; fi ;;
         *) rc="your shell's startup file" ;;
     esac
-    warn "$bin_dir is not on your PATH yet."
+    # $HOME in the line, so it reads short and still works when pasted.
+    local typed="$bin_dir"
+    case "$bin_dir" in
+        "$HOME"/*) typed="\$HOME${bin_dir#"$HOME"}" ;;
+    esac
+    warn "$(tilde "$bin_dir") is not on your PATH yet."
     if [ "$shell_name" = "fish" ]; then
-        printf '       Run:  fish_add_path %s\n' "$bin_dir" >&2
+        printf '          Run:  fish_add_path %s\n' "$typed" >&2
     else
-        printf '       Add this line to %s, then open a new terminal:\n' "$rc" >&2
-        printf '           export PATH="%s:%s"\n' "$bin_dir" "\$PATH" >&2
+        printf '          Add this line to %s, then open a new terminal:\n' "$(tilde "$rc")" >&2
+        printf '              export PATH="%s:%s"\n' "$typed" "\$PATH" >&2
     fi
 }
 
 main() {
-    if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
-        # Piped into bash, $0 is the shell, not this script, so the help is inline.
-        cat <<EOF
+    case "${1:-}" in
+        --help | -h)
+            # Piped into bash, $0 is the shell, not this script, so the help is inline.
+            cat <<EOF
 Install the OmniNode onex command line on Apple Silicon macOS or Linux (x86_64, arm64):
 
     curl -fsSL https://omninode.ai/install.sh | bash
 
 Installs $ONEX_PACKAGE $ONEX_VERSION with uv into your home directory (no sudo,
-no git) and puts onex in uv's bin directory. Running it again is
-safe; a newer installer upgrades in place.
+no git) and puts onex in uv's bin directory. It shows the plan and, in a
+terminal, asks before changing anything; pass --yes to skip the question:
+
+    curl -fsSL https://omninode.ai/install.sh | bash -s -- --yes
+
+Running it again is safe; a newer installer upgrades in place.
 EOF
-        return 0
-    fi
+            return 0
+            ;;
+        --yes | -y) ONEX_INSTALL_YES=1 ;;
+    esac
+    trap cleanup EXIT
+    trap interrupted INT TERM
     [ -n "${HOME:-}" ] || fail "HOME is not set."
     need_cmd uname "It is part of every macOS and Linux system."
     local target
@@ -313,8 +525,11 @@ EOF
             "Install coreutils (Linux) or perl (macOS ships shasum) and run the installer again."
     fi
 
-    say "Platform: $target"
-    say "Installing $ONEX_PACKAGE $ONEX_VERSION (Python $ONEX_PYTHON) with uv"
+    local log_dir uv_found
+    log_dir="${XDG_STATE_HOME:-$HOME/.local/state}/omninode"
+    LOG_FILE="$log_dir/install.log"
+    uv_found="$(usable_uv)"
+    show_plan "$target" "$(expected_bin_dir)" "$uv_found"
     if [ "${ONEX_INSTALL_DRY_RUN:-0}" = "1" ]; then
         say "Dry run: stopping before any download."
         echo "target=$target"
@@ -322,42 +537,60 @@ EOF
         echo "build=--no-build"
         return 0
     fi
+    confirm
 
+    local started=$SECONDS
+    mkdir -p "$log_dir" || fail "could not create $log_dir." "Check that your home folder is writable."
+    printf 'Installing %s %s for %s\n' "$ONEX_PACKAGE" "$ONEX_VERSION" "$target" >"$LOG_FILE"
     TMP_DIR="$(mktemp -d 2>/dev/null || mktemp -d -t omninode-onex)" ||
         fail "could not create a temporary directory." "Check that TMPDIR (or /tmp) is writable."
-    trap cleanup EXIT
 
-    local uv bin_dir
-    uv="$(ensure_uv "$target")"
-    bin_dir="$("$uv" tool dir --bin)"
-    check_conflicts "$uv" "$bin_dir"
+    ensure_uv "$target" "$uv_found"
+    local bin_dir before
+    bin_dir="$("$UV_BIN" tool dir --bin)"
+    check_conflicts "$UV_BIN" "$bin_dir"
+    before="$(installed_version "$UV_BIN")"
 
-    set -- tool install --python "$ONEX_PYTHON" --no-build
+    set -- tool install --python "$ONEX_PYTHON" --no-build --compile-bytecode
     if [ -n "${ONEX_INSTALL_FIND_LINKS:-}" ]; then
         set -- "$@" --find-links "$ONEX_INSTALL_FIND_LINKS"
     fi
     set -- "$@" "$ONEX_PACKAGE==$ONEX_VERSION"
-    if ! "$uv" "$@"; then
+    step_start "Installing $ONEX_PACKAGE $ONEX_VERSION (Python $ONEX_PYTHON)"
+    if ! "$UV_BIN" "$@" >>"$LOG_FILE" 2>&1; then
+        step_failed
+        show_log
         fail "uv could not install $ONEX_PACKAGE $ONEX_VERSION." \
-            "Check the messages above; a network error can be retried by running the installer again."
+            "The lines above are the end of $(tilde "$LOG_FILE")." \
+            "A network error can be retried by running the installer again."
+    fi
+    if [ "$before" = "$ONEX_VERSION" ]; then
+        step_done "$ONEX_PACKAGE==$ONEX_VERSION is already installed; nothing to do"
+    elif [ -n "$before" ]; then
+        step_done "Upgraded from $before to $ONEX_PACKAGE==$ONEX_VERSION"
+    else
+        step_done "Installed $ONEX_PACKAGE==$ONEX_VERSION"
     fi
 
-    local launcher
+    step_start "Checking that onex starts"
+    local launcher reported help_output
     for launcher in $ONEX_LAUNCHERS; do
         [ -x "$bin_dir/$launcher" ] || fail "the install finished but $bin_dir/$launcher is missing."
     done
-    local reported
     reported="$("$bin_dir/onex" --version 2>&1)" ||
         fail "onex was installed but 'onex --version' failed:" "$reported"
     # --help loads every command's entry point, so it catches a command that
     # cannot import, which --version alone does not.
-    local help_output
     help_output="$("$bin_dir/onex" --help 2>&1)" ||
         fail "onex was installed but 'onex --help' failed, so a command cannot load:" \
-            "$(printf '%s\n' "$help_output" | grep -E 'Error' | tail -n 1 | cut -c1-300)" \
+            "$(printf '%s\n' "$help_output" | awk '/Error/ { last = $0 } END { print substr(last, 1, 300) }')" \
             "Report it at $SUPPORT_URL; installing again will not fix it."
-    say "Installed: $reported ($bin_dir/onex)"
+    step_done "$reported works"
+
+    printf '\n  %s%s%s %sReady in %s.%s onex is at %s\n' "$GREEN" "$MARK_OK" "$RESET" "$BOLD" \
+        "$(elapsed $((SECONDS - started)))" "$RESET" "$(tilde "$bin_dir")/onex" >&2
     path_guidance "$bin_dir"
+    printf '\n' >&2
     say "Done. Run 'onex' to open ONEX: use /config to set up a model, then type a task to delegate it."
 }
 
