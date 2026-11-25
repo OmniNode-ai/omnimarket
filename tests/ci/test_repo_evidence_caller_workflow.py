@@ -961,3 +961,25 @@ def test_omn18079_answering_model_test_binds_through_test_passes_without_coverag
     checks = item["checks"]
     assert [c.get("check_type") for c in checks] == ["test_passes"], checks
     assert all("--no-cov" in str(c.get("check_value")) for c in checks), checks
+
+
+def test_omn18079_contract_binds_its_own_item_to_a_declared_criterion() -> None:
+    """OMN-18079: the hosted must-fail control needs a bound check, so one item binds a declared criterion.
+
+    The control at the merge base keeps only checks whose binds_ac is non-empty;
+    a contract that binds nothing is refused with "zero bound checks". The
+    answering-model test item binds a criterion the contract itself declares,
+    and the local-only integration proof stays unbound.
+    """
+    path = REPO_ROOT / "contracts" / "OMN-18079.yaml"
+    contract = yaml.load(path.read_text(encoding="utf-8"), Loader=_CONTRACT_LOADER)
+    declared = {
+        str(ac["id"])
+        for req in contract.get("requirements", [])
+        for ac in req.get("acceptance", [])
+    }
+    items = {i["id"]: i for i in contract["dod_evidence"]}
+    bound = items["dod-answering-model-receipt"].get("binds_ac") or []
+    assert bound, "dod-answering-model-receipt binds no criterion"
+    assert set(bound) <= declared, (bound, declared)
+    assert not items["dod-omn18079-integration-proof"].get("binds_ac")

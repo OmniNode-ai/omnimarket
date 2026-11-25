@@ -6,6 +6,12 @@ summary: The delegation receipt names the model that answered, never the request
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+requirements:
+  - id: req-omn18079-answering-model
+    statement: The delegation receipt and completed event name the model the provider reported as answering, never the requested one.
+    acceptance:
+      - id: AC4
+        statement: 'AC4: a different served model, missing provider metadata and a retry landing on another model are each named as served, never as requested -- falsifier: uv run pytest tests/test_omn18079_receipt_names_answering_model.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: "ci"
     description: "CI passes on the pull request"
@@ -18,6 +24,8 @@ dod_evidence:
   - id: "dod-answering-model-receipt"
     description: "Receipt names the answering model: a different served model, missing metadata and a retry landing on another model are each covered by a test that fails on the base head."
     source: "manual"
+    binds_ac:
+      - AC4
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_omn18079_receipt_names_answering_model.py -q --no-cov -n 0 -p no:randomly"
