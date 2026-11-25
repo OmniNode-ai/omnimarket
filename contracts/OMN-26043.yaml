@@ -143,29 +143,37 @@ dod_evidence:
     check_value: grep -q 'NodeOverlayNotFoundError' src/omnimarket/nodes/node_delegation_check_probe_effect/runtime_delegation_check_probe_tick.py
     cwd: .
 - id: dod-omn26043-probe-unit-bus-environment
-  description: "The delegation-check-probe registry unit declares the lane bus environment by reference (OMNIBASE_PATH and ONEX_WORKSPACE_CONFIG_ROOT, the same two variables the overlay-store-load unit renders) and names no broker address; the rendered service carries both, and the overlay-store-load render is unchanged. The new test file fails on the base commit, where the unit declared neither variable (measured on h051: event not delivered, KAFKA_BOOTSTRAP_SERVERS), and passes after the change. This binds no criterion of this ticket."
+  description: "The delegation-check-probe registry unit declares the lane bus environment by reference (OMNIBASE_PATH and ONEX_WORKSPACE_CONFIG_ROOT, the same two variables the overlay-store-load unit renders) and names no broker address; the rendered service carries both, and the overlay-store-load render is unchanged. The new test file fails on the base commit, where the unit declared neither variable (measured on h051: event not delivered, KAFKA_BOOTSTRAP_SERVERS), and passes after the change. This binds AC5: the probe unit delivering its result is the precondition of each probe reading a run."
   source: manual
+  binds_ac:
+  - AC5
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_delegation_check_probe_bus_env.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn26043-probe-unit-overlay-snapshot-root
-  description: "The delegation-check-probe registry unit names the overlay store reader's snapshot directory (home/.local/state/onex/overlay-store) as the last of its overlay roots, so the probe finds the delegation_check_responders and delegation_check_gateway rows the reader keeps; the rendered service carries it after every root the unit declares. The two new tests fail on the previous commit, where the unit named no snapshot directory among its roots (measured on h051: C13 and C14 PRECONDITION-ABSENT with responders_row and gateway_row absent, C17 gateway_row absent). This binds no criterion of this ticket."
+  description: "The delegation-check-probe registry unit names the overlay store reader's snapshot directory (home/.local/state/onex/overlay-store) as the last of its overlay roots, so the probe finds the delegation_check_responders and delegation_check_gateway rows the reader keeps; the rendered service carries it after every root the unit declares. The two new tests fail on the previous commit, where the unit named no snapshot directory among its roots (measured on h051: C13 and C14 PRECONDITION-ABSENT with responders_row and gateway_row absent, C17 gateway_row absent). This binds AC5: the probe unit delivering its result is the precondition of each probe reading a run."
   source: manual
+  binds_ac:
+  - AC5
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_delegation_check_probe_bus_env.py -q --no-cov -n 0 -p no:randomly -k snapshot_root
     cwd: .
 - id: dod-omn26043-probe-delivers-on-declared-broker
-  description: "The probe tick publishes its run record through the declared broker publisher, which reads the lane from the node overlay's event_bus and never from KAFKA_BOOTSTRAP_SERVERS, and the publisher passes the check id as the partition key. The new test file fails on the previous commit, where the tick defaulted to the emit effect and a lab host's tick ended with KeyError KAFKA_BOOTSTRAP_SERVERS and exit 3, and passes after the change; a tick whose overlay declares no event_bus still exits 3. This binds no criterion of this ticket."
+  description: "The probe tick publishes its run record through the declared broker publisher, which reads the lane from the node overlay's event_bus and never from KAFKA_BOOTSTRAP_SERVERS, and the publisher passes the check id as the partition key. The new test file fails on the previous commit, where the tick defaulted to the emit effect and a lab host's tick ended with KeyError KAFKA_BOOTSTRAP_SERVERS and exit 3, and passes after the change; a tick whose overlay declares no event_bus still exits 3. This binds AC5: the probe unit delivering its result is the precondition of each probe reading a run."
   source: manual
+  binds_ac:
+  - AC5
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_probe_delivery_declared_broker.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn26043-probe-record-flat-on-topic
-  description: "The probe tick publishes its run record flat, the payload alone as the record value, the wire shape every other record on the result topic carries (read from the dev broker on h051: check_id, verdict and run_id at the top level), where the default declared broker publisher wraps it as event_type, event_id, correlation_id and payload; the publisher keeps the wrapped shape for its other callers. The new test fails on the previous commit, where the tick sent the wrapped record and the publisher took no flat option, and passes after the change. This binds no criterion of this ticket."
+  description: "The probe tick publishes its run record flat, the payload alone as the record value, the wire shape every other record on the result topic carries (read from the dev broker on h051: check_id, verdict and run_id at the top level), where the default declared broker publisher wraps it as event_type, event_id, correlation_id and payload; the publisher keeps the wrapped shape for its other callers. The new test fails on the previous commit, where the tick sent the wrapped record and the publisher took no flat option, and passes after the change. This binds AC5: the probe unit delivering its result is the precondition of each probe reading a run."
   source: manual
+  binds_ac:
+  - AC5
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_probe_delivery_declared_broker.py -q --no-cov -n 0 -p no:randomly
