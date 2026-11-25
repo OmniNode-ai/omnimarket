@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """The three things the ``onex tenant`` handlers reach outside the process through.
 
-The handlers hold no database connection and no broker client: the bus, the overlays and the dev secret store are
+The handlers hold no database connection and no broker client: the bus, the deployment settings and the dev secret store are
 reached only through these ports, and the command line builds the real ones.
 """
 
@@ -46,7 +46,7 @@ class ProtocolTenantDispatch(Protocol):
 
 
 class ProtocolGatewayKeyOverlays(Protocol):
-    """The deployment values a minted key depends on, read from the nodes' overlays."""
+    """The deployment values a minted key depends on, read from the nodes' deployment settings."""
 
     def gateway_prefix(self) -> str:
         """The prefix the gateway requires every key to start with.
