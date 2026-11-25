@@ -115,6 +115,8 @@ def test_the_census_unit_renders_a_daily_timer_that_runs_the_tick_module(
     assert f"OnUnitActiveSec={DAY_SECONDS}" in timer
     assert f'"-m" "{unit["module"]}"' in service
     assert f'"ONEX_LEDGER_CENSUS_ROOT={tmp_path}/omni"' in service
+    # OMN-26318: the daily record's publish resolves its broker from the workspace config root; a unit without it exits 3.
+    assert f'"ONEX_WORKSPACE_CONFIG_ROOT={tmp_path}/config"' in service
 
 
 def test_the_census_tick_probe_answers_and_one_tick_keeps_the_daily_record(
