@@ -125,6 +125,26 @@ class ModelSurfaceObservation(_Frozen):
     broken_cases: tuple[ModelBrokenCommandCase, ...] = ()
 
 
+class ModelDashboardObservation(_Frozen):
+    """What the customer path to the local dashboard showed on a clean profile (C30). Never carries a token value."""
+
+    install_rc: int | None = 0
+    setup_rc: int | None = None
+    # ``onex dashboard start``; None when the dashboard was never started that way (a bare ``onex dashboard``).
+    start_rc: int | None = None
+    # The local credential store holds the dashboard's session token: a bare dashboard's one-time token is never stored.
+    token_in_store: bool = False
+    # The store file is readable by its owner alone.
+    store_owner_only: bool = False
+    delegation_rc: int | None = None
+    delegation_correlation_id: str | None = None
+    # The loopback ``/projections`` read with the store token as Bearer, with a wrong token and with none.
+    projections_status: int | None = None
+    run_visible: bool = False
+    wrong_token_status: int | None = None
+    no_token_status: int | None = None
+
+
 class ModelDelegationCheckRequest(_Frozen):
     correlation_id: str = Field(min_length=1)
     check_id: CheckId
