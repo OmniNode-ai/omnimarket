@@ -4,7 +4,9 @@
 
 import sys
 
-from omnimarket.nodes.node_landing_proof_gate_compute.adapters.cli import main
+from omnimarket.nodes.node_landing_proof_gate_compute.runtime_landing_proof_gate import (
+    main,
+)
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))

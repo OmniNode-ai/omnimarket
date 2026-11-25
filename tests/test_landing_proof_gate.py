@@ -19,9 +19,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-from omnimarket.nodes.node_landing_proof_gate_compute.adapters.cli import (
-    main as cli_main,
-)
 from omnimarket.nodes.node_landing_proof_gate_compute.adapters.policy import (
     load_policy,
 )
@@ -40,6 +37,9 @@ from omnimarket.nodes.node_landing_proof_gate_compute.models.model_proof_gate im
     ModelProofGateRequest,
     ModelProofGateResult,
     ModelProofText,
+)
+from omnimarket.nodes.node_landing_proof_gate_compute.runtime_landing_proof_gate import (
+    main as cli_main,
 )
 
 pytestmark = pytest.mark.unit
