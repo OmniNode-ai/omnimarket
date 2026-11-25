@@ -10,6 +10,7 @@ admits, so a zero is never the reading of a gate that cannot admit anything.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from collections import Counter
@@ -171,6 +172,13 @@ def test_no_lab_line_is_draft_naming_the_missing_item() -> None:
         f"Lab: head={LAB_HEAD} host h051 pytest 2 failed, exit code 1",
         f"Lab: head={LAB_HEAD} host h051 12 passed, 1 failed, known bad answer refused",
         f"Lab: head={LAB_HEAD} host h051 exit 1, 12 passed, known good admitted, known bad refused",
+        # another command exited 0 or passed, but the thing the line claims did not
+        f"Lab: head={LAB_HEAD} host h051 exit 0, 518 passed; the tick printed published=false, exit 69",
+        f"Lab: head={LAB_HEAD} host h051 exit 0, 5 passed; the named test within_half_budget FAILED at 240 s",
+        f"Lab: head={LAB_HEAD} host h051 exit 0, 5 passed; the live read is not proven here",
+        # a known-bad control counts only when the known good passes
+        f"Lab: head={LAB_HEAD} host h051 exit 0, 12 passed; known bad answer was refused",
+        f"Lab: head={LAB_HEAD} host h051 12 passed; known good answer failed, known bad answer was refused",
     ],
 )
 def test_a_lab_line_recording_a_refused_or_failed_run_is_not_proof(line: str) -> None:
@@ -186,12 +194,10 @@ def test_a_lab_line_recording_a_refused_or_failed_run_is_not_proof(line: str) ->
     [
         f"Lab: head={LAB_HEAD} host h051 exit 0, 259 passed",
         f"Lab: head={LAB_HEAD} host h051 exit 0, 259 passed, 0 failed",
-        f"Lab: head={LAB_HEAD} host h051 12 passed; known bad answer was refused",
+        f"Lab: head={LAB_HEAD} host h051 12 passed; known good admitted, known bad answer was refused",
+        f"Lab: head={LAB_HEAD} host h051 exit 0, 20 passed; 13 failed and 7 passed on the merge base",
         # a known-bad control: the bad answer was refused, and the run itself passed
         f"Lab: head={LAB_HEAD} host h051 exit 0, 12 passed; known bad answer was refused, known good admitted",
-        # the two real lines seen on 2026-11-24: the census pull request and a hook timing test
-        f"Lab: host=h051 lane=censclaude-1220 sha={LAB_HEAD} exit 0, 474 passed and 1 skipped in 73 s; the hook script run by the test, refusing and allowing as the tests assert",
-        f"Lab: head={LAB_HEAD} hosts=h053,h202,h051 pytest test_hook_preflight.py: whole file 73 passed in 299.41 s on h053; the same -k run on h202 had within_half_budget FAILED at 240 s; known bad test id refused exit 4 (not found) and known good -k kind collected 14/128 exit 0, on h053",
     ],
 )
 def test_control_a_lab_line_recording_a_passing_run_is_proven(line: str) -> None:
@@ -549,3 +555,34 @@ def test_the_handler_names_no_path_host_or_address() -> None:
         text = path.read_text()
         for word in banned:
             assert word not in text, f"{path.name} holds {word}"
+
+
+REAL_LINES = json.loads((FIX / "real_lab_lines.json").read_text())
+_SHA = re.compile(POLICY.sha)
+
+
+def _head_of(line: str) -> str:
+    return _SHA.findall(line)[0]
+
+
+@pytest.mark.parametrize("case", REAL_LINES["draft"], ids=lambda c: c["pr"])
+def test_the_real_failed_proof_lines_of_2026_11_24_are_draft(
+    case: dict[str, str],
+) -> None:
+    line = case["line"]
+    r = gate(text_of(comments=(GOOD_BAD, line), body="x")).handle(
+        request(head=_head_of(line))
+    )
+    assert r.answer is EnumProofAnswer.DRAFT
+    assert EnumProofCode.LAB_RUN_FAILED in codes(r)
+
+
+@pytest.mark.parametrize("case", REAL_LINES["proven"], ids=lambda c: c["pr"])
+def test_control_real_good_lines_from_merged_pull_requests_are_proven(
+    case: dict[str, str],
+) -> None:
+    line = case["line"]
+    r = gate(text_of(comments=(GOOD_BAD, line), body="x")).handle(
+        request(head=_head_of(line))
+    )
+    assert r.answer is EnumProofAnswer.PROVEN

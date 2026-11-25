@@ -134,25 +134,17 @@ class HandlerLandingProofGate:
     ) -> str:
         lab = re.compile(self._policy.lab_line)
         sha = re.compile(self._policy.sha)
-        failed = re.compile(self._policy.lab_failed)
-        exit_zero = re.compile(self._policy.lab_exit_zero)
-        passed = re.compile(self._policy.lab_passed)
-        failed_result = re.compile(self._policy.lab_failed_result)
-
-        def _failed_run(ln: str) -> bool:
-            # The run's own result decides. Exit 0 passed, so a known-bad control that "was refused" stays proof.
-            # With no exit 0, N passed counts only when no refused word, failed count or nonzero exit sits beside it.
-            if exit_zero.search(ln):
-                return False
-            if passed.search(ln) and not failed_result.search(ln):
-                return False
-            return bool(failed.search(ln))
 
         lab_lines = [
             ln for ln in self._all_lines(text) if lab.match(ln) and sha.search(ln)
         ]
         shas = sorted(
-            {x for ln in lab_lines if not _failed_run(ln) for x in sha.findall(ln)}
+            {
+                x
+                for ln in lab_lines
+                if not self._line_failed(ln)
+                for x in sha.findall(ln)
+            }
         )
         if lab_lines and not shas:
             reasons.append(
@@ -196,6 +188,29 @@ class HandlerLandingProofGate:
             )
         )
         return ""
+
+    def _line_failed(self, line: str) -> bool:
+        """A Lab line records a failed run when any clause of it records a failure for the thing it claims.
+
+        A pass elsewhere on the line (exit 0, N passed) never clears a failed clause. Two kinds of clause are not a
+        failure of the claim: one about the base or the state before the change (the red of a red-first proof), and
+        one naming the known-bad control, which counts only while a known-good clause on the line carries no failure.
+        """
+        p = self._policy
+        failed = re.compile(p.lab_failed)
+        clauses = [c for c in re.split(p.lab_clause_split, line) if c.strip()]
+        good_ok = any(
+            re.search(p.lab_known_good, c) and not failed.search(c) for c in clauses
+        )
+        for c in clauses:
+            if not failed.search(c):
+                continue
+            if re.search(p.lab_baseline, c):
+                continue
+            if re.search(p.lab_known_bad, c) and good_ok:
+                continue
+            return True
+        return False
 
     def _known_answers(
         self, text: ModelProofText, reasons: list[ModelProofReason]
