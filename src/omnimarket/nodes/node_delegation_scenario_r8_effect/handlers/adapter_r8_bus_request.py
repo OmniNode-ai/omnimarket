@@ -108,7 +108,7 @@ def build_bus_request(
         ) as exc:
             return ModelTenantReadAnswer(
                 completed=False,
-                reason=f"no tenant read terminal: {exc or type(exc).__name__}",
+                reason=f"no tenant read terminal: {str(exc) or type(exc).__name__}",
             )
         payload = terminal.payload
         if terminal.failed:
