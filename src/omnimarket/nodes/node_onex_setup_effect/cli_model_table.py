@@ -275,6 +275,9 @@ class ModelTable(Widget):
     ModelTable DataTable:ansi > .datatable--header-hover { background: ansi_default; }
     ModelTable #mt-bar { height: 1; color: $text-muted; }
     ModelTable DataTable { height: 1fr; }
+    /* A ruled layout's column names: above a line, as /config's (OMN-26688). */
+    ModelTable #mt-head { display: none; height: 2; border-bottom: solid $border; }
+    ModelTable #mt-head Static { width: auto; height: 1; color: $text-muted; text-style: bold; }
     """
     BINDINGS = [
         Binding("space", "tick", "Tick", show=False),
@@ -320,20 +323,27 @@ class ModelTable(Widget):
     def compose(self) -> ComposeResult:
         yield Input(placeholder=_table().search_placeholder, id="mt-search")
         yield Static("", id="mt-bar")
+        yield Horizontal(id="mt-head")
         yield _Rows(id="mt-rows", cursor_type="row", zebra_stripes=True)
 
     def on_mount(self) -> None:
         rows = self.query_one("#mt-rows", DataTable)
         if self._layout is not None:
             spec = _table().tab_table.layouts[self._layout]
-            rows.show_header = spec.header
-            rows.zebra_stripes = False
+            rows.show_header = spec.header and not spec.ruled
+            rows.zebra_stripes = spec.ruled
             self.query_one("#mt-search").display = spec.search
             self.query_one("#mt-bar").display = False
+            head = self.query_one("#mt-head", Horizontal)
+            head.display = spec.ruled
             for tab_column in spec.columns:
                 if tab_column.key == "pick" and not self._selectable:
                     continue
                 rows.add_column(tab_column.title, key=tab_column.key)
+                if spec.ruled:
+                    head.mount(
+                        Static(Text(tab_column.title), id=f"mth-{tab_column.key}")
+                    )
         else:
             for column in _table().columns:
                 if column.key == "pick" and not self._selectable:
@@ -558,6 +568,27 @@ class ModelTable(Widget):
         )
         if keep is not None and keep in visible:
             rows.move_cursor(row=visible.index(keep))
+        if self._ruled():
+            self.call_after_refresh(self._fit_head)
+
+    def _ruled(self) -> bool:
+        return (
+            self._layout is not None and _table().tab_table.layouts[self._layout].ruled
+        )
+
+    def _fit_head(self) -> None:
+        """Each column name as wide as its column, so it starts where the
+        column starts (OMN-26688). Nothing when the table was taken down
+        before the refresh came (a tab closed at once)."""
+        found = list(self.query("#mt-rows").results(DataTable))
+        heads = list(self.query("#mt-head").results(Horizontal))
+        if not found or not heads:
+            return
+        rows, head = found[0], heads[0]
+        for key, column in rows.columns.items():
+            for label in head.query(f"#mth-{key.value}").results(Static):
+                label.styles.width = column.get_render_width(rows)
+                label.styles.padding = (0, rows.cell_padding)
 
     @on(Input.Changed, "#mt-search")
     def _searched(self) -> None:

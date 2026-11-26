@@ -24,7 +24,6 @@ from textual.widgets import Static
 
 from tests.unit.nodes.node_onex_setup_effect.test_onex_tui import (
     _app,
-    _press,
     _Runner,
     _selected_rows,
     _type,
@@ -68,7 +67,7 @@ async def _tab(verify: str | None, *, save: bool) -> tuple[str, str, _Runner]:
         note = ""
         if save:
             app.screen.set_all(True)
-            await _press(pilot, app, "dsave")
+            await pilot.press("ctrl+s")  # no Save button (OMN-26688)
             for _ in range(8):
                 await pilot.pause()
             note = " ".join(str(app.screen.query_one("#dnote").render()).split())

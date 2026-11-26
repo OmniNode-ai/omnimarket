@@ -47,7 +47,7 @@ async def _tables() -> dict[str, tuple[list[str], list[list[str]]]]:
             for _ in range(3):
                 await pilot.pause()
             rows = table.query_one("#mt-rows", DataTable)
-            assert rows.show_header, name
+            assert rows.show_header or table.query_one("#mt-head").display, name
             titles = [str(column.label).strip() for column in rows.columns.values()]
             cells = [
                 [str(cell).strip() for cell in rows.get_row_at(index)]

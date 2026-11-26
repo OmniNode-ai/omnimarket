@@ -115,7 +115,7 @@ async def test_delegation_is_boxed_with_one_footer_row(size: tuple[int, int]) ->
     assert title is not None
     assert "╭" in rows[title - 1], rows[title - 1]  # the state box opens above it
     assert _row_with(rows, words["order_title"]) is not None
-    row = _row_with(rows, "esc close", "Save", "Cancel")
+    row = _row_with(rows, "esc close", "Close")
     assert row is not None, "\n".join(rows)
     assert row == last, (row, last)
 

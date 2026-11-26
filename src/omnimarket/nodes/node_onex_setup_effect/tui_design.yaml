@@ -258,6 +258,8 @@ model_table:
       # titles: name, Context, In $/1M, Out $/1M (operator 2026-11-26).
       order:
         header: true
+        # OMN-26688: column names above a line, striped rows, as /config.
+        ruled: true
         columns:
           # The position leads the name, as the Model tab's marker does.
           - {key: model_numbered, title: "  Model"}
@@ -552,6 +554,12 @@ words:
   delegation_about: "Prompts go to your models first. Claude Code is the fallback."
   turn_on: "Turn on"
   turn_off: "Turn off"
+  # OMN-26688: the Delegation tab's one toggle.
+  toggle_on: "ON"
+  toggle_off: "OFF"
+  toggle_switching: "switching…"
+  toggle_reading: "reading…"
+  toggle_unread: "not read"
   hook_label: Hook
   hook_state_installed: "✓ installed in Claude Code"
   hook_state_missing: "! not installed"
@@ -568,7 +576,7 @@ words:
   tab_hint_config_mine: "↑↓ move · enter actions · esc close"
   tab_hint_model: "↑↓ move · enter first · + add · d info · esc close"
   tab_hint_add_models: "space tick · ctrl+s save · esc back to providers"
-  tab_hint_delegation: "space switch · ctrl+s save · esc close"
+  tab_hint_delegation: "space switch · esc close"
   tab_hint_dashboard_stopped: "s start · esc close"
   tab_hint_dashboard_running: "enter open · s stop · esc close"
   # The one line under the tabs: how many models, on how many servers, and the first.
@@ -613,6 +621,7 @@ words:
   guided_setup_done: "Guided setup finished."
   button_save: Save
   button_cancel: Cancel
+  button_close: Close
   button_start: Start
   button_open: Open
   button_stop: Stop

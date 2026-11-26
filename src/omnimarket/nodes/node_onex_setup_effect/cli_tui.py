@@ -2459,9 +2459,16 @@ class DelegationScreen(_TabbedScreen[None]):
     #deleg .summary { display: none; }
     #dhead { height: 1; }
     #dtitle { width: 1fr; text-style: bold; color: $primary; }
-    #on-state { width: auto; text-style: bold; }
+    /* OMN-26688: the toggle shows the state; the title line keeps none. */
+    #on-state { display: none; }
     #hooks-title { color: $text-muted; height: 1; }
-    #dturn { width: auto; min-width: 12; height: 1; border: none; margin: 1 0 0 0; }
+    #dturn-row { height: 1; margin: 1 0 0 0; }
+    #dturn { width: auto; min-width: 12; height: 1; border: none; margin: 0 2 0 0; padding: 0 2; text-style: bold; }
+    #dturn:focus { text-style: bold; }
+    #dturn.-on { background: $success; color: $background; }
+    #dturn.-off { background: $panel-lighten-2; color: $text; }
+    #dturn.-busy { background: $panel-lighten-1; color: $text-muted; }
+    #dturn-row .hook { width: 1fr; }
     #dswitches { display: none; height: 0; }
     .hook { height: 1; text-wrap: nowrap; text-overflow: ellipsis; }
     #dstate { height: auto; border: round $border; padding: 0 1; }
@@ -2486,8 +2493,10 @@ class DelegationScreen(_TabbedScreen[None]):
     PROBLEM = "problem_delegation"
     BINDINGS = [
         Binding("escape", "cancel", _say("button_cancel")),
-        Binding("ctrl+s", "save", _say("button_save"), priority=True),
-        Binding("space", "flip", "Switch both", show=False),
+        # No Save: the toggle applies at once (OMN-26688). ctrl+s stays, not
+        # shown, for a state set from code.
+        Binding("ctrl+s", "save", _say("button_save"), priority=True, show=False),
+        Binding("space", "flip", "Switch", show=False),
     ]
 
     def __init__(
@@ -2509,6 +2518,8 @@ class DelegationScreen(_TabbedScreen[None]):
         #: Claude Code's state once the check answers; "checking" until then.
         self._claude_state = "checking"
         self._claude_fix = ""
+        #: A switch the toggle started is running (OMN-26688).
+        self._switching = False
 
     def compose(self) -> ComposeResult:
         words = tui_design().delegation
@@ -2523,22 +2534,26 @@ class DelegationScreen(_TabbedScreen[None]):
                     Text(_say("delegation_about"), style=_style("muted")),
                     id="hooks-title",
                 )
-                yield Button(
-                    _say(
-                        "turn_off" if any(self._saved_boxes().values()) else "turn_on"
-                    ),
-                    id="dturn",
-                )
+                # OMN-26688: one toggle that applies at once (operator
+                # 2026-11-26: "i want toogle button", "one button"); the hook's
+                # line beside it only when something is wrong.
+                with Horizontal(id="dturn-row"):
+                    yield Button(self._toggle_label(), id="dturn")
+                    for hook in words.hooks:
+                        line = Static(
+                            self._hook_text(hook.key),
+                            id=f"hook-{hook.key}",
+                            classes="hook",
+                        )
+                        line.display = self._hook_problem(hook.key)
+                        yield line
                 # The switches hold the pending state; the button and Space move them.
                 with Horizontal(id="dswitches"):
                     saved = self._saved_boxes()
                     for hook in words.hooks:
                         with Horizontal(classes="hook-switch"):
                             yield Switch(value=saved[hook.key], id=f"use-{hook.key}")
-                for hook in words.hooks:
-                    yield Static(
-                        self._hook_text(hook.key), id=f"hook-{hook.key}", classes="hook"
-                    )
+
                 # OMN-23413: is Claude Code there? Read from setup's own check.
                 yield Static(
                     Text(_say("claude_checking"), style=_style("muted")), id="claude"
@@ -2557,10 +2572,10 @@ class DelegationScreen(_TabbedScreen[None]):
                 with Horizontal(id="dbar"):
                     yield Static(_tab_hint("tab_hint_delegation"), id="dkeys")
                     with Horizontal(id="dbuttons"):
-                        yield Button(_say("button_save"), variant="primary", id="dsave")
-                        yield Button(_say("button_cancel"), id="dcancel")
+                        yield Button(_say("button_close"), id="dcancel")
 
     def on_mount(self) -> None:
+        self._show_turn()
         self.run_worker(self._check_claude(), group="claude", exclusive=True)
         table = self.query_one("#selected", ModelTable)
         table.border_title = _say("order_title")
@@ -2603,8 +2618,33 @@ class DelegationScreen(_TabbedScreen[None]):
         widget.display = state != "ready"
 
     def action_flip(self) -> None:
-        """Space switches both: on when any is off, otherwise off."""
-        self.set_all(not all(self._boxes().values()))
+        """Space, Enter on the toggle or a click switches delegation at once:
+        on when it is off, otherwise off (OMN-26688: no Save)."""
+        if self._busy:
+            return
+        on = not all(self._boxes().values())
+        if on and not self._selection.entries:
+            self._note(tui_design().delegation.no_models, "warning")
+            return
+        self.set_all(on)
+        self._switching = True
+        self._show_turn()
+        self._run(self._switch)
+
+    async def _switch(self, app: OnexTui) -> Text | str | None:
+        """Apply the flip; afterwards the toggle shows the state as read, so a
+        switch that failed or was refused shows the state it stayed in."""
+        try:
+            return await self._save(app)
+        finally:
+            self._switching = False
+            self._sync_switches()
+            self._show_turn()
+
+    def _sync_switches(self) -> None:
+        """Each switch to the state as last read."""
+        for key, value in self._saved_boxes().items():
+            self.query_one(f"#use-{key}", Switch).value = value
 
     def set_all(self, value: bool) -> None:
         for switch in self.query(".hook-switch Switch").results(Switch):
@@ -2675,6 +2715,11 @@ class DelegationScreen(_TabbedScreen[None]):
             (_say(word), _style(colour)),
         )
 
+    def _hook_problem(self, key: str) -> bool:
+        """The hook's line shows only when something is wrong: delegation is
+        on and Claude Code lacks the hook or has it paused (OMN-26688)."""
+        return self._enabled and self._hooks.get(key) in ("missing", "paused")
+
     def show_state(
         self, delegation: DelegationState | None, hooks: dict[str, str]
     ) -> None:
@@ -2688,9 +2733,9 @@ class DelegationScreen(_TabbedScreen[None]):
         if not list(self.query("#on-state")):  # not composed: compose draws it
             return
         for hook in tui_design().delegation.hooks:
-            self.query_one(f"#hook-{hook.key}", Static).update(
-                self._hook_text(hook.key)
-            )
+            line = self.query_one(f"#hook-{hook.key}", Static)
+            line.update(self._hook_text(hook.key))
+            line.display = self._hook_problem(hook.key)
         if untouched:
             for key, value in self._saved_boxes().items():
                 self.query_one(f"#use-{key}", Switch).value = value
@@ -2701,11 +2746,30 @@ class DelegationScreen(_TabbedScreen[None]):
         self.query_one("#on-state", Static).update(self._state_text())
         self._show_turn()
 
+    def _toggle_label(self) -> str:
+        """ON with its dot on the right, OFF with it on the left, as a phone's
+        switch; words while a switch runs or the state is not read yet."""
+        if self._switching:
+            return _say("toggle_switching")
+        if self._saved is None:
+            return _say("toggle_reading")
+        if self._saved == "unknown":
+            return _say("toggle_unread")
+        dot = tui_design().glyphs.dot_on
+        if self.any_on():
+            return f"{_say('toggle_on')}  {dot}"
+        return f"{dot}  {_say('toggle_off')}"
+
     def _show_turn(self) -> None:
-        """The button names what pressing it does: switch off while on, else on."""
-        self.query_one("#dturn", Button).label = _say(
-            "turn_off" if self.any_on() else "turn_on"
-        )
+        """The toggle shows the state: filled green on, grey off, dimmer grey
+        while a switch runs or the state is not read (OMN-26688)."""
+        button = self.query_one("#dturn", Button)
+        button.label = self._toggle_label()
+        busy = self._switching or self._saved in (None, "unknown")
+        on = self.any_on()
+        button.set_class(busy, "-busy")
+        button.set_class(on and not busy, "-on")
+        button.set_class(not on and not busy, "-off")
 
     def action_save(self) -> None:
         """Switch here and stay; the outcome shows on this tab."""
@@ -2760,8 +2824,6 @@ class DelegationScreen(_TabbedScreen[None]):
             self._close()
         elif event.button.id == "dturn":
             self.action_flip()
-        else:
-            self.action_save()
 
     def action_cancel(self) -> None:
         self._close()

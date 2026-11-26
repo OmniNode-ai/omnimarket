@@ -205,6 +205,9 @@ class ModelTuiLayout(BaseModel):
     header: bool
     #: Show the search box above the table (the Config tab's found list).
     search: bool = False
+    #: Column names above the rows with a line under them, and striped rows,
+    #: as /config's providers table (OMN-26688).
+    ruled: bool = False
     columns: tuple[ModelTuiLayoutColumn, ...] = Field(min_length=1)
 
 

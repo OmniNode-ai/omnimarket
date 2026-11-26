@@ -841,7 +841,7 @@ async def test_delegation_hook_mode_runs_the_design_commands_on_and_off() -> Non
         await pilot.pause()
         await pilot.pause()
         app.screen.set_all(True)
-        await _press(pilot, app, "dsave")
+        await pilot.press("ctrl+s")  # no Save button (OMN-26688)
         for _ in range(6):
             await pilot.pause()
         assert _actions(runner)[-len(hook.enable) :] == list(hook.enable)
@@ -850,7 +850,7 @@ async def test_delegation_hook_mode_runs_the_design_commands_on_and_off() -> Non
 
         # The tab stays open: switch off from the same screen.
         app.screen.set_all(False)
-        await _press(pilot, app, "dsave")
+        await pilot.press("ctrl+s")  # no Save button (OMN-26688)
         for _ in range(6):
             await pilot.pause()
         assert _actions(runner)[-len(hook.disable) :] == list(hook.disable)
@@ -874,7 +874,7 @@ async def test_delegation_refuses_to_turn_on_with_no_selected_model() -> None:
         await pilot.pause()
         before = len(runner.calls)
         app.screen.set_all(True)
-        await _press(pilot, app, "dsave")
+        await pilot.press("ctrl+s")  # no Save button (OMN-26688)
         await pilot.pause()
         assert isinstance(app.screen, DelegationScreen)
         assert tui_design().delegation.no_models in str(
@@ -1536,7 +1536,7 @@ async def test_a_failed_switch_prints_one_line_with_the_step_and_its_fix() -> No
         await pilot.pause()
         await pilot.pause()
         app.screen.set_all(True)
-        await _press(pilot, app, "dsave")
+        await pilot.press("ctrl+s")  # no Save button (OMN-26688)
         await pilot.pause()
         await pilot.pause()
         text = _log_text(app)

@@ -25,7 +25,6 @@ from textual.widgets import Static
 from omnimarket.nodes.node_onex_setup_effect.cli_tui import ModelTuiStatus, OnexTui
 from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import tui_design
 from tests.unit.nodes.node_onex_setup_effect.test_onex_tui import (
-    _press,
     _root,
     _Runner,
     _selected_rows,
@@ -130,7 +129,7 @@ async def test_after_save_the_hook_rows_show_the_new_state() -> None:
     async with app.run_test(size=(160, 46)) as pilot:
         await _open(pilot, app)
         app.screen.set_all(True)
-        await _press(pilot, app, "dsave")
+        await pilot.press("ctrl+s")  # no Save button (OMN-26688)
         for _ in range(8):
             await pilot.pause()
         prompt = _text(app, "#hook-prompt_hook")
