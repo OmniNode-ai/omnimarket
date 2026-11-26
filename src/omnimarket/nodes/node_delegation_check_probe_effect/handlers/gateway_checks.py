@@ -74,6 +74,12 @@ ABSENT_ID: Final = "00000000-0000-4000-8000-0000000000{n:02d}"
 RUNNER_QUERY: Final = "?runner_identity="
 
 
+# The gateway refuses a provider answer cut off by the output budget (finish_reason=length), so a
+# budget below what the model needs fails the run. 32 failed c29-20261126T044722Z-f2c5a20f under the
+# tenant key; 128 completed (control 275d746c), and 8 or fewer failed the same way.
+CHECK_MAX_TOKENS = 128
+
+
 class GatewayRunSettings(BaseModel):
     """How long one check waits on a run and how often it asks; the node's tested defaults, never an address."""
 
@@ -201,7 +207,7 @@ class _Session:
                     "prompt": f"Reply with the single word: alive. Automated {self.check_id} delegation check.",
                     "task_type": task_type,
                     "source": source,
-                    "max_tokens": 32,
+                    "max_tokens": CHECK_MAX_TOKENS,
                 },
             },
         )
