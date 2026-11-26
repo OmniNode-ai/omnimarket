@@ -10,15 +10,22 @@ runtime_profiles: []
 description: >
   A host leaves placement by a command, not by a data pull request (rebuild plan 7.4, piece 2, OMN-22905).
   The drain verb sets one host draining in the drain store and reads it back: the lab placement judge refuses
-  every new unit for a draining host, running lanes are counted and left to finish, and the host reads drained
-  when the count is 0. The idle-only runner stop first sets the runner's host draining and reads it back, so no start is admitted
+  every new unit for a draining host and running lanes are left to finish. The host reads safe to power down only
+  from a reading of the host itself (OMN-24489): the host's own capacity advertisements on the bus (its running units
+  and the lanes it names, two advertisements of one window) and every host read the overlay declares (its model servers,
+  an argv that prints a count) read 0, and the mark outlives the verb's process because the host's serve process holds it
+  and advertises it on every beat. The mark is on the bus where every launcher and the lab fill read it; no machine keeps a
+  drain state of its own and no file holds one. Anything unread, any count above 0, a mark held in memory or a host with
+  no host read is NOT SAFE, and an unreadable count is never a measured zero. A host held by its own guard (heat, memory,
+  swap, slots: its advertisement carries a capacity refusal) reads HELD, which is neither a failure nor SAFE.
+  The idle-only runner stop first sets the runner's host draining and reads it back, so no start is admitted
   while it reads and acts, then stops a runner only when its process table shows no worker process; a busy or
   unreadable runner is refused and nothing is stopped, and the host returns to the state it had unless the runner
   stopped. Each command is one chain on the
   emission contract under one correlation id: a start, then a success or a typed failure (host_draining,
-  drain_readback_failed, drain_write_failed, unknown_host, runner_busy, runner_unreadable, unknown_runner, runner_still_running,
-  runner_stop_failed, admission_not_closed). The profile in the overlay picks the backend: in_memory (default), jsonl (a durable
-  file on one host). Every setting is in the overlay.
+  ttl_invalid, drain_readback_failed, drain_write_failed, unknown_host, runner_busy, runner_unreadable, unknown_runner, runner_still_running,
+  runner_stop_failed, admission_not_closed). The profile in the overlay picks the backend: in_memory (default), bus (the drain command and the
+  advertisements ride the bus). Every setting is in the overlay.
 
 handler:
   module: omnimarket.nodes.node_host_drain_effect.handlers.handler_host_drain

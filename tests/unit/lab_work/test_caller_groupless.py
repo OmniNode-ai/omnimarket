@@ -5,8 +5,10 @@
 Every lab-run call used to build a fresh ``lab_work_client`` group (three
 subscriptions in it) that the broker kept for seven days: about 15,400 Empty
 groups on the CI bus, whose offsets log the broker could not replay inside its
-memory budget. The caller now reads with no group; the only group a lab-work
-exchange creates is the serving host's own, which is the same for every call.
+memory budget. The caller now reads with no group. The only groups a lab-work
+exchange creates are the serving host's: its stable command group, the same for
+every call, and one drain group of its own per serve start (OMN-24489), which
+replays the drain topic so a restart rebuilds the host's mark.
 """
 
 from __future__ import annotations
@@ -40,8 +42,9 @@ pytestmark = pytest.mark.unit
 HOST = "h202"
 SHA = "4c3985a451847571e2cebd06a6edf1940069946e"
 CALLS = 25
-#: Groups a lab-work exchange may create in total: the serving host's one stable group.
-MAX_GROUPS = 1
+#: Groups a lab-work exchange may create in total: the serving host's stable
+#: command group and the one drain group its single start joins (OMN-24489).
+MAX_GROUPS = 2
 
 
 class _RecordingBus(EventBusInmemory):
@@ -117,7 +120,7 @@ def test_the_contract_declares_that_the_caller_reads_with_no_group() -> None:
     assert load_lab_work_topics().caller_subscription_mode == "ungrouped"
 
 
-def test_many_calls_create_at_most_the_serving_hosts_one_group() -> None:
+def test_many_calls_create_at_most_the_serving_hosts_groups() -> None:
     async def scenario() -> tuple[_RecordingBus, list[ModelLabWorkUnitReceipt]]:
         bus = _RecordingBus()
         await bus.start()
@@ -141,7 +144,12 @@ def test_many_calls_create_at_most_the_serving_hosts_one_group() -> None:
     bus, receipts = asyncio.run(scenario())
     assert [r.status for r in receipts] == [EnumLabWorkUnitStatus.COMPLETED] * CALLS
     assert len(bus.groups) <= MAX_GROUPS
-    assert bus.groups == {host_group_id(HOST)}
+    # The host's stable command group plus its one per-start drain group; no
+    # group of any caller's own, whatever the call count.
+    drain_groups = bus.groups - {host_group_id(HOST)}
+    assert len(drain_groups) == 1
+    drain_group = next(iter(drain_groups))
+    assert drain_group.startswith(f"{host_group_id(HOST)}.drain-")
     assert not any("lab_work_client" in group for group in bus.groups)
     # Each call read the capacity topic and both terminals, none of them in a group.
     topics = load_lab_work_topics()

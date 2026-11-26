@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import inspect
 import json
 import logging
 import time
@@ -34,7 +33,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from importlib import resources
-from typing import Any, Literal
+from typing import Literal
 
 import yaml
 from omnibase_core.event_bus.util_consumer_group import derive_service_group_id
@@ -46,6 +45,8 @@ from omnimarket.delegated_test_loop.lab_run_bus import (
     ProtocolLabRunBus,
     event_type_for,
 )
+from omnimarket.handlers.host_drain_mark import HostDrainMark
+from omnimarket.handlers.lab_bus_subscribe import subscribe_with_offset
 from omnimarket.models.model_lab_work_held_unit import ModelLabWorkHeldUnit
 from omnimarket.nodes.node_lab_placement_compute import handlers, models
 from omnimarket.nodes.node_lab_work_unit_effect.handlers import HostAdvertiser
@@ -147,21 +148,7 @@ def _uuid_or_none(value: object) -> uuid.UUID | None:
         return None
 
 
-async def _subscribe(
-    bus: ProtocolLabRunBus,
-    topic: str,
-    on_message: Callable[[Any], Awaitable[None]],
-    group_id: str,
-    offset_reset: str,
-) -> Callable[[], Awaitable[None]]:
-    """Subscribe; state where a fresh group starts when the bus can say so."""
-    subscribe: Callable[..., Awaitable[Callable[[], Awaitable[None]]]] = bus.subscribe
-    extra = (
-        {"auto_offset_reset": offset_reset}
-        if "auto_offset_reset" in inspect.signature(bus.subscribe).parameters
-        else {}
-    )
-    return await subscribe(topic, on_message=on_message, group_id=group_id, **extra)
+_subscribe = subscribe_with_offset
 
 
 def host_group_id(host_name: str) -> str:
@@ -189,6 +176,7 @@ class LabWorkHost:
         progress_seconds: float = DEFAULT_PROGRESS_SECONDS,
         check_seconds: float = _WATCH_SECONDS,
         clock: Callable[[], float] = time.monotonic,
+        lane_reader: Callable[[], list[str] | None] | None = None,
     ) -> None:
         self._bus = bus
         self._work = work_handler
@@ -209,6 +197,8 @@ class LabWorkHost:
         self._beat_task: asyncio.Task[None] | None = None
         self._held: dict[int, ModelLabWorkHeldUnit] = {}
         self._unsubscribe: Callable[[], Awaitable[None]] | None = None
+        self.drain_mark = HostDrainMark(self._host)
+        self._lane_reader = lane_reader
         self.running = 0
         self.processed = 0
         self.advertised = 0
@@ -241,12 +231,14 @@ class LabWorkHost:
             host_group_id(self._host),
             "earliest",
         )
+        await self.drain_mark.start(self._bus, host_group_id(self._host))
         logger.info("lab-work host %s serving %s", self._host, self._topics.command)
 
     async def stop(self) -> None:
         if self._unsubscribe is not None:
             await self._unsubscribe()
             self._unsubscribe = None
+        await self.drain_mark.stop()
         for task in self._tasks:
             task.cancel()
         for task in self._tasks:
@@ -260,6 +252,9 @@ class LabWorkHost:
     async def advertise_once(self) -> ModelHostCapacityAdvertisement | None:
         """Read and publish one advertisement; an unreadable reading publishes
         nothing and is logged."""
+        running_lanes: list[str] | None = None
+        if self._lane_reader is not None:
+            running_lanes = await asyncio.to_thread(self._lane_reader)
         request = ModelHostCapacityProbeRequest(
             host_name=self._host,
             cadence_seconds=self._topics.cadence_seconds,
@@ -267,6 +262,8 @@ class LabWorkHost:
             running_units=self.running,
             max_units=self._max_units,
             rank_penalty=self._rank_penalty,
+            draining_until=self.drain_mark.until(self._now()),
+            running_lanes=running_lanes,
         )
         try:
             ad = await asyncio.to_thread(self._advertise.handle, request)

@@ -8986,6 +8986,7 @@
         "node_goal_scope_admission_compute",
         "node_gpu_power_caps_effect",
         "node_host_down_reading_effect",
+        "node_host_drain_effect",
         "node_host_introspection_announce_effect",
         "node_host_table_keys_ingest_effect",
         "node_lab_disk_watermark_effect",

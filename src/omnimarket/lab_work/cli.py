@@ -82,9 +82,7 @@ _bus_options = [
         show_default=True,
     ),
     click.option("--bus-lane", default=None, help="The declared bus lane to use."),
-    click.option(
-        "--kafka-bootstrap", default=None, help="The broker, stated directly."
-    ),
+    click.option("--kafka-bootstrap", default=None, help="The broker, by address."),
 ]
 
 
@@ -176,6 +174,7 @@ def serve_command(
     )
     from omnimarket.nodes.node_lab_work_unit_effect.protocols import (
         LocalShellLabWorkExecutor,
+        load_lane_reader,
     )
 
     work = HandlerLabWorkUnitEffect(
@@ -204,6 +203,7 @@ def serve_command(
                 max_units=max_units,
                 rank_penalty=rank_penalty,
                 max_command_age_seconds=max_command_age,
+                lane_reader=load_lane_reader().read,
             )
             await host.start()
             try:

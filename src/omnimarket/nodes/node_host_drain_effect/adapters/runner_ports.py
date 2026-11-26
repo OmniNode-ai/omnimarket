@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Real ports of the runner stop and the lane count: a process-table probe, an argv stop and an argv lane count."""
+"""Real ports of the runner stop and the lane count: a process-table probe, an argv stop, an argv lane count and a receipts lane count."""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ from omnimarket.nodes.node_host_drain_effect.models.model_host_drain import (
     EnumRunnerActivity,
 )
 from omnimarket.nodes.node_host_drain_effect.overlay import (
-    ModelLaneCountSettings,
     ModelRunnerStopSettings,
 )
 
@@ -157,26 +156,3 @@ class CommandWorkerStopper:
         except (OSError, subprocess.TimeoutExpired):
             return False
         return done.returncode == 0
-
-
-class CommandLaneSource:
-    """Counts the lanes on a host with the overlay's argv, which prints one integer."""
-
-    def __init__(
-        self, settings: ModelLaneCountSettings, *, run: CommandRun = subprocess.run
-    ) -> None:
-        self._settings = settings
-        self._run = run
-
-    def running(self, host_name: str) -> int:
-        argv = [
-            part.replace("{host}", host_name) for part in self._settings.count_command
-        ]
-        done = self._run(
-            argv,
-            capture_output=True,
-            text=True,
-            timeout=self._settings.timeout_seconds,
-            check=True,
-        )
-        return int(done.stdout.strip())
