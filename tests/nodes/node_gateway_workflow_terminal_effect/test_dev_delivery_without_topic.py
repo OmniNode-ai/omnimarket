@@ -71,7 +71,12 @@ def _route_handlers() -> list[tuple[str, str, Any]]:
     return built
 
 
-@pytest.mark.parametrize(("topic", "status", "cls"), _route_handlers())
+# The delegate-skill failure route takes a publisher_malformed terminal only; a recorded
+# delegation result is not one (test_delegate_skill_failed_route.py covers that route).
+@pytest.mark.parametrize(
+    ("topic", "status", "cls"),
+    [r for r in _route_handlers() if not r[2].malformed_only],
+)
 async def test_recorded_dev_delivery_is_applied_by_the_route_handler(
     topic: str, status: str, cls: Any
 ) -> None:
@@ -104,4 +109,4 @@ async def test_unbound_handler_still_refuses_a_delivery_that_names_nothing() -> 
 
 def test_each_declared_topic_names_its_own_handler_class() -> None:
     classes = [cls for _, _, cls in _route_handlers()]
-    assert len(set(classes)) == len(classes) == 2
+    assert len(set(classes)) == len(classes) == 3

@@ -51,9 +51,13 @@ _MALFORMED_COMMAND_CLASS: Final = "publisher_malformed"
 _MALFORMED_COMMAND_FAILURE_CLASS: Final = "PublisherMalformedError"
 _MALFORMED_COMMAND_DEFAULT_CODE: Final = "ONEX_CORE_345_ENVELOPE_VALIDATION_FAILED"
 _ONEX_CODE: Final = re.compile(r"^ONEX_[A-Z0-9_]+$")
+# The route of the delegate-skill command's failure topic: it carries every failure of that command, and this
+# writer takes only the engine's publisher_malformed terminal from it (C28's dying run).
+_MALFORMED_ONLY_OPERATION: Final = "apply_delegate_skill_malformed"
 _OPERATION_STATUS: Final[dict[str, Literal["completed", "failed"]]] = {
     "apply_delegation_completed": "completed",
     "apply_delegation_failed": "failed",
+    _MALFORMED_ONLY_OPERATION: "failed",
 }
 # The only field names a dead-letter record may name: the wire model's own, never a value.
 WIRE_FIELDS: Final = frozenset(
@@ -89,6 +93,25 @@ def load_contract_routes(
     for entry in document["handler_routing"]["handlers"]:
         routes[str(entry["topic"])] = _OPERATION_STATUS[str(entry["operation"])]
     return routes, str(document["event_bus"]["dlq_topics"][0])
+
+
+def load_malformed_only_topics(contract_path: Path | None = None) -> frozenset[str]:
+    """The topics whose route takes a publisher_malformed terminal and no other delivery."""
+    document = yaml.safe_load((contract_path or _CONTRACT_PATH).read_text("utf-8"))
+    return frozenset(
+        str(entry["topic"])
+        for entry in document["handler_routing"]["handlers"]
+        if entry["operation"] == _MALFORMED_ONLY_OPERATION
+    )
+
+
+def _is_malformed_command(payload: dict[str, Any], status: str) -> bool:
+    return (
+        status == "failed"
+        and payload.get("failure_class") == _MALFORMED_COMMAND_CLASS
+        and payload.get("status") == "failed"
+        and "model_used" not in payload
+    )
 
 
 def _as_uuid(value: Any) -> UUID:
@@ -132,6 +155,7 @@ class HandlerGatewayWorkflowTerminal:
     """
 
     bound_status: Literal["completed", "failed"] | None = None
+    malformed_only: bool = False
 
     def __init__(
         self,
@@ -145,6 +169,7 @@ class HandlerGatewayWorkflowTerminal:
         self._store = store
         self._dead_letter = dead_letter
         self._routes, self._dlq_topic = load_contract_routes(contract_path)
+        self._malformed_only_topics = load_malformed_only_topics(contract_path)
         self.counters: dict[str, int] = {}
 
     def _count_event(self, name: str) -> None:
@@ -187,6 +212,16 @@ class HandlerGatewayWorkflowTerminal:
             )
         store, _ = self._ports()
         payload = request.payload
+        takes_malformed_only = (
+            request.topic in self._malformed_only_topics
+            if request.topic
+            else self.malformed_only and not request.event_type
+        )
+        if takes_malformed_only and not _is_malformed_command(payload, status):
+            self._count_event("terminal_not_malformed_command")
+            return ModelGatewayTerminalApplied(
+                outcome=EnumGatewayTerminalOutcome.NOT_A_GATEWAY_WORKFLOW
+            )
         try:
             update = self._validate(payload, status)
         except _MalformedError as exc:
@@ -228,12 +263,7 @@ class HandlerGatewayWorkflowTerminal:
     def _validate(
         self, payload: dict[str, Any], status: Literal["completed", "failed"]
     ) -> ModelTerminalUpdate | None:
-        if (
-            status == "failed"
-            and payload.get("failure_class") == _MALFORMED_COMMAND_CLASS
-            and payload.get("status") == "failed"
-            and "model_used" not in payload
-        ):
+        if _is_malformed_command(payload, status):
             return self._malformed_command_update(payload)
         # Precedence: an unreadable correlation or tenant id, then a missing model name,
         # then bad metrics, a route/provider mismatch or a credential source outside its vocabulary.
@@ -342,9 +372,18 @@ class HandlerGatewayWorkflowTerminalFailed(HandlerGatewayWorkflowTerminal):
     bound_status = "failed"
 
 
+class HandlerGatewayWorkflowTerminalMalformedCommand(HandlerGatewayWorkflowTerminal):
+    """The handler the contract binds to the delegate-skill failure route: a publisher_malformed terminal only."""
+
+    bound_status = "failed"
+    malformed_only = True
+
+
 __all__: list[str] = [
     "HandlerGatewayWorkflowTerminal",
     "HandlerGatewayWorkflowTerminalCompleted",
     "HandlerGatewayWorkflowTerminalFailed",
+    "HandlerGatewayWorkflowTerminalMalformedCommand",
     "load_contract_routes",
+    "load_malformed_only_topics",
 ]

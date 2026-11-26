@@ -58,6 +58,15 @@ handler_routing:
         name: HandlerGatewayWorkflowTerminalFailed
         module: omnimarket.nodes.node_gateway_workflow_terminal_effect.handlers.handler_gateway_workflow_terminal
       handler_module: omnimarket.nodes.node_gateway_workflow_terminal_effect.handlers.handler_gateway_workflow_terminal
+    # The failure topic of the delegate-skill command: the dispatch engine answers a command it refused as
+    # publisher_malformed there (an unknown task_type, C28), never on the omnibase-infra pair above.
+    - topic: onex.evt.omnimarket.delegate-skill-failed.v1
+      message_category: event
+      operation: apply_delegate_skill_malformed
+      handler:
+        name: HandlerGatewayWorkflowTerminalMalformedCommand
+        module: omnimarket.nodes.node_gateway_workflow_terminal_effect.handlers.handler_gateway_workflow_terminal
+      handler_module: omnimarket.nodes.node_gateway_workflow_terminal_effect.handlers.handler_gateway_workflow_terminal
 terminal_event: onex.evt.omnimarket.gateway-workflow-terminal-applied.v1
 descriptor:
   node_archetype: effect
@@ -92,6 +101,8 @@ broker_acl_grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnibase-infra.delegation-completed.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnibase-infra.delegation-failed.v1, operation: READ}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnibase-infra.delegation-failed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegate-skill-failed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegate-skill-failed.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.dlq.omnimarket.gateway-workflow-terminal-malformed.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.dlq.omnimarket.gateway-workflow-terminal-malformed.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.gateway-workflow-terminal-applied.v1, operation: WRITE}
@@ -100,6 +111,7 @@ event_bus:
   subscribe_topics:
     - onex.evt.omnibase-infra.delegation-completed.v1
     - onex.evt.omnibase-infra.delegation-failed.v1
+    - onex.evt.omnimarket.delegate-skill-failed.v1
   publish_topics:
     - onex.evt.omnimarket.gateway-workflow-terminal-applied.v1
   dlq_topics:
