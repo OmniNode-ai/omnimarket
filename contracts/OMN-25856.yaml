@@ -36,6 +36,11 @@ requirements:
   acceptance:
   - id: AC3
     statement: 'AC3: a start command whose checks exceed the declared budget returns inside the budget with an UNRESOLVED verdict that names how many checks ran and how many did not, and counts none of the unrun checks as passed -- falsifier: the command runs past the budget, the verdict is VERIFIED, or an unrun check is counted verified'
+- id: req-omn25856-verifiable-path-rule-enforcement
+  statement: On the verifiable code path, where executed tests are the authority, a failed blocking heuristic rule is recorded as scored, never blocking, so an accepted run carries no failed blocking rule.
+  acceptance:
+  - id: AC12
+    statement: 'AC12: an accepted code_generation run with passed executed tests records its failed marker rule as scored -- falsifier: the same run records that rule as blocking beside an accepted verdict, or a run without executed tests loses its blocking rule'
 evidence_requirements:
 - kind: tests
   description: The focused regression, failing first with the surviving child process, then passing.
@@ -146,4 +151,13 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_tenant_provision_effect/test_overlay_missing_answers.py tests/nodes/node_tenant_provision_effect/test_outbox_flush.py tests/nodes/node_tenant_provision_effect/test_contract_shape.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-accepted-run-no-blocking-fail
+  description: 'An accepted code_generation run (executed tests passed, function-only answer) records its failed marker rule as scored, never blocking; without executed tests the run records no failed blocking rule beside a pass. The test fails on the gate before the change.'
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_verifiable_path_rule_enforcement_omn25856.py -q --no-cov -n 0 -p no:randomly
     cwd: .

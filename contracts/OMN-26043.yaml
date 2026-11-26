@@ -196,6 +196,33 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_beta_board_effect/test_trigger_declaration.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26043-tenant-key-absent-precondition
+  description: "A healthy delegation the dev runtime refuses ONEX_MARKET_CUSTOMER_PROVIDER_KEY_ABSENT (the test tenant holds no provider key, measured on the dev runtime for run c28-20261126T025132Z-77239c46: tenant 8044e4eb has no row in delegation_routing_tenant_overlay and none in tenant_registry_mirror) reads PRECONDITION-ABSENT naming tenant_provider_key with the refusal quoted, in C15, C16, C28 and C29, and every clause the run graded is still recorded; a healthy run that fails with any other code still reads FAIL, and an invalid payload that never terminates still reads FAIL. The new test file fails on the previous commit (four readings FAIL) and passes after the change. This binds AC5: a probe reading red names its real cause instead of a product defect that is not one."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_tenant_provider_key_absent.py tests/nodes/node_delegation_check_probe_effect/test_gateway_checks.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-customer-machine-delegation-collector
+  description: "The clean-install customer machine runs one delegation through the customer path (the guide's install line in a disposable tool environment, the model declared as the guide's option A, the install's own onex under an egress recorder) and walks the installed product's routing, so C13 and C14 read a graded run instead of PRECONDITION-ABSENT. A good run grades every machine clause green for both checks; a receipt naming another model reads C13 fail, an external connect reads C13 fail, an unbindable tier reads C14 fail, a failed install reads fail and runs no driver, and a driver that prints no record is an absent collector, never a pass. The new tests fail on the previous commit, where the machine raised the absent-collector error for both calls. This binds AC5: C13 and C14 each reading a run is the precondition of reading it green."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_c13_c14_customer_machine_collector.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-c15-chain-tier-order
+  description: "C15 asserts the tier order of the responder chain it was handed (local, then OpenRouter, then the Claude API) as the clause responder_chain_tier_order beside its gateway clauses, which the chain audit found missing. The declared order grades ok, each other order grades red and names the declared and the expected order, and C15 over a chain naming the Claude API before OpenRouter reads FAIL with that clause the only red one (known good pass, known bad fail). The new tests fail on the previous commit, where no such grader existed. This binds AC5: C15 reading a run green has to mean the chain it ran through was in order."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_c15_chain_tier_order.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn26043-tenant-read-answers-on-its-topic
   description: "The tenant provision node's contract declares the tenant-read-completed topic as a publish topic and routes the read result class (ModelTenantReadResult) to it through published_events, and the provision result class to the provision-completed topic. On dev the read command was consumed and handled but its answer fell back to the provision-completed topic, so the dev identity bind waited 30 s on tenant-read-completed twice and timed out. The contract-shape tests fail on the previous commit, where publish_topics held only the terminal event and no published_events map existed, and pass after the change; the publish-parity gate exempts only a topic routed to a result class the node defines (negative control in the same test file). This binds AC5: the bind that reads the tenant row is the precondition of the C29 and C30 runs reading a precondition."
   source: manual
@@ -204,4 +231,22 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_tenant_provision_effect/test_contract_shape.py tests/nodes/node_tenant_provision_effect/test_runtime_publishes_read_answer.py tests/gates/test_contract_publish_parity.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-gateway-check-budget-completes
+  description: "A gateway check's submission carries an output budget of 512 tokens, not 32, and a prompt that asks for the one code block a task_type test run's gate grades. C29 run c29-20261126T044722Z-f2c5a20f read FAIL on completed_under_tenant_key with the tenant's own OpenRouter key answering: the workflow failed with finish_reason=length because the probe asked for 32 tokens, and the gateway refusing a truncated answer is intended behaviour; the check's budget was the defect (a lab run at 128 still truncated; at 1024 the old prompt failed the gate with TASK_MISMATCH on 2 of 4 runs; with the new prompt and 512, 5 of 5 completed). The new test fails on the previous commit, where every submit carried 32, and passes after the change. This binds AC5: C29 reading green needs a healthy run that can finish."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_gateway_check_token_budget.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-host-install-shared-context
+  description: "The host install orchestrator keeps its working memory at class level, because the runtime builds one handler instance per routing entry: a registry result consumed by an instance other than the one that took the request now finds the install's context and publishes the next step, where it read 'ignored a registry result' and no terminal arrived (measured on the dev runtime for two dry runs of the delegation-check-probe unit on h053, 2026-11-26). The new test fails on the previous commit and passes after; its failing control shows a result for an install no instance started is still ignored. This binds AC5: the second delegation check runner on h053 cannot be installed until the orchestrator ends an install."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_install_orchestrator -q --no-cov -n 0 -p no:randomly
     cwd: .
