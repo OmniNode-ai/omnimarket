@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: 1.0.0
+ticket_id: OMN-16782
+title: The registry unit installer refuses a project that is a linked git worktree, so the silent-failure alarm unit cannot be pinned to a lane run directory that is later removed
+summary: 'The silent-failure alarm unit on the h201 lab host (onex-silent-failure-alarm, systemd user service) exited 2 on every 300 s fire, because uv was told to run a project (a remote lane run directory, installed 2026-11-16T23:58:12Z) that no longer exists, and the node never started. The registry unit installer refused a project override only when its path had an omni_worktrees segment (OMN-26549); a lane run directory is a linked worktree of the registry clone at a path with no such segment. The installer now asks git whether the project is a linked worktree and refuses it, for every unit that declares the override, before it writes a unit.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn16782-project-never-a-linked-worktree
+  statement: The registry unit installer writes no unit whose project is a linked git worktree, wherever that worktree sits.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a linked worktree outside omni_worktrees is refused, with its path and the words linked worktree in the refusal, and no unit file is written -- falsifier: uv run pytest tests/nodes/node_host_installer_registry_units/test_project_never_a_linked_worktree.py passes at the merge base'
+  - id: AC2
+    statement: 'AC2: a main checkout is still accepted by the same request -- falsifier: the positive control in the same file fails at the pull request head'
+  - id: AC3
+    statement: 'AC3: every unit that declares project_path_override refuses a linked worktree project -- falsifier: the all-units test in the same file passes for one unit and fails for another'
+evidence_requirements:
+- kind: tests
+  description: The installer's linked-worktree tests and its omni_worktrees tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_host_installer_registry_units/test_project_never_a_linked_worktree.py tests/nodes/node_host_installer_registry_units/test_project_never_a_worktree.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: project-never-a-linked-worktree
+  description: 'AC1, AC2, AC3: the installer refuses a project that is a linked worktree for every unit that declares the override and writes no unit file; at the merge base the refusal tests fail (the unit installs from the lane run directory) and the positive control passes in both.'
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_project_never_a_linked_worktree.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: project-never-a-linked-worktree-integration-proof
+  description: the installer's linked-worktree, omni_worktrees and systemd unit tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-16782 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_installer_registry_units -q --no-cov
+- id: project-never-a-linked-worktree-after-dev-merge
+  description: 'AC1, AC2, AC3 again at the head that carries the dev merge: the installer refuses a linked worktree project and accepts a main checkout, and the omni_worktrees refusal tests still pass beside it.'
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_project_never_a_linked_worktree.py tests/nodes/node_host_installer_registry_units/test_project_never_a_worktree.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .

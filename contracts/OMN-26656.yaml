@@ -88,3 +88,31 @@ dod_evidence:
   - check_type: command
     check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26656 --kind test -- uv run --frozen pytest tests/unit/delegation/test_response_contract_adds_code_checks_omn26656.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26656-eval-loop-real-check-and-context
+  description: The code-eval trial's draft unit can carry the repository context and the contract's own test command as the loop's check, with the test file seeded into the worktree and kept out of the unit's diff; the held answer and the contract path are never sent. This binds no criterion of this ticket.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_code_eval_trial_orchestrator/test_code_eval_suite_admission.py tests/nodes/node_code_eval_trial_orchestrator/test_code_draft_hidden_check_never_sent.py tests/nodes/node_lab_work_unit_effect/test_code_draft_kind.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26656-loop-wall-and-turn-cap-declared
+  description: The code-eval trial's loop wall budget (loop_wall_budget_seconds, 3600 in the example overlay) is an overlay value (default 3600 when omitted) that reaches the loop request, so a code attempt is bounded by an executed check inside a declared wall rather than an implicit 300 s; an overlay with a turn cap over 100 refuses to load. The tests fail at the base, where the key does not exist.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_code_eval_trial_orchestrator/test_loop_wall_and_turn_cap_settings.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_code_eval_trial_orchestrator/test_code_eval_suite_admission.py -q --no-cov -n 0 -p no:randomly -k pytest_node_id
+    cwd: .
+- id: dod-omn26656-loop-wall-default-when-omitted
+  description: An overlay that omits loop_wall_budget_seconds loads and takes the declared 3600, and an overlay that names it uses its own value, so a pinned overlay written before the key keeps loading. The omitted-key test fails at the base of this change, where the key is required.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_code_eval_trial_orchestrator/test_loop_wall_and_turn_cap_settings.py -q --no-cov -n 0 -p no:randomly -k "declared_default or uses_its_value"
+    cwd: .

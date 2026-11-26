@@ -30,6 +30,37 @@ def select_list(cfg: ProjectionTableConfig) -> str:
     return ", ".join(quote_identifier(column) for column in cfg.columns)
 
 
+#: The catalogue read behind ``UniqueKeyCatalogue``, moved out of the reader unchanged.
+UNIQUE_KEY_CATALOGUE_SQL = (
+    "SELECT ARRAY(SELECT pg_get_indexdef(i.indexrelid, k, true) "
+    "FROM generate_series(1, i.indnkeyatts) AS k ORDER BY k) AS key_columns, "
+    "i.indisvalid AS is_valid, i.indpred IS NOT NULL AS is_partial, "
+    "(SELECT count(*) FROM generate_series(1, i.indnkeyatts) AS k "
+    "JOIN pg_attribute AS a ON a.attrelid = i.indrelid "
+    "AND a.attnum = i.indkey[k - 1] "
+    "JOIN pg_opclass AS o ON o.oid = i.indclass[k - 1] "
+    "WHERE a.attcollation = i.indcollation[k - 1] AND o.opcdefault) "
+    "= i.indnkeyatts AS plain_equality, "
+    "ARRAY(SELECT c.column_name::text FROM information_schema.columns AS c "
+    "WHERE c.table_schema = n.nspname AND c.table_name = r.relname "
+    "AND c.is_nullable = 'NO') AS not_null_columns "
+    "FROM pg_index AS i JOIN pg_class AS r ON r.oid = i.indrelid "
+    "JOIN pg_namespace AS n ON n.oid = r.relnamespace "
+    "WHERE i.indrelid = to_regclass($1) "
+    "AND i.indisunique AND i.indexprs IS NULL"
+)
+
+#: The alias under which a windowed read carries a freshness instant that is not
+#: one of the exposure's served columns (OMN-24562).
+WINDOW_ORDER_ALIAS = '"__window_instant"'
+
+
+def serves_column(cfg: ProjectionTableConfig, column: str) -> bool:
+    """Whether the exposure serves ``column`` (a ``*`` exposure serves them all)."""
+    served = {name.strip('"') for name in cfg.columns}
+    return "*" in served or column.strip('"') in served
+
+
 def order_clause(spec: Iterable[tuple[str, str, str | None]]) -> str:
     """Render an order spec, keeping the cache's NULLS placement.
 

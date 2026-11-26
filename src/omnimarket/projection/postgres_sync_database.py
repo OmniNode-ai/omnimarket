@@ -39,6 +39,7 @@ from omnimarket.handlers.handler_projection_derived_write import (
     HandlerProjectionDerivedWrite,
 )
 from omnimarket.nodes.node_projection_tenant_credentials.stores import CredentialPgStore
+from omnimarket.nodes.node_projection_usage_by_model_day.stores import UsagePgStore
 from omnimarket.projection.tenant_isolation import (
     TENANT_GUC,
     resolve_read_tenant,
@@ -68,7 +69,7 @@ def _search_path_option(schema: str) -> str:
     return f"-c search_path={_validate_identifier(schema, kind='schema')}"
 
 
-class PostgresSyncProjectionAdapter(CredentialPgStore):
+class PostgresSyncProjectionAdapter(CredentialPgStore, UsagePgStore):
     """``ProtocolProjectionDatabaseSync`` over a psycopg2 Postgres connection.
 
     UPSERT keys on the conflict column(s); JSON/list/dict values are adapted to
@@ -76,8 +77,7 @@ class PostgresSyncProjectionAdapter(CredentialPgStore):
     own it). A fresh connection is opened per operation and closed afterwards —
     matching :class:`SqliteDatabaseAdapter`'s connect-per-call model, which is
     appropriate for the low-frequency, one-shot CLI evidence write this adapter
-    serves (it is NOT a hot projection-runner loop, which uses ``AsyncpgAdapter``
-    with a pool).
+    serves (it is NOT a hot projection-runner loop, which uses ``AsyncpgAdapter`` with a pool).
     """
 
     def __init__(self, dsn: str, *, schema: str | None = None) -> None:

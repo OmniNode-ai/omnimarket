@@ -16,6 +16,7 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.models.bus_binding.model_node_event_bus import ModelNodeEventBus
+from omnimarket.models.model_delegated_code_edit import MAX_TURNS_CEILING
 
 CODE_EDIT_LOOP_OVERLAY_ID = "node_delegated_code_edit_orchestrator"
 
@@ -34,7 +35,7 @@ class ModelCodeEditLoopOverlay(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    max_turns: int = Field(ge=1, le=40)
+    max_turns: int = Field(ge=1, le=MAX_TURNS_CEILING)
     check_timeout_seconds: int = Field(ge=1, le=1800)
     max_no_change_finishes: int = Field(ge=1, le=10)
     wall_budget_seconds: int | None = Field(default=None, ge=1, le=7200)
