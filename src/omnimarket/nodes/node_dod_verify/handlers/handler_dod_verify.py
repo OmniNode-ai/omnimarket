@@ -62,6 +62,9 @@ from omnimarket.nodes.node_dod_verify.services.dispatch_budget import (
     dispatch_budget,
     start_budget_s,
 )
+from omnimarket.nodes.node_dod_verify.services.local_done_gate_receipts import (
+    receipt_from_results,
+)
 
 if TYPE_CHECKING:
     from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
@@ -905,6 +908,17 @@ class HandlerDodVerify:
             criteria_amendment=(criteria_check.amendment if criteria_check else None),
             criteria_delegated=bool(criteria_check and criteria_check.delegated),
             unresolved_cause=unresolved_cause,
+            local_done_gate_receipt=receipt_from_results(
+                ticket_id=command.ticket_id,
+                contract_sha=(
+                    contract_subject.commit_sha
+                    if contract_subject is not None
+                    else None
+                ),
+                run_id=str(command.correlation_id),
+                results=checks,
+                execution_audience=execution_audience,
+            ),
         )
 
         return state
