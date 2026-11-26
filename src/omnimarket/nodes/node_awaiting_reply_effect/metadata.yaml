@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_awaiting_reply_effect
+version: "1.0.0"
+description: Sends the AUTO replies of the awaiting-reply check and logs each
+omnibase_core_compat: ">=0.47.28,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_awaiting_reply_effect: omnimarket.nodes.node_awaiting_reply_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  side_effect_class: external_io
+dependencies:
+  - pydantic>=2.11.0
+authors: [OmniNode Team]
+license: MIT
+tags: [effect, awaiting-reply, slack, linear]
+node_role: effect
+pack: "routing"
+display_name: "Awaiting Reply Effect"

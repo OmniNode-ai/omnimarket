@@ -1,0 +1,23 @@
+{
+  "now": "2026-11-20T16:00:00+00:00",
+  "window_hours": 6,
+  "items": [
+    {
+      "source": "linear",
+      "conversation_id": "OMN-1000",
+      "link": "https://linear.example/issue/OMN-1000#comment-1",
+      "author": "Person A",
+      "author_id": "linear-user-a",
+      "author_is_bot": false,
+      "text": "Which lane owns this?",
+      "posted_at": "2026-11-20T10:00:00+00:00",
+      "operator_replied_since": false,
+      "conversation_kind": "issue_comment"
+    }
+  ],
+  "source_reads": [
+    {"source": "linear", "ok": true, "items_read": 1}
+  ],
+  "allowlist": [],
+  "held": "reply held for review"
+}
