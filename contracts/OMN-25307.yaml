@@ -1,0 +1,87 @@
+schema_version: 1.0.0
+ticket_id: OMN-25307
+title: 'Review findings 1 to 7 on omnimarket PR 6356 at head f71be4527990 are fixed or argued: the default runner builder is tested, any exception becomes a failed event, AC3 binds to a schedule-run read, the metadata declares its effects and the timeout and instant tests can fail'
+summary: 'Fixes the review findings of the daily line scheduled effect node: tests of the default runner builder, a broad failed-event path with an empty-line guard, AC3 of its owner contract bound to a schedule-run read on dev, real metadata capabilities, a timeout test that asserts 300000, three distinct instants in the golden chain and an entry-point seam test.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25307-review-findings
+  statement: The blocking findings of the review of the daily line scheduled effect node at head f71be4527990 are fixed with tests that fail on that head, or argued with evidence.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: every blocking finding (1 to 7) of the review at head f71be4527990 is fixed with a test that is red on that head and green on the new head, or argued with evidence in a PR comment -- falsifier: `uv run pytest tests/nodes/node_daily_line_scheduled_effect -q` on the lab at the new head passes while the new tests fail against the source files of head f71be4527990'
+  - id: AC2
+    statement: 'AC2: tests run the default runner builder with and without OMNI_HOME and a no-arg NodeDailyLineScheduledEffect, and any Exception from build, run or detail, and an empty line, becomes a failed event -- falsifier: `uv run pytest tests/nodes/node_daily_line_scheduled_effect -q -k ''builder or failed or empty''` fails with the builder call or the broad except removed'
+  - id: AC3
+    statement: 'AC3: contract AC3 is bound to a read of onex.evt.omnimarket.schedule-run.v1 for job_id daily_line on dev, the overlay PR and its merge order are named, and metadata.yaml declares the real capabilities -- falsifier: `uv run pytest tests/nodes/node_daily_line_scheduled_effect -q -k ''contract or metadata''` fails when AC3 is rebound to a contract.yaml grep or the metadata keeps side_effect_class none'
+  - id: AC4
+    statement: 'AC4: the timeout test asserts 300000, the golden chain test uses three distinct instants and the seam test asserts the pyproject entry point -- falsifier: `uv run pytest tests/nodes/node_daily_line_scheduled_effect -q -k ''timeout or golden or seam''` fails with timeout_ms set to 120000, with fired_at and scheduled_for swapped, or with the entry point removed'
+  - id: AC5
+    statement: 'AC5: a PR comment starting `Lab: head=<full head sha>` names exactly the pushed head after the required suites ran on the lab (a whole-suite timeout rerun in named parts), and the three non-blocking findings are answered in a PR comment -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6356` shows a head that differs from the head named in the Lab: comment, or no Lab: comment'
+evidence_requirements:
+- kind: tests
+  description: The tests of the daily line scheduled effect node pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_daily_line_scheduled_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25307-ac1
+  description: AC1 proven by the tests of the node, which fail against the source files of the reviewed head. AC5 is read on the pull request by the done-gate entry below, which the hosted gate cannot bind; its one hosted binding is this run of the tests at the pushed head, and that run is not proof of the Lab comment.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_daily_line_scheduled_effect -q --no-cov
+    cwd: .
+- id: dod-omn25307-ac2
+  description: AC2 proven by the builder, failed-event and empty-line tests.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_daily_line_scheduled_effect -q --no-cov -k 'builder or failed or empty'
+    cwd: .
+- id: dod-omn25307-ac3
+  description: AC3 proven by the contract and metadata tests.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_daily_line_scheduled_effect -q --no-cov -k 'metadata or ac3'
+    cwd: .
+- id: dod-omn25307-ac4
+  description: AC4 proven by the timeout, golden chain and seam tests.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_daily_line_scheduled_effect -q --no-cov -k 'timeout or golden or seam'
+    cwd: .
+- id: dod-omn25307-ac5
+  description: 'AC5 is read on the pull request after the push: a pull request comment whose line starts Lab: head= names the full head that git rev-parse HEAD returns. It fails for a pull request with a head and no such comment, and for a comment that names another head or only a prefix of this one. The hosted gate refuses a bound local_done_gate item, so this entry binds nothing and AC5 is not proven at the hosted gate.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: |-
+      bash -o pipefail -c '
+      head=$(git rev-parse HEAD)
+      gh pr view 6356 --repo OmniNode-ai/omnimarket --json comments --jq ".comments[].body" | grep -E "^Lab: head=${head}([^0-9a-f]|$)" > /dev/null
+      '
+    cwd: .
+- id: dod-omn25307-integration-proof
+  description: AC1 integration proof; the pushed head is run on a lab host and the tests of the node pass there.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane fix6356-1139 -- uv run --frozen pytest tests/nodes/node_daily_line_scheduled_effect -q --no-cov
+    cwd: .
