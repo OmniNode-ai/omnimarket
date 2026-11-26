@@ -304,6 +304,7 @@ AGREEMENT_FIELDS: Final[tuple[str, ...]] = (
     "terminal_failure_reason",
     "terminal_remediation",
     "rule_evaluations",
+    "tests_outcome",
 )
 
 

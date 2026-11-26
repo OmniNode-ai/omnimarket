@@ -15,7 +15,9 @@ class ModelTerminalUpdate(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    tenant_id: UUID
+    # None: a publisher-malformed command's terminal names no tenant (OMN-26566); the
+    # store then joins on the correlation id alone and refuses more than one row.
+    tenant_id: UUID | None
     correlation_id: UUID
     status: Literal["completed", "failed"]
     model_used: str

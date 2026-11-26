@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -46,6 +46,24 @@ class ModelCheckClause(_Frozen):
     name: str = Field(min_length=1)
     ok: bool
     detail: str
+
+
+#: The clause-name prefix of every gateway leg clause (``gateway_delegation_completes``, ``gateway_routed_run_completes`` ...).
+GATEWAY_LEG_PREFIX: Final = "gateway_"
+
+
+def gateway_leg_verdict(
+    clauses: tuple[ModelCheckClause, ...],
+) -> Literal["pass", "fail", "unmeasured"]:
+    """The verdict of a customer-local check's gateway leg alone, from its clauses (the beta board reads it, OMN-26043).
+
+    ``pass`` when every gateway clause held, ``fail`` when one did not, ``unmeasured`` when no gateway clause was graded (the
+    gateway did not answer or its credential was absent): a leg nobody graded is never a pass. Machine clauses do not count.
+    """
+    leg = [c for c in clauses if c.name.startswith(GATEWAY_LEG_PREFIX)]
+    if not leg:
+        return "unmeasured"
+    return "pass" if all(c.ok for c in leg) else "fail"
 
 
 class ModelCheckPrecondition(_Frozen):
