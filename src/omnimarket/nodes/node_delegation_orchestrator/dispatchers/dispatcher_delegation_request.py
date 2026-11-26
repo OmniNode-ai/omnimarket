@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from omnibase_core.enums import EnumNodeKind
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
@@ -38,6 +38,7 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_reque
 
 if TYPE_CHECKING:
     from omnibase_core.protocols.event_bus.protocol_event_bus import ProtocolEventBus
+    from pydantic import BaseModel
 
     from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
         HandlerDelegationWorkflow,
@@ -174,6 +175,22 @@ class DispatcherDelegationRequest(MixinAsyncCircuitBreaker):
                 sanitize_error_message(e),
                 extra={"correlation_id": str(correlation_id)},
             )
+            # OMN-26043: answer a refused request with a typed FAILED terminal so the
+            # caller's run reaches failed instead of waiting at published forever.
+            refused = self._refusal_terminal(raw_payload, e)
+            if refused:
+                return ModelDispatchResult(
+                    dispatch_id=uuid4(),
+                    status=EnumDispatchStatus.SUCCESS,
+                    topic=TOPIC_ID_DELEGATION_REQUEST,
+                    dispatcher_id=self.dispatcher_id,
+                    started_at=started_at,
+                    completed_at=completed_at,
+                    duration_ms=duration_ms,
+                    error_message=sanitize_error_message(e),
+                    correlation_id=correlation_id,
+                    output_events=refused,
+                )
             return ModelDispatchResult(
                 dispatch_id=uuid4(),
                 status=EnumDispatchStatus.INVALID_MESSAGE,
@@ -209,3 +226,35 @@ class DispatcherDelegationRequest(MixinAsyncCircuitBreaker):
                 correlation_id=correlation_id,
                 output_events=[],
             )
+
+    def _refusal_terminal(
+        self,
+        raw_payload: object,
+        error: Exception,
+    ) -> list[BaseModel]:
+        """The failed terminal for a refused request, or ``[]`` when no run identity is readable."""
+        if not isinstance(raw_payload, dict):
+            return []
+        # The caller's run is keyed by the payload's own id; the envelope's is a trace id.
+        try:
+            correlation_id = UUID(str(raw_payload.get("correlation_id")))
+        except ValueError:
+            return []
+        task_type = raw_payload.get("task_type")
+        tenant_id = raw_payload.get("tenant_id")
+        # Only the failing field names cross into the terminal, never a submitted value.
+        if isinstance(error, ValidationError):
+            fields = sorted(
+                {".".join(str(p) for p in d["loc"]) for d in error.errors()}
+            )
+            detail = "invalid fields: " + ", ".join(fields)
+        else:
+            detail = type(error).__name__
+        return self._handler.reject_invalid_request(
+            correlation_id=correlation_id,
+            task_type=task_type
+            if isinstance(task_type, str) and task_type
+            else "unknown",
+            tenant_id=tenant_id if isinstance(tenant_id, str) and tenant_id else None,
+            detail=detail,
+        )
