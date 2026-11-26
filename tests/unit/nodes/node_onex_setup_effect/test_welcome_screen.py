@@ -241,3 +241,13 @@ async def test_the_diagram_has_rounded_boxes_a_heavy_hub_arrowheads_and_a_hub_li
     assert words.hub_tagline in text
     for icon in words.outcome_icons:
         assert icon in text, icon
+
+
+async def test_a_pulse_after_the_app_closed_does_nothing() -> None:
+    """The pulse timer can fire once every screen is gone, while the app closes
+    (seen as an IndexError in a full suite run on 2026-11-26); it must not raise."""
+    app = OnexTui(load_status=_ready, runner=_Quiet())  # type: ignore[arg-type]
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+    assert not app.screen_stack
+    app._pulse_welcome()

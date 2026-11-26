@@ -1149,7 +1149,11 @@ class SetupScreen(_TabbedScreen[None]):
             with Horizontal(id="cfg-row"):
                 with Vertical(id="provider-box"):
                     yield Input(
-                        placeholder=_say("provider_search"), id="provider-search"
+                        placeholder=_say("provider_search"),
+                        id="provider-search",
+                        # The letter typed on the list moves here first (S7);
+                        # selecting on focus would let the next key replace it.
+                        select_on_focus=False,
                     )
                     yield Choice(
                         [(self._provider_label(e), e.provider) for e in choices],
@@ -1279,6 +1283,22 @@ class SetupScreen(_TabbedScreen[None]):
             shown = not wanted or wanted in name
             button.display = shown
             button.disabled = not shown  # the arrows skip what is hidden
+
+    def on_key(self, event: events.Key) -> None:
+        """Typing on the provider list searches it, as list pickers in other
+        terminal apps do. Tab changes tab and the arrow keys there move between
+        providers, so this is how the keyboard reaches the search line."""
+        char = event.character
+        if not char or not char.isprintable() or char.isspace():
+            return
+        if self.focused is not self.query_one("#provider", Choice):
+            return
+        search = self.query_one("#provider-search", Input)
+        search.focus()
+        search.value += char
+        search.cursor_position = len(search.value)
+        event.stop()
+        event.prevent_default()
 
     def _pick_first_shown(self) -> None:
         """Enter in the search: mark the first provider shown, go to its box."""
@@ -4261,8 +4281,11 @@ class OnexTui(App[int]):
 
     def _pulse_welcome(self) -> None:
         """Move the dots on the diagram one step while the welcome is showing."""
+        # The pulse timer can fire while the app closes: first the widgets go,
+        # then every screen, and _main() has none to return.
+        if not self.screen_stack:
+            return
         found = self._main().query("#welcome")
-        # The pulse timer can fire while the app closes and the widgets are gone.
         if self._started or not found or not found.first().display:
             return
         self._welcome_tick += 1

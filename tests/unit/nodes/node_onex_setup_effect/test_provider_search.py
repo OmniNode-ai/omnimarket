@@ -20,9 +20,18 @@ Failure modes:
   S5  a long list pushes the key box and the models off the screen, at
       80x24 or 140x40.
   S6  narrowing the list silently switches the provider the user picked.
+  S7  the search line cannot be reached by keyboard: Tab changes tab, and
+      the arrow keys inside the list only move between providers (found in
+      a real terminal on 2026-11-26).
+  S8  the arrow keys cannot leave the search line for the list.
+  S9  once a server's models load, the model list holds the keyboard and Up
+      never leaves it, so the providers cannot be reached (real terminal,
+      80x24, 2026-11-26: eight Up presses, focus stayed on the list).
 """
 
 from __future__ import annotations
+
+import json
 
 import pytest
 from textual.widgets import Input, RadioButton
@@ -34,9 +43,11 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits 
 )
 from tests.unit.nodes.node_onex_setup_effect.test_onex_tui import (
     _app,
+    _open_config,
     _Runner,
     _selected_rows,
     _type,
+    _wait_for_models,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(60)]
@@ -159,3 +170,64 @@ async def test_narrowing_never_switches_the_marked_provider() -> None:
         await _type(pilot, "open")
         await pilot.pause()
         assert screen.query_one("#provider").value == "gemini"
+
+
+async def _focus_by_keys(pilot, app, widget_id: str, key: str = "up") -> None:
+    """Press ``key`` until ``widget_id`` has focus, as a user would."""
+    for _ in range(20):
+        if app.focused is not None and app.focused.id == widget_id:
+            return
+        await pilot.press(key)
+    raise AssertionError(f"#{widget_id} is not reachable with {key}")
+
+
+@pytest.mark.parametrize("size", [(80, 24), (140, 40)])
+async def test_typing_on_the_list_moves_to_the_search(size: tuple[int, int]) -> None:
+    """S7: reach the list with the arrows, type, and the search line has it."""
+    app = _app(_Runner([], by_command=_selected_rows(connection=False)))
+    async with app.run_test(size=size) as pilot:
+        await _config(pilot, app)
+        await _focus_by_keys(pilot, app, "provider")
+        await _type(pilot, "anthro")
+        await pilot.pause()
+        screen = app.screen
+        search = screen.query_one("#provider-search", Input)
+        assert app.focused is search
+        assert search.value == "anthro"
+        assert _shown(app) == ["anthropic"]
+        await pilot.press("enter")
+        await pilot.pause()
+        assert screen.query_one("#provider").value == "anthropic"
+        assert app.focused is screen.query_one("#key", Input)
+
+
+async def test_down_from_the_search_goes_into_the_list() -> None:
+    """S8: Down leaves the search line for the provider list."""
+    app = _app(_Runner([], by_command=_selected_rows(connection=False)))
+    async with app.run_test(size=(80, 24)) as pilot:
+        await _config(pilot, app)
+        app.screen.query_one("#provider-search", Input).focus()
+        await pilot.pause()
+        await pilot.press("down")
+        await pilot.pause()
+        assert app.focused is not None
+        assert app.focused.id == "provider"
+
+
+@pytest.mark.parametrize("size", [(80, 24), (140, 40)])
+async def test_up_from_the_loaded_models_reaches_the_providers(
+    size: tuple[int, int],
+) -> None:
+    """S9: Up leaves the model list from its first row; typing then searches."""
+    found = json.dumps({"status": "ready", "models": ["llama3.2", "qwen3:8b"]})
+    app = _app(_Runner([], by_command={("models", "discover"): found}))
+    async with app.run_test(size=size) as pilot:
+        await _open_config(pilot, app)
+        await _wait_for_models(pilot)
+        assert app.focused is not None
+        assert app.focused.id == "mt-rows"  # the list takes the keyboard on load
+        await _focus_by_keys(pilot, app, "provider")
+        await _type(pilot, "anthro")
+        await pilot.pause()
+        assert app.screen.query_one("#provider-search", Input).value == "anthro"
+        assert _shown(app) == ["anthropic"]

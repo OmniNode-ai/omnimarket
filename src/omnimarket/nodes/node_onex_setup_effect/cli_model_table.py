@@ -215,6 +215,15 @@ def _sort_key(entry: ModelCatalogEntry, sort: str) -> tuple[object, ...]:
 class _Rows(DataTable[object]):
     """A row is chosen by one click, not by clicking it a second time."""
 
+    def action_cursor_up(self) -> None:
+        """Up on the first row moves to the field above, so the keyboard is
+        never held in the list (a real terminal on 2026-11-26: with a server's
+        models loaded, the providers above could not be reached)."""
+        if self.cursor_row <= 0:
+            self.screen.focus_previous()
+            return
+        super().action_cursor_up()
+
     async def _on_click(self, event: events.Click) -> None:
         # Textual also runs DataTable's own click handler after this one, and it
         # selects only a click on the cell the cursor is already on. Moving the
