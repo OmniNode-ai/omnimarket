@@ -33,6 +33,11 @@ Failure modes:
       nowhere and Enter left the TUI for the full terminal onboarding.
   S11 when guided setup stops early the TUI said "Guided setup exited with
       code 1", which tells the user nothing they can act on.
+  S12 operator 2026-11-26 ("use the space"): with hundreds of providers the
+      list showed ten rows over an empty half screen until a model list loads.
+  S13 filling the space pushes a loaded model list off the screen at 80x24.
+  S14 operator 2026-11-26 ("show count too"): nothing says how many providers
+      there are, or how many a search left.
 """
 
 from __future__ import annotations
@@ -160,8 +165,8 @@ async def test_a_long_list_keeps_the_key_box_on_screen(
             region = screen.query_one(widget_id).region
             assert region.height > 0, widget_id
             assert region.bottom <= height, widget_id
-        box = screen.query_one("#provider-box").region
-        assert box.height < height // 2
+        # S12 lets the list fill the height until models load; S13 keeps the
+        # models in view once they do.
 
 
 async def test_narrowing_never_switches_the_marked_provider() -> None:
@@ -291,3 +296,69 @@ async def test_guided_setup_that_stops_early_says_so_plainly() -> None:
         said = str(app.screen.query_one("#note").render())
         assert "did not finish" in said, said
         assert "code" not in said, said
+
+
+def _forty(monkeypatch: pytest.MonkeyPatch) -> int:
+    picker = _with_providers(
+        monkeypatch,
+        [
+            ModelSetupPickerProvider(provider=f"p{i:02d}", label=f"Provider {i:02d}")
+            for i in range(40)
+        ],
+    )
+    return len(picker)
+
+
+@pytest.mark.parametrize(("size", "cap"), [((80, 24), 6), ((140, 40), 10)])
+async def test_the_list_fills_the_space_until_models_load(
+    monkeypatch: pytest.MonkeyPatch, size: tuple[int, int], cap: int
+) -> None:
+    """S12: more rows than the old cap, and the key box and buttons still show."""
+    _forty(monkeypatch)
+    app = _app(_Runner([], by_command=_selected_rows(connection=False)))
+    async with app.run_test(size=size) as pilot:
+        await _config(pilot, app)
+        screen = app.screen
+        assert not screen.query_one("#found").display
+        rows = screen.query_one("#provider").region.height
+        assert rows > cap, rows
+        for widget_id in ("#provider-search", "#keybox", "#cfg-foot"):
+            region = screen.query_one(widget_id).region
+            assert region.height > 0, widget_id
+            assert region.bottom <= size[1], widget_id
+
+
+@pytest.mark.parametrize("size", [(80, 24), (140, 40)])
+async def test_loaded_models_keep_their_room(
+    monkeypatch: pytest.MonkeyPatch, size: tuple[int, int]
+) -> None:
+    """S13: once a server's models load, two of them show and the footer stays."""
+    _forty(monkeypatch)
+    found = json.dumps({"status": "ready", "models": ["llama3.2", "qwen3:8b"]})
+    app = _app(_Runner([], by_command={("models", "discover"): found}))
+    async with app.run_test(size=size) as pilot:
+        await _open_config(pilot, app)
+        await _wait_for_models(pilot)
+        screen = app.screen
+        table = screen.query_one("#mt-rows")
+        assert table.region.height >= 3, table.region  # header and two models
+        assert table.region.bottom <= screen.query_one("#cfg-foot").region.y
+        assert screen.query_one("#provider").region.height > 0
+
+
+async def test_the_provider_box_counts_what_it_shows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """S14."""
+    total = _forty(monkeypatch)
+    app = _app(_Runner([], by_command=_selected_rows(connection=False)))
+    async with app.run_test(size=(140, 40)) as pilot:
+        await _config(pilot, app)
+        box = app.screen.query_one("#provider-box")
+        assert str(box.border_subtitle) == f"{total} providers"
+        await _type(pilot, "anthro")
+        await pilot.pause()
+        assert str(box.border_subtitle) == f"1 of {total}"
+        await _type(pilot, "zzz")
+        await pilot.pause()
+        assert str(box.border_subtitle) == f"0 of {total}"

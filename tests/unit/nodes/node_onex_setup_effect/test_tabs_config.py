@@ -195,6 +195,11 @@ def _failing_listing(tmp_path: Path):
     return listing
 
 
+def _note_words(app) -> str:
+    """The note's words on one line: beside the provider list it may wrap."""
+    return " ".join(str(app.screen.query_one("#note").render()).split())
+
+
 @pytest.mark.parametrize("size", sup.SIZES)
 async def test_no_raw_error_on_screen_when_the_list_cannot_be_read(
     size: tuple[int, int], tmp_path: Path
@@ -204,8 +209,9 @@ async def test_no_raw_error_on_screen_when_the_list_cannot_be_read(
     async with app.run_test(size=size) as pilot:
         await _open(pilot, app)
         text = sup.screen_text(app)
+        said = _note_words(app)
     sup.assert_no_raw(text, tmp_path)
-    assert "Run /doctor" in text, text
+    assert "Run /doctor" in said, text
 
 
 @pytest.mark.parametrize("size", sup.SIZES)
@@ -221,5 +227,6 @@ async def test_no_raw_error_on_screen_when_saving_fails(
         await pilot.press("ctrl+s")
         await sup.settle(pilot, 25)
         text = sup.screen_text(app)
+        said = _note_words(app)
     sup.assert_no_raw(text, tmp_path)
-    assert "Run /doctor" in text, text
+    assert "Run /doctor" in said, text

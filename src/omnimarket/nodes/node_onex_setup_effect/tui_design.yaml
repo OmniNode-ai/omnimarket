@@ -473,6 +473,9 @@ words:
   provider_search: "Type to search"
   provider_set_up: "{label} ✓"
   provider_not_set_up: "{label}"
+  # Under the provider list (operator 2026-11-26: "show count too").
+  provider_count: "{total} providers"
+  provider_count_shown: "{shown} of {total}"
   key_box: Key
   url_box: Server URL
   key_valid: "✓ valid"

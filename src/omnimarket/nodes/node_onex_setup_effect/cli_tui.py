@@ -1100,14 +1100,20 @@ class SetupScreen(_TabbedScreen[None]):
     #cfg-head { height: 1; }
     #cfg-title { width: 1fr; text-style: bold; color: $primary; }
     #cfg-step { width: auto; color: $text-muted; }
-    #cfg-row { height: auto; }
-    #provider-box { width: 28; height: auto; border: round $border; border-title-color: $text-muted; padding: 0 1; }
+    /* The providers fill the height until a model list loads (operator
+       2026-11-26: "use the space"); then they shrink to make room for it. */
+    #cfg-row { height: 1fr; }
+    SetupScreen.-models #cfg-row { height: auto; }
+    #provider-box { width: 28; height: 100%; border: round $border; border-title-color: $text-muted; border-subtitle-color: $text-muted; padding: 0 1; }
+    SetupScreen.-models #provider-box { height: auto; }
     #provider-search { height: 1; border: none; padding: 0; background: transparent; }
     /* A-Z with search, set-up first (operator 2026-11-26); hundreds of
        providers scroll inside the box, so the key box stays in view. */
-    #provider { width: 100%; height: auto; max-height: 10; border: none; padding: 0; background: transparent; overflow-y: auto; }
-    SetupScreen.-short #provider { max-height: 6; }
-    #keybox { width: 1fr; height: 3; border: round $border; border-title-color: $text-muted; margin-left: 2; }
+    #provider { width: 100%; height: 1fr; border: none; padding: 0; background: transparent; overflow-y: auto; }
+    SetupScreen.-models #provider { height: auto; max-height: 10; }
+    SetupScreen.-models.-short #provider { max-height: 6; }
+    #cfg-side { width: 1fr; height: auto; margin-left: 2; }
+    #keybox { width: 1fr; height: 3; border: round $border; border-title-color: $text-muted; }
     #keybox Input { width: 1fr; height: 1; border: none; padding: 0 1; background: transparent; }
     #keymark { width: auto; padding: 0 1; }
     #found { height: 1fr; min-height: 3; display: none; }
@@ -1172,17 +1178,21 @@ class SetupScreen(_TabbedScreen[None]):
                         first.provider,
                         id="provider",
                     )
-                with Horizontal(id="keybox"):
-                    yield Input(
-                        placeholder=_say("key_placeholder"), password=True, id="key"
-                    )
-                    yield Input(
-                        value=self._stored_url(first.provider) or "",
-                        placeholder=_say("url_placeholder"),
-                        id="url",
-                    )
-                    yield Static("", id="keymark")
-            yield Static("", id="note")
+                with Vertical(id="cfg-side"):
+                    with Horizontal(id="keybox"):
+                        yield Input(
+                            placeholder=_say("key_placeholder"),
+                            password=True,
+                            id="key",
+                        )
+                        yield Input(
+                            value=self._stored_url(first.provider) or "",
+                            placeholder=_say("url_placeholder"),
+                            id="url",
+                        )
+                        yield Static("", id="keymark")
+                    # The hint sits beside the list, under the key box.
+                    yield Static("", id="note")
             yield ModelTable(
                 selectable=True,
                 provider_labels={e.provider: e.label for e in choices},
@@ -1243,6 +1253,7 @@ class SetupScreen(_TabbedScreen[None]):
     def on_mount(self) -> None:
         self.query_one("#found").display = False
         self.query_one("#provider-box").border_title = _say("provider_box")
+        self._count_providers()
         self._show_fields()
         self.query_one("#note", Static).update(_hint(self._provider()))
         self._schedule_find()
@@ -1285,6 +1296,17 @@ class SetupScreen(_TabbedScreen[None]):
                 choice.move_child(button, after=previous)
             previous = button
 
+    def _count_providers(self) -> None:
+        """How many providers there are, or how many the search left (S14)."""
+        buttons = list(self.query_one("#provider", Choice).query(RadioButton))
+        shown = sum(1 for button in buttons if button.display)
+        total = len(buttons)
+        self.query_one("#provider-box").border_subtitle = (
+            _say("provider_count", total=total)
+            if shown == total
+            else _say("provider_count_shown", shown=shown, total=total)
+        )
+
     def _filter_providers(self, text: str) -> None:
         """Show only the providers whose name or id holds ``text``; the marked
         one stays marked even when hidden."""
@@ -1295,6 +1317,7 @@ class SetupScreen(_TabbedScreen[None]):
             shown = not wanted or wanted in name
             button.display = shown
             button.disabled = not shown  # the arrows skip what is hidden
+        self._count_providers()
 
     def on_key(self, event: events.Key) -> None:
         """Typing on the provider list searches it, as list pickers in other
@@ -1501,6 +1524,7 @@ class SetupScreen(_TabbedScreen[None]):
         table.set_ticked(())
         table.set_entries(entries)
         table.display = bool(entries)
+        self.set_class(bool(entries), "-models")  # the providers make room (S13)
         self._show_step()
         self._paint_basket()
 
