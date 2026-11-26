@@ -223,3 +223,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_tenant_provision_effect/test_contract_shape.py tests/nodes/node_tenant_provision_effect/test_runtime_publishes_read_answer.py tests/gates/test_contract_publish_parity.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26043-chain-serving-tier-clause
+  description: "Every delegation check that runs a task reads that the tier that served it is the one the responder chain picked (the first available tier in the declared order) and that no request names a model, backend or provider: C13 and C14 gateway legs, C15, C16, C28 and C30 carry serving_tier_is_chain_pick and no_model_named_in_request; the own-key check C29 carries only_chosen_provider_answered against the new chosen_provider field of the gateway row and reads PRECONDITION-ABSENT when the row names none. Known good passes; a run served by a tier the chain did not pick (local answering after the chain advanced, OpenRouter answering when local was picked, a provider outside the chain) reads FAIL with that clause the only red one, and a check whose request pins a model reads FAIL on the request clause. The new tests fail on the previous commit, where the gateway checks asserted only that a receipt names a route, a provider and a model. This binds AC5: a probe reading green has to mean the chain served it."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_chain_serving_tier_clause.py tests/nodes/node_delegation_check_probe_effect/test_golden_answers_gateway_graders.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

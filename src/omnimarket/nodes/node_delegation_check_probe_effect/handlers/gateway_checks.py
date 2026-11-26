@@ -24,6 +24,11 @@ from typing import Any, Final, cast, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.node_delegation_check_probe_effect.handlers.grade_delegation_checks import (
+    grade_no_model_named,
+    grade_own_key_provider,
+    grade_serving_tier,
+)
 from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe import (
     CheckId,
     ModelCheckClause,
@@ -152,6 +157,16 @@ def _text(value: Any) -> str | None:
     return value if isinstance(value, str) and value.strip() else None
 
 
+def _task_payload(check_id: str, task_type: str, source: str) -> dict[str, Any]:
+    """The one request shape every check sends: no model, backend or provider, so the chain's pick serves it."""
+    return {
+        "prompt": f"Reply with the single word: alive. Automated {check_id} delegation check.",
+        "task_type": task_type,
+        "source": source,
+        "max_tokens": 32,
+    }
+
+
 class _Session:
     """One check's requests, all through the one gateway client; an unanswered request ends the check as not measured."""
 
@@ -163,7 +178,12 @@ class _Session:
         sleep: Callable[[float], None],
         monotonic: Callable[[], float],
         new_uuid: Callable[[], uuid.UUID] = uuid.uuid4,
+        chain_tier: str | None = None,
+        own_key_provider: str | None = None,
     ) -> None:
+        self.chain_tier = chain_tier
+        self.own_key_provider = own_key_provider
+        self.payloads: list[Mapping[str, Any]] = []
         self.client = client
         self.settings = settings
         self.check_id = check_id
@@ -189,6 +209,9 @@ class _Session:
     def submit(
         self, task_type: str, source: str, *, auth: str = "tenant"
     ) -> tuple[ModelGatewayObservation, str | None]:
+        payload = _task_payload(self.check_id, task_type, source)
+        if auth == "tenant" and task_type != DYING_TASK_TYPE:
+            self.payloads.append(payload)
         observed = self.call(
             "POST",
             "/v1/workflows",
@@ -197,12 +220,7 @@ class _Session:
                 "workflow_type": WORKFLOW_TYPE,
                 # The declared request model (ModelWorkflowSubmitRequest) takes a UUID here, never free text.
                 "correlation_id": str(self._new_uuid()),
-                "payload": {
-                    "prompt": f"Reply with the single word: alive. Automated {self.check_id} delegation check.",
-                    "task_type": task_type,
-                    "source": source,
-                    "max_tokens": 32,
-                },
+                "payload": payload,
             },
         )
         body = observed.body
@@ -273,6 +291,24 @@ def _identity_clause(name: str, receipt: Mapping[str, Any] | None) -> ModelCheck
         if receipt is not None and not missing
         else f"the receipt is missing {missing or 'itself'}",
     )
+
+
+def _chain_clauses(
+    s: _Session, receipt: Mapping[str, Any] | None
+) -> tuple[ModelCheckClause, ...]:
+    """A check that runs a delegation sends it unpinned and reads that the chain's pick served it (OMN-26043).
+
+    The serving-tier clause is graded when the handler resolved the chain; the handler reads a check with no resolvable chain
+    as PRECONDITION-ABSENT before it reaches this module.
+    """
+    clauses = [grade_no_model_named(s.payloads)]
+    if s.chain_tier is not None:
+        clauses.append(
+            grade_serving_tier(
+                _text(receipt.get("provider")) if receipt else None, s.chain_tier
+            )
+        )
+    return tuple(clauses)
 
 
 def _completed(
@@ -444,6 +480,7 @@ def _c15(s: _Session) -> tuple[ModelCheckClause, ...]:
         ),
         _completed("completed_within_budget", status, answered, workflow_id),
         _identity_clause("receipt_names_route_provider_model", receipt),
+        *_chain_clauses(s, receipt),
     )
 
 
@@ -518,14 +555,16 @@ def _c16(s: _Session) -> tuple[ModelCheckClause, ...]:
         _identity_clause("receipt_identity_present", receipt),
         _agreement_clause("status_agrees_with_receipt", status, receipt),
         _rules_clause(receipt),
+        *_chain_clauses(s, receipt),
         *_dying_clauses(s, prefix="dead_run_typed_failure"),
     )
 
 
 def _c28(s: _Session) -> tuple[ModelCheckClause, ...]:
-    workflow_id, status, _receipt, answered = _healthy(s)
+    workflow_id, status, receipt, answered = _healthy(s)
     return (
         _completed("healthy_consumed", status, answered, workflow_id),
+        *_chain_clauses(s, receipt),
         *_dying_clauses(s, prefix="invalid_payload_observed"),
     )
 
@@ -537,6 +576,18 @@ def _c29(s: _Session) -> tuple[ModelCheckClause, ...]:
     return (
         _completed("completed_under_tenant_key", status, answered, workflow_id),
         _identity_clause("receipt_names_provider_and_model", receipt),
+        # Own key: the run is not routed through the chain; only the tenant's chosen provider may answer it.
+        grade_no_model_named(s.payloads),
+        *(
+            (
+                grade_own_key_provider(
+                    _text(receipt.get("provider")) if receipt else None,
+                    s.own_key_provider,
+                ),
+            )
+            if s.own_key_provider is not None
+            else ()
+        ),
         _clause(
             "no_house_credential_in_receipt",
             receipt is not None and not houses,
@@ -570,6 +621,7 @@ def _c30(s: _Session) -> tuple[ModelCheckClause, ...]:
         ),
         _completed("completed_through_gateway", status, answered, workflow_id),
         _identity_clause("receipt_names_provider_and_model", receipt),
+        *_chain_clauses(s, receipt),
         _clause(
             "unknown_source_refused",
             refused_on_field,
@@ -586,6 +638,7 @@ def _c13_leg(s: _Session) -> tuple[ModelCheckClause, ...]:
     return (
         _completed("gateway_delegation_completes", status, answered, workflow_id),
         _identity_clause("gateway_receipt_names_route_provider_model", receipt),
+        *_chain_clauses(s, receipt),
     )
 
 
@@ -594,6 +647,7 @@ def _c14_leg(s: _Session) -> tuple[ModelCheckClause, ...]:
     return (
         _completed("gateway_routed_run_completes", status, answered, workflow_id),
         _agreement_clause("gateway_status_agrees_with_receipt", status, receipt),
+        *_chain_clauses(s, receipt),
         *_dying_clauses(s, prefix="gateway_unroutable_class_typed_failure"),
     )
 
@@ -650,9 +704,20 @@ def run_gateway_check(
     sleep: Callable[[float], None] = time.sleep,
     monotonic: Callable[[], float] = time.monotonic,
     new_uuid: Callable[[], uuid.UUID] = uuid.uuid4,
+    chain_tier: str | None = None,
+    own_key_provider: str | None = None,
 ) -> ModelDelegationCheckReading:
     """Grade one check, or the gateway leg of a customer-local check, by requests to ``client`` alone."""
-    session = _Session(client, settings, check_id, sleep, monotonic, new_uuid)
+    session = _Session(
+        client,
+        settings,
+        check_id,
+        sleep,
+        monotonic,
+        new_uuid,
+        chain_tier,
+        own_key_provider,
+    )
     head = {"endpoint": client.gateway_url, "tenant_slug": client.tenant_slug}
     try:
         clauses = _GRADERS[cast("str", check_id)](session)

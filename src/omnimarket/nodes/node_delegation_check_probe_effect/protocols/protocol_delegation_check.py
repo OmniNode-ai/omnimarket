@@ -83,6 +83,8 @@ class ProtocolGatewayClient(Protocol):
 
     gateway_url: str
     tenant_slug: str
+    # The provider the tenant's own key reaches, when the row names one; own-key checks read the receipt against it.
+    chosen_provider: str | None
 
     def call(
         self,

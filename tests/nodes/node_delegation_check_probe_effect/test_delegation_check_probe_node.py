@@ -200,7 +200,12 @@ def test_c14_reads_pass_on_all_three_rows() -> None:
     h, _ = handler(machine)
     result = h.handle(request("C14"))
     assert result.verdict is EnumCheckVerdict.PASS
-    assert {c.name for c in result.clauses if not c.name.startswith("gateway_")} == {
+    assert {
+        c.name
+        for c in result.clauses
+        if not c.name.startswith("gateway_")
+        and c.name not in ("no_model_named_in_request", "serving_tier_is_chain_pick")
+    } == {
         "no_checkout",
         "row1_local_answer_ends_chain",
         "row2_no_unbindable_tier",

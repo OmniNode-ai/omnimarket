@@ -114,6 +114,7 @@ class HttpGatewayCaller:
     ) -> None:
         self.gateway_url = row.gateway_url
         self.tenant_slug = row.tenant_slug
+        self.chosen_provider: str | None = row.chosen_provider
         self._credential_kind = row.credential_kind
         self._credential = credential
         self._timeout_s = timeout_s
