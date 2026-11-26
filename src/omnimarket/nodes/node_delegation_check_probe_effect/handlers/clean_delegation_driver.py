@@ -355,7 +355,7 @@ def drive() -> int:
     work = scratch / "work"
     work.mkdir()
     bin_dir = str(Path(onex).parent)
-    base_env = dict(os.environ)
+    base_env = dict(os.environ)  # ONEX_FLAG_EXEMPT: the clean machine's own environment
     base_env["PATH"] = os.pathsep.join([bin_dir, base_env.get("PATH", "")])
 
     def recorded(log: Path) -> dict[str, str]:

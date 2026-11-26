@@ -316,7 +316,9 @@ def _handler(machine: CleanInstallCustomerMachine) -> HandlerDelegationCheckProb
 
 def _run(check: str, handler: HandlerDelegationCheckProbe) -> Any:
     return handler.handle(
-        ModelDelegationCheckRequest(correlation_id="t", check_id=check)  # type: ignore[arg-type]
+        ModelDelegationCheckRequest.model_validate(
+            {"correlation_id": "t", "check_id": check}
+        )
     )
 
 
@@ -398,7 +400,15 @@ def test_a_driver_that_prints_no_record_is_a_collector_absent_not_a_pass(
     tmp_path: Path,
 ) -> None:
     class _Mute(_Runner):
-        def run(self, argv: Sequence[str], **kw: Any) -> CommandResult:  # type: ignore[override]
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            env: Mapping[str, str],
+            cwd: Path,
+            timeout_s: float,
+            stdin: str | None = None,
+        ) -> CommandResult:
             if argv[0] == "uv":
                 return CommandResult(0, "", "")
             return CommandResult(1, "", "boom")
