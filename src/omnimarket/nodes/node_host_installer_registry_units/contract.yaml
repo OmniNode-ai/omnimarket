@@ -945,7 +945,14 @@ units:
       - ONEX_SKILL_OVERLAY_ROOTS
     # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
-    environment: *probe_tick_environment
+    # OMN-19915: the tick publishes its run on the lane bus the node's overlay names (event_bus). The unit names no broker and
+    # no credential: the lane declaration table is found under the workspace config root and the lane credential is the host's
+    # own dev client store. No KAFKA_* variable is set. OMNIBASE_PATH is not set, unlike the delegation-check-probe unit: the
+    # broker resolver falls back to the unit's OMNI_HOME, and measured on h202 a C30 run with OMNIBASE_PATH in the unit's
+    # environment graded 2 of 5 clauses where the same run without it graded 5 of 5.
+    environment:
+      <<: *probe_tick_environment
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/c30-claude-code-plugin-probe/last-run.json
     state_directory: .onex_state/c30-claude-code-plugin-probe
   # The C31 local dashboard parity probe (node_c31_local_dashboard_parity_probe_effect, OMN-19966), once a day on a Linux lab host:
@@ -980,7 +987,14 @@ units:
       - ONEX_SKILL_OVERLAY_ROOTS
     # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
-    environment: *probe_tick_environment
+    # OMN-19915: the tick publishes its run on the lane bus the node's overlay names (event_bus). The unit names no broker and
+    # no credential: the lane declaration table is found under the workspace config root and the lane credential is the host's
+    # own dev client store. No KAFKA_* variable is set. OMNIBASE_PATH is not set, unlike the delegation-check-probe unit: the
+    # broker resolver falls back to the unit's OMNI_HOME, and measured on h202 a C30 run with OMNIBASE_PATH in the unit's
+    # environment graded 2 of 5 clauses where the same run without it graded 5 of 5.
+    environment:
+      <<: *probe_tick_environment
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/c31-local-dashboard-parity-probe/last-run.json
     state_directory: .onex_state/c31-local-dashboard-parity-probe
   # The delegation checks C13, C14 and C17 (node_delegation_check_probe_effect, OMN-26043), once an hour on a Linux lab host: a

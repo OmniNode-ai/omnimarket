@@ -20,6 +20,11 @@ requirements:
   acceptance:
   - id: DoD2
     statement: The canonical runtime classifies a failed walk receipt as a failed run and the receipt serializes status failed.
+- id: c30-c31-unit-bus
+  statement: The C30 and C31 host units publish their run on the lane bus their node overlay declares, with the lane declaration table found by reference and no broker address or credential written into a unit.
+  acceptance:
+  - id: DoD3
+    statement: The C30 and C31 units declare ONEX_WORKSPACE_CONFIG_ROOT (and not OMNIBASE_PATH, which measurably broke the C30 delegate clause on h202), and each tick publishes through the declared broker publisher.
 evidence_requirements:
 - kind: tests
   description: Real local runtime and bus adapter, with the existing stub Tart transport and a successful receipt control.
@@ -49,6 +54,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_onboarding_clean_vm_walk/test_clean_vm_walk.py -q --no-cov -k test_failed_walk_is_a_failed_run_through_canonical_runtime
+    cwd: .
+- id: c30-c31-unit-bus-env
+  description: The focused tests of the two ticks' declared-broker delivery and of the two unit declarations and their rendered services; each fails on the branch base, where the units carry no bus environment and the ticks default to the emit-effect publisher.
+  source: manual
+  binds_ac:
+  - DoD3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_c30_claude_code_plugin_probe_effect/test_probe_delivery_declared_broker.py tests/nodes/node_c31_local_dashboard_parity_probe_effect/test_probe_delivery_declared_broker.py tests/nodes/node_host_installer_registry_units/test_c30_c31_probe_bus_env.py -q --no-cov -p no:randomly
     cwd: .
 - id: deploy-probe
   description: Hosted-runner source-artifact readback requires the published walk contract at the evaluated commit to match this checkout, bind ModelWalkReceipt to one published topic and keep both terminal topics in runtime_dispatch. This checks the source artifact; it does not claim the fix is installed on a host.

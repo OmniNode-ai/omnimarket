@@ -15,6 +15,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.bus_binding.model_node_event_bus import ModelNodeEventBus
+
 #: The dashboard snapshot topic whose rows the probe reads; the node does not own it.
 DECISIONS_TOPIC = "onex.snapshot.projection.delegation.decisions.v1"
 #: The exposure Overview's Savings widget binds: the metering summary's `all` window row.
@@ -144,6 +146,9 @@ class ModelC31ProbeOverlay(_Frozen):
     history_keep: int = Field(gt=0)
     # The topic the run record is emitted to; it must be one the contract declares.
     result_topic: str = Field(min_length=1)
+    # The bus the tick delivers its run record on: the lane id only, read by the declared broker publisher. A lab host's
+    # unit carries no KAFKA_BOOTSTRAP_SERVERS, so without it the tick delivers nothing and exits 3.
+    event_bus: ModelNodeEventBus | None = None
 
     @model_validator(mode="after")
     def _default_exists(self) -> ModelC31ProbeOverlay:
