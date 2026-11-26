@@ -56,13 +56,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import threading
 from typing import Any, Literal, Protocol
 
 from aiokafka.record.default_records import DefaultRecordBatchBuilder
 from pydantic import BaseModel, ConfigDict
 
 from omnimarket.config.settings import Settings
+from omnimarket.handlers.owned_loop_transport import OwnedLoopTransport
 from omnimarket.projection.models import (
     ModelProjectionSnapshotDelta,
     ProjectionTableConfig,
@@ -404,46 +404,11 @@ class KafkaSnapshotDeltaPublisher:
 
     def __init__(self, *, bootstrap_servers: str) -> None:
         self._bootstrap_servers = bootstrap_servers.strip()
-        self._guard = threading.Lock()
-        self._loop: asyncio.AbstractEventLoop | None = None
-        self._thread: threading.Thread | None = None
-        # Touched only on ``self._loop``.
-        self._transport: Any = None
-
-    def _ensure_loop(self) -> asyncio.AbstractEventLoop:
-        with self._guard:
-            if self._loop is None or self._loop.is_closed():
-                loop = asyncio.new_event_loop()
-                thread = threading.Thread(
-                    target=loop.run_forever,
-                    name="snapshot-delta-publisher",
-                    daemon=True,
-                )
-                thread.start()
-                self._loop, self._thread = loop, thread
-            return self._loop
+        self._owned = OwnedLoopTransport(bootstrap_servers=self._bootstrap_servers)
 
     def close(self) -> None:
         """Stop the transport and the loop; a later ``publish`` starts anew."""
-        with self._guard:
-            loop, thread = self._loop, self._thread
-            self._loop = self._thread = None
-        if loop is None or thread is None:
-            return
-        try:
-            asyncio.run_coroutine_threadsafe(self._drop_transport(), loop).result()
-        finally:
-            loop.call_soon_threadsafe(loop.stop)
-            thread.join()
-            loop.close()
-
-    async def _drop_transport(self) -> None:
-        transport, self._transport = self._transport, None
-        if transport is not None:
-            try:
-                await transport.close()
-            except Exception as exc:
-                logger.warning("snapshot delta transport close failed: %s", exc)
+        self._owned.close()
 
     def publish(self, message: ModelSnapshotDeltaMessage) -> bool:
         if message.value is None:
@@ -485,9 +450,7 @@ class KafkaSnapshotDeltaPublisher:
                 "runtime dispatches on a worker thread with no loop. A caller "
                 "inside a loop must inject its own publisher"
             )
-        published = asyncio.run_coroutine_threadsafe(
-            self._publish(message), self._ensure_loop()
-        ).result()
+        published = self._owned.run(self._publish(message))
         if published:
             # OMN-19733: the session-replay and work-events writers publish
             # through this sync seam, on the worker thread asyncio.to_thread
@@ -496,28 +459,9 @@ class KafkaSnapshotDeltaPublisher:
         return published
 
     async def _publish(self, message: ModelSnapshotDeltaMessage) -> bool:
-        # Lazy import (OMN-15800 AC6): the projection-api process imports names
-        # from the projection package but must never load asyncpg, which
-        # ``omnibase_infra``'s top-level __init__ chain pulls in transitively.
-        from omnibase_infra.event_bus.kafka_transport import KafkaTransport
-
-        if self._transport is None:
-            # topics=() keeps this producer-only: start() then skips the consumer
-            # leg entirely, so no consumer group is created and nothing joins a
-            # rebalance just to send one record.
-            transport = KafkaTransport.from_bootstrap(
-                self._bootstrap_servers, topics=()
-            )
-            try:
-                await transport.start()
-            except Exception as exc:
-                logger.warning(
-                    "snapshot delta for %s not published: transport failed to start: %s",
-                    message.topic,
-                    exc,
-                )
-                return False
-            self._transport = transport
+        transport = await self._owned.transport(message.topic)
+        if transport is None:
+            return False
         if message.value is None:
             logger.warning(
                 "snapshot delta for %s not published: message value is missing",
@@ -525,7 +469,7 @@ class KafkaSnapshotDeltaPublisher:
             )
             return False
         try:
-            await self._transport.send(
+            await transport.send(
                 message.topic,
                 key=message.key,
                 value=message.value,
@@ -537,6 +481,6 @@ class KafkaSnapshotDeltaPublisher:
                 message.topic,
                 exc,
             )
-            await self._drop_transport()
+            await self._owned.drop()
             return False
         return True
