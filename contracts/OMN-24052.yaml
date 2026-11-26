@@ -96,3 +96,10 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24052 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_overlay_store -q -n 0 --no-cov -p no:cacheprovider
+- id: dod-omn24052-settings-command
+  description: 'the operator ease-of-change command: onex settings set|get|list|bootstrap-file over the central store; a set rewrites the overlay local file with value and provenance, a failed set leaves it alone, an undeclared key or a non-JSON value is refused before the setter runs, and the bootstrap file refuses by name when an input is missing.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/settings_store/test_settings_cli.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
