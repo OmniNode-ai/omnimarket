@@ -1,0 +1,30 @@
+name: node_tenant_topic_provision_effect
+version: 1.0.0
+description: Creates a tenant's wire topics (the forwarder contract's mirror set under tenant-<slug>.) on the broker from a bus command, reads each back, and names any topic it could not create.
+pack: topic_hygiene
+node_role: effect
+display_name: Tenant Topic Provision Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_tenant_topic_provision_effect: omnimarket.nodes.node_tenant_topic_provision_effect
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- aiokafka>=0.10.0
+- omnibase-infra>=0.38.68
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- tenant
+- topic-provision
