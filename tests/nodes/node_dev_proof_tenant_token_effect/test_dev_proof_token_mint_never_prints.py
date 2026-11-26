@@ -118,12 +118,8 @@ def test_dev_proof_token_mint_never_prints_names_and_status_only(
     assert result.signing_key_name == SIGNING_NAME
     assert [(t.secret_name, t.status) for t in result.tokens] == [
         ("TEST_TOKEN_H051", EnumDevProofTokenStatus.WRITTEN),
-        ("TEST_TOKEN_H201", EnumDevProofTokenStatus.WRITTEN),
     ]
-    assert any(
-        "token_statuses=['written', 'written']" in r.getMessage()
-        for r in caplog.records
-    )
+    assert any("token_statuses=['written']" in r.getMessage() for r in caplog.records)
     assert not any("TEST_TOKEN_H051" in r.getMessage() for r in caplog.records)
 
 

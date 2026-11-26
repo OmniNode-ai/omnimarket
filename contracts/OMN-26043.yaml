@@ -196,6 +196,18 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_beta_board_effect/test_trigger_declaration.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26043-proof-tenant-contract-matches-overlay
+  description: "The dev proof tenant token node's contract declares only the proof tenant that has a tenant row (cli-run-a), the same set as the dev overlay and the example overlay; a tenant outside it (cli-run-b included) is refused before the key is read. The tests fail on the base commit, where the contract also lists cli-run-b and the handler refuses the one-tenant overlay. This binds AC5: the proof tenant token mint is the precondition of the C29 and C30 runs reading a precondition."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_dev_proof_tenant_token_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+  - check_type: command
+    check_value: uv run python -m omnimarket.nodes.node_trigger_declaration_check_effect --root . --contract src/omnimarket/nodes/node_dev_proof_tenant_token_effect/contract.yaml
+    cwd: .
 - id: dod-omn26043-tenant-key-absent-precondition
   description: "A healthy delegation the dev runtime refuses ONEX_MARKET_CUSTOMER_PROVIDER_KEY_ABSENT (the test tenant holds no provider key, measured on the dev runtime for run c28-20261126T025132Z-77239c46: tenant 8044e4eb has no row in delegation_routing_tenant_overlay and none in tenant_registry_mirror) reads PRECONDITION-ABSENT naming tenant_provider_key with the refusal quoted, in C15, C16, C28 and C29, and every clause the run graded is still recorded; a healthy run that fails with any other code still reads FAIL, and an invalid payload that never terminates still reads FAIL. The new test file fails on the previous commit (four readings FAIL) and passes after the change. This binds AC5: a probe reading red names its real cause instead of a product defect that is not one."
   source: manual
