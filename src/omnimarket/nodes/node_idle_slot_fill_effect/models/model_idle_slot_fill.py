@@ -78,6 +78,9 @@ class ModelIdleSlotFillRequest:
     )  # experiment key -> "<lane> at <ended_at>"
     fixer_holds: Mapping[str, str] = field(default_factory=dict)
     fixer_holds_unread: str = ""
+    # OMN-26214: the latest RULING allows Codex lanes. A lane runs on Codex only when its item or brief also carries
+    # codexOk; with either missing the fill places sonnet.
+    codex_ruling_allows: bool = False
     # Kinds whose items must name a repository (ModelBacklogItem), read by the caller from the
     # idle_slot_fill overlay; none by default.
     repo_required_kinds: Collection[str] = ()

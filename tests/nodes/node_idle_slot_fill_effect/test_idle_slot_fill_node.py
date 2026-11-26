@@ -89,8 +89,8 @@ def fill(**changes) -> models.ModelIdleSlotFillResult:
 def test_free_slots_are_filled_from_the_tick_lines_in_pillar_order():
     result = fill()
     assert [(s["kind"], s["key"], s["model"]) for s in result.sends] == [
-        ("process-fix", "repo-private-data#812", "codex"),
-        ("cause-red", "repo-status:omnimarket", "codex"),
+        ("process-fix", "repo-private-data#812", "sonnet"),
+        ("cause-red", "repo-status:omnimarket", "sonnet"),
     ]
     first, second = result.sends
     assert first["lane"] == "fill-pf-drive-repo-private-data-812-20261018T2130Z"
@@ -169,8 +169,7 @@ def test_a_host_tick_repair_waits_for_a_free_launching_host_slot(slots, free, er
         "repo-private-data#812",
         "repo-status:omnimarket",
     ]
-    expected_model = "codex" if slots == 0 and free and error is None else "sonnet"
-    assert all("host" not in s and s["model"] == expected_model for s in result.sends)
+    assert all("host" not in s and s["model"] == "sonnet" for s in result.sends)
     assert result.skipped == [
         {
             "key": "repair:host-tick:minutes-watch",
@@ -209,11 +208,8 @@ def test_host_tick_repairs_take_no_more_than_the_launching_host_s_and_the_pool_s
     repairs = [s for s in result.sends if s["kind"] == "lab-repair"]
     assert len(repairs) == (1 if sweep == 0 else 0)
     assert all(s["host"] == "host-b" and s["model"] == "sonnet" for s in repairs)
-    assert [s["model"] for s in result.sends if s["kind"] != "lab-repair"] == [
-        "codex",
-        "codex",
-    ]
-    assert result.idle_after == 0
+    # no brief carries codexOk, so the two Codex slots of host-c take nothing and the lanes wait for Claude
+    assert [s["model"] for s in result.sends if s["kind"] != "lab-repair"] == []
 
 
 def test_the_sweep_s_planned_lanes_take_their_slots_first():
@@ -223,26 +219,31 @@ def test_the_sweep_s_planned_lanes_take_their_slots_first():
 
 
 def test_codex_lanes_go_to_codex_only_hosts_after_claude_slots():
-    """Historical case: the current policy spends Codex capacity first."""
-    result = fill(
-        hosts=[host("host-a", 1, 1), host("host-d", 0, 2)],
-        lines=[*headroom("host-a", "host-d"), PF_LINE, RED_LINE],
-        backlog=[
-            {
-                "kind": "experiment-design",
-                "key": "exp:cache-warm",
-                "title": "cache warm",
-                "repo": "omnimarket",
-            }
-        ],
+    """Codex capacity is spent only on an item whose brief carries codexOk, under a RULING that allows Codex (OMN-26214)."""
+    hosts = [host("host-a", 1, 1), host("host-d", 0, 2)]
+    experiment = {
+        "kind": "experiment-design",
+        "key": "exp:cache-warm",
+        "title": "cache warm",
+        "repo": "omnimarket",
+    }
+    lines = [*headroom("host-a", "host-d"), PF_LINE, RED_LINE]
+    refused = fill(hosts=hosts, lines=lines, backlog=[experiment])
+    assert {s["model"] for s in refused.sends} == {"sonnet"}
+    assert refused.codex_only_free == 2
+    admitted = fill(
+        hosts=hosts,
+        lines=lines,
+        backlog=[{**experiment, "codex_ok": True}],
+        codex_ruling_allows=True,
     )
-    assert [(s["key"], s["model"]) for s in result.sends] == [
-        ("repo-private-data#812", "codex"),
-        ("repo-status:omnimarket", "codex"),
-        ("exp:cache-warm", "codex"),
-    ]
-    assert result.codex_only_free == 2
-    assert result.idle_after == 0
+    assert [
+        (s["key"], s["model"]) for s in admitted.sends if s["key"].startswith("exp")
+    ] == [("exp:cache-warm", "codex")]
+    without_ruling = fill(
+        hosts=hosts, lines=lines, backlog=[{**experiment, "codex_ok": True}]
+    )
+    assert {s["model"] for s in without_ruling.sends} == {"sonnet"}
 
 
 def test_only_hosts_the_node_reported_free_and_read_count():
@@ -1798,7 +1799,7 @@ def test_no_opus_quoted_requirement_is_not_a_pin(fence):
         ],
     )
     assert len(result.sends) == 1
-    assert result.sends[0]["model"] == "codex"
+    assert result.sends[0]["model"] == "sonnet"
     assert result.skipped == []
 
 

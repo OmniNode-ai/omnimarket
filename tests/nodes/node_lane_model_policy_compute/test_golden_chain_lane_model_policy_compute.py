@@ -62,10 +62,29 @@ def test_no_input_combination_can_yield_opus():
 @pytest.mark.parametrize(
     ("facts", "model"),
     [
-        ({"lane_kind": "build"}, "codex"),
+        ({"lane_kind": "build"}, "sonnet"),
+        (
+            {"lane_kind": "build", "codex_ok": True, "codex_ruling_allows": True},
+            "codex",
+        ),
+        ({"lane_kind": "build", "codex_ok": True}, "sonnet"),
+        ({"lane_kind": "build", "codex_ruling_allows": True}, "sonnet"),
         ({"lane_kind": "small-fix"}, "glm"),
         ({"lane_kind": "small-fix", "code_edit_ready": True}, "code-edit"),
-        ({"lane_kind": "small-fix", "available_engines": ("claude", "codex")}, "codex"),
+        (
+            {"lane_kind": "small-fix", "available_engines": ("claude", "codex")},
+            "sonnet",
+        ),
+        (
+            {
+                "lane_kind": "small-fix",
+                "available_engines": ("claude", "codex"),
+                "codex_ok": True,
+                "codex_ruling_allows": True,
+            },
+            "codex",
+        ),
+        ({"lane_kind": "build", "required_model": "codex"}, None),
         ({"lane_kind": "small-fix", "available_engines": ("claude",)}, "sonnet"),
         (
             {
@@ -98,7 +117,12 @@ def test_lowering_the_declared_ceiling_changes_consumers(monkeypatch):
         {**policy.load_policy().model_dump(), "ceiling": "codex"}
     )
     monkeypatch.setattr(policy, "load_policy", lambda: lowered)
-    assert policy.resolve_lane_model(lane_kind="build").model == "codex"
+    assert (
+        policy.resolve_lane_model(
+            lane_kind="build", codex_ok=True, codex_ruling_allows=True
+        ).model
+        == "codex"
+    )
     assert not policy.resolve_lane_model(
         lane_kind="build", requested_engine="claude"
     ).allowed

@@ -43,10 +43,11 @@ def test_the_controller_host_is_preferred_when_admitted() -> None:
     )
     assert result.host == "host-a"
     assert result.error == ""
-    assert result.contract["controller_fix_model"] == "codex"
+    assert result.contract["controller_fix_model"] == "sonnet"
 
 
-def test_an_exhausted_claude_pool_falls_through_to_codex() -> None:
+def test_an_exhausted_claude_pool_does_not_fall_through_to_codex() -> None:
+    """Codex needs the brief's codexOk and a RULING that allows it (OMN-26214): free Codex slots alone place nothing."""
     pool = {"live_admission": True, "hosts": [host("host-a", 0, 2)]}
     result = plan(
         operation="target",
@@ -54,9 +55,8 @@ def test_an_exhausted_claude_pool_falls_through_to_codex() -> None:
         controller_host="host-a",
         lab_headroom=pool,
     )
-    assert result.host == "host-a"
-    assert result.contract["controller_fix_model"] == "codex"
-    assert "model=codex" in result.contract["controller_fix_route"]
+    assert result.host is None
+    assert "no admitted Claude or Codex host" in result.error
 
 
 def test_no_admitted_host_is_an_error_not_a_host() -> None:
