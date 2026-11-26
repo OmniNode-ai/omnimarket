@@ -74,6 +74,13 @@ path_triggered_selected_paths:
 node_scoped_modules:
   - nodes
 
+# tests/unit/ alone records 5305 s against the selector's 1800 s bound, so a change to one file under it
+# selected the whole directory and took the full suite (narrowed_selection_too_heavy). A changed .py file
+# under a root listed here selects itself, or the tests that import it when it is a helper, and a nested
+# conftest.py or __init__.py selects its own directory. See ModelAdjacencyMap.file_scoped_test_roots.
+file_scoped_test_roots:
+  - tests/unit/
+
 # A diff whose files all lie outside src/ and tests/ and match data_only_globs (a ticket contract, a
 # markdown file) reaches no test directory. With data_only_selection_enabled it selects the always
 # set plus the tests that read the files: a test whose text spells the file or enumerates its

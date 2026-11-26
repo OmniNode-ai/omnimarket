@@ -116,6 +116,16 @@ class ModelAdjacencyMap(BaseModel):
     the whole ``tests/<module>/`` directory.
     """
 
+    file_scoped_test_roots: list[str] = Field(default_factory=list)
+    """Test directories whose changed ``.py`` files select by file, not the whole directory.
+
+    ``tests/unit/`` alone records 5305 seconds against the selector's 1800 second bound, so one changed
+    file under it selected the directory and took the full suite. For a root listed here a changed test
+    file selects itself, a changed helper selects the tests that import it (transitively, from any
+    directory), and a nested ``conftest.py`` or ``__init__.py`` selects the directory it sits in. A root
+    ``tests/conftest.py`` or ``tests/__init__.py`` keeps the whole tree.
+    """
+
     data_only_selection_enabled: bool = False
     """Whether a diff of only data files narrows instead of taking the full suite.
 
@@ -219,6 +229,16 @@ class ModelAdjacencyMap(BaseModel):
             if module not in self.adjacency:
                 raise ValueError(
                     f"node_scoped_modules entry '{module}' has no adjacency entry"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def validate_file_scoped_test_roots(self) -> ModelAdjacencyMap:
+        for path in self.file_scoped_test_roots:
+            if not path.startswith("tests/") or not path.endswith("/"):
+                raise ValueError(
+                    f"file_scoped_test_roots entry '{path}' must be a directory "
+                    "under tests/ with a trailing slash"
                 )
         return self
 

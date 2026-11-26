@@ -509,7 +509,9 @@ def _root_level_selection(
     removed: list[str] = []
     for path in paths:
         if path.rsplit("/", 1)[-1] in ("__init__.py", "conftest.py"):
-            selected.add(TEST_PREFIX)
+            selected.add(
+                path.rsplit("/", 1)[0] + "/" if path.count("/") > 1 else TEST_PREFIX
+            )
         elif (repo_root / path).is_file():
             vertex = graph.resolve(_dotted(path))
             if vertex is not None:
@@ -561,6 +563,7 @@ def _resolve(
     node_scoped = frozenset(config.node_scoped_modules)
     scoped_test_modules: set[str] = set()
     root_level: list[str] = []
+    file_scoped = tuple(config.file_scoped_test_roots)
 
     reader_files = [p for p in changed_files if config.is_reader_data_file(p)]
     # a fixture under tests/fixtures/ has no tests beside it to select as a directory; its
@@ -584,6 +587,9 @@ def _resolve(
                 # OMN-26272: a root-level file has no containing directory below
                 # tests/, so it is selected as a file with its dependents below
                 # rather than as a tests/<file>.py/ pseudo-directory (OMN-15277).
+                root_level.append(path)
+            elif path.endswith(".py") and path.startswith(file_scoped):
+                # A changed file under a file-scoped root selects by file, not the whole root.
                 root_level.append(path)
             elif (
                 len(parts) >= 4
