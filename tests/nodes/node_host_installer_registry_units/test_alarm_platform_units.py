@@ -78,7 +78,7 @@ def _request(tmp_path: Path, **kw: Any) -> ModelRegistryUnitsRequest:
         "appender_root": str(tmp_path / "appender"),
         "host_table_path": str(tmp_path / "hosts.yaml"),
         "path_overrides": {
-            "ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "overlays" / "overlays")
+            "ONEX_SKILL_OVERLAY_ROOTS": str(tmp_path / "skill-roots" / "primary")
         },
     }
     fields.update(kw)
