@@ -54,6 +54,11 @@ def _host(monkeypatch: pytest.MonkeyPatch) -> None:
         "omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units.interpreter_present",
         lambda _path: True,
     )
+    # These tests render the Mac's launchd job; the host's platform selects it, so a Linux runner pins it (OMN-25138).
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units.host_platform",
+        lambda: "darwin",
+    )
     for name in (
         "ONEX_RUNTIME_SSH_HOST",
         "ONEX_ALARM_APPENDER_ROOT",
