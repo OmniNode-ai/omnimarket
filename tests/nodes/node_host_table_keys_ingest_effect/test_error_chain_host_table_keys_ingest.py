@@ -52,7 +52,7 @@ def test_another_overlay_is_ignored_and_writes_nothing() -> None:
     result = handler(store).handle(
         record(registry_document(*three_hosts()), overlay_id="other_overlay")
     )
-    assert result is None
+    assert result.outcome == "ignored"
     assert store.get(f"{PREFIX}:table") is None
 
 
