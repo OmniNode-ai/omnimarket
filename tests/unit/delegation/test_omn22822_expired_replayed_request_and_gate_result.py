@@ -382,12 +382,17 @@ async def test_error_chain_request_redelivery_and_malformed_replay() -> None:
     first = await dispatcher.handle(_envelope(payload, _CID))
     again = await dispatcher.handle(_envelope(payload, _CID))
     malformed = await dispatcher.handle(_envelope({"correlation_id": str(_CID)}, _CID))
+    unreadable = await dispatcher.handle(_envelope({"prompt": "no run identity"}, _CID))
 
     assert _shape(list(first.output_events)) == ["ModelDelegationFailed"]
     assert again.status == EnumDispatchStatus.SUCCESS
     assert list(again.output_events) == []
-    assert malformed.status == EnumDispatchStatus.INVALID_MESSAGE
-    assert list(malformed.output_events) == []
+    # OMN-26043: a malformed request that names its run ends that run failed, so the
+    # caller never waits at published; one with no readable run id has no run to end.
+    assert malformed.status == EnumDispatchStatus.SUCCESS
+    assert _shape(list(malformed.output_events)) == ["ModelDelegationFailed"]
+    assert unreadable.status == EnumDispatchStatus.INVALID_MESSAGE
+    assert list(unreadable.output_events) == []
     assert handler._workflows[_CID].state == EnumDelegationState.FAILED
 
 
