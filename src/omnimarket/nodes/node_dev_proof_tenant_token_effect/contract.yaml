@@ -47,6 +47,12 @@ output_model:
   module: omnimarket.nodes.node_dev_proof_tenant_token_effect.models.model_dev_proof_tenant_token
   description: The outcome, the lane, the signing key name and each token's secret name and status; never a token or a key value.
 
+runtime_dispatch:
+  external_trigger: An operator or a lab lane runs the node once from a command file; nothing on the bus starts it.
+  on_demand:
+    command: uv run onex node node_dev_proof_tenant_token_effect --input <command.json> --output receipt
+    owner: OmniNode Platform Team
+
 # No topics and no terminal event, by design (the seed node's own rule): a node that writes secrets is an
 # operator-invoked action, never a bus-triggered reaction, so it declares nothing a bus message could call.
 event_bus:
