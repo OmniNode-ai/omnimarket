@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Bootstrap values for the lane work orchestrator. The runtime resolves its overlay through
+# the settings store first; this file is read only until the store holds the overlay.
+requesting_host: lab-orchestrator
+requesting_lane: lane-work-orchestrator
+proof_target_host: lab-pool
+default_wait_seconds: 60
+decision_owner: orchestrator session
+# The proof command by repository name, `default` for any other. Never a shell string.
+proof_commands:
+  omnimarket: [uv, run, pytest, tests/unit, -m, unit, -x, -q]
+  default: [uv, run, pytest, -x, -q]
+reducer:
+  repeat_bound: 2
+  help_budget: 3
+  deadline_seconds:
+    worker: 900
+    claim_read: 120
+    observation: 600
+    poll: 300
+    wait_budget: 900
+    proof: 1800
+    post: 120
+    handoff: 300
+    confirmation: 600
+    help: 900
+  help_tiers:
+    - {name: local, backend_id: local, harness: local, model: qwen, effort: high}
+    - {name: glm-small, backend_id: claude-glm-small, harness: claude-glm, model: glm-small, effort: high}
+    - {name: claude-large, backend_id: claude-code-large, harness: claude-code, model: large, effort: high}

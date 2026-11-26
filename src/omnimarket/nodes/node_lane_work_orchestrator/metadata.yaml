@@ -1,0 +1,26 @@
+name: node_lane_work_orchestrator
+version: "1.0.0"
+description: "Lane work orchestrator: folds worker, effect completion, PR observation and tick inputs one at a time through the lane work reducer, publishes a receipt, its outputs and a step reply, and hands off through the real PR handoff nodes"
+omnibase_core_compat: ">=0.47.75,<1.0.0"
+pack: lane_work
+node_role: orchestrator
+display_name: "Lane Work Orchestrator"
+entry_points:
+  onex.nodes:
+    node_lane_work_orchestrator: "omnimarket.nodes.node_lane_work_orchestrator"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: stateful
+dependencies:
+  - "omnibase_core>=0.47.75"
+  - "node_lane_work_reducer"
+  - "node_lane_work_event_classify_compute"
+  - "node_pr_handoff_orchestrator"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["orchestrator", "lane-work"]
