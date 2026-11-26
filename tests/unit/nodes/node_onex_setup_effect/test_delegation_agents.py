@@ -243,14 +243,14 @@ async def test_the_row_with_the_keyboard_is_marked() -> None:
     assert left_colour != primary.lower(), left_colour
 
 
-@pytest.mark.parametrize("size", sup.SIZES)
+@pytest.mark.parametrize("size", [*sup.SIZES, (173, 42)])
 async def test_the_switches_keep_clear_of_the_scrollbar(size: tuple[int, int]) -> None:
     """A11."""
     app = sup.app()
     async with app.run_test(size=size) as pilot:
         await sup.open_tab(pilot, app, "delegation")
         agents = app.screen.query_one("#agents")
-        bar = agents.region.right - agents.styles.scrollbar_size_vertical
+        bar = agents.vertical_scrollbar.region.x
         rights = {switch.region.right for switch in app.screen.query(ToggleSwitch)}
     assert agents.show_vertical_scrollbar, size
     assert max(rights) <= bar - 2, (rights, bar)

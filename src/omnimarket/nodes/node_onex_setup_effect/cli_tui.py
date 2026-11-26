@@ -2481,9 +2481,9 @@ class DelegationScreen(_TabbedScreen[None]):
     #hooks-title { height: 1; margin-top: 1; color: $text-muted; }
     #dswitches { display: none; height: 0; }
     /* A thin, quiet scrollbar: the list scrolls on a short window. */
-    #agents { height: 1fr; padding: 0 3 0 1; scrollbar-size-vertical: 1; scrollbar-color: $border; scrollbar-color-hover: $text-muted; scrollbar-color-active: $text-muted; scrollbar-background: $panel; scrollbar-background-hover: $panel; scrollbar-background-active: $panel; }
+    #agents { height: 1fr; padding: 0 1; scrollbar-size-vertical: 1; scrollbar-color: $border; scrollbar-color-hover: $text-muted; scrollbar-color-active: $text-muted; scrollbar-background: $panel; scrollbar-background-hover: $panel; scrollbar-background-active: $panel; }
     /* One line per agent: its name, then its switch at the right. */
-    .agent-row { height: 1; margin-top: 1; }
+    .agent-row { height: 1; margin: 1 2 0 0; }
     .agent-name { width: 1fr; height: 1; color: $foreground; text-wrap: nowrap; text-overflow: ellipsis; }
     /* The row whose switch has the keyboard (-current, set on focus): its
        name bold, in the accent colour. */
@@ -2495,7 +2495,7 @@ class DelegationScreen(_TabbedScreen[None]):
     /* A short screen keeps its rows for the agents. */
     DelegationScreen.-short #dstate { padding: 0 1; }
     DelegationScreen.-short #hooks-title { margin-top: 0; }
-    DelegationScreen.-short .agent-row { margin-top: 0; }
+    DelegationScreen.-short .agent-row { margin: 0 2 0 0; }
     #dfoot { dock: bottom; height: auto; border-top: solid $border; }
     #dnote { color: $text-muted; height: auto; }
     #dbar { height: 1; }
