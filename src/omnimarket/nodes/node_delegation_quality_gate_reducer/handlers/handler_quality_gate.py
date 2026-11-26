@@ -129,6 +129,7 @@ from omnimarket.inference.task_class_authority import (
 )
 from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 from omnimarket.models.delegation.wire.model_quality_gate import (
+    INSUFFICIENT_EVIDENCE_VERDICT_PREFIX,
     NO_NAMED_TEST_RUN_REASON,
     NO_NAMED_TESTS_UNTESTED_REASON,
     SCORE_SOURCE_COMBINED,
@@ -1984,6 +1985,15 @@ def _check_passes_existing_tests(run: ModelNamedTestRun) -> str | None:
     """Judge upstream named-test evidence without executing tests (OMN-21076)."""
     if run.passed:
         return None
+    if run.not_run:
+        # Exit 4 or 5: nothing ran, so the code is neither passed nor failed.
+        # INSUFFICIENT, not WEAK_OUTPUT: no costlier rung can supply a test file.
+        return (
+            f"{INSUFFICIENT_EVIDENCE_VERDICT_PREFIX}: passes_existing_tests: "
+            f"{len(run.test_ids)} named test(s) did not run (pytest exit "
+            f"{run.exit_code}, usage error or no tests collected; not a code "
+            f"failure): {', '.join(run.test_ids)}"
+        )
     if run.failed_test_ids:
         return (
             f"WEAK_OUTPUT: passes_existing_tests: {len(run.failed_test_ids)} of "
