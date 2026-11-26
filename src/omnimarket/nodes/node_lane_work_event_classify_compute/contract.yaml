@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeLaneWorkEventClassifyCompute (OMN-26707)
+#
+# Turns one raw result of a lane work workflow into a named lane work event:
+#
+#   handle(ModelLaneWorkClassifyRequest) -> ModelLaneWorkClassifyAnswer
+#
+# Pure: no clock, no I/O beyond reading the overlay, no model. Typed results (ledger query, PR observation, lab work unit,
+# ledger append, GitHub write, PR handoff answer, delegation harness result) map by field and by the action id they
+# answer; a PR observation made before the workflow's last push or head change is dropped; a ledger append completion
+# is an acknowledgement, never an event; a delegation answer that does not parse into the help answer model, or whose
+# attempt record names another backend or model than the tier, is help_failed. Worker text (guard, hook, commit and
+# push output) maps by the overlay's ordered pattern table, first match wins; a result no rule matches is
+# unclassified, which is never a success. The red kind of a log read comes from node_ci_red_kind_rule_compute. Every
+# class name and pattern is an overlay value (<root>/node_lane_work_event_classify_compute/overlay.yaml under
+# ONEX_SKILL_OVERLAY_ROOTS, or the file LANE_WORK_EVENT_CLASSIFY_OVERLAY names; overlay.example.yaml is the bootstrap).
+#
+# The lane work orchestrator's fold and its intake handlers call it in process (plan task 7), so the node declares no
+# topic of its own yet.
+name: "node_lane_work_event_classify_compute"
+contract_name: "node_lane_work_event_classify_compute"
+node_name: "node_lane_work_event_classify_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+description: >
+  Pure classifier of lane work results: maps each typed result and each piece of worker text to one named lane work
+  event, an acknowledgement, or a dropped stale read, against the workflow's folded state. Class names and patterns
+  are overlay values, never this node's.
+input_model:
+  name: "ModelLaneWorkClassifyRequest"
+  module: "omnimarket.nodes.node_lane_work_event_classify_compute.models.model_lane_work_classify_request"
+  description: "One raw or typed result and the workflow state it answers."
+output_model:
+  name: "ModelLaneWorkClassifyAnswer"
+  module: "omnimarket.nodes.node_lane_work_event_classify_compute.models.model_lane_work_classify_answer"
+  description: "The event, or an acknowledgement, or a dropped stale observation."
+handler:
+  module: "omnimarket.nodes.node_lane_work_event_classify_compute.handlers.handler_lane_work_event_classify"
+  class: "HandlerLaneWorkEventClassify"
+  input_model: "omnimarket.nodes.node_lane_work_event_classify_compute.models.model_lane_work_classify_request.ModelLaneWorkClassifyRequest"
+  output_model: "omnimarket.nodes.node_lane_work_event_classify_compute.models.model_lane_work_classify_answer.ModelLaneWorkClassifyAnswer"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_lane_work_event_classify_compute.handlers.handler_lane_work_event_classify:HandlerLaneWorkEventClassify"
+  handlers:
+    - operation: "classify_lane_work_result"
+      handler:
+        name: "HandlerLaneWorkEventClassify"
+        module: "omnimarket.nodes.node_lane_work_event_classify_compute.handlers.handler_lane_work_event_classify"
+runtime_profiles:
+  - main
+descriptor:
+  node_archetype: compute
+  purity: impure  # reads the bound overlay file; writes nothing
+  idempotent: true
+  timeout_ms: 1000
+replay:
+  deterministic: true
+metadata:
+  description: "Pure classifier of lane work results into named lane work events."
+  author: "OmniNode Team"
+  license: "MIT"
+  created: "2026-11-26"
+  tags:
+    - compute
+    - lane-work
+    - classifier
+    - pure

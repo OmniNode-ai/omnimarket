@@ -1,0 +1,124 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+schema_version: "1.0.0"
+ticket_id: "OMN-26707"
+title: "The lane work event classifier: a pure compute node that turns every raw result into a named lane work event"
+summary: >-
+  Acceptance for OMN-26707 (epic OMN-26698, task 4 of the lane work orchestrator plan). The node
+  node_lane_work_event_classify_compute maps typed results by field and action id and worker text by an
+  ordered overlay pattern table onto the lane work event kinds of omnibase_core#2381, taking the red kind
+  from node_ci_red_kind_rule_compute; a result no rule matches is unclassified.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn26707-event-classifier"
+    statement: >-
+      Every raw lane work result is turned into a named lane work event, an acknowledgement, or a dropped stale read.
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          a result no rule matches is unclassified -- falsifier: a test feeds a random string
+      - id: "AC2"
+        statement: >-
+          a non-fast-forward push output is head_moved, and a guard refusal naming a missing lane cell is push_refused guard_ledger_cell -- falsifier: two tests quoting the recorded refusals of the failure catalogue
+      - id: "AC3"
+        statement: >-
+          a PR observation made before the last push or head change is dropped, whatever head it names, and a fresh one naming another head is head_moved -- falsifier: three tests (stale with the old head, stale with another head, fresh with another head)
+      - id: "AC4"
+        statement: >-
+          a ledger append completion is an acknowledgement, never an event -- falsifier: a test
+      - id: "AC5"
+        statement: >-
+          a delegation answer that does not parse, or whose attempt record names another backend or model than the tier, is help_failed -- falsifier: two tests
+      - id: "AC6"
+        statement: >-
+          class names and patterns live in the overlay -- falsifier: grep -nE "guard_ledger_cell|release_identity|base_inherited" handlers/handler_lane_work_event_classify.py prints nothing
+      - id: "AC7"
+        statement: >-
+          rule order is deterministic -- falsifier: a test with two matching rules asserts the first in overlay order wins
+evidence_requirements: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn26707-ac1"
+    description: >-
+      AC1: the falsifier of the ticket's criterion, run on the pushed head.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_event_classify_compute -k test_ac1 -m unit -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26707-ac2"
+    description: >-
+      AC2: the falsifier of the ticket's criterion, run on the pushed head.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_event_classify_compute -k test_ac2 -m unit -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26707-ac3"
+    description: >-
+      AC3: the falsifier of the ticket's criterion, run on the pushed head.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_event_classify_compute -k test_ac3 -m unit -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26707-ac4"
+    description: >-
+      AC4: the falsifier of the ticket's criterion, run on the pushed head.
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_event_classify_compute -k test_ac4 -m unit -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26707-ac5"
+    description: >-
+      AC5: the falsifier of the ticket's criterion, run on the pushed head.
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_event_classify_compute -k test_ac5 -m unit -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26707-ac6"
+    description: >-
+      AC6: the falsifier of the ticket's criterion, run on the pushed head.
+    source: "manual"
+    binds_ac: ["AC6"]
+    checks:
+      - check_type: "command"
+        check_value: "test -z \"$(grep -nE 'guard_ledger_cell|release_identity|base_inherited' src/omnimarket/nodes/node_lane_work_event_classify_compute/handlers/handler_lane_work_event_classify.py)\""
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26707-ac7"
+    description: >-
+      AC7: the falsifier of the ticket's criterion, run on the pushed head.
+    source: "manual"
+    binds_ac: ["AC7"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_event_classify_compute -k test_ac7 -m unit -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26707-integration-proof"
+    description: >-
+      Run the classifier tests, including every raw result step of the 2026-11-26 catalogue fixtures through the
+      classifier built with its bootstrap overlay files, on a lab host at the pushed head. This local completion
+      proof carries no hosted AC bindings.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run
+          --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+          --lane dod-integration-proof-26707 --kind test --
+          uv run --frozen pytest tests/unit/nodes/node_lane_work_event_classify_compute
+          -m unit -q -n 0 --no-cov --refuse-skips
+        cwd: "."
