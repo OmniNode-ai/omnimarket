@@ -112,7 +112,6 @@ dod_evidence:
   - id: dod-omn26226-start-json-no-tenant-lab
     description: run the AC4 tenant-id tests, including the onex dashboard start --json planted-tenant test, on a lab host at the pushed revision; hosted CI cannot reach the lab, so only the local Done gate runs it.
     source: manual
-    binds_ac: []
     execution_scope: local_done_gate
     checks:
       - check_type: command
