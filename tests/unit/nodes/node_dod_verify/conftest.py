@@ -68,6 +68,14 @@ class EmptyLocalSource(DodEvidenceLocalSource):
     ) -> ModelRepoContractRead | None:
         return None
 
+    def product_repositories(self) -> list[str] | None:
+        return []
+
+    def default_branch_contract(
+        self, repo: str, ticket_id: str
+    ) -> tuple[str, ModelRepoContractRead | None]:
+        return "", None
+
 
 @pytest.fixture(autouse=True)
 def _no_host_local_source(monkeypatch: pytest.MonkeyPatch) -> None:

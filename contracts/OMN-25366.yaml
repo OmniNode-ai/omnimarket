@@ -1,0 +1,79 @@
+schema_version: 1.0.0
+ticket_id: OMN-25366
+title: Sprint holds only tickets that complete in it; the fill and the landing controller order them first
+summary: This change makes node_dod_verify resolve a ticket's contract from the repository of the ticket's merged pull request (the closeout input of the sprint ruling), and names in CONTRACT_MISSING whether the ticket has no merged pull request or the merged pull request's repository holds no contract. The four acceptance criteria of the ticket (current-sprint resolver, landing order, fill order, claim-time join and Monday roll) are not built by this change; their contract items below name the real falsifiers and fail until those tests exist.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25366-sprint-first
+  statement: The sprint holds only tickets that complete in it, and the fill and the landing controller order current-sprint tickets first.
+  acceptance:
+  - id: AC1
+    statement: "AC1: one resolver returns the current sprint as the dated 'Sprint <start> → <end>' project whose window holds today, by calling the beta board's sprint data loader and never a second copy -- falsifier: a pytest that stubs today inside and outside every window, and a grep that finds no second parser of the 'Sprint <start> → <end>' title outside that loader"
+  - id: AC2
+    statement: "AC2: the landing controller orders admitted PRs whose ticket is in the current sprint before all others, and one tick line shows the order -- falsifier: a pytest over decide_landing with one in-sprint and one out-of-sprint admitted PR that fails when the out-of-sprint PR is listed first, plus the tick line read from the controller log"
+  - id: AC3
+    statement: "AC3: the lab fill places current-sprint tickets first in its send order -- falsifier: a pytest over the fill order with mixed in-sprint and out-of-sprint tickets that fails when an out-of-sprint ticket precedes an in-sprint one"
+  - id: AC4
+    statement: "AC4: a ticket joins the current sprint only when a lane claims it with an estimate that ends before the sprint end date, and the Monday sprint roll keeps only tickets that will complete -- falsifier: a pytest over the sprint roll compute node with one ticket whose estimate ends after the sprint end date that fails when that ticket stays in the sprint"
+evidence_requirements:
+- kind: tests
+  description: The merged-PR contract resolution tests of node_dod_verify.
+  command: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_25366_merged_pr_repo_contract.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25366-ac1-current-sprint-resolver
+  description: 'AC1: the resolver test stubs today inside and outside every sprint window. Not built by this change: the test file does not exist yet, so this check fails.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_current_sprint_resolver_compute -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn25366-ac2-landing-order
+  description: 'AC2: decide_landing orders the in-sprint admitted PR first. Not built by this change: the test file does not exist yet, so this check fails.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_sprint_first_order.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn25366-ac3-fill-order
+  description: 'AC3: the lab fill send order places in-sprint tickets first. Not built by this change: the test file does not exist yet, so this check fails.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_lab_fill_plan_compute/test_sprint_first_order.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn25366-ac4-sprint-roll
+  description: 'AC4: the sprint roll compute node drops a ticket whose estimate ends after the sprint end date. Not built by this change: the test file does not exist yet, so this check fails.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_sprint_roll_compute -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn25366-merged-pr-contract
+  description: 'The part this change builds: node_dod_verify resolves a ticket contract from the merged PR repository, and a ticket with no merged PR or no contract there stays CONTRACT_MISSING with the reason named. It binds no acceptance criterion of the ticket.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_25366_merged_pr_repo_contract.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: ${OMNI_HOME}/omnimarket
+- id: dod-omn25366-integration-proof
+  description: 'Run the merged-PR contract tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. It binds no acceptance criterion of the ticket.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25366 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_25366_merged_pr_repo_contract.py -q -n 0 --no-cov
+    cwd: .
