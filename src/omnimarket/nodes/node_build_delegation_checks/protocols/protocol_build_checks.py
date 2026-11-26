@@ -21,6 +21,10 @@ class BuildStoreUnwritableError(OSError):
     """The build store cannot write its history where it was told to: the refusal names the path and the cause."""
 
 
+class UnresolvableRangeError(OSError):
+    """git cannot resolve a build range (rc=128, for example a build sha absent from the clone): the merges are unknown."""
+
+
 class ProtocolCheckRunner(Protocol):
     """Runs one check's probe against one build. A probe that cannot run answers UNAVAILABLE, never FAIL."""
 
@@ -73,4 +77,5 @@ __all__ = [
     "ProtocolCheckRunner",
     "ProtocolMergeSource",
     "ProtocolRegressionSink",
+    "UnresolvableRangeError",
 ]

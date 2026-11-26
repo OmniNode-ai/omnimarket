@@ -61,5 +61,6 @@ class ModelCodexHarnessReceipt(BaseModel):
         "process_failed",
         "turn_failed",
         "invalid_output",
+        "api_key_login_refused",
     ]
     exit_code: int | None = None

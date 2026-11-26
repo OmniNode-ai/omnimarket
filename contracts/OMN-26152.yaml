@@ -23,6 +23,11 @@ requirements:
         statement: "AC6: the next holder after the goal-trace writer, node_work_ledger_query_effect at 50.3 percent of the GIL in a 60 s py-spy sample of the shared dev runtime, is fixed at its cause in work_ledger_query_replay.py (LedgerRow.__init__ split every row's cells and matched every cell at parse time, select_rows parsed a datetime per row and looked a lane up through three one-cell scans), one pull request for that cause, with tests -- falsifier: `uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_replay_lazy_row_parse.py -q --no-cov` passes at the unfixed base or fails at the fixed head"
       - id: AC7
         statement: "AC7: a regression test built from the shape of the recorded window (fixture tests/fixtures/work_ledger_query/saturated_window_sample.txt) fails on the eager parse and passes on the lazy one, and its selections equal an independent eager reader's -- falsifier: `uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_replay_lazy_row_parse.py -q --no-cov` passes at the unfixed base or fails at the fixed head"
+  - id: req-omn26152-eval-results-tick-no-pool
+    statement: A runtime tick inside the eval-results publish interval opens no database pool, because a pool belongs to the loop of one delivery and the tick owes no work.
+    acceptance:
+      - id: AC9
+        statement: "AC9: the eval-results writer's tick path (an asyncpg pool opened and closed on every tick, 2,376 pairs of min=2,max=10 in 30 minutes of the shared dev runtime log) opens no pool for a tick inside the publish interval, one pull request for that cause, with tests -- falsifier: `uv run pytest tests/nodes/node_projection_eval_results/test_tick_pool_churn.py -q --no-cov` passes at the unfixed base or fails at the fixed head"
   - id: req-omn26152-contract-parse-cache
     statement: A repeated read of an unchanged repository contract is not re-parsed by the durable gate; a changed file is parsed again.
     acceptance:
@@ -35,6 +40,9 @@ evidence_requirements:
   - kind: tests
     description: The work ledger query node's unit tests including the lazy-parse regression tests.
     command: uv run pytest tests/unit/nodes/node_work_ledger_query_effect -q --no-cov
+  - kind: tests
+    description: Eval-results tick pool-churn regression tests and the node's suite.
+    command: uv run pytest tests/nodes/node_projection_eval_results -q --no-cov
 emergency_bypass:
   enabled: false
   justification: ""
@@ -64,6 +72,14 @@ dod_evidence:
       - check_type: test_passes
         check_value: >-
           uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_replay_lazy_row_parse.py -q --no-cov
+  - id: dod-omn26152-ac9
+    description: "Two ticks inside the publish interval open one pool in total, and a hundred open none."
+    source: manual
+    binds_ac: [AC9]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/nodes/node_projection_eval_results/test_tick_pool_churn.py -q --no-cov
   - id: dod-omn26152-ac8-parse-cache
     description: "A second read of an unchanged contract parses zero files, a changed file is re-parsed, the cache is bounded and returns copies."
     source: manual

@@ -247,7 +247,12 @@ class HandlerHarnessProcessRunner:
             env = await self._claude_environment(harness)
         except (OSError, ValueError):
             env = None
-        if env is None or not backend.model_name:
+        if env is None:
+            # The declared route or credential is unusable: refuse by name, never fall back to a key.
+            return ModelHarnessRunReceipt(
+                wall_seconds=time.monotonic() - started, exit_cause="not_logged_in"
+            )
+        if not backend.model_name:
             return ModelHarnessRunReceipt(
                 wall_seconds=time.monotonic() - started, exit_cause="launch_failed"
             )
