@@ -1,0 +1,66 @@
+schema_version: 1.0.0
+ticket_id: OMN-25054
+title: 'Make omnimarket PR 5678 run where it belongs: the work-state projection floor lane list handles one run on the dev runtime on h201'
+summary: The scheduled work-state projection in the runtime now publishes the projection as the work_state floor projection after its run, as the node's own CLI did; before this the publish ran only from the CLI, so the dev runtime wrote the file and the projected event but never the bus projection the floor reads. The publish needs a publish overlay that names a bus the runtime may write; with none the tick publishes nothing, and a bus that refuses is logged and leaves the run and its event intact. The installed reading on the dev runtime on h201 and the ledger STATUS row are the lane's, written after the change runs there.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25054-ac1
+  statement: a STATUS row on the rolling ledger reads kv pr=omnimarket#5678 installed=<host>:<revision> observed=<what ran> read_at=<UTC>, written by the lane after it read one run of the merged change on the dev runtime on h201 itself
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a STATUS row on the rolling ledger reads kv pr=omnimarket#5678 installed=<host>:<revision> observed=<what ran> read_at=<UTC>, written by the lane after it read one run of the merged change on the dev runtime on h201 itself -- falsifier: `grep -F ''pr=omnimarket#5678'' $ONEX_LEDGER_PATH | grep -F ''installed=''` finds no row'
+- id: req-omn25054-ac2
+  statement: the dev runtime on h201 shows one run line, dispatch or health read of the merged change after the install, or the STATUS row names the single cause that keeps it from running and who must act
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the dev runtime on h201 shows one run line, dispatch or health read of the merged change after the install, or the STATUS row names the single cause that keeps it from running and who must act -- falsifier: no run line is found on the dev runtime and the STATUS row names no cause and no actor'
+- id: req-omn25054-ac3
+  statement: 'no host file, unit or plist was edited by hand: every change went through the declared installer, read from the installer''s own receipt'
+  acceptance:
+  - id: AC3
+    statement: 'AC3: no host file, unit or plist was edited by hand: every change went through the declared installer, read from the installer''s own receipt -- falsifier: the STATUS row cites no installer receipt, or the installed revision differs from the one the receipt names'
+evidence_requirements:
+- kind: tests
+  description: The scheduled work-state projection tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_work_state_projection_scheduled_effect/test_publishes_floor_projection.py -q -p no:cacheprovider --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25054-ac1
+  description: 'The ledger STATUS row and the reading on the dev runtime on h201 are read there and recorded by the lane; hosted CI cannot reach them. Hosted proxy: the tick publishes the projection it just wrote on the work_state topic (golden chain), publishes nothing with no publish overlay, and a refusing bus leaves the run and its event intact.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_work_state_projection_scheduled_effect/test_publishes_floor_projection.py -q -p no:cacheprovider --no-cov
+    cwd: .
+- id: dod-omn25054-ac2
+  description: 'The run line on the dev runtime is read there after the install; hosted CI cannot reach it. Hosted proxy: the golden chain publishes on the snapshot topic keyed by the projection id, and a failing control (the pre-change adapter) publishes nothing.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_work_state_projection_scheduled_effect/test_publishes_floor_projection.py -q -p no:cacheprovider --no-cov
+    cwd: .
+- id: dod-omn25054-ac3
+  description: 'The installer receipt is read from the deploy agent on h201 and cited in the STATUS row; hosted CI cannot reach it. Hosted proxy: the node metadata dependency check passes with the change.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen python scripts/ci/check_node_metadata_dependencies.py
+    cwd: .
+- id: dod-omn25054-integration-proof
+  description: The scheduled projection tests run on a lab host at the pushed head, the publish golden chain included; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The reading on the dev runtime on h201 after the branch is installed is the lane's ledger STATUS row and the pull request Lab comment.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25054 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_work_state_projection_scheduled_effect -q --no-cov
