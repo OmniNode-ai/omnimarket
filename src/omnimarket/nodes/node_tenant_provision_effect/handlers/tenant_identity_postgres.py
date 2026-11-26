@@ -70,6 +70,17 @@ ON CONFLICT (tenant_id) WHERE is_active = true DO NOTHING
 _INSERT_OUTBOX = (
     "INSERT INTO tenant_event_outbox (topic, envelope) VALUES ($1, $2::jsonb)"
 )
+_PENDING_OUTBOX = """
+SELECT id, topic, envelope::text AS envelope
+FROM tenant_event_outbox
+WHERE published_at IS NULL AND attempts < $2
+ORDER BY id
+LIMIT $1
+"""
+_MARK_PUBLISHED = "UPDATE tenant_event_outbox SET published_at = now(), attempts = attempts + 1, last_error = NULL WHERE id = $1"
+_MARK_FAILED = "UPDATE tenant_event_outbox SET attempts = attempts + 1, last_error = $2 WHERE id = $1"
+# A row the bus refused this many times is left for an operator: the flush no longer picks it up.
+MAX_OUTBOX_ATTEMPTS = 5
 _INSERT_API_KEY = """
 INSERT INTO tenant_api_keys (tenant_id, name, key_hash)
 VALUES ($1, $2, $3)
@@ -124,6 +135,15 @@ class TenantRow:
     provisioning_state: str
     plan_code: str | None
     created_at: datetime
+
+
+@dataclass(frozen=True)
+class OutboxRow:
+    """One unpublished outbox row: its id, the topic it is written to and the envelope."""
+
+    row_id: int
+    topic: str
+    envelope: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -312,10 +332,47 @@ class TenantIdentityPostgres:
             raise _unavailable(exc) from None
         return None if record is None else _row(record)
 
+    async def pending_outbox(self, limit: int) -> list[OutboxRow]:
+        """The oldest unpublished rows (at most ``limit``), the ones the bus refused too often left out."""
+        try:
+            pool = await self._get_pool()
+            records = await pool.fetch(_PENDING_OUTBOX, limit, MAX_OUTBOX_ATTEMPTS)
+        except TenantStoreUnavailableError:
+            raise
+        except _DRIVER_ERRORS as exc:
+            raise _unavailable(exc) from None
+        return [
+            OutboxRow(
+                row_id=int(r["id"]),
+                topic=str(r["topic"]),
+                envelope=json.loads(r["envelope"]),
+            )
+            for r in records
+        ]
+
+    async def mark_outbox_published(self, row_id: int) -> None:
+        """Stamp the row published; it is never picked up again."""
+        await self._execute(_MARK_PUBLISHED, row_id)
+
+    async def mark_outbox_failed(self, row_id: int, error: str) -> None:
+        """Count one refused send and keep its error class; the row stays unpublished."""
+        await self._execute(_MARK_FAILED, row_id, error)
+
+    async def _execute(self, statement: str, *args: Any) -> None:
+        try:
+            pool = await self._get_pool()
+            await pool.execute(statement, *args)
+        except TenantStoreUnavailableError:
+            raise
+        except _DRIVER_ERRORS as exc:
+            raise _unavailable(exc) from None
+
 
 __all__ = [
+    "MAX_OUTBOX_ATTEMPTS",
     "EnumApiKeyKind",
     "EnumProvisionKind",
+    "OutboxRow",
     "ProvisionRecord",
     "TenantIdentityPostgres",
     "TenantRow",

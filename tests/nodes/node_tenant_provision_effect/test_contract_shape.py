@@ -15,6 +15,8 @@ pytestmark = pytest.mark.unit
 _NODE = "node_tenant_provision_effect"
 PROVISION_REQUESTED = "onex.cmd.omnimarket.tenant-provision-requested.v1"
 READ_REQUESTED = "onex.cmd.omnimarket.tenant-read-requested.v1"
+FLUSH_REQUESTED = "onex.cmd.omnimarket.tenant-outbox-flush-requested.v1"
+PROVISION_COMPLETED = "onex.evt.omnimarket.tenant-provision-completed.v1"
 TENANT_EVENTS = "onex.tenant.events"
 
 
@@ -47,6 +49,8 @@ def test_node_type_placement_and_routing() -> None:
     assert {(e["topic"], e["handler"]["name"]) for e in routing["handlers"]} == {
         (PROVISION_REQUESTED, "HandlerTenantProvision"),
         (READ_REQUESTED, "HandlerTenantRead"),
+        (PROVISION_COMPLETED, "HandlerTenantOutboxFlush"),
+        (FLUSH_REQUESTED, "HandlerTenantOutboxFlush"),
     }
 
 
@@ -56,10 +60,13 @@ def test_topics_are_requested_in_completed_out_and_there_is_no_failed_topic() ->
     assert set(contract["event_bus"]["subscribe_topics"]) == {
         PROVISION_REQUESTED,
         READ_REQUESTED,
+        PROVISION_COMPLETED,
+        FLUSH_REQUESTED,
     }
     assert completed == {
-        "onex.evt.omnimarket.tenant-provision-completed.v1",
+        PROVISION_COMPLETED,
         "onex.evt.omnimarket.tenant-read-completed.v1",
+        "onex.evt.omnimarket.tenant-outbox-flush-completed.v1",
     }
     assert set(contract["event_bus"]["publish_topics"]) == {contract["terminal_event"]}
     assert set(contract["externally_consumed_topics"]) == completed
@@ -93,7 +100,7 @@ def test_identity_tables_are_declared_in_the_six_key_shape() -> None:
     assert {n: t["access"] for n, t in tables.items()} == {
         "tenants": "read_insert",
         "tenant_plans": "read_insert",
-        "tenant_event_outbox": "read_insert",
+        "tenant_event_outbox": "read_write",
         "plan_tiers": "read",
     }
     for table in tables.values():
