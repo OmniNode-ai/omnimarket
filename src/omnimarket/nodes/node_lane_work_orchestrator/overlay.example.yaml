@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Bootstrap values for the lane work orchestrator's overlay. The overlay file is read only
+# when the settings store holds no document for this node; once the store holds one, the
+# store owns the chain and a change is made with node_overlay_setting_set_effect, never by
+# a pull request. The chain is copied into a workflow's state when its start folds.
+#
+# help_tiers: the ruled chain, in order (RULING 2026-11-26T09:16:23Z as amended at
+# 09:18:35Z; Claude is the last family, RULING 2026-11-26T13:43:36Z). Each tier names the
+# delegation backend id a help request is pinned to and the harness, model and effort that
+# backend must run with. The first responder is the tier above the worker's own.
+schema_version: 1
+help_tiers:
+  - {name: local, backend_id: local-coder, harness: local, model: qwen3.8-27b, effort: high}
+  - {name: glm-small, backend_id: harness-claude-glm-small, harness: claude-glm, model: glm-5.3-flash, effort: high}
+  - {name: glm-medium, backend_id: harness-claude-glm-medium, harness: claude-glm, model: glm-5.3, effort: high}
+  - {name: glm-large, backend_id: harness-claude-glm-large, harness: claude-glm, model: glm-5.3, effort: max}
+  - {name: codex-cheapest, backend_id: harness-codex-cheapest, harness: codex, model: gpt-5.3-codex-mini, effort: medium}
+  - {name: claude-small, backend_id: harness-claude-code-small, harness: claude-code, model: haiku, effort: high}
+  - {name: claude-medium, backend_id: harness-claude-code-medium, harness: claude-code, model: sonnet, effort: high}
+  - {name: claude-large, backend_id: harness-claude-code-large, harness: claude-code, model: opus, effort: high}

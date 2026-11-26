@@ -1,0 +1,54 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lane Work Orchestrator (help step slice)
+#
+# The orchestrator's fold, intake handlers and topics are the lane work orchestrator task;
+# this contract carries the help step: the one pinned delegation request per help tier and
+# the validation of its answer. The help chain is the overlay key help_tiers, read from the
+# settings store first and from overlay.example.yaml only as bootstrap.
+#
+# Related Tickets:
+#   - OMN-26722: the help step
+name: node_lane_work_orchestrator
+node_type: orchestrator
+lifecycle: experimental
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  The lane work orchestrator's help step. Builds one typed help request pinned to the
+  tier's delegation backend (wait=false, so the delegation path never climbs by itself),
+  refuses a tier that is not above the worker, and validates the pinned run's answer
+  against the help answer model, the run's correlation id and the tier's backend and model.
+
+handler:
+  module: omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_help
+  class: HandlerLaneWorkHelp
+  input_model: omnimarket.nodes.node_lane_work_orchestrator.models.model_lane_work_help_io.ModelLaneWorkHelpBuildRequest
+
+input_model:
+  name: ModelLaneWorkHelpBuildRequest
+  module: omnimarket.nodes.node_lane_work_orchestrator.models.model_lane_work_help_io
+  description: "The state after a help_request intent, that intent and the question."
+
+output_model:
+  name: ModelLaneWorkHelpDispatch
+  module: omnimarket.nodes.node_lane_work_orchestrator.models.model_lane_work_help_io
+  description: "The pinned delegate-skill request, the ledger message text, or the help_failed fold input."
+
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_help:HandlerLaneWorkHelp
+  handlers:
+    - operation: build_lane_work_help_request
+      handler:
+        name: HandlerLaneWorkHelp
+        module: omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_help
+
+descriptor:
+  node_archetype: orchestrator
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
