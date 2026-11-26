@@ -1,0 +1,27 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_composed_boot_loop_hold_check
+version: "0.1.0"
+description: Judge one composed-runtime boot against a loop-hold bound and a health bound, and render the compose override
+  that applies the dev limits and loads the stack sampler into the kernel services.
+omnibase_core_compat: ">=0.47.31,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_composed_boot_loop_hold_check: omnimarket.nodes.node_composed_boot_loop_hold_check
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: true
+  side_effect_class: none
+dependencies:
+  - pydantic>=2.0
+  - pyyaml>=6.0
+authors: [OmniNode Team]
+license: MIT
+tags: [compute, ci, runtime-boot, loop-hold, health]
+pack: diagnostics
+display_name: "Composed Boot Loop Hold Check"
+node_role: compute

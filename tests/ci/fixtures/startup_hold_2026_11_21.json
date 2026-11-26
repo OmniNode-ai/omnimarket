@@ -1,0 +1,96 @@
+{
+  "source": "Recorded lab runs of the composed runtime kernel on 2026-11-21: a one-CPU boot with the dev contract set against a scratch database and an in-memory bus, main-thread stacks sampled from the kernel, per-call timers around the wiring passes, /health probes from outside the container, and the dev deploy job record whose probe never got an answer.",
+  "profile": {
+    "contracts_discovered": 1382,
+    "contracts_prepared": 807,
+    "wire_from_manifest_contiguous_loop_hold_seconds": 12.39,
+    "prepare_items": 807,
+    "prepare_ms_sum": 7630.3,
+    "import_items": 1834,
+    "import_ms_sum": 4124.4,
+    "longest_single_item": {
+      "name": "node_ledger_projection_compute",
+      "ms": 1082.1
+    }
+  },
+  "broken": {
+    "note": "The kernel before the wiring passes handed the loop back between items. Health probe offsets are seconds after the first recorded probe; the container start was not recorded.",
+    "health_samples": [
+      {
+        "offset_seconds": 0.0,
+        "answered": false,
+        "latency_seconds": 9.85
+      },
+      {
+        "offset_seconds": 360.0,
+        "answered": true,
+        "latency_seconds": 5.63
+      },
+      {
+        "offset_seconds": 375.0,
+        "answered": true,
+        "latency_seconds": 0.27
+      }
+    ],
+    "dev_deploy_job": {
+      "probe_result": "FAIL [probe_unreachable] health endpoint unreachable or unparseable",
+      "health_streak": 5,
+      "restarts": 0
+    },
+    "loop_holds": [
+      {
+        "hold_id": "wiring-contiguous",
+        "held_seconds": 12.39,
+        "call": "service_kernel.py:bootstrap:4101 > handler_wiring.py:wire_from_manifest:10021 > handler_wiring.py:_prepare_contract_wiring:11128 > handler_wiring.py:_prepare_handler_wiring:12313 > event_bus_subcontract_wiring.py:load_published_events_map:1492 > contract_yaml.py:read_contract_yaml:22",
+        "stack": [
+          "service_kernel.py:bootstrap:4101",
+          "handler_wiring.py:wire_from_manifest:10021",
+          "handler_wiring.py:_prepare_contract_wiring:11128",
+          "handler_wiring.py:_prepare_handler_wiring:12313",
+          "event_bus_subcontract_wiring.py:load_published_events_map:1492",
+          "contract_yaml.py:read_contract_yaml:22"
+        ],
+        "recorded": true
+      },
+      {
+        "hold_id": "dev-31-6",
+        "held_seconds": 31.6,
+        "call": "unrecorded: the call that held the dev loop was not captured",
+        "stack": [],
+        "recorded": false
+      }
+    ],
+    "unrecorded_hold_note": "31.6 s is the figure the work item states for the dev hold. No log, stack or job record carrying it was readable, so this hold is built from the stated number and marked unrecorded."
+  },
+  "fixed": {
+    "note": "The same kernel run after the wiring passes handed the loop back after each item: /health answered 503 in 0.03 to 0.31 s during the wiring pass. The hold is the longest answer time of that run. Probe offsets were not recorded; they are in sequence.",
+    "health_samples": [
+      {
+        "offset_seconds": 0.0,
+        "answered": true,
+        "latency_seconds": 0.03
+      },
+      {
+        "offset_seconds": 1.0,
+        "answered": true,
+        "latency_seconds": 0.31
+      }
+    ],
+    "loop_holds": [
+      {
+        "hold_id": "wiring-yielding",
+        "held_seconds": 0.31,
+        "call": "service_kernel.py:bootstrap:4101 > handler_wiring.py:wire_from_manifest:10021 > handler_wiring.py:_prepare_contract_wiring:11128 > handler_wiring.py:_prepare_handler_wiring:12313 > event_bus_subcontract_wiring.py:load_published_events_map:1492 > contract_yaml.py:read_contract_yaml:22",
+        "stack": [
+          "service_kernel.py:bootstrap:4101",
+          "handler_wiring.py:wire_from_manifest:10021",
+          "handler_wiring.py:_prepare_contract_wiring:11128",
+          "handler_wiring.py:_prepare_handler_wiring:12313",
+          "event_bus_subcontract_wiring.py:load_published_events_map:1492",
+          "contract_yaml.py:read_contract_yaml:22"
+        ],
+        "recorded": true
+      }
+    ]
+  }
+}
