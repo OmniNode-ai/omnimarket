@@ -83,9 +83,10 @@ def test_the_token_counter_sums_the_generation_samples_and_ignores_the_rest() ->
         'vllm:generation_tokens_total{model_name="m"} 120.0\n'
         'vllm:prompt_tokens_total{model_name="m"} 900.0\n'
         "llamacpp:tokens_predicted_total 30\n"
+        "llamacpp:n_decode_total 7\n"
         "process_cpu_seconds_total 4\n"
     )
-    assert driver.generated_tokens(text) == 150.0
+    assert driver.generated_tokens(text) == 157.0
     assert driver.generated_tokens("") == 0.0
 
 

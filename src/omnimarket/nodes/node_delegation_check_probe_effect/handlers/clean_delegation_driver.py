@@ -75,7 +75,7 @@ if _log:
     socket.socket.connect, socket.socket.connect_ex = connect, connect_ex
 '''
 GENERATED_TOKENS = re.compile(
-    r"^(?P<name>[A-Za-z_:][A-Za-z0-9_:]*(?:generation_tokens|tokens_predicted|completion_tokens)[A-Za-z0-9_:]*)"
+    r"^(?P<name>[A-Za-z_:][A-Za-z0-9_:]*(?:generation_tokens|tokens_predicted|completion_tokens|n_decode)[A-Za-z0-9_:]*)"
     r"(?:\{[^}]*\})?\s+(?P<value>[0-9.eE+-]+)\s*$",
     re.MULTILINE,
 )
@@ -137,7 +137,11 @@ def classify_connects(log: Sequence[str], responder_url: str) -> tuple[list[str]
 
 
 def generated_tokens(metrics_text: str) -> float:
-    """The sum of the generated-token counters a responder's ``/metrics`` shows (vLLM and llama.cpp spell them differently)."""
+    """The sum of the generation counters a responder's ``/metrics`` shows (vLLM and llama.cpp spell them differently).
+
+    llama.cpp prints ``tokens_predicted_total`` to six significant digits, so a short answer moves it by less than its last
+    digit; ``n_decode_total`` counts decode calls exactly and moves with every generated token.
+    """
     return sum(float(m.group("value")) for m in GENERATED_TOKENS.finditer(metrics_text))
 
 
