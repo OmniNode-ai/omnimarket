@@ -65,3 +65,39 @@ def test_the_item_defaults_the_tag_to_v1_1_16() -> None:
 def test_the_item_starts_with_an_allowed_program() -> None:
     words = _command_words()
     assert PurePosixPath(words[0]).name in DEFAULT_ALLOWED_EXECUTABLES
+
+
+def test_the_item_verifies_the_signed_tag() -> None:
+    document = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
+    entries = [entry for entry in document["dod_evidence"] if entry["id"] == _ITEM]
+    assert len(entries) == 1
+    checks = entries[0]["checks"]
+    assert len(checks) == 1
+    check_value = checks[0]["check_value"]
+    assert "verify-tag" in check_value, "missing verify-tag step"
+    assert re.search(
+        r'\btag\s*=\s*os\.environ\.get\("TAG",\s*"v1\.1\.16"\)', check_value
+    ), "verify-tag does not use the default tag"
+    assert re.search(r'"git",\s*"verify-tag",\s*tag\b', check_value) is not None, (
+        "missing verify-tag step"
+    )
+
+
+def test_the_item_runs_the_ancestry_and_release_checks() -> None:
+    document = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
+    entries = [entry for entry in document["dod_evidence"] if entry["id"] == _ITEM]
+    assert len(entries) == 1
+    checks = entries[0]["checks"]
+    assert len(checks) == 1
+    check_value = checks[0]["check_value"]
+    for expected in (
+        "merge-base",
+        "--is-ancestor",
+        "a74c18dc",
+        "bb23d514",
+        "origin/main",
+        "release",
+        "view",
+        "omnidash-bundle-",
+    ):
+        assert expected in check_value, f"missing {expected}"
