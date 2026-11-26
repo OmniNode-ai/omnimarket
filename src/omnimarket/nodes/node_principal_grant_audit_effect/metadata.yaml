@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_principal_grant_audit_effect
+version: 0.1.0
+description: >
+  Machine principal grant audit (OMN-21622): runs the omnibase_infra audit script
+  from a registry-module tick, parses its output into a typed result and returns the
+  script's exit code. No logic of the script is reimplemented; every path, name,
+  timeout and role comes from the deployment overlay.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_principal_grant_audit_effect: omnimarket.nodes.node_principal_grant_audit_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: true
+  side_effect_class: read_only
+dependencies:
+- PyYAML>=6.0.3
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- effect
+- lab
+- in_process
+pack: operator_tooling
+display_name: Principal Grant Audit Effect
+node_role: effect
