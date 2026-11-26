@@ -1523,6 +1523,8 @@ node_team_identity_compute = "omnimarket.nodes.node_team_identity_compute"
 node_tech_debt_sweep_orchestrator = "omnimarket.nodes.node_tech_debt_sweep_orchestrator"
 node_temp_retention_effect = "omnimarket.nodes.node_temp_retention_effect"
 node_temporal_health_alarm_effect = "omnimarket.nodes.node_temporal_health_alarm_effect"
+node_tenant_api_key_effect = "omnimarket.nodes.node_tenant_api_key_effect"
+node_tenant_cli_effect = "omnimarket.nodes.node_tenant_cli_effect"
 node_tenant_delegations_read_effect = "omnimarket.nodes.node_tenant_delegations_read_effect"
 node_tenant_provision_effect = "omnimarket.nodes.node_tenant_provision_effect"
 node_tenant_savings_read_effect = "omnimarket.nodes.node_tenant_savings_read_effect"
@@ -1705,6 +1707,8 @@ test-loop = "omnimarket.cli.cli_test_loop:test_loop_group"
 # projection, refusing a stale row; registered here for the same reason as
 # "cloud" and "local".
 pr-state = "omnimarket.nodes.node_pr_state_read_effect.cli:pr_state_group"
+# `onex tenant` -- create a tenant and mint and revoke its gateway key over the bus; registered here for the same reason as "cloud".
+tenant = "omnimarket.nodes.node_tenant_cli_effect.cli:tenant_group"
 # `onex agent-message` -- send and read agent messages from any platform, and serve them as MCP tools.
 agent-message = "omnimarket.nodes.node_agent_message_client_effect.cli:agent_message_group"
 # OMN-19976: `onex dashboard` -- serve this install's projection exposures to the

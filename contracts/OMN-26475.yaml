@@ -1,0 +1,114 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-26475"
+title: "omnimarket: the onex tenant CLI group creates a tenant and mints and revokes its gateway key over the bus"
+summary: "A new effect node, node_tenant_cli_effect, provides the onex tenant group (create, show, key mint, key revoke), registered through the onex.cli entry point. Each command publishes the serving node's command on its own topic pair (read from that node's contract) and prints its typed outcome; key mint makes the key in the caller's process, sends only its sha256 digest, and with --store-dev-secret writes it create-only to the new gateway_key folder of the secret store on the dev lane only. The group holds no database connection."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn26475-cli-tests"
+    statement: |-
+      The CLI's key handling, dev-secret guard, resend and topic pairs are proven by tests.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the CLI tests pass: plaintext appears in stdout exactly once and in no log record, the bus payload has key_hash and no plaintext, --store-dev-secret is refused before any store or bus call in each wrong-lane and wrong-store case, a store exists answer gives no registration, a timed-out first dispatch is reported registered through already_registered on the resend, and each command publishes on its own operation topic pair -- falsifier: `uv run pytest tests/unit/cli/test_cli_tenant.py -q` fails, or any case passes before the command exists
+  - id: "req-omn26475-help"
+    statement: |-
+      The commands are listed by the installed group.
+    acceptance:
+      - id: "AC2"
+        statement: |-
+          AC2: the help output lists the commands in an installed wheel -- falsifier: `onex tenant --help` on the lab misses create, show or key, or `onex tenant key --help` misses mint or revoke
+  - id: "req-omn26475-entry-point"
+    statement: |-
+      The group reaches the CLI through the entry point only.
+    acceptance:
+      - id: "AC3"
+        statement: |-
+          AC3: the group registers through the entry point and never by hand wiring -- falsifier: the entry-point registration test (tests/unit/cli/test_cloud_cli_entry_point_registration_omn16967.py pattern) does not cover `tenant`, or a hand add_command passes it
+  - id: "req-omn26475-reference"
+    statement: |-
+      The secret store maps the gateway_key reference to its folder and key.
+    acceptance:
+      - id: "AC4"
+        statement: |-
+          AC4: the gateway_key reference maps to its folder and key -- falsifier: the test in `tests/nodes/node_secret_store_effect/` asserting `_load_namespaces` maps `gateway_key/<name>` to `/tenant-gateway-keys` and the key fails
+  - id: "req-omn26475-shared-overlay"
+    statement: |-
+      The tenant key node reads the shared overlay document model and keeps no node-local copy.
+    acceptance:
+      - id: "AC5"
+        statement: |-
+          AC5: the tenant key node's handler and test support use the shared ModelTenantApiKeyOverlay and the node holds no local copy -- falsifier: `uv run pytest tests/nodes/node_tenant_api_key_effect/test_shared_overlay_model.py -q -n 0 --no-cov` fails, or the node's models package still defines or exports ModelTenantApiKeyOverlay
+evidence_requirements:
+  - kind: "tests"
+    description: "The CLI, entry point registration and namespace tests pass at the pushed head."
+    command: "uv run pytest tests/unit/cli/test_cli_tenant.py tests/unit/cli/test_tenant_cli_entry_point_registration.py tests/nodes/node_secret_store_effect -q -n 0 --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn26475-ac1-cli-tests"
+    description: "The CLI tests pass; each mutation of the handler (key in the payload, no dev guard, no resend, store exists ignored) fails one of them."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_cli_tenant.py -q -n 0 --no-cov"
+        cwd: "."
+  - id: "dod-omn26475-ac2-help"
+    description: "The installed group's help lists create, show and key, and key's help lists mint and revoke."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_tenant_cli_entry_point_registration.py -q -n 0 --no-cov -k help_lists_the_commands"
+        cwd: "."
+  - id: "dod-omn26475-ac3-entry-point"
+    description: "pyproject declares tenant in onex.cli, the installed distribution advertises it from one distribution, and no module hand-wires it."
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_tenant_cli_entry_point_registration.py -q -n 0 --no-cov"
+        cwd: "."
+  - id: "dod-omn26475-ac4-reference"
+    description: "The secret store contract maps gateway_key/<name> to /tenant-gateway-keys and the key, and a create by reference lands there create-only."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_secret_store_effect -q -n 0 --no-cov"
+        cwd: "."
+  - id: "dod-omn26475-ac5-shared-overlay"
+    description: "The handler and test support import the shared overlay model, and the node-local overlay model module is gone."
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_tenant_api_key_effect/test_shared_overlay_model.py -q -n 0 --no-cov"
+        cwd: "."
+  - id: "dod-omn26475-publish-parity"
+    description: "The tenant key node's command publisher is named as a publish call, so the contract publish parity gate sees the node's bus surface and no new offender appears."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/gates/test_contract_publish_parity.py tests/nodes/node_tenant_api_key_effect/test_main_entry.py -q -n 0 --no-cov"
+        cwd: "."
+  - id: "dod-omn26475-integration-proof"
+    description: "Run the installed onex tenant group's help and the CLI tests on a lab host at the pushed head; the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: local_done_gate
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-26475 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen sh -c 'onex tenant --help && onex tenant key --help && pytest tests/unit/cli/test_cli_tenant.py tests/unit/cli/test_tenant_cli_entry_point_registration.py tests/nodes/node_secret_store_effect -q --no-cov'"
+        cwd: "."
+  - id: "dod-omn26475-tenant-suspend"
+    description: "The tenant provision node answers a declared suspend command: it sets provisioning_state to suspended, refuses a tenant with a live gateway or provider key and writes nothing, and answers already_suspended on a repeat, proved on a real PostgreSQL 16."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_tenant_provision_effect -q -n 0 --no-cov"
+        cwd: "."
