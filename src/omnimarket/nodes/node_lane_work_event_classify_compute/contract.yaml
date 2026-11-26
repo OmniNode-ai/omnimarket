@@ -60,6 +60,11 @@ handler_routing:
         module: "omnimarket.nodes.node_lane_work_event_classify_compute.handlers.handler_lane_work_event_classify"
 runtime_profiles:
   - main
+runtime_dispatch:
+  external_trigger: "The command python -m omnimarket.nodes.node_lane_work_event_classify_compute with one request on stdin, or direct invocation of the handler by the lane work orchestrator."
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_lane_work_event_classify_compute < <request.json>
+    owner: OmniNode Platform Team
 descriptor:
   node_archetype: compute
   purity: impure  # reads the bound overlay file; writes nothing
