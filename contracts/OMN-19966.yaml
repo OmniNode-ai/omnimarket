@@ -68,7 +68,16 @@ dod_evidence:
   source: manual
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/nodes/node_c30_claude_code_plugin_probe_effect/test_compliance_clean.py tests/nodes/node_c30_claude_code_plugin_probe_effect/test_no_suppression_comment.py -q --no-cov -p no:randomly
+    check_value: uv run --frozen pytest tests/nodes/node_c30_claude_code_plugin_probe_effect/test_compliance_clean.py tests/nodes/node_c30_claude_code_plugin_probe_effect/test_probe_source_annotation_free.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn19966-relation-inventory-current
+  description: Runs the application-relation inventory test, which fails while the checked-in inventory lacks the C30 node as a reader of delegation_events (3 failed on the head before the regeneration) and passes once the inventory is regenerated from source.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/scripts/test_application_relation_inventory.py -q --no-cov -p no:randomly
     cwd: .
 - id: dod-omn19966-integration-proof
   description: On the lab host where the units are installed from the branch, the focused tests of both nodes run at the pushed head through the lab work runner, and the C31 timer's tick has run the real probe and written last-run.json with a verdict. Hosted CI cannot reach the lab host and cannot control a local_done_gate item at the merge base, so it binds no criterion here and only the local Done gate runs it.

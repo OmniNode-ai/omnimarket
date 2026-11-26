@@ -5174,6 +5174,7 @@
       "producer": "node_projection_delegation",
       "readers": [
         "node_baseline_capture",
+        "node_c30_claude_code_plugin_probe_effect",
         "node_database_sweep",
         "node_delegate_skill_orchestrator",
         "node_delegation_check_probe_effect",
