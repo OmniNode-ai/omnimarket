@@ -51,6 +51,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/delegation/test_omn26705_below_bar_accept_reason.py -q --no-cov -n 0 -p no:randomly -k ac3
     cwd: .
+- id: dod-omn26705-bar-edges
+  description: A score one thousandth under the bar never reads quality_bar_met and a score at or above it still does; the test file is new on this pull request, so the check fails at the merge base.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_omn26705_bar_edges.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn26705-integration-proof-dev-lane
   description: On a lab host, with the branch checked out at its pushed sha, the focused acceptance tests run with a known good (an at-bar score accepted as quality_bar_met) and a known bad (the 0.733 against 0.850 receipt replay, which must not read quality_bar_met). Hosted CI holds no lab host, so only the local Done gate runs this check, and it binds no criterion.
   source: manual
