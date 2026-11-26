@@ -1089,7 +1089,12 @@ class SetupScreen(_TabbedScreen[None]):
     #cfg-title { width: 1fr; text-style: bold; color: $primary; }
     #cfg-step { width: auto; color: $text-muted; }
     #cfg-row { height: auto; }
-    #provider { width: 24; height: auto; border: round $border; border-title-color: $text-muted; padding: 0 1; background: transparent; }
+    #provider-box { width: 28; height: auto; border: round $border; border-title-color: $text-muted; padding: 0 1; }
+    #provider-search { height: 1; border: none; padding: 0; background: transparent; }
+    /* A-Z with search, set-up first (operator 2026-11-26); hundreds of
+       providers scroll inside the box, so the key box stays in view. */
+    #provider { width: 100%; height: auto; max-height: 10; border: none; padding: 0; background: transparent; overflow-y: auto; }
+    SetupScreen.-short #provider { max-height: 6; }
     #keybox { width: 1fr; height: 3; border: round $border; border-title-color: $text-muted; margin-left: 2; }
     #keybox Input { width: 1fr; height: 1; border: none; padding: 0 1; background: transparent; }
     #keymark { width: auto; padding: 0 1; }
@@ -1139,14 +1144,18 @@ class SetupScreen(_TabbedScreen[None]):
             with Horizontal(id="cfg-head"):
                 yield Static(_say("add_title"), id="cfg-title")
                 yield Static(self._step_text(1), id="cfg-step")
-            choices = _picker()
+            choices = self._ordered()
             first = choices[0]
             with Horizontal(id="cfg-row"):
-                yield Choice(
-                    [(e.label, e.provider) for e in choices],
-                    first.provider,
-                    id="provider",
-                )
+                with Vertical(id="provider-box"):
+                    yield Input(
+                        placeholder=_say("provider_search"), id="provider-search"
+                    )
+                    yield Choice(
+                        [(self._provider_label(e), e.provider) for e in choices],
+                        first.provider,
+                        id="provider",
+                    )
                 with Horizontal(id="keybox"):
                     yield Input(
                         placeholder=_say("key_placeholder"), password=True, id="key"
@@ -1217,13 +1226,68 @@ class SetupScreen(_TabbedScreen[None]):
 
     def on_mount(self) -> None:
         self.query_one("#found").display = False
-        self.query_one("#provider").border_title = _say("provider_box")
+        self.query_one("#provider-box").border_title = _say("provider_box")
         self._show_fields()
         self.query_one("#note", Static).update(_hint(self._provider()))
         self._schedule_find()
 
     def _provider(self) -> str:
         return self.query_one("#provider", Choice).value
+
+    def _set_up(self) -> set[str]:
+        """The providers that already have models set up."""
+        return {e.provider for e in self._selection.entries}
+
+    def _ordered(self) -> list[ModelSetupPickerProvider]:
+        """Set-up providers first, then every other one A-Z (operator 2026-11-26)."""
+        set_up = self._set_up()
+        return sorted(
+            _picker(), key=lambda e: (e.provider not in set_up, e.label.casefold())
+        )
+
+    def _provider_label(self, entry: ModelSetupPickerProvider) -> str:
+        mark = (
+            "provider_set_up"
+            if entry.provider in self._set_up()
+            else "provider_not_set_up"
+        )
+        return _say(mark, label=entry.label)
+
+    def _arrange_providers(self) -> None:
+        """Put the list back in order after the setup is read again."""
+        choice = self.query_one("#provider", Choice)
+        buttons = {b.name: b for b in choice.query(RadioButton)}
+        previous: RadioButton | None = None
+        for entry in self._ordered():
+            button = buttons.get(entry.provider)
+            if button is None:
+                continue
+            button.label = self._provider_label(entry)
+            if previous is None:
+                choice.move_child(button, before=0)
+            else:
+                choice.move_child(button, after=previous)
+            previous = button
+
+    def _filter_providers(self, text: str) -> None:
+        """Show only the providers whose name or id holds ``text``; the marked
+        one stays marked even when hidden."""
+        wanted = text.strip().casefold()
+        for button in self.query_one("#provider", Choice).query(RadioButton):
+            entry = _entry(button.name or "")
+            name = f"{entry.label if entry else ''} {button.name}".casefold()
+            shown = not wanted or wanted in name
+            button.display = shown
+            button.disabled = not shown  # the arrows skip what is hidden
+
+    def _pick_first_shown(self) -> None:
+        """Enter in the search: mark the first provider shown, go to its box."""
+        choice = self.query_one("#provider", Choice)
+        first = next((b for b in choice.query(RadioButton) if b.display), None)
+        if first is None or not first.name:
+            return
+        choice.value = first.name
+        self.query_one("#key" if _hosted(first.name) else "#url", Input).focus()
 
     def _stored_url(self, provider: str) -> str | None:
         """The server the user already runs ``provider``'s models on, if any."""
@@ -1409,6 +1473,9 @@ class SetupScreen(_TabbedScreen[None]):
         self._paint_basket()
 
     def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id == "provider-search":
+            self._filter_providers(event.value)
+            return
         if event.input.id in ("key", "url"):
             self._mark_key(None)
             self._schedule_find()
@@ -1420,6 +1487,9 @@ class SetupScreen(_TabbedScreen[None]):
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         """Enter in the key or URL field moves on to the list, loading it if needed."""
+        if event.input.id == "provider-search":
+            self._pick_first_shown()
+            return
         if event.input.id not in ("key", "url"):
             return
         table = self.query_one("#found", ModelTable)
@@ -1512,6 +1582,7 @@ class SetupScreen(_TabbedScreen[None]):
 
     def _show_selection(self) -> None:
         super()._show_selection()
+        self._arrange_providers()
         self.query_one("#found", ModelTable).set_ticked(())
         self.query_one("#basket", Static).update(self._basket_line())
 

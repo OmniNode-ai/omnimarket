@@ -15,6 +15,7 @@ import json
 
 import pytest
 from textual.pilot import Pilot
+from textual.widgets import RadioButton
 
 from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
     DelegationScreen,
@@ -98,9 +99,12 @@ async def test_a_typed_key_never_reaches_the_screen_or_the_pane() -> None:
         await _focus(pilot, app, "provider")
         await pilot.press("enter")
         await pilot.pause()
-        # Gemini (first), OpenAI, OpenRouter, Local Model: two steps down; the
-        # list wraps, so more presses would come back round.
-        await pilot.press("down", "down")
+        # Down from the marked provider to OpenRouter in the order shown
+        # (set-up first, then A-Z); the list wraps.
+        choice = app.screen.query_one("#provider")
+        names = [b.name for b in choice.query(RadioButton)]
+        steps = (names.index("openrouter") - names.index(choice.value)) % len(names)
+        await pilot.press(*["down"] * steps)
         await pilot.press("enter")
         await pilot.pause()
         assert app.screen.query_one("#provider").value == "openrouter"

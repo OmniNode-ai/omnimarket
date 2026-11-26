@@ -348,10 +348,12 @@ async def test_config_lists_providers_in_yaml_order_and_fills_no_url() -> None:
         await _open(pilot, "/config")
         assert isinstance(app.screen, SetupScreen)
         picker = setup_provider_traits().picker
+        # Nothing is set up, so the list is A-Z (operator 2026-11-26).
+        a_to_z = sorted(picker, key=lambda e: e.label.casefold())
         select = app.screen.query_one("#provider")  # radio options (OMN-23413)
-        assert select.value == picker[0].provider
+        assert select.value == a_to_z[0].provider
         assert [b.name for b in select.query(RadioButton)] == [
-            entry.provider for entry in picker
+            entry.provider for entry in a_to_z
         ]
         assert picker[-1].provider == "local"
         select.value = "local"

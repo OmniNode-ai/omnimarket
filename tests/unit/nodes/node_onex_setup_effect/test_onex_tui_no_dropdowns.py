@@ -6,8 +6,8 @@ Operator 2026-11-13: "in tui no dropdown at any places, instead use radio
 buttons for visibility". Failure modes:
 
   D1  a tab still offers a choice through a dropdown (Select).
-  D2  /config's providers are not all shown, in the order setup_provider_traits
-      lists them, with the first one marked.
+  D2  /config's providers are not all shown, set-up first and then A-Z
+      (operator 2026-11-26), with the first one marked.
 """
 
 from __future__ import annotations
@@ -49,7 +49,13 @@ async def test_config_shows_every_provider_with_the_first_marked() -> None:
         for _ in range(6):
             await pilot.pause()
         picker = setup_provider_traits().picker
+        # openrouter is the one set up in _selected_rows, so it leads.
+        order = sorted(
+            picker, key=lambda e: (e.provider != "openrouter", e.label.casefold())
+        )
         buttons = list(app.screen.query_one("#provider").query(RadioButton))
-        assert [b.name for b in buttons] == [e.provider for e in picker]
-        assert [str(b.label) for b in buttons] == [e.label for e in picker]
-        assert [b.name for b in buttons if b.value] == [picker[0].provider]
+        assert [b.name for b in buttons] == [e.provider for e in order]
+        assert [str(b.label) for b in buttons] == [
+            f"{e.label} ✓" if e.provider == "openrouter" else e.label for e in order
+        ]
+        assert [b.name for b in buttons if b.value] == [order[0].provider]
