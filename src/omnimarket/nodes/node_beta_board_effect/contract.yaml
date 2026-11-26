@@ -58,6 +58,8 @@ output_model:
 
 runtime_dispatch:
   external_trigger: python -m omnimarket.nodes.node_beta_board_effect build|publish|run, as a step of python -m omnimarket.nodes.node_factory_floor_publish_effect, from the registry module tick that the host installer contract declares.
+  callers:
+    - path: src/omnimarket/nodes/node_factory_floor_publish_effect/contract.yaml
 
 event_bus:
   subscribe_topics: []

@@ -187,3 +187,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_beta_board_effect/test_gateway_leg_reading.py tests/nodes/node_delegation_check_probe_effect/test_tick_single_check.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26043-beta-board-declares-its-trigger
+  description: "The beta board node, which subscribes to no topic, declares what runs it: runtime_dispatch.callers names the factory floor publish node's contract, whose beta_board step runs the module, so the node trigger declaration check no longer refuses the changed node (it read refused=1 with no-trigger-declared on the previous commit and reads refused=0 after). The new test runs the check on the node's own contract; it fails on the previous commit and passes after the change. This binds AC5: the board reading the gateway legs has to pass the changed-node gate before C13 and C14 can be read from it."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_beta_board_effect/test_trigger_declaration.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
