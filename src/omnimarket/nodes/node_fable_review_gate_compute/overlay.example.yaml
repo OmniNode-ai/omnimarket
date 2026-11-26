@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. A deployment's real overlay lives in the overlays repository.
+# The gate's settings, none in code (OMN-24533): the route keys that mark a review Fable-class,
+# the hosts the ruling admits for Fable diff reviews, and the NAME of the environment variable
+# that holds this machine's host identity (the host value itself never stands here).
+fable_route_keys:
+  - example-fable-route
+orchestrating_hosts:
+  - example-orchestrating-mac
+host_name_env: EXAMPLE_HOST_NAME
