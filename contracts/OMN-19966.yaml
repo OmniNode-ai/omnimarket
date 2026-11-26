@@ -49,6 +49,13 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_c30_claude_code_plugin_probe_effect/test_probe_cases.py tests/nodes/node_c31_local_dashboard_parity_probe_effect/test_probe_cases.py -q --no-cov -p no:randomly
     cwd: .
+- id: dod-omn19966-url-authority
+  description: Runs the URL authority gate over the repository at the core revision the CI gate pins; it exits non-zero while the C30 probe's loopback model server URL carries no annotation, so it goes red on the head before the fix.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: 'uv run --with "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@d720f33cf02aca1886d43811337d80aa1a47720e" python -m omnibase_core.validation.validator_url_authority --all --repo omnimarket --repo-root .'
+    cwd: .
 - id: dod-omn19966-unit-declaration
   description: Reads the two unit declarations from the branch's installer contract; the exit status depends on the contract holding the onex-c30-claude-code-plugin-probe and onex-c31-local-dashboard-parity-probe labels, so it goes red on a branch without them. Runs on a hosted runner.
   source: manual

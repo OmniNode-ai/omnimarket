@@ -632,7 +632,7 @@ def loopback_model_server() -> Iterator[str]:
     )
     thread.start()
     try:
-        yield f"http://127.0.0.1:{server.server_port}/v1/chat/completions"
+        yield f"http://127.0.0.1:{server.server_port}/v1/chat/completions"  # url-authority-ok: the probe's own ephemeral-port loopback model server, bound and torn down inside this context manager; not a deployed endpoint
     finally:
         server.shutdown()
         server.server_close()
