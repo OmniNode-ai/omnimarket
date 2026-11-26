@@ -490,6 +490,7 @@ class HandlerFactoryFloorPublish:
         )
         tracker_data = self._read_simple(home / rt.delegation_tracker_data_relpath)
         history_data = self._read_simple(home / rt.delegation_history_data_relpath)
+        cost_data = self._read_simple(home / rt.cost_throughput_data_relpath)
         floor_page = (NODE_DIR / rt.floor_page_relpath).read_bytes()
         theme_css = [
             (name, (NODE_DIR / rt.theme_css_relpath / name).read_bytes())
@@ -558,6 +559,8 @@ class HandlerFactoryFloorPublish:
             files.append((rt.names.delegation_tracker_data, tracker_data))
         if history_data is not None:
             files.append((rt.names.delegation_history_data, history_data))
+        if cost_data is not None:
+            files.append((rt.names.cost_throughput_data, cost_data))
         if health is not None:
             if health_payload.detail is not None:
                 files.append((health_payload.detail_file, health_payload.detail))
@@ -705,6 +708,10 @@ class HandlerFactoryFloorPublish:
         if history is not None:
             with contextlib.suppress(PublishRefusedError):
                 self._copy(rt, overlay, rt.names.delegation_history_data, history)
+        cost = self._read_simple(home / rt.cost_throughput_data_relpath)
+        if cost is not None:
+            with contextlib.suppress(PublishRefusedError):
+                self._copy(rt, overlay, rt.names.cost_throughput_data, cost)
         if self._local_root is None:
             return
         try:

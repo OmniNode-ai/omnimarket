@@ -79,6 +79,8 @@ a{color:var(--blue);font-size:14px;text-decoration:none}.more{margin-top:18px}
 "use strict";
 let pieceMeasures = {}, measuresFailure = "not read yet";
 const COMPARE_DATA = "floor-compare.json";
+const COST_DATA = "cost-throughput.json";
+let costDoc = null, costFailure = "not read yet";
 const DATA = "floor-simple.json", MACHINES_DATA = "factory-floor.json", FALLBACK_MAX_AGE_S = 900, REFRESH_MS = 30000, TABS = ["process", "machines"];
 const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const ago = s => s == null ? "never" : s < 120 ? s + " s ago" : s < 7200 ? Math.floor(s / 60) + " min ago" : s < 172800 ? Math.floor(s / 3600) + " h ago" : Math.floor(s / 86400) + " d ago";
@@ -107,7 +109,42 @@ async function load(){
     pieceMeasures = {}; for (const pm of (cd.pieces || [])) pieceMeasures[pm.piece] = pm;
     measuresFailure = "";
   } catch (e) { measuresFailure = String(e.message || e); }
+  // The cost-and-throughput panel (OMN-26211): written by node_floor_cost_throughput_effect; a failed read says so on the panel.
+  try {
+    const k = await fetch(COST_DATA, {cache: "no-store"});
+    if (!k.ok) throw new Error("HTTP " + k.status);
+    costDoc = await k.json(); costFailure = "";
+  } catch (e) { costDoc = null; costFailure = String(e.message || e); }
   draw();
+}
+// The cost-and-throughput panel (OMN-26211). Every number is drawn with the node and the data it came from and the time it was read;
+// a figure with no value says UNREADABLE and why, never 0 and never blank.
+function costSource(f){
+  const sr = f.source || {};
+  return esc(sr.node) + ": " + esc(sr.data_read) + (sr.read_at ? ", read " + esc(sr.read_at) : ", never read");
+}
+function costRow(f){
+  const v = f.value == null ? `<b class="unreadable">UNREADABLE</b> <small>${esc(f.reason)}</small>` : `<b>${esc(f.display)}</b> <small>${esc(f.unit)}</small>`;
+  return `<tr><td>${esc(f.label)}</td><td>${v}</td><td><small>${costSource(f)}</small></td></tr>`;
+}
+function costSection(){
+  const head = `<h2 id="cost-throughput">Cost and throughput</h2>`;
+  if (!costDoc) return head + `<div class="rule bad">Cost and throughput: not read (${esc(costFailure)}).</div>`;
+  const d = costDoc;
+  let h = head + `<p><small>Folded ${esc(d.generated_at)} by node_floor_cost_throughput_compute; ${esc(d.unreadable_count)} figures read UNREADABLE.</small></p>`;
+  h += `<table id="cost-table"><thead><tr><th>Figure</th><th>Value</th><th>Source (node, data read, read time)</th></tr></thead><tbody>`;
+  h += costRow(d.merges_per_hour) + costRow(d.seen_running_per_hour) + costRow(d.cost_per_change_seen_running);
+  for (const e of d.engines) h += costRow(e.calls) + costRow(e.tokens) + costRow(e.dollars);
+  h += `</tbody></table>`;
+  const t = d.trend;
+  h += `<h3 id="cost-trend">7-day trend</h3>`;
+  if (t.status !== "read") h += `<div class="rule bad">7-day trend: UNREADABLE. ${esc(t.reason)} Source ${costSource({source: t.source})}.</div>`;
+  h += `<table id="cost-trend-table"><thead><tr><th>Date</th><th>Merged</th><th>Seen running</th><th>Cost</th><th>Source (node, data read, read time)</th></tr></thead><tbody>`;
+  const cell = f => f.value == null ? `<b class="unreadable">UNREADABLE</b>` : `<b>${esc(f.display)}</b>`;
+  for (const day of t.days) h += `<tr><td>${esc(day.date)}</td><td>${cell(day.merged)}</td><td>${cell(day.seen_running)}</td><td>${cell(day.cost_usd)}</td><td><small>${costSource(day.merged)}</small></td></tr>`;
+  h += `</tbody></table>`;
+  if (d.unreadable_reasons && d.unreadable_reasons.length) h += `<p><small>Why figures are UNREADABLE: ${d.unreadable_reasons.map(esc).join("; ")}.</small></p>`;
+  return h;
 }
 // The customer health line (OMN-22923, piece 17b): computed from the piece readings of this same record, drawn with its own age.
 // A line older than its own limit is drawn red whatever it says; a record with no line says so.
@@ -180,6 +217,7 @@ function draw(){
   h += integrationSection(doc.integration);
   h += `<h2>The lab, read ${ago(Math.max(0, ...doc.lab_state.map(l => l.reading_age_s || 0)))} at the oldest</h2>`;
   for (const l of doc.lab_state) h += `<div class="line ${esc(l.draw)}"><span class="n"><span class="dot ${esc(l.draw)}" style="display:inline-block"></span></span><span class="t"><b>${esc(l.title)}</b> <small>${esc(l.text)}</small></span><span class="a">${l.reading_age_s == null ? "not read" : "read " + ago(l.reading_age_s)}, max ${Math.floor(l.max_age_s / 60)} min</span></div>`;
+  h += costSection();
   h += `<h2>The 18 pieces, with their joins</h2>`;
   for (const p of doc.pieces) {
     const joins = p.joins.map(j => `${esc(j.id)} ${esc(j.state.replace("_", " "))}${j.golden_age_s == null ? "" : ", golden " + ago(j.golden_age_s)}${j.error_age_s == null ? "" : ", error " + ago(j.error_age_s)}${j.counted ? "" : " (outside the scope)"}`).join("; ");

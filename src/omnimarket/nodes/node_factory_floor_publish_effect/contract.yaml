@@ -152,6 +152,8 @@ runtime:
   delegation_tracker_data_relpath: .claude_scratch/factory-floor/delegation-tracker.json
   # The delegation history (models, success series, experiments) the Delegation tab draws, written by node_floor_delegation_history_effect.
   delegation_history_data_relpath: .claude_scratch/factory-floor/delegation-history.json
+  # The cost-and-throughput panel the simple page draws, written by node_floor_cost_throughput_effect (OMN-26211).
+  cost_throughput_data_relpath: .claude_scratch/factory-floor/cost-throughput.json
   # The age past which the Delegation tab says the history is too old and draws no number from it (seconds). The publisher writes it into
   # the page in place of the token __HISTORY_MAX_AGE_S__; a page published with the token left in is a script error, never a silent default.
   delegation_history_max_age_seconds: 10800
@@ -348,6 +350,17 @@ runtime:
     required: false
     module: omnimarket.nodes.node_floor_delegation_history_effect
     args: ["run", "--home", "{home}"]
+  # OMN-26211: the cost-and-throughput panel. It reads the files already on disk (floor-simple.json, delegation-history.json and the
+  # day-over-day report; a file is the previous cycle's, and every figure carries the time it was read), keeps dated readings of the
+  # integration record's seen-running count, folds them with node_floor_cost_throughput_compute and writes cost-throughput.json, which
+  # the simple page draws with every figure's source. It joins the concurrent group, so it adds nothing past the slowest member. Not
+  # required: when it fails the previous file stays and is served again, and a figure with no source reads UNREADABLE on the page.
+  - name: cost_throughput
+    concurrent: true
+    kind: module
+    required: false
+    module: omnimarket.nodes.node_floor_cost_throughput_effect
+    args: ["run", "--home", "{home}"]
   # OMN-23315: the beta board. It reads the probes' finished runs one at a time inside its own 50 s deadline and the ledger's newest
   # rows, writes beta-board.json and copies beta.html and beta-board.json to every host its overlay lists (the same web servers that
   # serve the floor). Not required: when it fails the previous page stays on each host and its Computed line shows its age.
@@ -504,6 +517,7 @@ runtime:
     delegation_tracker_page: delegation.html
     delegation_tracker_data: delegation-tracker.json
     delegation_history_data: delegation-history.json
+    cost_throughput_data: cost-throughput.json
     floor_page: floor/index.html
     data: factory-floor.json
     process_health: process-health.json
