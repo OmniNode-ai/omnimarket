@@ -4,10 +4,11 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Callable
 from datetime import datetime
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from pydantic import ValidationError
 
@@ -47,6 +48,26 @@ from omnimarket.nodes.node_workflow_gateway_effect.protocols.protocol_workflow_s
 )
 
 logger = logging.getLogger(__name__)
+
+_FINGERPRINT_VERSION = 5
+
+
+def _submission_fingerprint(
+    *, tenant_id: UUID, correlation_id: UUID, workflow_type: str, payload: object
+) -> UUID:
+    """A stable id for one tenant's (correlation_id, workflow_type, payload).
+
+    The workflow row has no payload column, so the envelope id of a submission that carries a
+    caller correlation_id is this fingerprint (a version-5 UUID). A repeat that computes the
+    same fingerprint is the same submission; a different one is a different payload.
+    """
+    canonical = json.dumps(
+        [str(tenant_id), str(correlation_id), workflow_type, payload],
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return uuid5(NAMESPACE_URL, f"onex-workflow-submission:{canonical}")
 
 
 class HandlerWorkflowSubmit:
@@ -188,7 +209,15 @@ class HandlerWorkflowSubmit:
             )
 
         # 6. Envelope.
-        envelope_id = self._new_uuid()
+        if submission.correlation_id is not None:
+            envelope_id = _submission_fingerprint(
+                tenant_id=caller.tenant_id,
+                correlation_id=correlation_id,
+                workflow_type=entry.workflow_type,
+                payload=submission.payload,
+            )
+        else:
+            envelope_id = self._new_uuid()
         causation_id = submission.causation_id or envelope_id
         envelope = ModelWorkflowCommandEnvelope(
             envelope_id=envelope_id,
@@ -215,6 +244,32 @@ class HandlerWorkflowSubmit:
             return ModelWorkflowHttpResponse(
                 status_code=503,
                 body={"detail": "workflow submission could not be recorded"},
+            )
+        existing = admission.existing
+        if existing is not None:
+            fingerprinted = existing.envelope_id.version == _FINGERPRINT_VERSION
+            if fingerprinted and existing.envelope_id != envelope.envelope_id:
+                return ModelWorkflowHttpResponse(
+                    status_code=409,
+                    body={
+                        "detail": (
+                            "correlation_id is already used by this tenant for a different "
+                            "workflow submission"
+                        ),
+                        "code": "correlation_id_conflict",
+                        "correlation_id": str(correlation_id),
+                    },
+                )
+            replay = ModelWorkflowAck(
+                workflow_id=existing.workflow_id,
+                envelope_id=existing.envelope_id,
+                correlation_id=existing.correlation_id,
+                workflow_type=existing.workflow_type,
+                status=existing.status,
+                accepted_at=existing.submitted_at,
+            )
+            return ModelWorkflowHttpResponse(
+                status_code=202, body=replay.model_dump(mode="json")
             )
         if not admission.admitted:
             quota = admission.quota
