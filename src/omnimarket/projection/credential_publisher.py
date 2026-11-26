@@ -370,9 +370,9 @@ def _bootstrap_values() -> dict[str, str]:
     """
     import os
 
-    values = {
-        name: os.environ.get(name, "").strip() for name in _INFISICAL_BOOTSTRAP_VARS
-    }
+    from omnimarket.handlers import credential_writer_identity as writer
+
+    values = {n: os.environ.get(n, "").strip() for n in _INFISICAL_BOOTSTRAP_VARS}
     missing = sorted(name for name, value in values.items() if not value)
     if missing:
         raise CredentialStoreConfigurationError(
@@ -387,7 +387,7 @@ def _bootstrap_values() -> dict[str, str]:
         os.environ.get("INFISICAL_TENANT_CREDENTIAL_SECRET_PATH", "").strip()
         or _DEFAULT_TENANT_CREDENTIAL_SECRET_PATH
     )
-    return values
+    return writer.apply_writer_identity(values)
 
 
 def _build_secret_store(*, allow_delete: bool = False) -> ProtocolSecretStore:
