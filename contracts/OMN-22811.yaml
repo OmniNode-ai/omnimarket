@@ -7,6 +7,18 @@ summary: 'The delegation writer''s dead-letter topic holds records whose envelop
 is_seam_ticket: true
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn22811-ac1-accepted-20261126t2145z:
+    - label: AC1
+      criterion_hash: fb48841c7710c57089afc37b5270db6a81a1793eacbb3cad76015d8bcbe4d09f
+      proposed_by: lane=dod-closeout-bind-2026-11-26T2145Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-26T2145Z-c2
+    dod-omn22811-ac2-accepted-20261126t2145z:
+    - label: AC2
+      criterion_hash: 2d31f3016ae52567999c1e23ed49c754d921bc4758ea8633a0647e1a1af527c1
+      proposed_by: lane=dod-closeout-bind-2026-11-26T2145Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-26T2145Z-c2
 requirements:
 - id: req-omn22811-dlq-redrive
   statement: A refused projection record's dead-letter envelope names its source, and a redrive node re-projects it once its tenant is registered.
@@ -63,3 +75,21 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22811 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_omn22811_dlq_envelope_source_coordinates.py tests/test_golden_chain_projection_dlq_redrive_effect.py -q --no-cov
+- id: dod-omn22811-ac1-accepted-20261126t2145z
+  description: 'AC1: the malformed-event, missing-field and runner poison refusal paths each publish an envelope carrying source_topic, source_partition and source_offset; the three fail with the product change of omnimarket#6124 reverted.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn22811_dlq_envelope_source_coordinates.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn22811-ac2-accepted-20261126t2145z
+  description: 'AC2: the redrive golden chain re-projects a refused record by correlation id through a source reader with no group and no commit, and the error chain skips an unknown tenant; the module fails to collect with the product change of omnimarket#6124 reverted.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_golden_chain_projection_dlq_redrive_effect.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
