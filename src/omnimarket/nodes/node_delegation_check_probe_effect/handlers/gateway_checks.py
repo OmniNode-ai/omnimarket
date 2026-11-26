@@ -77,7 +77,15 @@ RUNNER_QUERY: Final = "?runner_identity="
 # The gateway refuses a provider answer cut off by the output budget (finish_reason=length), so a
 # budget below what the model needs fails the run. 32 failed c29-20261126T044722Z-f2c5a20f under the
 # tenant key; 128 completed (control 275d746c), and 8 or fewer failed the same way.
-CHECK_MAX_TOKENS = 128
+CHECK_MAX_TOKENS = 512
+
+# The healthy run is a task_type "test" run, whose quality gate wants one code artifact and nothing else (final_artifact_only):
+# the old prompt asked for the word "alive" and the gate refused the prose outside a code block on 2 of 4 lab runs
+# (TASK_MISMATCH, score 0.700 under the 0.800 bar). This asks for exactly the artifact the gate grades.
+CHECK_PROMPT = (
+    "Reply with only a python code block holding one pytest test function named test_alive "
+    "that asserts True. No prose outside the code block. Automated {check_id} delegation check."
+)
 
 
 class GatewayRunSettings(BaseModel):
@@ -204,7 +212,7 @@ class _Session:
                 # The declared request model (ModelWorkflowSubmitRequest) takes a UUID here, never free text.
                 "correlation_id": str(self._new_uuid()),
                 "payload": {
-                    "prompt": f"Reply with the single word: alive. Automated {self.check_id} delegation check.",
+                    "prompt": CHECK_PROMPT.format(check_id=self.check_id),
                     "task_type": task_type,
                     "source": source,
                     "max_tokens": CHECK_MAX_TOKENS,
