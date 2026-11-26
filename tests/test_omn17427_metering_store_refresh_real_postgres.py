@@ -22,7 +22,7 @@ import asyncpg
 import pytest
 
 from omnimarket.adapters.asyncpg_adapter import _refuse_unbound_tenant_scoped_write
-from omnimarket.handlers.handler_savings_priced_models_fill import (
+from omnimarket.handlers.savings_priced_models_fill import (
     refresh_shared_priced_models,
 )
 from omnimarket.models.model_local_install_schema import local_priced_models_rows

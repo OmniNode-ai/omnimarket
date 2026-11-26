@@ -13,7 +13,7 @@ from decimal import Decimal
 
 import pytest
 
-from omnimarket.handlers.handler_savings_priced_models_fill import (
+from omnimarket.handlers.savings_priced_models_fill import (
     refresh_shared_priced_models,
 )
 from omnimarket.models.model_metering_summary_refresh_requested import (
