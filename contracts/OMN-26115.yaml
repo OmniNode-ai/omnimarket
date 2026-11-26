@@ -94,9 +94,14 @@ dod_evidence:
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26115 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_onex_setup_effect -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn26115-grpcio-lock-floor
-  description: The grpcio lock-floor test parses uv.lock and asserts grpcio is 1.84.1 or later (Safety SFTY-20261027-51483 covers >=1.84.0,<1.84.1), with planted 1.84.0 and missing-package controls; the work-contract pin test confirms every uv.lock sha256 pin names the relocked file. At the merge base the lock pins grpcio 1.84.0, so the real-lock test fails there. This item binds no criterion of this ticket.
+  description: The grpcio lock-floor test parses uv.lock and asserts grpcio is 1.84.1 or later (Safety SFTY-20261027-51483 covers >=1.84.0,<1.84.1), with planted 1.84.0 and missing-package controls; the work-contract pin test confirms every uv.lock sha256 pin names the relocked file. At the merge base the lock pins grpcio 1.84.0, so the real-lock test fails there. This item binds AC3, the lock criterion, because it reads uv.lock itself and runs uv lock --check, so a stale or missing lock fails it.
   source: manual
+  binds_ac:
+  - AC3
   checks:
+  - check_type: command
+    check_value: uv lock --check
+    cwd: .
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/ci/test_omn26115_grpcio_lock_floor.py tests/nodes/test_work_contract_pins_current.py -q --no-cov -n 0 -p no:randomly
     cwd: .
