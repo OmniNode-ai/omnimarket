@@ -28,6 +28,8 @@ class HandlerMcpToolsList:
     def handle(self, request: ModelMcpToolsListRequest) -> ModelMcpToolsListResult:
         try:
             rows = tuple(self._registry.read_registrations())
+        except McpServerRefusalError:
+            raise
         except Exception as exc:
             raise McpServerRefusalError(
                 EnumMcpServerRefusal.REGISTRY_UNREADABLE,

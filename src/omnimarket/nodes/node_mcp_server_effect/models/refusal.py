@@ -10,6 +10,7 @@ from enum import StrEnum
 class EnumMcpServerRefusal(StrEnum):
     REGISTRY_UNREADABLE = "registry_unreadable"
     DUPLICATE_TOOL_NAME = "duplicate_tool_name"
+    INFRA_TOOLS_LIST_ABSENT = "infra_tools_list_absent"
 
 
 class McpServerRefusalError(Exception):

@@ -11,7 +11,9 @@ description: >
   registry: a node is a tool when its contract says mcp.expose true, its
   registration is ACTIVE and the overlay allow list names the tool (default
   deny). The code names no tool. A registry that cannot be read, and a
-  duplicate tool name, are named refusals. Calls and transport are later
+  duplicate tool name, are named refusals. HandlerMcpRegistryProjectionRows
+  reads the registry projections and refuses by name an infra that carries no
+  tools list. Calls and transport are later
   slices.
 node_type: effect
 lifecycle: experimental
