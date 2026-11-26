@@ -281,10 +281,11 @@ class ModelLabHostsTable(_ModelOverlayBase):
 
 
 class ModelLabHostsOverlay(ModelLabHostsTable):
+    # Inherits the table's ``registry_root_candidates``; this subclass adds no own fields.
     """Keys ``lab_hosts.hosts`` and ``lab_hosts.registry_root_candidates``."""
 
     # Registry roots tried in order on a probed host; ``$HOME`` expands there.
-    registry_root_candidates: Annotated[tuple[RegistryRoot, ...], Field(min_length=1)]
+    registry_root_candidates: Annotated[tuple[RegistryRoot, ...], Field(min_length=1)] = ()
 
 
 class ModelReposOverlay(_ModelOverlayBase):
