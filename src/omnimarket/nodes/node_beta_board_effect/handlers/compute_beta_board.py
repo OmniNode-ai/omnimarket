@@ -157,7 +157,7 @@ def build_board(
                 probe_states[probe_id] = source_state(
                     reads.get(probe_id),
                     source_id=probe_id,
-                    kind="workflow_run",
+                    kind="gateway_leg" if probe.gateway_check else "workflow_run",
                     max_age_seconds=probe.max_age_seconds,
                     now=now,
                     repository=probe.repository,
@@ -202,7 +202,7 @@ def build_board(
             state=probe_states[p.id].state if p.id in probe_states else "unread",
         )
         for p in overlay.probes
-        if p.repository in cloud
+        if p.repository in cloud and not p.gateway_check
     )
     counts: dict[str, int] = dict.fromkeys(
         ("pass", "fail", "stale", "unread", "no_reading"), 0

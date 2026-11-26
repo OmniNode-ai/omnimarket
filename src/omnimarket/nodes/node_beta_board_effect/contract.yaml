@@ -83,6 +83,9 @@ runtime:
   # concurrent input group, whose limit is 90 s). A probe read within probe_refresh_seconds is not read again.
   stage_deadline_seconds: 50
   probe_refresh_seconds: 240
+  # The delegation check probe node's run history (its host unit's state directory): a probe naming a gateway_check reads the
+  # gateway_leg field of that check's scheduled runs here, not a workflow (OMN-26043).
+  gateway_history_relpath: .onex_state/delegation-check-probe/delegation-check-runs.jsonl
   transport:
     connect_timeout_seconds: 10
     transfer_timeout_seconds: 30
