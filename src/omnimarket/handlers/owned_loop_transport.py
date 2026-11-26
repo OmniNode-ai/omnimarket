@@ -78,6 +78,36 @@ class OwnedLoopTransport:
         self._transport = transport
         return transport
 
+    async def send(
+        self,
+        topic: str,
+        *,
+        key: bytes | None,
+        value: bytes | None,
+        headers: dict[str, bytes],
+    ) -> bool:
+        """Send one record over the shared transport; False if it was not sent.
+
+        A failed send drops the transport so the next call builds a new one.
+        """
+        transport = await self.transport(topic)
+        if transport is None:
+            return False
+        if value is None:
+            logger.warning(
+                "snapshot delta for %s not published: message value is missing", topic
+            )
+            return False
+        try:
+            await transport.send(topic, key=key, value=value, headers=headers)
+        except Exception as exc:
+            logger.warning(
+                "snapshot delta for %s not published: send failed: %s", topic, exc
+            )
+            await self.drop()
+            return False
+        return True
+
     async def drop(self) -> None:
         transport, self._transport = self._transport, None
         if transport is not None:

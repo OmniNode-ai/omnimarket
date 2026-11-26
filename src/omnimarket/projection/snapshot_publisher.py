@@ -459,28 +459,9 @@ class KafkaSnapshotDeltaPublisher:
         return published
 
     async def _publish(self, message: ModelSnapshotDeltaMessage) -> bool:
-        transport = await self._owned.transport(message.topic)
-        if transport is None:
-            return False
-        if message.value is None:
-            logger.warning(
-                "snapshot delta for %s not published: message value is missing",
-                message.topic,
-            )
-            return False
-        try:
-            await transport.send(
-                message.topic,
-                key=message.key,
-                value=message.value,
-                headers=dict(message.headers),
-            )
-        except Exception as exc:
-            logger.warning(
-                "snapshot delta for %s not published: send failed: %s",
-                message.topic,
-                exc,
-            )
-            await self._owned.drop()
-            return False
-        return True
+        return await self._owned.send(
+            message.topic,
+            key=message.key,
+            value=message.value,
+            headers=dict(message.headers),
+        )
