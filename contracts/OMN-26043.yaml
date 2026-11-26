@@ -196,3 +196,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_beta_board_effect/test_trigger_declaration.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26043-proof-tenant-contract-matches-overlay
+  description: "The dev proof tenant token node's contract declares only the proof tenant that has a tenant row (cli-run-a), the same set as the dev overlay and the example overlay; a tenant outside it (cli-run-b included) is refused before the key is read. The tests fail on the base commit, where the contract also lists cli-run-b and the handler refuses the one-tenant overlay. This binds no criterion of this ticket."
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_dev_proof_tenant_token_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .

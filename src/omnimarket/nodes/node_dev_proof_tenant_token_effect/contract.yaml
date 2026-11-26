@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # ONEX Node Contract - Dev Proof Tenant Token Effect
 #
-# Signs the two dev-only proof tenant tokens with the lab test key and writes each into the dev secret store through
+# Signs the dev-only proof tenant token (cli-run-a, the one proof tenant that has a tenant row) with the lab test key and writes each into the dev secret store through
 # node_secret_seed_effect. The result names secret names and a status only: never a token or a key value. A lane, an
 # overlay lane or a tenant the dev_only block does not declare is refused before the key is read or a secret written.
 name: node_dev_proof_tenant_token_effect
@@ -65,7 +65,6 @@ dev_only:
   expiry_seconds: 3600
   tenants:
     - cli-run-a
-    - cli-run-b
 
 metadata:
   ticket: OMN-26090
