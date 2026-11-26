@@ -24,7 +24,9 @@ from typing import Any
 
 import yaml
 
-from omnimarket.events.emit_effect_topic_publisher import EmitEffectTopicPublisher
+from omnimarket.handlers.bus_binding.declared_broker_publisher import (
+    DeclaredBrokerPublisher,
+)
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_c30_claude_code_plugin_probe_effect.handlers.handler_c30_claude_code_plugin_probe import (
     NODE,
@@ -111,7 +113,7 @@ def main(
         profile = overlay.default_profile
         run_handler = handler or HandlerC30ClaudeCodePluginProbe(
             prober=build_prober(overlay, profile),
-            publisher=publisher or EmitEffectTopicPublisher(),
+            publisher=publisher or DeclaredBrokerPublisher(NODE, flat=True),
             topic=overlay.result_topic,
             profile=profile,
         )
