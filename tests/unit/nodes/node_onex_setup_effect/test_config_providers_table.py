@@ -35,6 +35,9 @@ Failure modes:
   T14 the table does not read as a table: no frame, both columns packed at the
       left, every row one shade, or names in bold white (operator 2026-11-26,
       on a screenshot: "why white text - cretae likea table").
+  T15 the TUI reads models.dev, or offers a provider not written from its
+      official docs (operator 2026-11-26: "don't use models.dev or any otehr
+      things just use offcial docs", then "Only the 7").
 """
 
 from __future__ import annotations
@@ -44,7 +47,7 @@ import json
 
 import pytest
 from pydantic import SecretStr
-from textual.widgets import Button, DataTable, Input
+from textual.widgets import Button, DataTable, Input, Static
 
 from omnimarket.handlers.model_catalog import ModelsDevIndex
 from omnimarket.nodes.node_onex_setup_effect import cli_tui
@@ -77,30 +80,50 @@ _KEY = "sk-test-new-key-0123456789abcdef"
 _SAVED = "sk-or-v1-saved-key-0123456789abcd"
 
 _MODELS = {
-    ("deepseek", "deepseek-chat"): {
-        "name": "DeepSeek Chat",
+    ("anthropic", "anthropic-chat"): {
+        "name": "Anthropic Chat",
         "release_date": "2026-03-01",
         "cost": {"input": 0.27, "output": 1.1},
     },
-    ("deepseek", "deepseek-reasoner"): {
-        "name": "DeepSeek Reasoner",
+    ("anthropic", "anthropic-reasoner"): {
+        "name": "Anthropic Reasoner",
         "release_date": "2026-09-15",
         "cost": {"input": 0.55, "output": 2.19},
     },
-    ("deepseek", "deepseek-coder"): {
-        "name": "DeepSeek Coder",
+    ("anthropic", "anthropic-coder"): {
+        "name": "Anthropic Coder",
         "release_date": "2025-06-01",
         "cost": {"input": 0.14, "output": 0.28},
     },
 }
 
 
+#: Every read of models.dev or its provider list (T15); each answers with
+#: facts the screens must never show.
+_READS: list[str] = []
+
+
 @pytest.fixture(autouse=True)
 def _index(monkeypatch: pytest.MonkeyPatch) -> None:
+    from omnimarket.handlers import model_catalog
+    from omnimarket.handlers.routing import byok_catalog_providers
+
     index = ModelsDevIndex(
         models=_MODELS, fetched_at="2026-11-26T00:00:00+00:00", stale=False, error=None
     )
-    monkeypatch.setattr(cli_tui, "_default_index", lambda: index)
+    real_list = byok_catalog_providers.load_byok_catalog_providers
+
+    def models_dev(*_args, **_kwargs):
+        _READS.append("models.dev")
+        return index
+
+    def listed(*args, **kwargs):
+        _READS.append("models.dev providers")
+        return real_list(*args, **kwargs)
+
+    _READS.clear()
+    monkeypatch.setattr(model_catalog, "load_models_dev", models_dev)
+    monkeypatch.setattr(byok_catalog_providers, "load_byok_catalog_providers", listed)
     monkeypatch.setattr(cli_tui, "_default_read_server", lambda _base, _models: {})
 
 
@@ -164,6 +187,11 @@ def _text(widget) -> str:
     return " ".join(str(widget.render()).split())
 
 
+def _box_text(widget) -> str:
+    """Every line a box shows, its own render being blank."""
+    return " ".join(_text(line) for line in widget.query(Static) if line.display)
+
+
 async def _go_to(pilot, screen, provider: str) -> None:
     table = _table(screen)
     table.focus()
@@ -191,7 +219,7 @@ async def test_config_is_two_tabs_of_provider_and_status() -> None:
         assert screen.view == "configured"
         assert _rows(screen) == ["openrouter", "ollama"]
         assert "ready" in _cells(screen, "openrouter")[1]
-        picker = {e.provider for e in setup_provider_traits().picker_providers()}
+        picker = {e.provider for e in setup_provider_traits().picker}
         tabs = [str(t.label) for t in screen.query("#views Tab")]
         assert tabs == ["Configured 2", f"Available {len(picker - {'openrouter'})}"]
         table.focus()
@@ -200,7 +228,7 @@ async def test_config_is_two_tabs_of_provider_and_status() -> None:
         assert screen.view == "available"
         rows = _rows(screen)
         assert set(rows) == picker - {"openrouter", "ollama"}
-        assert "not set up" in _cells(screen, "deepseek")[1]
+        assert "not set up" in _cells(screen, "anthropic")[1]
         assert not screen.query("#found")
         assert not screen.query("RadioSet")
         await pilot.press("left")
@@ -214,15 +242,15 @@ async def test_a_new_user_opens_on_available_and_search_finds_either_tab() -> No
     async with app.run_test(size=(160, 40)) as pilot:
         screen = await _config(pilot, app)
         assert screen.view == "available"
-        assert "deepseek" in _rows(screen)
+        assert "anthropic" in _rows(screen)
     app, _ = _make(_runner())
     async with app.run_test(size=(160, 40)) as pilot:
         screen = await _config(pilot, app)
         assert screen.view == "configured"
-        screen.query_one("#provider-search", Input).value = "deeps"
+        screen.query_one("#provider-search", Input).value = "anthro"
         await _settle(pilot, 3)
         assert screen.view == "available"
-        assert _rows(screen) == ["deepseek"]
+        assert _rows(screen) == ["anthropic"]
 
 
 async def test_enter_on_a_provider_with_no_key_asks_in_a_window() -> None:
@@ -231,14 +259,15 @@ async def test_enter_on_a_provider_with_no_key_asks_in_a_window() -> None:
     app, seen = _make(runner)
     async with app.run_test(size=(160, 40)) as pilot:
         screen = await _config(pilot, app)
-        await _go_to(pilot, screen, "deepseek")
+        await _go_to(pilot, screen, "anthropic")
         await pilot.press("enter")
         await _settle(pilot)
         assert isinstance(app.screen, KeyScreen)
-        assert "DeepSeek" in str(app.screen.query_one("#ks-box").border_title)
+        assert "Anthropic" in str(app.screen.query_one("#ks-box").border_title)
         assert app.focused is app.screen.query_one("#ks-field", Input)
-        said = _text(app.screen.query_one("#ks-models"))
-        assert "3 models" in said, said
+        said = _box_text(app.screen.query_one("#ks-box"))
+        assert "api.anthropic.com" in said, said
+        assert "platform.claude.com/settings/keys" in said, said
         await pilot.press("escape")
         await _settle(pilot)
         assert app.screen is screen
@@ -251,7 +280,7 @@ async def test_the_window_says_whether_the_key_works() -> None:
     app, _ = _make(_runner())
     async with app.run_test(size=(160, 40)) as pilot:
         screen = await _config(pilot, app)
-        await _go_to(pilot, screen, "deepseek")
+        await _go_to(pilot, screen, "anthropic")
         await pilot.press("enter")
         await _settle(pilot)
         await _type(pilot, _KEY)
@@ -260,19 +289,19 @@ async def test_the_window_says_whether_the_key_works() -> None:
         assert "valid" in _text(window.query_one("#ks-mark"))
         assert "2 models" in _text(window.query_one("#ks-check"))
     refused, _ = _hosted_listing(
-        outcome="rejected", message="DeepSeek refused this key"
+        outcome="rejected", message="Anthropic refused this key"
     )
     app, _ = _make(_runner(), list_models=refused)
     async with app.run_test(size=(160, 40)) as pilot:
         screen = await _config(pilot, app)
-        await _go_to(pilot, screen, "deepseek")
+        await _go_to(pilot, screen, "anthropic")
         await pilot.press("enter")
         await _settle(pilot)
         await _type(pilot, _KEY)
         await _wait(pilot)
         window = app.screen
         assert "not accepted" in _text(window.query_one("#ks-mark"))
-        assert "DeepSeek refused this key" in _text(window.query_one("#ks-check"))
+        assert "Anthropic refused this key" in _text(window.query_one("#ks-check"))
 
 
 async def test_a_saved_key_opens_its_models_on_the_model_tab() -> None:
@@ -281,7 +310,7 @@ async def test_a_saved_key_opens_its_models_on_the_model_tab() -> None:
     app, seen = _make(runner)
     async with app.run_test(size=(160, 40)) as pilot:
         screen = await _config(pilot, app)
-        await _go_to(pilot, screen, "deepseek")
+        await _go_to(pilot, screen, "anthropic")
         await pilot.press("enter")
         await _settle(pilot)
         await _type(pilot, _KEY)
@@ -290,16 +319,16 @@ async def test_a_saved_key_opens_its_models_on_the_model_tab() -> None:
         adding = app.screen
         assert isinstance(adding, SetupScreen)
         assert adding.TAB == "model"
-        assert adding.query_one("#provider").value == "deepseek"
+        assert adding.query_one("#provider").value == "anthropic"
         before = len(seen)
         await _wait(pilot)
-        assert seen[before:] == [("deepseek", _KEY)]
+        assert seen[before:] == [("anthropic", _KEY)]
         assert _adds(runner) == []
         _tick(app, "qwen/qwen3.8-27b")
         await pilot.press("ctrl+s")
         await _settle(pilot, 14)
     assert _adds(runner) == [
-        ("models", "add", "deepseek", "--model", "qwen/qwen3.8-27b", "--json")
+        ("models", "add", "anthropic", "--model", "qwen/qwen3.8-27b", "--json")
     ]
     assert f"{_KEY}\n" in runner.stdins
     assert not any(_KEY in part for call in runner.calls for part in call)
@@ -358,7 +387,7 @@ async def test_test_and_remove_act_on_your_provider_and_remove_asks() -> None:
     app, _ = _make(runner)
     async with app.run_test(size=(160, 40)) as pilot:
         screen = await _config(pilot, app)
-        await _go_to(pilot, screen, "deepseek")
+        await _go_to(pilot, screen, "anthropic")
         await pilot.press("t")
         await pilot.press("x")
         await _settle(pilot)
@@ -406,7 +435,7 @@ async def test_the_models_screen_is_one_providers_models_only() -> None:
     app, _ = _make(runner)
     async with app.run_test(size=(160, 40)) as pilot:
         screen = await _config(pilot, app)
-        await _go_to(pilot, screen, "deepseek")
+        await _go_to(pilot, screen, "anthropic")
         await pilot.press("enter")
         await _settle(pilot)
         await _type(pilot, _KEY)
@@ -419,7 +448,7 @@ async def test_the_models_screen_is_one_providers_models_only() -> None:
             assert adding.query_one(hidden).region.area == 0, hidden
         assert not adding.query("#provider-search")
         title = _text(adding.query_one("#cfg-title"))
-        assert "DeepSeek" in title, title
+        assert "Anthropic" in title, title
         assert "valid" in title, title
         assert "2 models" in title, title
         assert "step" not in _text(adding.query_one("#cfg-step"))
@@ -427,7 +456,7 @@ async def test_the_models_screen_is_one_providers_models_only() -> None:
         await _settle(pilot)
         assert isinstance(app.screen, ProvidersScreen)
         assert _adds(runner) == []
-        await _go_to(pilot, app.screen, "deepseek")
+        await _go_to(pilot, app.screen, "anthropic")
         await pilot.press("enter")
         await _settle(pilot)
         await _type(pilot, _KEY)
@@ -463,13 +492,13 @@ async def test_typing_on_the_table_searches_and_up_reaches_the_search() -> None:
     async with app.run_test(size=(160, 40)) as pilot:
         screen = await _config(pilot, app)
         _table(screen).focus()
-        await pilot.press("d", "e", "e", "p")
+        await pilot.press("g", "e", "m")
         await _settle(pilot, 3)
         search = screen.query_one("#provider-search", Input)
         assert app.focused is search
-        assert search.value == "deep"
+        assert search.value == "gem"
         rows = _rows(screen)
-        assert "deepseek" in rows
+        assert "gemini" in rows
         assert "openrouter" not in rows
         search.value = ""
         await _settle(pilot, 3)
@@ -528,3 +557,34 @@ async def test_providers_read_as_a_framed_table_across_the_width() -> None:
         provider, status = (c.width for c in table.columns.values())
         assert provider + status <= table.size.width, (provider, status)
         assert provider + status >= table.size.width * 0.8
+
+
+async def test_the_tui_reads_only_what_official_docs_wrote() -> None:
+    """T15: the seven written providers, and no models.dev read on the way from
+    /config through a new key to the saved models."""
+    runner = _runner()
+    app, _ = _make(runner)
+    async with app.run_test(size=(160, 40)) as pilot:
+        screen = await _config(pilot, app)
+        written = {e.provider for e in setup_provider_traits().picker}
+        assert len(written) == 7
+        await _go_to(pilot, screen, "anthropic")
+        assert set(_rows(screen)) == written - {"openrouter"}
+        await pilot.press("enter")
+        await _settle(pilot)
+        window = app.screen
+        assert isinstance(window, KeyScreen)
+        said = _box_text(window.query_one("#ks-box"))
+        for fact in ("3 models", "Anthropic Chat", "$0.27", "Newest"):
+            assert fact not in said, (fact, said)
+        window.query_one("#ks-field", Input).value = _KEY
+        await _wait(pilot)
+        await pilot.press("enter")
+        await _settle(pilot)
+        assert isinstance(app.screen, SetupScreen)
+        await _wait(pilot)
+        _tick(app, "qwen/qwen3.8-27b")
+        await pilot.press("ctrl+s")
+        await _settle(pilot, 30)
+        assert isinstance(app.screen, ModelPickScreen)
+    assert _READS == []

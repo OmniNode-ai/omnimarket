@@ -29,7 +29,6 @@ from typing import TYPE_CHECKING, Any, ClassVar, Literal, Protocol, TypeVar, cas
 from urllib.parse import urlparse
 
 import click
-from omnibase_core.cli.cli_user_config import user_config_path
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from rich.cells import cell_len
 from rich.console import Group
@@ -215,8 +214,11 @@ def _style(token: str, *extra: str) -> str:
 
 
 def _picker() -> tuple[ModelSetupPickerProvider, ...]:
-    """What /config offers, read from setup_provider_traits.yaml at call time."""
-    return setup_provider_traits().picker_providers()
+    """What /config offers: the providers setup_provider_traits.yaml writes from
+    each one's official docs, a server the user runs last. No list from
+    models.dev or anywhere else (operator 2026-11-26: "just use offcial docs")."""
+    traits = setup_provider_traits()
+    return tuple(sorted(traits.picker, key=lambda p: traits.needs_url(p.provider)))
 
 
 def _usd(amount: float) -> str:
@@ -225,66 +227,17 @@ def _usd(amount: float) -> str:
 
 
 def _key_host(provider: str) -> str | None:
-    """The one host ``provider``'s key is sent to, from the list or the backend."""
-    from omnimarket.handlers.routing.byok_catalog_providers import (
-        load_byok_catalog_providers,
-    )
+    """The one host ``provider``'s key is sent to: its endpoint as onex's own
+    backend table writes it from the provider's docs, never a third-party list."""
     from omnimarket.handlers.routing.byok_provider_backends import (
         resolve_byok_provider_backend,
     )
 
     with contextlib.suppress(Exception):  # a provider with no fixed address
-        listed = load_byok_catalog_providers().get(provider)
-        if listed is not None:
-            return urlparse(listed.api).hostname
         row = resolve_byok_provider_backend(provider)
         if row is not None and row.endpoint_url:
             return urlparse(row.endpoint_url).hostname
     return None
-
-
-def _card_lines(provider: str, index: ModelsDevIndex) -> tuple[str, str, str]:
-    """The card's three lines: models and prices, the newest, where the key goes.
-
-    Only what models.dev states: a provider it lists no models for says they
-    are read once the key is in, and no price is shown that it does not give.
-    """
-    from omnimarket.handlers.model_catalog import models_dev_provider_id
-
-    if not _hosted(provider):
-        return _say("card_local"), "", ""
-    owner = models_dev_provider_id(provider)
-    rows = [
-        (model_id, meta)
-        for (listed_by, model_id), meta in index.models.items()
-        if owner and listed_by == owner
-    ]
-    host = _key_host(provider)
-    where = _say("card_host", host=host) if host else ""
-    if not rows:
-        return _say("card_unknown"), "", where
-    count = _say("card_count_one" if len(rows) == 1 else "card_count", count=len(rows))
-    prices = sorted(
-        float(cost["input"])
-        for _, meta in rows
-        if isinstance(cost := meta.get("cost"), Mapping)
-        and isinstance(cost.get("input"), int | float)
-    )
-    if not prices:
-        models = _say("card_no_prices", count=count)
-    elif prices[0] == prices[-1]:
-        models = _say("card_price_one", count=count, low=_usd(prices[0]))
-    else:
-        models = _say(
-            "card_price_range", count=count, low=_usd(prices[0]), high=_usd(prices[-1])
-        )
-    newest = sorted(
-        rows, key=lambda r: str(r[1].get("release_date") or ""), reverse=True
-    )
-    names = ", ".join(
-        str(meta.get("name") or model_id) for model_id, meta in newest[:3]
-    )
-    return models, _say("card_newest", models=names), where
 
 
 def _entry(provider: str) -> ModelSetupPickerProvider | None:
@@ -797,9 +750,10 @@ def _stored_key(provider: str) -> SecretStr | None:
 
 
 def _default_index() -> ModelsDevIndex:
-    return cast(
-        "ModelsDevIndex", _lazy(_CATALOG).load_models_dev(user_config_path().parent)
-    )
+    """Nothing from models.dev: a model's context and price are what its
+    provider's own API says, or unknown (operator 2026-11-26: "don't use
+    models.dev or any otehr things just use offcial docs")."""
+    return cast("ModelsDevIndex", _lazy(_CATALOG).EMPTY_INDEX)
 
 
 #: Asks the server at a base URL about its models; tests pass a fixture.
@@ -1206,14 +1160,14 @@ class RemoveProviderScreen(ModalScreen[bool]):
 class KeyScreen(ModalScreen[str | None]):
     """A provider's key, or a server's URL, asked in a window over the providers
     table (operator 2026-11-26: "if that is not configured then api key enter
-    pop window open"). What the provider offers shows first; the key is checked
-    as it is typed; Enter or Save returns it, Esc or Cancel returns nothing."""
+    pop window open"). Where the key goes and where to create one show first,
+    both written from the provider's official docs; the key is checked as it
+    is typed; Enter or Save returns it, Esc or Cancel returns nothing."""
 
     CSS = """
     KeyScreen { align: center middle; background: $background 60%; }
     #ks-box { width: 78; max-width: 94%; height: auto; border: round $primary; border-title-color: $primary; border-title-style: bold; padding: 1 2; background: $panel; }
-    #ks-models { height: auto; }
-    #ks-newest, #ks-host, #ks-hint { height: auto; color: $text-muted; }
+    #ks-host, #ks-hint { height: auto; color: $text-muted; }
     #ks-box .-empty { display: none; }
     #ks-row { height: 3; margin-top: 1; border: round $border; border-title-color: $text-muted; }
     #ks-row:focus-within { border: round $primary; }
@@ -1232,7 +1186,6 @@ class KeyScreen(ModalScreen[str | None]):
         change: bool,
         runner: ProtocolTuiRunner,
         list_models: ListModels | None,
-        load_index: Callable[[], ModelsDevIndex],
         url: str | None = None,
     ) -> None:
         super().__init__()
@@ -1240,16 +1193,18 @@ class KeyScreen(ModalScreen[str | None]):
         self._change = change
         self._runner = runner
         self._list_models: ListModels = list_models or _list_and_remember_models
-        self._load_index = load_index
         self._url = url
         self._timer: Timer | None = None
 
     def compose(self) -> ComposeResult:
         hosted = _hosted(self._provider)
         with Vertical(id="ks-box"):
-            yield Static("", id="ks-models", classes="-empty")
-            yield Static("", id="ks-newest", classes="-empty")
-            yield Static("", id="ks-host", classes="-empty")
+            host = _key_host(self._provider) if hosted else None
+            yield Static(
+                _say("card_host", host=host) if host else "",
+                id="ks-host",
+                classes="" if host else "-empty",
+            )
             yield Static(_hint(self._provider), id="ks-hint")
             with Horizontal(id="ks-row"):
                 yield Input(
@@ -1283,21 +1238,8 @@ class KeyScreen(ModalScreen[str | None]):
             "key_box" if hosted else "url_box"
         )
         self.query_one("#ks-field", Input).focus()
-        self.run_worker(self._describe(), group="ks-about")
         if not hosted and self._url:
             self._schedule()
-
-    async def _describe(self) -> None:
-        index = await asyncio.to_thread(self._load_index)
-        with contextlib.suppress(NoMatches):
-            for widget_id, line in zip(
-                ("#ks-models", "#ks-newest", "#ks-host"),
-                _card_lines(self._provider, index),
-                strict=True,
-            ):
-                part = self.query_one(widget_id, Static)
-                part.update(line)
-                part.set_class(not line, "-empty")
 
     def _value(self) -> str:
         return self.query_one("#ks-field", Input).value.strip()
@@ -1459,7 +1401,6 @@ class ProvidersScreen(_TabbedScreen[None]):
         self,
         runner: ProtocolTuiRunner,
         list_models: ListModels | None = None,
-        load_index: LoadIndex | None = None,
         read_server: ReadServer | None = None,
         selection: ModelTuiSelection | None = None,
     ) -> None:
@@ -1467,9 +1408,7 @@ class ProvidersScreen(_TabbedScreen[None]):
         self._runner = runner
         self._selection = selection or ModelTuiSelection()
         self._list_models: ListModels = list_models or _list_and_remember_models
-        self._load: LoadIndex = load_index or _default_index
         self._read_server: ReadServer = read_server or _default_read_server
-        self._index: ModelsDevIndex | None = None
         #: "configured" or "available"; the user's choice once they make one.
         self._view = "configured" if self._set_up() else "available"
         self._view_chosen = False
@@ -1545,12 +1484,6 @@ class ProvidersScreen(_TabbedScreen[None]):
     def show_view(self, view: str) -> None:
         """Configured or Available, by key or by the tabs (V3)."""
         self.query_one("#views", Tabs).active = f"view-{view}"
-
-    async def index(self) -> ModelsDevIndex:
-        """models.dev as kept on this machine, read once for this tab."""
-        if self._index is None:
-            self._index = await asyncio.to_thread(_safe_index, self._load)
-        return self._index
 
     def _set_up(self) -> list[str]:
         """Your providers, in the order the setup lists them."""
@@ -1716,7 +1649,6 @@ class ProvidersScreen(_TabbedScreen[None]):
                 change=change,
                 runner=self._runner,
                 list_models=self._list_models,
-                load_index=lambda: self._index or _safe_index(self._load),
                 url=self._stored_url(provider),
             ),
             answered,
@@ -5411,7 +5343,6 @@ class OnexTui(App[int]):
                 ProvidersScreen(
                     self._runner,
                     self._list_models,
-                    self._load_index,
                     self._read_server,
                     selection,
                 ),

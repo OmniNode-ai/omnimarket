@@ -1036,8 +1036,9 @@ def test_config_providers_come_from_the_traits_file_in_its_order() -> None:
 
     traits = setup_provider_traits()
     choices = cli_tui._picker()
-    # The file's order, not sorted; OMN-26688's models.dev list before Local Model.
-    assert choices == traits.picker_providers()
+    # The file's order, not sorted; only what it writes from official docs, no
+    # models.dev list (operator 2026-11-26, OMN-26688 T15).
+    assert choices == traits.picker
     assert choices[-1].provider == "local"
     # One entry for every OpenAI-compatible server: no separate Ollama or vLLM.
     assert [e.provider for e in choices if e in traits.picker] == [

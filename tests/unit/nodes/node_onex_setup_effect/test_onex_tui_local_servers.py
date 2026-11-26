@@ -353,16 +353,11 @@ async def test_config_lists_providers_in_yaml_order_and_fills_no_url() -> None:
     async with app.run_test(size=(170, 46)) as pilot:
         await _open(pilot, "/config")
         assert isinstance(app.screen, SetupScreen)
-        picker = setup_provider_traits().picker_providers()
-        # Nothing is set up: the well-known providers A-Z, then the listed
-        # ones A-Z (operator 2026-11-26, K5).
-        written = {e.provider for e in setup_provider_traits().picker}
-        a_to_z = sorted(
-            picker, key=lambda e: (e.provider not in written, e.label.casefold())
-        )
+        # Only the providers written from official docs (OMN-26688 T15).
+        picker = setup_provider_traits().picker
         select = app.screen.query_one("#provider")  # radio options (OMN-23413)
         assert {b.name for b in select.query(RadioButton)} == {
-            entry.provider for entry in a_to_z
+            entry.provider for entry in picker
         }
         assert picker[-1].provider == "local"
         select.value = "local"
