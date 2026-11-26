@@ -135,6 +135,14 @@ settable_settings:
     key: ticket_roots
     path: ticket_roots
     document_model: "omnimarket.models.overlay_documents.model_goal_scope_ticket_rule_overlay:ModelGoalScopeTicketRuleOverlay"
+  # The A/B compare orchestrator's model registry: the list of models a comparison may name, each with where it answers and its
+  # price. The row holds no secret: an entry names an environment variable for a key, never a value.
+  - overlay_id: node_ab_compare_orchestrator
+    key: models
+    path: models
+    document_model: "omnimarket.models.overlay_documents.model_ab_compare_models_overlay:ModelAbCompareModelsOverlay"
+    # The store may hold no record of this overlay yet: the first set creates it from this document, validated by the model above.
+    first_document: {schema_version: "1.0.0"}
 config:
   # The live record the set builds on must have been loaded within this many seconds: the loader asserts every overlay
   # each cycle, so an older record means the read did not reach the newest one, and a set built on it would replace newer settings.

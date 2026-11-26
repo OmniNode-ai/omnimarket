@@ -34,3 +34,9 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_ab_compare_orchestrator/handlers/handler_ab_compare_orchestrator.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -qF ''endpoint_url=_chat_completions_url(model.endpoint_url)'''
+  - id: dod-omn21037-models-setting-declared
+    description: The store writer declares the node_ab_compare_orchestrator models row, sets a valid registry, creates a first record and refuses an invalid registry with nothing written.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_setting_set/test_setting_set_ab_compare_models.py -q --no-cov
