@@ -53,8 +53,8 @@ from omnimarket.events.provider_quota import (
 from omnimarket.handlers import openai_compatible_endpoint as endpoints
 from omnimarket.handlers.model_catalog import (
     SHIPPED_PRICE_SOURCE,
-    catalog_config,
     models_dev_price_with_read_time,
+    models_dev_provider_id,
     runtime_catalog_entry,
 )
 from omnimarket.handlers.routing.byok_model_discovery import (
@@ -1171,7 +1171,7 @@ class HandlerLlmDelegationCall:
             # transport failure), never a silent unauthenticated call.
             outbound_headers, secret_source = self._resolve_outbound_headers(request)
             provider = byok_backend_provider(request.provider)
-            if provider is not None and provider in catalog_config()["provider_ids"]:
+            if provider is not None and models_dev_provider_id(provider) is not None:
                 # What the explorer last read and the price list kept or shipped
                 # on this machine: never a live listing per call, and no read of
                 # models.dev from inside a session.

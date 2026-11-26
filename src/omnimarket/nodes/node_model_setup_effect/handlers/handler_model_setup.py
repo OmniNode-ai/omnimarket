@@ -33,7 +33,7 @@ from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, get_args
+from typing import Any
 from urllib.parse import urlparse
 
 import yaml
@@ -55,6 +55,9 @@ from omnimarket.handlers.node_overlay_reader import (
     load_node_overlay,
     resolve_setting,
 )
+from omnimarket.handlers.routing.byok_catalog_providers import (
+    load_byok_catalog_providers,
+)
 from omnimarket.handlers.routing.byok_model_discovery import get_models_json
 from omnimarket.handlers.routing.byok_provider_backends import (
     byok_declared_price_per_1m,
@@ -74,6 +77,7 @@ from omnimarket.inference.local_byok_credential_adapter import (
     resolve_local_byok_credential_models,
 )
 from omnimarket.models.delegation.llm_cost_routing import ModelLlmModelRegistryLoader
+from omnimarket.models.model_provider_name import DECLARED_PROVIDERS
 from omnimarket.nodes.node_model_setup_effect import credential_read_adapter
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
     ModelModelSetupRequest,
@@ -89,7 +93,7 @@ from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result im
 )
 from omnimarket.projection.sqlite_database import default_evidence_db_path
 
-PROVIDERS: tuple[ModelProvider, ...] = get_args(ModelProvider)
+PROVIDERS: tuple[ModelProvider, ...] = DECLARED_PROVIDERS
 
 #: The keyless server named by URL (OMN-21162), and the backend ``onex models add
 #: local --url`` declares for it: its own id, so any other overlay entry is left
@@ -459,7 +463,7 @@ class HandlerModelSetup:
                 "Read-only model observation accepts status only"
             )
         if request.operation == "status":
-            selected = (request.provider,) if request.provider else PROVIDERS
+            selected = (request.provider,) if request.provider else self._providers()
             statuses = [
                 self._status(p, url=request.url, models=request.models)
                 for p in selected
@@ -509,7 +513,7 @@ class HandlerModelSetup:
         providers = (
             (request.provider,)
             if request.provider is not None
-            else tuple(p for p in PROVIDERS if self.is_set_up(p))
+            else tuple(p for p in self._providers() if self.is_set_up(p))
         )
         return ModelModelSetupResult(
             operation="test", tests=tuple(self._test(p) for p in providers)
@@ -526,11 +530,12 @@ class HandlerModelSetup:
         listed; the model the rule ``only`` would skip is still listed, with its
         cost class.
         """
-        statuses = {p: self._status(p) for p in PROVIDERS}
+        providers = self._providers()
+        statuses = {p: self._status(p) for p in providers}
         ordered: list[tuple[ModelProvider, str]] = []
         for provider in (
             *_LOCAL_PROVIDERS,
-            *(p for p in PROVIDERS if p not in _LOCAL_PROVIDERS),
+            *(p for p in providers if p not in _LOCAL_PROVIDERS),
         ):
             status = statuses[provider]
             if not status.set_up:
@@ -962,6 +967,24 @@ class HandlerModelSetup:
         return self._state_dir() / "bifrost_overrides.yaml"
 
     # -- set up? -----------------------------------------------------------
+
+    def _providers(self) -> tuple[ModelProvider, ...]:
+        """The declared providers, then each models.dev-list provider with a key.
+
+        OMN-26688: a provider on the shipped list is shown and tested once its key
+        is stored, so a status read lists what the developer set up, never all of
+        the list.
+        """
+        registered = (
+            credential_read_adapter.registered_providers()
+            if self._read_only
+            else registered_local_byok_providers()
+        )
+        listed = load_byok_catalog_providers()
+        return (
+            *PROVIDERS,
+            *sorted(p for p in registered if p in listed and p not in PROVIDERS),
+        )
 
     def is_set_up(self, provider: ModelProvider) -> bool:
         if provider == LOCAL_URL_PROVIDER:

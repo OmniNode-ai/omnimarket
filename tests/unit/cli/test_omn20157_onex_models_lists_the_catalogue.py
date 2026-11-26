@@ -47,6 +47,7 @@ from omnimarket.inference.local_byok_credential_adapter import (
     registered_local_byok_providers,
     resolve_local_byok_credential_model,
 )
+from omnimarket.models.model_provider_name import all_providers
 from omnimarket.nodes.node_model_setup_effect.handlers import handler_model_setup
 from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup import (
     PROVIDERS,
@@ -145,7 +146,8 @@ def _add(*args: str, stdin: str = f"{_KEY}\n") -> Any:
 class TestTheProviderListFollowsTheCatalogue:
     def test_every_catalogue_provider_a_customer_can_route_is_offered(self) -> None:
         routable = {p for p in customer_provider_catalogue() if byok_routable_plans(p)}
-        missing = sorted(routable - set(PROVIDERS))
+        # OMN-26688: the shipped models.dev list's providers are offered by id.
+        missing = sorted(routable - set(all_providers()))
         assert missing == [], f"onex models does not offer {missing}"
 
     def test_glm_is_in_the_catalogue_and_in_onex_models(self) -> None:
@@ -212,7 +214,11 @@ class TestModelsAddGlm:
         assert _add().exit_code == 0
 
         result = CliRunner().invoke(models_group, ["list"])
-        glm = [line for line in result.output.splitlines() if line.startswith("GLM")]
+        glm = [
+            line
+            for line in result.output.splitlines()
+            if line.startswith(model_provider_labels.MODEL_LABELS["glm"])
+        ]
         assert len(glm) == 1
         assert "set up, last test passed" in glm[0]
         assert "glm-5.3-flash" in glm[0]

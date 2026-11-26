@@ -28,12 +28,15 @@ from collections import deque
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 from pydantic import SecretStr, ValidationError
 
 from omnimarket.handlers import openai_compatible_endpoint as endpoints
 from omnimarket.handlers.model_provider_labels import MODEL_LABELS
+from omnimarket.handlers.routing.byok_catalog_providers import (
+    load_byok_catalog_providers,
+)
 from omnimarket.handlers.routing.byok_model_discovery import (
     describe_discovery_refusal,
     discover_byok_model_sync,
@@ -50,6 +53,7 @@ from omnimarket.handlers.routing.byok_provider_backends import (
 )
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
+    registered_local_byok_providers,
     resolve_local_byok_credential_plan,
     resolve_local_byok_credential_ref,
 )
@@ -123,6 +127,12 @@ KEYED_PROVIDERS: tuple[ModelProvider, ...] = (
     "glm",
     "openai_compatible",
 )
+
+
+def _keyed(provider: str) -> bool:
+    """A provider whose key ``remove_key`` deletes: declared, or on the models.dev
+    list under its own id (OMN-26688)."""
+    return provider in KEYED_PROVIDERS or provider in load_byok_catalog_providers()
 
 
 # ---------------------------------------------------------------------------
@@ -592,7 +602,7 @@ def store_key(
     except LocalSecretStoreRefusedError as refusal:
         raise ModelKeyRefusedError(str(refusal)) from None
     echo(f"Stored {secret_ref} in {store.db_path} (owner-only).")
-    if provider in PROVIDERS:
+    if provider in PROVIDERS or provider in load_byok_catalog_providers():
         # OMN-21259: a new key starts untested; the old key's failed test
         # must not keep it out of routing.
         model_handler().handle(
@@ -621,9 +631,11 @@ def _keyed_provider_of(secret_ref: str) -> ModelProvider | None:
     """
     declared = _offered_provider(secret_ref)
     if declared is not None:
-        return next((p for p in KEYED_PROVIDERS if p == declared), None)
+        return str(declared) if _keyed(declared) else None
     db_path = LocalByokCredentialStore().db_path
-    for provider in KEYED_PROVIDERS:
+    listed = load_byok_catalog_providers()
+    stored = registered_local_byok_providers(db_path=db_path)
+    for provider in (*KEYED_PROVIDERS, *(p for p in stored if p in listed)):
         if secret_ref == resolve_local_byok_credential_ref(provider, db_path=db_path):
             return provider
     return None
@@ -729,7 +741,7 @@ def add_key(
             listed = handler.handle(
                 ModelModelSetupRequest(
                     operation="add_models",
-                    provider=cast(ModelProvider, provider),
+                    provider=provider,
                     models=tuple(models[1:]),
                 )
             )
@@ -784,7 +796,7 @@ def remove_key(provider: str, echo: Echo = _quiet) -> None:
     before, and the guard does not cover them.
     """
     handler = model_handler()
-    if provider not in KEYED_PROVIDERS:
+    if not _keyed(provider):
         raise ModelKeyRefusedError(
             f"{MODEL_LABELS.get(provider, provider)} has no key to remove."
         )

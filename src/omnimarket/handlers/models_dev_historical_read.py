@@ -56,7 +56,7 @@ def models_dev_declares_free(
     catalogue's ``provider_ids``. A model models.dev does not list, or whose
     entry states no input or output price, is not free.
     """
-    md_provider = model_catalog.catalog_config()["provider_ids"].get(provider)
+    md_provider = model_catalog.models_dev_provider_id(provider)
     if not md_provider:
         return False
     metadata = index.models.get((str(md_provider), model_id))

@@ -4,8 +4,6 @@
 
 from __future__ import annotations
 
-from typing import cast
-
 import click
 
 from omnimarket.handlers.handler_model_keys import model_handler
@@ -15,7 +13,6 @@ from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup impor
 )
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
     ModelModelSetupRequest,
-    ModelProvider,
 )
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result import (
     ModelModelStatus,
@@ -93,7 +90,7 @@ def first_model(
         result = handler.handle(
             ModelModelSetupRequest(
                 operation="set_first",
-                provider=cast(ModelProvider, name),
+                provider=name,
                 models=(model,) if model else (),
                 url=url,
             )
@@ -102,7 +99,7 @@ def first_model(
         raise click.ClickException(f"{refusal}. Nothing was changed.") from None
     chosen = model or result.models[0]
     rows = handler.handle(
-        ModelModelSetupRequest(operation="status", provider=cast(ModelProvider, name))
+        ModelModelSetupRequest(operation="status", provider=name)
     ).providers
     server = next(
         (row.first_url for row in rows if row.provider == name and row.first_url),

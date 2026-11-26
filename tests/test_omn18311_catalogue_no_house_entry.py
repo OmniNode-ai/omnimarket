@@ -21,6 +21,9 @@ from typing import Any
 
 import pytest
 
+from omnimarket.handlers.routing.byok_catalog_providers import (
+    load_byok_catalog_providers,
+)
 from omnimarket.handlers.routing.byok_provider_backends import (
     customer_provider_catalogue,
     house_keyed_provider_slugs,
@@ -117,6 +120,8 @@ class TestThePredicateIsNotTheNaiveIntersection:
         # OMN-21263: openai_compatible is the developer's own endpoint.
         # OMN-23413: reflection is customer-only; the platform holds no key.
         customer_only = {"openai", "anthropic", "openai_compatible", "reflection"}
+        # OMN-26688: every provider on the shipped models.dev list is customer-only.
+        customer_only |= set(load_byok_catalog_providers())
         assert set(customer_provider_catalogue()) - customer_only <= house
         assert not customer_only & house
 

@@ -29,6 +29,9 @@ import yaml
 from pydantic import SecretStr
 
 from omnimarket.config.service_endpoints import service_endpoint_url
+from omnimarket.handlers.routing.byok_catalog_providers import (
+    load_byok_catalog_providers,
+)
 from omnimarket.handlers.routing.byok_model_listing import (
     ModelByokListedModel,
     ModelByokModelListing,
@@ -75,6 +78,15 @@ def catalog_config() -> Mapping[str, Any]:
     return document
 
 
+def models_dev_provider_id(provider: str) -> str | None:
+    """models.dev's id for an ONEX provider: the configured ``provider_ids``, else the
+    provider's own id when it is on the shipped models.dev list (OMN-26688)."""
+    mapped = catalog_config()["provider_ids"].get(provider)
+    if mapped:
+        return str(mapped)
+    return provider if provider in load_byok_catalog_providers() else None
+
+
 def _fetch(url: str, timeout: float) -> bytes:
     """models.dev through the delegation effect's contract transport."""
     from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
@@ -89,7 +101,10 @@ def _fetch(url: str, timeout: float) -> bytes:
 
 
 def _index(document: Any) -> dict[tuple[str, str], Mapping[str, Any]]:
-    wanted = set(catalog_config()["provider_ids"].values())
+    wanted = {
+        *catalog_config()["provider_ids"].values(),
+        *load_byok_catalog_providers(),
+    }
     found: dict[tuple[str, str], Mapping[str, Any]] = {}
     if not isinstance(document, dict):
         return found
@@ -392,7 +407,7 @@ def models_dev_price_with_read_time(
     no models.dev id, models.dev does not list the model, or the entry states
     no input or output price.
     """
-    md_provider = catalog_config()["provider_ids"].get(provider)
+    md_provider = models_dev_provider_id(provider)
     if not md_provider:
         return None
     index = pricing_models_dev_index()
@@ -470,7 +485,7 @@ def catalog_entry(
     ``capabilities`` are what the provider or the user's own server stated;
     each one it states wins, and models.dev fills only the ones it left out.
     """
-    md_provider = catalog_config()["provider_ids"].get(provider)
+    md_provider = models_dev_provider_id(provider)
     metadata = index.models.get((md_provider, model_id)) if md_provider else None
     limit = metadata.get("limit") if metadata else None
     limit = limit if isinstance(limit, dict) else {}
@@ -651,7 +666,7 @@ def stored_entries(
         if (
             deployment == "cloud"
             and not on_servers
-            and provider in catalog_config()["provider_ids"]
+            and models_dev_provider_id(provider) is not None
         ):
             listing = recalled_provider_listing(provider)
             if listing and listing.provider == provider and listing.outcome == "listed":

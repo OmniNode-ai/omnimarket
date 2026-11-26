@@ -194,6 +194,24 @@ def read_catalogue_rows(path: Path = CATALOGUE_PATH) -> list[dict[str, Any]]:
         if not isinstance(row, Mapping):
             raise HouseCatalogueError(f"catalogue at {path} has a non-mapping row")
         out.append(dict(row))
+    if path == CATALOGUE_PATH:
+        # OMN-26688: the customer is offered the shipped models.dev list too, so
+        # the gate judges its rows, as the routing catalogue builds them.
+        from omnimarket.handlers.routing.byok_catalog_providers import (
+            load_byok_catalog_providers,
+        )
+
+        out.extend(
+            {
+                "provider": listed.id,
+                "plan": "api",
+                "mirrors_house_rung": False,
+                "backend_id": listed.backend_id,
+                "endpoint_url": listed.endpoint_url,
+                "models_url": listed.models_url,
+            }
+            for listed in load_byok_catalog_providers().values()
+        )
     return out
 
 

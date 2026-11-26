@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import re
 import urllib.parse
-from typing import cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -80,11 +79,8 @@ class ModelSetupProvider(BaseModel):
     @property
     def registration_provider(self) -> ModelProvider:
         """Canonical credential/endpoint owner for this logical selection."""
-        return cast(
-            "ModelProvider",
-            setup_provider_traits().registration(
-                self.provider, keyed=bool(self.api_key_required)
-            ),
+        return setup_provider_traits().registration(
+            self.provider, keyed=bool(self.api_key_required)
         )
 
     @property

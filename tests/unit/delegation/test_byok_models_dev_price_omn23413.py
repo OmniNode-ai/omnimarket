@@ -363,11 +363,7 @@ def test_a_models_dev_price_without_a_combined_entry_records_the_read_time_of_th
         )
 
     monkeypatch.setattr(model_catalog, "pricing_models_dev_index", _counting)
-    monkeypatch.setattr(
-        call_handler,
-        "catalog_config",
-        lambda: {**model_catalog.catalog_config(), "provider_ids": {}},
-    )
+    monkeypatch.setattr(call_handler, "models_dev_provider_id", lambda _provider: None)
     result = _call(monkeypatch, provider="byok-reflection", model=BEAM)
     assert result.actual_cost_usd == Decimal("1.3")
     assert result.price_source == "models.dev"

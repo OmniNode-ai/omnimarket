@@ -100,6 +100,10 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from omnimarket.handlers.routing.byok_catalog_providers import (
+    load_byok_catalog_providers,
+)
+
 logger = logging.getLogger(__name__)
 
 #: Schema tag the catalog file must declare. A file that does not carry it is
@@ -689,6 +693,64 @@ def _read_catalog(path: Path) -> dict[str, ModelByokProviderBackend]:
     return _default_plan_rows(_read_plan_catalog(path))
 
 
+#: OMN-26688. The one plan a provider on the shipped models.dev list is offered under.
+CATALOG_LIST_PLAN = "api"
+
+
+def _catalog_list_rows(
+    declared: Mapping[tuple[str, str], ModelByokProviderBackend],
+) -> dict[tuple[str, str], ModelByokProviderBackend]:
+    """A row per provider on the shipped models.dev list, under its own id (OMN-26688).
+
+    Each is shaped like the generic OpenAI-compatible row, except that its URL is
+    the list's fixed one and never one typed in at registration. A provider this
+    file declares keeps its own row; an id on neither still resolves to nothing.
+    """
+    names = {provider for provider, _ in declared}
+    backend_ids = {row.backend_id for row in declared.values()}
+    rows: dict[tuple[str, str], ModelByokProviderBackend] = {}
+    for listed in load_byok_catalog_providers().values():
+        if listed.id in names:
+            continue
+        if listed.backend_id in backend_ids:
+            raise ByokCatalogError(
+                f"the models.dev list's {listed.id!r} would reuse backend_id "
+                f"{listed.backend_id!r}, which a declared row already has"
+            )
+        rows[(listed.id, CATALOG_LIST_PLAN)] = ModelByokProviderBackend.model_validate(
+            {
+                "provider": listed.id,
+                "plan": CATALOG_LIST_PLAN,
+                "mirrors_house_rung": False,
+                "backend_id": listed.backend_id,
+                "endpoint_url": listed.endpoint_url,
+                "models_url": listed.models_url,
+                "customer_chooses_model": True,
+                "model_preference": [{"pattern": ".+", "tags": ["developer_named"]}],
+                "max_retries": 2,
+                "timeout_ms": 300000,
+                "max_tokens": 8192,
+                "key_page": listed.doc,
+                "limit_model": {
+                    "billing": "pay_as_you_go",
+                    "counter_scope": "model",
+                    "windows": [
+                        {
+                            "window_hours": 24,
+                            "unit": "requests",
+                            "limit": None,
+                            "source": (
+                                f"{listed.name}'s own limits; the models.dev list "
+                                "states none."
+                            ),
+                        }
+                    ],
+                },
+            }
+        )
+    return rows
+
+
 @lru_cache(maxsize=1)
 def load_byok_plan_catalog() -> dict[tuple[str, str], ModelByokProviderBackend]:
     """Load and cache every declared ``(provider, plan)`` row (OMN-20157).
@@ -696,7 +758,9 @@ def load_byok_plan_catalog() -> dict[tuple[str, str], ModelByokProviderBackend]:
     Same caching contract as :func:`load_byok_provider_catalog`; call
     ``load_byok_plan_catalog.cache_clear()`` in tests that rewrite the file.
     """
-    return _read_plan_catalog(CATALOG_PATH)
+    declared = _read_plan_catalog(CATALOG_PATH)
+    # OMN-26688: then each provider on the shipped models.dev list.
+    return {**_catalog_list_rows(declared), **declared}
 
 
 @lru_cache(maxsize=1)
@@ -717,7 +781,11 @@ def load_byok_provider_catalog() -> dict[str, ModelByokProviderBackend]:
             provider and plan twice, or declares a multi-plan provider without
             exactly one default plan.
     """
-    return _read_catalog(CATALOG_PATH)
+    declared = _read_plan_catalog(CATALOG_PATH)
+    return {
+        **_default_plan_rows(_catalog_list_rows(declared)),
+        **_default_plan_rows(declared),
+    }
 
 
 def _read_not_offered(path: Path) -> dict[str, ModelByokNotOfferedProvider]:
@@ -728,7 +796,8 @@ def _read_not_offered(path: Path) -> dict[str, ModelByokNotOfferedProvider]:
             f"BYOK provider catalog at {path} has a 'not_offered' key that is "
             "not a list."
         )
-    offered = _read_catalog(path)
+    # OMN-26688: a provider on the shipped models.dev list is offered too.
+    offered = {*_read_catalog(path), *load_byok_catalog_providers()}
     declined: dict[str, ModelByokNotOfferedProvider] = {}
     for entry in entries:
         try:
@@ -895,6 +964,11 @@ def key_provider_hint(value: str, for_provider: str | None = None) -> str | None
     catalog = load_byok_provider_catalog()
     selected = catalog.get(for_provider) if for_provider is not None else None
     if selected is not None and selected.endpoint_from_registration:
+        return None
+    # OMN-26688: models.dev states no key shape for a listed provider, and many
+    # (DeepSeek among them) issue keys starting sk-, as OpenAI does; a key for
+    # one is never refused for looking like another provider's.
+    if selected is not None and selected.provider in load_byok_catalog_providers():
         return None
     matches = [
         (len(prefix), row.provider)

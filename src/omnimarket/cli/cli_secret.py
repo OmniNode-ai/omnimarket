@@ -102,7 +102,6 @@ from omnimarket.nodes.node_model_setup_effect.handlers.handler_model_setup impor
 )
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_request import (
     ModelModelSetupRequest,
-    ModelProvider,
 )
 from omnimarket.nodes.node_model_setup_effect.models.model_model_setup_result import (
     ModelModelTestResult,
@@ -942,6 +941,10 @@ def add_model(
     ``openai_compatible`` is any endpoint that speaks the OpenAI API and needs a key:
     ``--url`` names its base URL, and each ``--model`` is checked against /v1/models.
 
+    Any provider on the models.dev list that speaks the OpenAI API is added by its
+    own id, such as ``deepseek``, with its own key; the key is sent only to the base
+    URL onex ships for it (OMN-26688).
+
     ``local`` is a Local Model: any model server you run, with no key unless
     ``--key`` says it needs one. ``--url`` names a server that speaks the
     OpenAI-compatible API and each ``--model`` a model it runs. It must answer before
@@ -1069,9 +1072,7 @@ def default_model(provider: str) -> None:
     if name not in OVERLAY_DEFAULT_PROVIDERS:
         click.echo(_listed_default_model(name))
         return
-    request = ModelModelSetupRequest(
-        operation="default_model", provider=cast(ModelProvider, name)
-    )
+    request = ModelModelSetupRequest(operation="default_model", provider=name)
     try:
         result = _model_handler().handle(request)
     except ModelSetupRefusedError as refusal:
@@ -1129,7 +1130,7 @@ def remove_model(
             handler,
             ModelModelSetupRequest(
                 operation="remove_model",
-                provider=cast(ModelProvider, name),
+                provider=name,
                 models=model_options,
                 url=url,
             ),
