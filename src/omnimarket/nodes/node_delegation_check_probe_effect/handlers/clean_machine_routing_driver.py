@@ -39,9 +39,13 @@ import types
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, cast
-from urllib.parse import quote, urlsplit
+from urllib.parse import urlsplit
 
 _SAFE_TARGET = re.compile(r"/[A-Za-z0-9._~!$&'()*+,;=:@%/?-]*")
+_TARGET_ALPHABET = {
+    c: c
+    for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._~!$&'()*+,;=:@%/?-"
+}
 
 PRODUCT_DISTS = ("omnibase-core", "omnibase-infra", "omnimarket")
 PRODUCT_MODULES = ("omnimarket", "omnibase_infra", "omnibase_core")
@@ -192,7 +196,7 @@ class EgressRecorder:
                         address, parts.port or 80, timeout=900
                     )
                     headers["Host"] = parts.netloc
-                    safe_path = "/" + quote(path[1:], safe="/?&=%:@+,;~!$'()*-._")
+                    safe_path = "".join(_TARGET_ALPHABET[c] for c in path)
                     conn.request(self.command, safe_path, body=body, headers=headers)
                     response = conn.getresponse()
                     payload = response.read()
