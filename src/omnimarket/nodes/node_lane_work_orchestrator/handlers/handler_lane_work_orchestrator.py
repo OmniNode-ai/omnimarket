@@ -23,6 +23,7 @@ from omnibase_core.enums.enum_lane_work_event import EnumLaneWorkEvent
 from omnibase_core.enums.enum_lane_work_state import EnumLaneWorkState
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from omnibase_core.models.lane_work import (
+    ModelLaneHelpTier,
     ModelLaneWorkAction,
     ModelLaneWorkEvent,
     ModelLaneWorkReceipt,
@@ -36,6 +37,10 @@ from pydantic import BaseModel
 from omnimarket.models.model_repo_write_io import (
     EnumRepoWriteOperation,
     ModelRepoWriteRequest,
+)
+from omnimarket.models.overlay_documents.model_lane_work_orchestrator_overlay import (
+    ModelLaneWorkOrchestratorOverlay,
+    load_orchestrator_overlay,
 )
 from omnimarket.models.pr_handoff import (
     EnumPrHandoffLabProofSource,
@@ -62,6 +67,7 @@ from omnimarket.nodes.node_lane_work_event_classify_compute.models.model_lane_wo
 from omnimarket.nodes.node_lane_work_orchestrator.agent_actions import worker_kind
 from omnimarket.nodes.node_lane_work_orchestrator.event_topics import (
     ROLE_HANDOFF,
+    ROLE_HELP_REQUESTED,
     ROLE_LAB_PROOF,
     ROLE_LEDGER_APPEND,
     ROLE_LEDGER_QUERY,
@@ -77,12 +83,11 @@ from omnimarket.nodes.node_lane_work_orchestrator.journal import (
 from omnimarket.nodes.node_lane_work_orchestrator.models.model_lane_work_fold_result import (
     ModelLaneWorkFoldResult,
 )
+from omnimarket.nodes.node_lane_work_orchestrator.models.model_lane_work_help_message import (
+    ModelLaneWorkHelpMessage,
+)
 from omnimarket.nodes.node_lane_work_orchestrator.models.model_lane_work_ingress import (
     ModelLaneWorkIngress,
-)
-from omnimarket.nodes.node_lane_work_orchestrator.models.model_lane_work_orchestrator_overlay import (
-    ModelLaneWorkOrchestratorOverlay,
-    load_orchestrator_overlay,
 )
 from omnimarket.nodes.node_lane_work_orchestrator.models.model_lane_work_output import (
     ModelLaneWorkOutput,
@@ -120,6 +125,7 @@ _PAYLOAD_MODELS: dict[str, type[BaseModel]] = {
     ROLE_LAB_PROOF: ModelLabWorkUnitRequest,
     ROLE_REPO_WRITE: ModelRepoWriteRequest,
     ROLE_HANDOFF: ModelPrHandoffRequested,
+    ROLE_HELP_REQUESTED: ModelLaneWorkHelpMessage,
 }
 _CHANGE_KEY = tuple[str, str, int]
 
@@ -156,6 +162,7 @@ class HandlerLaneWorkOrchestrator:
             journal if journal is not None else InMemoryLaneWorkJournal()
         )
         self._overlay = overlay if overlay is not None else load_orchestrator_overlay()
+        self._reducer_config = self._overlay.reducer_config()
         self._reducer = reducer if reducer is not None else HandlerLaneWorkReducer()
         self._classifier = (
             classifier if classifier is not None else HandlerLaneWorkEventClassify()
@@ -259,6 +266,9 @@ class HandlerLaneWorkOrchestrator:
         if workflow_id is None:
             if event is None or event.kind is not EnumLaneWorkEvent.START:
                 return ModelLaneWorkFoldResult(outcome="dropped")
+            refusal = self._start_refusal(event)
+            if refusal is not None:
+                return self._refused_start(event, request.correlation_id, refusal)
             workflow_id = self._create(event, now)
         if event is None:
             event_or_result = self._classify(request, workflow_id)
@@ -284,6 +294,35 @@ class HandlerLaneWorkOrchestrator:
             correlation_id=request.correlation_id,
             handler_id="node_lane_work_orchestrator.fold",
             events=events,
+        )
+
+    def _start_refusal(self, event: ModelLaneWorkEvent) -> str | None:
+        """A start names a worker tier the chain holds; there is no default tier, so a missing
+        or unknown one refuses the start and no workflow begins (plan 3.5, spike 2 finding 4)."""
+        chain = tuple(tier.name for tier in self._overlay.help_tiers)
+        if event.worker_tier is not None and event.worker_tier in chain:
+            return None
+        return (
+            f"worker_tier_not_in_chain: worker_tier {event.worker_tier!r} is not one of "
+            f"the chain's ids ({', '.join(chain)})"
+        )
+
+    def _refused_start(
+        self, event: ModelLaneWorkEvent, correlation_id: UUID, refusal: str
+    ) -> ModelLaneWorkFoldResult:
+        """The answer to a refused start: the caller's correlation id and the reason, no workflow."""
+        answer = ModelLaneWorkStepCompleted(
+            correlation_id=correlation_id, refusal=refusal
+        )
+        output = ModelLaneWorkOutput(
+            output_id=f"refused-{event.input_id}"[:160],
+            role=ROLE_STEP_COMPLETED,
+            payload=answer.model_dump(mode="json"),
+        )
+        return ModelLaneWorkFoldResult(
+            outcome="refused",
+            refusal=refusal,
+            published=self._publish_new((output,)),
         )
 
     def _workflow_of(self, request: ModelLaneWorkIngress) -> str | None:
@@ -312,7 +351,7 @@ class HandlerLaneWorkOrchestrator:
             change.owner, change.repo, change.pr_number, prior + 1
         )
         initial = self._reducer.initial_state(
-            config=self._overlay.reducer, workflow_id=workflow_id, change=change
+            config=self._reducer_config, workflow_id=workflow_id, change=change
         )
         seed = ModelLaneWorkTransitionRecord(
             receipt=ModelLaneWorkReceipt(
@@ -372,7 +411,7 @@ class HandlerLaneWorkOrchestrator:
         state = before.state
         if event.input_id in state.seen_input_ids:
             return self._duplicate(before, event.input_id, correlation_id)
-        result = self._reducer.reduce(state, event, now, self._overlay.reducer)
+        result = self._reducer.reduce(state, event, now, self._reducer_config)
         if result.outcome == "status":
             reply = self._status_reply(workflow_id, correlation_id)
             output = self._reply_output(reply, f"{workflow_id}-{state.seq}")
@@ -642,17 +681,28 @@ class HandlerLaneWorkOrchestrator:
             role = ROLE_HANDOFF
             model = self._handoff(record, intent, correlation, now)
         elif name == "help_request":
-            role = ROLE_LEDGER_APPEND
-            row = (
-                f"{now.strftime('%Y-%m-%dT%H:%M:%SZ')} | MSG | lane={self._overlay.requesting_lane}"
-                f" | to={intent.inputs.get('tier', 'unnamed')} | workflow={state.workflow_id}"
-                f" | action={intent.action_id} | origin={intent.inputs.get('help_origin', '')}"
-                f" | help request on {pr_ref}: {_line(intent.inputs.get('evidence', 'no evidence'))}"
-            )
-            model = ModelWorkLedgerAppendRequest(
-                request_id=correlation,
-                rows=row,
-                requested_by_lane=self._overlay.requesting_lane,
+            # The `ask_help` action: one message on the help topic. The orchestrator writes no
+            # ledger MSG row of its own for help; HandlerLaneWorkHelp does (plan 3.5, finding 3).
+            role = ROLE_HELP_REQUESTED
+            model = ModelLaneWorkHelpMessage(
+                workflow_id=state.workflow_id,
+                action_id=intent.action_id,
+                state=state.name,
+                help_origin=str(intent.inputs.get("help_origin", "")),
+                tier=ModelLaneHelpTier(
+                    name=str(intent.inputs["tier"]),
+                    backend_id=str(intent.inputs["backend_id"]),
+                    harness=str(intent.inputs["harness"]),
+                    model=str(intent.inputs["model"]),
+                    effort=str(intent.inputs["effort"]),
+                ),
+                question=_line(
+                    f"help request on {pr_ref}: "
+                    f"{intent.inputs.get('evidence', 'no evidence')}"
+                ),
+                evidence=_line(str(intent.inputs.get("evidence", "no evidence"))),
+                change_ref=pr_ref,
+                requesting_lane=self._overlay.requesting_lane,
                 requesting_host=self._overlay.requesting_host,
                 requested_at=now,
             )

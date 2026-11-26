@@ -67,6 +67,7 @@ topic_roles:
   lab_proof: onex.cmd.omnimarket.lab-work-unit-requested.v1
   repo_write: onex.cmd.omnimarket.github-repo-write-requested.v1
   handoff: onex.cmd.omnimarket.pr-handoff-requested.v1
+  help_requested: onex.cmd.omnimarket.lane-work-help-requested.v1
 event_bus:
   version:
     major: 1
@@ -84,6 +85,8 @@ event_bus:
     - onex.evt.omnimarket.pr-handoff-failed.v1
     - onex.evt.omnimarket.pr-state-observed.v1
     - onex.intent.platform.runtime-tick.v1
+    - onex.evt.omnimarket.delegation-harness-completed.v1
+    - onex.evt.omnimarket.delegate-skill-failed.v1
   publish_topics:
     - onex.cmd.omnimarket.lane-work-event.v1
     - onex.evt.omnimarket.lane-work-step-completed.v1
@@ -94,6 +97,7 @@ event_bus:
     - onex.cmd.omnimarket.lab-work-unit-requested.v1
     - onex.cmd.omnimarket.github-repo-write-requested.v1
     - onex.cmd.omnimarket.pr-handoff-requested.v1
+    - onex.cmd.omnimarket.lane-work-help-requested.v1
 published_events:
   - event_type: "LaneWorkStepCompleted"
     topic: onex.evt.omnimarket.lane-work-step-completed.v1
@@ -122,6 +126,9 @@ published_events:
   - event_type: "PrHandoffRequested"
     topic: onex.cmd.omnimarket.pr-handoff-requested.v1
     description: "The handoff request for the proven head, answered by the PR handoff orchestrator."
+  - event_type: "LaneWorkHelpMessage"
+    topic: onex.cmd.omnimarket.lane-work-help-requested.v1
+    description: "The ask_help node action: one message per entry into help_requested and per climb, carrying the action id, the tier entry and the help request. The help handler (task 7) subscribes to it; the fold writes no ledger MSG row for help."
 externally_produced_topics:
   - topic: onex.cmd.omnimarket.lane-work-event.v1
     producer: "onex run-node node_lane_work_orchestrator, from the orchestrator's session and from a worker lane"
@@ -155,6 +162,10 @@ broker_acl_grants:
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.pr-state-observed.v1, operation: DESCRIBE}
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: READ}
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-harness-completed.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-harness-completed.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegate-skill-failed.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegate-skill-failed.v1, operation: DESCRIBE}
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lane-work-event.v1, operation: WRITE}
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lane-work-event.v1, operation: DESCRIBE}
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lane-work-step-completed.v1, operation: WRITE}
@@ -173,6 +184,8 @@ broker_acl_grants:
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.github-repo-write-requested.v1, operation: DESCRIBE}
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.pr-handoff-requested.v1, operation: WRITE}
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.pr-handoff-requested.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lane-work-help-requested.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lane-work-help-requested.v1, operation: DESCRIBE}
 handler_routing:
   routing_strategy: "payload_type_match"
   handlers:
@@ -286,6 +299,26 @@ handler_routing:
         module: "omnibase_infra.runtime.models.model_runtime_tick"
       topic: onex.intent.platform.runtime-tick.v1
       description: "A deadline_passed for each armed deadline that is past."
+    - operation: "lane_work.intake.help_answer"
+      message_category: "event"
+      handler:
+        name: "HandlerLaneWorkIntake"
+        module: "omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_intake"
+      event_model:
+        name: "ModelHarnessBackendCallResult"
+        module: "omnimarket.models.model_harness_backend_call"
+      topic: onex.evt.omnimarket.delegation-harness-completed.v1
+      description: "A pinned help delegation's harness result, matched by the action id as the delegation's correlation id and re-published as a raw result for the classifier."
+    - operation: "lane_work.intake.help_failed"
+      message_category: "event"
+      handler:
+        name: "HandlerLaneWorkIntake"
+        module: "omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_intake"
+      event_model:
+        name: "ModelDelegateSkillFailed"
+        module: "omnimarket.models.delegation.wire.model_delegate_skill_response"
+      topic: onex.evt.omnimarket.delegate-skill-failed.v1
+      description: "A pinned help delegation that failed; re-published so the classifier names help_failed."
 metadata:
   description: "Lane work orchestrator: folds inputs one at a time and hands off through the PR handoff nodes."
   author: "OmniNode Team"

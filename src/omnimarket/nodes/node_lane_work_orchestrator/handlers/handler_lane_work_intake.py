@@ -65,6 +65,8 @@ class HandlerLaneWorkIntake:
             return self._handoff(data, name == "ModelPrHandoffHandedOff")
         if name == "ModelWorkLedgerQueryResult":
             return self._ledger_query(data)
+        if name in ("ModelHarnessBackendCallResult", "ModelDelegateSkillFailed"):
+            return self._help_answer(data, name == "ModelHarnessBackendCallResult")
         if name in ("ModelLaneWorkObservation", "ModelPrStateObservedEvent"):
             return self._observation(data)
         if name == "ModelRuntimeTick":
@@ -155,6 +157,41 @@ class HandlerLaneWorkIntake:
                 "handoff_answer",
                 payload,
                 f"handoff-{action_id}-{outcome}",
+            )
+        ]
+
+    def _help_answer(
+        self, data: dict[str, object], completed: bool
+    ) -> list[ModelLaneWorkIngress]:
+        """A pinned help delegation's result, matched by the action id as its correlation id.
+
+        A result whose correlation id answers no outstanding action (a run the orchestrator did
+        not start) is dropped here; the classifier compares the rest with the tier."""
+        key = data.get("request_id") if completed else data.get("correlation_id")
+        if key is None:
+            return []
+        found = self.orchestrator.workflow_for_correlation(UUID(str(key)))
+        if found is None:
+            return []
+        workflow_id, action_id = found
+        if completed:
+            payload: dict[str, object] = {**data, "action_id": action_id}
+        else:
+            payload = {
+                "action_id": action_id,
+                "request_id": str(key),
+                "status": "refused",
+                "ok": False,
+                "detail": str(
+                    data.get("error_message") or data.get("status") or "failed"
+                ),
+            }
+        return [
+            self._ingress(
+                workflow_id,
+                "delegation_harness_result",
+                payload,
+                f"help-{action_id}-{'completed' if completed else 'failed'}",
             )
         ]
 
