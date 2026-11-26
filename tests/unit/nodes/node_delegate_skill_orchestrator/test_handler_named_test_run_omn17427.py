@@ -209,13 +209,15 @@ def test_named_tests_run_separately_and_keep_failure_order() -> None:
 
 
 @pytest.mark.unit
-def test_no_tests_collected_is_failure() -> None:
+def test_no_tests_collected_is_not_run_not_failure() -> None:
+    """OMN-25856: exit 5 means no test ran, which is not a code failure."""
     result = HandlerNamedTestRun().handle(
         _inline_request(source="", test_ids=("test_add.py",))
     )
 
     assert result.run is not None
-    assert result.run.failed_test_ids == ("test_add.py",)
+    assert result.run.failed_test_ids == ()
+    assert result.run.not_run
     assert result.run.exit_code == 5
 
 
