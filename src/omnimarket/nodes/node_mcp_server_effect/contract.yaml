@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: mcp_server_effect
+contract_name: node_mcp_server_effect
+node_name: node_mcp_server_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  The one MCP server node (OMN-15920). HandlerMcpToolsList lists tools from the
+  registry: a node is a tool when its contract says mcp.expose true, its
+  registration is ACTIVE and the overlay allow list names the tool (default
+  deny). The code names no tool. A registry that cannot be read, and a
+  duplicate tool name, are named refusals. Calls and transport are later
+  slices.
+node_type: effect
+lifecycle: experimental
+input_model:
+  name: ModelMcpToolsListRequest
+  module: omnimarket.nodes.node_mcp_server_effect.models.model_mcp_tools_list
+output_model:
+  name: ModelMcpToolsListResult
+  module: omnimarket.nodes.node_mcp_server_effect.models.model_mcp_tools_list
+
+handler:
+  name: HandlerMcpToolsList
+  module: omnimarket.nodes.node_mcp_server_effect.handlers.handler_mcp_tools_list
+  class: HandlerMcpToolsList
+  input_model: omnimarket.nodes.node_mcp_server_effect.models.model_mcp_tools_list.ModelMcpToolsListRequest
+  output_model: omnimarket.nodes.node_mcp_server_effect.models.model_mcp_tools_list.ModelMcpToolsListResult
+
+dependencies:
+  - name: ProtocolMcpRegistryReader
+    dependency_type: protocol
+    description: Reads every registration row with its contract's mcp block; the node refuses to start without it
+    required: true
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 30000
+
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_mcp_server_effect.handlers.handler_mcp_tools_list:HandlerMcpToolsList
+  handlers: []
+
+# The tools/list slice declares no topic; command routes come from each
+# exposed node's own mcp block.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: The MCP transport calls tools/list through this handler; nothing on the bus starts it in this slice.
+  on_demand:
+    command: HandlerMcpToolsList.handle, built with the registry reader and the overlay
+    owner: OmniNode Platform Team
+metadata:
+  transport_type: local
