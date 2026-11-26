@@ -54,6 +54,17 @@ handler_routing:
       event_model:
         name: ModelPrMergedEvent
         module: omnimarket.events.github
+    # OMN-26725: a local_done_gate run's receipt rides its verdict on the terminal
+    # topic; the hosted verifier counts a skipped local_done_gate item verified
+    # only when a receipt for that item and contract revision reads verified.
+    - operation: store_local_done_gate_receipt
+      topic: onex.evt.omnimarket.dod-verify-completed.v1
+      handler:
+        name: HandlerLocalDoneGateReceiptStore
+        module: omnimarket.nodes.node_dod_verify.handlers.handler_local_done_gate_receipt_store
+      event_model:
+        name: ModelDodVerifyState
+        module: omnimarket.models.model_dod_verify_state
 
 descriptor:
   node_archetype: compute
@@ -233,6 +244,7 @@ event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.dod-verify-start.v1
     - onex.evt.github.pr-merged.v1
+    - onex.evt.omnimarket.dod-verify-completed.v1
   publish_topics:
     - onex.evt.omnimarket.dod-verify-completed.v1
 
