@@ -57,7 +57,7 @@ class HandlerLaneWorkIntake:
     def handle(self, request: BaseModel) -> list[ModelLaneWorkIngress]:
         name = type(request).__name__
         data = request.model_dump(mode="json")
-        if name == "ModelLabWorkUnitReceipt":
+        if name in ("ModelLabWorkUnitReceipt", "ModelLabWorkCommandFailure"):
             return self._lab(data)
         if name in ("ModelRepoWriteCompleted", "ModelRepoWriteFailed"):
             return self._repo_write(data, name == "ModelRepoWriteCompleted")
