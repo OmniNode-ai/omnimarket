@@ -25,6 +25,10 @@ Failure modes, each a test below:
   C10 Z.AI is shown as GLM, or ``zai`` is refused, or the old name ``glm`` stops
       working for a key already stored under it (operator 2026-11-26).
   C11 a docs link that is one model's page, not the provider's, is kept.
+  C12 verify pass 2026-11-26, 80 columns: ``onex models add --help`` broke
+      "anthropic" across two lines, so the usage named no such provider.
+  C13 ``onex models zai`` gave no hint, while ``onex models deepseek`` said
+      "Did you mean 'onex models add deepseek'?".
 
 Fakes only: the model list and the pinned delegation are stubs; no network.
 """
@@ -36,7 +40,6 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-import click
 import pytest
 import yaml
 from click.testing import CliRunner
@@ -462,11 +465,6 @@ def test_z_ai_is_named_as_its_own_docs_name_it() -> None:
     assert choice.convert("zai", None, None) == "glm"
     assert choice.convert("ZAI", None, None) == "glm"
     assert choice.convert("glm", None, None) == "glm"  # the old name still works
-    metavar = choice.get_metavar(
-        click.Argument(["provider"]), click.Context(click.Command("add"))
-    )
-    assert "|zai|" in metavar
-    assert "glm" not in metavar
 
 
 def test_a_docs_link_to_one_models_page_is_not_kept() -> None:
@@ -488,3 +486,47 @@ def test_a_docs_link_to_one_models_page_is_not_kept() -> None:
         document, declared_ids=frozenset(), declared_hosts=frozenset(), rulings=()
     )
     assert [(p.id, p.doc) for p in kept] == [("modelpage", None)]
+
+
+# --------------------------------------------------------------------------- C12-C13
+
+_SHOWN_NAMES = (
+    "gemini",
+    "openai",
+    "openrouter",
+    "reflection",
+    "anthropic",
+    "zai",
+    "local",
+    "openai_compatible",
+)
+
+
+def test_the_add_help_names_every_provider_whole_at_80_columns() -> None:
+    """C12."""
+    from omnimarket.handlers.model_provider_labels import SHOWN_DECLARED
+
+    assert SHOWN_DECLARED == _SHOWN_NAMES, "name the new provider in the add help"
+    result = CliRunner().invoke(models_group, ["add", "--help"], terminal_width=80)
+    assert result.exit_code == 0, result.output
+    lines = result.output.splitlines()
+    usage = lines[: next(i for i, line in enumerate(lines) if not line.strip())]
+    glued = "".join(line.strip() for line in usage)
+    spaced = " ".join(line.strip() for line in usage)
+    words = set(spaced.replace("|", " ").replace("{", " ").replace("}", " ").split())
+    for name in _SHOWN_NAMES:
+        if name in glued:
+            assert name in words, (name, usage)
+    import re
+
+    said = " ".join(result.output.split())
+    for name in _SHOWN_NAMES:
+        assert re.search(rf"\b{name}\b", said), (name, result.output)
+    assert not re.search(r"\bglm\b", said), result.output  # Z.AI is zai
+
+
+def test_a_bare_zai_is_pointed_at_models_add() -> None:
+    """C13."""
+    result = CliRunner().invoke(models_group, ["zai"])
+    assert result.exit_code == 2, result.output
+    assert "onex models add zai" in result.output, result.output

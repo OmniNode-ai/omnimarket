@@ -62,6 +62,10 @@ LABEL_WIDTH = max(len(MODEL_LABELS[p]) for p in PROVIDERS)
 #: differs. Z.AI's keys stay stored under ``glm``, so a stored key keeps routing.
 _ALIASES: dict[str, str] = {"zai": "glm"}
 _SHOWN: dict[str, str] = {provider: alias for alias, provider in _ALIASES.items()}
+#: Every name a user can type for a provider: the listed ids and the aliases.
+TYPED_PROVIDERS: frozenset[str] = frozenset((*LISTED_PROVIDERS, *_ALIASES))
+#: The declared providers as a user types them, in the order every surface uses.
+SHOWN_DECLARED: tuple[str, ...] = tuple(_SHOWN.get(p, p) for p in _DECLARED_ORDER)
 
 
 class ModelProviderChoice(click.Choice[str]):
@@ -80,15 +84,16 @@ class ModelProviderChoice(click.Choice[str]):
         return str(super().convert(value, param, ctx))
 
     def get_metavar(self, param: click.Parameter, ctx: click.Context) -> str:
-        """The declared providers; the models.dev list is too long for one line."""
-        return "{" + "|".join(_SHOWN.get(p, p) for p in _DECLARED_ORDER) + "}"
+        """PROVIDER: the names, one token too long for an 80-column usage line,
+        are in the command's help instead (verify pass 2026-11-26)."""
+        return "PROVIDER"
 
     def get_invalid_choice_message(
         self, value: object, ctx: click.Context | None
     ) -> str:
         return (
             f"{value!r} is not a provider onex offers. Use one of "
-            f"{', '.join(_SHOWN.get(p, p) for p in _DECLARED_ORDER)}, or a provider "
+            f"{', '.join(SHOWN_DECLARED)}, or a provider "
             "id from the models.dev "
             "list, such as deepseek."
         )
@@ -98,5 +103,7 @@ __all__: list[str] = [
     "LABEL_WIDTH",
     "LISTED_PROVIDERS",
     "MODEL_LABELS",
+    "SHOWN_DECLARED",
+    "TYPED_PROVIDERS",
     "ModelProviderChoice",
 ]
