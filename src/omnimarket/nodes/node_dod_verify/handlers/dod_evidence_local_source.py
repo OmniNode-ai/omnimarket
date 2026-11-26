@@ -57,6 +57,9 @@ from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import 
     EnumRepoContractReadStatus,
     ModelRepoContractRead,
 )
+from omnimarket.nodes.node_dod_verify.services.contract_parse_cache import (
+    ContractParseCache,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -153,9 +156,16 @@ class DodEvidenceLocalSource:
     once per path and modification time per process.
     """
 
-    def __init__(self, now: datetime | None = None) -> None:
+    def __init__(
+        self,
+        now: datetime | None = None,
+        contract_cache: ContractParseCache | None = None,
+    ) -> None:
         self._now = now
         self.local_reads = 0
+        self.contract_cache = (
+            contract_cache if contract_cache is not None else ContractParseCache()
+        )
 
     # ------------------------------------------------------------ watcher
 
@@ -700,7 +710,7 @@ class DodEvidenceLocalSource:
         if rc != 0:
             return None
         self.local_reads += 1
-        return parse_repo_contract(text)
+        return parse_repo_contract(text, cache=self.contract_cache, path=rel)
 
     def cwd_repo(self, cwd: Path | None = None) -> str | None:
         """``owner/name`` of the working directory's ``origin`` remote."""
@@ -868,8 +878,26 @@ class DodEvidenceLocalSource:
         return out, f"pr-watcher read_at={ci.get('read_at')}"
 
 
-def parse_repo_contract(text: str) -> ModelRepoContractRead:
-    """A contract file's text as a read: FOUND for a mapping, else ERROR."""
+def parse_repo_contract(
+    text: str, *, cache: ContractParseCache | None = None, path: str = ""
+) -> ModelRepoContractRead:
+    """A contract file's text as a read: FOUND for a mapping, else ERROR.
+
+    With a ``cache`` an unchanged file (same ``path``, same text) is not parsed
+    again (OMN-26152).
+    """
+    if cache is None:
+        return _parse_repo_contract(text)
+    key = cache.key(path, text)
+    hit = cache.get(key)
+    if hit is not None:
+        return hit
+    read = _parse_repo_contract(text)
+    cache.put(key, read)
+    return read
+
+
+def _parse_repo_contract(text: str) -> ModelRepoContractRead:
     try:
         parsed = yaml.safe_load(text)
     except yaml.YAMLError as exc:
