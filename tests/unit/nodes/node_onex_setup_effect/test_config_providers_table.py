@@ -8,9 +8,12 @@ should has all the columns", then "when we select model and if that is not
 configured then api key enter pop window open".
 
 Failure modes:
-  T1  /config still shows a model list, or lists providers in more than one
-      list, or a row leaves out a column (status, models, prices, newest, host).
-  T2  a row states a count, price or newest model that models.dev does not give.
+  T1  /config shows a model list or more than Provider and Status, or mixes
+      yours with the rest instead of two tabs, Configured and Available
+      (operator 2026-11-26: "just keep Provider, Status and inside config two
+      tabs Configured Available").
+  T2  a new user opens on an empty Configured tab, the keys cannot switch
+      tabs, or a search with no match in the open tab hides one in the other.
   T3  Enter on a provider with no key does not ask for one in a window, or Esc
       on the window runs something anyway.
   T4  the window does not say whether the key works before it is saved.
@@ -27,10 +30,13 @@ Failure modes:
   T10 at 80x24 the table or the footer is cut off.
   T11 the keyboard cannot reach the search from the table, or typing a name
       on the table does not search.
+  T13 /config opened before the setup is read stays on Available once it
+      lands, though providers are configured (seen on a real run, 2026-11-26).
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import pytest
@@ -158,6 +164,9 @@ def _text(widget) -> str:
 async def _go_to(pilot, screen, provider: str) -> None:
     table = _table(screen)
     table.focus()
+    if provider not in _rows(screen):  # it is in the other tab
+        await pilot.press("right" if screen.view == "configured" else "left")
+        await _settle(pilot, 3)
     table.move_cursor(row=table.get_row_index(provider))
     await _settle(pilot, 3)
 
@@ -168,49 +177,49 @@ def _adds(runner: _Runner) -> list[tuple[str, ...]]:
     ]
 
 
-async def test_config_is_one_table_with_every_column() -> None:
-    """T1: yours lead; no model list and no second list on /config."""
+async def test_config_is_two_tabs_of_provider_and_status() -> None:
+    """T1: yours under Configured, the rest under Available."""
     app, _ = _make(_runner())
     async with app.run_test(size=(160, 40)) as pilot:
         screen = await _config(pilot, app)
         table = _table(screen)
         labels = [str(column.label) for column in table.columns.values()]
-        assert labels == [
-            "Provider",
-            "Status",
-            "Models",
-            "In $/1M",
-            "Newest",
-            "Key goes to",
-        ]
-        rows = _rows(screen)
-        assert rows[:2] == ["openrouter", "ollama"]
-        assert len(rows) == len(set(rows))
+        assert labels == ["Provider", "Status"]
+        assert screen.view == "configured"
+        assert _rows(screen) == ["openrouter", "ollama"]
+        assert "ready" in _cells(screen, "openrouter")[1]
         picker = {e.provider for e in setup_provider_traits().picker_providers()}
-        assert picker <= set(rows)
+        tabs = [str(t.label) for t in screen.query("#views Tab")]
+        assert tabs == ["Configured 2", f"Available {len(picker - {'openrouter'})}"]
+        table.focus()
+        await pilot.press("right")
+        await _settle(pilot, 3)
+        assert screen.view == "available"
+        rows = _rows(screen)
+        assert set(rows) == picker - {"openrouter", "ollama"}
+        assert "not set up" in _cells(screen, "deepseek")[1]
         assert not screen.query("#found")
         assert not screen.query("RadioSet")
-        assert not screen.query("#mine")
-        assert "ready" in _cells(screen, "openrouter")[1]
-        assert "not set up" in _cells(screen, "deepseek")[1]
+        await pilot.press("left")
+        await _settle(pilot, 3)
+        assert screen.view == "configured"
 
 
-async def test_a_row_says_only_what_models_dev_gives() -> None:
-    """T2: deepseek is in the index; abacus is not."""
+async def test_a_new_user_opens_on_available_and_search_finds_either_tab() -> None:
+    """T2."""
+    app, _ = _make(_Runner([]))
+    async with app.run_test(size=(160, 40)) as pilot:
+        screen = await _config(pilot, app)
+        assert screen.view == "available"
+        assert "deepseek" in _rows(screen)
     app, _ = _make(_runner())
     async with app.run_test(size=(160, 40)) as pilot:
-        await _config(pilot, app)
-        await _settle(pilot)
-        screen = app.screen
-        _, _, models, price, newest, host = _cells(screen, "deepseek")
-        assert models == "3"
-        assert price == "$0.14\u2013$0.55"
-        assert newest == "DeepSeek Reasoner"
-        assert host
-        assert host == cli_tui._key_host("deepseek")
-        _, _, models, price, newest, _ = _cells(screen, "abacus")
-        blank = "\u2013"  # the design's unknown-cell mark
-        assert (models, price, newest) == (blank, blank, blank)
+        screen = await _config(pilot, app)
+        assert screen.view == "configured"
+        screen.query_one("#provider-search", Input).value = "deeps"
+        await _settle(pilot, 3)
+        assert screen.view == "available"
+        assert _rows(screen) == ["deepseek"]
 
 
 async def test_enter_on_a_provider_with_no_key_asks_in_a_window() -> None:
@@ -467,3 +476,30 @@ async def test_typing_on_the_table_searches_and_up_reaches_the_search() -> None:
         await pilot.press("up")
         await _settle(pilot, 3)
         assert app.focused is search
+
+
+class _SlowSetupRead(_Runner):
+    """The setup read answers only when the test lets it, as a real CLI that
+    takes seconds to start does."""
+
+    def __init__(self) -> None:
+        super().__init__([], by_command=_selected_rows(connection=False))
+        self.release = asyncio.Event()
+
+    async def capture(self, argv, stdin=None):
+        if argv[:2] == ("models", "list"):
+            await self.release.wait()
+        return await super().capture(argv, stdin)
+
+
+async def test_config_opened_before_the_setup_read_lands_on_configured() -> None:
+    """T13."""
+    runner = _SlowSetupRead()
+    app, _ = _make(runner)
+    async with app.run_test(size=(160, 40)) as pilot:
+        screen = await _config(pilot, app)
+        assert screen.view == "available"  # nothing read yet
+        runner.release.set()
+        await _settle(pilot, 20)
+        assert screen.view == "configured"
+        assert _rows(screen) == ["openrouter", "ollama"]

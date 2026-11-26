@@ -472,16 +472,9 @@ words:
   providers_empty: "No provider is set up yet. Choose one and press Enter to add its key."
   col_provider: Provider
   col_status: Status
-  col_models: Models
-  col_price: "In $/1M"
-  col_newest: Newest
-  col_host: Key goes to
   status_not_set_up: not set up
-  price_local: local
-  host_local: your server
-  models_chosen: "{chosen} of {count}"
-  cell_none: "–"
-  price_range: "{low}–{high}"
+  view_configured: "Configured {count}"
+  view_available: "Available {count}"
   key_add_title: "Add {provider}"
   key_change_title: "Change the {provider} key"
   url_add_title: "Add {provider}"
@@ -571,7 +564,7 @@ words:
   auto_button: "Use Auto (A)"
   dashboard_about: "A local web page with your tasks, cost and savings over time, in your browser."
   order_none: "No models yet. Run /config."
-  tab_hint_config: "enter add or open models · k key · t test · x remove · esc close"
+  tab_hint_config: "enter open · ←→ switch tab · k key · t test · x remove · esc close"
   tab_hint_config_mine: "↑↓ move · enter actions · esc close"
   tab_hint_model: "↑↓ move · enter first · + add · d info · esc close"
   tab_hint_add_models: "space tick · ctrl+s save · esc back to providers"

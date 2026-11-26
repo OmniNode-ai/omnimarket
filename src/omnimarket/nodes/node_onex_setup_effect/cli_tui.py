@@ -1387,8 +1387,8 @@ class KeyScreen(ModalScreen[str | None]):
 
 
 class _ProviderRows(DataTable[object]):
-    """The providers table. Up on the first row moves to the search above, so
-    the keyboard is never held in the list."""
+    """The providers table. Up on the first row moves to the search above;
+    Left and Right switch between Configured and Available (V3)."""
 
     def action_cursor_up(self) -> None:
         if self.cursor_row <= 0:
@@ -1396,40 +1396,22 @@ class _ProviderRows(DataTable[object]):
             return
         super().action_cursor_up()
 
+    def action_cursor_left(self) -> None:
+        if isinstance(self.screen, ProvidersScreen):
+            self.screen.show_view("configured")
 
-def _provider_facts(
-    index: ModelsDevIndex | None,
-) -> dict[str, tuple[int, tuple[float, float] | None, str]]:
-    """Per models.dev provider id: its model count, input price range and newest
-    model's name, read once from the index."""
-    if index is None:
-        return {}
-    rows: dict[str, list[tuple[str, Mapping[str, Any]]]] = {}
-    for (owner, model_id), meta in index.models.items():
-        rows.setdefault(str(owner), []).append((str(model_id), meta))
-    facts: dict[str, tuple[int, tuple[float, float] | None, str]] = {}
-    for owner, models in rows.items():
-        prices = sorted(
-            float(cost["input"])
-            for _, meta in models
-            if isinstance(cost := meta.get("cost"), Mapping)
-            and isinstance(cost.get("input"), int | float)
-        )
-        newest = max(models, key=lambda r: str(r[1].get("release_date") or ""))
-        facts[owner] = (
-            len(models),
-            (prices[0], prices[-1]) if prices else None,
-            str(newest[1].get("name") or newest[0]),
-        )
-    return facts
+    def action_cursor_right(self) -> None:
+        if isinstance(self.screen, ProvidersScreen):
+            self.screen.show_view("available")
 
 
 class ProvidersScreen(_TabbedScreen[None]):
-    """/config: every provider in one table, one row each with all its columns
-    (operator 2026-11-26: "in config just one row and it should has all the
-    columns"). Enter on a provider not set up asks for its key in a window;
-    on one of yours it opens its models on the Model tab. K changes a key,
-    T tests, X removes. Models are chosen on the Model tab, not here."""
+    """/config: the providers, a row each with its status, under two tabs:
+    Configured (yours) and Available (the rest) (operator 2026-11-26: "just
+    keep Provider, Status and inside config two tabs Configured Available").
+    Enter on an available provider asks for its key in a window; on one of
+    yours it opens its models on the Model tab. K changes a key, T tests,
+    X removes. Models are chosen on the Model tab, not here."""
 
     TAB = "config"
     NOTE = "#note"
@@ -1446,7 +1428,8 @@ class ProvidersScreen(_TabbedScreen[None]):
     #cfg-title { width: 1fr; text-style: bold; color: $primary; }
     #cfg-count { width: auto; color: $text-muted; }
     #provider-search { height: 1; border: none; padding: 0 1; margin-top: 1; background: $boost; }
-    #providers { height: 1fr; margin-top: 1; background: transparent; scrollbar-size-vertical: 1; scrollbar-color: $border; scrollbar-background: $panel; }
+    #views { margin-top: 1; }
+    #providers { height: 1fr; background: transparent; scrollbar-size-vertical: 1; scrollbar-color: $border; scrollbar-background: $panel; }
     #note { color: $text-muted; height: auto; }
     #cfg-foot { dock: bottom; height: 1; }
     #cfg-foot.-stacked { layout: vertical; height: 2; }
@@ -1479,7 +1462,9 @@ class ProvidersScreen(_TabbedScreen[None]):
         self._load: LoadIndex = load_index or _default_index
         self._read_server: ReadServer = read_server or _default_read_server
         self._index: ModelsDevIndex | None = None
-        self._facts: dict[str, tuple[int, tuple[float, float] | None, str]] = {}
+        #: "configured" or "available"; the user's choice once they make one.
+        self._view = "configured" if self._set_up() else "available"
+        self._view_chosen = False
 
     def compose(self) -> ComposeResult:
         with Vertical(id="form"):
@@ -1493,6 +1478,14 @@ class ProvidersScreen(_TabbedScreen[None]):
                 id="provider-search",
                 select_on_focus=False,
             )
+            yield Tabs(
+                Tab(_say("view_configured", count=0), id="view-configured"),
+                Tab(_say("view_available", count=0), id="view-available"),
+                # Opened on the right tab: a strip that first shows its first
+                # tab would read as the user's choice (T13).
+                active=f"view-{self._view}",
+                id="views",
+            )
             yield _ProviderRows(id="providers", cursor_type="row", zebra_stripes=False)
             yield Static("", id="note")
             with Horizontal(id="cfg-foot"):
@@ -1503,29 +1496,37 @@ class ProvidersScreen(_TabbedScreen[None]):
 
     def on_mount(self) -> None:
         table = self.query_one("#providers", _ProviderRows)
-        for key in (
-            "col_provider",
-            "col_status",
-            "col_models",
-            "col_price",
-            "col_newest",
-            "col_host",
-        ):
+        for key in ("col_provider", "col_status"):
             table.add_column(_say(key), key=key)
         self._fill()
-        self.run_worker(self._read_index(), group="providers-index")
+
+    def on_tabs_tab_activated(self, event: Tabs.TabActivated) -> None:
+        """Configured or Available; the tab strip above is the base class's.
+        The code sets ``_view`` before it moves the tabs, so a tab that differs
+        from it is the user's choice, kept over a later read."""
+        if event.tabs.id != "views":
+            return
+        event.stop()
+        event.prevent_default()
+        view = (event.tab.id or "").removeprefix("view-")
+        if view != self._view:
+            self._view = view
+            self._view_chosen = True
+            self._fill()
+
+    @property
+    def view(self) -> str:
+        return self._view
+
+    def show_view(self, view: str) -> None:
+        """Configured or Available, by key or by the tabs (V3)."""
+        self.query_one("#views", Tabs).active = f"view-{view}"
 
     async def index(self) -> ModelsDevIndex:
         """models.dev as kept on this machine, read once for this tab."""
         if self._index is None:
             self._index = await asyncio.to_thread(_safe_index, self._load)
         return self._index
-
-    async def _read_index(self) -> None:
-        await self.index()
-        self._facts = _provider_facts(self._index)
-        with contextlib.suppress(NoMatches):
-            self._fill()
 
     def _set_up(self) -> list[str]:
         """Your providers, in the order the setup lists them."""
@@ -1564,77 +1565,56 @@ class ProvidersScreen(_TabbedScreen[None]):
             )
         return Text(f"· {_say('detail_untested')}", style=_style("warning"))
 
-    def _row(self, entry: ModelSetupPickerProvider) -> tuple[object, ...]:
-        """One provider's cells: only what the setup and models.dev state; an
-        unknown cell says so with the design's blank mark (T2)."""
-        from omnimarket.handlers.model_catalog import models_dev_provider_id
-
-        blank = _say("cell_none")
-        provider = entry.provider
-        mine = provider in self._set_up()
-        chosen = len(self._entries_of(provider))
-        name = Text(entry.label, style=_style("foreground", "bold") if mine else "")
-        if not _hosted(provider):
-            servers = sorted(
-                {e.server_url for e in self._entries_of(provider) if e.server_url}
-            )
-            where = ", ".join(str(urlparse(s).hostname) for s in servers)
-            return (
-                name,
-                self._status(provider),
-                str(chosen) if mine else blank,
-                _say("price_local"),
-                blank,
-                where or _say("host_local"),
-            )
-        owner = models_dev_provider_id(provider)
-        count, prices, newest = self._facts.get(owner or "", (0, None, ""))
-        if mine:
-            models = (
-                _say("models_chosen", chosen=chosen, count=count)
-                if count
-                else str(chosen)
-            )
-        else:
-            models = str(count) if count else blank
-        if prices is None:
-            price = blank
-        elif prices[0] == prices[1]:
-            price = _usd(prices[0])
-        else:
-            price = _say("price_range", low=_usd(prices[0]), high=_usd(prices[1]))
-        return (
-            name,
-            self._status(provider),
-            models,
-            price,
-            newest or blank,
-            _key_host(provider) or blank,
-        )
+    def _views(self, wanted: str) -> dict[str, list[ModelSetupPickerProvider]]:
+        """Yours and the rest, each narrowed by the search."""
+        mine = set(self._set_up())
+        shown = [
+            e
+            for e in self._ordered()
+            if not wanted or wanted in f"{e.label} {e.provider}".casefold()
+        ]
+        return {
+            "configured": [e for e in shown if e.provider in mine],
+            "available": [e for e in shown if e.provider not in mine],
+        }
 
     def _fill(self) -> None:
-        """The rows the search leaves, in order; the cursor stays on its provider."""
+        """The open view's rows the search leaves; the cursor stays on its
+        provider. A search with no match here and some in the other view moves
+        there (V4)."""
         table = self.query_one("#providers", _ProviderRows)
         was = self.current()
         wanted = self.query_one("#provider-search", Input).value.strip().casefold()
-        ordered = self._ordered()
-        shown = [
-            e
-            for e in ordered
-            if not wanted or wanted in f"{e.label} {e.provider}".casefold()
-        ]
+        views = self._views(wanted)
+        if wanted and not views[self._view]:
+            other = "available" if self._view == "configured" else "configured"
+            if views[other]:
+                self._view = other
+                self.query_one("#views", Tabs).active = f"view-{other}"
+        everything = self._views("")
+        tabs = self.query_one("#views", Tabs)
+        for view in ("configured", "available"):
+            count = len(views[view]) if wanted else len(everything[view])
+            tabs.query_one(f"#view-{view}", Tab).label = _say(
+                f"view_{view}", count=count
+            )
+        shown = views[self._view]
         table.clear()
         for entry in shown:
-            table.add_row(*self._row(entry), key=entry.provider)
+            mine = self._view == "configured"
+            name = Text(entry.label, style=_style("foreground", "bold") if mine else "")
+            table.add_row(name, self._status(entry.provider), key=entry.provider)
         keys = [e.provider for e in shown]
         if was in keys:
             table.move_cursor(row=keys.index(was))
-        total = len(ordered)
+        total = len(everything[self._view])
         self.query_one("#cfg-count", Static).update(
             _say("provider_count", total=total)
             if len(shown) == total
             else _say("provider_count_shown", shown=len(shown), total=total)
         )
+        if self._view == "configured" and not shown and not wanted:
+            self._note(_say("providers_empty"))
 
     def current(self) -> str | None:
         """The provider the cursor is on."""
@@ -1792,6 +1772,9 @@ class ProvidersScreen(_TabbedScreen[None]):
         self._run(OnexTui.guided_setup)
 
     def _first_read_shown(self) -> None:
+        if not self._view_chosen and self._set_up():
+            self._view = "configured"
+            self.query_one("#views", Tabs).active = "view-configured"
         self._fill()
         self._empty_note()
 
