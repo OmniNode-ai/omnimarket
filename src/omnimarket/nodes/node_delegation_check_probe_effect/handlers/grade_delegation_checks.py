@@ -8,7 +8,8 @@ recorded one was running and saw the process that did the work, so a clause over
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from typing import Final
 from urllib.parse import urlsplit
 
 from omnimarket.models.overlay_documents.model_delegation_check_responders_overlay import (
@@ -178,6 +179,75 @@ def grade_chain_tier_order(
         detail=f"the chain is declared {' then '.join(declared)}"
         if ok
         else f"the chain is declared {' then '.join(declared) or 'empty'}, not {' then '.join(CHAIN_TIER_ORDER)}",
+    )
+
+
+#: Request fields that would pin a delegation to one model, backend or provider instead of leaving the choice to the chain.
+PINNING_FIELDS: tuple[str, ...] = (
+    "model",
+    "model_id",
+    "backend_id",
+    "provider",
+    "endpoint",
+    "base_url",
+)
+
+
+def grade_no_model_named(
+    payloads: Sequence[Mapping[str, object]],
+) -> ModelCheckClause:
+    """A delegation check hands the task to the chain: no request it sent names a model, backend or provider."""
+    pinned = sorted({f for payload in payloads for f in PINNING_FIELDS if f in payload})
+    ok = bool(payloads) and not pinned
+    return ModelCheckClause(
+        name="no_model_named_in_request",
+        ok=ok,
+        detail=f"{len(payloads)} delegation request(s) carry no model, backend or provider field"
+        if ok
+        else f"the delegation requests sent {len(payloads)} payload(s) and name {pinned or 'no payload at all'}",
+    )
+
+
+#: The provider words a receipt carries for each chain tier: the local tier stamps "local", the OpenRouter tier "openrouter",
+#: and the Claude tier, the delegation feature's Claude harness handler on the subscription, stamps "anthropic", the provider
+#: the Claude harness backends of the delegation routing overlay declare. Never "gemini": no Gemini credit backs the chain
+#: (operator ruling 2026-11-26T13:43:36Z), and a receipt that names it for the Claude tier reads FAIL.
+CHAIN_TIER_PROVIDER_WORDS: Final[Mapping[str, tuple[str, ...]]] = {
+    "local": ("local",),
+    "openrouter": ("openrouter",),
+    "claude": ("anthropic",),
+}
+
+
+def grade_serving_tier(
+    receipt_provider: str | None, chain_tier: str | None
+) -> ModelCheckClause:
+    """The tier that served the run is the one the chain picked: the first available tier in the declared order."""
+    ok = (
+        receipt_provider is not None
+        and chain_tier is not None
+        and receipt_provider in CHAIN_TIER_PROVIDER_WORDS.get(chain_tier, ())
+    )
+    return ModelCheckClause(
+        name="serving_tier_is_chain_pick",
+        ok=ok,
+        detail=f"the receipt names provider {receipt_provider}, the one the chain's {chain_tier} tier stamps"
+        if ok
+        else f"the receipt names provider {receipt_provider!r}; the chain picked {chain_tier!r} out of {list(CHAIN_TIER_ORDER)} ({CHAIN_TIER_PROVIDER_WORDS.get(chain_tier or '')} expected)",
+    )
+
+
+def grade_own_key_provider(
+    receipt_provider: str | None, chosen_provider: str | None
+) -> ModelCheckClause:
+    """An own-key run is answered by the provider the tenant chose, never by a house or fallback provider."""
+    ok = chosen_provider is not None and receipt_provider == chosen_provider
+    return ModelCheckClause(
+        name="only_chosen_provider_answered",
+        ok=ok,
+        detail=f"the receipt names the tenant's chosen provider {chosen_provider}"
+        if ok
+        else f"the receipt names provider {receipt_provider!r}; the tenant chose {chosen_provider!r}",
     )
 
 

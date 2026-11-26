@@ -62,7 +62,7 @@ async def test_second_set_builds_on_the_first_record() -> None:
     record = json.loads(raw)
     reader._records["delegation_check_responders"] = record
     second = await handler.handle(
-        req("delegation_check_responders", "responders", [{"tier": "claude_api"}])
+        req("delegation_check_responders", "responders", [{"tier": "claude"}])
     )
     assert second.previous_present is True
     assert second.previous_value == RESPONDERS

@@ -23,6 +23,9 @@ import pytest
 from _gateway_fake import GATEWAY, TENANT, FakeClock, FakeGateway
 from pydantic import SecretStr
 
+from omnimarket.handlers.routing.delegation_check_responder_chain import (
+    ModelResponderReading,
+)
 from omnimarket.models.model_http_tenant_identity import ModelHttpTenantIdentity
 from omnimarket.models.overlay_documents.model_delegation_check_gateway_overlay import (
     ModelDelegationCheckGatewayOverlay,
@@ -302,10 +305,22 @@ _CLOCK = FakeClock()
 
 
 # The handler path: the run record names the gateway address and the tenant.
+LOCAL_BASE = "http://127.0.0.12:8000"
+
+
 def _handler(gateway: FakeGateway | None) -> HandlerDelegationCheckProbe:
     return HandlerDelegationCheckProbe(
-        responders=(ModelDelegationCheckResponder(tier="openrouter"),),
-        reader=InMemoryResponderReader({}),
+        responders=(
+            ModelDelegationCheckResponder(tier="local", base_url=LOCAL_BASE),
+            ModelDelegationCheckResponder(tier="openrouter"),
+        ),
+        reader=InMemoryResponderReader(
+            {
+                LOCAL_BASE: ModelResponderReading(
+                    base_url=LOCAL_BASE, answered=True, served_model="m", n_ctx=4096
+                )
+            }
+        ),
         machine=AbsentCustomerMachine("none"),
         publisher=InMemoryCheckPublisher(),
         topic="onex.evt.omnimarket.delegation-check-probe-completed.v1",

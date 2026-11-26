@@ -64,7 +64,7 @@ RESPONDERS = (
     ModelDelegationCheckResponder(tier="local", base_url=INKLING),
     ModelDelegationCheckResponder(tier="local", base_url=QWEN),
     ModelDelegationCheckResponder(tier="openrouter"),
-    ModelDelegationCheckResponder(tier="claude_api"),
+    ModelDelegationCheckResponder(tier="claude"),
 )
 READINGS = {
     INKLING: ModelResponderReading(
@@ -200,7 +200,12 @@ def test_c14_reads_pass_on_all_three_rows() -> None:
     h, _ = handler(machine)
     result = h.handle(request("C14"))
     assert result.verdict is EnumCheckVerdict.PASS
-    assert {c.name for c in result.clauses if not c.name.startswith("gateway_")} == {
+    assert {
+        c.name
+        for c in result.clauses
+        if not c.name.startswith("gateway_")
+        and c.name not in ("no_model_named_in_request", "serving_tier_is_chain_pick")
+    } == {
         "no_checkout",
         "row1_local_answer_ends_chain",
         "row2_no_unbindable_tier",
@@ -442,7 +447,7 @@ def test_the_tick_with_no_collector_exits_1_emits_the_record_and_writes_evidence
 def test_the_tick_with_an_unreadable_responder_row_exits_2(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    env = _write_overlays(tmp_path, [{"tier": "claude_api"}, {"tier": "openrouter"}])
+    env = _write_overlays(tmp_path, [{"tier": "claude"}, {"tier": "openrouter"}])
     for key, value in env.items():
         monkeypatch.setenv(key, value)
     code = tick.main(

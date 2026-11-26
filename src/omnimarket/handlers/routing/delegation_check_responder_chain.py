@@ -3,7 +3,7 @@
 """The delegation responder chain a delegation check sends its task through (OMN-26043, OMN-26628).
 
 No check names one model. A check reads the ordered responder row of the settings store (local
-responders, then OpenRouter, then the Claude API), asks each local responder what it serves, and
+responders, then OpenRouter, then Claude), asks each local responder what it serves, and
 sends its task through the least busy local responder that serves a model and declares its window.
 A chain with no usable local responder advances to the cloud tiers, which the routing contract
 resolves; the check then records that the task left the local tier.
@@ -66,7 +66,7 @@ class ModelResponderAttempt(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    tier: Literal["local", "openrouter", "claude_api"]
+    tier: Literal["local", "openrouter", "claude"]
     base_url: str | None = None
     outcome: EnumAttemptOutcome | Literal["advanced-to-tier"]
     served_model: str | None = None
@@ -83,7 +83,7 @@ class ModelChainResolution(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     # The tier that carries the task: ``local`` with a base and a window, or the first cloud tier the chain names.
-    tier: Literal["local", "openrouter", "claude_api"] | None
+    tier: Literal["local", "openrouter", "claude"] | None
     base_url: str | None = None
     served_model: str | None = None
     window: int | None = None

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""C15 asserts the tier order of the responder chain: local, then OpenRouter, then the Claude API (OMN-26043).
+"""C15 asserts the tier order of the responder chain: local, then OpenRouter, then Claude (OMN-26043).
 
 The chain audit found C15 graded the run through the gateway and never the order of the chain it tries: a row that named the
 Claude API before OpenRouter, or a local responder after a cloud tier, read green. The settings store validates the order when
@@ -43,7 +43,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation
 BASE = "http://127.0.0.12:8000"
 LOCAL = ModelDelegationCheckResponder(tier="local", base_url=BASE)
 OPENROUTER = ModelDelegationCheckResponder(tier="openrouter")
-CLAUDE = ModelDelegationCheckResponder(tier="claude_api")
+CLAUDE = ModelDelegationCheckResponder(tier="claude")
 _CLOCK = FakeClock()
 
 
@@ -88,7 +88,7 @@ def test_any_other_order_grades_red_and_names_it(
     clause = grade_chain_tier_order(responders)
     assert not clause.ok
     assert "local" in clause.detail
-    assert "claude_api" in clause.detail
+    assert "claude" in clause.detail
 
 
 def test_c15_carries_the_tier_order_clause_beside_its_gateway_clauses() -> None:
@@ -98,7 +98,7 @@ def test_c15_carries_the_tier_order_clause_beside_its_gateway_clauses() -> None:
     assert result.verdict is EnumCheckVerdict.PASS
 
 
-def test_known_bad_c15_reads_fail_on_a_chain_naming_the_claude_api_before_openrouter() -> (
+def test_known_bad_c15_reads_fail_on_a_chain_naming_the_claude_before_openrouter() -> (
     None
 ):
     result = _c15((LOCAL, CLAUDE, OPENROUTER))

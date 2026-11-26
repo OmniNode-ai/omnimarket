@@ -913,7 +913,7 @@ units:
     state_directory: .onex_state/c32-auth-boundary-probe
   # The delegation checks C13, C14 and C17 (node_delegation_check_probe_effect, OMN-26043), once an hour on a Linux lab host: a
   # systemd user service and timer. One run sends each check's task through the responder row of the settings store (local
-  # least busy, then openrouter, then claude_api) and publishes each run on the node's result topic, where the beta board reads
+  # least busy, then openrouter, then claude) and publishes each run on the node's result topic, where the beta board reads
   # the check. The checks, the history size and the responder timeout are the node's overlay and the responder chain is the
   # settings store's delegation_check_responders row, both found under ONEX_SKILL_OVERLAY_ROOTS; this unit holds none of them.
   delegation-check-probe:
