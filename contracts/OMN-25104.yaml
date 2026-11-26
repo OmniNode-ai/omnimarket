@@ -31,8 +31,8 @@ requirements:
   - id: req-omn25104-lab-item-allowed-program
     statement: The integration-proof item starts with programs a lab host runs, so the lab does not refuse it.
     acceptance:
-      - id: AC4
-        statement: 'AC4: the integration-proof item''s command, and the command it sends to the lab after --, each start with a program a lab host runs, so the lab does not refuse it -- falsifier: uv run pytest -q tests/contracts/test_omn25104_lab_item_allowed_program.py fails on omnimarket dev, where the item starts with env'
+      - id: AC5
+        statement: 'AC5: the integration-proof item''s command, and the command it sends to the lab after --, each start with a program a lab host runs, so the lab does not refuse it -- falsifier: uv run pytest -q tests/contracts/test_omn25104_lab_item_allowed_program.py fails on omnimarket dev, where the item starts with env'
 evidence_requirements:
   - kind: tests
     description: The done-items compute and projection writer cases.
@@ -79,10 +79,10 @@ dod_evidence:
         check_value: uv run --frozen pytest tests/nodes/node_projection_done_items/test_golden_chain_done_items.py -q -n 0 -p no:randomly --no-cov -k hops_are_the_declared_topics
         cwd: .
   - id: dod-omn25104-lab-item-allowed-program
-    description: AC4 is the contract test that the integration-proof item and the command it sends to the lab each start with an allowed program. It fails on dev, where the item starts with env.
+    description: AC5 is the contract test that the integration-proof item and the command it sends to the lab each start with an allowed program. It fails on dev, where the item starts with env.
     source: manual
     binds_ac:
-      - AC4
+      - AC5
     checks:
       - check_type: test_passes
         check_value: uv run pytest -q tests/contracts/test_omn25104_lab_item_allowed_program.py
