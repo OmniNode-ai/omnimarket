@@ -36,7 +36,8 @@ class ModelRebuildCompletedObserved(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
-    git_sha: str = Field(min_length=1)
+    #: Empty when the deploy agent's job ended before it resolved a sha; the handler refuses such an event by name.
+    git_sha: str = ""
     runtime_lane: str = Field(min_length=1)
     status: Literal["success", "failed"] = "success"
     correlation_id: str = ""
@@ -68,6 +69,8 @@ class ModelCheckRecord(_Frozen):
     at: AwareDatetime
     #: The merges the build added over the previous recorded build, oldest first.
     merges: tuple[ModelSuspectMerge, ...] = ()
+    #: True when git could not resolve the range from the previous build; ``merges`` is then empty and means unknown.
+    merges_unknown: bool = False
 
 
 class ModelBuildRecord(_Frozen):
@@ -78,6 +81,7 @@ class ModelBuildRecord(_Frozen):
     previous_build_id: str = ""
     started_at: AwareDatetime
     merges: tuple[ModelSuspectMerge, ...] = ()
+    merges_unknown: bool = False
     checks: tuple[ModelCheckRecord, ...] = ()
     complete: bool = False
 
