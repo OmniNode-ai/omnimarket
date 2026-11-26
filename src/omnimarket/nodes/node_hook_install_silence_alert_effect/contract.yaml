@@ -1,0 +1,48 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_hook_install_silence_alert_effect
+contract_name: node_hook_install_silence_alert_effect
+node_name: node_hook_install_silence_alert_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+description: >
+  Feeds node_hook_install_emission_compute. On the runtime heartbeat, at most once per check_interval_seconds of its
+  overlay, it reads hook events per host, actor and time from the claude_hook_events projection and each owned
+  install's last session from the ledger lane rows (CLAIM rows naming host= and actor=), judges, and hands the
+  judge's alert_text to the existing lab alarm delivery effect. An install that ran a session and emitted nothing for
+  quiet_minutes raises one alert naming host and tool; a known-good fleet delivers an OK that clears its episodes; an
+  unreadable projection or ledger is an alarm of its own naming the source. The installs we own, the required event
+  kinds and the windows are the overlay's; nothing is scheduled by hand.
+handler:
+  module: omnimarket.nodes.node_hook_install_silence_alert_effect.handlers.handler_hook_install_silence_alert
+  class: HandlerHookInstallSilenceAlert
+  input_model: omnimarket.nodes.node_hook_install_silence_alert_effect.models.model_hook_install_silence.ModelHookInstallSilenceTrigger
+  output_model: omnimarket.nodes.node_hook_install_silence_alert_effect.models.model_hook_install_silence.ModelHookInstallSilenceResult
+input_model: omnimarket.nodes.node_hook_install_silence_alert_effect.models.model_hook_install_silence.ModelHookInstallSilenceTrigger
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  runtime_profiles: [effects]
+  side_effects: [projection-read, ledger-read, alarm-delivery]
+reads_source:
+  binding_ref: omninode_runtime_service
+  dsn_env: OMNINODE_INTERNAL_DB_URL
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.platform.node-heartbeat.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.platform.node-heartbeat.v1, operation: DESCRIBE}
+overlay:
+  node: node_hook_install_silence_alert_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+event_bus:
+  subscribe_topics:
+    - onex.evt.platform.node-heartbeat.v1
+  publish_topics: []
+metadata:
+  ticket: OMN-26658
+  transport_type: database

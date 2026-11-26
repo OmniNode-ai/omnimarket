@@ -6,6 +6,11 @@ is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
 requirements:
+- id: req-omn26658-silence-reader
+  statement: An effect node reads events per host, actor and time from the claude_hook_events projection and each install's last session from the ledger lane rows, calls the emission judge and hands its alert_text to the lab alarm effect; an unreadable projection alerts as unreadable.
+  acceptance:
+  - id: DoD3
+    statement: 'DoD3: over a fake projection a host whose Codex is silent while Claude emits alerts by tool, a known-good fleet stays quiet and an unreadable projection alerts as unreadable -- falsifier: uv run --frozen pytest tests/nodes/node_hook_install_silence_alert_effect -q --no-cov'
 - id: req-omn26658-install-emission-judge
   statement: The emission judge is a node with a contract, typed models, a golden chain test and an error chain test; an install is emitting, partial or silent from the events read back, an event counts only for an install of its own tool and host, and an emitter no install explains is named.
   acceptance:
@@ -13,6 +18,8 @@ requirements:
     statement: 'DoD1: the node golden and error chain tests pass -- falsifier: uv run --frozen pytest tests/nodes/node_hook_install_emission_compute -q --no-cov'
   - id: DoD2
     statement: 'DoD2: a Codex install with no event is silent while a Claude install on the same host is emitting, and a Claude event never satisfies a Codex install, shown by the error chain tests -- falsifier: uv run --frozen pytest tests/nodes/node_hook_install_emission_compute -q --no-cov -k "headless_codex or actor_must_match"'
+  - id: DoD3
+    statement: 'DoD3: a Codex install that ran a session and emitted nothing for 30 minutes raises one alert naming host and tool, and an emitting install raises none -- falsifier: uv run --frozen pytest tests/nodes/node_hook_install_emission_compute/test_alert_hook_install_silent.py -q --no-cov'
 evidence_requirements:
 - kind: tests
   description: The install emission node tests pass
@@ -40,6 +47,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_hook_install_emission_compute -q --no-cov -k "headless_codex or actor_must_match"
     cwd: .
+- id: dod-omn26658-silent-install-alert
+  description: Runs the alert tests, where an install that ran a session and emitted nothing for 30 minutes raises one alert naming host and tool, and an emitting install raises none.
+  source: manual
+  binds_ac:
+  - DoD3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_hook_install_emission_compute/test_alert_hook_install_silent.py -q --no-cov
+    cwd: .
 - id: dod-omn26658-integration-proof
   description: Run this pull request's own check on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
   source: manual
@@ -47,4 +63,13 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26658 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_hook_install_emission_compute -q --no-cov
+    cwd: .
+- id: dod-omn26658-silence-reader-tests
+  description: Runs the install-silence reader tests over a fake projection and a fake ledger, including the refusal of projection rows that carry no actor.
+  source: manual
+  binds_ac:
+  - DoD3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_hook_install_silence_alert_effect -q --no-cov
     cwd: .

@@ -11,8 +11,10 @@ counted in `undeclared` with its host and actor, never dropped, so a machine mis
 from __future__ import annotations
 
 from collections import Counter
+from datetime import timedelta
 
 from ..models import (
+    ModelHookInstallAlert,
     ModelHookInstallDeclared,
     ModelHookInstallEmissionRequest,
     ModelHookInstallEmissionResult,
@@ -56,13 +58,52 @@ class HandlerHookInstallEmission:
             ModelHookInstallUndeclared(host=host, actor=actor, event_count=count)
             for (host, actor), count in sorted(unexplained.items())
         )
+        alerts = self._alerts(request, owned)
         return ModelHookInstallEmissionResult(
+            alerts=alerts,
+            alert_text="; ".join(
+                f"SILENT INSTALL {a.host} {a.tool}: session at {a.session_at:%Y-%m-%dT%H:%M:%SZ}, "
+                + (
+                    "no hook event since"
+                    if a.newest_event_at is None
+                    else f"newest hook event {a.newest_event_at:%Y-%m-%dT%H:%M:%SZ}"
+                )
+                for a in alerts
+            ),
             installs=verdicts,
             silent_installs=silent,
             undeclared=undeclared,
             all_emitting=all(v.status == "emitting" for v in verdicts),
             read_at=request.read_at,
         )
+
+    @staticmethod
+    def _alerts(
+        request: ModelHookInstallEmissionRequest,
+        owned: dict[tuple[str, str], list[ModelHookInstallObservedEvent]],
+    ) -> tuple[ModelHookInstallAlert, ...]:
+        """One alert per install whose last session is `quiet_minutes` old with no hook event at or after it."""
+        quiet = timedelta(minutes=request.quiet_minutes)
+        out: list[ModelHookInstallAlert] = []
+        for install in request.installs:
+            session = install.last_session_at
+            if session is None or request.read_at - session < quiet:
+                continue
+            newest = max(
+                (e.emitted_at for e in owned[(install.host, install.tool)]),
+                default=None,
+            )
+            if newest is not None and newest >= session:
+                continue
+            out.append(
+                ModelHookInstallAlert(
+                    host=install.host,
+                    tool=install.tool,
+                    session_at=session,
+                    newest_event_at=newest,
+                )
+            )
+        return tuple(out)
 
     @staticmethod
     def _verdict(
