@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeAgentTraceOtelCompute (OMN-24941)
+#
+# One pure operation, no clock and no file read: the caller supplies the parsed records of one
+# headless agent run (stream-json or session lines) and gets back an OTLP/JSON GenAI trace and an
+# MCP-style tools list that an offline trace checker can read.
+name: node_agent_trace_otel_compute
+node_type: compute
+lifecycle: experimental
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+description: >-
+  Converts the recorded log of one headless agent run into an OpenTelemetry GenAI trace: a root
+  invoke_agent span carrying the first user text and the final assistant message, one chat span per
+  assistant text block, and one execute_tool span per tool call with its arguments, its result and an
+  error marker when the result was an error. A Bash call that only reads is named Bash.read so a
+  checker can tell reads from writes. Also returns the tools list of the run and the tallies of
+  calls, matched results and unmatched call ids.
+input_model:
+  name: ModelAgentTraceConvertRequest
+  module: omnimarket.models.model_agent_trace_otel
+output_model:
+  name: ModelAgentTraceConvertResult
+  module: omnimarket.models.model_agent_trace_otel
+handler:
+  module: omnimarket.nodes.node_agent_trace_otel_compute.handlers.handler_trace_convert
+  class: HandlerTraceConvert
+  input_model: omnimarket.models.model_agent_trace_otel.ModelAgentTraceConvertRequest
+  output_model: omnimarket.models.model_agent_trace_otel.ModelAgentTraceConvertResult
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_agent_trace_otel_compute.handlers.handler_trace_convert:HandlerTraceConvert
+  handlers:
+    - operation: convert_trace
+      handler:
+        name: HandlerTraceConvert
+        module: omnimarket.nodes.node_agent_trace_otel_compute.handlers.handler_trace_convert
+      input_model: omnimarket.models.model_agent_trace_otel.ModelAgentTraceConvertRequest
+      output_model: omnimarket.models.model_agent_trace_otel.ModelAgentTraceConvertResult
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  side_effects: []
+  runtime_profiles: []
+  timeout_ms: 5000
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation with the parsed records of one finished lane run.
+metadata:
+  transport_type: local
