@@ -84,7 +84,7 @@ async def _receipt(
         *, url: str, extra_headers: dict[str, str], **_: Any
     ) -> dict[str, object]:
         assert url == row.models_url
-        assert extra_headers == {"Authorization": f"Bearer {_KEY}"}
+        assert extra_headers == {"x-goog-api-key": _KEY}
         model_lists.append(url)
         return {"models": [{"name": f"models/{_MODEL}"}]}
 

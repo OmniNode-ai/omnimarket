@@ -306,10 +306,12 @@ class ModelByokProviderBackend(BaseModel):
     model_preference: tuple[ModelByokModelPreference, ...] = Field(min_length=1)
     #: OMN-20990. How the customer's key is presented to ``models_url``.
     #: ``bearer`` sends ``Authorization: Bearer <key>`` (OpenRouter, z.ai,
-    #: Google's OpenAI-compatible surface, OpenAI). ``x_api_key`` sends
+    #: OpenAI, Reflection, Hopscotch). ``x_api_key`` sends
     #: ``x-api-key: <key>``, the only header Anthropic's own list-models
-    #: endpoint takes an API key in.
-    models_auth: Literal["bearer", "x_api_key"] = "bearer"
+    #: endpoint takes an API key in. ``x_goog_api_key`` sends
+    #: ``x-goog-api-key: <key>`` to Google's native list (OMN-26688), so the
+    #: key is never in the URL.
+    models_auth: Literal["bearer", "x_api_key", "x_goog_api_key"] = "bearer"
     #: OMN-20990. Non-secret headers ``models_url`` requires besides the key
     #: (Anthropic's ``anthropic-version``). Never a credential: the key is only
     #: ever sent by ``models_auth``.

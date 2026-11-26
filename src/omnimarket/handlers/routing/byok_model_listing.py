@@ -36,6 +36,11 @@ from omnimarket.inference.provider_response_error import (
 
 _PER_MILLION = 1_000_000
 
+#: The most pages one list read follows. Google and Anthropic send up to 1000
+#: models a page when asked, so this is far past any real list; a provider that
+#: keeps saying there is more past it is answered as inconclusive, not trusted.
+MAX_LIST_PAGES = 20
+
 
 class ModelByokListedModel(BaseModel):
     """One model on a key's list. A detail the provider does not publish is None."""
@@ -180,7 +185,39 @@ def _text(value: Any) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
 
 
+def _next_page(base: str, body: Any) -> str | None:
+    """The next page of a list, as its provider continues one: Google's
+    ``nextPageToken`` as ``pageToken``; Anthropic's ``has_more`` with
+    ``last_id`` as ``after_id``. None when the answer says it is the last."""
+    if not isinstance(body, dict):
+        return None
+    token = body.get("nextPageToken")
+    if isinstance(token, str) and token:
+        return str(httpx.URL(base).copy_set_param("pageToken", token))
+    last = body.get("last_id")
+    if body.get("has_more") is True and isinstance(last, str) and last:
+        return str(httpx.URL(base).copy_set_param("after_id", last))
+    return None
+
+
+def _says_more(body: Any) -> bool:
+    """A page that says more follow (``has_more`` true), whether or not it
+    names where they continue."""
+    return isinstance(body, dict) and body.get("has_more") is True
+
+
+def _chats(entry: dict[str, Any]) -> bool:
+    """Google names what a model does in ``supportedGenerationMethods``; one
+    that names some, none of them generateContent, cannot chat."""
+    methods = entry.get("supportedGenerationMethods")
+    if isinstance(methods, list) and methods:
+        return "generateContent" in methods
+    return True
+
+
 def _listed(entry: dict[str, Any]) -> ModelByokListedModel | None:
+    if not _chats(entry):
+        return None
     raw = entry.get("id") or entry.get("name")
     if not isinstance(raw, str) or not raw.strip():
         return None
@@ -255,12 +292,38 @@ def list_byok_models(
             provider=provider, outcome="rejected", message="enter an API key first"
         )
     fetch = get if get is not None else discovery.get_models_json
+    headers = discovery.models_request_headers(backend, secret.strip())
+    bodies: list[Any] = []
+    url: str | None = backend.models_url
+    read: set[str] = set()
     try:
-        body = fetch(
-            url=backend.models_url,
-            timeout_seconds=discovery.DISCOVERY_TIMEOUT_SECONDS,
-            extra_headers=discovery.models_request_headers(backend, secret.strip()),
-        )
+        # Every page, as the provider continues its list (OMN-26688, D5-D6).
+        while url is not None and url not in read:
+            if len(read) == MAX_LIST_PAGES:
+                return ModelByokModelListing(
+                    provider=provider,
+                    outcome="inconclusive",
+                    message=(
+                        f"{provider} kept listing past {MAX_LIST_PAGES} pages; "
+                        "try again"
+                    ),
+                )
+            read.add(url)
+            body = fetch(
+                url=url,
+                timeout_seconds=discovery.DISCOVERY_TIMEOUT_SECONDS,
+                extra_headers=headers,
+            )
+            bodies.append(body)
+            url = _next_page(backend.models_url, body)
+            if url is None and _says_more(body):
+                # More was promised with no way to ask for it: a part of the
+                # list is not the whole list (OMN-26688, D6).
+                return ModelByokModelListing(
+                    provider=provider,
+                    outcome="inconclusive",
+                    message=f"{provider} listed only part of its models; try again",
+                )
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
         text = exc.response.text if isinstance(exc.response.text, str) else ""
@@ -284,7 +347,7 @@ def list_byok_models(
             message=f"could not read the model list ({type(exc).__name__}); try again",
         )
     unique: dict[str, ModelByokListedModel] = {}
-    for entry in _entries(body):
+    for entry in (e for body in bodies for e in _entries(body)):
         listed = _listed(entry)
         if listed is not None:
             unique.setdefault(listed.id, listed)

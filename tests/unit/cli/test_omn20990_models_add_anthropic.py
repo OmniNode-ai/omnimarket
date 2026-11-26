@@ -251,7 +251,7 @@ class TestModelsAddAnthropicAcceptedKey:
 
         assert len(models.calls) == 1
         url, headers = models.calls[0]
-        assert url == "https://api.anthropic.com/v1/models"
+        assert url == "https://api.anthropic.com/v1/models?limit=1000"
         assert headers == {"x-api-key": _KEY, "anthropic-version": "2023-06-01"}
 
 
@@ -267,7 +267,8 @@ class TestCatalogueRowAndRequestShape:
         assert row.models_auth == "x_api_key"
 
     def test_every_other_row_still_reads_its_list_with_a_bearer_header(self) -> None:
-        for provider in ("openrouter", "gemini", "openai"):
+        # Gemini reads Google's native list with x-goog-api-key (OMN-26688).
+        for provider in ("openrouter", "openai"):
             row = resolve_byok_provider_backend(provider)
             assert row is not None
             assert models_request_headers(row, "k") == {"Authorization": "Bearer k"}

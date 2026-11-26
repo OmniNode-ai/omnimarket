@@ -495,7 +495,13 @@ providers:
     plan: ai_studio
     backend_id: byok-gemini
     endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-    models_url: "https://generativelanguage.googleapis.com/v1beta/openai/models"
+    # OMN-26688: Google's native list, not its OpenAI-compatible shim, whose
+    # answer names ids only; the native one states each model's display name,
+    # token limits, thinking and generation methods, 50 a page unless asked for
+    # up to 1000, continued by nextPageToken
+    # (aistudio.google.com/api-reference/models/list-models, read 2026-11-26).
+    models_url: "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000"
+    models_auth: x_goog_api_key
     # OMN-21059: every key runs only models its owner chose; see "THE
     # CUSTOMER CHOOSES THE MODEL" above.
     customer_chooses_model: true
@@ -754,7 +760,9 @@ providers:
     mirrors_house_rung: false
     backend_id: byok-anthropic
     endpoint_url: "https://api.anthropic.com/v1/chat/completions"
-    models_url: "https://api.anthropic.com/v1/models"
+    # OMN-26688: 20 a page unless asked for up to 1000, continued by has_more
+    # and last_id as after_id (platform.claude.com/docs/en/api/models-list).
+    models_url: "https://api.anthropic.com/v1/models?limit=1000"
     models_auth: x_api_key
     models_headers:
       anthropic-version: "2023-06-01"
@@ -811,7 +819,9 @@ providers:
     mirrors_house_rung: false
     backend_id: byok-anthropic-native
     endpoint_url: "https://api.anthropic.com/v1/messages"
-    models_url: "https://api.anthropic.com/v1/models"
+    # OMN-26688: 20 a page unless asked for up to 1000, continued by has_more
+    # and last_id as after_id (platform.claude.com/docs/en/api/models-list).
+    models_url: "https://api.anthropic.com/v1/models?limit=1000"
     models_auth: x_api_key
     models_headers:
       anthropic-version: "2023-06-01"
