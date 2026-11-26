@@ -497,6 +497,17 @@ words:
   remove_question: "Remove {provider}? onex stops using its {models} and deletes its key or server from this machine. You can add it again any time."
   provider_removed: "{provider} removed"
   remove_provider_failed: "{provider} was not removed: {reason}"
+  # The card under the key box: the provider being added, from models.dev
+  # (operator 2026-11-26: "improve more").
+  card_count: "{count} models"
+  card_count_one: "1 model"
+  card_price_range: "{count} · {low} to {high} per 1M input tokens"
+  card_price_one: "{count} · {low} per 1M input tokens"
+  card_no_prices: "{count} · prices not listed on models.dev"
+  card_unknown: "Its models are read once your key is in."
+  card_newest: "Newest  {models}"
+  card_host: "Your key is sent only to {host}."
+  card_local: "Runs on a server you name by URL. Nothing is sent anywhere else."
   # Under the provider list (operator 2026-11-26: "show count too").
   provider_count: "{total} providers"
   provider_count_shown: "{shown} of {total}"

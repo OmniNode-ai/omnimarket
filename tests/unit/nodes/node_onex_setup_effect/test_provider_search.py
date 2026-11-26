@@ -80,6 +80,17 @@ def _shown(app) -> list[str]:
     ]
 
 
+def _add_order(traits, set_up: tuple[str, ...] = ("openrouter",)) -> list[str]:
+    """The add list: the well-known (hand-written) providers A-Z, then the listed
+    ones A-Z (K5), without the ones already yours (Y1)."""
+    written = {e.provider for e in traits.picker}
+    rows = sorted(
+        traits.picker_providers(),
+        key=lambda e: (e.provider not in written, e.label.casefold()),
+    )
+    return [e.provider for e in rows if e.provider not in set_up]
+
+
 def _a_to_z(entries) -> list[str]:
     return [e.provider for e in sorted(entries, key=lambda e: e.label.casefold())]
 
@@ -97,12 +108,8 @@ async def test_set_up_providers_come_first_then_a_to_z() -> None:
     app = _app(_Runner([], by_command=_selected_rows(connection=False)))
     async with app.run_test(size=(160, 46)) as pilot:
         await _config(pilot, app)
-        rest = [
-            p
-            for p in _a_to_z(setup_provider_traits().picker_providers())
-            if p != "openrouter"
-        ]
-        assert _shown(app) == rest  # openrouter is in "Your providers" (Y1)
+        # openrouter is in "Your providers" (Y1); well-known ones lead (K5).
+        assert _shown(app) == _add_order(setup_provider_traits())
 
 
 async def test_typing_narrows_the_providers() -> None:
@@ -150,8 +157,8 @@ async def test_an_added_provider_row_shows_with_no_code_change(
     app = _app(_Runner([], by_command=_selected_rows(connection=False)))
     async with app.run_test(size=(160, 46)) as pilot:
         await _config(pilot, app)
-        rest = [p for p in _a_to_z(picker) if p != "openrouter"]
-        assert _shown(app) == rest
+        assert picker
+        assert _shown(app) == _add_order(cli_tui.setup_provider_traits())
         assert "groq" in _shown(app)
 
 

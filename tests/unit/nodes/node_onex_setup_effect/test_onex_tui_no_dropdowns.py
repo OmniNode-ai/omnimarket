@@ -49,9 +49,16 @@ async def test_config_shows_every_provider_with_the_first_marked() -> None:
         for _ in range(6):
             await pilot.pause()
         picker = setup_provider_traits().picker_providers()
-        # openrouter is the one set up in _selected_rows, so it leads.
+        # openrouter is the one set up in _selected_rows, so it leads; then
+        # the well-known providers, then the listed ones (K5).
+        written = {e.provider for e in setup_provider_traits().picker}
         order = sorted(
-            picker, key=lambda e: (e.provider != "openrouter", e.label.casefold())
+            picker,
+            key=lambda e: (
+                e.provider != "openrouter",
+                e.provider not in written,
+                e.label.casefold(),
+            ),
         )
         buttons = list(app.screen.query_one("#provider").query(RadioButton))
         assert [b.name for b in buttons] == [e.provider for e in order]

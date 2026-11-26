@@ -219,6 +219,74 @@ def _picker() -> tuple[ModelSetupPickerProvider, ...]:
     return setup_provider_traits().picker_providers()
 
 
+def _usd(amount: float) -> str:
+    """A price per 1M tokens: two places, more only for a fraction of a cent."""
+    return f"${amount:.2f}" if amount >= 0.01 or amount == 0 else f"${amount:.4f}"
+
+
+def _key_host(provider: str) -> str | None:
+    """The one host ``provider``'s key is sent to, from the list or the backend."""
+    from omnimarket.handlers.routing.byok_catalog_providers import (
+        load_byok_catalog_providers,
+    )
+    from omnimarket.handlers.routing.byok_provider_backends import (
+        resolve_byok_provider_backend,
+    )
+
+    with contextlib.suppress(Exception):  # a provider with no fixed address
+        listed = load_byok_catalog_providers().get(provider)
+        if listed is not None:
+            return urlparse(listed.api).hostname
+        row = resolve_byok_provider_backend(provider)
+        if row is not None and row.endpoint_url:
+            return urlparse(row.endpoint_url).hostname
+    return None
+
+
+def _card_lines(provider: str, index: ModelsDevIndex) -> tuple[str, str, str]:
+    """The card's three lines: models and prices, the newest, where the key goes.
+
+    Only what models.dev states: a provider it lists no models for says they
+    are read once the key is in, and no price is shown that it does not give.
+    """
+    from omnimarket.handlers.model_catalog import models_dev_provider_id
+
+    if not _hosted(provider):
+        return _say("card_local"), "", ""
+    owner = models_dev_provider_id(provider)
+    rows = [
+        (model_id, meta)
+        for (listed_by, model_id), meta in index.models.items()
+        if owner and listed_by == owner
+    ]
+    host = _key_host(provider)
+    where = _say("card_host", host=host) if host else ""
+    if not rows:
+        return _say("card_unknown"), "", where
+    count = _say("card_count_one" if len(rows) == 1 else "card_count", count=len(rows))
+    prices = sorted(
+        float(cost["input"])
+        for _, meta in rows
+        if isinstance(cost := meta.get("cost"), Mapping)
+        and isinstance(cost.get("input"), int | float)
+    )
+    if not prices:
+        models = _say("card_no_prices", count=count)
+    elif prices[0] == prices[-1]:
+        models = _say("card_price_one", count=count, low=_usd(prices[0]))
+    else:
+        models = _say(
+            "card_price_range", count=count, low=_usd(prices[0]), high=_usd(prices[-1])
+        )
+    newest = sorted(
+        rows, key=lambda r: str(r[1].get("release_date") or ""), reverse=True
+    )
+    names = ", ".join(
+        str(meta.get("name") or model_id) for model_id, meta in newest[:3]
+    )
+    return models, _say("card_newest", models=names), where
+
+
 def _entry(provider: str) -> ModelSetupPickerProvider | None:
     return next((e for e in _picker() if e.provider == provider), None)
 
@@ -1204,6 +1272,17 @@ class SetupScreen(_TabbedScreen[None]):
     /* A-Z with search, set-up first (operator 2026-11-26); hundreds of
        providers scroll inside the box, so the key box stays in view. */
     #provider { width: 100%; height: 1fr; border: none; padding: 0; background: transparent; overflow-y: auto; }
+    /* A thin, quiet scrollbar: the list is the content, not the bar. */
+    #provider { scrollbar-size-vertical: 1; scrollbar-color: $border; scrollbar-color-hover: $text-muted; scrollbar-background: $panel; }
+    /* The provider being added, described before a key is pasted (K1-K3). */
+    #card { height: auto; border: round $border; border-title-color: $text; border-title-style: bold; padding: 0 1; margin-top: 1; }
+    #card-newest, #card-host { color: $text-muted; }
+    #card .-empty { display: none; }
+    /* 80x24: the card keeps its count, prices and host, and gives up a row. */
+    SetupScreen.-short #card { margin-top: 0; }
+    SetupScreen.-short #card-newest { display: none; }
+    SetupScreen.-mine #card { display: none; }
+    SetupScreen.-models #card { display: none; }
     SetupScreen.-models #provider { height: auto; max-height: 10; }
     SetupScreen.-models.-short #provider { max-height: 6; }
     #cfg-side { width: 1fr; height: auto; margin-left: 2; }
@@ -1305,6 +1384,10 @@ class SetupScreen(_TabbedScreen[None]):
                         yield Static("", id="keymark")
                     # The hint sits beside the list, under the key box.
                     yield Static("", id="note")
+                    with Vertical(id="card"):
+                        yield Static("", id="card-models")
+                        yield Static("", id="card-newest")
+                        yield Static("", id="card-host")
             yield ModelTable(
                 selectable=True,
                 provider_labels={e.provider: e.label for e in choices},
@@ -1370,6 +1453,7 @@ class SetupScreen(_TabbedScreen[None]):
         self._fit_width()
         self._show_mine()
         self._filter_providers(self._value("provider-search"))
+        self._show_card()
         self._show_fields()
         self.query_one("#note", Static).update(_hint(self._provider()))
         self._schedule_find()
@@ -1382,11 +1466,40 @@ class SetupScreen(_TabbedScreen[None]):
         return {e.provider for e in self._selection.entries}
 
     def _ordered(self) -> list[ModelSetupPickerProvider]:
-        """Set-up providers first, then every other one A-Z (operator 2026-11-26)."""
+        """Set-up providers first; then the well-known ones written in
+        setup_provider_traits.yaml, A-Z; then the listed ones, A-Z (K5)."""
         set_up = self._set_up()
+        written = {e.provider for e in setup_provider_traits().picker}
         return sorted(
-            _picker(), key=lambda e: (e.provider not in set_up, e.label.casefold())
+            _picker(),
+            key=lambda e: (
+                e.provider not in set_up,
+                e.provider not in written,
+                e.label.casefold(),
+            ),
         )
+
+    _index_kept: ModelsDevIndex | None = None
+
+    def _show_card(self) -> None:
+        self.run_worker(self._fill_card(self._provider()), exclusive=True, group="card")
+
+    async def _fill_card(self, provider: str) -> None:
+        """Describe ``provider`` from models.dev as kept on this machine (K1)."""
+        if self._index_kept is None:
+            self._index_kept = await asyncio.to_thread(self._load_index)
+        with contextlib.suppress(NoMatches):
+            if provider != self._provider():  # moved on meanwhile
+                return
+            self.query_one("#card").border_title = _label(provider)
+            for widget_id, line in zip(
+                ("#card-models", "#card-newest", "#card-host"),
+                _card_lines(provider, self._index_kept),
+                strict=True,
+            ):
+                part = self.query_one(widget_id, Static)
+                part.update(line)
+                part.set_class(not line, "-empty")
 
     def _provider_label(self, entry: ModelSetupPickerProvider) -> str:
         mark = (
@@ -1753,6 +1866,7 @@ class SetupScreen(_TabbedScreen[None]):
 
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
         self._filter_providers(self._value("provider-search"))  # the marked one shows
+        self._show_card()
         self._show_fields()
         self.query_one("#key" if _hosted(self._provider()) else "#url", Input).focus()
         self.query_one("#note", Static).update(_hint(self._provider()))
