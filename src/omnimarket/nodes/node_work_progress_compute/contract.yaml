@@ -8,7 +8,12 @@ node_version: "1.0.0"
 description: >-
   Pure work progress compute over caller-supplied time, phase entries, budgets and
   notes. Subjects strictly over their phase budget produce ordered findings with
-  stable keys for each phase entry. Budgets come from the overlay
+  stable keys for each phase entry. A second operation, judge_work_episodes, judges
+  watched things of four kinds (lane, pr, round, tick) against the budget of their
+  phase with the open episodes the caller carries: a new crossing yields one alert
+  record for the alarm node's input, the same crossing judged again yields none, and
+  a thing that moved, changed phase or left a complete reading closes its episode.
+  Budgets come from the overlay
   <root>/node_work_progress_compute/overlay.yaml under ONEX_SKILL_OVERLAY_ROOTS;
   none is packaged. The handler reads no clock, file, environment or envelope.
 input_model:
@@ -31,6 +36,14 @@ handler_routing:
       handler:
         name: HandlerWorkProgress
         module: omnimarket.nodes.node_work_progress_compute.handlers.handler_work_progress
+    - operation: judge_work_episodes
+      topic: onex.cmd.omnimarket.work-episodes-judge-requested.v1
+      handler:
+        name: HandlerWorkEpisodes
+        module: omnimarket.nodes.node_work_progress_compute.handlers.handler_work_episodes
+      handler_module: omnimarket.nodes.node_work_progress_compute.handlers.handler_work_episodes
+      input_model: omnimarket.models.model_work_episode.ModelWorkEpisodeRequest
+      output_model: omnimarket.models.model_work_episode.ModelWorkEpisodeResult
 descriptor:
   node_archetype: compute
   purity: pure
@@ -50,12 +63,35 @@ config:
       - name: claimed
         note: "no PR is recorded in the ledger"
       - name: pr_open
+  work_episodes:
+    # Phase vocabulary per watched kind; the overlay supplies one positive limit for each.
+    kinds:
+      lane: [placed, claimed, pr_open]
+      pr: [draft, ci_pending, red_unowned, green_unarmed, armed]
+      round: [awaiting_next_run]
+      tick: [overdue, running]
+    alarm_condition: work_stall
+    # The next hop. The result's alarm_request is this node's input model; a caller hands it to the topic.
+    # This compute node publishes nothing but its result.
+    alarm_input:
+      node: node_lab_alarm_deliver_effect
+      topic: onex.cmd.omnimarket.lab-alarm-delivery-requested.v1
+      model: omnimarket.models.lab_alarm_delivery.ModelLabAlarmDeliveryRequest
+    # Heartbeat inputs a reader hands to the judgment. The scheduled round heartbeat is the run event every
+    # scheduled job node publishes (its newest event per job is that round's anchor); the judgment reads it
+    # from the request field round_heartbeats and names the shipped topic and model here.
+    heartbeat_inputs:
+      - kind: round
+        request_field: round_heartbeats
+        topic: onex.evt.omnimarket.schedule-run.v1
+        model: omnimarket.models.schedule_trigger.model_schedule_trigger.ModelScheduleRunEvent
 terminal_event: onex.evt.omnimarket.work-progress-computed.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.work-progress-compute-requested.v1
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.work-progress-compute-requested.v1
+    - onex.cmd.omnimarket.work-episodes-judge-requested.v1
   publish_topics:
     - onex.evt.omnimarket.work-progress-computed.v1
 externally_consumed_topics:
@@ -64,7 +100,18 @@ published_events:
   - event_type: WorkProgressComputed
     topic: onex.evt.omnimarket.work-progress-computed.v1
     description: Ordered findings for phase entries strictly over their supplied budgets.
+# The broker grants the episode operation's command topic needs (OMN-24005 coverage gate): the runtime login reads
+# the request; the result leaves on the node's existing terminal event.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.work-episodes-judge-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.work-episodes-judge-requested.v1, operation: DESCRIBE}
 dod_evidence:
+  - test: tests/nodes/node_work_progress_compute/test_work_episodes.py
+    description: "A lane past its phase budget alerts once per crossing, a repeat evaluation alerts nothing, a resumed lane closes the episode, and a new stall is a new crossing; the same for pr, round and tick kinds."
+  - test: tests/nodes/node_work_progress_compute/test_work_episodes_heartbeats.py
+    description: "Two evaluations over one stalled scheduled round emit one alert record in the alarm node's input model; a newer heartbeat closes the episode; the contract names the heartbeat topic and model, and the alarm record is accepted by the alarm node's delivery handler once."
   - test: tests/nodes/node_work_progress_compute/test_work_progress.py
     description: "Strict boundaries, stable entry keys, exact text, required overlay budgets and handler purity."
   - test: tests/nodes/node_work_progress_compute/test_work_progress_profiles.py
