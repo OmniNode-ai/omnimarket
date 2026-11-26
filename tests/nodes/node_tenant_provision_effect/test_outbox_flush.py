@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -22,6 +22,7 @@ from omnimarket.nodes.node_tenant_provision_effect.handlers.handler_tenant_outbo
 )
 from omnimarket.nodes.node_tenant_provision_effect.handlers.tenant_identity_postgres import (
     OutboxRow,
+    TenantIdentityPostgres,
     TenantStoreUnavailableError,
 )
 from omnimarket.nodes.node_tenant_provision_effect.models.model_tenant_provision import (
@@ -82,7 +83,7 @@ class Sent:
 
 def _handler(store: FakeStore, sent: Sent) -> HandlerTenantOutboxFlush:
     return HandlerTenantOutboxFlush(
-        store=store,  # type: ignore[arg-type]
+        store=cast(TenantIdentityPostgres, store),
         publisher=sent,
         clock=lambda: datetime(2026, 11, 26, tzinfo=UTC),
     )
