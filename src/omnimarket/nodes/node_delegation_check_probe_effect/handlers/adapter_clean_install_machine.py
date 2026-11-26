@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The C17 collector: the guide's own install line run in a clean tool environment, then measured (OMN-26044).
+"""The customer-machine collectors: the guide's own install line run in a clean tool environment, then measured (OMN-26044).
 
-``CleanInstallCustomerMachine`` is a customer machine whose ``collect_surface`` is real and whose delegation and routing
-collectors are still absent (C13 and C14 keep reading PRECONDITION-ABSENT). A fresh tool environment is a temporary
+``CleanInstallCustomerMachine`` is a customer machine whose surface (C17), dashboard (C30), delegation run and routing walk
+(C13 and C14, OMN-26043) collectors are real. A fresh tool environment is a temporary
 directory: its own home, uv tool directory and tool bin directory, a PATH holding only ``uv`` and the system directories, and
 none of the registry-root variables, so the install lands where a customer's would and nothing the host carries stands in
 for it. The measuring half runs inside that environment (``clean_machine_driver``); this module only reads the guide and the
@@ -27,6 +27,7 @@ from omnimarket.handlers.routing.delegation_check_responder_chain import (
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers import (
     clean_dashboard_driver,
+    clean_delegation_driver,
     clean_machine_driver,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.grade_customer_guide import (
@@ -71,10 +72,6 @@ PASSTHROUGH_ENV = (
 INSTALL_TIMEOUT_S = 900
 DRIVER_TIMEOUT_S = 900
 SOURCE_TIMEOUT_S = 60
-DELEGATION_ABSENT = (
-    "no customer-machine collector is wired to this node for delegation runs or the routing walk yet: the fresh-container "
-    "install, the egress recorder and the routing walk still run in the producer workflows"
-)
 
 
 @dataclass(frozen=True)
@@ -246,16 +243,31 @@ class CleanInstallCustomerMachine:
         process_env = os.environ  # ONEX_FLAG_EXEMPT: host environment of the run
         self._host_env = process_env if host_env is None else host_env
         self._versions: dict[str, str] = {}
+        self._delegations: dict[tuple[str, str], dict[str, Any] | None] = {}
+        self._install_rc = -1
 
     def run_delegation(
         self, check_id: CheckId, responder: ModelChainResolution
     ) -> ModelDelegateObservation:
-        raise CollectorAbsentError("customer_machine", DELEGATION_ABSENT)
+        """One ``onex delegate`` through the customer path to the responder the chain chose, measured from outside."""
+        record = self._delegate_record(responder)
+        if record is None:
+            return ModelDelegateObservation(rc=self._install_rc)
+        fields = set(ModelDelegateObservation.model_fields)
+        runner_entry = shutil.which("onex", path=self._host_path)
+        return ModelDelegateObservation(
+            **{k: v for k, v in record.items() if k in fields},
+            runner_entry_path=runner_entry,
+        )
 
     def collect_routing(
         self, responder: ModelChainResolution
     ) -> ModelRoutingCollection:
-        raise CollectorAbsentError("customer_machine", DELEGATION_ABSENT)
+        """The routing walk of the same clean machine run that made the delegation."""
+        record = self._delegate_record(responder)
+        if record is None:
+            return ModelRoutingCollection()
+        return ModelRoutingCollection(**(record.get("routing") or {}))
 
     def versions(self) -> dict[str, str]:
         return dict(self._versions)
@@ -284,6 +296,75 @@ class CleanInstallCustomerMachine:
         )
         (root / "home").mkdir()
         return env
+
+    def _delegate_record(
+        self, responder: ModelChainResolution
+    ) -> dict[str, Any] | None:
+        """The in-machine record of one delegation run, made once per responder; None when the install did not complete."""
+        if not responder.base_url or not responder.served_model:
+            raise CollectorAbsentError(
+                "delegation_model",
+                "no local responder to set the clean profile up with",
+            )
+        key = (responder.base_url, responder.served_model)
+        if key in self._delegations:
+            return self._delegations[key]
+        guide_name, guide_text = self._sources.guide()
+        lines = install_lines(guide_text)
+        usable = lines[0] if len(lines) == 1 else None
+        if usable is None or usable.argv is None:
+            raise CollectorAbsentError(
+                "install_line",
+                f"{guide_name} carries no single runnable install line for the delegation run",
+            )
+        uv = self._find_uv()
+        with tempfile.TemporaryDirectory(prefix="c13-clean-") as tmp:
+            root = Path(tmp)
+            env = self._clean_env(root, uv)
+            if shutil.which("onex", path=env["PATH"]):
+                raise CollectorAbsentError(
+                    "clean_machine", "an onex already resolves on the clean PATH"
+                )
+            install = self._runner.run(
+                usable.argv, env=env, cwd=root, timeout_s=INSTALL_TIMEOUT_S
+            )
+            if install.rc != 0:
+                self._install_rc = install.rc if install.rc is not None else -1
+                self._delegations[key] = None
+                return None
+            python = root / "tool" / (usable.package or "") / "bin" / "python"
+            drove = self._runner.run(
+                [
+                    str(python),
+                    "-",
+                    "--onex",
+                    str(root / "bin" / "onex"),
+                    "--url",
+                    responder.base_url,
+                    "--model",
+                    responder.served_model,
+                    "--packages",
+                    *TOOL_PACKAGES,
+                ],
+                env=env,
+                cwd=root,
+                timeout_s=DRIVER_TIMEOUT_S,
+                stdin=Path(clean_delegation_driver.__file__).read_text(
+                    encoding="utf-8"
+                ),
+            )
+        try:
+            document: dict[str, Any] = json.loads(drove.stdout)
+        except ValueError as exc:
+            raise CollectorAbsentError(
+                "clean_delegation_driver",
+                f"the in-machine driver produced no record (rc {drove.rc}): {drove.stderr.strip()[-500:]} ({exc})",
+            ) from exc
+        self._versions = {
+            str(k): str(v) for k, v in (document.get("versions") or {}).items()
+        }
+        self._delegations[key] = document
+        return document
 
     def collect_surface(self) -> ModelSurfaceObservation:
         guide_name, guide_text = self._sources.guide()
