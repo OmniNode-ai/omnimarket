@@ -120,7 +120,14 @@ def _write_run(root: Path, **over: Any) -> Path:
         "receipt": {
             "correlation_id": "corr-1",
             "result": {
-                "attempts": [{"tier": "local", "acceptance_decision": "accept"}],
+                "attempts": [
+                    {
+                        "tier": "local",
+                        "backend_ref": "local-omnipc2-chat",
+                        "model_used": MODEL,
+                        "acceptance_decision": "accept",
+                    }
+                ],
                 "escalation_count": 0,
                 "metrics": {"cost_usd": 0.0},
             },
@@ -149,6 +156,14 @@ def test_a_run_directory_with_three_agreeing_files_reads_local_and_free(
     assert read["receipt_tier"] == "local"
     assert read["receipt_model"] == MODEL
     assert read["attempt_tiers"] == ["local"]
+    assert read["attempt_hops"] == [
+        {
+            "tier": "local",
+            "backend": "local-omnipc2-chat",
+            "model": MODEL,
+            "outcome": "accept",
+        }
+    ]
     assert read["accepted_last"] is True
     assert read["escalated"] is False
     assert read["cost_usd"] == 0.0
@@ -229,6 +244,14 @@ def _record(**over: Any) -> dict[str, Any]:
         "receipt_model": MODEL,
         "receipt_endpoint": f"{BASE}/v1/chat/completions",
         "attempt_tiers": ["local"],
+        "attempt_hops": [
+            {
+                "tier": "local",
+                "backend": "local-omnipc2-chat",
+                "model": MODEL,
+                "outcome": "accept",
+            }
+        ],
         "accepted_last": True,
         "escalated": False,
         "cost_usd": 0.0,

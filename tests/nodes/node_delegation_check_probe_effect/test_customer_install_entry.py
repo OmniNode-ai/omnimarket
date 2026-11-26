@@ -31,6 +31,9 @@ def _obs(**over: object) -> ModelDelegateObservation:
         "receipt_model": MODEL,
         "receipt_endpoint": BASE,
         "attempt_tiers": ("local",),
+        "attempt_hops": (
+            {"tier": "local", "backend": "b", "model": MODEL, "outcome": "accept"},
+        ),
         "accepted_last": True,
         "egress_recorded": True,
         "model_connects": 3,
@@ -74,5 +77,6 @@ def test_no_clause_asserts_an_onex_absent_from_the_runner() -> None:
         "install_entry",
         "three_files",
         "local_model",
+        "receipt_hops_chain_order",
         "zero_provider",
     }

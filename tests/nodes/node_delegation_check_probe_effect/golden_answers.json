@@ -360,6 +360,14 @@
  "machine": {
   "delegation": {
    "accepted_last": true,
+   "attempt_hops": [
+    {
+     "backend": "local-omnipc2-chat",
+     "model": "Qwen3.8-27B",
+     "outcome": "accept",
+     "tier": "local"
+    }
+   ],
    "attempt_tiers": [
     "local"
    ],

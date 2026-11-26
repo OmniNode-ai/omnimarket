@@ -72,6 +72,15 @@ class ModelCheckPrecondition(_Frozen):
     detail: str
 
 
+class ModelDelegationHop(_Frozen):
+    """One hop the responder chain tried for a delegation, as the run's receipt records it (OMN-26043)."""
+
+    tier: str
+    backend: str | None = None
+    model: str | None = None
+    outcome: str | None = None
+
+
 class ModelDelegateObservation(_Frozen):
     """What one real ``onex delegate`` run on the customer machine showed, read from outside the process (C13 and C14)."""
 
@@ -85,6 +94,8 @@ class ModelDelegateObservation(_Frozen):
     receipt_endpoint: str | None = None
     # The tier of each attempt on the receipt's ladder, in order; the last is the accepted rung when ``accepted_last``.
     attempt_tiers: tuple[str, ...] = ()
+    # Every hop the chain tried (tier, backend, model, outcome), in order, read from the receipt's attempts.
+    attempt_hops: tuple[ModelDelegationHop, ...] = ()
     accepted_last: bool = False
     escalated: bool = False
     cost_usd: float = 0.0

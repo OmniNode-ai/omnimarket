@@ -165,6 +165,16 @@ def read_run(
     result = inner.get("result") or {}
     attempts = result.get("attempts") or []
     tiers = [str(a.get("tier")) for a in attempts if isinstance(a, dict)]
+    hops = [
+        {
+            "tier": str(a.get("tier")),
+            "backend": a.get("backend_ref") or a.get("backend"),
+            "model": a.get("model_used") or a.get("model"),
+            "outcome": a.get("acceptance_decision"),
+        }
+        for a in attempts
+        if isinstance(a, dict)
+    ]
     last = attempts[-1] if attempts and isinstance(attempts[-1], dict) else {}
     agree = bool(
         receipt
@@ -187,6 +197,7 @@ def read_run(
         "receipt_model": (receipt or {}).get("model"),
         "receipt_endpoint": (receipt or {}).get("endpoint"),
         "attempt_tiers": tiers,
+        "attempt_hops": hops,
         "accepted_last": last.get("acceptance_decision") == "accept",
         "escalated": bool(result.get("escalation_count")),
         "cost_usd": float(cost) if isinstance(cost, int | float) else 0.0,

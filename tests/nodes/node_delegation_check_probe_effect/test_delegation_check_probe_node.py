@@ -47,6 +47,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation
     ModelBrokenCommandCase,
     ModelDelegateObservation,
     ModelDelegationCheckRequest,
+    ModelDelegationHop,
     ModelRoutingCollection,
     ModelSurfaceObservation,
 )
@@ -95,6 +96,14 @@ def good_delegation(
         receipt_model=model,
         receipt_endpoint=base,
         attempt_tiers=("local",),
+        attempt_hops=(
+            ModelDelegationHop(
+                tier="local",
+                backend="local-omnipc2-chat",
+                model=model,
+                outcome="accept",
+            ),
+        ),
         accepted_last=True,
         egress_recorded=True,
         model_connects=3,
@@ -202,6 +211,7 @@ def test_c14_reads_pass_on_all_three_rows() -> None:
     assert result.verdict is EnumCheckVerdict.PASS
     assert {c.name for c in result.clauses if not c.name.startswith("gateway_")} == {
         "no_checkout",
+        "receipt_hops_chain_order",
         "row1_local_answer_ends_chain",
         "row2_no_unbindable_tier",
         "row4_reviewer_unmetered",

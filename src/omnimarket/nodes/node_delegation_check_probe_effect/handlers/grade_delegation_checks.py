@@ -64,6 +64,36 @@ def _zero_provider(obs: ModelDelegateObservation) -> ModelCheckClause:
     )
 
 
+def grade_hop_chain_order(obs: ModelDelegateObservation) -> ModelCheckClause:
+    """The receipt's own hop record follows the chain order, and each hop names its tier, backend, model and outcome.
+
+    The order is read from what the run tried, never from a pinned model: a hop on a tier that precedes an earlier hop's
+    tier, a tier outside the chain, or a hop missing a field it must record reads red.
+    """
+    hops = obs.attempt_hops
+    if not hops:
+        return ModelCheckClause(
+            name="receipt_hops_chain_order",
+            ok=False,
+            detail="the receipt records no hop the chain tried",
+        )
+    unnamed = [
+        i for i, h in enumerate(hops) if not (h.backend and h.model and h.outcome)
+    ]
+    unknown = [h.tier for h in hops if h.tier not in CHAIN_TIER_ORDER]
+    rank = [CHAIN_TIER_ORDER.index(h.tier) for h in hops if h.tier in CHAIN_TIER_ORDER]
+    in_order = rank == sorted(rank)
+    ok = not unnamed and not unknown and in_order
+    walked = " then ".join(h.tier for h in hops)
+    return ModelCheckClause(
+        name="receipt_hops_chain_order",
+        ok=ok,
+        detail=f"the receipt records the hops {walked}, each with tier, backend, model and outcome, in chain order"
+        if ok
+        else f"hops {walked}: missing fields at {unnamed}, tiers outside the chain {unknown}, in chain order {in_order}",
+    )
+
+
 def grade_c13(
     obs: ModelDelegateObservation, *, responder_base: str, served_model: str
 ) -> tuple[ModelCheckClause, ...]:
@@ -104,6 +134,7 @@ def grade_c13(
             if local
             else f"receipt tier {obs.receipt_tier}, model {obs.receipt_model}, endpoint {obs.receipt_endpoint}, ladder {list(obs.attempt_tiers)} against responder {responder_base} serving {served_model}",
         ),
+        grade_hop_chain_order(obs),
         _zero_provider(obs),
     )
 
@@ -141,6 +172,7 @@ def grade_c14(
             if obs.no_checkout
             else "an OmniNode distribution did not come from the package index",
         ),
+        grade_hop_chain_order(obs),
         ModelCheckClause(
             name="row1_local_answer_ends_chain",
             ok=row1,
