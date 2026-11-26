@@ -232,6 +232,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_tenant_provision_effect/test_contract_shape.py tests/nodes/node_tenant_provision_effect/test_runtime_publishes_read_answer.py tests/gates/test_contract_publish_parity.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26043-refused-request-failed-terminal
+  description: A delegation request the wire model refuses (a task class the contract does not declare, an invalid payload field) now ends with a failed terminal carrying the request's correlation id and tenant and a typed class and code, so a gateway run reads failed instead of staying published. A request with no readable correlation id still emits no terminal, and a valid request still routes. The tests fail on the base commit, where the dispatcher answered INVALID_MESSAGE with no output event, and pass after the change. This binds AC5 (the dead-run clauses of C14, C16 and C28).
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_invalid_request_failed_terminal_omn26043.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn26043-gateway-check-budget-completes
   description: "A gateway check's submission carries an output budget of 512 tokens, not 32, and a prompt that asks for the one code block a task_type test run's gate grades. C29 run c29-20261126T044722Z-f2c5a20f read FAIL on completed_under_tenant_key with the tenant's own OpenRouter key answering: the workflow failed with finish_reason=length because the probe asked for 32 tokens, and the gateway refusing a truncated answer is intended behaviour; the check's budget was the defect (a lab run at 128 still truncated; at 1024 the old prompt failed the gate with TASK_MISMATCH on 2 of 4 runs; with the new prompt and 512, 5 of 5 completed). The new test fails on the previous commit, where every submit carried 32, and passes after the change. This binds AC5: C29 reading green needs a healthy run that can finish."
   source: manual
