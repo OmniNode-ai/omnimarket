@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_host_observability_install_effect
+node_type: EFFECT_GENERIC
+version: 1.0.0
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Install, inspect and read back Prometheus, Grafana and the host exporter that show every lab host's health on one page.
+  The overlay (settings) declares the scraped hosts (each a row of the lab_hosts table), the images, the addresses, the ports,
+  the alert thresholds and the retention bounds. On the observer host the node renders and writes the Prometheus configuration,
+  the alert rules and the Grafana provisioning and dashboard; on every host it keeps the declared containers running by running
+  the container unit installer node (node_host_installer_container_units) for each unit, so nothing is started by hand. A target
+  that is not a lab_hosts row is refused; a lab_hosts row with no declared target is reported as uncovered. The readback mode asks
+  Prometheus for each lab_hosts row and says READ (up, reading no older than the declared bound), STALE, DOWN or NO TARGET.
+input_model:
+  name: ModelObservabilityInstallRequest
+  module: omnimarket.nodes.node_host_observability_install_effect.models.model_observability
+output_model:
+  name: ModelObservabilityInstallResult
+  module: omnimarket.nodes.node_host_observability_install_effect.models.model_observability
+handler:
+  name: HandlerObservabilityInstall
+  module: omnimarket.nodes.node_host_observability_install_effect.handlers.handler_observability_install
+entrypoint:
+  name: NodeHostObservabilityInstallEffect
+  module: omnimarket.nodes.node_host_observability_install_effect.node
+runtime_dispatch:
+  # An operator or a lane runs the installer for one lab host; there is no schedule, the command below is the whole trigger.
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_host_observability_install_effect install --host <host_name> --overlay <overlay.yaml>
+    owner: OmniNode Platform Team
+execution:
+  deterministic: false
+  side_effects: true
+overlay:
+  file: overlay.yaml
+  environment_pin: ONEX_HOST_OBSERVABILITY_OVERLAY
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  side_effects:
+  - writes the Prometheus, alert rule and Grafana provisioning files under the declared config root
+  - runs the container unit installer for each declared unit
+  - signals the Prometheus container to reload its configuration when its files changed
+metadata:
+  ticket: OMN-26657
+  transport_type: in_process

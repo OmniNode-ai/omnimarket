@@ -191,6 +191,35 @@ def test_create_argv_golden_with_ports_volume_and_env_file() -> None:
     ]
 
 
+def test_create_argv_carries_each_declared_security_option_before_the_image() -> None:
+    unit = ModelContainerUnit(
+        **UNIT,
+        network="broker-net",
+        create=ModelContainerCreate(
+            image="example/broker:1.0",
+            restart_policy="unless-stopped",
+            security_opts=("apparmor=unconfined", "no-new-privileges"),
+        ),
+    )
+    argv = create_argv(unit)
+    assert argv[argv.index("--restart") + 2 :] == [
+        "--security-opt",
+        "apparmor=unconfined",
+        "--security-opt",
+        "no-new-privileges",
+        "example/broker:1.0",
+    ]
+    # Positive control: a unit that declares none passes none.
+    plain = ModelContainerUnit(
+        **UNIT,
+        network="broker-net",
+        create=ModelContainerCreate(
+            image="example/broker:1.0", restart_policy="unless-stopped"
+        ),
+    )
+    assert "--security-opt" not in create_argv(plain)
+
+
 def test_create_argv_golden_without_ports_volumes_or_env_file() -> None:
     unit = ModelContainerUnit(
         **UNIT,

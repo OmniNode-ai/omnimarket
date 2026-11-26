@@ -1,0 +1,103 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# A synthetic copy of the node overlay: every host, address, path and number is made up. The real overlay is found under
+# ONEX_SKILL_OVERLAY_ROOTS as node_host_observability_install_effect/overlay.yaml, or at the file
+# ONEX_HOST_OBSERVABILITY_OVERLAY names. Every target is a row of the lab_hosts table.
+ticket: OMN-26657
+observer_host: host-a
+config_root: /var/lib/example/observability
+docker_binary: /usr/bin/docker
+restart_policy: unless-stopped
+restart_seconds: 10
+stop_timeout_seconds: 30
+probe_wait_seconds: 90
+# AC1: a host reads at most this many seconds old.
+max_reading_age_seconds: 60
+targets:
+  host-a:
+    address: host-a.example.test
+    exporter: install      # this installer keeps the exporter container running there; "launchd" keeps it as a launchd job on a Mac host (see launchd_exporter)
+    # textfile_directory: /var/lib/example/other   # this host's own directory; unset, exporter.textfile_directory applies
+    port: 9100
+    processes: true        # and the per process exporter (CPU per process name) on process_exporter.port
+  host-b:
+    address: host-b.example.test
+    exporter: existing     # an exporter already answers there; the installer only scrapes it
+    port: 9100
+    processes: true
+exporter:
+  image: example/node-exporter:1.0
+  container: example-node-exporter
+  unit: example-node-exporter
+  network: host
+  rootfs_mount: /
+  textfile_directory: /var/lib/example/textfile
+  enable_collectors: [systemd]
+  # The systemd collector talks to the host's bus, so the bus socket is mounted into the container (source:target:options).
+  host_mounts:
+    - /run/example/bus_socket:/var/run/dbus/system_bus_socket:ro
+  # Options for the container's security confinement (docker --security-opt): the systemd bus refuses the default profile.
+  security_opts: [example-profile=unconfined]
+  # A regular expression: only these units are reported (the omni and onex services and timers).
+  systemd_unit_include: "(omni|onex).*\\.(service|timer)"
+  memory_gib: 1
+  memory_swap_gib: 1
+# Needed only when a target says exporter: launchd. The node renders and lints the property list; a dry run writes nothing.
+# launchd_exporter:
+#   label: test.example.node-exporter
+#   binary: /opt/example/bin/node_exporter
+#   plist_directory: /Library/LaunchDaemons
+#   log_directory: /var/log/example
+#   textfile_directory: /opt/example/textfile
+#   domain: system
+#   enable_collectors: [textfile]
+process_exporter:
+  image: example/process-exporter:1.0
+  container: example-process-exporter
+  unit: example-process-exporter
+  network: host
+  port: 9256
+  job_name: lab_processes
+  procfs_mount: /proc
+  name_template: "{{.Comm}}"
+  memory_gib: 1
+  memory_swap_gib: 1
+prometheus:
+  image: example/prometheus:1.0
+  container: example-prometheus
+  unit: example-prometheus
+  address: host-a.example.test
+  port: 9090
+  network: bridge
+  data_volume: example-prometheus-data
+  job_name: lab_hosts
+  scrape_interval_seconds: 15
+  retention_time: 15d
+  retention_size: 20GB
+  memory_gib: 4
+  memory_swap_gib: 4
+grafana:
+  image: example/grafana:1.0
+  container: example-grafana
+  unit: example-grafana
+  address: host-a.example.test
+  port: 3000
+  network: bridge
+  data_volume: example-grafana-data
+  dashboard_title: Lab hosts
+  refresh_seconds: 15
+  reading_window_minutes: 30
+  memory_gib: 1
+  memory_swap_gib: 1
+  environment:
+    GF_AUTH_ANONYMOUS_ENABLED: "true"
+    GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION: "true"
+alerts:
+  host_down_minutes: 2
+  disk_percent: 85
+  inode_percent: 85
+  load_minutes: 10
+  failed_service_minutes: 1
+  # A host whose newest reading is older than max_reading_age_seconds for this long raises LabHostReadingStale.
+  reading_stale_minutes: 2
