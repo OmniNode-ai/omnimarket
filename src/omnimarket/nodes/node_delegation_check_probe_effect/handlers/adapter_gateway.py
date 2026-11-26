@@ -19,7 +19,11 @@ from typing import Any, Final, Protocol
 from pydantic import SecretStr
 
 from omnimarket.handlers.delegation_scenario_settings import SecretStoreSettingsReader
-from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.handlers.node_overlay_reader import (
+    OVERLAY_ROOTS_ENV,
+    NodeOverlayNotFoundError,
+    load_structured_overlay,
+)
 from omnimarket.models.overlay_documents.model_delegation_check_gateway_overlay import (
     ModelDelegationCheckGatewayOverlay,
     ModelDevTenantTokenSource,
@@ -77,9 +81,14 @@ class DevTenantCredential:
         try:
             declared = self._declared()
         except ValueError as exc:
+            where = (
+                f"; no {DEV_TENANT_NODE}/overlay.yaml under a root in {OVERLAY_ROOTS_ENV}"
+                if isinstance(exc, NodeOverlayNotFoundError)
+                else ""
+            )
             raise CollectorAbsentError(
                 "tenant_credential",
-                f"the dev tenant node's overlay cannot be read: {type(exc).__name__}",
+                f"the dev tenant node's overlay cannot be read: {type(exc).__name__}{where}",
             ) from None
         secret_name = self._secret_name
         if secret_name is None:
