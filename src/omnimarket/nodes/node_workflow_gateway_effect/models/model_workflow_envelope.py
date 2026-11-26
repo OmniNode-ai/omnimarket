@@ -19,6 +19,8 @@ from omnibase_core.models.delegation.wire.model_quality_gate import (
 )
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
+from omnimarket.models.delegation.wire.model_tests_outcome import EnumTestsOutcome
+
 _SEMVER = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 
 _FAILURE_FIELDS = (
@@ -139,6 +141,7 @@ class ModelWorkflowStatus(BaseModel):
     terminal_failure_reason: str | None = None
     terminal_remediation: str | None = None
     rule_evaluations: tuple[ModelQualityRuleEvaluation, ...] = ()
+    tests_outcome: EnumTestsOutcome | None = None
 
     @model_validator(mode="after")
     def _completed_carries_no_failure(self) -> Self:
@@ -177,6 +180,7 @@ class ModelWorkflowReceipt(BaseModel):
     terminal_failure_reason: str | None
     terminal_remediation: str | None
     rule_evaluations: tuple[ModelQualityRuleEvaluation, ...] = ()
+    tests_outcome: EnumTestsOutcome | None = None
     event_count: int
     projection_row_hash: str
     terminal_event_hash: str
