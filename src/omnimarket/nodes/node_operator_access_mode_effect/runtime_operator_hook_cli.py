@@ -40,6 +40,7 @@ import re
 import sys
 import time
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -78,7 +79,10 @@ from .handlers.handler_silence_guard import HandlerSilenceGuard, is_silence_tick
 from .models.enum_access_mode import EnumAccessMode
 from .models.model_access_mode_request import ModelAccessModeRequest
 from .models.model_access_mode_result import ModelAccessModeResult
-from .models.model_foreground_bash_request import ModelForegroundBashRequest
+from .models.model_foreground_bash_request import (
+    DEFAULT_TURN_BUDGET_SECONDS,
+    ModelForegroundBashRequest,
+)
 from .models.model_hook_verdict import ModelHookVerdict
 from .models.model_lab_dispatch_request import ModelLabDispatchRequest
 from .models.model_operator_reply_request import ModelOperatorReplyRequest
@@ -97,6 +101,99 @@ SILENT_COMMAND = re.compile(
 )
 TAG = "[access-mode]"
 TRANSCRIPT_TAIL_BYTES = 1 << 20
+TURN_TRANSCRIPT_BYTES = 16 << 20
+TURN_BUDGET_ENV = "ONEX_FOREGROUND_TURN_BUDGET_SECONDS"
+HOOK_FEEDBACK_PREFIXES = ("Stop hook feedback", "<stop-hook", "Stop hook")
+
+
+def _row_time(row: Mapping[str, Any]) -> float | None:
+    stamp = row.get("timestamp")
+    if not isinstance(stamp, str):
+        return None
+    try:
+        return datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def _is_operator_prompt(row: Mapping[str, Any]) -> bool:
+    """A user row that is the operator's own text, not a tool result or a hook re-prompt."""
+    if row.get("isMeta"):
+        return False
+    message = row.get("message")
+    content = message.get("content") if isinstance(message, dict) else None
+    if isinstance(content, str):
+        text = content
+    elif isinstance(content, list):
+        parts = [
+            str(b.get("text") or "")
+            for b in content
+            if isinstance(b, dict) and b.get("type") == "text"
+        ]
+        if not parts:
+            return False
+        text = "\n".join(parts)
+    else:
+        return False
+    return not text.lstrip().startswith(HOOK_FEEDBACK_PREFIXES)
+
+
+def turn_tool_seconds(payload: Mapping[str, Any]) -> float:
+    """Main-thread tool time since the operator's last prompt, from the transcript timestamps.
+
+    Each tool call counts from its tool_use row to its tool_result row. A Stop hook's re-prompt is
+    not the operator speaking, so it does not start a new turn. Unreadable input counts nothing.
+    """
+    path = str(payload.get("transcript_path") or "")
+    if not path or not Path(path).is_file():
+        return 0.0
+    try:
+        with open(path, "rb") as handle:
+            size = handle.seek(0, os.SEEK_END)
+            start = max(0, size - TURN_TRANSCRIPT_BYTES)
+            handle.seek(start)
+            lines = handle.read().decode("utf-8", errors="replace").splitlines()
+    except OSError:
+        return 0.0
+    total = 0.0
+    started: dict[str, float] = {}
+    for line in lines[1:] if start else lines:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(row, dict) or row.get("isSidechain"):
+            continue
+        message = row.get("message")
+        if not isinstance(message, dict):
+            continue
+        when = _row_time(row)
+        if row.get("type") == "user":
+            if _is_operator_prompt(row):
+                total = 0.0
+                started.clear()
+                continue
+            blocks = message.get("content")
+            for block in blocks if isinstance(blocks, list) else []:
+                if isinstance(block, dict) and block.get("type") == "tool_result":
+                    begun = started.pop(str(block.get("tool_use_id")), None)
+                    if begun is not None and when is not None:
+                        total += max(0.0, when - begun)
+        elif row.get("type") == "assistant" and when is not None:
+            blocks = message.get("content")
+            for block in blocks if isinstance(blocks, list) else []:
+                if isinstance(block, dict) and block.get("type") == "tool_use":
+                    started[str(block.get("id"))] = when
+    return total
+
+
+def turn_budget_seconds(environ: Mapping[str, str]) -> float:
+    """The declared budget (contract.yaml), or the environment's override when it is a number."""
+    try:
+        value = float(environ.get(TURN_BUDGET_ENV, ""))
+    except ValueError:
+        return DEFAULT_TURN_BUDGET_SECONDS
+    return value if value > 0 else DEFAULT_TURN_BUDGET_SECONDS
 
 
 def _transcript_entrypoint(payload: Mapping[str, Any]) -> str:
@@ -436,6 +533,10 @@ def on_pre_tool(payload: Mapping[str, Any], environ: Mapping[str, str]) -> int:
                 timeout_ms=int(timeout) if isinstance(timeout, (int, float)) else None,
                 permission_mode=str(payload.get("permission_mode") or ""),
                 tool_name=str(tool),
+                turn_tool_seconds=(
+                    turn_tool_seconds(payload) if result.operator_facing else 0.0
+                ),
+                turn_budget_seconds=turn_budget_seconds(environ),
             )
         )
         return 0 if verdict.allowed else _refuse(verdict, payload, environ)
