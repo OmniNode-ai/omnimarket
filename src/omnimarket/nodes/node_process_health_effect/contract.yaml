@@ -61,7 +61,7 @@ runtime_io:
     # The bus rows reader (node_ledger_rows_loader_effect, a --since history range), never the ledger file.
     reader: "process-health"
     # HOLD and RELEASE rows are read this far back, beside the series window.
-    hold_history_days: 365
+    hold_history_days: 360
   landing:
     dir_env_var: "LANDING_STATE_DIR"
     dir_default: "~/.local/state/omni/landing"
