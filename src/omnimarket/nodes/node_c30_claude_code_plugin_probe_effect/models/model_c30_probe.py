@@ -17,6 +17,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 #: The dashboard snapshot topic whose rows the probe reads; the node does not own it.
 DECISIONS_TOPIC = "onex.snapshot.projection.delegation.decisions.v1"
+#: The one served exposure that declares a per-run `cost_usd` keyed by correlation id.
+TRACE_TOPIC = "onex.snapshot.projection.delegation.correlation-trace.v1"
 
 
 class _Frozen(BaseModel):

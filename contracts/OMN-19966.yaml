@@ -63,6 +63,13 @@ dod_evidence:
   - check_type: command
     check_value: 'grep -q "label: onex-c30-claude-code-plugin-probe" src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml && grep -q "label: onex-c31-local-dashboard-parity-probe" src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml'
     cwd: .
+- id: dod-omn19966-compliance-and-suppression-clean
+  description: Runs the C30 and C31 handlers through the handler compliance sweep's hardcoded-topic and transport checks, and asserts the C30 probe carries no suppression comment; both go red on the head before the fix (the topics sat in the handler modules and the loopback URL carried an annotation).
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_c30_claude_code_plugin_probe_effect/test_compliance_clean.py tests/nodes/node_c30_claude_code_plugin_probe_effect/test_no_suppression_comment.py -q --no-cov -p no:randomly
+    cwd: .
 - id: dod-omn19966-integration-proof
   description: On the lab host where the units are installed from the branch, the focused tests of both nodes run at the pushed head through the lab work runner, and the C31 timer's tick has run the real probe and written last-run.json with a verdict. Hosted CI cannot reach the lab host and cannot control a local_done_gate item at the merge base, so it binds no criterion here and only the local Done gate runs it.
   source: manual

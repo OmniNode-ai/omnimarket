@@ -72,6 +72,10 @@ from omnimarket.nodes.node_c31_local_dashboard_parity_probe_effect.handlers.prob
     running_dashboard,
     seed_fixture_delegation,
 )
+from omnimarket.nodes.node_c31_local_dashboard_parity_probe_effect.models.model_c31_probe import (
+    DECISIONS_TOPIC,
+    METERING_SUMMARY_TOPIC,
+)
 
 CRITERION = "C31"
 
@@ -93,10 +97,6 @@ REQUIRED_SUMMARY_FIELDS = (
     "baseline",
 )
 REQUIRED_BASELINE_FIELDS = ("model", "pricing_manifest_version")
-DECISIONS_TOPIC = "onex.snapshot.projection.delegation.decisions.v1"
-#: The exposure Overview's Savings widget binds (OMN-19980 Step B, omnidash#364):
-#: the metering summary's `all` window row.
-METERING_SUMMARY_TOPIC = "onex.snapshot.projection.metering-summary.v1"
 METERING_SAVINGS_FIELD = "savings_usd"
 METERING_ALL_WINDOW = "all"
 #: The Runs row the ticket names: the receipt's correlation id, with the model and
