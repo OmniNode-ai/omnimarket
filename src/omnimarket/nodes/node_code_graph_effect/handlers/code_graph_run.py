@@ -4,7 +4,10 @@
 
 It writes code graph rows only, never a gate, a stop or an admission. A run is WORKING when the
 graph agrees with the frozen sample at or above its bar and reaches every known-used control;
-otherwise NOT_WORKING with the misses named. A repository that cannot be read fails the run, and
+otherwise NOT_WORKING with the misses named. A repository the host holds no clone of is skipped and
+named in the reasons (``repo-skipped:<name>:no-clone``) and the row's ``skipped`` cell; one the
+frozen sample names makes the run NOT_WORKING (``sample-repo-skipped``), never a quiet pass. A
+repository that cannot be read, or a run that reads none, fails the run, and
 the row says NOT_WORKING with the outcome ``source-unreadable``: a graph that could not be built is
 not working. A run with an injected fault is a drill, and its row carries ``drill=yes`` so that no
 operational reading reads it.
@@ -47,6 +50,7 @@ from omnimarket.nodes.node_code_graph_effect.protocols import (
     ProtocolCodeGraphVersionStore,
     ProtocolCommitClock,
     ProtocolRepoSource,
+    RepoNotClonedError,
     RepoSourceError,
 )
 from omnimarket.nodes.node_reading_compute.handlers.handler_reading_compute import (
@@ -81,6 +85,14 @@ def _cell(text: str) -> str:
     return text.replace("|", "/").replace(" ", "_")
 
 
+class _NoRepositoryReadError(RepoSourceError):
+    """Every listed repository was skipped: a graph of nothing is not a graph."""
+
+    def __init__(self, skipped: tuple[str, ...]) -> None:
+        super().__init__("no-listed-repository-has-a-clone")
+        self.skipped = skipped
+
+
 class CodeGraphRun:
     """Run the graph over the overlay's repositories."""
 
@@ -112,8 +124,14 @@ class CodeGraphRun:
 
     def _snapshots(
         self, rules: GraphRules, fault: EnumGraphFault
-    ) -> list[ModelRepoSnapshot]:
+    ) -> tuple[list[ModelRepoSnapshot], tuple[str, ...]]:
+        """The snapshots of the repositories this host holds, and the listed ones it holds no clone of.
+
+        Only an absent clone is skipped; a clone that cannot be read (a bad ref, a git failure)
+        raises, and so does a run that reads no repository at all.
+        """
         snapshots: list[ModelRepoSnapshot] = []
+        skipped: list[str] = []
         for position, repo in enumerate(self._overlay.repos):
             if position == 0 and fault is EnumGraphFault.UNREADABLE_REPO:
                 raise RepoSourceError(f"injected-unreadable:{repo.name}")
@@ -121,9 +139,13 @@ class CodeGraphRun:
                 snapshots.append(
                     self._source.snapshot(repo.name, repo.ref, rules.wanted)
                 )
+            except RepoNotClonedError:
+                skipped.append(repo.name)
             except RepoSourceError as exc:
                 raise RepoSourceError(f"{repo.name}:{exc}") from None
-        return snapshots
+        if not snapshots:
+            raise _NoRepositoryReadError(tuple(skipped))
+        return snapshots, tuple(skipped)
 
     def handle(self, command: ModelCodeGraphCommand) -> ModelCodeGraphResult:
         now = self._clock().astimezone(UTC)
@@ -139,7 +161,7 @@ class CodeGraphRun:
             )
         rules = self.rules(command.fault)
         try:
-            snapshots = self._snapshots(rules, command.fault)
+            snapshots, skipped = self._snapshots(rules, command.fault)
         except RepoSourceError as exc:
             why = f"repo-unreadable:{reason_token(str(exc))}"
             return self._publish(
@@ -152,12 +174,16 @@ class CodeGraphRun:
                     outcome=EnumReadingOutcome.SOURCE_UNREADABLE,
                     reasons=(why,),
                     fault=command.fault,
+                    skipped=exc.skipped
+                    if isinstance(exc, _NoRepositoryReadError)
+                    else (),
                     failure=why,
                 ),
             )
         graph = build_graph(snapshots, rules)
         sample = judge_sample(graph, self._overlay.sample)
-        reasons = self._reasons(sample)
+        judged = self._reasons(sample, skipped)
+        reasons = (*judged, *(f"repo-skipped:{name}:no-clone" for name in skipped))
         memgraph = (
             self._write_versions(snapshots, rules)
             if command.write
@@ -170,7 +196,7 @@ class CodeGraphRun:
                 correlation_id=command.correlation_id,
                 status="completed",
                 verdict=EnumReadingVerdict.WORKING
-                if reasons == ("ok",)
+                if judged == ("ok",)
                 else EnumReadingVerdict.NOT_WORKING,
                 outcome=EnumReadingOutcome.READ,
                 reasons=reasons,
@@ -179,6 +205,7 @@ class CodeGraphRun:
                     graph.repo_graph(snapshot.repo, snapshot.head)
                     for snapshot in snapshots
                 ),
+                skipped=skipped,
                 sample=sample,
                 memgraph=memgraph,
             ),
@@ -215,7 +242,9 @@ class CodeGraphRun:
             return f"failed:query-refused:{reason_token(str(exc))}"
         return f"written:{written}-already-written:{already}"
 
-    def _reasons(self, sample: ModelSampleOutcome) -> tuple[str, ...]:
+    def _reasons(
+        self, sample: ModelSampleOutcome, skipped: tuple[str, ...]
+    ) -> tuple[str, ...]:
         bar = self._overlay.sample.min_agree
         reasons: list[str] = []
         if sample.agree < bar:
@@ -224,9 +253,23 @@ class CodeGraphRun:
             reasons.append(
                 f"controls-unreached:{sample.controls_total - sample.controls_reached}"
             )
+        reasons.extend(self._skipped_in_sample(skipped))
         if not reasons:
             return ("ok",)
         return (*reasons, *(reason_token(miss) for miss in sample.misses))
+
+    def _skipped_in_sample(self, skipped: tuple[str, ...]) -> list[str]:
+        """A skipped repository the frozen sample names: the reading cannot judge it, so it is not a pass."""
+        sample = self._overlay.sample
+        reasons: list[str] = []
+        for name in skipped:
+            entries = sum(1 for entry in sample.entries if entry.repo == name)
+            controls = sum(1 for control in sample.controls if control.repo == name)
+            if entries:
+                reasons.append(f"sample-repo-skipped:{name}:{entries}-entries")
+            if controls:
+                reasons.append(f"sample-repo-skipped:{name}:{controls}-controls")
+        return reasons
 
     def _publish(
         self,
@@ -278,6 +321,7 @@ class CodeGraphRun:
             f"outcome={result.outcome.value}",
             f"reason={_cell(','.join(shown))}" + (f",+{more}-more" if more else ""),
             f"repos={len(result.repos)}",
+            f"skipped={_cell(','.join(result.skipped)) if result.skipped else 'none'}",
             *(f"{name}={value}" for name, value in totals.items()),
             f"sample={sample.agree}/{sample.total}" if sample else "sample=none",
             f"sample_bar={self._overlay.sample.min_agree}",
