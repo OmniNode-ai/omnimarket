@@ -17,9 +17,11 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from _gateway_fake import FakeClock, FakeGateway
 
 from omnimarket.handlers.routing.delegation_check_responder_chain import (
     ModelChainResolution,
+    ModelResponderReading,
 )
 from omnimarket.models.overlay_documents.model_delegation_check_responders_overlay import (
     ModelDelegationCheckResponder,
@@ -37,6 +39,9 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_local_
     CommandResult,
     LocalDelegationCustomerMachine,
     find_source_trees,
+)
+from omnimarket.nodes.node_delegation_check_probe_effect.handlers.gateway_checks import (
+    GatewayRunSettings,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.grade_delegation_checks import (
     grade_c13,
@@ -711,9 +716,7 @@ def test_every_step_runs_under_the_connect_tracer_with_a_clean_environment() -> 
 def test_the_handler_reads_a_clean_c13_and_c14_run_as_pass() -> None:
     reader = InMemoryResponderReader({})
     publisher = InMemoryCheckPublisher()
-    from omnimarket.handlers.routing.delegation_check_responder_chain import (
-        ModelResponderReading,
-    )
+    gateway_clock = FakeClock()
 
     reader = InMemoryResponderReader(
         {
@@ -729,12 +732,16 @@ def test_the_handler_reads_a_clean_c13_and_c14_run_as_pass() -> None:
         publisher=publisher,
         topic=TOPIC,
         clock=lambda: datetime(2026, 11, 24, 12, 0, tzinfo=UTC),
+        gateway=FakeGateway(),
+        gateway_settings=GatewayRunSettings(run_budget_s=5.0, poll_interval_s=0.0),
+        sleep=gateway_clock.sleep,
+        monotonic=gateway_clock.monotonic,
     )
     c13 = handler.handle(
         ModelDelegationCheckRequest(correlation_id="c13", check_id="C13")
     )
     assert c13.verdict is EnumCheckVerdict.PASS
-    assert [c.name for c in c13.clauses] == [
+    assert [c.name for c in c13.clauses if not c.name.startswith("gateway_")] == [
         "no_checkout",
         "install_entry",
         "three_files",
@@ -745,13 +752,36 @@ def test_the_handler_reads_a_clean_c13_and_c14_run_as_pass() -> None:
         ModelDelegationCheckRequest(correlation_id="c14", check_id="C14")
     )
     assert c14.verdict is EnumCheckVerdict.PASS
-    assert [c.name for c in c14.clauses] == [
+    assert [c.name for c in c14.clauses if not c.name.startswith("gateway_")] == [
         "no_checkout",
         "row1_local_answer_ends_chain",
         "row2_no_unbindable_tier",
         "row4_reviewer_unmetered",
     ]
     assert len(publisher.events) == 2
+
+
+def test_a_clean_machine_with_no_gateway_row_reads_precondition_absent() -> None:
+    """Known bad: the machine leg alone never reads PASS; the gateway leg's absent row keeps C13 and C14 unproven."""
+    reading = ModelResponderReading(
+        base_url=BASE, answered=True, served_model=MODEL, max_model_len=WINDOW
+    )
+    handler = HandlerDelegationCheckProbe(
+        responders=(ModelDelegationCheckResponder(tier="local", base_url=BASE),),
+        reader=InMemoryResponderReader({BASE: reading}),
+        machine=_machine(ScriptedHost()),
+        publisher=InMemoryCheckPublisher(),
+        topic=TOPIC,
+        clock=lambda: datetime(2026, 11, 24, 12, 0, tzinfo=UTC),
+    )
+    for check in ("C13", "C14"):
+        result = handler.handle(
+            ModelDelegationCheckRequest(correlation_id=check.lower(), check_id=check)
+        )
+        assert result.verdict is EnumCheckVerdict.PRECONDITION_ABSENT
+        assert [p.name for p in result.preconditions if not p.present] == [
+            "gateway_row"
+        ]
 
 
 # -- the pure readers -----------------------------------------------------------------------------------------------------
