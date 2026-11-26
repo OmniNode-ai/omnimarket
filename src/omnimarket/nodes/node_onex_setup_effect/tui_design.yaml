@@ -742,6 +742,8 @@ themes:
     boost: "#00000008"
     border: "#b8b0a2"
     chip: "#e3ddd2"
+    toggle_on: "#d6ebcc"
+    toggle_off: "#e3ddd2"
     route_cheap: "#1b6f8a"
     route_fallback: "#8a6a00"
 

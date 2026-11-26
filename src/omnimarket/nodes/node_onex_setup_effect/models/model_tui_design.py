@@ -75,6 +75,10 @@ class ModelTuiTheme(BaseModel):
     border: str
     #: The fill behind a question in the conversation.
     chip: str = "#2c313c"
+    #: The delegation toggle's filled track, switched on and off (OMN-26688):
+    #: solid, as the terminal's own ground cannot be blended over.
+    toggle_on: str = "#24402c"
+    toggle_off: str = "#353a44"
     #: A task card's bar for a cheap model, and for the Claude fallback.
     route_cheap: str
     route_fallback: str
@@ -94,6 +98,8 @@ class ModelTuiTheme(BaseModel):
         "panel",
         "border",
         "chip",
+        "toggle_on",
+        "toggle_off",
         "route_cheap",
         "route_fallback",
     )

@@ -2466,12 +2466,14 @@ class DelegationScreen(_TabbedScreen[None]):
        is switched to (operator 2026-11-26 chose it over a filled bar, whose
        grey vanished on the dark theme). */
     #dturn-row { height: 3; margin: 1 0 0 0; }
-    #dturn { width: auto; min-width: 16; height: 3; background: transparent; border: round $foreground 45%; margin: 0 2 0 0; padding: 0 2; text-style: bold; }
-    #dturn:focus { text-style: bold; background: transparent; }
-    #dturn:hover { background: transparent; }
-    #dturn.-on { border: round $success; color: $success; }
-    #dturn.-off { border: round $foreground 45%; color: $text-muted; }
-    #dturn.-busy { border: round $foreground 25%; color: $text-muted; }
+    #dswitch { width: auto; height: 3; background: transparent; border: round $muted; margin: 0 2 0 0; }
+    #dswitch.-on { border: round $success; }
+    #dswitch.-busy { border: round $foreground 25%; }
+    #dturn { width: auto; min-width: 13; height: 1; border: none; padding: 0 2; text-style: bold; background: $toggle-off; color: $muted; }
+    #dturn:focus { text-style: bold; }
+    #dturn.-on { background: $toggle-on; color: $success; }
+    #dturn.-off { background: $toggle-off; color: $muted; }
+    #dturn.-busy { background: $toggle-off; color: $muted; }
     #dturn-hint { width: auto; height: 3; margin: 0 2 0 0; content-align: left middle; color: $text-muted; }
     /* A short screen keeps its rows for the models: no blank row above the
        toggle or between the boxes (the toggle is three rows, OMN-26688). */
@@ -2547,7 +2549,9 @@ class DelegationScreen(_TabbedScreen[None]):
                 # 2026-11-26: "i want toogle button", "one button"); the hook's
                 # line beside it only when something is wrong.
                 with Horizontal(id="dturn-row"):
-                    yield Button(self._toggle_label(), id="dturn")
+                    # The rounded outline holds the filled track (OMN-26688).
+                    with Horizontal(id="dswitch"):
+                        yield Button(self._toggle_label(), id="dturn")
                     yield Static(self._toggle_hint(), id="dturn-hint")
                     for hook in words.hooks:
                         line = Static(
@@ -2781,13 +2785,15 @@ class DelegationScreen(_TabbedScreen[None]):
         """The toggle shows the state: filled green on, grey off, dimmer grey
         while a switch runs or the state is not read (OMN-26688)."""
         button = self.query_one("#dturn", Button)
+        switch = self.query_one("#dswitch", Horizontal)
         button.label = self._toggle_label()
         self.query_one("#dturn-hint", Static).update(self._toggle_hint())
         busy = self._switching or self._saved in (None, "unknown")
         on = self.any_on()
-        button.set_class(busy, "-busy")
-        button.set_class(on and not busy, "-on")
-        button.set_class(not on and not busy, "-off")
+        for widget in (button, switch):
+            widget.set_class(busy, "-busy")
+            widget.set_class(on and not busy, "-on")
+            widget.set_class(not on and not busy, "-off")
 
     def action_save(self) -> None:
         """Switch here and stay; the outcome shows on this tab."""
@@ -4585,6 +4591,9 @@ class OnexTui(App[int]):
                     variables={
                         "border": tokens.border,
                         "chip": tokens.chip,
+                        "muted": tokens.muted,
+                        "toggle-on": tokens.toggle_on,
+                        "toggle-off": tokens.toggle_off,
                         "route-cheap": tokens.route_cheap,
                         "route-fallback": tokens.route_fallback,
                     },
@@ -5745,6 +5754,17 @@ class OnexTui(App[int]):
         if said:  # an unreachable server is asked again next time
             self._said[key] = (time.monotonic(), said)
         return said
+
+    def get_theme_variable_defaults(self) -> dict[str, str]:
+        """onex's own variables for a theme that does not set them, such as
+        the kept ANSI themes (OMN-26688: the delegation toggle's colours)."""
+        theme = tui_design().theme
+        return {
+            **super().get_theme_variable_defaults(),
+            "muted": theme.muted,
+            "toggle-on": theme.toggle_on,
+            "toggle-off": theme.toggle_off,
+        }
 
     async def apply_delegation(
         self, choice: ModelTuiDelegationChoice | None

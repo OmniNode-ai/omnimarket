@@ -7,8 +7,9 @@ pass like Config": a Turn on that reads as a button, and the order table
 framed with a line under its column names and striped rows, as /config's.
 
 Failure modes:
-  L1  the toggle is not a rounded outline three rows tall (operator
-      2026-11-26 chose it: a flat bar "is bad too"), or ON is not green.
+  L1  the toggle is not a rounded outline three rows tall around a filled
+      track, as a phone's switch (operator 2026-11-26: "exactly same" as
+      the picture), or ON is not green, or the track is not its theme fill.
   L6  on some onex theme the toggle's outline is too close to the ground
       behind it to be seen (the filled grey vanished on the dark theme).
   L2  the hook's line sits on a line of its own, apart from the toggle.
@@ -61,16 +62,20 @@ async def test_the_toggle_is_a_rounded_outline() -> None:
         assert isinstance(app.screen, DelegationScreen)
         screen = app.screen
         button = screen.query_one("#dturn", Button)
+        switch = screen.query_one("#dswitch", Horizontal)
         states = [name for name in ("-on", "-off", "-busy") if button.has_class(name)]
         assert len(states) == 1, states
+        assert switch.has_class(states[0]), switch.classes
         sides = (
-            button.styles.border_top,
-            button.styles.border_right,
-            button.styles.border_bottom,
-            button.styles.border_left,
+            switch.styles.border_top,
+            switch.styles.border_right,
+            switch.styles.border_bottom,
+            switch.styles.border_left,
         )
         assert {kind for kind, _ in sides} == {"round"}, sides
-        assert button.outer_size.height == 3, button.outer_size
+        assert switch.outer_size.height == 3, switch.outer_size
+        fill = "toggle-on" if states == ["-on"] else "toggle-off"
+        assert button.styles.background == Color.parse(app.theme_variables[fill])
         if states == ["-on"]:
             assert sides[0][1] == Color.parse(app.theme_variables["success"])
 
@@ -87,7 +92,7 @@ async def test_the_hook_line_is_on_the_toggle_row() -> None:
         row = screen.query_one("#dturn-row", Horizontal)
         hook = screen.query_one("#hook-prompt_hook", Static)
         assert hook.parent is row
-        assert screen.query_one("#dturn", Button).parent is row
+        assert screen.query_one("#dswitch", Horizontal).parent is row
 
 
 @pytest.mark.parametrize("delegation", ["hook", "off"])
@@ -103,13 +108,13 @@ async def test_the_toggle_stands_out_on_every_theme(delegation: str) -> None:
         for name in names:
             app.theme = name
             await sup.settle(pilot, 3)
-            button = app.screen.query_one("#dturn", Button)
+            switch = app.screen.query_one("#dswitch", Horizontal)
             ground = app.screen.query_one("#deleg").styles.background
             if ground.a == 0:  # the terminal's own ground: dark or light
                 ground = (
                     Color(0, 0, 0) if app.current_theme.dark else Color(255, 255, 255)
                 )
-            outline = ground + button.styles.border_top[1]
+            outline = ground + switch.styles.border_top[1]
             gap = abs(outline.brightness - ground.brightness)
             if gap < 0.2:
                 faint.append((name, round(gap, 3)))
