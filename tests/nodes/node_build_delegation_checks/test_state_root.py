@@ -249,3 +249,60 @@ def test_each_check_has_one_result_row_in_the_history_and_it_reads_back(
         read_back = store.last_reading(check_id, "no-such-build")
         assert read_back is not None
         assert read_back.build_id == red
+
+
+def _a_build() -> ModelBuildRecord:
+    return ModelBuildRecord(
+        build_id="a" * 40, runtime_lane="dev", started_at=datetime.now(UTC)
+    )
+
+
+def test_an_unreadable_history_is_named_by_the_store_not_raised_raw(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The read side of AC2: a history the process cannot read raised a bare PermissionError out of the store."""
+    history = tmp_path / "builds.json"
+    history.write_text("[]", encoding="utf-8")
+    real_read = Path.read_text
+
+    def deny(self: Path, encoding: str | None = None) -> str:
+        if self == history:
+            raise PermissionError(13, "Permission denied", str(self))
+        return real_read(self, encoding=encoding)
+
+    monkeypatch.setattr(Path, "read_text", deny)
+
+    with pytest.raises(BuildStoreUnwritableError, match=r"builds\.json") as caught:
+        FileBuildStore(history, 5).begin(_a_build())
+
+    assert "Permission denied" in str(caught.value)
+    assert "ONEX_STATE_DIR" in str(caught.value)
+
+
+def test_a_history_that_is_not_valid_json_is_named_not_raised_raw(
+    tmp_path: Path,
+) -> None:
+    history = tmp_path / "builds.json"
+    history.write_text("{not json", encoding="utf-8")
+
+    with pytest.raises(BuildStoreUnwritableError, match=r"builds\.json"):
+        FileBuildStore(history, 5).previous_build("dev", "b" * 40)
+
+
+def test_an_unreadable_history_refuses_the_build_by_name_and_runs_no_check(
+    read_only_home: tuple[Path, Path],
+) -> None:
+    """The handler reads the previous build before it claims this one; a history that cannot be read is a named refusal."""
+    home, state = read_only_home
+    _green, red = _shas(home)
+    history = state / ModelBuildDelegationChecksOverlay().history_relpath
+    history.parent.mkdir(parents=True)
+    history.write_text("{not json", encoding="utf-8")
+
+    result = HandlerBuildDelegationChecks().handle(
+        ModelRebuildCompletedObserved(git_sha=red, runtime_lane="dev")
+    )
+
+    assert result.status == EnumBuildChecksStatus.REFUSED
+    assert str(history) in result.reason
+    assert result.records == ()
