@@ -116,7 +116,7 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: >-
-          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run
+          onex lab-work run
           --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
           --lane dod-integration-proof-26707 --kind test --
           uv run --frozen pytest tests/unit/nodes/node_lane_work_event_classify_compute
