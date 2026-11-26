@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 from omnibase_core.models.lane_work import ModelLaneHelpTier
@@ -33,7 +34,7 @@ pytestmark = pytest.mark.unit
 HANDLER = HandlerLaneWorkHelp()
 
 
-def _answer(driver, body: str, **fields):  # type: ignore[no-untyped-def]
+def _answer(driver: Any, body: str, **fields: Any) -> Any:
     request = build_request(driver)
     tier = driver.state.help_tiers[driver.state.help_tier_index]
     dispatch = HANDLER.handle(request)
@@ -238,15 +239,16 @@ def test_receipt_model_carries_asking_answering_executed_effort_and_outcome() ->
         "configured_effort",
         "outcome",
     } <= names
+    bad: dict[str, Any] = {
+        "workflow_id": "w",
+        "action_id": "a",
+        "asking_tier": "x",
+        "answering_tier": "y",
+        "configured_effort": "high",
+        "outcome": "bogus",
+    }
     with pytest.raises(ValueError, match="outcome"):
-        ModelLaneHelpReceipt(
-            workflow_id="w",
-            action_id="a",
-            asking_tier="x",
-            answering_tier="y",
-            configured_effort="high",
-            outcome="bogus",
-        )  # type: ignore[arg-type]
+        ModelLaneHelpReceipt(**bad)
 
 
 def test_chain_tier_model_is_the_core_one() -> None:

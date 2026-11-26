@@ -23,7 +23,6 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
-import yaml
 from omnibase_core.models.contracts.subcontracts.model_fsm_state_definition import (
     ModelFSMStateDefinition,
 )
@@ -34,6 +33,8 @@ from omnibase_core.models.contracts.subcontracts.model_fsm_subcontract import (
     ModelFSMSubcontract,
 )
 from omnibase_core.models.lane_work import ModelLaneWorkChange, build_action_id
+from omnibase_core.utils.util_safe_yaml_loader import load_and_validate_yaml_model
+from pydantic import BaseModel, ConfigDict
 
 from omnimarket.nodes.node_lane_work_reducer.models.model_lane_work_fold_input import (
     ModelLaneWorkFoldInput,
@@ -108,11 +109,18 @@ class _Machine:
         }
 
 
+class _ModelContractMachine(BaseModel):
+    """The one key of the node's own contract the reducer reads."""
+
+    model_config = ConfigDict(extra="ignore", frozen=True)
+
+    state_machine: ModelFSMSubcontract
+
+
 @lru_cache(maxsize=1)
 def _load_machine() -> _Machine:
-    text = _CONTRACT_PATH.read_text(encoding="utf-8")  # node-purity-ok: own contract
-    document = yaml.safe_load(text)
-    return _Machine(ModelFSMSubcontract.model_validate(document["state_machine"]))
+    document = load_and_validate_yaml_model(_CONTRACT_PATH, _ModelContractMachine)
+    return _Machine(document.state_machine)
 
 
 def deadline_event(

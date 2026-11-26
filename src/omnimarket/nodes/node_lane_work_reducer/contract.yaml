@@ -2040,3 +2040,9 @@ state_machine:
         - the evidence and the question for the operator
       - - reason
         - help_exhausted
+
+runtime_dispatch:
+  # The reducer folds one lane work event into the lane state when the event arrives; the golden chain below drives it end to end. It never runs on a timer.
+  on_demand:
+    command: uv run pytest tests/unit/nodes/node_lane_work_reducer/test_golden_chain.py -q
+    owner: OmniNode Platform Team
