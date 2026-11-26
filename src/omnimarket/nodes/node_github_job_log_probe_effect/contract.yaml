@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_github_job_log_probe_effect
+contract_name: node_github_job_log_probe_effect
+node_name: node_github_job_log_probe_effect
+node_type: effect
+lifecycle: experimental
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+runtime_profiles: [effects]
+description: >-
+  Probe one known finished Actions job through the deployed SCM gateway on each
+  due tick. Append a latency reading to the work ledger and one owner-bearing
+  alarm on the second consecutive missed reply.
+
+handler:
+  module: omnimarket.nodes.node_github_job_log_probe_effect.handlers.handler_job_log_probe
+  class: HandlerJobLogProbe
+  input_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: github_job_log_probe.scheduled_tick
+      handler:
+        name: HandlerJobLogProbe
+        module: omnimarket.nodes.node_github_job_log_probe_effect.handlers.handler_job_log_probe
+      handler_module: omnimarket.nodes.node_github_job_log_probe_effect.handlers.handler_job_log_probe
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+
+input_model:
+  name: ModelRuntimeTick
+  module: omnibase_infra.runtime.models.model_runtime_tick
+  description: The runtime scheduler's tick.
+output_model:
+  name: ModelScheduleRunEvent
+  module: omnimarket.models.schedule_trigger.model_schedule_trigger
+  description: The outcome of one due scheduled tick.
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 120000
+  runtime_profiles: [effects]
+  side_effects: [scm-gateway-read, ledger-append, probe-state-write]
+
+input_subscriptions:
+  - topic: onex.intent.platform.runtime-tick.v1
+    operation: github_job_log_probe.scheduled_tick
+terminal_event: onex.evt.omnimarket.schedule-run.v1
+event_bus:
+  subscribe_topics:
+    - onex.intent.platform.runtime-tick.v1
+  publish_topics:
+    - onex.evt.omnimarket.schedule-run.v1
+published_events:
+  - event_type: ModelScheduleRunEvent
+    topic: onex.evt.omnimarket.schedule-run.v1
+    description: The scheduled job-log probe's run outcome.
+externally_consumed_topics:
+  - onex.evt.omnimarket.schedule-run.v1
+
+runtime:
+  schedule_overlay:
+    overlay_id: node_github_job_log_probe_effect
+    model: omnimarket.nodes.node_github_job_log_probe_effect.models.ModelJobLogProbeSettings
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+    - "omnibase-infra>=0.38.77"
+    - "pydantic>=2.0"
+metadata:
+  ticket: OMN-25774
+  transport_type: kafka
