@@ -1270,6 +1270,7 @@ node_projection_lab_container_memory = "omnimarket.nodes.node_projection_lab_con
 node_projection_lab_job = "omnimarket.nodes.node_projection_lab_job"
 node_projection_lab_lane_health = "omnimarket.nodes.node_projection_lab_lane_health"
 node_projection_lab_proof_receipts = "omnimarket.nodes.node_projection_lab_proof_receipts"
+node_projection_lane_work = "omnimarket.nodes.node_projection_lane_work"
 node_projection_live_events = "omnimarket.nodes.node_projection_live_events"
 node_projection_llm_cost = "omnimarket.nodes.node_projection_llm_cost"
 node_projection_llm_routing = "omnimarket.nodes.node_projection_llm_routing"
