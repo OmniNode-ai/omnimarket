@@ -253,3 +253,27 @@ async def test_the_fill_runs_under_the_writer_role(store) -> None:
         await store.execute("RESET ROLE")
     assert filled > 0, "positive control: the manifest names at least one model"
     assert count == filled
+
+
+async def test_unpriced_run_with_a_priced_saving_counts_in_both(store) -> None:
+    """Independent review of omnimarket#6629 (OMN-26444), defect 2: a run whose model has no named price but whose session has a priced savings_estimates row. The view's NOT savings_priced clause and the refresh must agree on it."""
+    tenant = uuid.uuid4()
+    run = uuid.uuid4()
+    await _run(store, run, tenant, model=UNLISTED, cost=Decimal("0"))
+    await store.execute(
+        """
+        INSERT INTO savings_estimates (
+            event_timestamp, session_id, model_local, model_cloud_baseline,
+            local_cost_usd, cloud_cost_usd, savings_usd, tenant_id,
+            task_type, prompt_tokens, completion_tokens, usage_source
+        ) VALUES ($1, $2, $3, 'claude-opus-4.1', 0.01, 0.05, 0.04, $4,
+                  'research', 10, 10, 'measured')
+        """,
+        WHEN,
+        str(run),
+        UNLISTED,
+        str(tenant),
+    )
+    view = await _view_count(store, tenant)
+    refresh = await _refresh(tenant, store)
+    assert view == refresh, f"view={view} refresh={refresh}"
