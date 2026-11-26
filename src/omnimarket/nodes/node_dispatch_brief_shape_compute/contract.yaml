@@ -6,7 +6,7 @@
     "minor": 0,
     "patch": 0
   },
-  "description": "Refuse a remote lane before placement for mint, rules-only, driver, umbrella and WIP problems, and for authored code destinations in repositories frozen by the deployment overlay. Destination policy is available independently to the brief checker over the same declared bus route.",
+  "description": "Refuse a remote lane before placement for mint, rules-only, driver, umbrella, gate and WIP problems, and for authored code destinations in repositories frozen by the deployment overlay. Destination policy is available independently to the brief checker over the same declared bus route.",
   "input_model": {
     "name": "ModelDispatchBriefShapeRequest",
     "module": "omnimarket.nodes.node_dispatch_brief_shape_compute.models.model_dispatch_brief_shape"
