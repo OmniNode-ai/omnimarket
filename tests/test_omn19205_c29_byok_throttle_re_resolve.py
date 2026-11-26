@@ -209,7 +209,9 @@ def test_a_throttled_or_down_slug_re_resolves_once_and_the_second_model_answers(
     url = _openrouter().endpoint_url
     assert provider.calls == [(url, GEMMA), (url, NEMOTRON)]
     assert [call["url"] for call in models.calls] == [_openrouter().models_url]
-    assert result.served_model_id == NEMOTRON
+    # OMN-18079: the retry model was REQUESTED, not reported served; OK_BODY
+    # names no model, so the answering model is unknown, never NEMOTRON.
+    assert result.served_model_id is None
     assert [a.model_id for a in result.earlier_model_attempts] == [GEMMA]
     assert KEY not in str(result.model_dump())
 
@@ -264,7 +266,12 @@ async def test_the_receipt_carries_one_rejected_and_one_accepted_attempt(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """The C29 ``names_provider`` shape: one accept, whose model is the receipt's."""
-    provider, _ = _bind(monkeypatch, [429, 200], [GEMMA, NEMOTRON])
+    provider, _ = _bind(
+        monkeypatch,
+        # OMN-18079: the receipt names the model the provider REPORTED.
+        [429, {**OK_BODY, "model": NEMOTRON}],
+        [GEMMA, NEMOTRON],
+    )
     db_path = use_local_store(monkeypatch, tmp_path)
     from omnimarket.inference.secret_store_resolver import (
         resolve_api_key_with_source_loop_safe,

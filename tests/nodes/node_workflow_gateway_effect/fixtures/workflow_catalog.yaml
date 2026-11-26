@@ -70,11 +70,43 @@ workflows:
       context_pack:
         type: string
         maxLength: 65536
+      named_tests:
+        type: object
+        required:
+        - answer_path
+        - test_ids
+        - test_files
+        additionalProperties: false
+        properties:
+          answer_path:
+            type: string
+            minLength: 1
+          test_ids:
+            type: array
+            minItems: 1
+            items:
+              type: string
+              minLength: 1
+          test_files:
+            type: array
+            items:
+              type: object
+              required:
+              - path
+              - content
+              additionalProperties: false
+              properties:
+                path:
+                  type: string
+                  minLength: 1
+                content:
+                  type: string
   wire:
     payload_keys:
     - prompt
     - task_type
     - max_tokens
+    - named_tests
     stamp_emitted_at: true
     stamp_context_pack: true
     canonical_tenant_id: true

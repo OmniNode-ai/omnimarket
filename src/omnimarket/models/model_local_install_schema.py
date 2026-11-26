@@ -356,6 +356,30 @@ def refresh_local_priced_models(conn: sqlite3.Connection, db_path: object) -> No
         )
 
 
+# OMN-25861: the SQLite counterpart of usage_by_model_day migration 0004, nullable with
+# no default as there: a call stored before it stated no backend (NULL), and a row
+# counting one serves backends NULL until a recount finds every call stated. backends
+# holds a JSON array, which the exposure declares in json_columns.
+USAGE_BY_MODEL_DAY_BACKENDS_STEP = "omn25861_usage_by_model_day_backends"
+_USAGE_BY_MODEL_DAY_BACKEND_COLUMNS = (
+    ("usage_by_model_day_calls", "backend", "TEXT"),
+    ("usage_by_model_day", "backends", "TEXT"),
+)
+
+
+def add_usage_by_model_day_backends(conn: sqlite3.Connection) -> None:
+    """OMN-25861: give the usage-by-model-day tables 0004's backend columns, once per store.
+
+    It runs after the OMN-21015 tier step, which rebuilds the day table. Nullable with no
+    default, so every kept call and row reads NULL: nothing recorded which backend a stored
+    call was reached through. The columns are read under the step's write lock.
+    """
+    for table, column, declaration in _USAGE_BY_MODEL_DAY_BACKEND_COLUMNS:
+        existing = {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
+
+
 # The run-level one-time store steps (step, apply, what it did), run by SqliteDatabaseAdapter in this order.
 LOCAL_RUN_STORE_STEPS: tuple[
     tuple[str, Callable[[sqlite3.Connection], None], str], ...
@@ -369,6 +393,11 @@ LOCAL_RUN_STORE_STEPS: tuple[
         FAILED_ZERO_DURATION_STEP,
         clear_failed_zero_durations,
         "cleared the 0 ms stored on failed runs that timed nothing",
+    ),
+    (
+        USAGE_BY_MODEL_DAY_BACKENDS_STEP,
+        add_usage_by_model_day_backends,
+        "added the usage-by-model-day backend columns",
     ),
 )
 

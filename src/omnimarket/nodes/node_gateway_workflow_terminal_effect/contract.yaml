@@ -58,6 +58,15 @@ handler_routing:
         name: HandlerGatewayWorkflowTerminalFailed
         module: omnimarket.nodes.node_gateway_workflow_terminal_effect.handlers.handler_gateway_workflow_terminal
       handler_module: omnimarket.nodes.node_gateway_workflow_terminal_effect.handlers.handler_gateway_workflow_terminal
+    # OMN-17358: the dispatch engine answers a delegate-skill command it refused (a task class no
+    # consumer accepts) on this contract-declared failure topic; only that refusal is applied here.
+    - topic: onex.evt.omnimarket.delegate-skill-failed.v1
+      message_category: event
+      operation: apply_delegate_skill_refusal
+      handler:
+        name: HandlerGatewayWorkflowTerminalRefusal
+        module: omnimarket.nodes.node_gateway_workflow_terminal_effect.handlers.handler_gateway_workflow_terminal
+      handler_module: omnimarket.nodes.node_gateway_workflow_terminal_effect.handlers.handler_gateway_workflow_terminal
 terminal_event: onex.evt.omnimarket.gateway-workflow-terminal-applied.v1
 descriptor:
   node_archetype: effect
@@ -92,6 +101,8 @@ broker_acl_grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnibase-infra.delegation-completed.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnibase-infra.delegation-failed.v1, operation: READ}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnibase-infra.delegation-failed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegate-skill-failed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegate-skill-failed.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.dlq.omnimarket.gateway-workflow-terminal-malformed.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.dlq.omnimarket.gateway-workflow-terminal-malformed.v1, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.gateway-workflow-terminal-applied.v1, operation: WRITE}
@@ -100,6 +111,7 @@ event_bus:
   subscribe_topics:
     - onex.evt.omnibase-infra.delegation-completed.v1
     - onex.evt.omnibase-infra.delegation-failed.v1
+    - onex.evt.omnimarket.delegate-skill-failed.v1
   publish_topics:
     - onex.evt.omnimarket.gateway-workflow-terminal-applied.v1
   dlq_topics:

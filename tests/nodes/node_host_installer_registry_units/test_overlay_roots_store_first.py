@@ -111,10 +111,16 @@ def test_golden_rendered_environment_carries_the_clone_before_the_plugin(
     unit: str,
 ) -> None:
     roots = environment_of(tmp_path, unit)[ROOTS].split(os.pathsep)
-    assert roots == [
+    expected = [
         f"{tmp_path}/omni/overlays/overlays",
         f"{tmp_path}/market/plugins/onex-overlays/overlays",
     ]
+    if unit == "delegation-check-probe":
+        # OMN-26043: the settings store snapshot directory is appended as the last root.
+        expected.append(
+            str(tmp_path / "home" / ".local" / "state" / "onex" / "overlay-store")
+        )
+    assert roots == expected
     assert not any("omni_worktrees" in entry for entry in roots)
 
 

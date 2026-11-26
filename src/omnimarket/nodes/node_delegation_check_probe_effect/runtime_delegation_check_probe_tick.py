@@ -29,7 +29,9 @@ from typing import Any, get_args
 
 import yaml
 
-from omnimarket.events.emit_effect_topic_publisher import EmitEffectTopicPublisher
+from omnimarket.handlers.bus_binding.declared_broker_publisher import (
+    DeclaredBrokerPublisher,
+)
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     NodeOverlayNotFoundError,
@@ -51,6 +53,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_gatewa
     load_gateway_row,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.gateway_checks import (
+    CUSTOMER_LOCAL_CHECKS,
     GATEWAY_CHECKS,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.handler_delegation_check_probe import (
@@ -64,6 +67,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation
     ModelDelegationCheckProbeOverlay,
     ModelDelegationCheckRequest,
     ModelDelegationCheckResult,
+    gateway_leg_verdict,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.protocols.protocol_delegation_check import (
     ProtocolCheckResultPublisher,
@@ -121,13 +125,26 @@ def _write_atomically(path: Path, text: str) -> None:
 def append_history(
     path: Path, results: list[ModelDelegationCheckResult], keep: int
 ) -> None:
-    """One JSON line per run (the run in ``ModelMvpRun`` shape plus check and verdict), newest last, trimmed to ``keep``."""
+    """One JSON line per run (the run in ``ModelMvpRun`` shape plus check and verdict), newest last, trimmed to ``keep``.
+
+    A customer-local check's line also carries ``gateway_leg`` (pass, fail or unmeasured), the verdict of its gateway clauses alone:
+    the beta board reads that field for C13 and C14 in place of the cloud workflows (OMN-26043).
+    """
     lines: list[str] = []
     with contextlib.suppress(OSError):
         lines = path.read_text(encoding="utf-8").splitlines()
     new = [
         json.dumps(
-            {**r.mvp_run(), "check": r.check_id, "verdict": r.verdict.value},
+            {
+                **r.mvp_run(),
+                "check": r.check_id,
+                "verdict": r.verdict.value,
+                **(
+                    {"gateway_leg": gateway_leg_verdict(r.clauses)}
+                    if r.check_id in CUSTOMER_LOCAL_CHECKS
+                    else {}
+                ),
+            },
             sort_keys=True,
         )
         for r in results
@@ -213,7 +230,7 @@ def main(
         or CleanInstallCustomerMachine(
             sources=GitCloneSurfaceSources(args.registry_root)
         ),
-        publisher=publisher or EmitEffectTopicPublisher(),
+        publisher=publisher or DeclaredBrokerPublisher(NODE, flat=True),
         topic=overlay.result_topic,
         gateway=gateway,
     )

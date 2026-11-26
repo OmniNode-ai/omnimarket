@@ -22,6 +22,11 @@ requirements:
     statement: 'AC15: a lane carrying the house tenant id validates and renders tenant_id as the last key, after gateway_url -- falsifier: uv run pytest tests/unit/models/test_lab_proof_lanes_overlay_document_omn24191.py -k tenant_id -q fails at the new head, or passes at the unchanged base commit'
   - id: AC16
     statement: 'AC16: a tenant_id that is not a lowercase canonical UUID (a slug, an empty string, a truncated id, an upper-case id) is refused -- falsifier: uv run pytest tests/unit/models/test_lab_proof_lanes_overlay_document_omn24191.py -k not_a_lowercase_uuid -q passes at the unchanged base commit'
+- id: req-omn26121-build-checks-inputs
+  statement: A rebuild-completed event with an empty git_sha is a typed refusal, and a previous build id git cannot resolve (rc=128) runs the checks with merges unknown; neither crashes the build delegation checks node.
+  acceptance:
+  - id: AC17
+    statement: 'AC17: an empty git_sha is refused by name and an unresolvable previous build runs the checks with merges_unknown -- falsifier: uv run pytest tests/nodes/node_build_delegation_checks/test_unresolvable_build_inputs.py fails at the new head, or errors at the unchanged base commit (no UnresolvableRangeError, git_sha min_length)'
 evidence_requirements:
 - kind: tests
   description: The stability gateway key node tests pass at the pushed head, including the test that the stored key name equals the probe-read name.
@@ -100,3 +105,12 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26121 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/models/test_lab_proof_lanes_overlay_document_omn24191.py -q --no-cov
+- id: dod-omn26121-ac17-build-checks-inputs
+  description: 'AC17: the two real failures of the dev container (empty git_sha, git log rc=128) are a typed refusal and a merges-unknown run; the test file does not import at origin/dev (UnresolvableRangeError is absent) and passes at the head.'
+  source: manual
+  binds_ac:
+  - AC17
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_build_delegation_checks/test_unresolvable_build_inputs.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .

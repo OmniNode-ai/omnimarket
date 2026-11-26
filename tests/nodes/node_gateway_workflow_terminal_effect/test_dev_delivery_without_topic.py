@@ -71,7 +71,11 @@ def _route_handlers() -> list[tuple[str, str, Any]]:
     return built
 
 
-@pytest.mark.parametrize(("topic", "status", "cls"), _route_handlers())
+_STATUS_ROUTES = [r for r in _route_handlers() if not r[2].refusal_only]
+_REFUSAL_ROUTES = [r for r in _route_handlers() if r[2].refusal_only]
+
+
+@pytest.mark.parametrize(("topic", "status", "cls"), _STATUS_ROUTES)
 async def test_recorded_dev_delivery_is_applied_by_the_route_handler(
     topic: str, status: str, cls: Any
 ) -> None:
@@ -80,6 +84,16 @@ async def test_recorded_dev_delivery_is_applied_by_the_route_handler(
     result = await handler.handle(_recorded_delivery())
     assert result.outcome is Outcome.APPLIED, topic
     assert store.rows[0].status == status
+
+
+@pytest.mark.parametrize(("topic", "status", "cls"), _REFUSAL_ROUTES)
+async def test_the_refusal_route_leaves_a_recorded_terminal_that_is_no_refusal(
+    topic: str, status: str, cls: Any
+) -> None:
+    store = FakeTerminalStore([FakeRow(_TENANT, _CORR)])
+    result = await cls(store, FakeDeadLetter()).handle(_recorded_delivery())
+    assert result.outcome is Outcome.NOT_A_GATEWAY_WORKFLOW, topic
+    assert store.rows[0].status == "published"
 
 
 async def test_undeclared_topic_still_raises_on_every_route_handler() -> None:
@@ -104,4 +118,5 @@ async def test_unbound_handler_still_refuses_a_delivery_that_names_nothing() -> 
 
 def test_each_declared_topic_names_its_own_handler_class() -> None:
     classes = [cls for _, _, cls in _route_handlers()]
-    assert len(set(classes)) == len(classes) == 2
+    assert len(set(classes)) == len(classes) == 3
+    assert len(_REFUSAL_ROUTES) == 1

@@ -344,6 +344,9 @@ class TestSeaAcceptanceGoldenChain:
             mock_response.raise_for_status.return_value = None
             mock_response.json.return_value = {
                 "id": "chatcmpl-omn-12687",
+                # OMN-18079: a chat completion names the model that answered; the
+                # receipt no longer falls back to the requested model.
+                "model": MODEL_LOCAL_201_SERVED_ID,
                 "choices": [
                     {"message": {"content": "class HandlerGeneratedNode: pass"}}
                 ],

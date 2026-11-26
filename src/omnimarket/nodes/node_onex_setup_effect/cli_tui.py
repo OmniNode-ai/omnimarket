@@ -2067,6 +2067,8 @@ class SetupScreen(_TabbedScreen[None]):
         self._show_title()
 
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
+        # A key belongs to the provider it was typed for: never offer it to the next.
+        self.query_one("#key", Input).value = ""
         self._show_fields()
         self.query_one("#note", Static).update(self._source_hint())
         self._show_rows([])
@@ -2249,6 +2251,11 @@ class SetupScreen(_TabbedScreen[None]):
         self._add_current()
         if not self._basket:
             warning = tui_design().delegation.nothing_ticked
+            # The refusal is the latest word: a find that is pending or still
+            # running must not replace it with its own note a moment later.
+            if self._find_timer is not None:
+                self._find_timer.stop()
+            self.workers.cancel_group(self, "find")
             self.query_one("#note", Static).update(
                 Text(warning, style=_style("warning"))
             )

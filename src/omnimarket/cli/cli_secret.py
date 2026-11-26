@@ -68,6 +68,16 @@ from omnimarket.handlers.routing.byok_provider_backends import (
     ByokPlanNotPermittedError,
     resolve_byok_provider_backend,
 )
+from omnimarket.handlers.routing.central_tenant_key_store import (
+    CentralStoreRefusedError,
+    CentralTenantKeyStore,
+)
+from omnimarket.handlers.routing.customer_key_revoke import (
+    registering_host,
+)
+from omnimarket.handlers.routing.customer_key_revoke import (
+    revoke_tenant_key as revoke_tenant_key_handler,
+)
 from omnimarket.handlers.routing.local_byok_route import house_provider_slug
 from omnimarket.handlers.routing.provider_feature_flags import provider_turned_off
 from omnimarket.inference.local_byok_credential_adapter import (
@@ -115,12 +125,6 @@ from omnimarket.nodes.node_projection_tenant_credentials.local_catalog_fold impo
 )
 from omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_store import (
     HandlerSecretStore,
-)
-from omnimarket.nodes.node_secret_store_effect.models import (
-    EnumSecretStoreOperation,
-    EnumSecretStoreOutcome,
-    ModelSecretStoreRequest,
-    ModelSecretStoreResult,
 )
 from omnimarket.projection.credential_publisher import (
     CredentialKeyRefusedError,
@@ -226,75 +230,9 @@ def _tenant_key_store() -> LocalByokCredentialStore:
     return LocalByokCredentialStore()
 
 
-#: OMN-20994. The secret store node's contract maps this reference namespace to
-#: the tenant folder, so this command holds a reference and never a folder.
-_TENANT_REFERENCE_PREFIX = "secret://onex/tenant/"
-
-
-class CentralStoreRefusedError(Exception):
-    """The secret store node did not create the key. Carries no value."""
-
-    def __init__(self, result: ModelSecretStoreResult) -> None:
-        detail = f" ({result.detail})" if result.detail else ""
-        super().__init__(
-            f"the central secret store answered {result.outcome.value}{detail}"
-        )
-        self.outcome = result.outcome
-
-
 def _central_secret_handler() -> HandlerSecretStore:
     """The secret store node's handler, store and identity from this machine's overlay."""
     return HandlerSecretStore()
-
-
-class _CentralTenantKeyStore:
-    """``ProtocolSecretStore`` over the secret store node's handler (OMN-20994).
-
-    A tenant key is written in process, create-only, under the minted
-    reference in the tenant namespace. Anything but ``created`` raises
-    :class:`CentralStoreRefusedError`, so a refusal stops the registration
-    before any event is published.
-    """
-
-    def __init__(self, handler: HandlerSecretStore) -> None:
-        self._handler = handler
-
-    async def get_secret(self, key: str) -> str | None:
-        result = await self._handler.handle(
-            ModelSecretStoreRequest(
-                operation=EnumSecretStoreOperation.RESOLVE,
-                reference=f"{_TENANT_REFERENCE_PREFIX}{key}",
-            )
-        )
-        if result.outcome is EnumSecretStoreOutcome.NOT_FOUND:
-            return None
-        if result.value is None:
-            raise CentralStoreRefusedError(result)
-        return result.value.get_secret_value()
-
-    async def set_secret(self, key: str, value: str) -> bool:
-        result = await self._handler.handle(
-            ModelSecretStoreRequest(
-                operation=EnumSecretStoreOperation.CREATE,
-                reference=f"{_TENANT_REFERENCE_PREFIX}{key}",
-                value=SecretStr(value),
-            )
-        )
-        if result.outcome is not EnumSecretStoreOutcome.CREATED:
-            raise CentralStoreRefusedError(result)
-        return True
-
-    async def delete_secret(self, key: str) -> bool:
-        raise PermissionError("the central secret store is written create-only")
-
-    async def list_keys(self, prefix: str | None = None) -> list[str]:
-        raise PermissionError("the central tenant store is not listed from here")
-
-    async def health_check(self) -> bool:
-        return True
-
-    async def close(self, timeout_seconds: float | None = None) -> None:
-        return None
 
 
 def _tenant_key_event_bus() -> ProtocolCredentialEventBus | None:
@@ -313,9 +251,28 @@ def _environment_names_broker() -> bool:
     return bool(Settings().get_effective_kafka_bootstrap_servers())
 
 
+def _registering_host() -> str | None:
+    """This machine's row name in the lab host table, or ``None`` (OMN-24562)."""
+    table = _lab_host_table()
+    if table is None:
+        return None
+    try:
+        rows = _lab_host_rows(table)
+    except click.ClickException:
+        return None
+    declared = [os.environ.get(env, "").strip() for env in _LANE_HOST_ENVS]
+    return registering_host(rows, declared, socket.gethostname().split(".")[0])
+
+
 def _lab_host_bus_lane(bound_host: str | None) -> str | None:
-    """The bound host's declared ``ledger_bus_lane`` in the lab host table."""
-    return lane_reader.lab_host_bus_lane(_lab_host_table(), bound_host)
+    """The ``ledger_bus_lane`` of the bound host, else of this machine's own row.
+
+    An unbound key (the default, OMN-24562) still publishes from this machine,
+    so with no ``--host`` the lane comes from the registering machine's row.
+    """
+    return lane_reader.lab_host_bus_lane(
+        _lab_host_table(), bound_host or _registering_host()
+    )
 
 
 async def _register_on_declared_bus[T](
@@ -365,7 +322,8 @@ async def _register_on_declared_bus[T](
 #: is registered with no host binding.
 _LAB_HOSTS_ENV = "ONEX_LAB_RUN_HOSTS"
 #: A remote lane declares its host because its namespace may not carry the
-#: host's own name (the same two variables ``onex delegate`` reads).
+#: host's own name (the same two variables ``onex delegate`` reads). Read only to
+#: find the bus lane an unbound key publishes on; it never binds the key.
 _LANE_HOST_ENVS = ("ONEX_LANE_HOST", "ONEX_REMOTE_LANE_HOST")
 
 
@@ -396,12 +354,11 @@ def _lab_host_rows(table: Path) -> list[tuple[str, str]]:
 def _resolve_bound_host(declared: str | None) -> str | None:
     """The lab host a registered key is bound to (OMN-21012), or ``None``.
 
-    Operator ruling 2026-10-11T17:58:45Z: each Claude account's key is bound to
-    the machine the account lives on. ``--host`` names that machine and must be
-    a row of the lab host table. Without it, the registering machine's own row
-    is used: the declared lane host first, else the short hostname matched to a
-    row's name or target. Off the lab (no table), or on a machine no row names,
-    the key is unbound and usable from any host, as before.
+    Operator ruling 2026-10-11T17:58:45Z: a Claude account's key may be bound
+    to the machine the account lives on. ``--host`` names that machine and must
+    be a row of the lab host table. Without it the key is unbound: the routing
+    pool skips a host-bound key, so binding to the registering machine by
+    default routed a customer's key to nothing. Binding is always explicit.
     """
     table = _lab_host_table()
     if declared is not None:
@@ -418,22 +375,7 @@ def _resolve_bound_host(declared: str | None) -> str | None:
                 f"({', '.join(names)}); nothing was stored."
             )
         return host
-    if table is None:
-        return None
-    rows = _lab_host_rows(table)
-    row_names = {name for name, _target in rows}
-    for env in _LANE_HOST_ENVS:
-        lane_host = os.environ.get(env, "").strip()
-        if lane_host:
-            if lane_host not in row_names:
-                raise click.ClickException(
-                    f"{env}={lane_host!r} is not a host in the lab host table; "
-                    "pass --host or fix the declaration. Nothing was stored."
-                )
-            return lane_host
-    hostname = socket.gethostname().split(".")[0]
-    matches = [name for name, target in rows if hostname in (name, target)]
-    return matches[0] if len(matches) == 1 else None
+    return None
 
 
 @secret_group.command("register-tenant-key")
@@ -473,8 +415,8 @@ def _resolve_bound_host(declared: str | None) -> str | None:
     help=(
         "The lab host whose Claude account owns this key (a lab host table row, "
         "a name from that table). Work sent from that host is the only work that spends it. "
-        "Defaults to this machine's row in the ONEX_LAB_RUN_HOSTS table; off "
-        "the lab the key is unbound."
+        "Omit it and the key is unbound and usable from any host; the routing "
+        "pool skips a host-bound key, so bind only a key that must stay on one machine."
     ),
 )
 @click.option(
@@ -538,7 +480,7 @@ def register_tenant_key(
             workspace_id=workspace_id,
         )
         secret_store = (
-            _CentralTenantKeyStore(_central_secret_handler())
+            CentralTenantKeyStore(_central_secret_handler())
             if central
             else _tenant_key_store()
         )
@@ -578,6 +520,50 @@ def register_tenant_key(
     if not central:
         _fold_registered_tenant_key(response, tenant)
     click.echo(json.dumps(shown))
+
+
+@secret_group.command("revoke-tenant-key")
+@click.argument("api_key_ref")
+@click.option("--tenant", required=True, help="Tenant that owns this provider key.")
+@click.option(
+    "--host",
+    default=None,
+    help="The lab host whose bus lane carries the revoke (a lab host table row).",
+)
+@click.option(
+    "--store",
+    "store_choice",
+    type=click.Choice(["local", "central"]),
+    default="local",
+    show_default=True,
+    help="Where the value is held: this machine's store, or the shared tenant folder.",
+)
+def revoke_tenant_key(
+    api_key_ref: str, tenant: str, host: str | None, store_choice: str
+) -> None:
+    """Revoke a tenant's provider key: publish credential-revoked, then delete it."""
+    if not tenant.strip():
+        raise click.ClickException("--tenant must not be empty; nothing was revoked.")
+    lane_host = _resolve_bound_host(host)
+    secret_store = (
+        CentralTenantKeyStore(_central_secret_handler())
+        if store_choice == "central"
+        else _tenant_key_store()
+    )
+    try:
+        shown = asyncio.run(
+            revoke_tenant_key_handler(
+                api_key_ref,
+                tenant_id=tenant,
+                central=store_choice == "central",
+                secret_store=secret_store,
+                register_on_bus=_register_on_declared_bus,
+                lane=_lab_host_bus_lane(lane_host),
+            )
+        )
+    except CredentialStoreError as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(shown)
 
 
 def _fold_registered_tenant_key(response: Any, tenant: str) -> None:
