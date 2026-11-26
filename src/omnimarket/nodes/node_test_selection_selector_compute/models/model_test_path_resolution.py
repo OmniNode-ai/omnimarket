@@ -165,6 +165,15 @@ class ModelAdjacencyMap(BaseModel):
     ``pyproject_narrowable_keys`` and narrows only when every one matches.
     """
 
+    unit_file_selection_enabled: bool = False
+    """Whether a changed ``tests/unit/**/*.py`` file selects itself and what imports or names it.
+
+    Off, any changed file under ``tests/unit/`` selects the whole ``tests/unit/`` directory (up to 5305
+    recorded seconds, over the narrowed bound). On, the handler selects the file, its importers in any
+    folder, the tests that spell a changed helper's path, and keeps the directory only for a change it
+    cannot attribute. Off by default, so a frozen replay snapshot that predates the key answers as it did.
+    """
+
     pyproject_paths: list[str] = Field(default_factory=list)
     """Repo-relative paths of the project files the section rule reads (``pyproject.toml``)."""
 
