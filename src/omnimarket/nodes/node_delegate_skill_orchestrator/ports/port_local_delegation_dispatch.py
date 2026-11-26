@@ -289,6 +289,9 @@ from omnimarket.models.delegation.wire.model_answer_gate_request import (
 from omnimarket.models.delegation.wire.model_attempt_configuration import (
     ModelAttemptConfiguration,
 )
+from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
+    ModelAttemptRubricVerdict,
+)
 from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 from omnimarket.models.delegation.wire.model_named_test_run_request import (
     ModelNamedTestRunRequest,
@@ -641,6 +644,7 @@ def derive_attempt_acceptance(
     required_bar: float | None,
     rule_evaluations: tuple[ModelQualityRuleEvaluation, ...],
     no_rung_can_satisfy: bool = False,
+    rubric_verdict: ModelAttemptRubricVerdict | None = None,
 ) -> tuple[EnumDelegationAcceptanceDecision, EnumDelegationAcceptanceReason, str]:
     """Derive the typed accept/climb verdict and a reason that names the decider.
 
@@ -691,10 +695,19 @@ def derive_attempt_acceptance(
             f"score_vs_bar="
             f"{'below_bar' if quality_score < required_bar else 'at_or_above_bar'}"
         )
+    if rubric_verdict is not None and rubric_verdict.outcome == "UNDETERMINED":
+        # OMN-26705: an undetermined rubric is said, never folded into a pass.
+        undetermined = ",".join(rubric_verdict.undetermined_criteria) or "none_named"
+        detail = f"{detail} rubric=UNDETERMINED undetermined_criteria={undetermined}"
     if quality_passed:
+        # OMN-26705: accepted with a score under its declared bar (a code class
+        # decided by executed checks) is not "the bar was met".
+        below_bar = required_bar is not None and quality_score < required_bar
         return (
             EnumDelegationAcceptanceDecision.ACCEPT,
-            EnumDelegationAcceptanceReason.QUALITY_BAR_MET,
+            EnumDelegationAcceptanceReason.EXECUTED_CHECKS_PASSED
+            if below_bar
+            else EnumDelegationAcceptanceReason.QUALITY_BAR_MET,
             detail,
         )
     named_vetoes = _named_blocking_vetoes(rule_evaluations)
@@ -3821,6 +3834,7 @@ class LocalDelegationDispatchPort:
                 required_bar=_declared_required_bar(task_type),
                 rule_evaluations=gate_result.rule_evaluations,
                 no_rung_can_satisfy=gate_result.no_rung_can_satisfy,
+                rubric_verdict=rubric_verdict,
             )
             # OMN-22212: a refused secret or exfiltration request is terminal.
             # The refusal is the right answer and no other rung improves it, so
