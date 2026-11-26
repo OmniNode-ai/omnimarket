@@ -81,7 +81,7 @@ def budget_cancelled_result(
     in_flight = progress.in_flight_attempt
     model_name = None if in_flight is None else in_flight.get("model_id")
     if in_flight is not None:
-        interrupted: dict[str, object] | None = (
+        interrupted: dict[str, object] | None = dict(in_flight)  # cancelled at any stage with a routed rung records that rung
             dict(in_flight) if cancelled_stage in _CALL_STAGES else None
         )
         for call in progress.in_flight_calls:
