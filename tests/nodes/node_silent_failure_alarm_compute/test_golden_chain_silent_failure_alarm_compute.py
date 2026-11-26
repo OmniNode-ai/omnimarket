@@ -711,11 +711,6 @@ def test_registry_installer_points_alarm_unit_at_the_clean_branch(
         "omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units.interpreter_present",
         lambda _path: True,
     )
-    # This test renders the Mac's launchd job; a Linux runner pins the platform (OMN-25138).
-    monkeypatch.setattr(
-        "omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units.host_platform",
-        lambda: "darwin",
-    )
     request = ModelRegistryUnitsRequest(
         unit="silent-failure-alarm",
         mode="install",

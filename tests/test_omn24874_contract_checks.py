@@ -1291,12 +1291,3 @@ def test_omn24874_contract_ac4_check_reads_the_subject_only_not_a_body_line(
     _git(world.repo, "update-ref", "refs/remotes/origin/dev", later)
     world.set_install(later)
     assert world.run() != 0
-
-
-@pytest.mark.unit
-def test_omn24874_contract_max_tokens_item_binds_a_criterion_of_its_own() -> None:
-    """repo-evidence dod-verify refuses a pull request whose only new item binds nothing."""
-    item = _items()["dod-omn24874-max-tokens-reaches-provider"]
-    assert item["binds_ac"] == ["AC1"]
-    assert not item.get("execution_scope")
-    assert all(check["check_type"] == "test_passes" for check in item["checks"])

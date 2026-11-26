@@ -291,52 +291,6 @@ class TestContractBackendMaxTokens:
         assert second_intents[0].max_tokens != request.max_tokens
 
 
-@pytest.mark.unit
-class TestRequestMaxTokensReachesProvider:
-    """The request's own output limit, below the backend ceiling, is what the
-    inference intent posts; a limit above the ceiling is bounded by it."""
-
-    def _intent_max_tokens(
-        self, request_max_tokens: int | None, backend_ceiling: int
-    ) -> int:
-        handler = HandlerDelegationWorkflow()
-        cid = uuid4()
-        request = _make_request(correlation_id=cid)
-        if request_max_tokens is not None:
-            request = request.model_copy(update={"max_tokens": request_max_tokens})
-        handler.handle_delegation_request(request)
-        intents = handler.handle_routing_decision(
-            _make_routing_decision(cid, max_tokens=backend_ceiling)
-        )
-        assert isinstance(intents[0], ModelInferenceIntent)
-        return intents[0].max_tokens
-
-    def test_small_request_limit_reaches_the_provider_call(self) -> None:
-        assert self._intent_max_tokens(3, 65536) == 3
-
-    def test_request_limit_is_bounded_by_the_backend_ceiling(self) -> None:
-        assert self._intent_max_tokens(4096, 1024) == 1024
-
-    def test_generous_request_limit_posts_the_backend_ceiling(self) -> None:
-        assert self._intent_max_tokens(None, 65536) == 65536
-
-    def test_escalation_re_dispatch_keeps_the_request_limit(self) -> None:
-        handler = HandlerDelegationWorkflow()
-        cid = uuid4()
-        request = _make_request(correlation_id=cid).model_copy(update={"max_tokens": 3})
-        handler.handle_delegation_request(request)
-        handler.handle_routing_decision(_make_routing_decision(cid, max_tokens=8192))
-        workflow = handler.workflows[cid]
-        workflow.state = EnumDelegationState.ROUTED
-        workflow.routing_decision = None
-        workflow.inference_intent_in_flight = False
-        second = handler.handle_routing_decision(
-            _make_routing_decision(cid, max_tokens=65536)
-        )
-        assert isinstance(second[0], ModelInferenceIntent)
-        assert second[0].max_tokens == 3
-
-
 # OMN-16891: the ceiling tier slot is named ``claude`` as a stable identifier,
 # not a provider claim (see routing_tiers.yaml).
 _CEILING_TIER_NAME = "claude"

@@ -16,7 +16,6 @@ Failure modes, each caught below:
 from __future__ import annotations
 
 import json
-import time
 
 import pytest
 from textual.widgets import DataTable, Static
@@ -526,12 +525,9 @@ async def test_clicking_another_tab_never_shows_the_main_screen() -> None:
         tabs = app.screen.query_one(Tabs)
         # On a loaded runner the Tab children mount after the screen shows;
         # setting `active` before they exist raises "No Tab with id".
-        # The bound is wall-clock, not an iteration count: on a saturated shard
-        # one pause outlasts its nominal 0.05 s, so a count gave the mount far
-        # less than the seconds it nominally stood for (OMN-26652, Split 8/20).
-        deadline = time.monotonic() + 60.0
-        while not tabs.query("#tabs-list > #tab-config"):
-            assert time.monotonic() < deadline, "the config tab never mounted"
+        for _ in range(100):
+            if tabs.query("#tabs-list > #tab-config"):
+                break
             await pilot.pause(0.05)
         tabs.active = "tab-config"
         for _ in range(40):

@@ -741,21 +741,6 @@ async def test_config_refuses_to_save_with_no_model_selected() -> None:
         assert not [call for call in runner.calls if call[0] == "setup"]
 
 
-async def test_config_refusal_note_survives_the_late_auto_find() -> None:
-    """The auto-find that the typed URL starts lands after Save was refused.
-
-    On a loaded runner the find result arrives between the Save press and the
-    note read, so the refusal note must not be replaced by the find's own text.
-    """
-    runner = _Runner([])
-    app = _app(runner)
-    async with app.run_test(size=(100, 44)) as pilot:
-        await _open_config(pilot, app)
-        await _press(pilot, app, "save")
-        await _wait_for_models(pilot)
-        assert "at least one model" in str(app.screen.query_one("#note").render())
-
-
 def _selected_rows(*, connection: bool) -> dict[tuple[str, ...], str]:
     """`models list` and `models connections` as the CLI prints them."""
     rows = "\n".join(

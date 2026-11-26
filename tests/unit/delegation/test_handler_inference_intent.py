@@ -117,7 +117,11 @@ class TestHandlerInferenceIntent:
         intent = _make_intent(route="byok-openrouter", provider="openrouter")
 
         mock_response = MagicMock()
-        mock_response.json.return_value = _SUCCESSFUL_HTTPX_RESPONSE
+        # OMN-18079: the provider reports the model that answered.
+        mock_response.json.return_value = {
+            **_SUCCESSFUL_HTTPX_RESPONSE,
+            "model": "test-model",
+        }
         mock_response.raise_for_status.return_value = None
 
         # OMN-13501 no-faked-boundary: effect-handler unit test asserts request construction
@@ -267,7 +271,11 @@ class TestHandlerInferenceIntent:
         captured_urls: list[str] = []
 
         mock_response = MagicMock()
-        mock_response.json.return_value = _SUCCESSFUL_HTTPX_RESPONSE
+        # OMN-18079: the provider reports the model that answered.
+        mock_response.json.return_value = {
+            **_SUCCESSFUL_HTTPX_RESPONSE,
+            "model": "gemini-2.5-flash",
+        }
         mock_response.raise_for_status.return_value = None
 
         def _capture_post(url: str, **kwargs: object) -> MagicMock:
