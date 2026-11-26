@@ -108,8 +108,16 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py -q --no-cov -n 0 -p no:randomly -k "switching_provider"
         cwd: .
+  - id: dod-omn26044-ac3-release-check-ignores-dev-tag
+    description: "AC3: the no-release-cut check passes at a dev tip carrying a dev build tag and with a non-version pyproject edit, and fails for a version bump and for a release tag on the head."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/ci/test_omn26044_no_release_cut_check.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
   - id: dod-omn26044-ac3-no-release-cut
-    description: "AC3: the cause (two option definitions in this repository's own source) is not in a published package, so the condition of the criterion does not arise; what is checked is its falsifier's observable half: the change bumps no version in pyproject.toml and no release tag points at the head, and the contract matches the ticket's AC1 to AC5 with no drift. The ledger half of the falsifier is read by the reviewer; this item does not claim it."
+    description: "AC3: the cause (two option definitions in this repository's own source) is not in a published package, so the condition of the criterion does not arise; what is checked is its falsifier's observable half: the change bumps no package version in pyproject.toml between its base and its merge and no release tag (v<digit>...) names the head (a dev build tag dev-<stamp>-<sha> does not count), and the contract matches the ticket's AC1 to AC5 with no drift. The ledger half of the falsifier is read by the reviewer; this item does not claim it."
     source: manual
     binds_ac: [AC3]
     checks:
@@ -117,7 +125,7 @@ dod_evidence:
         check_value: uv run pytest tests/ci/test_omn26044_contract_matches_ticket_criteria.py -q --no-cov -n 0 -p no:randomly
         cwd: .
       - check_type: command
-        check_value: bash -c 'git diff --quiet origin/dev -- pyproject.toml && test -z "$(git tag --points-at HEAD)"'
+        check_value: bash -c 'test "$(git show origin/dev:pyproject.toml | grep -m1 "^version = ")" = "$(grep -m1 "^version = " pyproject.toml)" && ! git tag --points-at HEAD | grep -Eq "^v[0-9]"'
         cwd: .
     supersedes_ac_binding:
       - item: "dod-omn26044-c17-collector-tests"
