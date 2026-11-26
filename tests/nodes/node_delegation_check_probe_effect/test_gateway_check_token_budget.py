@@ -24,7 +24,7 @@ from test_golden_answers_gateway_graders import (
     _run,
 )
 
-MEASURED_COMPLETING_BUDGET = 128
+MEASURED_COMPLETING_BUDGET = 512
 
 
 @pytest.mark.parametrize("check", GATEWAY_CHECKS)
@@ -42,3 +42,17 @@ def test_the_tenant_key_check_submits_so_the_budget_assertion_reads_something() 
     gateway = _real("api_key")
     _run("C29", gateway)
     assert [s for s in gateway.sent if s["path"] == "/v1/workflows"]
+
+
+@pytest.mark.parametrize("check", ["C29"])
+def test_the_healthy_prompt_asks_for_the_one_code_artifact_the_test_task_gate_grades(
+    check: str,
+) -> None:
+    gateway = _real("api_key")
+    _run(check, gateway)
+    sent = [s["body"] for s in gateway.sent if s["path"] == "/v1/workflows"]
+    assert sent
+    for body in sent:
+        prompt = body["payload"]["prompt"]
+        assert "code block" in prompt
+        assert "alive" not in prompt.split("test_alive")[0]
