@@ -250,3 +250,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_host_install_orchestrator -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26043-glm-harness-not-logged-in
+  description: The GLM harness handler (claude-glm run through Claude Code in a clean temporary directory) refuses by name with exit cause not_logged_in when the declared provider route or credential reference is unusable, and never launches the process or falls back to a key. The focused test reads launch_failed on the base commit and not_logged_in after the change. This binds AC5 -- a probe or delegation run that reads red because the GLM login is unusable names that real cause instead of the generic launch_failed.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_harness_process_runner_omn26219.py -q --no-cov -n 0 -p no:randomly -k glm_without_declared_route
+    cwd: .

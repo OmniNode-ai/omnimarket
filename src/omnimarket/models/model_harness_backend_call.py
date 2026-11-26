@@ -25,6 +25,7 @@ HarnessExitCause = Literal[
     "completed",
     "timeout",
     "launch_failed",
+    "not_logged_in",
     "process_failed",
     "startup_refused",
     "turn_failed",
