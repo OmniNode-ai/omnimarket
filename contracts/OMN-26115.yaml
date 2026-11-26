@@ -49,7 +49,7 @@ dod_evidence:
     check_value: uv run --frozen pytest tests/nodes/node_onex_setup_effect/test_setup_cli_core_entry_point.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn26115-ac3
-  description: The lock is fresh and the pin tests pass. The floor itself is read by dod-omn26115-ac3-core-floor, which accepts any floor at or above 0.47.74 rather than one literal.
+  description: The lock is fresh, the pin tests pass, and both omnibase-core floors in pyproject.toml name a published core at or above 0.47.74, the first release carrying ModelRunNodeHosted.run. The floor check fails below 0.47.74 or with a count other than two floors, so the item fails at the parent of the merged fix.
   source: manual
   binds_ac:
   - AC3
@@ -60,12 +60,6 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/ci/test_sibling_core_pin_pair_omn17427.py tests/ci/test_infra_pin_aa87c2dd6abe_work_contracts_omn23865.py -q --no-cov -n 0 -p no:randomly
     cwd: .
-- id: dod-omn26115-ac3-core-floor
-  description: Both omnibase-core floors in pyproject.toml name a published core at or above 0.47.74, the first release that carries ModelRunNodeHosted.run and not the removed run_node_in_process. This replaces the earlier check that expected the literal string omnibase-core>=0.47.74, which failed once dev raised the floor to 0.47.75; a floor below 0.47.74, or a count other than two floors, still fails.
-  source: manual
-  binds_ac:
-  - AC3
-  checks:
   - check_type: command
     check_value: >-
       python3 -I -c 'import re,sys; t=open("pyproject.toml").read(); f=[tuple(map(int,m)) for m in re.findall(r"^\s*\"omnibase-core>=(\d+)\.(\d+)\.(\d+)[,\"]",t,re.M)]; print(f); sys.exit(0 if len(f)==2 and all(x>=(0,47,74) for x in f) else 1)'
