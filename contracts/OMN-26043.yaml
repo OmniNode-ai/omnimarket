@@ -237,3 +237,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_llm_delegation_call_effect/test_codex_harness_attempt.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26043-codex-launch-guard-module
+  description: "The API-key login guard and the codex exec command line live in handler_codex_launch_guard.py, so handler_codex_harness_attempt.py stays at or under its baselined code-line count and the canonical-file-shape ratchet passes. The guard's tests fail on the previous commit, where the module does not exist, and pass after the change. This binds AC8."
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_llm_delegation_call_effect/test_codex_launch_guard.py tests/nodes/node_llm_delegation_call_effect/test_codex_harness_attempt.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
