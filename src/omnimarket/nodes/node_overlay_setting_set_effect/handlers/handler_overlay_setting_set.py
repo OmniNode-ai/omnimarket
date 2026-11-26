@@ -27,7 +27,7 @@ from omnimarket.models.overlay_store import (
     ModelOverlaySettingRecord,
     document_digest,
 )
-from omnimarket.nodes.node_overlay_setting_set_effect.models.model_overlay_setting_audit import (
+from omnimarket.models.overlay_store.model_overlay_setting_audit import (
     ModelOverlaySettingAudit,
 )
 from omnimarket.nodes.node_overlay_setting_set_effect.models.model_overlay_setting_set_request import (

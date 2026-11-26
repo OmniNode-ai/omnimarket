@@ -30,7 +30,7 @@ descriptor:
     - effects
   idempotent: false
 description: >
-  Serves the workflow gateway from the runtime's HTTP port: submit a workflow (allowlisted type, payload checked against the catalog schema, per-principal rate limit, monthly plan quota, command published on the catalog's topic, 202 only after the publish), read a tenant's workflow status, render a terminal workflow's receipt, and advertise the servable catalog (GET /v1/workflows/contracts). A workflow of another tenant answers 404, the same as an unknown id.
+  Serves the workflow gateway from the runtime's HTTP port: submit a workflow (allowlisted type, payload checked against the catalog schema, per-principal rate limit, monthly plan quota, command published on the catalog's topic, 202 only after the publish), read a tenant's workflow status, render a terminal workflow's receipt, and advertise the servable catalog (GET /v1/workflows/contracts). A repeated correlation_id from one tenant returns the original job (same workflow id, its current status) with nothing published again, or a 409 correlation_id_conflict when the payload differs; another tenant's number is independent. A workflow of another tenant answers 404, the same as an unknown id.
 input_model:
   name: "ModelWorkflowSubmitCommand"
   module: "omnimarket.nodes.node_workflow_gateway_effect.models.model_workflow_http"
