@@ -17,7 +17,7 @@ OMN-20840 (2026-10-09, 10 merges an hour with 182 open and every problem a NOTE)
 a repository with zero merges past `park_max_hours` is MISSING with the manual-unblock fix; a lab
 host with no recent reading is UNKNOWN, never a quiet NOTE; a runner receipt that ended without
 running (no-host, host-limited, a guard limit, failed) is MISSING until a later receipt of its
-brief runs; and an open count rising across the last three tick runs is MISSING.
+brief ran (running, done or ended blocked, cloud-no-pr, handed-off or partial); and an open count rising across the last three tick runs is MISSING.
 
 OMN-20864 (operator ruling 2026-10-10T04:08:23Z): idle lab capacity is never left idle while PRs are
 open. Given `pr_land` facts, a free-slot FIX also names the pr-land lanes to dispatch through the
@@ -148,7 +148,10 @@ NEVER_RAN = (
     "guard-runtime-max",
     "failed",
 )
-RAN = ("running", "done")
+# A later receipt in any of these states means the lineage ran: the lane started, so the earlier
+# never-ran receipt is not a lost dispatch (OMN-22408: a later run that ended blocked or cloud-no-pr
+# kept the no-host line for hours).
+RAN = ("running", "done", "blocked", "cloud-no-pr", "handed-off", "partial")
 DISPATCH_FIX = (
     "the lane never ran: report it as {status}, never as running; re-dispatch its brief ({brief}) through "
     "the remote-lane runner once a lab-headroom line shows a free slot, or tell the operator it is waiting; "
