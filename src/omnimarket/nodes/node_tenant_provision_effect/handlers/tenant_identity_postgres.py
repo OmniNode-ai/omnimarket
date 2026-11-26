@@ -65,6 +65,8 @@ INSERT INTO tenant_plans (tenant_id, plan_code)
 VALUES ($1, $2)
 ON CONFLICT (tenant_id) WHERE is_active = true DO NOTHING
 """
+# The live outbox (the identity schema seam) carries the destination topic and the envelope, never a tenant id column: the
+# tenant is read back from the envelope's payload.
 _INSERT_OUTBOX = (
     "INSERT INTO tenant_event_outbox (topic, envelope) VALUES ($1, $2::jsonb)"
 )
@@ -83,6 +85,13 @@ _LIVE_PROVIDER_KEYS = "SELECT count(*) FROM tenant_inference_credentials WHERE t
 _SUSPEND_TENANT = (
     "UPDATE tenants SET provisioning_state = 'suspended' WHERE tenant_id = $1"
 )
+# Used only when the key carries an expiry (OMN-26476), so a database without the expiry column keeps working for a key without one.
+_INSERT_API_KEY_WITH_EXPIRY = """
+INSERT INTO tenant_api_keys (tenant_id, name, key_hash, expires_at)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT DO NOTHING
+RETURNING id
+"""
 _ACTIVE_KEY_HASH_BY_NAME = "SELECT key_hash FROM tenant_api_keys WHERE tenant_id = $1 AND name = $2 AND is_active"
 
 
@@ -275,7 +284,12 @@ class TenantIdentityPostgres:
         return ProvisionRecord(kind=EnumProvisionKind.REPLAY, envelope=envelope)
 
     async def ensure_api_key(
-        self, *, tenant_id: UUID, name: str, key_hash: str
+        self,
+        *,
+        tenant_id: UUID,
+        name: str,
+        key_hash: str,
+        expires_at: datetime | None = None,
     ) -> EnumApiKeyKind:
         """Insert one active key row for the tenant, or report what already holds the name or the hash (OMN-26586).
 
@@ -285,9 +299,18 @@ class TenantIdentityPostgres:
         try:
             pool = await self._get_pool()
             async with pool.acquire() as connection, connection.transaction():
-                inserted = await connection.fetchrow(
-                    _INSERT_API_KEY, tenant_id, name, key_hash
-                )
+                if expires_at is None:
+                    inserted = await connection.fetchrow(
+                        _INSERT_API_KEY, tenant_id, name, key_hash
+                    )
+                else:
+                    inserted = await connection.fetchrow(
+                        _INSERT_API_KEY_WITH_EXPIRY,
+                        tenant_id,
+                        name,
+                        key_hash,
+                        expires_at,
+                    )
                 if inserted is not None:
                     return EnumApiKeyKind.CREATED
                 held = await connection.fetchrow(

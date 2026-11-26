@@ -89,11 +89,23 @@ event_bus:
     - onex.cmd.omnimarket.tenant-provision-requested.v1
     - onex.cmd.omnimarket.tenant-read-requested.v1
     - onex.cmd.omnimarket.tenant-suspend-requested.v1
-  # Only the terminal event is declared here: the node's Python never publishes, the runtime publishes each handler's answer
-  # on the completed topic its topic_match route names, and the publish-parity gate refuses a non-terminal publish topic
-  # with no publish call in the node. The read answer's topic is declared under topics and externally_consumed_topics.
+  # The runtime publishes each handler's answer, never the node's Python, and only on a topic declared here: it routes a
+  # result by its class through published_events below. A read answer with no declared topic fell back to the provision
+  # topic, so a caller waiting on tenant-read-completed timed out.
   publish_topics:
     - onex.evt.omnimarket.tenant-provision-completed.v1
+    - onex.evt.omnimarket.tenant-read-completed.v1
+    - onex.evt.omnimarket.tenant-suspend-completed.v1
+published_events:
+  - event_type: ModelTenantProvisionResult
+    topic: onex.evt.omnimarket.tenant-provision-completed.v1
+    description: The typed outcome of one provision command.
+  - event_type: ModelTenantReadResult
+    topic: onex.evt.omnimarket.tenant-read-completed.v1
+    description: The typed outcome of one read command, found or a typed refusal.
+  - event_type: ModelTenantSuspendResult
+    topic: onex.evt.omnimarket.tenant-suspend-completed.v1
+    description: The typed outcome of one suspend command.
 externally_produced_topics:
   - topic: onex.cmd.omnimarket.tenant-read-requested.v1
     producer: "the operator's CLI, the only principal holding WRITE on this topic (see broker_acl_grants) -- not a node contract"
