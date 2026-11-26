@@ -298,3 +298,76 @@ print(json.dumps({"type":"turn.completed"}))
         ModelCodexHarnessPolicy(executable=str(binary), workdir=tmp_path)
     ).handle(request())
     assert result.exit_cause == "invalid_output"
+
+
+_OK_ENGINE = """import json, pathlib, sys
+args = sys.argv[1:]
+pathlib.Path(args[args.index("-o") + 1]).write_text("fixture answer")
+pathlib.Path("cwd-marker").write_text("ran here")
+print(json.dumps({"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}))
+"""
+
+
+@pytest.mark.parametrize(
+    "auth",
+    [
+        {"OPENAI_API_KEY": "sk-fixture-not-a-secret", "auth_mode": "chatgpt"},
+        {"auth_mode": "apikey"},
+    ],
+)
+def test_api_key_login_is_refused_by_name_without_launching(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, auth: dict[str, str]
+) -> None:
+    import json
+
+    home = tmp_path / "codex-home"
+    home.mkdir()
+    (home / "auth.json").write_text(json.dumps(auth))
+    monkeypatch.setenv("CODEX_HOME", str(home))
+    binary = engine(tmp_path, _OK_ENGINE)
+    result = HandlerCodexHarnessAttempt(
+        ModelCodexHarnessPolicy(executable=str(binary), workdir=tmp_path)
+    ).handle(request())
+    assert result.exit_cause == "api_key_login_refused"
+    assert result.answer == ""
+    assert "sk-fixture" not in result.model_dump_json()
+    assert not (tmp_path / "cwd-marker").exists()
+
+
+def test_environment_api_key_is_refused_by_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "absent-home"))
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-fixture-not-a-secret")
+    binary = engine(tmp_path, _OK_ENGINE)
+    result = HandlerCodexHarnessAttempt(
+        ModelCodexHarnessPolicy(executable=str(binary), workdir=tmp_path)
+    ).handle(request())
+    assert result.exit_cause == "api_key_login_refused"
+
+
+def test_chatgpt_login_runs_in_a_clean_directory_forcing_chatgpt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import json
+
+    home = tmp_path / "codex-home"
+    home.mkdir()
+    (home / "auth.json").write_text(
+        json.dumps({"auth_mode": "chatgpt", "OPENAI_API_KEY": None})
+    )
+    monkeypatch.setenv("CODEX_HOME", str(home))
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    binary = engine(
+        tmp_path,
+        _OK_ENGINE
+        + """assert 'forced_login_method="chatgpt"' in args
+assert args[args.index("-C") + 1] == __import__("os").getcwd()
+""",
+    )
+    (tmp_path / "unrelated.txt").write_text("repo content")
+    result = HandlerCodexHarnessAttempt(
+        ModelCodexHarnessPolicy(executable=str(binary), workdir=tmp_path)
+    ).handle(request())
+    assert result.exit_cause == "completed"
+    assert not (tmp_path / "cwd-marker").exists()
