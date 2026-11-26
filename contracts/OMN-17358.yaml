@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: OMN-17358
+title: "A delegate-skill command the dispatch engine refused closes its gateway row failed, so C14, C16 and C28 read a typed dead run"
+summary: "The gateway takes any task class string; the delegate-skill consumer refuses an undeclared class and the dispatch engine answers on the contract's declared failure topic, onex.evt.omnimarket.delegate-skill-failed.v1. The gateway terminal writer read only the delegation-failed topic, so the row stayed published and the scheduled dying-run clause failed. The writer now also reads the delegate-skill failure topic and applies only the engine's publisher_malformed refusal there."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn17358-delegate-skill-refusal-closes-row
+    statement: "A publisher_malformed terminal on the delegate-skill failure topic closes the one gateway row of its correlation id as failed with a typed failure class and code, and any other terminal on that topic is left alone."
+    acceptance:
+      - id: AC1
+        statement: "AC1: the writer subscribes to, is granted and routes the failure topic the delegate-skill contract declares, a refusal there closes the row failed with class PublisherMalformedError and an ONEX code, and any other failure on that topic changes no row and dead-letters nothing -- falsifier: uv run pytest tests/nodes/node_gateway_workflow_terminal_effect/test_delegate_skill_malformed_terminal_omn17358.py -q fails at origin/dev"
+evidence_requirements:
+  - kind: tests
+    description: "The gateway terminal writer tests pass at the pushed head."
+    command: "uv run --frozen pytest tests/nodes/node_gateway_workflow_terminal_effect -q --no-cov -n 0 -p no:cacheprovider -m 'not kafka'"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn17358-delegate-skill-refusal-closes-row
+    description: "The writer closes the row of a delegate-skill command the engine refused as failed, and leaves every other delegate-skill failure alone. The test fails at origin/dev (the topic is not declared by the contract) and passes with the route."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run --frozen pytest tests/nodes/node_gateway_workflow_terminal_effect/test_delegate_skill_malformed_terminal_omn17358.py -q --no-cov -n 0 -p no:cacheprovider
+        cwd: .
+  - id: dod-omn17358-integration-proof
+    description: "Run the gateway terminal writer tests on a lab host at the pushed revision."
+    source: manual
+    execution_scope: local_done_gate
+    binds_ac: [AC1]
+    checks:
+      - check_type: command
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-17358 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_gateway_workflow_terminal_effect -m 'not kafka' -q -n 0 --no-cov --refuse-skips
+        cwd: .
