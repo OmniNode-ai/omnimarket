@@ -116,6 +116,14 @@ _INFISICAL_BOOTSTRAP_VARS: tuple[str, ...] = (
     "INFISICAL_ENVIRONMENT_SLUG",
 )
 
+# OMN-25856: the intake WRITES with its own machine identity. The runtime process
+# identity (INFISICAL_CLIENT_ID/SECRET) is read-only on the tenant-credential
+# folder where it serves reads, so a create with it answers 403. Both writer
+# variables set means the intake uses them; neither set keeps the process
+# identity; exactly one set is a configuration error.
+WRITER_CLIENT_ID_VAR = "INFISICAL_TENANT_CREDENTIAL_WRITER_CLIENT_ID"
+WRITER_CLIENT_SECRET_VAR = "INFISICAL_TENANT_CREDENTIAL_WRITER_CLIENT_SECRET"
+
 # The folder the tenant-credential values live in. This one keeps a default:
 # unlike the environment slug, a wrong path cannot silently cross an environment
 # boundary, and the value is a fixed product-level address rather than a
@@ -387,6 +395,16 @@ def _bootstrap_values() -> dict[str, str]:
         os.environ.get("INFISICAL_TENANT_CREDENTIAL_SECRET_PATH", "").strip()
         or _DEFAULT_TENANT_CREDENTIAL_SECRET_PATH
     )
+    writer_id = os.environ.get(WRITER_CLIENT_ID_VAR, "").strip()
+    writer_secret = os.environ.get(WRITER_CLIENT_SECRET_VAR, "").strip()
+    if bool(writer_id) != bool(writer_secret):
+        raise CredentialStoreConfigurationError(
+            "BYOK credential intake has half a writer identity: set both "
+            f"{WRITER_CLIENT_ID_VAR} and {WRITER_CLIENT_SECRET_VAR}, or neither."
+        )
+    if writer_id:
+        values["INFISICAL_CLIENT_ID"] = writer_id
+        values["INFISICAL_CLIENT_SECRET"] = writer_secret
     return values
 
 

@@ -26,6 +26,11 @@ requirements:
     statement: 'AC11: a tenant whose overlay row names no usable credential is refused locally and makes no outbound provider call -- falsifier: a withdrawn credential reaches the vendor with no Authorization header'
   - id: AC2
     statement: 'AC2: local Inkling-2-Mini has a zero marginal api cost row in cost_pricing.yaml and an unlisted local model still raises MissingCostPricingError -- falsifier: pricing Inkling-2-Mini raises, or an unlisted local model prices without error'
+- id: req-omn25856-byok-writer-identity
+  statement: The BYOK intake writes a customer key with its own writer machine identity, so a runtime whose process identity is read-only on the tenant-credential folder no longer answers 503 on register.
+  acceptance:
+  - id: AC12
+    statement: 'AC12: with both writer variables set the intake store authenticates as the writer identity, with neither set it keeps the process identity, and with exactly one set it refuses naming the missing variable -- falsifier: a register on a read-only process identity still builds its store from that identity'
 - id: req-omn25856-start-budget
   statement: A hosted dod-verify-start command is bounded as a whole by an overlay-declared budget below the 600 s dispatch deadline, so a contract of many checks completes its dispatch with a typed unverifiable verdict instead of outrunning the deadline and leaving an orphaned dispatch.
   acceptance:
@@ -40,6 +45,15 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+- id: dod-omn25856-ac12-byok-writer-identity
+  description: The intake store is built from the writer identity when both writer variables are set, from the process identity when neither is, and a half-set pair refuses without echoing a value.
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn25856_byok_writer_identity.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn25856-ac1-no-orphan-after-timeout
   description: A check whose shell starts a background child and waits is killed at its 1 s ceiling; the child's pid is read back and is not running 3 s later. The test fails on a collector that kills only the shell.
   source: manual
