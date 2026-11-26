@@ -1,0 +1,131 @@
+schema_version: 1.0.0
+ticket_id: OMN-25314
+title: Review findings 1 to 7 on omnimarket PR 5611 at the second review of head 01507c057948 are fixed or argued
+summary: 'The second review of omnimarket#5611 at head 01507c057948: the Postgres twin errors instead of skipping, the contract bindings can fail, the PR title and the migration 0069 comment and checksum are corrected, the inferred zero is stamped only without a reported count or attempt evidence, the skill path stores only a raw count, and the upgraded sqlite store declares the column INTEGER.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25314-ac1
+  statement: 'every required check-run of omnimarket#5611 reads success at the new head, and a PR comment starting `Lab: head=<new head>` names the sha, the command and the 4 Postgres tests passed, not skipped'
+  acceptance:
+  - id: AC1
+    statement: 'AC1: every required check-run of omnimarket#5611 reads success at the new head, and a PR comment starting `Lab: head=<new head>` names the sha, the command and the 4 Postgres tests passed, not skipped -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#5611` lists a required context that is not success at the new head, or the Lab comment lacks the sha, the command or the 4 passed'
+- id: req-omn25314-ac2
+  statement: the bindings in contracts/[OMN-24793](https://linear.app/omninode/issue/OMN-24793).yaml (AC1 to AC3) and contracts/[OMN-24838](https://linear.app/omninode/issue/OMN-24838).yaml (AC1) run evidence that fails when the criterion fails, the Postgres twin errors instead of skipping when no database is reachable, and the git diff binding fails on a missing sha
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the bindings in contracts/[OMN-24793](https://linear.app/omninode/issue/OMN-24793).yaml (AC1 to AC3) and contracts/[OMN-24838](https://linear.app/omninode/issue/OMN-24838).yaml (AC1) run evidence that fails when the criterion fails, the Postgres twin errors instead of skipping when no database is reachable, and the git diff binding fails on a missing sha -- falsifier: `uv run pytest tests/test_omn18534_turn_count_real_postgres.py -q -p no:cacheprovider` exits 0 with every case skipped when no Postgres is reachable'
+- id: req-omn25314-ac3
+  statement: the PR title and contracts/[OMN-18534](https://linear.app/omninode/issue/OMN-18534).yaml line 4 name migration 0069, the test pins the omnibase_infra copy byte for byte and not any "0069", both migration copies state that routed no-count terminals store NULL and that the count is never derived from attempt_history with the checksum updated, and a PR comment says 0069 is free on dev and the read node's missing-column refusal is settled
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the PR title and contracts/[OMN-18534](https://linear.app/omninode/issue/OMN-18534).yaml line 4 name migration 0069, the test pins the omnibase_infra copy byte for byte and not any "0069", both migration copies state that routed no-count terminals store NULL and that the count is never derived from attempt_history with the checksum updated, and a PR comment says 0069 is free on dev and the read node''s missing-column refusal is settled -- falsifier: `uv run pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q -p no:cacheprovider` passes with one byte of the omnibase_infra copy changed'
+- id: req-omn25314-ac4
+  statement: the inferred zero is stamped only when the raw count is absent and no attempt evidence exists, a test shows a not-routed or refused failure with a malformed count and attempt history stores NULL, a test shows a later sparse routed terminal does not keep a stamped 0, and an async test shows a later refused terminal keeps an earlier count
+  acceptance:
+  - id: AC4
+    statement: 'AC4: the inferred zero is stamped only when the raw count is absent and no attempt evidence exists, a test shows a not-routed or refused failure with a malformed count and attempt history stores NULL, a test shows a later sparse routed terminal does not keep a stamped 0, and an async test shows a later refused terminal keeps an earlier count -- falsifier: `uv run pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q -p no:cacheprovider` passes with the zero stamped on every terminal'
+- id: req-omn25314-ac5
+  statement: the skill path stores a count only when the raw payload has the key, the fixtures state a count that differs from the attempt-history length, the test that pins the derived count is replaced, and an escalated producer test includes compliance repairs
+  acceptance:
+  - id: AC5
+    statement: 'AC5: the skill path stores a count only when the raw payload has the key, the fixtures state a count that differs from the attempt-history length, the test that pins the derived count is replaced, and an escalated producer test includes compliance repairs -- falsifier: `uv run pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q -p no:cacheprovider` passes with the count derived from the attempt list'
+- id: req-omn25314-ac6
+  statement: the on-connect adder for an upgraded sqlite store declares the column INTEGER and the test asserts the declared type, not an empty string
+  acceptance:
+  - id: AC6
+    statement: 'AC6: the on-connect adder for an upgraded sqlite store declares the column INTEGER and the test asserts the declared type, not an empty string -- falsifier: `uv run pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q -p no:cacheprovider` passes with the column added untyped'
+- id: req-omn25314-ac7
+  statement: 'the non-blocking findings 8 to 10 are fixed or argued in a PR comment: the later-wins test has an async case and the intent of a later 0 over a 4 is stated, the earlier 10 is split out or argued'
+  acceptance:
+  - id: AC7
+    statement: 'AC7: the non-blocking findings 8 to 10 are fixed or argued in a PR comment: the later-wins test has an async case and the intent of a later 0 over a 4 is stated, the earlier 10 is split out or argued -- falsifier: `uv run pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q -p no:cacheprovider` passes with the async later-wins case removed'
+evidence_requirements:
+- kind: tests
+  description: The turn count unit file, the twin and the twin guard pass at the pushed head.
+  command: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py tests/test_omn18534_turn_count_real_postgres.py tests/test_omn18534_turn_count_postgres_guard.py -q --no-cov -p no:randomly -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25314-ac1-hosted
+  description: 'Hosted proxy for AC1: the unit file and the real-Postgres twin, whose 4 cases error rather than skip without a database, pass at the new head. The live check-run read and the Lab comment are the unbound items below.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py tests/test_omn18534_turn_count_real_postgres.py -q --no-cov -p no:randomly -p no:cacheprovider
+    cwd: .
+- id: dod-omn25314-ac1-checks-read
+  description: 'Only the local Done gate runs this unbound check: hosted CI cannot read its own required contexts at the new head.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex scm pr-checks OmniNode-ai/omnimarket#5611
+    cwd: .
+- id: dod-omn25314-ac2
+  description: The twin errors, never skips, when no database is reachable; a test reads the twin and the unit file for skip or xfail markers and for the twin's 4 cases; contracts/OMN-24793.yaml AC2 diff binding fails on a missing sha (the unbound local item there).
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_omn18534_turn_count_postgres_guard.py -q --no-cov -p no:randomly -p no:cacheprovider
+    cwd: .
+- id: dod-omn25314-ac3
+  description: The test pins the migration 0069 bytes (the omnibase_infra copy is pinned to the same checksum), contracts/OMN-18534.yaml names 0069 on line 4, and the migration comment states the NULL and no-derivation rules.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -p no:cacheprovider -k "ticket_contract_names or bytes_are_pinned or comment_states or only_migration_0069"
+    cwd: .
+- id: dod-omn25314-ac4
+  description: 'The inferred zero is stamped only when no terminal reported a count and no attempt evidence exists: a malformed count and attempt evidence store NULL, a later sparse routed terminal does not keep a stamped zero, and an async later refused terminal keeps an earlier count.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -p no:cacheprovider -k "malformed_count_is_never or attempt_evidence or later_sparse_routed or async_later or async_malformed or stamped_zero or not_routed"
+    cwd: .
+- id: dod-omn25314-ac5
+  description: The skill path stores a count only when the raw payload has the key; the fixtures state a count that differs from the attempt-history length; an omitted count stores NULL; the escalated producer test includes compliance repairs.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -p no:cacheprovider -k "stated_count or omits_the_count_stores_null or escalated_producer_count or malformed_count or no_count_and_no_history or single_turn_and_escalated"
+    cwd: .
+- id: dod-omn25314-ac6
+  description: A store created before the column gains it on connect declared INTEGER, and the test asserts the declared type.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -p no:cacheprovider -k "gains_it_on_connect or fresh_sqlite_store"
+    cwd: .
+- id: dod-omn25314-ac7
+  description: The async later-wins case (a later reported 0 over a 4) and the sync cases pass; the intent is argued in the PR comment.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -p no:cacheprovider -k "later_terminal_that_reports or async_later_terminal"
+    cwd: .
+- id: dod-omn25314-integration-proof
+  description: On a lab host at the pushed head, runs the turn count unit file, the real-Postgres twin (4 cases, passed and not skipped) and the twin guard through the lab work runner. Hosted CI cannot reach the lab host, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25314 --kind test -- uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py tests/test_omn18534_turn_count_real_postgres.py tests/test_omn18534_turn_count_postgres_guard.py -q --no-cov -p no:randomly -p no:cacheprovider
+    cwd: .

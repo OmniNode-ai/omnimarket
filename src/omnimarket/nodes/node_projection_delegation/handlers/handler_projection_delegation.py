@@ -32,7 +32,9 @@ import logging
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from decimal import Decimal
+from enum import Enum
 from pathlib import Path
+from typing import Protocol
 
 import yaml
 from omnibase_core.enums.enum_delegation_terminal_failure_cause import (
@@ -385,6 +387,20 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
     requested_model: str | None = Field(default=None)
     queue_wait_ms: int | None = Field(default=None, ge=0, strict=True)
     execution_ms: int | None = Field(default=None, ge=0, strict=True)
+    # OMN-18534: the terminal's total inference calls (migration 0069); 0 is a
+    # delegation that failed before any turn, None is a count nobody reported.
+    turn_count: int | None = Field(default=None, ge=0, strict=True)
+
+    @property
+    def turn_count_reported(self) -> bool:
+        """True when the terminal carried a count key, even a malformed one."""
+        return "turn_count" in self.model_fields_set
+
+    @property
+    def has_attempt_record(self) -> bool:
+        """True when the terminal carries a record of an attempt it made."""
+        return bool(self.escalation_history) or self.escalation_count > 0
+
     quality_gates_checked: list[str] | None = Field(default=None)
     quality_gates_failed: list[str] | None = Field(default=None)
     quality_gate_detail: str | None = Field(default=None)
@@ -937,8 +953,8 @@ class HandlerProjectionDelegation:
             )
         )
         row.update(evidence)
-        _preserve_existing_evidence(db, row)
-        _stamp_not_routed(row)
+        stored = _preserve_existing_evidence(db, row)
+        _stamp_not_routed(row, event, stored_ran_inference=stored)
         # OMN-20303: the canonical completion can outlive the outer handler
         # during shutdown. Keep the same token-derived baseline the savings
         # writer uses, only after retaining any originally pinned baseline.
@@ -1092,12 +1108,7 @@ class HandlerProjectionDelegation:
         # OMN-19448: keep the disposition the terminal declared, just as the
         # canonical terminal path does. Older terminals omit the pair, so do
         # not erase an earlier terminal's evidence with missing values.
-        for column, terminal_disposition in (
-            ("operational_outcome", event.operational_outcome),
-            ("content_verdict", event.content_verdict),
-        ):
-            if terminal_disposition is not None:
-                row[column] = terminal_disposition.value
+        _stamp_terminal_dispositions(row, event)
         row["attempt_history"] = [
             attempt.model_dump(mode="json") for attempt in reduction.attempt_history
         ]
@@ -1108,6 +1119,7 @@ class HandlerProjectionDelegation:
             event.queue_wait_ms,
             event.execution_duration_ms,
         )
+        _stamp_skill_terminal_turn_count(row, event)
         # OMN-19448: the trace id the terminal copied from its command (OMN-19437).
         if event.trace_id is not None:
             row["trace_id"] = str(event.trace_id)
@@ -1191,8 +1203,8 @@ class HandlerProjectionDelegation:
         # response="") would clobber the real model answer written by an earlier
         # delegation-completed.v1 canonical event. _preserve_existing_evidence
         # retains the existing non-blank value when the incoming row has none.
-        _preserve_existing_evidence(db, row)
-        _stamp_not_routed(row)
+        stored = _preserve_existing_evidence(db, row)
+        _stamp_not_routed(row, event, stored_ran_inference=stored)
         _stamp_unmeasured_latency(row, event.execution_duration_ms)
         apply_modelled_terminal_savings(row, event)
         ok = bool(
@@ -1745,7 +1757,7 @@ def _canonical_result_to_task_delegated_payload(
     terminal_tier = raw_terminal_tier if isinstance(raw_terminal_tier, str) else ""
     resolved_tier = terminal_tier or winning_tier
 
-    return {
+    converted: dict[str, object] = {
         "correlation_id": payload.get("correlation_id"),
         # OMN-14058 (OPERATOR-ACCEPTED INTERIM): carry the canonical terminal's
         # tenant_id (ONEX_TENANT_ID-sourced at request-acceptance) through the
@@ -1836,6 +1848,11 @@ def _canonical_result_to_task_delegated_payload(
         "request_override_applied": payload.get("request_override_applied") or False,
         "override_within_bounds": payload.get("override_within_bounds") is not False,
     }
+    # OMN-18534: name the count only when the terminal carried the key, so a
+    # missing count stays distinguishable from a malformed one (both read None).
+    if payload.get("attempts_count") is not None:
+        converted["turn_count"] = _nonnegative_int_or_none(payload["attempts_count"])
+    return converted
 
 
 class ModelActualCostProjection(BaseModel):
@@ -2132,11 +2149,16 @@ def _gate_count(value: list[str] | None) -> int:
 def _preserve_existing_evidence(
     db: DatabaseAdapter,
     row: dict[str, object],
-) -> None:
-    """Keep terminal evidence when a sparse compatibility event arrives later."""
+) -> bool:
+    """Keep terminal evidence when a sparse compatibility event arrives later.
+
+    Returns whether the stored row ran a model and states no count, which the
+    caller hands to ``_stamp_not_routed``; the flag never rides on the row, so
+    no write can carry it (OMN-18534).
+    """
     correlation_id = row.get(CONFLICT_KEY)
     if not correlation_id:
-        return
+        return False
     # Read under the declared row tenant, matching the async writer. Using
     # the writer's configured tenant here can blind the merge or fail its UUID
     # policy cast even though the terminal carries a valid tenant (OMN-20651).
@@ -2146,8 +2168,11 @@ def _preserve_existing_evidence(
     existing_rows = db.query(TABLE, filters)
     if not existing_rows:
         apply_terminal_precedence({}, row)
-        return
+        return False
     existing = existing_rows[0]
+    # First, while the row holds only this event's own evidence: the merges
+    # below copy tokens and a routed model in from the stored row.
+    stored_ran_inference = _inherit_timing_and_turn_count(row, existing)
     # OMN-17427: a stored failure terminal is never partly overwritten by a
     # non-terminal or out-of-order event. Decided from the two events' own
     # terminal meaning and times, before any column is merged.
@@ -2210,10 +2235,6 @@ def _preserve_existing_evidence(
             row[key] = existing[key]
             if key == "finish_reason" and row.get("truncated") is None:
                 row["truncated"] = existing.get("truncated")
-    # A measured zero is evidence, so only None may inherit a stored timing.
-    for key in ("queue_wait_ms", "execution_ms"):
-        if row.get(key) is None and existing.get(key) is not None:
-            row[key] = existing[key]
     if bool(existing.get("request_override_applied")):
         row["request_override_applied"] = True
     if existing.get("override_within_bounds") is False:
@@ -2227,6 +2248,7 @@ def _preserve_existing_evidence(
     # OMN-19448: after precedence, so a model inherited from the stored row
     # never makes an unevidenced handler failure read as evidenced.
     _preserve_run_attribution(existing, row)
+    return stored_ran_inference
 
 
 def _is_unnamed_model(value: object) -> bool:
@@ -2269,7 +2291,82 @@ def _preserve_run_attribution(
         row["delegated_to"] = stored_target
 
 
-def _stamp_not_routed(row: dict[str, object]) -> None:
+class _TurnCountSource(Protocol):
+    """A terminal that knows whether it reported a count, and what it recorded."""
+
+    @property
+    def turn_count_reported(self) -> bool: ...
+
+    @property
+    def has_attempt_record(self) -> bool: ...
+
+
+def _has_attempt_evidence(row: Mapping[str, object]) -> bool:
+    """True when the row records an attempt, or tokens a model call spent (OMN-18534)."""
+    history = row.get("attempt_history")
+    if isinstance(history, str):
+        history = history.strip()
+        if history not in ("", "[]", "null"):
+            return True
+    elif history:
+        return True
+    return any(_as_int(row.get(key)) > 0 for key in ("tokens_input", "tokens_output"))
+
+
+def _ran_inference(row: Mapping[str, object]) -> bool:
+    """True when the row names a model it ran, or holds attempt evidence."""
+    return _has_attempt_evidence(row) or not (
+        _is_unnamed_model(row.get("model_name")) and _is_blank(row.get("routed_model"))
+    )
+
+
+def _inherit_timing_and_turn_count(
+    row: dict[str, object], existing: Mapping[str, object]
+) -> bool:
+    """Let a sparse terminal inherit a stored timing or turn count (OMN-18534).
+
+    A measured zero is evidence, so only None may inherit a stored value, and a
+    sparse later terminal that ran no model keeps a recorded zero.
+
+    Provenance of a stored zero: the writer stamps a zero only on a failure row
+    (``_stamp_not_routed``), so a zero on a row whose terminal did not fail was
+    reported and is kept under any later no-count terminal. A zero on a stored
+    failure is kept while that failure owns its terminal columns (a typed cause,
+    reported or stamped alike); otherwise a later no-count terminal that names a
+    model it ran contradicts it, and the count is NULL (that terminal's own
+    count is unknown).
+
+    Returns True when the stored row ran a model and states no count: the caller
+    hands that to ``_stamp_not_routed`` so an event that ran nothing does not
+    stamp a zero over it. The flag is returned, never set on the row.
+    """
+    stored_ran_inference = existing.get("turn_count") is None and _ran_inference(
+        existing
+    )
+    stored_failed = existing.get("terminal_ok") is not None and not bool(
+        existing.get("terminal_ok")
+    )
+    for key in ("queue_wait_ms", "execution_ms", "turn_count"):
+        if row.get(key) is not None or existing.get(key) is None:
+            continue
+        if (
+            key == "turn_count"
+            and existing[key] == 0
+            and stored_failed
+            and _ran_inference(row)
+        ):
+            row[key] = None  # named, so the write replaces the stored 0 with NULL
+            continue
+        row[key] = existing[key]
+    return stored_ran_inference
+
+
+def _stamp_not_routed(
+    row: dict[str, object],
+    event: _TurnCountSource,
+    *,
+    stored_ran_inference: bool = False,
+) -> None:
     """Name a failed run that carried no try as not routed, with the reason (OMN-19448).
 
     A run that failed before any try (a timeout before routing, a runtime
@@ -2279,14 +2376,33 @@ def _stamp_not_routed(row: dict[str, object]) -> None:
     ``not routed (<cause>)`` for the model and ``not routed`` for the backend and
     host, so a failed run never reads unknown. A run that was routed names its
     routed model and backend instead and is not touched here.
+
+    OMN-18534: such a run, or one refused before dispatch, made no inference
+    call, so its turn count is stamped 0 only when no terminal reported a count
+    (not even a malformed one) and the row holds no attempt evidence. A count
+    any terminal reported is kept as it is.
     """
     if row.get("terminal_ok") is not False:
         return
-    if not _is_unnamed_model(row.get("model_name")) or not _is_blank(
-        row.get("routed_model")
-    ):
-        return
     cause = row.get("terminal_failure_cause")
+    not_routed = _is_unnamed_model(row.get("model_name")) and _is_blank(
+        row.get("routed_model")
+    )
+    # A refusal is stamped like any other run that dispatched nothing: only
+    # when neither this row nor the stored row names a model it ran or holds
+    # attempt evidence. A refusal that arrives over a routed row says nothing
+    # about the calls that row's own terminal made, so the count stays NULL:
+    # naming the cause here would stamp 0 over exactly that row.
+    if (
+        row.get("turn_count") is None
+        and not event.turn_count_reported
+        and not event.has_attempt_record
+        and not stored_ran_inference
+        and not _ran_inference(row)
+    ):
+        row["turn_count"] = 0
+    if not not_routed:
+        return
     reason = str(cause) if not _is_blank(cause) else "no routing decision recorded"
     row["model_name"] = f"{NOT_ROUTED} ({reason})"
     if _is_blank(row.get("delegated_to")) or (
@@ -2358,6 +2474,7 @@ def _stamp_terminal_trace_and_routing(
     _stamp_terminal_timing_and_requested_model(
         row, event.requested_model, event.queue_wait_ms, event.execution_ms
     )
+    _stamp_terminal_turn_count(row, event.turn_count)
 
 
 def _nonnegative_int_or_none(value: object) -> int | None:
@@ -2411,6 +2528,48 @@ def _stamp_unmeasured_latency(
     for key in ("latency_ms", "delegation_latency_ms"):
         if _is_zero(row.get(key)):
             row[key] = duration
+
+
+class _DeclaredDisposition(Protocol):
+    """A terminal that may carry the declared operational outcome and verdict."""
+
+    @property
+    def operational_outcome(self) -> Enum | None: ...
+
+    @property
+    def content_verdict(self) -> Enum | None: ...
+
+
+def _stamp_terminal_dispositions(
+    row: dict[str, object], event: _DeclaredDisposition
+) -> None:
+    """Name the declared disposition pair; an omitted value leaves the column alone."""
+    for column, terminal_disposition in (
+        ("operational_outcome", event.operational_outcome),
+        ("content_verdict", event.content_verdict),
+    ):
+        if terminal_disposition is not None:
+            row[column] = terminal_disposition.value
+
+
+def _stamp_terminal_turn_count(row: dict[str, object], turn_count: int | None) -> None:
+    """Name the terminal's total inference calls; a reported zero is stored (0069)."""
+    if turn_count is not None:
+        row["turn_count"] = turn_count
+
+
+def _stamp_skill_terminal_turn_count(
+    row: dict[str, object], event: ModelDelegateSkillTerminalProjection
+) -> None:
+    """Store the delegate-skill terminal's count only when the payload carried one.
+
+    The skill terminal model defaults an omitted count to 1 and derives one from
+    the attempt list, and neither is a count the producer reported (the list
+    omits compliance repairs). The column is stored only when the raw payload
+    stated the count; otherwise it is left untouched.
+    """
+    if event.turn_count_reported:
+        _stamp_terminal_turn_count(row, event.attempts_count)
 
 
 def _blank_to_none(value: object) -> str | None:
