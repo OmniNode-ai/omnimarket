@@ -1,0 +1,64 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Bootstrap overlay of node_lane_work_event_classify_compute. The deployment's overlay lives at
+# <root>/node_lane_work_event_classify_compute/overlay.yaml under a root named in ONEX_SKILL_OVERLAY_ROOTS, or the
+# file LANE_WORK_EVENT_CLASSIFY_OVERLAY names; with neither bound the classifier reads this file.
+# Rules are tried in order and the first whose pattern is found in the raw worker text (guard, hook, commit,
+# push output, a worker's read of a log) names the event; a text no rule matches is `unclassified`. Specific
+# rules come before general ones. The last rule's `hook` pattern is seeded from blocker_friction_classes.json
+# (the remote-lane skill's data file). A log_read rule takes its red kind from node_ci_red_kind_rule_compute,
+# which is given red_kind_check_name and the raw text as the log excerpt.
+schema_version: lane_work_classify.v1
+ci_verdict_events:
+  green: check_green
+  red: check_red
+  pending: check_pending
+rules:
+  - pattern: 'check-release-identity|release identity'
+    event: commit_refused
+    event_class: release_identity
+    ignore_case: true
+  - pattern: 'does not appear to be a git repository|no `?origin`? remote'
+    event: push_refused
+    event_class: missing_remote
+    ignore_case: true
+  - pattern: 'non-fast-forward|\(fetch first\)|tip of your current branch is behind'
+    event: head_moved
+    ignore_case: true
+  - pattern: 'ruling-ACK guard|lane cell|OMN-18645'
+    event: push_refused
+    event_class: guard_ledger_cell
+    ignore_case: true
+  - pattern: 'protected branch|GH006'
+    event: push_refused
+    event_class: protected_branch
+    ignore_case: true
+  - pattern: 'pre-push.*(failed|refused)|push (refused|blocked) by'
+    event: push_refused
+    event_class: check_failed
+    ignore_case: true
+  - pattern: '! \[(remote )?rejected\]|error: failed to push some refs'
+    event: push_refused
+    event_class: push_rejected
+    ignore_case: true
+  - pattern: '^\s*[0-9a-f]{7,40}\.\.[0-9a-f]{7,40}\s+\S+\s+->\s+\S+|^\s*\* \[new branch\]'
+    event: pushed
+    ignore_case: false
+  - pattern: 'fails on dev itself|comes from CI''s merge of dev'
+    event: log_read
+    ignore_case: true
+    red_kind_check_name: worker-log-read
+  - pattern: 'cause unknown|unknown cause|cause is not known'
+    event: cause_unknown
+    ignore_case: true
+  - pattern: 'hook-preflight|hook preflight|HOOK-PREFLIGHT|pre-commit|pre-push|commit hook|commit-hook|src-freeze|canonical-file-shape'
+    event: commit_refused
+    event_class: hook
+    ignore_case: true
+# Used only when node_ci_red_kind_rule_compute has no overlay bound; a bound red kind overlay always wins.
+red_kind_bootstrap:
+  schema_version: ci_red_kind_rules.v1
+  rules:
+    - kind: base_inherited
+      log_pattern: 'fails on dev itself|comes from CI''s merge of dev'
+      ignore_case: true
