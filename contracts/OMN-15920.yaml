@@ -6,6 +6,14 @@ summary: node_mcp_server_effect tools/list half (ACTIVE, mcp.expose, overlay all
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+requirements:
+  - id: req-omn15920-tools-list
+    statement: "The MCP server node lists a registry node as a tool only when its contract exposes it, its registration is ACTIVE and the overlay allows it, and reads the registry through a projection-backed reader."
+    acceptance:
+      - id: AC1
+        statement: "AC1: tools/list lists an ACTIVE exposed allowed node and no inactive, unexposed or unallowed one; a duplicate name and an unreadable registry are named refusals -- falsifier: uv run pytest tests/nodes/node_mcp_server_effect/test_handler_mcp_tools_list.py -q fails at origin/dev (the node is absent)"
+      - id: AC2
+        statement: "AC2: the projection-backed registry reader lists an ACTIVE exposed tool from a projection whose mcp block carries a tools list, and refuses by name (infra_tools_list_absent) when the installed infra drops the list -- falsifier: uv run pytest tests/nodes/node_mcp_server_effect/test_handler_mcp_registry_projection_rows.py -q fails at origin/dev (the node is absent)"
 evidence_requirements:
   - kind: "ci"
     description: "CI passes on merge PR"
@@ -18,17 +26,19 @@ dod_evidence:
   - id: "dod-mcp-tools-list-handler"
     description: "tools/list lists an ACTIVE exposed allowed node and lists no inactive, unexposed or unallowed one; duplicate names and an unreadable registry are named refusals"
     source: "manual"
+    binds_ac: [AC1]
     checks:
-      - check_type: "command"
+      - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_mcp_server_effect/test_handler_mcp_tools_list.py -q -p no:cacheprovider"
   - id: "dod-omn15920-projection-reader"
     description: "The projection-backed registry reader lists an ACTIVE exposed tool from a projection whose mcp block carries a tools list, and refuses by name (infra_tools_list_absent) when the installed infra drops the list"
     source: "manual"
+    binds_ac: [AC2]
     checks:
-      - check_type: "command"
+      - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_mcp_server_effect/test_handler_mcp_registry_projection_rows.py -q -p no:cacheprovider"
   - id: "dod-omn15920-tools-list-integration-proof"
-    description: "The tools/list handler tests run on a lab host at the pushed sha (host, sha and exit code in the pull request body)"
+    description: "Local Done gate only, so it binds no criterion here: the tools/list handler tests run on a lab host at the pushed sha (host, sha and exit code in the pull request body)"
     source: "manual"
     execution_scope: local_done_gate
     checks:
