@@ -947,7 +947,7 @@ def add_model(
 
     Any provider on the models.dev list that speaks the OpenAI API is added by its
     own id, such as ``deepseek``, with its own key; the key is sent only to the base
-    URL onex ships for it (OMN-26688).
+    URL onex ships for it.
 
     ``local`` is a Local Model: any model server you run, with no key unless
     ``--key`` says it needs one. ``--url`` names a server that speaks the
