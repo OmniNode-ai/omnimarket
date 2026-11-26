@@ -52,6 +52,8 @@ class ModelCheckRegressionSettings(_Frozen):
     #: A red check alarms within this many seconds of the change.
     alarm_deadline_seconds: int = Field(gt=0)
     refused_targets: tuple[str, ...]
+    #: The lane a settings-change trigger runs the checks against; a refused target (prod) is never run.
+    trigger_target: str = Field(min_length=1)
     key_check_map: tuple[ModelKeyCheckRule, ...] = Field(min_length=1)
     checks: dict[str, ModelCheckSetting] = Field(min_length=1)
 
