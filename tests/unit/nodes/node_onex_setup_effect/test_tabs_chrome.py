@@ -28,8 +28,9 @@ _TABS = ["config", "model", "delegation", "dashboard"]
 _BAR = "Config   Model   Delegation   Dashboard"
 #: The footer line of each tab, exactly as the approved mockups print it.
 _FOOTER = {
-    "config": "tab next · space tick · ctrl+s save · esc close",
-    "model": "↑↓ move · enter make first · d details · esc close",
+    # OMN-26688: /config is the providers table; + on Model adds models.
+    "config": "enter add or open models · k key · t test · x remove · esc close",
+    "model": "↑↓ move · enter first · + add · d info · esc close",
     "delegation": "space switch · ctrl+s save · esc close",
     "dashboard": "s start · esc close",
 }

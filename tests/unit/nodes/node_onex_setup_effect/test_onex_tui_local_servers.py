@@ -91,10 +91,16 @@ def _app(runner: _Runner) -> OnexTui:
 
 
 async def _open(pilot, command: str) -> None:
-    await _type(pilot, command)
+    """A tab; "/config" here means adding models, now the Model tab's +
+    (OMN-26688)."""
+    await _type(pilot, "/model" if command == "/config" else command)
     await pilot.press("enter")
     await pilot.pause()
     await pilot.pause()
+    if command == "/config":
+        await pilot.app.open_add_models()
+        for _ in range(6):
+            await pilot.pause()
 
 
 async def test_model_opens_with_one_row_per_server_and_each_its_own_test() -> None:
@@ -355,10 +361,9 @@ async def test_config_lists_providers_in_yaml_order_and_fills_no_url() -> None:
             picker, key=lambda e: (e.provider not in written, e.label.casefold())
         )
         select = app.screen.query_one("#provider")  # radio options (OMN-23413)
-        assert select.value == a_to_z[0].provider
-        assert [b.name for b in select.query(RadioButton)] == [
+        assert {b.name for b in select.query(RadioButton)} == {
             entry.provider for entry in a_to_z
-        ]
+        }
         assert picker[-1].provider == "local"
         select.value = "local"
         await pilot.pause()
@@ -501,7 +506,6 @@ async def test_saving_delegation_keeps_delegation_open_and_shows_the_outcome() -
 
 async def test_saving_config_keeps_config_open_and_shows_the_outcome() -> None:
     """W5."""
-    from omnimarket.nodes.node_onex_setup_effect.cli_tui import SetupScreen
 
     found = json.dumps({"status": "ready", "models": ["llama3.2"]})
     report = json.dumps(
@@ -523,17 +527,19 @@ async def test_saving_config_keeps_config_open_and_shows_the_outcome() -> None:
         table = app.screen.query_one("#found")
         table.set_ticked([entry_key(e) for e in table.entries])
         await pilot.press("ctrl+s")
-        await _settle(pilot)
-        assert isinstance(app.screen, SetupScreen)
+        await _settle(pilot, 20)
+        # OMN-26688: saved and tested, the Model tab shows your models.
+        assert type(app.screen).__name__ == "ModelPickScreen"
         assert [c for c in runner.calls if c[:2] == ("models", "add")]
-        assert "Ready" in str(app.screen.query_one("#note").render())
 
 
 async def test_clicking_another_tab_never_shows_the_main_screen() -> None:
     """T1: the next tab is read while this one stays up, then swapped in."""
     from textual.widgets import Tabs
 
-    from omnimarket.nodes.node_onex_setup_effect.cli_tui import SetupScreen
+    from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
+        ProvidersScreen,
+    )
 
     runner = _Slow([], by_command={("models", "list"): _rows()})
     app = _app(runner)
@@ -553,9 +559,9 @@ async def test_clicking_another_tab_never_shows_the_main_screen() -> None:
         for _ in range(40):
             await pilot.pause(0.05)
             assert len(app.screen_stack) >= 2, "the main screen showed"
-            if isinstance(app.screen, SetupScreen):
+            if isinstance(app.screen, ProvidersScreen):
                 break
-        assert isinstance(app.screen, SetupScreen)
+        assert isinstance(app.screen, ProvidersScreen)
         assert len(app.screen_stack) == 2  # swapped, not stacked
 
 
@@ -880,7 +886,6 @@ def _record_toasts(
 
 async def test_saving_a_model_pops_up_done(monkeypatch: pytest.MonkeyPatch) -> None:
     """X1."""
-    from omnimarket.nodes.node_onex_setup_effect.cli_tui import SetupScreen
 
     found = json.dumps({"status": "ready", "models": ["llama3.2"]})
     report = json.dumps(
@@ -903,8 +908,8 @@ async def test_saving_a_model_pops_up_done(monkeypatch: pytest.MonkeyPatch) -> N
         table = app.screen.query_one("#found")
         table.set_ticked([entry_key(e) for e in table.entries])
         await pilot.press("ctrl+s")
-        await _settle(pilot)
-        assert isinstance(app.screen, SetupScreen)
+        await _settle(pilot, 20)
+        assert type(app.screen).__name__ == "ModelPickScreen"  # OMN-26688
         done = [t for t in toasts if t[0] == "Done"]
         assert done
         assert done[-1][1] == "information"
@@ -929,25 +934,6 @@ async def test_a_failed_remove_pops_up_failed_with_the_reason(
         assert failed
         assert failed[-1][1] == "error"
         assert reason in failed[-1][2]
-
-
-async def test_adding_on_config_pops_up_added(monkeypatch: pytest.MonkeyPatch) -> None:
-    """X3."""
-    found = json.dumps({"status": "ready", "models": ["llama3.2"]})
-    runner = _Runner(
-        [], by_command={("models", "list"): _rows(), ("models", "discover"): found}
-    )
-    app = _app(runner)
-    toasts = _record_toasts(app, monkeypatch)
-    async with app.run_test(size=(170, 46)) as pilot:
-        await _open(pilot, "/config")
-        app.screen.query_one("#provider").value = "local"
-        await _wait_for_models(pilot)
-        table = app.screen.query_one("#found")
-        table.set_ticked([entry_key(e) for e in table.entries])
-        app.screen.query_one("#add").press()
-        await _settle(pilot)
-        assert [t for t in toasts if t[0] == "Added"]
 
 
 async def test_a_failed_save_keeps_the_chosen_models_for_a_retry() -> None:

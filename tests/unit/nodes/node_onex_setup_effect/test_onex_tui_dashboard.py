@@ -26,7 +26,7 @@ from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
     DashboardScreen,
     DelegationScreen,
     OnexTui,
-    SetupScreen,
+    ProvidersScreen,
 )
 from tests.unit.nodes.node_onex_setup_effect.test_onex_tui import (
     _root,
@@ -114,7 +114,7 @@ async def test_dashboard_is_the_fourth_tab_after_delegation() -> None:
         assert isinstance(app.screen, DashboardScreen)
         await pilot.press("tab")  # and round again to the first tab
         await _settle(pilot)
-        assert isinstance(app.screen, SetupScreen)
+        assert isinstance(app.screen, ProvidersScreen)
 
 
 async def test_a_running_dashboard_shows_its_url_and_process() -> None:

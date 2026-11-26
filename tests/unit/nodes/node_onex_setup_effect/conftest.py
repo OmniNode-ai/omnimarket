@@ -28,6 +28,15 @@ def _delivery_not_required(node_id: str, state_root: Path) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _no_saved_key_is_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The add-models screen reads a set-up provider's saved key; a test must
+    never read the key store of the machine it runs on, so none is saved."""
+    from omnimarket.nodes.node_onex_setup_effect import cli_tui
+
+    monkeypatch.setattr(cli_tui, "_stored_key", lambda _provider: None)
+
+
+@pytest.fixture(autouse=True)
 def _hosted_run_without_a_hosted_bus(monkeypatch: pytest.MonkeyPatch) -> None:
     """Let the walk's tests end without a hosted bus to carry the run's recorded events.
 

@@ -467,6 +467,35 @@ words:
   themes_kept: "{theme} kept."
   # Config tab (mockup page 4).
   add_title: Add models
+  add_models_title: "Add {provider} models"
+  providers_title: Providers
+  providers_empty: "No provider is set up yet. Choose one and press Enter to add its key."
+  col_provider: Provider
+  col_status: Status
+  col_models: Models
+  col_price: "In $/1M"
+  col_newest: Newest
+  col_host: Key goes to
+  status_not_set_up: not set up
+  price_local: local
+  host_local: your server
+  models_chosen: "{chosen} of {count}"
+  cell_none: "–"
+  price_range: "{low}–{high}"
+  key_add_title: "Add {provider}"
+  key_change_title: "Change the {provider} key"
+  url_add_title: "Add {provider}"
+  button_continue: Continue
+  key_checking: "checking the key…"
+  key_unchecked: "could not check it just now; you can still continue"
+  models_available: "{count} models available"
+  key_not_yours: "{provider} is not set up yet: press Enter to add it"
+  key_saved_placeholder: "saved key in use · paste a new one to replace it"
+  saved_key_used: "reading {provider} models with your saved key"
+  ticked_count: "{count} ticked"
+  saved_key_title: "✓ saved key"
+  title_models: "{count} models"
+  saved_key_unread: "could not read the saved {provider} key: paste it to list its models"
   step_of: "step {step} of 3"
   provider_box: Provider
   # Provider list: search, then set-up first and A-Z (operator 2026-11-26).
@@ -542,9 +571,10 @@ words:
   auto_button: "Use Auto (A)"
   dashboard_about: "A local web page with your tasks, cost and savings over time, in your browser."
   order_none: "No models yet. Run /config."
-  tab_hint_config: "tab next · space tick · ctrl+s save · esc close"
+  tab_hint_config: "enter add or open models · k key · t test · x remove · esc close"
   tab_hint_config_mine: "↑↓ move · enter actions · esc close"
-  tab_hint_model: "↑↓ move · enter make first · d details · esc close"
+  tab_hint_model: "↑↓ move · enter first · + add · d info · esc close"
+  tab_hint_add_models: "space tick · ctrl+s save · esc back to providers"
   tab_hint_delegation: "space switch · ctrl+s save · esc close"
   tab_hint_dashboard_stopped: "s start · esc close"
   tab_hint_dashboard_running: "enter open · s stop · esc close"
