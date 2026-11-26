@@ -454,6 +454,46 @@ def _resolve_citations(unit: str, evidence: _Evidence) -> str:
     )
 
 
+_FENCE = re.compile(r"```[\w+-]*[ \t]*\n(?P<body>.*?)```", re.DOTALL)
+_SLASH_PATH = re.compile(r"(?<![\w/])(?:[\w.-]+/)+[\w.-]+\.[A-Za-z][\w-]*(?!\w)")
+
+
+def _authored_code_claims(text: str, params: ModelTaskAnswerTraceableParams) -> str:
+    """The answer with each fenced block cut to the references it can still claim.
+
+    A fenced block is code the model wrote as its deliverable: its member calls
+    (``seen.add``), sample strings and numbers are the model's own, not facts
+    about the run (OMN-26043). What stays checkable inside it is what names
+    something outside the answer: a ticket id, a PR reference or a directory path.
+    """
+
+    def claims(match: re.Match[str]) -> str:
+        body = match["body"]
+        return " ".join(
+            (
+                *re.findall(params.ticket_id_pattern, body),
+                *re.findall(r"\b[\w.-]+(?:/[\w.-]+)?#\d+\b", body),
+                *(found.rstrip(".") for found in _SLASH_PATH.findall(body)),
+            )
+        )
+
+    return _FENCE.sub(claims, text)
+
+
+def _in_authored_code(
+    token: str, authored: str, params: ModelTaskAnswerTraceableParams
+) -> bool:
+    """A prose token that names a string or member of the code the answer wrote.
+
+    A path or a ticket id is never traced to the answer's own code: only the
+    run and the request can vouch for those.
+    """
+    bare = token.strip("\"'`")
+    if not bare or "/" in bare or re.search(params.ticket_id_pattern, bare):
+        return False
+    return normalized(bare) in authored
+
+
 def _is_json_answer(text: str) -> bool:
     """An answer that is a JSON object or array, optionally inside a code fence."""
     body = text.strip()
@@ -510,8 +550,16 @@ def task_answer_traceable(
     # A string value between double quotes in a JSON answer is data, not a
     # quotation of the request (OMN-21359).
     quotations = not _is_json_answer(request.answer_text)
+    answer_text = (
+        request.answer_text
+        if _is_json_answer(request.answer_text)
+        else _authored_code_claims(request.answer_text, params)
+    )
     units = tuple(
-        _resolve_citations(unit, evidence) for unit in answer_units(request.answer_text)
+        _resolve_citations(unit, evidence) for unit in answer_units(answer_text)
+    )
+    authored = normalized(
+        "\n".join(match["body"] for match in _FENCE.finditer(request.answer_text))
     )
     missing = tuple(
         dict.fromkeys(
@@ -519,6 +567,7 @@ def task_answer_traceable(
             for unit in units
             for token in _missing(unit, source, params, quotations=quotations)
             if not _shape_traced(token, unit, evidence)
+            and not _in_authored_code(token, authored, params)
         )
     )
     if missing:
@@ -533,7 +582,7 @@ def task_answer_traceable(
     identifiers = tuple(
         dict.fromkeys(
             token
-            for unit in answer_units(request.answer_text)
+            for unit in answer_units(answer_text)
             for token in _missing(unit, "", params, quotations=quotations)
         )
     )
