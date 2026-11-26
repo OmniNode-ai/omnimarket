@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 from omnibase_core.enums.enum_lane_work_event import EnumLaneWorkEvent
 from omnibase_core.enums.enum_lane_work_state import EnumLaneWorkState
@@ -24,14 +25,14 @@ def receipt(
     to_state: EnumLaneWorkState,
     *,
     minutes: int,
-    kind: str = "transition",
+    kind: Literal["transition", "refused", "duplicate"] = "transition",
     refusal: str | None = None,
 ) -> ModelLaneWorkReceipt:
     return ModelLaneWorkReceipt(
         workflow_id=workflow_id,
         seq=seq,
         receipt_id=f"{workflow_id}-r{seq}",
-        kind=kind,  # type: ignore[arg-type]
+        kind=kind,
         input_id=f"{workflow_id}-i{seq}",
         event_kind=event,
         from_state=from_state,
