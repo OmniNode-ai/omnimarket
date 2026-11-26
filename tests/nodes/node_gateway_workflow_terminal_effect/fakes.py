@@ -48,7 +48,7 @@ class FakeTerminalStore:
         matches = [
             r
             for r in self.rows
-            if r.tenant_id == update.tenant_id
+            if (update.tenant_id is None or r.tenant_id == update.tenant_id)
             and r.correlation_id == update.correlation_id
         ]
         if not matches:
