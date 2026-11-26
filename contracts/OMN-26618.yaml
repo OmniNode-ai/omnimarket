@@ -98,3 +98,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/models/test_delegation_check_regression_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26618-merge-history-unavailable
+  description: The build delegation checks node reads no git history the runtime image lacks; a merge clone with no .git is refused by name (merge-history-unavailable), the build still runs its checks and a red still alarms with the suspects marked unknown. The new test file fails at collection (no MergeHistoryUnavailableError) before the fix and passes after.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_build_delegation_checks/test_merge_history_unavailable.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

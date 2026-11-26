@@ -10,6 +10,9 @@ from datetime import datetime
 from pathlib import Path
 
 from omnimarket.models.test_selector_reading import ModelAttributionCandidate
+from omnimarket.nodes.node_build_delegation_checks.protocols.protocol_build_checks import (
+    MergeHistoryUnavailableError,
+)
 
 _PR = re.compile(r"\(#(\d+)\)\s*$")
 
@@ -41,6 +44,13 @@ class GitMergeSource:
     def merges_between(
         self, base_sha: str, head_sha: str
     ) -> tuple[ModelAttributionCandidate, ...]:
+        if not (self._clone / ".git").exists():
+            # The runtime image carries the source tree without its history: there is nothing for git to read, so the
+            # source refuses by name rather than letting git answer rc=128.
+            raise MergeHistoryUnavailableError(
+                f"merge-history-unavailable: {self._clone} holds no .git, so the merges "
+                f"{base_sha[:12]}..{head_sha[:12]} cannot be read here"
+            )
         done = subprocess.run(
             [
                 "git",
@@ -61,8 +71,9 @@ class GitMergeSource:
             check=False,
         )
         if done.returncode != 0:
-            raise OSError(
-                f"git log {base_sha[:12]}..{head_sha[:12]} failed: rc={done.returncode}"
+            raise MergeHistoryUnavailableError(
+                f"merge-history-unavailable: git log {base_sha[:12]}..{head_sha[:12]} in {self._clone} "
+                f"failed: rc={done.returncode}"
             )
         return parse_log(done.stdout)
 
