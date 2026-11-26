@@ -28,9 +28,19 @@ class CountingAdapter(InmemoryDatabaseAdapter):
         super().__init__()
         self.queries = 0
 
-    def query(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+    def query(
+        self,
+        table: str,
+        filters: dict[str, object] | None = None,
+        *,
+        order_by: str | None = None,
+        descending: bool = False,
+        limit: int | None = None,
+    ) -> list[dict[str, object]]:
         self.queries += 1
-        return super().query(*args, **kwargs)
+        return super().query(
+            table, filters, order_by=order_by, descending=descending, limit=limit
+        )
 
 
 def _seed(db: CountingAdapter) -> None:
