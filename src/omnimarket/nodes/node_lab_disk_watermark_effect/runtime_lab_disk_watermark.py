@@ -32,6 +32,7 @@ from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.handler_lab_disk_w
 from omnimarket.nodes.node_lab_disk_watermark_effect.models.model_lab_disk_watermark import (
     ModelLabDiskWatermarkOverlay,
     ModelLabDiskWatermarkRequest,
+    ModelLabDiskWatermarkSchedule,
     ModelLabDiskWatermarkScheduleResult,
 )
 from omnimarket.nodes.node_lab_disk_watermark_effect.watermark_schedule import (
@@ -166,8 +167,12 @@ def _schedule(args: argparse.Namespace) -> int:
         host_row(install_overlay, args.host)
         if install_overlay.reading is not None:
             # the reading's interval is the overlay's: a value of the host's reading, never of the node
-            schedule = schedule.model_copy(
-                update={"interval_seconds": install_overlay.reading.interval_seconds}
+            # rebuilt, not copied: an interval the run cannot end within is refused (a ValidationError)
+            schedule = ModelLabDiskWatermarkSchedule.model_validate(
+                {
+                    **schedule.model_dump(),
+                    "interval_seconds": install_overlay.reading.interval_seconds,
+                }
             )
     ledger_append_command = ""
     if install_overlay is not None and install_overlay.reading is not None:

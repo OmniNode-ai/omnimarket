@@ -101,6 +101,7 @@ def render_units(
         "\n[Service]\nType=oneshot\n"
         + "".join(_assignment(name, value) for name, value in environment.items())
         + f"TimeoutStartSec={schedule.timeout_start_seconds}\n"
+        f"CPUQuota={schedule.cpu_quota_percent}%\n"
         f"ExecStart={_quote(interpreter)} -m {NODE_MODULE} run --host {_quote(host)}\n"
         f"SyslogIdentifier={UNIT_NAME}\n"
     )

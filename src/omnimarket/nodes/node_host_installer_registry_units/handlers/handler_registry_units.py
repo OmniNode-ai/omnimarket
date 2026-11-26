@@ -1100,6 +1100,23 @@ class HandlerRegistryUnits:
         return f"\nKillMode={declared}"
 
     @staticmethod
+    def cpu_quota(unit: dict[str, Any]) -> str:
+        """The CPUQuota line of a systemd unit that declares ``cpu_quota_percent``, else nothing.
+
+        The percent of one CPU the unit's whole cgroup may use (800 is eight cores); the value is the unit's own
+        declared setting, never written by the renderer. A value that is not a positive integer is refused rather than
+        written as a line systemd would reject.
+        """
+        declared = unit.get("cpu_quota_percent")
+        if declared is None:
+            return ""
+        if isinstance(declared, bool) or not isinstance(declared, int) or declared < 1:
+            raise ValueError(
+                f"{unit['label']} declares cpu_quota_percent {declared!r}; it must be a positive integer"
+            )
+        return f"\nCPUQuota={declared}%"
+
+    @staticmethod
     def service_type(unit: dict[str, Any]) -> str:
         """The service type a systemd unit declares: ``oneshot`` (a timer-fired tick, the default) or ``simple``."""
         declared = str(unit.get("service_type") or "oneshot")
@@ -1170,7 +1187,9 @@ class HandlerRegistryUnits:
         service = service.replace(
             "__ENVIRONMENT_FILE__", self.environment_file(request, unit)
         )
-        service = service.replace("__KILL_MODE__", self.kill_mode(unit))
+        service = service.replace(
+            "__KILL_MODE__", self.kill_mode(unit) + self.cpu_quota(unit)
+        )
         service = service.replace("__SERVICE_TYPE__", self.service_type_lines(unit))
         service = service.replace(
             "__TICK_SYNC_ARGS__", '"--no-sync"' if unit.get("tick_no_sync") else ""

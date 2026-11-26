@@ -2015,6 +2015,10 @@ units:
       run_timeout_s: 2592000
       run_at_load: true
       description: at load and within 60 s of any exit
+    # The cgroup's CPU ceiling, in percent of one CPU (800 is eight cores). The worker runs each step as its own process,
+    # at most worker.max_concurrent_activities of them (the node_prove_running_workflow contract), each about one core
+    # while it imports the node; on h051 an unbounded pass held 99 of them and took the host's load past 120.
+    cpu_quota_percent: 800
     registry_project: omnimarket
     tick_no_sync: true
     interpreter_candidates:

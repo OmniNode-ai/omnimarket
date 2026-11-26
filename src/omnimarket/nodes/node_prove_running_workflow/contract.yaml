@@ -1,0 +1,154 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_prove_running_workflow
+lifecycle: experimental
+node_type: ORCHESTRATOR_GENERIC
+runtime_profiles: []
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Workflow 1, prove-running, on the Temporal server the stage A pilot proved. One workflow per merged change, id
+  <repo>#<n>@<sha>, so a change is never proven twice. Its steps are one activity that runs a node command each:
+  read the change's install status (node_merged_change_reading_effect), install it through the target's declared
+  installer when it is not installed, wait with a durable timer and read it running (the same reading node),
+  retrying up to the declared limit before the declared deadline, then write a ledger STATUS row
+  pr=<repo>#<n> installed=<host>:<revision> observed=<what ran> read_at=<UTC> or an alarm row naming the change and
+  the last reading, through the ledger CLI. The workflow body orders the steps and owns the timer, the limit and the
+  deadline; it holds no other logic. The starter starts one workflow per NOT RUNNING line of an integration pass, with no cap; each line ends in exactly one result row (proven, blocked with its owner, or a next step), and no step starts an agent.
+  The hourly schedule starts a batch workflow whose read-not-running and group-by-host steps select changes from
+  the integration pass's typed batch on its snapshot topic and prepare child plans. Each child writes its own row with the batch workflow ID.
+input_model:
+  name: ModelProveRunningStartRequest
+  module: omnimarket.nodes.node_prove_running_workflow.models.model_prove_running
+  description: One integration pass's readings; every NOT RUNNING line is started, with no cap.
+output_model:
+  name: ModelProveRunningStartBatch
+  module: omnimarket.nodes.node_prove_running_workflow.models.model_prove_running
+  description: One change to prove per NOT RUNNING line, oldest merge first, the lines that could not start with the reason, and how many lines were read.
+handler:
+  module: omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_starter
+  class: HandlerProveRunningStarter
+  input_model: omnimarket.nodes.node_prove_running_workflow.models.model_prove_running.ModelProveRunningStartRequest
+  output_model: omnimarket.nodes.node_prove_running_workflow.models.model_prove_running.ModelProveRunningStartBatch
+dependencies:
+  - name: omnimarket.nodes.node_merged_change_reading_effect
+    dependency_type: internal
+    description: "the read steps call its declared CLI and read its typed result (omnimarket.models.model_merged_change_reading)."
+    required: true
+  - name: omnimarket.models.integration_reading
+    dependency_type: internal
+    description: "the starter reads the integration pass's typed batch; no text parser of its own."
+    required: true
+  - name: temporalio
+    dependency_type: library
+    description: "the workflow, the activity, the worker and the starter (the optional extra temporal)."
+    required: true
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_rows:HandlerProveRunningRows
+  handlers:
+    - operation: start_batch
+      handler:
+        name: HandlerProveRunningStarter
+        module: omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_starter
+    - operation: build_row
+      handler:
+        name: HandlerProveRunningRows
+        module: omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_rows
+    - operation: build_line_row
+      handler:
+        name: HandlerProveRunningLineRows
+        module: omnimarket.nodes.node_prove_running_workflow.handlers.handler_prove_running_line_rows
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+# Read by a bus client for one window, never dispatched by a runtime, so no subscription of this node. The integration
+# pass's typed batch (ModelIntegrationProjection) is published by node_integration_reading_publish_effect.
+snapshot_reads:
+  # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+  - onex.snapshot.projection.floor-integration.v1
+runtime_dispatch:
+  external_trigger: >-
+    python -m omnimarket.nodes.node_prove_running_workflow worker --target-host <host:port> runs the worker;
+    python -m omnimarket.nodes.node_prove_running_workflow start --target-host <host:port> --batch <batch.json> starts
+    one workflow per NOT RUNNING line. The schedule --target-host <host:port> verb creates or updates the hourly
+    schedule, with --trigger for an immediate batch run. The worker runs read-not-running and group-by-host as batch
+    step commands. The server is the Temporal server a host install brings up; this node never starts it.
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 600000
+metadata:
+  transport_type: local
+  description: Prove each merged change runs where it belongs, one durable workflow per change.
+  author: OmniNode Team
+  created: '2026-11-16'
+# The declared settings of workflow 1. Every step argv names a node command; {python} is the worker's interpreter.
+prove_running:
+  task_queue: onex-prove-running
+  namespace: default
+  scm_owner: OmniNode-ai
+  merge_sha_argv_env: ONEX_PROVE_RUNNING_MERGE_SHA_ARGV
+  lane: prove-running
+  ticket: OMN-24901
+  wait_seconds: 300
+  max_readings: 6
+  deadline_seconds: 3600
+  step_timeout_seconds: 600
+  step_max_attempts: 3
+  read_timeout_seconds: 300
+  # The worker runs each step as its own process (an interpreter that imports this node, and for a read or a write a
+  # second process under it). On h051 the SDK's default of 100 concurrent activities ran 99 of them at once in the
+  # 23:00Z hourly pass, which took the host's load past 120. Eight at a time keeps the worker near eight cores; the rest
+  # of the pass waits in the task queue.
+  worker:
+    max_concurrent_activities: 8
+  verdict_running: SEEN_RUNNING
+  steps:
+    read_status: ["{python}", "-m", "omnimarket.nodes.node_prove_running_workflow", "read"]
+    install: ["{python}", "-m", "omnimarket.nodes.node_prove_running_workflow", "install"]
+    read_running: ["{python}", "-m", "omnimarket.nodes.node_prove_running_workflow", "read"]
+    write_status: ["{python}", "-m", "omnimarket.nodes.node_prove_running_workflow", "write-row", "--outcome", "proved"]
+    write_alarm: ["{python}", "-m", "omnimarket.nodes.node_prove_running_workflow", "write-row", "--outcome", "alarm"]
+  batch:
+    schedule_id: onex-prove-running-hourly
+    interval_seconds: 3600
+    # No cap on the lines read or started: every NOT RUNNING line of the projection is read and ends in one result row.
+    # resolve_workers only bounds how many merge shas are read at once (one read takes seconds, the projection holds hundreds).
+    resolve_workers: 8
+    # The integration pass's typed batch comes from its snapshot topic (the floor reader's overlay declares the topic, the
+    # bound and the broker), never from a ledger file or a variable that names one.
+    input:
+      overlay_id: node_floor_projection_read_effect
+      file_env: ONEX_FLOOR_PROJECTION_OVERLAY
+      projection_id: integration
+      group_prefix: node_prove_running_workflow
+    # The named hosts come from the deployment's overlay (hosts_overlay_id), never from this package.
+    hosts_overlay_id: node_prove_running_workflow
+    hosts_file_env: ONEX_PROVE_RUNNING_OVERLAY
+    default_host: dev-runtime
+    steps:
+      read_not_running: ["{python}", "-m", "omnimarket.nodes.node_prove_running_workflow", "read-not-running"]
+      group_by_host: ["{python}", "-m", "omnimarket.nodes.node_prove_running_workflow", "group-by-host"]
+      write_line_result: ["{python}", "-m", "omnimarket.nodes.node_prove_running_workflow", "write-line-row"]
+    step_timeout_seconds: 1800
+    step_max_attempts: 3
+    # The rows of every line the pass answers itself go to the bus in one append. The bus request holds at most 65536
+    # characters of rows (ModelWorkLedgerAppendRequest.rows), the stamp it adds to each row counted; a pass with more rows
+    # than that goes in one append per run of rows that fits, in order.
+    append_max_chars: 60000
+    child: {wait_seconds: 120, max_readings: 3, deadline_seconds: 900}
+  # The declared installer per target. The dev runtime rebuilds itself from the merge (the deploy agent), so its
+  # install step runs nothing and the readings that follow are the proof. A target with no entry uses default,
+  # which installs nothing and says so; the alarm row then names the change and its last reading.
+  installers:
+    dev-runtime:
+      name: dev-runtime-self-rebuild
+      detail: the dev runtime rebuilds itself from the merge; nothing to run here
+      argv: []
+    default:
+      name: none-declared
+      detail: no installer is declared for this target
+      argv: []

@@ -104,6 +104,11 @@ class ModelLabDiskWatermarkOverlay(_Frozen):
 
 
 class ModelLabDiskWatermarkSchedule(_Frozen):
+    """The timer's cadence and the bounds of one run. A run ends within its own interval: the class scan stops at its
+    share of ``timeout_start_seconds`` and the unit's start timeout ends the run at ``timeout_start_seconds``, which sits
+    below ``interval_seconds``, so a tick never overlaps the next. ``cpu_quota_percent`` is the unit's CPU ceiling in
+    percent of one CPU."""
+
     first_pass: NonEmptyStr
     interval_seconds: int = Field(gt=0)
     accuracy: NonEmptyStr
@@ -111,7 +116,17 @@ class ModelLabDiskWatermarkSchedule(_Frozen):
     #: The share of ``timeout_start_seconds`` the class scan may spend. The docker reads (two commands, each bounded by the
     #: overlay's ``timeout_seconds``), the inode read and the publish run after it, so the share leaves room for them.
     scan_budget_percent: int = Field(gt=0, lt=100, default=70)
+    cpu_quota_percent: int = Field(gt=0)
     description: NonEmptyStr
+
+    @model_validator(mode="after")
+    def _ends_within_its_interval(self) -> ModelLabDiskWatermarkSchedule:
+        if not self.timeout_start_seconds < self.interval_seconds:
+            raise ValueError(
+                "a run must end within its interval: need timeout_start_seconds "
+                f"({self.timeout_start_seconds}) < interval_seconds ({self.interval_seconds})"
+            )
+        return self
 
 
 class ModelLabDiskWatermarkRequest(_Frozen):

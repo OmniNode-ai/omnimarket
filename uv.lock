@@ -3184,6 +3184,9 @@ dep-health = [
 intelligence = [
     { name = "adaptive-classifier" },
 ]
+temporal = [
+    { name = "temporalio" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -3237,9 +3240,10 @@ requires-dist = [
     { name = "radon", specifier = ">=6.0.1" },
     { name = "rich", specifier = ">=13.0.0" },
     { name = "temporalio", specifier = ">=1.35.0,<2.0.0" },
+    { name = "temporalio", marker = "extra == 'temporal'", specifier = ">=1.35.0,<2.0.0" },
     { name = "uvicorn", specifier = ">=0.30.0" },
 ]
-provides-extras = ["dep-health", "intelligence"]
+provides-extras = ["dep-health", "temporal", "intelligence"]
 
 [package.metadata.requires-dev]
 dev = [

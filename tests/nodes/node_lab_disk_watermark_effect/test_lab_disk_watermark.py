@@ -166,7 +166,7 @@ def test_timer_units_run_the_node_with_the_overlay_pin(tmp_path: Path) -> None:
     assert 'Environment="ONEX_LAB_DISK_WATERMARK_OVERLAY=/srv/overlay.yaml"' in service
     assert 'Environment="OMNIBASE_PATH=/srv/workspace"' in service
     assert 'Environment="ONEX_WORKSPACE_CONFIG_ROOT=/srv/config"' in service
-    assert "TimeoutStartSec=600" in service
+    assert f"TimeoutStartSec={load_schedule().timeout_start_seconds}" in service
     assert "OnUnitActiveSec=300s" in timer
     assert "Unit=onex-disk-watermark.service" in timer
 
