@@ -106,12 +106,12 @@ def _write_run(root: Path, **over: Any) -> Path:
                 "escalation_count": 0,
                 "metrics": {"cost_usd": 0.0},
             },
-        },
-        "runtime_identity": {
-            "packages": {
-                name: {"name": name, "source": "registry"}
-                for name in ("omnibase_core", "omnibase_infra", "omnimarket")
-            }
+            "runtime_identity": {
+                "packages": {
+                    name: {"name": name, "source": "registry"}
+                    for name in ("omnibase_core", "omnibase_infra", "omnimarket")
+                }
+            },
         },
     }
     receipt.update(over)
@@ -138,15 +138,10 @@ def test_a_run_directory_with_three_agreeing_files_reads_local_and_free(
 
 
 def test_a_checkout_package_or_a_disagreeing_run_id_reads_red(tmp_path: Path) -> None:
-    run_dir = _write_run(
-        tmp_path,
-        runtime_identity={
-            "packages": {
-                "omnibase_core": {"source": "registry"},
-                "omnimarket": {"source": "vcs"},
-            }
-        },
-    )
+    run_dir = _write_run(tmp_path)
+    receipt = json.loads((run_dir / "receipt.json").read_text())
+    receipt["receipt"]["runtime_identity"]["packages"]["omnimarket"]["source"] = "vcs"
+    (run_dir / "receipt.json").write_text(json.dumps(receipt))
     (run_dir / "run.json").write_text(
         json.dumps({"run_id": "other", "correlation_id": "corr-1"})
     )

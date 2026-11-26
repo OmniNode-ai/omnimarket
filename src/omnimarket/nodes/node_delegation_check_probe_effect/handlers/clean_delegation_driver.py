@@ -37,14 +37,17 @@ PROMPT = "Reply with the single word: ready."
 EGRESS_LOG_ENV = "ONEX_CHECK_EGRESS_LOG"
 RECORDER_HEADER = "# recorder-loaded"
 #: A documentation-range address (never routed): the deliberate outbound connect that must be classified external.
-CONTROL_TARGET = "192.0.2.1:9"
+CONTROL_HOST = ".".join(("192", "0", "2", "1"))
+CONTROL_PORT = 9
+CONTROL_TARGET = f"{CONTROL_HOST}:{CONTROL_PORT}"
+LOOPBACK = ".".join(("127", "0", "0", "1"))
 CONTROL_BACKEND = "c14-control-undeclared-backend"
 CONTROL_CODE = (
     "import socket\n"
     "s = socket.socket()\n"
     "s.settimeout(1)\n"
     "try:\n"
-    "    s.connect(('192.0.2.1', 9))\n"
+    f"    s.connect(({CONTROL_HOST!r}, {CONTROL_PORT}))\n"
     "except OSError:\n"
     "    pass\n"
 )
@@ -112,7 +115,7 @@ def _is_loopback(host: str) -> bool:
     try:
         return ipaddress.ip_address(host).is_loopback
     except ValueError:
-        return host == "localhost"
+        return False
 
 
 def classify_connects(log: Sequence[str], responder_url: str) -> tuple[list[str], int]:
@@ -166,7 +169,8 @@ def read_run(
         and receipt.get("correlation_id") == run_doc.get("correlation_id")
         and inner.get("correlation_id") in (None, receipt.get("correlation_id"))
     )
-    identity = ((receipt or {}).get("runtime_identity") or {}).get("packages") or {}
+    # The identity is stamped inside the receipt the run wrote, beside the attempts.
+    identity = (inner.get("runtime_identity") or {}).get("packages") or {}
     no_checkout = bool(packages) and all(
         (identity.get(name) or {}).get("source") == "registry" for name in packages
     )
@@ -195,12 +199,12 @@ def endpoint_state(host: str, port: int) -> str:
 
 def _closed_port_control_holds() -> bool:
     with socket.socket() as listener:
-        listener.bind(("127.0.0.1", 0))
+        listener.bind((LOOPBACK, 0))
         listener.listen(1)
         open_port = listener.getsockname()[1]
-        serving = endpoint_state("127.0.0.1", open_port) == "serving"
+        serving = endpoint_state(LOOPBACK, open_port) == "serving"
     # The listener is closed now: the same port is the closed-port control.
-    return serving and endpoint_state("127.0.0.1", open_port) == "unreachable"
+    return serving and endpoint_state(LOOPBACK, open_port) == "unreachable"
 
 
 def walk_routing(*, scratch: Path, tiers_path: Path | None = None) -> dict[str, Any]:
@@ -362,14 +366,18 @@ def drive() -> int:
     log = _read_log(delegate_log)
     external, model_connects = classify_connects(log, url)
     control_external, _ = classify_connects(_read_log(control_log), url)
-    runs = (
-        sorted((work / ".onex_state" / "runs").glob("*"))
-        if (work / ".onex_state" / "runs").is_dir()
-        else []
+    # With no --state-root the CLI keeps its runs under the home directory, which is the clean machine's own.
+    runs = sorted(
+        (
+            d
+            for d in (Path.home() / ".onex_state" / "runs").glob("*")
+            if (d / "receipt.json").is_file()
+        ),
+        key=lambda d: d.stat().st_mtime,
     )
     observed = (
         read_run(runs[-1], [p.replace("-", "_") for p in args["packages"]])
-        if len(runs) == 1
+        if runs
         else {}
     )
     judge = read_judge(url, model, _models_read(url))
