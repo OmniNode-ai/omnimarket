@@ -24,7 +24,7 @@ def _count_loads(monkeypatch) -> list[int]:
     calls: list[int] = []
     real = yaml.safe_load
 
-    def counting(text):  # type: ignore[no-untyped-def]
+    def counting(text: str) -> object:
         calls.append(1)
         return real(text)
 
