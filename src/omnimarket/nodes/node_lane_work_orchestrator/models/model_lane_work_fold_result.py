@@ -32,6 +32,7 @@ class ModelLaneWorkFoldResult(BaseModel):
     record: ModelLaneWorkTransitionRecord | None = None
     reply: ModelLaneWorkStepCompleted | None = None
     published: tuple[ModelLaneWorkOutput, ...] = ()
+    refusal: str | None = None
 
 
 __all__: list[str] = ["ModelLaneWorkFoldResult"]

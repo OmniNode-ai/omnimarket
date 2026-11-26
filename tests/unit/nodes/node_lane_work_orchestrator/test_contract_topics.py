@@ -32,6 +32,7 @@ def test_the_roles_name_exactly_these_topics() -> None:
         "lab_proof": "onex.cmd.omnimarket.lab-work-unit-requested.v1",
         "repo_write": "onex.cmd.omnimarket.github-repo-write-requested.v1",
         "handoff": "onex.cmd.omnimarket.pr-handoff-requested.v1",
+        "help_requested": "onex.cmd.omnimarket.lane-work-help-requested.v1",
     }
 
 

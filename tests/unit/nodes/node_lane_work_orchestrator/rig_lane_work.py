@@ -5,11 +5,15 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 from omnibase_core.models.lane_work import ModelLaneWorkChange, ModelLaneWorkEvent
 
+from omnimarket.models.overlay_documents.model_lane_work_orchestrator_overlay import (
+    load_orchestrator_overlay,
+)
 from omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_orchestrator import (
     HandlerLaneWorkOrchestrator,
 )
@@ -23,10 +27,8 @@ from omnimarket.nodes.node_lane_work_orchestrator.models.model_lane_work_fold_re
 from omnimarket.nodes.node_lane_work_orchestrator.models.model_lane_work_ingress import (
     ModelLaneWorkIngress,
 )
-from omnimarket.nodes.node_lane_work_orchestrator.models.model_lane_work_orchestrator_overlay import (
-    load_orchestrator_overlay,
-)
 
+NODES = Path(__file__).resolve().parents[4] / "src" / "omnimarket" / "nodes"
 HEAD = "a" * 40
 T0 = datetime(2026, 11, 26, 9, 0, tzinfo=UTC)
 CHANGE = ModelLaneWorkChange(

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Bootstrap values for the lane work orchestrator. The runtime resolves its overlay through
 # the settings store first; this file is read only until the store holds the overlay.
+schema_version: 1
 requesting_host: lab-orchestrator
 requesting_lane: lane-work-orchestrator
 proof_target_host: lab-pool
@@ -25,7 +26,16 @@ reducer:
     handoff: 300
     confirmation: 600
     help: 900
-  help_tiers:
-    - {name: local, backend_id: local, harness: local, model: qwen, effort: high}
-    - {name: glm-small, backend_id: claude-glm-small, harness: claude-glm, model: glm-small, effort: high}
-    - {name: claude-large, backend_id: claude-code-large, harness: claude-code, model: large, effort: high}
+# The responder chain, rank one first (RULING 2026-11-26T09:16:23Z as amended at 09:18:35Z; Claude is
+# the last family, RULING 2026-11-26T13:43:36Z). Each tier names the delegation backend a help request
+# is pinned to and the harness, model and effort that backend must run with. The first responder is
+# the tier above the worker's own; a worker tier outside this chain refuses start.
+help_tiers:
+  - {name: local, backend_id: local-coder, harness: local, model: qwen3.8-27b, effort: high}
+  - {name: glm-small, backend_id: harness-claude-glm-small, harness: claude-glm, model: glm-5.3-flash, effort: high}
+  - {name: glm-medium, backend_id: harness-claude-glm-medium, harness: claude-glm, model: glm-5.3, effort: high}
+  - {name: glm-large, backend_id: harness-claude-glm-large, harness: claude-glm, model: glm-5.3, effort: max}
+  - {name: codex-cheapest, backend_id: harness-codex-cheapest, harness: codex, model: gpt-5.3-codex-mini, effort: medium}
+  - {name: claude-small, backend_id: harness-claude-code-small, harness: claude-code, model: haiku, effort: high}
+  - {name: claude-medium, backend_id: harness-claude-code-medium, harness: claude-code, model: sonnet, effort: high}
+  - {name: claude-large, backend_id: harness-claude-code-large, harness: claude-code, model: opus, effort: high}

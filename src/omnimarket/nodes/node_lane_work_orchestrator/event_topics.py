@@ -23,6 +23,7 @@ ROLE_LEDGER_QUERY = "ledger_query"
 ROLE_LAB_PROOF = "lab_proof"
 ROLE_REPO_WRITE = "repo_write"
 ROLE_HANDOFF = "handoff"
+ROLE_HELP_REQUESTED = "help_requested"
 
 
 @lru_cache(maxsize=1)
@@ -45,6 +46,7 @@ def topic_for(role: str) -> str:
 __all__: list[str] = [
     "CONTRACT_PATH",
     "ROLE_HANDOFF",
+    "ROLE_HELP_REQUESTED",
     "ROLE_INGRESS",
     "ROLE_LAB_PROOF",
     "ROLE_LEDGER_APPEND",
