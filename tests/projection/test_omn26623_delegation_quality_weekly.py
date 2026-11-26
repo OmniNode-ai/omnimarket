@@ -28,7 +28,10 @@ from omnimarket.nodes.node_projection_read_effect.ports.sqlite_row_source import
     SqliteTableRowSource,
 )
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
-from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
+from omnimarket.projection.sqlite_database import (
+    SqliteDatabaseAdapter,
+    reconcile_existing_store,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -72,6 +75,9 @@ def _store(tmp_path: Path, rows: list[dict[str, Any]], tenant: str = _TENANT) ->
                 "attempt_history": json.dumps(row["attempt_history"]),
             },
         )
+    reconcile_existing_store(
+        path
+    )  # the dashboard reconciles the store before it serves it
     return path
 
 

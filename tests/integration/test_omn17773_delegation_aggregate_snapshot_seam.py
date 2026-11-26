@@ -84,12 +84,16 @@ MODEL_ROUTING_TOPIC = "onex.snapshot.projection.delegation.model-routing.v1"
 # OMN-21970: the per-day view is a fifth singleton aggregate, republished whole.
 DAILY_TOPIC = "onex.snapshot.projection.delegation.daily.v1"
 
+QUALITY_WEEKLY_TOPIC = "onex.snapshot.projection.delegation.quality-weekly.v1"  # onex-topic-allow: projection snapshot topic
+
 AGGREGATE_TOPICS = (
     SUMMARY_TOPIC,
     QUALITY_GATE_TOPIC,
     TOKEN_USAGE_TOPIC,
     MODEL_ROUTING_TOPIC,
     DAILY_TOPIC,
+    # OMN-26623: the weekly delegation-quality cells.
+    QUALITY_WEEKLY_TOPIC,
 )
 
 _CORRELATION_ID = "3f1c0d9a-77b2-4a6e-9d1f-0c5b8e2a4417"
@@ -157,6 +161,26 @@ _AGGREGATE_ROWS: dict[str, dict[str, Any]] = {
     # OMN-21970: the per-day view's row shape, one row per tenant.
     "projection_delegation_daily": {
         "days": [{"day": "2026-09-03", "runs": 182, "tokensIn": 0, "tokensOut": 0}],
+        "total_runs": 182,
+        "latest_projection_updated_at": _LIVE_SUMMARY_ROW[
+            "latest_projection_updated_at"
+        ],
+    },
+    # OMN-26623: the weekly delegation-quality view's row shape, one row per tenant.
+    "projection_delegation_quality_weekly": {
+        "cells": [
+            {
+                "iso_week": "2026-W36",
+                "week_start": "2026-08-31",
+                "task_type": "code_generation",
+                "model_id": "model-a",
+                "runs": 182,
+                "first_try_passes": 100,
+                "moved_down_chain": 0,
+                "first_try_pass_rate": 0.5494505494505495,
+                "moved_down_chain_rate": 0.0,
+            }
+        ],
         "total_runs": 182,
         "latest_projection_updated_at": _LIVE_SUMMARY_ROW[
             "latest_projection_updated_at"

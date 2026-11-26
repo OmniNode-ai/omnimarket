@@ -134,3 +134,18 @@ DELEGATION_VIEW_REPLACE_STEPS: tuple[tuple[str, tuple[str, str], str], ...] = (
         "created the delegation-quality weekly view",
     ),
 )
+
+# OMN-26623: the weekly delegation-quality view reads these delegation_events columns,
+# so its store step waits until a store has them all
+# (a legacy store opens as before).
+DELEGATION_QUALITY_WEEKLY_STEP = "omn26623_delegation_quality_weekly_view"
+DELEGATION_QUALITY_WEEKLY_COLUMNS = frozenset(
+    {
+        "attempt_history",
+        "terminal_ok",
+        "data_source",
+        "tenant_id",
+        "created_at",
+        "task_type",
+    }
+)
