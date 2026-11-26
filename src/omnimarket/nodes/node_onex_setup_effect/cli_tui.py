@@ -1085,10 +1085,75 @@ class _TabbedScreen(ModalScreen[_ResultT]):
         self.query_one("#summary", Static).update(_summary_text(self._selection))
 
 
+class _MineList(OptionList):
+    """Your providers. The arrows leave the list at either end, as they leave
+    the form's other fields (Y11)."""
+
+    @property
+    def highlighted_id(self) -> str | None:
+        if self.highlighted is None:
+            return None
+        return self.get_option_at_index(self.highlighted).id
+
+    def action_cursor_down(self) -> None:
+        at = self.highlighted
+        if at is not None and at >= self.option_count - 1:
+            screen = self.screen
+            if isinstance(screen, _TabbedScreen):
+                screen.action_field(1)
+            return
+        super().action_cursor_down()
+
+    def action_cursor_up(self) -> None:
+        if not self.highlighted:  # the first row, or none: nothing is above
+            return
+        super().action_cursor_up()
+
+
+class RemoveProviderScreen(ModalScreen[bool]):
+    """Asked before a provider is removed; Cancel is chosen until the user
+    moves to Remove, so Enter on a slip keeps the key (Y6)."""
+
+    CSS = """
+    RemoveProviderScreen { align: center middle; background: $background 60%; }
+    #rm-box { width: 60; height: auto; border: round $error; border-title-color: $error; border-title-style: bold; padding: 1 2; background: $panel; }
+    #rm-question { height: auto; }
+    #rm-buttons { height: 1; margin-top: 1; align-horizontal: right; }
+    #rm-buttons Button { height: 1; min-width: 10; border: none; margin: 0 0 0 2; }
+    #rm-yes { color: $error; }
+    """
+    BINDINGS = [Binding("escape", "keep", show=False)]
+
+    def __init__(self, question: str) -> None:
+        super().__init__()
+        self._question = question
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="rm-box"):
+            yield Static(self._question, id="rm-question")
+            with Horizontal(id="rm-buttons"):
+                yield Button(_say("button_cancel"), id="rm-cancel")
+                yield Button(_say("button_remove"), id="rm-yes")
+
+    def on_mount(self) -> None:
+        self.query_one("#rm-box").border_title = _say("remove_title")
+        self.query_one("#rm-cancel", Button).focus()
+
+    def action_keep(self) -> None:
+        self.dismiss(False)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        event.stop()
+        self.dismiss(event.button.id == "rm-yes")
+
+
 class SetupScreen(_TabbedScreen[None]):
     """Provider, then its key or URL, then any number of its models; repeat per provider."""
 
     TAB = "config"
+    # Opens on the search, as before the two lists (S10): your providers are
+    # one Up away.
+    AUTO_FOCUS = "#provider-search"
     NOTE = "#note"
     BODY = "#basket"
     FOOT = ("#cfg-foot", "#keys", "#buttons")
@@ -1104,8 +1169,37 @@ class SetupScreen(_TabbedScreen[None]):
        2026-11-26: "use the space"); then they shrink to make room for it. */
     #cfg-row { height: 1fr; }
     SetupScreen.-models #cfg-row { height: auto; }
-    #provider-box { width: 28; height: 100%; border: round $border; border-title-color: $text-muted; border-subtitle-color: $text-muted; padding: 0 1; }
+    /* Two panes (operator 2026-11-26: "Added provider should be in different
+       list ... redesign it like a pro"): your providers above the ones to
+       add; the right pane is the selected one of yours, or its key box. */
+    #cfg-left { width: 30; height: 100%; }
+    SetupScreen.-models #cfg-left { height: auto; }
+    #mine-box { height: auto; border: round $border; border-title-color: $text-muted; border-subtitle-color: $text-muted; padding: 0 1; }
+    #mine-box:focus-within { border: round $primary; }
+    #mine { height: auto; max-height: 8; border: none; padding: 0; background: transparent; }
+    SetupScreen.-short #mine { max-height: 4; }
+    SetupScreen.-models.-short #mine-box { display: none; }
+    SetupScreen.-no-mine #mine-box { display: none; }
+    #provider-box { width: 100%; height: 1fr; border: round $border; border-title-color: $text-muted; border-subtitle-color: $text-muted; padding: 0 1; }
+    #provider-box:focus-within { border: round $primary; }
     SetupScreen.-models #provider-box { height: auto; }
+    #detail { height: auto; border: round $primary; border-title-color: $primary; border-title-style: bold; padding: 0 1; display: none; }
+    SetupScreen.-mine #detail { display: block; }
+    SetupScreen.-mine #keybox { display: none; }
+    #d-head { height: 1; }
+    #d-models { height: auto; color: $text-muted; }
+    #newkey { height: 1; border: none; padding: 0 1; margin-top: 1; background: $boost; }
+    #d-actions { layout: horizontal; height: 1; margin-top: 1; }
+    SetupScreen.-narrow #d-actions { layout: grid; grid-size: 2; grid-rows: 1; grid-gutter: 0 2; height: 2; }
+    #d-actions Button { height: 1; min-width: 8; border: none; margin: 0 2 0 0; }
+    SetupScreen.-narrow #d-actions Button { width: 100%; margin: 0; }
+    #d-remove { color: $error; }
+    /* Your providers view: the add flow's step, Selected line, Add and Save
+       act on nothing here, so they step aside. */
+    SetupScreen.-mine #cfg-step { display: none; }
+    SetupScreen.-mine #basket { display: none; }
+    SetupScreen.-mine #add { display: none; }
+    SetupScreen.-mine #save { display: none; }
     #provider-search { height: 1; border: none; padding: 0; background: transparent; }
     /* A-Z with search, set-up first (operator 2026-11-26); hundreds of
        providers scroll inside the box, so the key box stays in view. */
@@ -1163,22 +1257,40 @@ class SetupScreen(_TabbedScreen[None]):
                 yield Static(_say("add_title"), id="cfg-title")
                 yield Static(self._step_text(1), id="cfg-step")
             choices = self._ordered()
-            first = choices[0]
+            set_up = self._set_up()
+            # The add list opens on a provider not set up yet (Y1).
+            first = next((e for e in choices if e.provider not in set_up), choices[0])
             with Horizontal(id="cfg-row"):
-                with Vertical(id="provider-box"):
-                    yield Input(
-                        placeholder=_say("provider_search"),
-                        id="provider-search",
-                        # The letter typed on the list moves here first (S7);
-                        # selecting on focus would let the next key replace it.
-                        select_on_focus=False,
-                    )
-                    yield Choice(
-                        [(self._provider_label(e), e.provider) for e in choices],
-                        first.provider,
-                        id="provider",
-                    )
+                with Vertical(id="cfg-left"):
+                    with Vertical(id="mine-box"):
+                        yield _MineList(id="mine")
+                    with Vertical(id="provider-box"):
+                        yield Input(
+                            placeholder=_say("provider_search"),
+                            id="provider-search",
+                            # The letter typed on the list moves here first (S7);
+                            # selecting on focus would let the next key replace it.
+                            select_on_focus=False,
+                        )
+                        yield Choice(
+                            [(self._provider_label(e), e.provider) for e in choices],
+                            first.provider,
+                            id="provider",
+                        )
                 with Vertical(id="cfg-side"):
+                    with Vertical(id="detail"):
+                        yield Static("", id="d-head")
+                        yield Static("", id="d-models")
+                        yield Input(
+                            placeholder=_say("new_key_placeholder"),
+                            password=True,
+                            id="newkey",
+                        )
+                        with Horizontal(id="d-actions"):
+                            yield Button(_say("button_change_key"), id="d-key")
+                            yield Button(_say("button_add_models"), id="d-add")
+                            yield Button(_say("button_test"), id="d-test")
+                            yield Button(_say("button_remove"), id="d-remove")
                     with Horizontal(id="keybox"):
                         yield Input(
                             placeholder=_say("key_placeholder"),
@@ -1252,8 +1364,12 @@ class SetupScreen(_TabbedScreen[None]):
 
     def on_mount(self) -> None:
         self.query_one("#found").display = False
-        self.query_one("#provider-box").border_title = _say("provider_box")
-        self._count_providers()
+        self.query_one("#provider-box").border_title = _say("add_box")
+        self.query_one("#mine-box").border_title = _say("mine_box")
+        self.query_one("#newkey").display = False
+        self._fit_width()
+        self._show_mine()
+        self._filter_providers(self._value("provider-search"))
         self._show_fields()
         self.query_one("#note", Static).update(_hint(self._provider()))
         self._schedule_find()
@@ -1280,8 +1396,215 @@ class SetupScreen(_TabbedScreen[None]):
         )
         return _say(mark, label=entry.label)
 
+    #: The one of your providers the right pane shows, while it shows one.
+    _detail: str | None = None
+    #: Narrower than this, the panel's four actions take two rows.
+    NARROW_WIDTH: ClassVar[int] = 110
+
+    def on_resize(self) -> None:
+        self._fit_width()
+
+    def _fit_width(self) -> None:
+        """A narrow window puts the panel's four actions on two rows (Y10)."""
+        self.set_class(self.app.size.width < self.NARROW_WIDTH, "-narrow")
+
+    def _mine_ids(self) -> list[str]:
+        """Your providers, in the order the setup lists them."""
+        return list(dict.fromkeys(e.provider for e in self._selection.entries))
+
+    def _entries_of(self, provider: str) -> list[ModelCatalogEntry]:
+        return [e for e in self._selection.entries if e.provider == provider]
+
+    def _state(self, provider: str) -> tuple[str, str, str]:
+        """The provider's mark, words and colour, from its models' last tests."""
+        glyphs = tui_design().glyphs
+        states = {e.status for e in self._entries_of(provider)}
+        if "failed" in states:
+            return glyphs.failed, _say("detail_failed"), "error"
+        if states and states <= {"ready"}:
+            return glyphs.done, _say("detail_ready"), "success"
+        return "·", _say("detail_untested"), "warning"
+
+    def _show_mine(self) -> None:
+        """Fill "Your providers" from the setup as last read; hide it when empty."""
+        listing = self.query_one("#mine", _MineList)
+        was = listing.highlighted_id
+        ids = self._mine_ids()
+        listing.clear_options()
+        for provider in ids:
+            mark, _, colour = self._state(provider)
+            listing.add_option(
+                Option(
+                    Text.assemble(_label(provider), " ", (mark, _style(colour))),
+                    id=provider,
+                )
+            )
+        box = self.query_one("#mine-box")
+        # A class, not box.display: an inline display would beat the rule
+        # that hides the list while models load in a short window.
+        self.set_class(not ids, "-no-mine")
+        box.border_subtitle = str(len(ids)) if ids else ""
+        if was in ids:
+            listing.highlighted = ids.index(was)
+        if self._detail is not None:
+            if self._detail in ids:
+                self._show_detail(self._detail)
+            else:  # removed: back to adding
+                self._detail = None
+                self.set_class(False, "-mine")
+                self._hints()
+
+    def _show_detail(self, provider: str) -> None:
+        """The right pane: one of your providers, its state and its models (Y3)."""
+        if provider != self._detail:  # a half-typed new key is for one provider
+            self.query_one("#newkey").display = False
+        self._detail = provider
+        entries = self._entries_of(provider)
+        hosted = _deployment(provider) == "cloud"
+        mark, words, colour = self._state(provider)
+        detail = self.query_one("#detail")
+        detail.border_title = _label(provider)
+        servers = list(dict.fromkeys(e.server_url for e in entries if e.server_url))
+        where = (
+            _say("detail_key")
+            if hosted
+            else _say("detail_server", server=", ".join(servers))
+            if servers
+            else ""
+        )
+        head = Text.assemble((f"{mark} {words}", _style(colour)))
+        if where:
+            head.append(_say("hint_separator"), style=_style("muted"))
+            head.append(where, style=_style("muted"))
+        self.query_one("#d-head", Static).update(head)
+        models = ", ".join(_on_server(e.model_id, e.server_url) for e in entries)
+        self.query_one("#d-models", Static).update(
+            _say("detail_models", models=models or _say("detail_no_models"))
+        )
+        self.query_one("#d-key").display = hosted
+
+    def _hints(self) -> None:
+        mine = self.has_class("-mine")
+        self.query_one("#keys", Static).update(
+            _tab_hint("tab_hint_config_mine" if mine else "tab_hint_config")
+        )
+        self.call_after_refresh(self._fit_footer)
+
+    def _use_mine(self, mine: bool) -> None:
+        """The right pane shows one of your providers, or the key box."""
+        if mine == self.has_class("-mine"):
+            return
+        self.set_class(mine, "-mine")
+        self.query_one("#cfg-title", Static).update(
+            _say("mine_title" if mine else "add_title")
+        )
+        if mine:  # the add pane's hint is not about your providers
+            if not self._busy:
+                self._note("")
+        else:
+            self._detail = None
+            if not self._busy:
+                self.query_one("#note", Static).update(_hint(self._provider()))
+        self._hints()
+
+    def on_descendant_focus(self, event: events.DescendantFocus) -> None:
+        widget_id = event.widget.id or ""
+        if widget_id == "mine" or widget_id.startswith("d-") or widget_id == "newkey":
+            listing = self.query_one("#mine", _MineList)
+            if listing.highlighted is None and listing.option_count:
+                listing.highlighted = 0
+            if listing.highlighted_id:
+                self._show_detail(listing.highlighted_id)
+            self._use_mine(True)
+        elif widget_id in ("provider-search", "provider", "key", "url"):
+            self._use_mine(False)
+
+    @on(OptionList.OptionHighlighted, "#mine")
+    def _mine_moved(self, event: OptionList.OptionHighlighted) -> None:
+        if event.option.id and self.query_one("#mine").has_focus:
+            self._show_detail(event.option.id)
+            self._use_mine(True)
+
+    @on(OptionList.OptionSelected, "#mine")
+    def _mine_chosen(self, event: OptionList.OptionSelected) -> None:
+        """Enter on one of your providers: to its first action."""
+        if event.option.id:
+            self._show_detail(event.option.id)
+            self._use_mine(True)
+            first = "#d-key" if self.query_one("#d-key").display else "#d-add"
+            self.query_one(first, Button).focus()
+
+    def action_field(self, step: int) -> None:
+        """Up from the add list's search reaches your last provider (Y11)."""
+        before = self.focused
+        super().action_field(step)
+        listing = self.query_one("#mine", _MineList)
+        if self.focused is listing and before is not listing and listing.option_count:
+            listing.highlighted = listing.option_count - 1 if step < 0 else 0
+
+    def _change_key(self) -> None:
+        field = self.query_one("#newkey", Input)
+        field.value = ""
+        field.display = True
+        field.focus()
+        self._note(_say("new_key_hint", provider=_label(self._detail or "")))
+
+    def _save_key(self, key: str) -> None:
+        """Store the new key with every model the provider has; the key goes on
+        stdin, never on the command line (Y4)."""
+        provider = self._detail
+        if not provider or not key:
+            return
+        field = self.query_one("#newkey", Input)
+        field.value = ""
+        field.display = False
+        models = tuple(
+            e.model_id for e in self._entries_of(provider) if not e.server_url
+        )
+        choice = ModelTuiSetupChoice(
+            provider=provider, url=None, models=models, key=SecretStr(key)
+        )
+        self.query_one("#d-key", Button).focus()
+        self._run(lambda app: app.apply_setup((choice,), progress=self._note))
+
+    def _add_models_to(self, provider: str) -> None:
+        """Back to the add pane, on this provider, so more of its models can be
+        ticked (Y9)."""
+        choice = self.query_one("#provider", Choice)
+        choice.value = provider
+        self._use_mine(False)
+        self._filter_providers(self._value("provider-search"))
+        self._show_fields()
+        self.query_one("#note", Static).update(_hint(provider))
+        self.query_one("#key" if _hosted(provider) else "#url", Input).focus()
+        self._show_rows([])
+        self._schedule_find()
+
+    def _ask_remove(self, provider: str) -> None:
+        count = len(self._entries_of(provider))
+        servers = [e.server_url for e in self._entries_of(provider) if e.server_url]
+        url = servers[0] if len(set(servers)) == 1 else None
+
+        def answered(remove: bool | None) -> None:
+            if remove:
+                self._run(lambda app: app.remove_provider(provider, url))
+            else:
+                self.query_one("#d-remove", Button).focus()
+
+        self.app.push_screen(
+            RemoveProviderScreen(
+                _say(
+                    "remove_question",
+                    provider=_label(provider),
+                    models=f"{count} model{'' if count == 1 else 's'}",
+                )
+            ),
+            answered,
+        )
+
     def _arrange_providers(self) -> None:
         """Put the list back in order after the setup is read again."""
+        self._show_mine()
         choice = self.query_one("#provider", Choice)
         buttons = {b.name: b for b in choice.query(RadioButton)}
         previous: RadioButton | None = None
@@ -1295,10 +1618,13 @@ class SetupScreen(_TabbedScreen[None]):
             else:
                 choice.move_child(button, after=previous)
             previous = button
+        self._filter_providers(self._value("provider-search"))
 
     def _count_providers(self) -> None:
         """How many providers there are, or how many the search left (S14)."""
-        buttons = list(self.query_one("#provider", Choice).query(RadioButton))
+        choice = self.query_one("#provider", Choice)
+        set_up = self._set_up() - {choice.value}
+        buttons = [b for b in choice.query(RadioButton) if b.name not in set_up]
         shown = sum(1 for button in buttons if button.display)
         total = len(buttons)
         self.query_one("#provider-box").border_subtitle = (
@@ -1309,12 +1635,15 @@ class SetupScreen(_TabbedScreen[None]):
 
     def _filter_providers(self, text: str) -> None:
         """Show only the providers whose name or id holds ``text``; the marked
-        one stays marked even when hidden."""
+        one stays marked even when hidden. Your providers have their own list,
+        so they leave this one, unless one is marked for more models (Y1)."""
         wanted = text.strip().casefold()
-        for button in self.query_one("#provider", Choice).query(RadioButton):
+        choice = self.query_one("#provider", Choice)
+        set_up = self._set_up() - {choice.value}
+        for button in choice.query(RadioButton):
             entry = _entry(button.name or "")
             name = f"{entry.label if entry else ''} {button.name}".casefold()
-            shown = not wanted or wanted in name
+            shown = (not wanted or wanted in name) and button.name not in set_up
             button.display = shown
             button.disabled = not shown  # the arrows skip what is hidden
         self._count_providers()
@@ -1326,7 +1655,10 @@ class SetupScreen(_TabbedScreen[None]):
         char = event.character
         if not char or not char.isprintable() or char.isspace():
             return
-        if self.focused is not self.query_one("#provider", Choice):
+        if self.focused not in (
+            self.query_one("#provider", Choice),
+            self.query_one("#mine", _MineList),
+        ):
             return
         search = self.query_one("#provider-search", Input)
         search.focus()
@@ -1420,6 +1752,7 @@ class SetupScreen(_TabbedScreen[None]):
         mark.update(Text(_say(word), style=_style(colour)))
 
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
+        self._filter_providers(self._value("provider-search"))  # the marked one shows
         self._show_fields()
         self.query_one("#key" if _hosted(self._provider()) else "#url", Input).focus()
         self.query_one("#note", Static).update(_hint(self._provider()))
@@ -1546,6 +1879,9 @@ class SetupScreen(_TabbedScreen[None]):
         if event.input.id == "provider-search":
             self._pick_first_shown()
             return
+        if event.input.id == "newkey":
+            self._save_key(event.value.strip())
+            return
         if event.input.id not in ("key", "url"):
             return
         table = self.query_one("#found", ModelTable)
@@ -1585,7 +1921,20 @@ class SetupScreen(_TabbedScreen[None]):
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         note = self.query_one("#note", Static)
-        if event.button.id == "cancel":
+        mine = self._detail
+        if event.button.id in ("d-key", "d-add", "d-test", "d-remove") and mine:
+            if self._busy:
+                self._note(_say("still_working"), "warning")
+            elif event.button.id == "d-key":
+                self._change_key()
+            elif event.button.id == "d-add":
+                self._add_models_to(mine)
+            elif event.button.id == "d-test":
+                self._note(_say("testing_provider", provider=_label(mine)))
+                self._run(lambda app: app.test_provider(mine))
+            else:
+                self._ask_remove(mine)
+        elif event.button.id == "cancel":
             self._close()
         elif event.button.id == "add":
             if self._loading:
@@ -1635,6 +1984,7 @@ class SetupScreen(_TabbedScreen[None]):
     def _first_read_shown(self) -> None:
         # What was ticked while the setup was read stays ticked.
         self.query_one("#basket", Static).update(self._basket_line())
+        self._arrange_providers()  # yours move to their own list
 
     def _show_selection(self) -> None:
         super()._show_selection()
@@ -4866,6 +5216,57 @@ class OnexTui(App[int]):
             return None
         outcome = Text("\n").join(lines)
         self._toast(outcome, ok=all_ok)
+        return outcome
+
+    async def test_provider(self, provider: str) -> Text:
+        """One real delegation per model of ``provider``, as `onex models test`
+        runs it; each result is one line (Y5)."""
+        glyphs = tui_design().glyphs
+        label = _label(provider)
+        _, out, err = await self._runner.capture(("models", "test", provider, "--json"))
+        results = [r for r in _json_rows(out) if r.get("model") and r.get("status")]
+        if results:
+            outcome = Text("\n").join(_tested_line(label, r) for r in results)
+            ok = all(r.get("status") == "passed" for r in results)
+        else:
+            reason = plain_reason(err or out, tui_design().reason_chars)
+            outcome = Text(
+                f"{glyphs.failed} "
+                + _say(
+                    "test_failed", provider=label, reason=reason or _say("no_answer")
+                ),
+                style=_style("error"),
+            )
+            ok = False
+        await self._refresh_status()
+        self._toast(outcome, ok=ok)
+        return outcome
+
+    async def remove_provider(self, provider: str, url: str | None) -> Text:
+        """`onex models remove`, the CLI's own remove: it refuses the last
+        working provider, and that refusal is said in plain words (Y7, Y8)."""
+        glyphs = tui_design().glyphs
+        label = _label(provider)
+        argv = ("models", "remove", provider, *(("--url", url) if url else ()))
+        code, out, err = await self._runner.capture(argv)
+        if code == 0:
+            outcome = Text(
+                f"{glyphs.done} " + _say("provider_removed", provider=label),
+                style=_style("success"),
+            )
+        else:
+            reason = plain_reason(err or out, tui_design().reason_chars)
+            outcome = Text(
+                f"{glyphs.failed} "
+                + _say(
+                    "remove_provider_failed",
+                    provider=label,
+                    reason=reason or _say("no_answer"),
+                ),
+                style=_style("error"),
+            )
+        await self._refresh_status()
+        self._toast(outcome, ok=code == 0)
         return outcome
 
     async def load_selection(self) -> ModelTuiSelection:

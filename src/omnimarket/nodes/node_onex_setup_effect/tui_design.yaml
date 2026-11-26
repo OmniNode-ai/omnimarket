@@ -473,6 +473,30 @@ words:
   provider_search: "Type to search"
   provider_set_up: "{label} ✓"
   provider_not_set_up: "{label}"
+  # Two lists (operator 2026-11-26: "Added provider should be in different
+  # list and user can change api key, remove it also"): yours, then the rest.
+  mine_box: Your providers
+  mine_title: Manage providers
+  add_box: Add a provider
+  detail_ready: ready
+  detail_failed: last test failed
+  detail_untested: not tested yet
+  detail_key: key stored
+  detail_server: "on {server}"
+  detail_models: "Models  {models}"
+  detail_no_models: none yet
+  button_change_key: Change key
+  button_add_models: Add models
+  button_test: Test
+  button_remove: Remove
+  new_key_placeholder: "New API key, then Enter"
+  new_key_hint: "Paste the new {provider} key and press Enter. Your models stay, and each is tested with it."
+  testing_provider: "testing {provider}: one real delegation per model, which can take a minute…"
+  test_failed: "{provider} could not be tested: {reason}"
+  remove_title: Remove provider
+  remove_question: "Remove {provider}? onex stops using its {models} and deletes its key or server from this machine. You can add it again any time."
+  provider_removed: "{provider} removed"
+  remove_provider_failed: "{provider} was not removed: {reason}"
   # Under the provider list (operator 2026-11-26: "show count too").
   provider_count: "{total} providers"
   provider_count_shown: "{shown} of {total}"
@@ -508,6 +532,7 @@ words:
   dashboard_about: "A local web page with your tasks, cost and savings over time, in your browser."
   order_none: "No models yet. Run /config."
   tab_hint_config: "tab next · space tick · ctrl+s save · esc close"
+  tab_hint_config_mine: "↑↓ move · enter actions · esc close"
   tab_hint_model: "↑↓ move · enter make first · d details · esc close"
   tab_hint_delegation: "space switch · ctrl+s save · esc close"
   tab_hint_dashboard_stopped: "s start · esc close"

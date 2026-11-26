@@ -92,12 +92,13 @@ def _with_providers(monkeypatch: pytest.MonkeyPatch, extra) -> tuple:
 
 
 async def test_set_up_providers_come_first_then_a_to_z() -> None:
-    """S1: openrouter is set up in the fixture, so it leads; the rest are A-Z."""
+    """S1: openrouter is set up in the fixture, so it is in "Your providers"
+    (Y1) and the add list is the rest, A-Z."""
     app = _app(_Runner([], by_command=_selected_rows(connection=False)))
     async with app.run_test(size=(160, 46)) as pilot:
         await _config(pilot, app)
         rest = [p for p in _a_to_z(setup_provider_traits().picker) if p != "openrouter"]
-        assert _shown(app) == ["openrouter", *rest]
+        assert _shown(app) == rest
 
 
 async def test_typing_narrows_the_providers() -> None:
@@ -108,11 +109,11 @@ async def test_typing_narrows_the_providers() -> None:
         app.screen.query_one("#provider-search", Input).focus()
         await _type(pilot, "open")
         await pilot.pause()
-        assert sorted(_shown(app)) == ["openai", "openrouter"]
+        assert sorted(_shown(app)) == ["openai"]  # openrouter is yours (Y1)
         for _ in range(4):
             await pilot.press("backspace")
         await pilot.pause()
-        assert len(_shown(app)) == len(setup_provider_traits().picker)
+        assert len(_shown(app)) == len(setup_provider_traits().picker) - 1
 
 
 async def test_enter_in_the_search_picks_the_first_match() -> None:
@@ -140,7 +141,7 @@ async def test_an_added_provider_row_shows_with_no_code_change(
     async with app.run_test(size=(160, 46)) as pilot:
         await _config(pilot, app)
         rest = [p for p in _a_to_z(picker) if p != "openrouter"]
-        assert _shown(app) == ["openrouter", *rest]
+        assert _shown(app) == rest
         assert "groq" in _shown(app)
 
 
@@ -349,8 +350,8 @@ async def test_loaded_models_keep_their_room(
 async def test_the_provider_box_counts_what_it_shows(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """S14."""
-    total = _forty(monkeypatch)
+    """S14: the add list counts what can be added; openrouter is yours (Y1)."""
+    total = _forty(monkeypatch) - 1
     app = _app(_Runner([], by_command=_selected_rows(connection=False)))
     async with app.run_test(size=(140, 40)) as pilot:
         await _config(pilot, app)

@@ -58,4 +58,6 @@ async def test_config_shows_every_provider_with_the_first_marked() -> None:
         assert [str(b.label) for b in buttons] == [
             f"{e.label} ✓" if e.provider == "openrouter" else e.label for e in order
         ]
-        assert [b.name for b in buttons if b.value] == [order[0].provider]
+        # openrouter is in "Your providers"; the add list opens on the first
+        # provider not set up yet.
+        assert [b.name for b in buttons if b.value] == [order[1].provider]
