@@ -32,6 +32,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.grade_delegati
 from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe import (
     CheckId,
     ModelCheckClause,
+    ModelCheckPrecondition,
     ModelDelegationCheckReading,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.models.model_gateway_check import (
@@ -75,8 +76,25 @@ UNKNOWN_SOURCE: Final = "not-a-source"
 HOUSE_REF = re.compile(r"^llm\.[a-z0-9_]+\.[a-z0-9_]+$")
 FAILURE_CLASS = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(Error|Exception)$")
 FAILURE_CODE = re.compile(r"^ONEX_[A-Z0-9_]+$")
+#: The refusal the runtime gives a customer tenant with no registered provider key (customer_key_terminus.py): no customer runs on
+#: a house key, so a test tenant without a key of its own cannot complete a healthy delegation. That is a missing instrument.
+TENANT_KEY_ABSENT_CODE: Final = "ONEX_MARKET_CUSTOMER_PROVIDER_KEY_ABSENT"
 ABSENT_ID: Final = "00000000-0000-4000-8000-0000000000{n:02d}"
 RUNNER_QUERY: Final = "?runner_identity="
+
+
+# The gateway refuses a provider answer cut off by the output budget (finish_reason=length), so a
+# budget below what the model needs fails the run. 32 failed c29-20261126T044722Z-f2c5a20f under the
+# tenant key; 128 completed (control 275d746c), and 8 or fewer failed the same way.
+CHECK_MAX_TOKENS = 512
+
+# The healthy run is a task_type "test" run, whose quality gate wants one code artifact and nothing else (final_artifact_only):
+# the old prompt asked for the word "alive" and the gate refused the prose outside a code block on 2 of 4 lab runs
+# (TASK_MISMATCH, score 0.700 under the 0.800 bar). This asks for exactly the artifact the gate grades.
+CHECK_PROMPT = (
+    "Reply with only a python code block holding one pytest test function named test_alive "
+    "that asserts True. No prose outside the code block. Automated {check_id} delegation check."
+)
 
 
 class GatewayRunSettings(BaseModel):
@@ -160,10 +178,10 @@ def _text(value: Any) -> str | None:
 def _task_payload(check_id: str, task_type: str, source: str) -> dict[str, Any]:
     """The one request shape every check sends: no model, backend or provider, so the chain's pick serves it."""
     return {
-        "prompt": f"Reply with the single word: alive. Automated {check_id} delegation check.",
+        "prompt": CHECK_PROMPT.format(check_id=check_id),
         "task_type": task_type,
         "source": source,
-        "max_tokens": 32,
+        "max_tokens": CHECK_MAX_TOKENS,
     }
 
 
@@ -190,6 +208,7 @@ class _Session:
         self._sleep = sleep
         self._monotonic = monotonic
         self._new_uuid = new_uuid
+        self.preconditions: list[ModelCheckPrecondition] = []
 
     def call(
         self,
@@ -275,7 +294,18 @@ class _Session:
 def _healthy(
     s: _Session, source: str = "external-client"
 ) -> tuple[str | None, Mapping[str, Any] | None, Mapping[str, Any] | None, str]:
-    return s.run("test", source)
+    workflow_id, status, receipt, answered = s.run("test", source)
+    code = status.get("terminal_failure_code") if status else None
+    if status and status.get("status") == "failed" and code == TENANT_KEY_ABSENT_CODE:
+        s.preconditions.append(
+            ModelCheckPrecondition(
+                name="tenant_provider_key",
+                present=False,
+                detail=f"the run {workflow_id} was refused {code}: the test tenant holds no provider key, "
+                "so a healthy delegation cannot complete as it",
+            )
+        )
+    return workflow_id, status, receipt, answered
 
 
 def _identity_clause(name: str, receipt: Mapping[str, Any] | None) -> ModelCheckClause:
@@ -725,7 +755,9 @@ def run_gateway_check(
         return ModelDelegationCheckReading(
             **head, not_measured=f"the gateway did not answer: {exc}"
         )
-    return ModelDelegationCheckReading(**head, clauses=clauses)
+    return ModelDelegationCheckReading(
+        **head, clauses=clauses, preconditions=tuple(session.preconditions)
+    )
 
 
 __all__ = [
