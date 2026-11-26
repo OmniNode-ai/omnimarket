@@ -347,7 +347,7 @@ async def test_config_lists_providers_in_yaml_order_and_fills_no_url() -> None:
     async with app.run_test(size=(170, 46)) as pilot:
         await _open(pilot, "/config")
         assert isinstance(app.screen, SetupScreen)
-        picker = setup_provider_traits().picker
+        picker = setup_provider_traits().picker_providers()
         # Nothing is set up, so the list is A-Z (operator 2026-11-26).
         a_to_z = sorted(picker, key=lambda e: e.label.casefold())
         select = app.screen.query_one("#provider")  # radio options (OMN-23413)

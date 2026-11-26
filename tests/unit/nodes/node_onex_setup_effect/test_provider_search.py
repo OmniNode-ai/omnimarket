@@ -88,7 +88,7 @@ def _with_providers(monkeypatch: pytest.MonkeyPatch, extra) -> tuple:
     base = setup_provider_traits()
     traits = base.model_copy(update={"picker": (*base.picker, *extra)})
     monkeypatch.setattr(cli_tui, "setup_provider_traits", lambda: traits)
-    return traits.picker
+    return traits.picker_providers()
 
 
 async def test_set_up_providers_come_first_then_a_to_z() -> None:
@@ -97,8 +97,12 @@ async def test_set_up_providers_come_first_then_a_to_z() -> None:
     app = _app(_Runner([], by_command=_selected_rows(connection=False)))
     async with app.run_test(size=(160, 46)) as pilot:
         await _config(pilot, app)
-        rest = [p for p in _a_to_z(setup_provider_traits().picker) if p != "openrouter"]
-        assert _shown(app) == rest
+        rest = [
+            p
+            for p in _a_to_z(setup_provider_traits().picker_providers())
+            if p != "openrouter"
+        ]
+        assert _shown(app) == rest  # openrouter is in "Your providers" (Y1)
 
 
 async def test_typing_narrows_the_providers() -> None:
@@ -109,11 +113,17 @@ async def test_typing_narrows_the_providers() -> None:
         app.screen.query_one("#provider-search", Input).focus()
         await _type(pilot, "open")
         await pilot.pause()
-        assert sorted(_shown(app)) == ["openai"]  # openrouter is yours (Y1)
+        holds = sorted(
+            p.provider
+            for p in setup_provider_traits().picker_providers()
+            if "open" in p.label.casefold() and p.provider != "openrouter"
+        )
+        assert "openai" in holds
+        assert sorted(_shown(app)) == holds  # openrouter is yours (Y1)
         for _ in range(4):
             await pilot.press("backspace")
         await pilot.pause()
-        assert len(_shown(app)) == len(setup_provider_traits().picker) - 1
+        assert len(_shown(app)) == len(setup_provider_traits().picker_providers()) - 1
 
 
 async def test_enter_in_the_search_picks_the_first_match() -> None:

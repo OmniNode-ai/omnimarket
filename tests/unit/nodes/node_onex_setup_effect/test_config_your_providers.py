@@ -110,7 +110,7 @@ async def test_your_providers_have_their_own_list() -> None:
         assert str(box.border_subtitle) == "2"
         addable = _addable(screen)
         assert "openrouter" not in addable
-        picker = [e.provider for e in setup_provider_traits().picker]
+        picker = [e.provider for e in setup_provider_traits().picker_providers()]
         assert len(addable) == len([p for p in picker if p != "openrouter"])
         assert str(screen.query_one("#provider-box").border_title) == "Add a provider"
 
@@ -121,7 +121,7 @@ async def test_a_new_user_sees_only_the_add_list() -> None:
     async with app.run_test(size=(140, 40)) as pilot:
         screen = await _config(pilot, app)
         assert not screen.query_one("#mine-box").display
-        assert len(_addable(screen)) == len(setup_provider_traits().picker)
+        assert len(_addable(screen)) == len(setup_provider_traits().picker_providers())
 
 
 async def test_your_provider_shows_its_status_models_and_actions() -> None:

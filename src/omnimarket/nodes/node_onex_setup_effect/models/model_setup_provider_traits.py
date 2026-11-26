@@ -42,10 +42,12 @@ class ModelSetupProviderTraits(BaseModel):
         """The /config choices: setup_provider_traits.yaml's in its order, then each
         provider on the shipped models.dev list (OMN-26688)."""
         declared = {p.provider for p in self.picker}
-        return (
-            *self.picker,
-            *(p for p in _listed_picker() if p.provider not in declared),
-        )
+        listed = tuple(p for p in _listed_picker() if p.provider not in declared)
+        # A server the user runs (Local Model) stays the last entry (operator
+        # 2026-11-13); the list's hosted providers go before it.
+        hosted = tuple(p for p in self.picker if p.provider not in self.url_required)
+        servers = tuple(p for p in self.picker if p.provider in self.url_required)
+        return (*hosted, *listed, *servers)
 
     def registration(self, provider: str, *, keyed: bool) -> str:
         """The canonical endpoint owner a selection registers as."""

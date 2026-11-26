@@ -432,9 +432,13 @@ def test_the_config_picker_lists_catalogue_providers_after_the_declared_ones() -
         setup_provider_traits,
     )
 
-    picker = setup_provider_traits().picker_providers()
+    traits = setup_provider_traits()
+    picker = traits.picker_providers()
     names = [p.provider for p in picker]
-    assert names[:5] == ["gemini", "openai", "openrouter", "reflection", "local"]
+    declared = [p.provider for p in traits.picker]
+    assert [n for n in names if n in declared] == declared  # the file's own order
+    assert names[-1] == "local"  # a server the user runs stays last
+    assert len(names) == len(declared) + len(set(names) - set(declared))
     by_id = {p.provider: p for p in picker}
     assert by_id["deepseek"].label == "DeepSeek"
     assert by_id["fireworks-ai"].label == "Fireworks AI"

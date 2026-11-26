@@ -26,6 +26,9 @@ from omnimarket.handlers.routing.byok_model_listing import (
     ModelByokModelListing,
 )
 from omnimarket.nodes.node_onex_setup_effect.cli_tui import OnexTui
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
+    setup_provider_traits,
+)
 from tests.unit.nodes.node_onex_setup_effect import tabs_redesign_support as sup
 from tests.unit.nodes.node_onex_setup_effect.test_onex_tui import _index, _Runner
 
@@ -111,7 +114,16 @@ async def test_provider_list_has_radio_markers(size: tuple[int, int]) -> None:
         await _open(pilot, app, key=None)
         text = sup.screen_text(app)
     assert "● OpenRouter" in text
-    assert "○ Google Gemini" in text
+    # OMN-26688: set-up first (OpenRouter), then A-Z over every listed provider.
+    second = min(
+        (
+            e
+            for e in setup_provider_traits().picker_providers()
+            if e.provider != "openrouter"
+        ),
+        key=lambda e: e.label.casefold(),
+    )
+    assert f"○ {second.label}" in text
     assert "▐" not in text
     assert "▌" not in text
 

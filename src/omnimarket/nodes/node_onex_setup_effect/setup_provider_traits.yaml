@@ -38,9 +38,11 @@ picker:
   - provider: anthropic
     label: Anthropic
     hint: Create a key at platform.claude.com/settings/keys.
+  # docs.z.ai (read 2026-11-26): the provider is Z.AI, GLM its model family; a
+  # Standard API Key is created on its API Keys page.
   - provider: glm
-    label: GLM (z.ai)
-    hint: Create a general API key at z.ai/manage-apikey/apikey-list.
+    label: Z.AI
+    hint: Create a Standard API Key at z.ai/manage-apikey/apikey-list.
   - provider: local
     label: Local Model
     hint: >-

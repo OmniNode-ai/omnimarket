@@ -1033,9 +1033,11 @@ def test_config_providers_come_from_the_traits_file_in_its_order() -> None:
 
     traits = setup_provider_traits()
     choices = cli_tui._picker()
-    assert choices == traits.picker  # the file's order, not sorted
+    # The file's order, not sorted; OMN-26688's models.dev list before Local Model.
+    assert choices == traits.picker_providers()
+    assert choices[-1].provider == "local"
     # One entry for every OpenAI-compatible server: no separate Ollama or vLLM.
-    assert [entry.provider for entry in choices] == [
+    assert [e.provider for e in choices if e in traits.picker] == [
         "gemini",
         "openai",
         "openrouter",

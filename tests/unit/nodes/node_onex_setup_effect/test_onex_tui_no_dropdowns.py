@@ -48,7 +48,7 @@ async def test_config_shows_every_provider_with_the_first_marked() -> None:
         await pilot.press("enter")
         for _ in range(6):
             await pilot.pause()
-        picker = setup_provider_traits().picker
+        picker = setup_provider_traits().picker_providers()
         # openrouter is the one set up in _selected_rows, so it leads.
         order = sorted(
             picker, key=lambda e: (e.provider != "openrouter", e.label.casefold())
