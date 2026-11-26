@@ -8,7 +8,7 @@ the nudge cadence, the agent's turn and diff ceilings, the draft checks, the
 tools the runner needs, the source surface, the unit lane prefix, the onex
 executable and the caller's ticket. No key has a default but the two retry and
 void keys of OMN-24173 (0 retries and a tenth, so an overlay written before them
-loads): an absent key refuses the load, and an invalid file names its fields.
+loads) and the loop wall budget of OMN-26656 (3600 seconds): an absent key refuses the load, and an invalid file names its fields.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from itertools import pairwise
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from omnimarket.models.bus_binding.model_node_event_bus import ModelNodeEventBus
+from omnimarket.models.model_delegated_code_edit import MAX_TURNS_CEILING
 
 # A check is a shell-free command word list joined by a single space (for
 # example ``uv run python -c pass``): words of plain characters, separated by
@@ -39,7 +40,9 @@ class ModelCodeEvalRunnerOverlay(BaseModel):
     try_timeout_seconds: int = Field(ge=1)
     receipt_slack_seconds: int = Field(ge=0)
     nudge_interval_seconds: int = Field(ge=1)
-    max_turns: int = Field(ge=1, le=40)
+    max_turns: int = Field(ge=1, le=MAX_TURNS_CEILING)
+    #: Wall seconds one loop may use (OMN-26656); an overlay without it takes the declared 3600.
+    loop_wall_budget_seconds: int = Field(default=3600, ge=1, le=7200)
     max_diff_bytes: int = Field(ge=1)
     draft_checks: tuple[str, ...] = Field(min_length=1)
     need_tools: tuple[str, ...]
@@ -47,6 +50,9 @@ class ModelCodeEvalRunnerOverlay(BaseModel):
     unit_lane_prefix: str
     onex_executable: str = Field(min_length=1)
     caller_ticket: str | None = Field(pattern=r"^OMN-[0-9]+$")
+    #: True: the loop's check is the contract's own test command, its test file is in the
+    #: worktree and the touched files are shown as context. False: the overlay's draft checks only.
+    real_check_in_loop: bool = False
     #: Times an infrastructure-unscorable try is scored again or regenerated (OMN-24173); 0 retries none.
     infra_retries: int = Field(default=0, ge=0)
     #: A run closes void when more than this percent of its first tries were infrastructure-unscorable.

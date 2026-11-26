@@ -68,7 +68,10 @@ def test_topics_are_requested_in_completed_out_and_there_is_no_failed_topic() ->
         "onex.evt.omnimarket.tenant-read-completed.v1",
         "onex.evt.omnimarket.tenant-outbox-flush-completed.v1",
     }
-    assert set(contract["event_bus"]["publish_topics"]) == {contract["terminal_event"]}
+    # The runtime answers each handler on the topic published_events names for its result class, and only on a declared
+    # publish topic: a read answer published nowhere declared lands on the provision topic and the reader times out.
+    assert set(contract["event_bus"]["publish_topics"]) == completed
+    assert contract["terminal_event"] in completed
     assert set(contract["externally_consumed_topics"]) == completed
     assert all(c.endswith("-completed.v1") for c in completed)
     every = set(contract["event_bus"]["subscribe_topics"]) | completed
@@ -130,3 +133,13 @@ def test_the_dsn_is_a_declared_secret_read_from_the_overlay() -> None:
     assert yaml.safe_load(example.read_text(encoding="utf-8"))["database"][
         "dsn_secret"
     ] == ("tenant_identity.database.dsn")
+
+
+def test_each_result_class_is_published_on_its_own_completed_topic() -> None:
+    contract = _contract()
+    routed = {e["event_type"]: e["topic"] for e in contract["published_events"]}
+    assert routed == {
+        "ModelTenantProvisionResult": "onex.evt.omnimarket.tenant-provision-completed.v1",
+        "ModelTenantReadResult": "onex.evt.omnimarket.tenant-read-completed.v1",
+        "ModelTenantOutboxFlushResult": "onex.evt.omnimarket.tenant-outbox-flush-completed.v1",
+    }

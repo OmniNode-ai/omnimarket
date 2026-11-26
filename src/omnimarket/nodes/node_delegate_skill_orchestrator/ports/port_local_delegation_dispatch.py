@@ -162,6 +162,7 @@ from omnimarket.handlers.routing.byok_provider_backends import (
     resolve_byok_backend_by_id,
 )
 from omnimarket.handlers.routing.customer_key_terminus import (
+    CUSTOMER_PROVIDER_KEY_REJECTED_MESSAGE,
     EnumDelegationSurface,
     enforce_customer_key_terminus,
     is_customer_attributed,
@@ -3259,6 +3260,14 @@ class LocalDelegationDispatchPort:
                 # typed refusal about the account or the model terminalises it:
                 # there is no house fallback for a customer (INV-068).
                 customer_route = _is_customer_byok_route(backend)
+                # OMN-25506: a customer's own key the provider refused states
+                # the typed reason, never the provider's sentence.
+                if (
+                    customer_route
+                    and transport_failure_class
+                    is EnumDelegationFailureClass.PROVIDER_AUTH_FAILED
+                ):
+                    transport_failure_message = CUSTOMER_PROVIDER_KEY_REJECTED_MESSAGE
                 typed_refusal = (
                     transport_failure_class in _TYPED_ACCOUNT_OR_MODEL_REFUSALS
                 )
@@ -4110,7 +4119,7 @@ class LocalDelegationDispatchPort:
                 # backend.model_id when the endpoint offered no /v1/models
                 # evidence (e.g. a cloud backend), which is unchanged pre-ticket
                 # behavior.
-                attributed_model_id = result.served_model_id or backend.model_id
+                attributed_model_id = result.served_model_id or "unknown"  # OMN-18079
                 # 5. PROJECTION — materialize the local evidence row from the
                 #    terminal, carrying the REAL gate verdict and the CUMULATIVE
                 #    metered cost across every attempt (never a hardcoded PASS,
