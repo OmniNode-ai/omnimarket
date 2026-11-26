@@ -50,7 +50,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.models.model_gateway_ch
 BASE = "http://127.0.0.12:8000"
 LOCAL = ModelDelegationCheckResponder(tier="local", base_url=BASE)
 OPENROUTER = ModelDelegationCheckResponder(tier="openrouter")
-CLAUDE = ModelDelegationCheckResponder(tier="claude_api")
+CLAUDE = ModelDelegationCheckResponder(tier="claude")
 CHAIN = (LOCAL, OPENROUTER, CLAUDE)
 _CLOCK = FakeClock()
 SERVING = "serving_tier_is_chain_pick"
@@ -154,7 +154,7 @@ def test_c13_and_c14_gateway_legs_carry_the_serving_clause() -> None:
     for check in ("C13", "C14"):
         good = _run(check)
         assert _named(good)[SERVING] is True
-        bad = _run(check, receipt_provider="claude_api")
+        bad = _run(check, receipt_provider="claude")
         assert SERVING in _failed(bad)
 
 
@@ -163,29 +163,37 @@ def test_the_clause_reads_the_declared_chain_pick() -> None:
     assert not grade_serving_tier("openrouter", "local").ok
     assert not grade_serving_tier("local", None).ok
     assert not grade_serving_tier(None, "local").ok
-    assert not grade_serving_tier("claude_api", "openrouter").ok
+    assert not grade_serving_tier("claude", "openrouter").ok
 
 
 def test_the_clause_reads_the_provider_words_a_real_dev_receipt_carries() -> None:
-    # Read on the dev lane (delegation receipts, terminal payload provider): the local tier stamps "local", the OpenRouter
-    # tier "openrouter", and the routing tier named "claude" is backed by a Gemini backend and stamps "gemini". No dev
-    # receipt names "claude_api": the chain tier name is not a provider word.
+    # The local tier stamps "local", the OpenRouter tier "openrouter", and the Claude tier (the Claude harness handler on the
+    # subscription) "anthropic", the provider the delegation routing overlay declares for its Claude harness backends. Never
+    # "gemini" (operator ruling 2026-11-26T13:43:36Z) and never the tier's own name.
     assert grade_serving_tier("local", "local").ok
     assert grade_serving_tier("openrouter", "openrouter").ok
-    assert grade_serving_tier("gemini", "claude_api").ok
-    assert not grade_serving_tier("claude_api", "claude_api").ok
+    assert grade_serving_tier("anthropic", "claude").ok
+    assert not grade_serving_tier("gemini", "claude").ok
+    assert not grade_serving_tier("claude", "claude").ok
     assert not grade_serving_tier("gemini", "openrouter").ok
-    assert not grade_serving_tier("local", "claude_api").ok
-    assert not grade_serving_tier("openrouter", "claude_api").ok
+    assert not grade_serving_tier("local", "claude").ok
+    assert not grade_serving_tier("openrouter", "claude").ok
 
 
-def test_known_good_chain_that_reached_the_claude_tier_served_by_its_dev_provider_passes() -> (
+def test_known_good_chain_that_reached_the_claude_tier_served_by_its_provider_passes() -> (
     None
 ):
     result = _run(
-        "C15", local_answers=False, receipt_provider="gemini", chain=(LOCAL, CLAUDE)
+        "C15", local_answers=False, receipt_provider="anthropic", chain=(LOCAL, CLAUDE)
     )
     assert _named(result)[SERVING] is True
+
+
+def test_known_bad_chain_that_reached_the_claude_tier_served_by_gemini_fails() -> None:
+    result = _run(
+        "C15", local_answers=False, receipt_provider="gemini", chain=(LOCAL, CLAUDE)
+    )
+    assert _named(result)[SERVING] is False
 
 
 def test_a_request_naming_a_model_backend_or_provider_fails_the_clause() -> None:

@@ -62,7 +62,7 @@ settable_settings:
     path: lanes/{lane}/lazy_start
     document_model: "omnimarket.models.overlay_documents.model_contract_hotload_lane_overlay:ModelContractHotloadLaneOverlay"
   # OMN-26043: the delegation responder chain every delegation check sends its task through, one list-valued row (local
-  # responders, then openrouter, then claude_api). The row holds no secret: a local responder is a private http://<ipv4>:<port> base.
+  # responders, then openrouter, then claude). The row holds no secret: a local responder is a private http://<ipv4>:<port> base.
   - overlay_id: delegation_check_responders
     key: responders
     path: responders

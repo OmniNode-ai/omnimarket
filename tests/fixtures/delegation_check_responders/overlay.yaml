@@ -1,0 +1,9 @@
+# Scrubbed copy of the bootstrap responder chain (overlay delegation_check_responders, read only until the settings store
+# serves the row; after that the store's row is the one the runtime reads). Fixture only: a loopback base, no key.
+# The third tier is Claude: the delegation feature's Claude harness handler on the subscription, never an API key.
+schema_version: 1
+responders:
+- tier: local
+  base_url: http://127.0.0.12:8000
+- tier: openrouter
+- tier: claude

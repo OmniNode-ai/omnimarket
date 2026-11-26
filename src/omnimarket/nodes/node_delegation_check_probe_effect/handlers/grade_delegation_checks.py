@@ -208,13 +208,14 @@ def grade_no_model_named(
     )
 
 
-#: The provider words a receipt carries for each chain tier, read on the dev lane from delegation receipts (terminal payload
-#: provider): the local tier stamps "local", the OpenRouter tier "openrouter", and the routing tier named "claude" is backed by a Gemini backend
-#: and stamps "gemini". No dev receipt names "claude_api"; that is the chain tier's name, not a provider.
+#: The provider words a receipt carries for each chain tier: the local tier stamps "local", the OpenRouter tier "openrouter",
+#: and the Claude tier, the delegation feature's Claude harness handler on the subscription, stamps "anthropic", the provider
+#: the Claude harness backends of the delegation routing overlay declare. Never "gemini": no Gemini credit backs the chain
+#: (operator ruling 2026-11-26T13:43:36Z), and a receipt that names it for the Claude tier reads FAIL.
 CHAIN_TIER_PROVIDER_WORDS: Final[Mapping[str, tuple[str, ...]]] = {
     "local": ("local",),
     "openrouter": ("openrouter",),
-    "claude_api": ("gemini",),
+    "claude": ("anthropic",),
 }
 
 

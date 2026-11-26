@@ -295,7 +295,7 @@ def _handler(machine: CleanInstallCustomerMachine) -> HandlerDelegationCheckProb
         responders=(
             ModelDelegationCheckResponder(tier="local", base_url=BASE),
             ModelDelegationCheckResponder(tier="openrouter"),
-            ModelDelegationCheckResponder(tier="claude_api"),
+            ModelDelegationCheckResponder(tier="claude"),
         ),
         reader=InMemoryResponderReader(
             {
@@ -363,9 +363,7 @@ def test_the_routing_collection_comes_from_the_same_clean_machine_record(
 def test_known_bad_a_receipt_naming_another_model_reads_c13_fail(
     tmp_path: Path,
 ) -> None:
-    runner = _Runner(
-        _record(receipt_model="claude-sonnet-5-5", receipt_tier="claude_api")
-    )
+    runner = _Runner(_record(receipt_model="claude-sonnet-5-5", receipt_tier="claude"))
     result = _run("C13", _handler(_machine(tmp_path, runner)))
     assert result.verdict is EnumCheckVerdict.FAIL
     assert "local_model" in {c.name for c in result.clauses if not c.ok}

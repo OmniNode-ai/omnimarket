@@ -233,11 +233,20 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_chain_serving_tier_clause.py tests/nodes/node_delegation_check_probe_effect/test_golden_answers_gateway_graders.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn26043-chain-tier-provider-words
-  description: "The serving-tier clause compares the receipt's provider with the words a real dev receipt carries per chain tier, not with the chain tier names: read on the dev lane from delegation receipts, the local tier stamps local, the OpenRouter tier stamps openrouter, and the claude routing tier is backed by a Gemini backend and stamps gemini; no receipt names claude_api. CHAIN_TIER_PROVIDER_WORDS holds the three; known good (local for local, openrouter for openrouter, gemini for claude_api) passes, and known bad (claude_api as a provider word, gemini when openrouter was picked, local when claude_api was picked) reads FAIL. The new tests fail on the previous commit, where a gemini receipt read FAIL for a chain that reached the claude tier. This binds AC5."
+  description: "The serving-tier clause compares the receipt's provider with the words a receipt carries per chain tier, not with the chain tier names: the local tier stamps local, the OpenRouter tier stamps openrouter, and the Claude tier (the delegation feature's Claude harness handler on the subscription) stamps anthropic, the provider the delegation routing overlay declares for its Claude harness backends. CHAIN_TIER_PROVIDER_WORDS holds the three; known good (local for local, openrouter for openrouter, anthropic for claude) passes, and known bad (claude as a provider word, gemini for claude, gemini when openrouter was picked, local when claude was picked) reads FAIL. This binds AC5."
   source: manual
   binds_ac:
   - AC5
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_chain_serving_tier_clause.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-third-tier-claude
+  description: "The third tier of the delegation responder chain is Claude (the delegation feature's Claude harness handler on the subscription; never an API key, never Gemini; operator RULING 2026-11-26T13:43:36Z): the tier named claude_api is renamed claude and refused under its old name, the bootstrap overlay (tests/fixtures/delegation_check_responders/overlay.yaml, read through the overlay reader) declares local, openrouter, claude, a settings store row written through node_overlay_setting_set_effect validates with claude as its third tier, and the serving-tier clause expects the anthropic provider word for it where the previous commit expected gemini. The new tests fail before the change (4 failures) and pass after; the known bad is the Gemini mapping, which reads FAIL. This binds AC5."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_third_tier_claude.py tests/nodes/node_delegation_check_probe_effect/test_chain_serving_tier_clause.py -q --no-cov -n 0 -p no:randomly
     cwd: .
