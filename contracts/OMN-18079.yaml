@@ -12,6 +12,8 @@ requirements:
     acceptance:
       - id: AC4
         statement: 'AC4: a different served model, missing provider metadata and a retry landing on another model are each named as served, never as requested -- falsifier: uv run pytest tests/test_omn18079_receipt_names_answering_model.py -q --no-cov -n 0 -p no:randomly'
+      - id: AC5
+        statement: 'AC5: the receipt and completed event carry the provider generation id when the provider returns one, and read unknown (never the requested model) when it returns none -- falsifier: uv run pytest tests/test_omn18079_receipt_names_answering_model.py -q --no-cov -n 0 -p no:randomly -k generation'
 evidence_requirements:
   - kind: "ci"
     description: "CI passes on the pull request"
@@ -53,4 +55,13 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/integration/golden_chain/test_sea_acceptance_chain.py -q --no-cov -n 0 -p no:randomly"
+        cwd: .
+  - id: "dod-omn18079-generation-id-on-receipt"
+    description: "The receipt records the provider's own generation id when it returns one; with none returned the id and the answering model read unknown, never the requested model. Both tests fail on the base head (no such field)."
+    source: "manual"
+    binds_ac:
+      - AC5
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/test_omn18079_receipt_names_answering_model.py -q --no-cov -n 0 -p no:randomly -k generation"
         cwd: .

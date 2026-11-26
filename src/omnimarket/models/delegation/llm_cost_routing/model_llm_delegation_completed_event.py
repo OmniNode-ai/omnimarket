@@ -33,6 +33,8 @@ class ModelLlmDelegationCompletedEvent(BaseModel):
     # Model selection
     selected_model: str
     requested_model_id: str | None = None
+    # OMN-18079: the provider's own generation id, None when it returned none.
+    provider_generation_id: str | None = None
     model_id: str
     model_tier: str
     provider: str

@@ -34,6 +34,21 @@ requirements:
   acceptance:
   - id: AC5
     statement: 'AC5: the node test directory passes whole; Falsifier: tests/nodes/node_dev_identity_provision_effect'
+- id: req-omn26476-dev-lane-entry
+  statement: "The gateway key node declares a dev lane entry (own tenant slug, key row names, generated key ids) and refuses every lane pair that is not one declared lane."
+  acceptance:
+  - id: AC6
+    statement: 'AC6: a dev command with a dev overlay provisions the dev tenant and key under the dev names, and a mismatched lane pair is refused with no side effect; Falsifier: tests/nodes/node_stability_gateway_key_provision_effect/test_dev_lane_expiry.py::test_dev_command_with_dev_overlay_provisions_the_dev_tenant_and_key tests/nodes/node_stability_gateway_key_provision_effect/test_dev_lane_expiry.py::test_a_lane_pair_that_is_not_one_declared_lane_is_refused_with_no_side_effect'
+- id: req-omn26476-expiry-written
+  statement: "An entry that declares expires_in_seconds writes tenant_api_keys.expires_at; an entry without it writes none."
+  acceptance:
+  - id: AC7
+    statement: 'AC7: the dev default key and the two-minute expiry check carry their declared expiry and the stability run carries none; Falsifier: tests/nodes/node_stability_gateway_key_provision_effect/test_dev_lane_expiry.py::test_dev_default_key_carries_the_declared_expiry tests/nodes/node_stability_gateway_key_provision_effect/test_dev_lane_expiry.py::test_dev_expiry_check_is_two_minutes_under_its_own_key_id_and_name tests/nodes/node_stability_gateway_key_provision_effect/test_dev_lane_expiry.py::test_stability_default_run_writes_no_expiry'
+- id: req-omn26476-expiry-read
+  statement: "The gateway key lookup refuses a key whose expires_at has passed."
+  acceptance:
+  - id: AC8
+    statement: 'AC8: a key resolves before its expiry and not after it; Falsifier: tests/nodes/node_stability_gateway_key_provision_effect/test_dev_lane_expiry.py::test_store_writes_expires_at_and_the_gateway_refuses_the_key_after_it'
 evidence_requirements:
 - kind: tests
   description: The node's whole test directory, the new bind tests included.
@@ -87,6 +102,33 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_dev_identity_provision_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26476-ac6
+  description: 'AC6: the dev lane entry and the lane-pair refusals.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_stability_gateway_key_provision_effect/test_dev_lane_expiry.py -k "dev_command or lane_pair or declares_dev or generated_key_id" -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26476-ac7
+  description: 'AC7: the expiry is written from the contract.'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_stability_gateway_key_provision_effect/test_dev_lane_expiry.py -k "carries_the_declared_expiry or two_minutes or writes_no_expiry" -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26476-ac8
+  description: 'AC8: the gateway lookup reads the expiry.'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_stability_gateway_key_provision_effect/test_dev_lane_expiry.py -k "refuses_the_key_after_it or still_resolves" -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26476-integration-proof
   description: Run the node's whole test directory on a lab host at the pushed revision.

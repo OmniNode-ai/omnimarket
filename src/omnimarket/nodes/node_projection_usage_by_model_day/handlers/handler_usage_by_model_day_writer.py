@@ -40,6 +40,60 @@ _INSERT_CALL = """
     RETURNING call_id
 """
 
+# OMN-25861: migration 0004's columns, each once it is in force. 0004 is authored here and
+# vendored into omnibase_infra after this code merges, so a lane's database can be a step
+# behind the writer; like the key below, the writer follows the columns in force and
+# writes as before until they are there. 0004's two ALTER TABLE statements can commit
+# separately (the forward runner wraps a file in no transaction), so each column is read
+# on its own: the call's backend is stored as soon as its column exists, and the row's
+# backends counted once the day table's column exists too. A column is never dropped, so
+# once in force it stays. Each table is locked before its column is read (_HOLD_CALLS
+# here, _HOLD_AGGREGATE_KEY below): ROW EXCLUSIVE conflicts with the ACCESS EXCLUSIVE lock
+# an ALTER TABLE takes, so the ALTER either committed before the read, and is seen, or
+# waits for this write to commit.
+_HOLD_CALLS = "LOCK TABLE public.usage_by_model_day_calls IN ROW EXCLUSIVE MODE"
+
+_CALLS_BACKEND_IN_FORCE = """
+    SELECT EXISTS (
+        SELECT 1 FROM pg_attribute
+        WHERE attrelid = 'public.usage_by_model_day_calls'::regclass
+          AND attname = 'backend' AND NOT attisdropped
+    )
+"""
+
+_DAY_BACKENDS_IN_FORCE = """
+    SELECT EXISTS (
+        SELECT 1 FROM pg_attribute
+        WHERE attrelid = 'public.usage_by_model_day'::regclass
+          AND attname = 'backends' AND NOT attisdropped
+    )
+"""
+
+_INSERT_CALL_WITH_BACKEND = """
+    INSERT INTO public.usage_by_model_day_calls (
+        call_id, tenant_id, usage_day, model_id, input_tokens, output_tokens,
+        cost_usd, occurred_at, cost_tier_name, usage_source, backend
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    ON CONFLICT (call_id) DO NOTHING
+    RETURNING call_id
+"""
+
+# A row's backends (OMN-25861 D1, the rule of delegation_model_routing_view_v4.sql): the
+# sorted distinct backends its calls were reached through, where the backend is set and
+# differs from the model, so a direct call adds nothing and a row of direct calls serves
+# []. A call that stated no backend (NULL) is unknown, so its row serves NULL rather than
+# a list that reads as complete (JG-19). Sorted by code point (COLLATE "C"), the order the
+# local store's Python sort gives, so both stores serve one order whatever the database's
+# collation.
+_BACKENDS_OF_CALLS = """
+           CASE WHEN bool_or(backend IS NULL) THEN NULL
+                ELSE COALESCE(
+                    jsonb_agg(DISTINCT backend COLLATE "C" ORDER BY backend COLLATE "C")
+                        FILTER (WHERE backend <> '' AND backend <> model_id),
+                    '[]'::jsonb
+                )
+           END"""
+
 # OMN-21015 (Jonah, 2026-10-15 20:23Z): the writer follows the key in force. Migration
 # 0003 keeps the three-column primary key and adds the four-column unique index the
 # contract migration (OMN-21161) makes the key. True once the tier is in the key.
@@ -156,12 +210,64 @@ _RESHARE_DAY = """
 """
 
 
+def _replace_once(statement: str, edits: tuple[tuple[str, str], ...]) -> str:
+    """``statement`` with each anchor replaced, refusing an anchor that is not there exactly once."""
+    for anchor, replacement in edits:
+        if statement.count(anchor) != 1:
+            raise RuntimeError(f"writer statement anchor not found once: {anchor!r}")
+        statement = statement.replace(anchor, replacement)
+    return statement
+
+
+def _counting_backends(recount: str) -> str:
+    """A recount that also writes the row's backends, for a database with 0004 in force."""
+    return _replace_once(
+        recount,
+        (
+            (
+                "call_count, updated_at\n    )",
+                "call_count, updated_at, backends\n    )",
+            ),
+            (
+                "COUNT(*), clock_timestamp()",
+                "COUNT(*), clock_timestamp()," + _BACKENDS_OF_CALLS,
+            ),
+            (
+                "projection_cursor = EXCLUDED.projection_cursor",
+                "projection_cursor = EXCLUDED.projection_cursor,\n"
+                "        backends = EXCLUDED.backends",
+            ),
+        ),
+    )
+
+
+# The same statements once 0004 is in force: each recount also writes the row's
+# backends, and the day's rows are returned with them for the bus snapshot.
+_RECOUNT_MODEL_DAY_UNDER_OLD_KEY_WITH_BACKENDS = _counting_backends(
+    _RECOUNT_MODEL_DAY_UNDER_OLD_KEY
+)
+_RECOUNT_AGGREGATE_WITH_BACKENDS = _counting_backends(_RECOUNT_AGGREGATE)
+_RESHARE_DAY_WITH_BACKENDS = _replace_once(
+    _RESHARE_DAY,
+    (
+        (
+            "agg.call_share, agg.updated_at, agg.projection_cursor",
+            "agg.call_share, agg.updated_at, agg.projection_cursor, agg.backends",
+        ),
+    ),
+)
+
+
 def _wire_row(row: dict[str, Any]) -> dict[str, Any]:
+    # asyncpg returns JSONB as its text; backends (OMN-25861) is decoded so the row this
+    # writer returns carries the list the exposure serves, not its JSON text.
     return {
         key: value.isoformat()
         if isinstance(value, date | datetime)
         else str(value)
         if isinstance(value, Decimal)
+        else json.loads(value)
+        if key == "backends" and isinstance(value, str)
         else value
         for key, value in row.items()
     }
@@ -193,8 +299,7 @@ async def write_usage_call(
         )
 
     usage_day = date.fromisoformat(delta.usage_day)
-    inserted = await conn.fetch(
-        sql(_INSERT_CALL),
+    call = (
         delta.call_id,
         delta.tenant_id,
         usage_day,
@@ -206,17 +311,37 @@ async def write_usage_call(
         delta.cost_tier_name,
         delta.usage_source.value,
     )
+    # OMN-25861: each of 0004's columns is written only once it exists (_CALLS_BACKEND_IN_FORCE).
+    await conn.execute(sql(_HOLD_CALLS))
+    if await conn.fetchval(sql(_CALLS_BACKEND_IN_FORCE)):
+        inserted = await conn.fetch(
+            sql(_INSERT_CALL_WITH_BACKEND), *call, delta.backend
+        )
+    else:
+        inserted = await conn.fetch(sql(_INSERT_CALL), *call)
     if not inserted:
         return None
     key = (delta.tenant_id, usage_day, delta.model_id)
     removed: list[Any] = []
     await conn.execute(sql(_HOLD_AGGREGATE_KEY))
+    # A row's backends are counted only when the day table has the column and the calls
+    # table has the backends to count; 0004 adds the calls column first.
+    backends = bool(await conn.fetchval(sql(_DAY_BACKENDS_IN_FORCE))) and bool(
+        await conn.fetchval(sql(_CALLS_BACKEND_IN_FORCE))
+    )
     if await conn.fetchval(sql(_TIER_KEY_IN_FORCE)):
-        await conn.execute(sql(_RECOUNT_AGGREGATE), *key)
+        recount = _RECOUNT_AGGREGATE_WITH_BACKENDS if backends else _RECOUNT_AGGREGATE
+        await conn.execute(sql(recount), *key)
         removed = list(await conn.fetch(sql(_DROP_TIERS_WITHOUT_CALLS), *key))
     else:
-        await conn.execute(sql(_RECOUNT_MODEL_DAY_UNDER_OLD_KEY), *key)
-    rows = list(await conn.fetch(sql(_RESHARE_DAY), delta.tenant_id, usage_day))
+        recount = (
+            _RECOUNT_MODEL_DAY_UNDER_OLD_KEY_WITH_BACKENDS
+            if backends
+            else _RECOUNT_MODEL_DAY_UNDER_OLD_KEY
+        )
+        await conn.execute(sql(recount), *key)
+    reshare = _RESHARE_DAY_WITH_BACKENDS if backends else _RESHARE_DAY
+    rows = list(await conn.fetch(sql(reshare), delta.tenant_id, usage_day))
     return UsageCallWrite(rows=rows, removed=removed)
 
 

@@ -223,3 +223,32 @@ def test_inference_intent_names_reported_model_and_never_the_requested_one() -> 
         _answering_model({"model": _OTHER}, _REQUESTED, frozenset({_REQUESTED}))
         == _OTHER
     )
+
+
+def test_receipt_records_the_provider_generation_id_when_it_returns_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    body = {**OK_BODY, "id": "gen-1764-abcdef", "model": "vendor/served:free"}
+    _bind(monkeypatch, [body], [GEMMA])
+    request = _request()
+    result = effect.HandlerLlmDelegationCall().__call__(request)
+    assert result.success, result.error_message
+    assert result.provider_generation_id == "gen-1764-abcdef"
+    event = effect.HandlerLlmDelegationCall()._build_completed_event(request, result)
+    assert event.provider_generation_id == "gen-1764-abcdef"
+    assert event.model_id == "vendor/served:free"
+
+
+def test_missing_generation_id_reads_unknown_never_the_requested_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    body = {k: v for k, v in OK_BODY.items() if k not in ("id", "model")}
+    _bind(monkeypatch, [body], [GEMMA])
+    request = _request()
+    result = effect.HandlerLlmDelegationCall().__call__(request)
+    assert result.success, result.error_message
+    assert result.provider_generation_id is None
+    event = effect.HandlerLlmDelegationCall()._build_completed_event(request, result)
+    assert event.provider_generation_id is None
+    assert event.model_id == "unknown"
+    assert event.model_id != GEMMA

@@ -1559,6 +1559,12 @@ class HandlerLlmDelegationCall:
         reported_model = response_json.get("model")
         if isinstance(reported_model, str) and reported_model.strip():
             served_model_id = reported_model.strip()
+        generation_id = response_json.get("id")
+        provider_generation_id = (
+            generation_id.strip()
+            if isinstance(generation_id, str) and generation_id.strip()
+            else None
+        )
         tokens_in, tokens_out = _extract_usage(response_json)
         cache_read, cache_write_5m, cache_write_1h = cache_usage_figures(
             response_json.get("usage") or {}
@@ -1618,6 +1624,7 @@ class HandlerLlmDelegationCall:
             quality_gate_passed=True,
             endpoint_healthy=True,
             served_model_id=served_model_id,
+            provider_generation_id=provider_generation_id,
             finish_reason=finish_reason,
             http_status=200,
         )
@@ -1751,6 +1758,7 @@ class HandlerLlmDelegationCall:
         attributed_model_id = result.served_model_id or "unknown"
         return ModelLlmDelegationCompletedEvent(
             requested_model_id=request.model_id,
+            provider_generation_id=result.provider_generation_id,
             correlation_id=request.correlation_id,
             causation_id=request.causation_id,
             request_id=request.request_id,
