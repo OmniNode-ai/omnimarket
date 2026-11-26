@@ -40,6 +40,8 @@ from urllib.parse import urlsplit
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.handlers.routing.provider_feature_flags import provider_turned_off
+
 CATALOG_PROVIDERS_PATH = Path(__file__).with_name("byok_catalog_providers.yaml")
 PLAN_RULINGS_PATH = Path(__file__).with_name("byok_catalog_plan_rulings.yaml")
 ADDED_PROVIDERS_PATH = Path(__file__).with_name("byok_catalog_added_providers.yaml")
@@ -305,7 +307,8 @@ def load_byok_catalog_added_providers() -> tuple[ModelByokCatalogAddedProvider, 
             )
         if any(a.id == provider.id for a in added):
             raise ByokCatalogListError(f"{provider.id!r} is added more than once")
-        added.append(provider)
+        if provider_turned_off(provider.id) is None:  # OMN-26688
+            added.append(provider)
     return tuple(added)
 
 

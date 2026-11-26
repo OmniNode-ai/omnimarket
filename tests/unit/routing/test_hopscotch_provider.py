@@ -53,6 +53,7 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -93,8 +94,9 @@ def test_hopscotch_is_in_the_customer_catalogue() -> None:
     assert "hopscotch" in customer_provider_catalogue()
 
 
-def test_onex_models_add_accepts_hopscotch() -> None:
-    """H1: the installed `onex`, whose provider choice is built from the catalogue."""
+def test_onex_models_add_help_leaves_hopscotch_out() -> None:
+    """H1: the installed `onex`. Its help reads the same with the flag on or off, so it
+    does not name Hopscotch, which a feature flag keeps off by default (OMN-26688)."""
     onex = Path(sys.executable).parent / "onex"
     shown = subprocess.run(
         [str(onex), "models", "add", "--help"],
@@ -107,7 +109,9 @@ def test_onex_models_add_accepts_hopscotch() -> None:
     said = " ".join(shown.stdout.split())
     providers = re.search(r"PROVIDER is ([a-z_, ]+?) or the id", said)
     assert providers is not None, shown.stdout
-    assert "hopscotch" in re.split(r",\s*|\s+or\s+", providers.group(1))
+    named = re.split(r",\s*|\s+or\s+", providers.group(1))
+    assert "openai" in named  # the control: the list was read
+    assert "hopscotch" not in named
 
 
 def test_the_row_is_what_the_docs_say() -> None:
@@ -347,3 +351,30 @@ def test_a_hopscotch_key_is_recognised_under_another_provider() -> None:
     """H5."""
     key = "ub_live_" + "a" * 43
     assert key_provider_hint(key, for_provider="openai") == "hopscotch"
+
+
+@pytest.fixture(autouse=True)
+def _hopscotch_turned_on(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """These tests are Hopscotch itself: its feature flag is on for them (OMN-26688)."""
+    from omnimarket.handlers.routing import (
+        byok_catalog_providers,
+        byok_provider_backends,
+    )
+    from omnimarket.nodes.node_onex_setup_effect.models import (
+        model_setup_provider_traits,
+    )
+
+    caches = (
+        byok_catalog_providers.load_byok_catalog_added_providers,
+        byok_catalog_providers.load_byok_catalog_providers,
+        byok_provider_backends.load_byok_provider_catalog,
+        byok_provider_backends.load_byok_plan_catalog,
+        model_setup_provider_traits._listed_picker,
+    )
+    monkeypatch.setenv("ONEX_ENABLE_HOPSCOTCH", "1")
+    for cache in caches:
+        cache.cache_clear()
+    yield
+    monkeypatch.delenv("ONEX_ENABLE_HOPSCOTCH")
+    for cache in caches:
+        cache.cache_clear()

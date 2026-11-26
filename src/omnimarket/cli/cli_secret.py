@@ -69,6 +69,7 @@ from omnimarket.handlers.routing.byok_provider_backends import (
     resolve_byok_provider_backend,
 )
 from omnimarket.handlers.routing.local_byok_route import house_provider_slug
+from omnimarket.handlers.routing.provider_feature_flags import provider_turned_off
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     local_credential_registered_at,
@@ -933,9 +934,9 @@ def add_model(
 ) -> None:
     """Store PROVIDER's key, then test it with one delegation pinned to it.
 
-    PROVIDER is gemini, openai, openrouter, reflection, anthropic, zai,
-    hopscotch, local or openai_compatible, or the id of a provider on the
-    models.dev list, such as deepseek.
+    PROVIDER is gemini, openai, openrouter, reflection, anthropic, zai, local
+    or openai_compatible, or the id of a provider on the models.dev list, such
+    as deepseek.
 
     The key is read from stdin when piped, or asked for at a hidden prompt. A key
     already stored for PROVIDER is replaced, with the models named here as its ordered
@@ -1027,6 +1028,8 @@ def test_models(provider: str | None, as_json: bool) -> None:
 def list_models(as_json: bool) -> None:
     """Each provider: set up or not, and its last test result."""
     rows = listed(as_json)  # OMN-21267: the rule in force first
+    # OMN-26688: a provider whose feature flag is unset is not shown.
+    rows = tuple(r for r in rows if provider_turned_off(r.provider) is None)
     if not as_json:
         # OMN-23413: the TUI's /config order; the one tried first still leads.
         order = {p: i for i, p in enumerate(provider_labels.LISTED_PROVIDERS)}

@@ -50,6 +50,18 @@ picker:
   - provider: hopscotch
     label: Hopscotch
     hint: Create a key on the Keys screen at platform.hopscotchlabs.ai.
+  # opencode.ai/docs (read 2026-11-26): pay as you go, per request, from credits;
+  # a key is made in the Console at opencode.ai/console (Account, Personal API
+  # keys) and shown once; the base URL is opencode.ai/inference with
+  # /openai/v1/chat/completions. Free-tier models answer only OpenCode itself.
+  # OpenCode Go is not offered here: its docs ask every client for an
+  # x-opencode-session header onex does not send. OMN-26688, operator
+  # 2026-11-26: "add https://opencode.ai/ as a provider".
+  - provider: opencode
+    label: OpenCode
+    hint: >-
+      Create a key in the OpenCode Console at opencode.ai/console: Account, then
+      Personal API keys. Paid models only; the free ones answer only OpenCode.
   - provider: local
     label: Local Model
     hint: >-

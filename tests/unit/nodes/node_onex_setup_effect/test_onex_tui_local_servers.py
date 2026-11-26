@@ -20,6 +20,7 @@ import json
 import pytest
 from textual.widgets import DataTable, Static
 
+from omnimarket.handlers.routing.provider_feature_flags import provider_turned_off
 from omnimarket.models.model_local_server_details import ModelLocalServerDetails
 from omnimarket.nodes.node_onex_setup_effect.cli_model_table import entry_key
 from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
@@ -357,7 +358,11 @@ async def test_config_lists_providers_in_yaml_order_and_fills_no_url() -> None:
         await _open(pilot, "/config")
         assert isinstance(app.screen, SetupScreen)
         # Only the providers written from official docs (OMN-26688 T15).
-        picker = setup_provider_traits().picker
+        picker = [  # less a provider its feature flag keeps off
+            e
+            for e in setup_provider_traits().picker
+            if provider_turned_off(e.provider) is None
+        ]
         select = app.screen.query_one("#provider")  # radio options (OMN-23413)
         assert {b.name for b in select.query(RadioButton)} == {
             entry.provider for entry in picker

@@ -31,6 +31,7 @@ import click
 import pytest
 from textual.pilot import Pilot
 
+from omnimarket.handlers.routing.provider_feature_flags import provider_turned_off
 from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
     ModelTuiStatus,
     OnexTui,
@@ -1033,21 +1034,29 @@ def test_config_providers_come_from_the_traits_file_in_its_order() -> None:
     choices = cli_tui._picker()
     # The file's order, not sorted; only what it writes from official docs, no
     # models.dev list (operator 2026-11-26, OMN-26688 T15).
-    assert choices == traits.picker
+    assert choices == tuple(  # less a provider its feature flag keeps off
+        e for e in traits.picker if provider_turned_off(e.provider) is None
+    )
     assert choices[-1].provider == "local"
     # One entry for every OpenAI-compatible server: no separate Ollama or vLLM.
     assert [e.provider for e in choices if e in traits.picker] == [
-        "gemini",
-        "openai",
-        "openrouter",
-        "reflection",
-        # Operator 2026-11-26: more providers. setup already adds and lists
-        # both (onex models add anthropic|glm; each backend's models_url).
-        "anthropic",
-        "glm",
-        # Operator 2026-11-26, from its own docs (OMN-26688).
-        "hopscotch",
-        "local",
+        name
+        for name in [
+            "gemini",
+            "openai",
+            "openrouter",
+            "reflection",
+            # Operator 2026-11-26: more providers. setup already adds and lists
+            # both (onex models add anthropic|glm; each backend's models_url).
+            "anthropic",
+            "glm",
+            # Operator 2026-11-26, from its own docs (OMN-26688).
+            "hopscotch",
+            # Operator 2026-11-26, from its own docs (OMN-26688).
+            "opencode",
+            "local",
+        ]
+        if provider_turned_off("hopscotch") is None or name != "hopscotch"
     ]
     assert [e.provider for e in choices if not cli_tui._hosted(e.provider)] == ["local"]
     assert not hasattr(cli_tui, "_default_url")  # no made-up server URL

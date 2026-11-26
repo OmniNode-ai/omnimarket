@@ -8,7 +8,8 @@ publishes about each model: its display name, context window and price per
 million tokens (OpenRouter publishes all three; Google publishes a display name,
 token limits and whether it thinks; Anthropic a display name, limits and
 capabilities; Reflection limits, input kinds and reasoning; Hopscotch all of it
-in a ``uniblock`` block; OpenAI publishes ids only, so nothing is invented for
+in a ``uniblock`` block; OpenCode all of it, with a type and a free tier only
+OpenCode itself may use; OpenAI publishes ids only, so nothing is invented for
 it). Each shape is the provider's own docs, read 2026-11-26 (OMN-26688).
 
 The read is the same one discovery makes: one GET to the catalogue row's
@@ -206,9 +207,74 @@ def _says_more(body: Any) -> bool:
     return isinstance(body, dict) and body.get("has_more") is True
 
 
+#: OpenCode's list (opencode.ai/docs, models endpoint, read 2026-11-26) marks each
+#: entry with the API it recommends; no other provider's row carries this key.
+_OPENCODE_MARK = "recommended_api"
+#: OpenCode's capability objects, each ``{"supported": bool}``.
+_OPENCODE_PARAMETERS = {"tools": "tools", "reasoning": "reasoning"}
+#: OpenCode's input media types, as the words the other lists use.
+_MEDIA_WORDS = {
+    "text": "text",
+    "image": "image",
+    "audio": "audio",
+    "application": "file",
+}
+
+
+def _opencode_price(entry: dict[str, Any], side: str) -> float | None:
+    """``cost.text.<side>.price``: USD per 1M tokens (the docs' pricing). A
+    price OpenCode does not state is unknown, never free."""
+    cost = entry.get("cost")
+    text = cost.get("text") if isinstance(cost, dict) else None
+    block = text.get(side) if isinstance(text, dict) else None
+    price = block.get("price") if isinstance(block, dict) else None
+    if isinstance(price, bool) or not isinstance(price, int | float) or price < 0:
+        return None
+    return round(float(price), 6)
+
+
+def _opencode_limit(entry: dict[str, Any], field: str) -> int | None:
+    limit = entry.get("limit")
+    return _whole(limit.get(field)) if isinstance(limit, dict) else None
+
+
+def _opencode_inputs(entry: dict[str, Any]) -> tuple[str, ...]:
+    """``modalities.input`` media types ("image/png") as words ("image")."""
+    modalities = entry.get("modalities")
+    raw = modalities.get("input") if isinstance(modalities, dict) else None
+    words: list[str] = []
+    for media in _strings(raw):
+        word = _MEDIA_WORDS.get(media.split("/", 1)[0])
+        if word is not None and word not in words:
+            words.append(word)
+    return tuple(words)
+
+
+def _opencode_parameters(entry: dict[str, Any]) -> tuple[str, ...]:
+    said = _supported(entry, _OPENCODE_PARAMETERS)
+    capabilities = entry.get("capabilities")
+    if isinstance(capabilities, dict) and capabilities.get("structured_output") is True:
+        said += ("structured_outputs",)
+    return said
+
+
+def _opencode_usable(entry: dict[str, Any]) -> bool:
+    """A paid chat model: "Free-tier chat models are only available from within
+    OpenCode. Other harnesses receive HTTP 403 for those models"; embedding,
+    image, video, realtime and decision models do not chat."""
+    if entry.get("type") != "chat":
+        return False
+    return not (
+        _opencode_price(entry, "input") == 0 and _opencode_price(entry, "output") == 0
+    )
+
+
 def _chats(entry: dict[str, Any]) -> bool:
     """Google names what a model does in ``supportedGenerationMethods``; one
-    that names some, none of them generateContent, cannot chat."""
+    that names some, none of them generateContent, cannot chat. OpenCode states
+    a type and a price (OMN-26688)."""
+    if _OPENCODE_MARK in entry:
+        return _opencode_usable(entry)
     methods = entry.get("supportedGenerationMethods")
     if isinstance(methods, list) and methods:
         return "generateContent" in methods
@@ -229,6 +295,8 @@ def _listed(entry: dict[str, Any]) -> ModelByokListedModel | None:
     arch_raw = entry.get("architecture")
     arch: dict[str, Any] = arch_raw if isinstance(arch_raw, dict) else {}
     block = _extension(entry)
+    if _OPENCODE_MARK in entry:
+        return _opencode_listed(model_id, entry)
     label = (
         entry.get("displayName")
         or (entry.get("name") if "id" in entry else None)
@@ -265,6 +333,20 @@ def _listed(entry: dict[str, Any]) -> ModelByokListedModel | None:
         input_modalities=_strings(arch.get("input_modalities"))
         or _strings(entry.get("input_modalities"))  # Reflection
         or _said(block, _SAID_INPUTS) + _supported(entry, _ANTHROPIC_INPUTS),
+    )
+
+
+def _opencode_listed(model_id: str, entry: dict[str, Any]) -> ModelByokListedModel:
+    """One OpenCode entry, every detail as its list states it (OMN-26688)."""
+    return ModelByokListedModel(
+        id=model_id,
+        name=_text(entry.get("name")) or model_id,
+        context_tokens=_opencode_limit(entry, "context"),
+        max_output_tokens=_opencode_limit(entry, "output"),
+        input_usd_per_million=_opencode_price(entry, "input"),
+        output_usd_per_million=_opencode_price(entry, "output"),
+        supported_parameters=_opencode_parameters(entry),
+        input_modalities=_opencode_inputs(entry),
     )
 
 

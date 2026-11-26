@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Providers kept off until their flag is set to 1, true, yes or on (OMN-26688).
+# Read by provider_feature_flags.py.
+schema_version: provider_feature_flags.v1
+flags:
+  # Operator 2026-11-26: off until an agreement with the provider is in place.
+  hopscotch: ONEX_ENABLE_HOPSCOTCH

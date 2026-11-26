@@ -46,6 +46,7 @@ Fakes only: the model list and the pinned delegation are stubs; no network.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -63,6 +64,7 @@ from omnimarket.handlers.routing.byok_provider_backends import (
     customer_provider_catalogue,
     resolve_byok_provider_backend,
 )
+from omnimarket.handlers.routing.provider_feature_flags import provider_turned_off
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     registered_local_byok_providers,
@@ -548,6 +550,9 @@ def test_the_add_help_names_every_provider_whole_at_80_columns() -> None:
 
     said = " ".join(result.output.split())
     for name in _SHOWN_NAMES:
+        if provider_turned_off(name) is not None:  # a feature flag keeps it off
+            assert not re.search(rf"\b{name}\b", said), (name, result.output)
+            continue
         assert re.search(rf"\b{name}\b", said), (name, result.output)
     assert not re.search(r"\bglm\b", said), result.output  # Z.AI is zai
 
@@ -567,6 +572,7 @@ _HOPSCOTCH = ("hopscotch", "Hopscotch", "https://api.hopscotchlabs.ai/v1")
 _HOPSCOTCH_KEY = "ub_live_synthetic-omn26688-hopscotch-never-printed"
 
 
+@pytest.mark.usefixtures("_hopscotch_turned_on")
 def test_hopscotch_is_added_routed_and_picked_under_its_own_key(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -627,7 +633,8 @@ def test_every_added_row_keeps_the_lists_rules_and_names_its_source() -> None:
         assert not m._is_plan(row["id"], row["name"]), row
         assert row["source"].startswith("https://"), row
     loaded = m.load_byok_catalog_providers()
-    assert {row["id"] for row in rows} <= set(loaded)
+    on = {row["id"] for row in rows if provider_turned_off(row["id"]) is None}
+    assert on <= set(loaded)
 
 
 def test_a_provider_whose_address_does_not_work_is_offered_nowhere(
@@ -674,3 +681,30 @@ def test_every_withheld_row_says_why_and_is_still_listed() -> None:
         assert row["evidence"].strip(), row
     held = {w.provider for w in m.load_byok_catalog_withheld()}
     assert held == set(_DEAD)
+
+
+@pytest.fixture
+def _hopscotch_turned_on(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Hopscotch's feature flag on for one test, every catalog read afresh (OMN-26688)."""
+    from omnimarket.handlers.routing import (
+        byok_catalog_providers,
+        byok_provider_backends,
+    )
+    from omnimarket.nodes.node_onex_setup_effect.models import (
+        model_setup_provider_traits,
+    )
+
+    caches = (
+        byok_catalog_providers.load_byok_catalog_added_providers,
+        byok_catalog_providers.load_byok_catalog_providers,
+        byok_provider_backends.load_byok_provider_catalog,
+        byok_provider_backends.load_byok_plan_catalog,
+        model_setup_provider_traits._listed_picker,
+    )
+    monkeypatch.setenv("ONEX_ENABLE_HOPSCOTCH", "1")
+    for cache in caches:
+        cache.cache_clear()
+    yield
+    monkeypatch.delenv("ONEX_ENABLE_HOPSCOTCH")
+    for cache in caches:
+        cache.cache_clear()

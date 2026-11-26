@@ -103,6 +103,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from omnimarket.handlers.routing.byok_catalog_providers import (
     load_byok_catalog_providers,
 )
+from omnimarket.handlers.routing.provider_feature_flags import provider_turned_off
 
 logger = logging.getLogger(__name__)
 
@@ -762,7 +763,11 @@ def load_byok_plan_catalog() -> dict[tuple[str, str], ModelByokProviderBackend]:
     """
     declared = _read_plan_catalog(CATALOG_PATH)
     # OMN-26688: then each provider on the shipped models.dev list.
-    return {**_catalog_list_rows(declared), **declared}
+    rows = {**_catalog_list_rows(declared), **declared}
+    # OMN-26688: a provider whose feature flag is unset has no backend.
+    return {
+        key: row for key, row in rows.items() if provider_turned_off(key[0]) is None
+    }
 
 
 @lru_cache(maxsize=1)
@@ -784,10 +789,12 @@ def load_byok_provider_catalog() -> dict[str, ModelByokProviderBackend]:
             exactly one default plan.
     """
     declared = _read_plan_catalog(CATALOG_PATH)
-    return {
+    rows = {
         **_default_plan_rows(_catalog_list_rows(declared)),
         **_default_plan_rows(declared),
     }
+    # OMN-26688: a provider whose feature flag is unset has no backend.
+    return {p: row for p, row in rows.items() if provider_turned_off(p) is None}
 
 
 def _read_not_offered(path: Path) -> dict[str, ModelByokNotOfferedProvider]:

@@ -42,6 +42,7 @@ from omnimarket.handlers.routing.byok_provider_backends import (
     customer_provider_catalogue,
     resolve_byok_provider_backend,
 )
+from omnimarket.handlers.routing.provider_feature_flags import provider_turned_off
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     registered_local_byok_providers,
@@ -166,7 +167,7 @@ class TestTheProviderListFollowsTheCatalogue:
         result = CliRunner().invoke(models_group, ["list", "--json"])
         assert result.exit_code == 0, result.output
         listed = [json.loads(line)["provider"] for line in result.output.splitlines()]
-        assert listed == list(PROVIDERS)
+        assert listed == [p for p in PROVIDERS if provider_turned_off(p) is None]
         assert all(
             not json.loads(line)["set_up"] for line in result.output.splitlines()
         )

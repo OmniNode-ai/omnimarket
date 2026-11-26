@@ -51,6 +51,7 @@ from omnimarket.handlers.routing.byok_provider_backends import (
     require_byok_plan_permitted,
     resolve_byok_provider_backend,
 )
+from omnimarket.handlers.routing.provider_feature_flags import provider_turned_off
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     registered_local_byok_providers,
@@ -719,6 +720,11 @@ def add_key(
     recorded and returned whether it passed or failed: the key stays stored
     either way, as ``onex models add`` has always left it.
     """
+    if provider_turned_off(provider) is not None:  # OMN-26688
+        raise ModelKeyRefusedError(
+            f"{MODEL_LABELS.get(provider, provider)} is not available in onex yet. "
+            "Nothing was stored."
+        )
     # Credentials-page updates an earlier change could not apply go first, in order.
     drain_pending_credential_events(LocalByokCredentialStore().db_path)
     if len(set(models)) != len(models):

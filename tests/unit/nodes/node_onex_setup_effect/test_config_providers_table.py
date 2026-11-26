@@ -53,6 +53,7 @@ from pydantic import SecretStr
 from textual.widgets import Button, DataTable, Input, Static
 
 from omnimarket.handlers.model_catalog import ModelsDevIndex
+from omnimarket.handlers.routing.provider_feature_flags import provider_turned_off
 from omnimarket.nodes.node_onex_setup_effect import cli_tui
 from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
     KeyScreen,
@@ -222,7 +223,11 @@ async def test_config_is_two_tabs_of_provider_and_status() -> None:
         assert screen.view == "configured"
         assert _rows(screen) == ["openrouter", "ollama"]
         assert "ready" in _cells(screen, "openrouter")[1]
-        picker = {e.provider for e in setup_provider_traits().picker}
+        picker = {  # less a provider its feature flag keeps off
+            e.provider
+            for e in setup_provider_traits().picker
+            if provider_turned_off(e.provider) is None
+        }
         tabs = [str(t.label) for t in screen.query("#views Tab")]
         assert tabs == ["Configured 2", f"Available {len(picker - {'openrouter'})}"]
         table.focus()
@@ -588,11 +593,13 @@ async def test_the_tui_reads_only_what_official_docs_wrote() -> None:
             "hopscotch",
             "local",
             "openai",
+            "opencode",  # operator 2026-11-26, from its own docs
             "openrouter",
             "reflection",
         }
         await _go_to(pilot, screen, "anthropic")
-        assert set(_rows(screen)) == written - {"openrouter"}
+        offered = {p for p in written if provider_turned_off(p) is None}
+        assert set(_rows(screen)) == offered - {"openrouter"}
         await pilot.press("enter")
         await _settle(pilot)
         window = app.screen

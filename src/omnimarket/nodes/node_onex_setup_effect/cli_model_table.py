@@ -708,7 +708,7 @@ class ModelDetailsScreen(ModalScreen[None]):
     #md Horizontal { height: auto; }
     #md .mdk { width: 14; color: $text-muted; }
     """
-    BINDINGS = [Binding("escape,i,q", "close", "Close")]
+    BINDINGS = [Binding("escape,i,q", "close", tui_design().words["button_close"])]
 
     def __init__(self, entry: ModelCatalogEntry, provider_label: str) -> None:
         super().__init__()

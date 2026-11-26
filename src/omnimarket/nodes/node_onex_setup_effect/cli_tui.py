@@ -68,6 +68,7 @@ from textual.widgets._tabs import Underline
 from textual.widgets.option_list import Option
 from textual.worker import Worker
 
+from omnimarket.handlers.routing.provider_feature_flags import provider_turned_off
 from omnimarket.models.model_catalog_entry import Deployment, ModelCatalogEntry
 from omnimarket.models.model_local_server_details import ModelLocalServerDetails
 from omnimarket.nodes.node_onex_setup_effect.cli_model_table import (
@@ -221,7 +222,8 @@ def _picker() -> tuple[ModelSetupPickerProvider, ...]:
     each one's official docs, a server the user runs last. No list from
     models.dev or anywhere else (operator 2026-11-26: "just use offcial docs")."""
     traits = setup_provider_traits()
-    return tuple(sorted(traits.picker, key=lambda p: traits.needs_url(p.provider)))
+    offered = (p for p in traits.picker if provider_turned_off(p.provider) is None)
+    return tuple(sorted(offered, key=lambda p: traits.needs_url(p.provider)))
 
 
 def _usd(amount: float) -> str:
