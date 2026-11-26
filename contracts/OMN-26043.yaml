@@ -21,6 +21,11 @@ requirements:
   acceptance:
   - id: AC7
     statement: "AC7: the delegation checks C13, C14 and C17 run as node_delegation_check_probe_effect through the responder chain and publish each run on the declared result topic -- falsifier: the node's tests pass on the base commit, where neither the node nor the chain module exists"
+- id: req-omn26043-codex-harness-signed-in-only
+  statement: The Codex harness handler answers only from a ChatGPT sign-in, refuses an API-key login by name, and runs the CLI in a clean temporary directory.
+  acceptance:
+  - id: AC8
+    statement: "AC8: HandlerCodexHarnessAttempt refuses a host whose Codex login or environment holds an API key with exit cause api_key_login_refused and launches nothing, forces forced_login_method chatgpt, and runs Codex with its working directory in an empty temporary directory -- falsifier: the three new tests in tests/nodes/node_llm_delegation_call_effect/test_codex_harness_attempt.py fail on the base commit and any of them fails at the head"
 evidence_requirements:
 - kind: tests
   description: The call's pricing function with the real pricing index restored and every socket connect and fetch refused, on a cold ONEX home.
@@ -222,4 +227,13 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_tenant_provision_effect/test_contract_shape.py tests/nodes/node_tenant_provision_effect/test_runtime_publishes_read_answer.py tests/gates/test_contract_publish_parity.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-codex-harness-signed-in-only
+  description: "The Codex harness handler refuses an API-key login (auth.json carrying auth_mode apikey or an OPENAI_API_KEY field, or an OPENAI_API_KEY or CODEX_API_KEY variable in the child environment) with exit cause api_key_login_refused before launching anything, forces forced_login_method chatgpt, and runs the CLI with its working directory in an empty temporary directory under the policy workdir. Known good: a ChatGPT sign-in runs and completes with no file of the caller's tree visible; known bad: either API-key form is refused with the engine never started. The new tests fail on the base commit, where the receipt had no such cause and the CLI ran in the policy workdir, and pass after the change. This binds AC8."
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_llm_delegation_call_effect/test_codex_harness_attempt.py -q --no-cov -n 0 -p no:randomly
     cwd: .

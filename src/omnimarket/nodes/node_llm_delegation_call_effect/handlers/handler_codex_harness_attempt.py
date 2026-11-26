@@ -31,6 +31,26 @@ from ..models.model_codex_harness_attempt import (
     ModelCodexHarnessRequest,
 )
 
+_API_KEY_VARIABLES = ("OPENAI_API_KEY", "CODEX_API_KEY")
+
+
+def _uses_api_key(environment: Mapping[str, str]) -> bool:
+    """True when the host would run Codex on an API key rather than a ChatGPT sign-in.
+
+    Reads only the shape of the login: the ``auth_mode`` marker and whether a key field
+    is present in ``auth.json``, and whether a key variable is set. No value is kept.
+    """
+    if any(environment.get(name) for name in _API_KEY_VARIABLES):
+        return True
+    home = environment.get("CODEX_HOME") or str(Path.home() / ".codex")
+    try:
+        auth = json.loads((Path(home) / "auth.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+    if not isinstance(auth, dict):
+        return False
+    return auth.get("auth_mode") == "apikey" or bool(auth.get("OPENAI_API_KEY"))
+
 
 def _terminate(process: subprocess.Popen[str], grace: float) -> tuple[str, str]:
     """Reap only this attempt's process group, including inherited pipe holders."""
@@ -130,15 +150,28 @@ class HandlerCodexHarnessAttempt:
         if request.timeout_seconds > self.policy.max_timeout_seconds:
             raise ValueError("requested timeout exceeds contract policy")
         started = time.monotonic()
+        child_environment = self._environment.environment()
+        if _uses_api_key(child_environment):
+            return ModelCodexHarnessReceipt(
+                wall_seconds=time.monotonic() - started,
+                model=request.model or "",
+                exit_cause="api_key_login_refused",
+            )
         with tempfile.TemporaryDirectory(
             prefix="codex-attempt-", dir=self.policy.workdir
         ) as scratch:
-            answer_file = Path(scratch) / "answer.txt"
+            # Codex runs inside the empty attempt directory, never in the caller's tree.
+            answer_dir = Path(scratch)
+            workdir = answer_dir / "work"
+            workdir.mkdir()
+            answer_file = answer_dir / "answer.txt"
             argv = [
                 self.policy.executable,
                 "exec",
                 "-C",
-                str(self.policy.workdir.resolve()),
+                str(workdir.resolve()),
+                "-c",
+                'forced_login_method="chatgpt"',
                 "-c",
                 f"model_reasoning_effort={json.dumps(self.policy.reasoning_effort)}",
                 "-c",
@@ -155,12 +188,12 @@ class HandlerCodexHarnessAttempt:
                 "-",
             ]
             # Preserve the host account/config and runtime environment as remote-lane
-            # does. Do not force a login method, replace HOME or copy credentials.
+            # does. The login method is pinned to ChatGPT; HOME and credentials are untouched.
             try:
                 process = subprocess.Popen(
                     argv,
-                    cwd=self.policy.workdir,
-                    env=self._environment.environment(),
+                    cwd=workdir,
+                    env=child_environment,
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
