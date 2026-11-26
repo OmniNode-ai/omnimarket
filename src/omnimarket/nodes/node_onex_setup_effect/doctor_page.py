@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import textwrap
 from collections.abc import Mapping
 from typing import Any
 
@@ -108,6 +109,51 @@ def _coded(message: Any) -> str | None:
     return _table("codes").get(code)
 
 
+def _started(message: Any) -> str | None:
+    """The plain sentence for a message that starts the way the page knows."""
+    text = "" if message is None else str(message).strip()
+    for start, sentence in _table("starts").items():
+        if text.startswith(start):
+            return sentence
+    return None
+
+
+def _missing(message: Any) -> str | None:
+    """ "Missing: A, B" said with each setting's plain name, or None when the
+    page knows none of them."""
+    text = "" if message is None else str(message).strip()
+    if not text.lower().startswith("missing:"):
+        return None
+    known = _table("settings")
+    names = [
+        known[name]
+        for name in (part.strip() for part in text.split(":", 1)[1].split(","))
+        if name in known
+    ]
+    if not names:
+        return None
+    template = _g("missing", "Not set: {names}.")
+    try:
+        return template.format(names=", ".join(names))
+    except (KeyError, ValueError, IndexError):
+        return f"Not set: {', '.join(names)}."
+
+
+def _sentence(message: Any, status: str, *, has_fix: bool = False) -> str:
+    """What the row says: a known code, start or setting first, then the
+    message itself when it is safe, and never nothing for a row that needs
+    attention and names no fix (verify pass 2026-11-26)."""
+    said = (
+        _coded(message)
+        or _started(message)
+        or _missing(message)
+        or _safe_sentence(message, status)
+    )
+    if not said and not has_fix and status in ("unhealthy", "degraded"):
+        return _g("fallback", "Run onex doctor in a terminal for the details.")
+    return said
+
+
 def _mark_for(status: str) -> str:
     key = {
         "healthy": "status_ok",
@@ -183,22 +229,32 @@ def render_doctor_page(
         name = raw_name
         if "_" in name:  # a raw identifier becomes plain words
             name = name.replace("_", " ").capitalize()
-        sentence = _coded(check.get("message")) or _safe_sentence(
-            check.get("message"), status
-        )
         # Only a fix this page can name: /config cannot start Docker.
         fix = fixes.get(raw_name, "") if status != "healthy" else ""
+        sentence = _sentence(check.get("message"), status, has_fix=bool(fix))
         rows.append((_mark_for(status), name, sentence, fix))
 
     # One column each for the mark, the name and the sentence.
     mark_width = max((len(mark) for mark, _, _, _ in rows), default=0)
     name_width = max((len(name) for _, name, _, _ in rows), default=0)
+    # A row too long for the width wraps under its own sentence, not under
+    # the marks (verify pass 2026-11-26, 80 columns).
+    indent = mark_width + 2 + name_width + 2
+    room = width - indent
     for mark, name, sentence, fix in rows:
-        said = "  ".join(
-            part for part in (sentence, f"{fix_prefix} {fix}" if fix else "") if part
-        )
-        row = f"{mark:<{mark_width}}  {name:<{name_width}}  {said}".rstrip()
-        lines.append(row)
+        # A no-break space keeps "fix: /config" in one piece when it wraps.
+        fix_said = f"{fix_prefix}\u00a0{fix}" if fix else ""
+        said = "  ".join(part for part in (sentence, fix_said) if part)
+        head = f"{mark:<{mark_width}}  {name:<{name_width}}  "
+        if len(head) + len(said) <= width or room < 20:
+            lines.append((head + said).replace("\u00a0", " ").rstrip())
+            continue
+        pieces = [
+            piece.replace("\u00a0", " ")
+            for piece in textwrap.wrap(said, room, break_on_hyphens=False)
+        ] or [""]
+        lines.append((head + pieces[0]).rstrip())
+        lines.extend(" " * indent + piece for piece in pieces[1:])
 
     return lines
 

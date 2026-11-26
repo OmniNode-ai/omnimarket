@@ -521,6 +521,12 @@ class ModelTuiDoctorPage(BaseModel):
     fix_prefix: str = Field(default="fix:", min_length=1)
     fixes: dict[str, str] = Field(default_factory=dict)
     codes: dict[str, str] = Field(default_factory=dict)
+    starts: dict[str, str] = Field(default_factory=dict)
+    missing: str = Field(default="Not set: {names}.", min_length=1)
+    settings: dict[str, str] = Field(default_factory=dict)
+    fallback: str = Field(
+        default="Run onex doctor in a terminal for the details.", min_length=1
+    )
 
 
 class ModelTuiMeteringPage(BaseModel):

@@ -756,8 +756,26 @@ doctor_page:
     "Delegation API key": /config
     "Delegation local model": /config
   # A check's fault code, said plainly (its own text holds a URL or path).
+  # Every code omnibase_infra's EnumDelegationDoctorFault names.
   codes:
+    no_identity: "Not signed in to OmniNode delegation."
+    no_key: "No OmniNode delegation key is stored."
+    wrong_key: "OmniNode delegation refused the stored key."
+    gateway_down: "OmniNode delegation does not answer."
+    quota_exhausted: "The delegation quota is used up."
+    no_local_model: "No local model server is set up."
     local_model_not_serving: "A model server you added does not answer."
+    local_model_id_mismatch: "A model server you added serves a different model."
+  # A check's own text by how it starts, said plainly (verify pass 2026-11-26).
+  starts:
+    "Node.js not found": "Node.js is not installed."
+    "Node.js not working": "Node.js is installed but does not run."
+  # "Missing: A, B" names settings; each by a plain name, never its own.
+  missing: "Not set: {names}."
+  settings:
+    LINEAR_API_KEY: "Linear key (only Linear features use it)"
+  # A row that needs attention never shows no reason at all.
+  fallback: "Run onex doctor in a terminal for the details."
 
 # /metering page (OMN-26620 pages worker).
 metering_page:
