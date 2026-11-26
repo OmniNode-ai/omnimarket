@@ -500,7 +500,7 @@ words:
   mine_box: Your providers
   mine_title: Manage providers
   add_box: Add a provider
-  detail_ready: ready
+  detail_ready: ready to use
   detail_failed: last test failed
   detail_untested: not tested yet
   detail_key: key stored

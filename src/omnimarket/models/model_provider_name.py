@@ -19,6 +19,7 @@ DECLARED_PROVIDERS: tuple[str, ...] = (
     "reflection",  # OMN-23413: Reflection AI's OpenAI-compatible API, by key
     "anthropic",
     "glm",
+    "hopscotch",  # OMN-26688: Hopscotch's OpenAI-compatible router, by key
     "local",
     # OMN-21263: any other endpoint that speaks the OpenAI API, by URL, with a key.
     "openai_compatible",

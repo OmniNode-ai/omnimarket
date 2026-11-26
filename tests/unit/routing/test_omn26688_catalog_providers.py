@@ -523,6 +523,7 @@ _SHOWN_NAMES = (
     "reflection",
     "anthropic",
     "zai",
+    "hopscotch",
     "local",
     "openai_compatible",
 )

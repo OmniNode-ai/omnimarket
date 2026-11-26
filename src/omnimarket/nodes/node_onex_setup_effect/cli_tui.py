@@ -167,14 +167,15 @@ def help_renderable(entries: Iterable[ModelTuiCommand]) -> Text:
     # The pairs are packed into short lines, so a line never breaks inside
     # one (H2: Rich breaks even at a no-break space).
     rows: list[Text] = [Text()]
-    for pair in design.words["help_keys"].split(" · "):
+    separator = design.words["hint_separator"]
+    for pair in design.words["help_keys"].split(separator):
         key, _, word = pair.partition(" ")
         row = rows[-1]
         if row and row.cell_len + len(pair) + 3 > _HELP_KEYS_WIDTH:
             row = Text()
             rows.append(row)
         if row:
-            row.append(" · ", style=_style("muted"))
+            row.append(separator, style=_style("muted"))
         row.append(key, style=_style("foreground", "bold"))
         row.append(f" {word}", style=_style("muted"))
     lines += [Text(), *rows]
@@ -1376,8 +1377,13 @@ class ProvidersScreen(_TabbedScreen[None]):
     #provider-search { height: 1; border: none; padding: 0 1; margin-top: 1; background: $boost; }
     #views { margin-top: 1; }
     /* A framed table across the width (T14): header row, striped rows. */
-    #providers { border: round $border; }
-    #providers > .datatable--header { background: $boost; color: $text; text-style: bold; }
+    #providers-box { height: 1fr; border: round $border; }
+    /* The header, then a line, then the rows (operator 2026-11-26: "one libe
+       after provider for better looking?"); its labels sit on the columns. */
+    #providers-head { height: 2; padding: 0 0 0 1; border-bottom: solid $border; }
+    #providers-head Static { text-style: bold; color: $text; }
+    #ph-provider { width: auto; }
+    #ph-status { width: 1fr; }
     #providers > .datatable--even-row { background: $boost 40%; }
     #providers { height: 1fr; background: transparent; scrollbar-size-vertical: 1; scrollbar-color: $border; scrollbar-background: $panel; }
     #note { color: $text-muted; height: auto; }
@@ -1433,7 +1439,16 @@ class ProvidersScreen(_TabbedScreen[None]):
                 active=f"view-{self._view}",
                 id="views",
             )
-            yield _ProviderRows(id="providers", cursor_type="row", zebra_stripes=True)
+            with Vertical(id="providers-box"):
+                with Horizontal(id="providers-head"):
+                    yield Static(_say("col_provider"), id="ph-provider")
+                    yield Static(_say("col_status"), id="ph-status")
+                yield _ProviderRows(
+                    id="providers",
+                    cursor_type="row",
+                    zebra_stripes=True,
+                    show_header=False,
+                )
             yield Static("", id="note")
             with Horizontal(id="cfg-foot"):
                 yield Static(_tab_hint("tab_hint_config"), id="keys")
@@ -1470,6 +1485,8 @@ class ProvidersScreen(_TabbedScreen[None]):
             return
         provider = max(room * 9 // 20, 16)
         widths = (provider, room - provider)
+        # The header's Status label starts where the Status cells do.
+        self.query_one("#ph-provider", Static).styles.width = provider + pad
         if tuple(c.width for c in table.columns.values()) == widths:
             return
         table.clear(columns=True)
@@ -1978,7 +1995,9 @@ class SetupScreen(_TabbedScreen[None]):
         return _say(
             "basket_counted",
             count=f"{total} model{'' if total == 1 else 's'}",
-            providers=" · ".join(f"{_label(p)} {n}" for p, n in per_provider.items()),
+            providers=_say("hint_separator").join(
+                f"{_label(p)} {n}" for p, n in per_provider.items()
+            ),
         )
 
     def _as_stored(self, entry: ModelCatalogEntry, url: str) -> ModelCatalogEntry:
@@ -2772,10 +2791,10 @@ class ModelPickScreen(_TabbedScreen[None]):
     """
     BINDINGS = [
         Binding("escape", "cancel", _say("button_cancel")),
-        Binding("a", "auto", "Auto", show=False),
-        Binding("r,delete", "remove", "Remove", show=False),
+        Binding("a", "auto", show=False),
+        Binding("r,delete", "remove", show=False),
         Binding("d", "details", "Details", show=False),
-        Binding("plus", "add_models", "Add models", show=False),
+        Binding("plus", "add_models", show=False),
     ]
 
     def __init__(self, selection: ModelTuiSelection) -> None:
@@ -3597,7 +3616,7 @@ class TaskCard:
         parts = [self.model, f"{tokens} tokens", f"{self._recorded.get('seconds')} s"]
         if self.state != "fallback" and cost is not None:
             parts.append(f"${cost}")
-        return " · ".join(parts)
+        return _say("hint_separator").join(parts)
 
     def render(self) -> object:
         from rich.text import Text
@@ -3950,7 +3969,12 @@ def _draw_diagram(design: Any, tick: int = 0) -> Text:
         put(x_bracket, y, "│", line)
     put(x_bracket, 1, "┌", line)
     put(x_bracket, 9, "└", line)
-    put(x_bracket, middle, "┼" if words.pulse else "●", line if words.pulse else accent)
+    put(
+        x_bracket,
+        middle,
+        "┼" if words.pulse else design.glyphs.dot_on,
+        line if words.pulse else accent,
+    )
     rest_text = (
         accent.replace("bold", "").strip(),
         _style("foreground"),
@@ -3970,15 +3994,17 @@ def _draw_diagram(design: Any, tick: int = 0) -> Text:
             text_at(x_out + 2, mid, label, rest_text[index])
     if words.pulse:
         if local < left_gap:
-            put(x_task + task_w + local, middle, "●", accent)
+            put(x_task + task_w + local, middle, design.glyphs.dot_on, accent)
         elif local < left_gap + mid_gap:
-            put(x_hub + hub_w + (local - left_gap), middle, "●", accent)
+            put(
+                x_hub + hub_w + (local - left_gap), middle, design.glyphs.dot_on, accent
+            )
         elif local < left_gap + mid_gap + branch_steps:
             cells = branch_cells(target)
             x, y = cells[min(local - left_gap - mid_gap, len(cells) - 1)]
-            put(x, y, "●", accent)
+            put(x, y, design.glyphs.dot_on, accent)
     else:
-        put(x_task + task_w + left_gap // 2, middle, "●", accent)
+        put(x_task + task_w + left_gap // 2, middle, design.glyphs.dot_on, accent)
     text = Text(no_wrap=True)
     for row in grid:
         for char, style in row:
@@ -4054,7 +4080,7 @@ def flow_renderable(tick: int, stops: Sequence[str]) -> Text:
         text.append(" ")
         for position in range(gap - 1):
             if index == leg and position == step:
-                text.append("●", _style("accent", "bold"))
+                text.append(tui_design().glyphs.dot_on, _style("accent", "bold"))
             else:
                 text.append("─", _style("muted"))
         text.append("▶ ", _style("muted"))
@@ -5891,7 +5917,7 @@ class OnexTui(App[int]):
             else _say("last_run_unmeasured", model=model)
         )
         self._last_run = self._last_run_short + (
-            f" · {_say('run_id', run=run_id[:8])}" if run_id else ""
+            _say("hint_separator") + _say("run_id", run=run_id[:8]) if run_id else ""
         )
         self._render_status()
 

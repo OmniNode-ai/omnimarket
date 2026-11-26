@@ -30,11 +30,14 @@ pytestmark = pytest.mark.unit
 
 
 def test_every_catalogue_row_declares_a_non_empty_default_models_list() -> None:
-    for row in load_byok_plan_catalog().values():
+    declared = _read_plan_catalog(CATALOG_PATH)
+    for key, row in load_byok_plan_catalog().items():
         assert isinstance(row.default_models, tuple)
-        if row.endpoint_from_registration:
+        if row.endpoint_from_registration or key not in declared:
             # OMN-21263: a generic endpoint's models are the developer's to
-            # name; the catalogue cannot know which ids it serves.
+            # name; the catalogue cannot know which ids it serves. OMN-26688:
+            # nor for a provider known only from the shipped models.dev list,
+            # whose row onex does not declare; the customer names the model.
             assert row.default_models == ()
             continue
         assert row.default_models

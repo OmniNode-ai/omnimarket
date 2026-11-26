@@ -43,6 +43,13 @@ picker:
   - provider: glm
     label: Z.AI
     hint: Create a Standard API Key at z.ai/manage-apikey/apikey-list.
+  # docs.hopscotchlabs.ai (read 2026-11-26): the product is Hopscotch; a key is
+  # created on the dashboard's Keys screen at platform.hopscotchlabs.ai
+  # (get-started/quickstart, get-started/authentication). OMN-26688, operator
+  # 2026-11-26: "add ... as new provider".
+  - provider: hopscotch
+    label: Hopscotch
+    hint: Create a key on the Keys screen at platform.hopscotchlabs.ai.
   - provider: local
     label: Local Model
     hint: >-

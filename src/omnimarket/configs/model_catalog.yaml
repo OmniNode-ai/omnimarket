@@ -54,6 +54,10 @@ provider_ids:
   reflection: reflection
   anthropic: anthropic
   glm: zai
+  # On the shipped list under its own id already; named here because /config
+  # offers it (OMN-26688). The TUI reads no models.dev; its model details come
+  # from Hopscotch's own list answer.
+  hopscotch: hopscotch
 
 # Capability shown in the table -> how models.dev states it. `field`: a boolean
 # on the model; `input`: a value in modalities.input; `cost`: a priced field

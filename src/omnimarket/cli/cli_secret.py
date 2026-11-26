@@ -933,9 +933,9 @@ def add_model(
 ) -> None:
     """Store PROVIDER's key, then test it with one delegation pinned to it.
 
-    PROVIDER is gemini, openai, openrouter, reflection, anthropic, zai, local or
-    openai_compatible, or the id of a provider on the models.dev list, such as
-    deepseek.
+    PROVIDER is gemini, openai, openrouter, reflection, anthropic, zai,
+    hopscotch, local or openai_compatible, or the id of a provider on the
+    models.dev list, such as deepseek.
 
     The key is read from stdin when piped, or asked for at a hidden prompt. A key
     already stored for PROVIDER is replaced, with the models named here as its ordered

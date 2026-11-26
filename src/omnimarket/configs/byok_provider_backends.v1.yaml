@@ -651,6 +651,52 @@ providers:
             UTC day plus concurrency, with an optional daily token allowance. No
             numbers are published.
 
+  # OMN-26688 (operator 2026-11-26: "add
+  # https://docs.hopscotchlabs.ai/get-started/quickstart as new provider"). A
+  # customer-only surface: the platform holds no Hopscotch key. Every value
+  # below is from Hopscotch's own docs, read 2026-11-26, not from models.dev:
+  # OpenAI-compatible, an OpenAI SDK's base URL https://api.hopscotchlabs.ai/v1,
+  # chat at /v1/chat/completions (get-started/quickstart); a Bearer key, which
+  # starts ub_live_ when the dashboard issues it (get-started/authentication);
+  # keys are created on the dashboard's Keys screen at
+  # https://platform.hopscotchlabs.ai, never through the API; GET /v1/models
+  # lists what a key may run, each id provider-qualified (openai/gpt-4o-mini),
+  # and a bare id is refused (api-reference/models/list-models,
+  # features/models). The docs publish no model list ("This site publishes no
+  # list of models"); every page's first request names openai/gpt-4o-mini, so
+  # that is the default, and the customer names any other. No rate limit
+  # numbers are published. Not yet measured with a key.
+  - provider: hopscotch
+    key_page: https://platform.hopscotchlabs.ai/
+    key_prefixes: ["ub_live_"]
+    plan: api
+    mirrors_house_rung: false
+    backend_id: byok-hopscotch
+    endpoint_url: "https://api.hopscotchlabs.ai/v1/chat/completions"
+    models_url: "https://api.hopscotchlabs.ai/v1/models"
+    customer_chooses_model: true
+    model_preference:
+      - pattern: '[a-z0-9-]+/.+'
+        tags: [developer_named]
+    default_models:
+      - "openai/gpt-4o-mini"
+    max_retries: 2
+    timeout_ms: 300000
+    max_tokens: 8192
+    limit_model:
+      billing: pay_as_you_go
+      counter_scope: model
+      windows:
+        - window_hours: 24
+          unit: requests
+          limit: null
+          source: >-
+            Hopscotch rate limits (docs.hopscotchlabs.ai api-reference/headers),
+            read 2026-11-26: answered per request in the
+            x-uniblock-ratelimit-requests-limit, -remaining and -reset headers,
+            with 429 rate_limit_exceeded and Retry-After. No numbers are
+            published.
+
   - provider: openai_compatible
     plan: by_url
     mirrors_house_rung: false

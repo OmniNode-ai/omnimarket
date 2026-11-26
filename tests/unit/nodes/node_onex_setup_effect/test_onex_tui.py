@@ -1050,6 +1050,8 @@ def test_config_providers_come_from_the_traits_file_in_its_order() -> None:
         # both (onex models add anthropic|glm; each backend's models_url).
         "anthropic",
         "glm",
+        # Operator 2026-11-26, from its own docs (OMN-26688).
+        "hopscotch",
         "local",
     ]
     assert [e.provider for e in choices if not cli_tui._hosted(e.provider)] == ["local"]

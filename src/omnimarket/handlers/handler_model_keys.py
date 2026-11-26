@@ -125,6 +125,7 @@ KEYED_PROVIDERS: tuple[ModelProvider, ...] = (
     "reflection",
     "anthropic",
     "glm",
+    "hopscotch",
     "openai_compatible",
 )
 

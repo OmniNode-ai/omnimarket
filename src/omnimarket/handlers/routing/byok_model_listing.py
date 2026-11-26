@@ -5,8 +5,11 @@
 :mod:`byok_model_discovery` reads a provider's list-models endpoint to pick one
 preferred model. A model picker needs the whole list, with what the provider
 publishes about each model: its display name, context window and price per
-million tokens (OpenRouter publishes all three; Google publishes a display name
-and token limits; OpenAI publishes ids only, so nothing is invented for it).
+million tokens (OpenRouter publishes all three; Google publishes a display name,
+token limits and whether it thinks; Anthropic a display name, limits and
+capabilities; Reflection limits, input kinds and reasoning; Hopscotch all of it
+in a ``uniblock`` block; OpenAI publishes ids only, so nothing is invented for
+it). Each shape is the provider's own docs, read 2026-11-26 (OMN-26688).
 
 The read is the same one discovery makes: one GET to the catalogue row's
 ``models_url`` with the key in the one header the row's ``models_auth`` names.
@@ -104,6 +107,79 @@ def _strings(value: Any) -> tuple[str, ...]:
     return ()
 
 
+def _whole(value: Any) -> int | None:
+    """A whole number of tokens as JSON states one: a bool, a fraction, a text
+    number, zero or below is not one."""
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return None
+    return value
+
+
+#: Hopscotch's capability words (features/model-capabilities) -> what the
+#: provider's row says the model takes. Only the word "yes" counts: "no" and
+#: "unknown" are non-empty strings, and "unknown is not no".
+_SAID_PARAMETERS = {"tools": "tools", "json_mode": "response_format"}
+_SAID_INPUTS = {"vision": "image", "audio": "audio"}
+
+
+def _rate(block: dict[str, Any], field: str) -> float | None:
+    """Hopscotch's rate, "thousandths of the currency unit per million tokens"
+    in the entry's ``currency_code`` (api-reference/models/list-models), as
+    dollars per million. Only a USD rate is dollars; a missing rate (a model
+    priced per unit) is unknown, never free."""
+    currency = block.get("currency_code")
+    if not isinstance(currency, str) or currency.upper() != "USD":
+        return None
+    value = block.get(field)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return round(value / 1000, 6)
+
+
+def _extension(entry: dict[str, Any]) -> dict[str, Any]:
+    """Hopscotch's ``uniblock`` block on a listed model (OMN-26688), or nothing."""
+    block = entry.get("uniblock")
+    return block if isinstance(block, dict) else {}
+
+
+def _said(block: dict[str, Any], words: dict[str, str]) -> tuple[str, ...]:
+    raw = block.get("capabilities")
+    stated: dict[str, Any] = raw if isinstance(raw, dict) else {}
+    return tuple(name for word, name in words.items() if stated.get(word) == "yes")
+
+
+#: Anthropic's capabilities (platform.claude.com/docs/en/api/models-list),
+#: each ``{"supported": bool}`` or null -> what the row says the model takes.
+_ANTHROPIC_PARAMETERS = {
+    "structured_outputs": "structured_outputs",
+    "thinking": "reasoning",
+}
+_ANTHROPIC_INPUTS = {"image_input": "image", "pdf_input": "file"}
+
+
+def _supported(entry: dict[str, Any], names: dict[str, str]) -> tuple[str, ...]:
+    """Anthropic's capability objects: only ``supported`` exactly true counts."""
+    raw = entry.get("capabilities")
+    stated: dict[str, Any] = raw if isinstance(raw, dict) else {}
+    return tuple(
+        name
+        for key, name in names.items()
+        if isinstance(stated.get(key), dict) and stated[key].get("supported") is True
+    )
+
+
+def _reasons(entry: dict[str, Any]) -> tuple[str, ...]:
+    """Reflection states a ``reasoning`` object for a model that reasons; Google
+    states ``thinking: true``. Neither is a yes in any other shape."""
+    if isinstance(entry.get("reasoning"), dict) or entry.get("thinking") is True:
+        return ("reasoning",)
+    return ()
+
+
+def _text(value: Any) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
 def _listed(entry: dict[str, Any]) -> ModelByokListedModel | None:
     raw = entry.get("id") or entry.get("name")
     if not isinstance(raw, str) or not raw.strip():
@@ -115,7 +191,13 @@ def _listed(entry: dict[str, Any]) -> ModelByokListedModel | None:
     top: dict[str, Any] = top_raw if isinstance(top_raw, dict) else {}
     arch_raw = entry.get("architecture")
     arch: dict[str, Any] = arch_raw if isinstance(arch_raw, dict) else {}
-    label = entry.get("displayName") or (entry.get("name") if "id" in entry else None)
+    block = _extension(entry)
+    label = (
+        entry.get("displayName")
+        or (entry.get("name") if "id" in entry else None)
+        or _text(entry.get("display_name"))  # Anthropic
+        or _text(block.get("display_name"))  # Hopscotch
+    )
     return ModelByokListedModel(
         id=model_id,
         name=str(label).strip() if label else model_id,
@@ -123,14 +205,29 @@ def _listed(entry: dict[str, Any]) -> ModelByokListedModel | None:
             entry.get("context_length")
             or top.get("context_length")
             or entry.get("inputTokenLimit")
-        ),
+        )
+        or _whole(entry.get("max_input_tokens"))  # Anthropic
+        or _whole(block.get("context_window_tokens")),
         max_output_tokens=_positive_int(entry.get("max_output_tokens"))
         or _positive_int(entry.get("outputTokenLimit"))
-        or _positive_int(top.get("max_completion_tokens")),
-        input_usd_per_million=_per_million(pricing.get("prompt")),
-        output_usd_per_million=_per_million(pricing.get("completion")),
-        supported_parameters=_strings(entry.get("supported_parameters")),
-        input_modalities=_strings(arch.get("input_modalities")),
+        or _positive_int(top.get("max_completion_tokens"))
+        or _whole(entry.get("max_tokens"))  # Anthropic
+        or _whole(block.get("max_output_tokens")),
+        input_usd_per_million=_per_million(pricing.get("prompt"))
+        if "prompt" in pricing
+        else _rate(block, "input_rate_thousandths"),
+        output_usd_per_million=_per_million(pricing.get("completion"))
+        if "completion" in pricing
+        else _rate(block, "output_rate_thousandths"),
+        supported_parameters=_strings(entry.get("supported_parameters"))
+        or (
+            _said(block, _SAID_PARAMETERS)
+            + _supported(entry, _ANTHROPIC_PARAMETERS)
+            + _reasons(entry)
+        ),
+        input_modalities=_strings(arch.get("input_modalities"))
+        or _strings(entry.get("input_modalities"))  # Reflection
+        or _said(block, _SAID_INPUTS) + _supported(entry, _ANTHROPIC_INPUTS),
     )
 
 

@@ -34,10 +34,13 @@ Failure modes:
       lands, though providers are configured (seen on a real run, 2026-11-26).
   T14 the table does not read as a table: no frame, both columns packed at the
       left, every row one shade, or names in bold white (operator 2026-11-26,
-      on a screenshot: "why white text - cretae likea table").
+      on a screenshot: "why white text - cretae likea table"), or the header
+      has no line under it or sits off its columns (operator 2026-11-26: "one
+      libe after provider for better looking?").
   T15 the TUI reads models.dev, or offers a provider not written from its
       official docs (operator 2026-11-26: "don't use models.dev or any otehr
-      things just use offcial docs", then "Only the 7").
+      things just use offcial docs", then "Only the 7", then Hopscotch from
+      its docs).
 """
 
 from __future__ import annotations
@@ -543,8 +546,19 @@ async def test_providers_read_as_a_framed_table_across_the_width() -> None:
     async with app.run_test(size=(160, 40)) as pilot:
         screen = await _config(pilot, app)
         table = _table(screen)
-        assert table.styles.border_top[0] not in ("", "none", "hidden")
+        box = screen.query_one("#providers-box")
+        assert box.styles.border_top[0] not in ("", "none", "hidden")
         assert table.zebra_stripes
+        assert not table.show_header  # drawn above, with its line
+        head = screen.query_one("#providers-head")
+        assert head.styles.border_bottom[0] not in ("", "none", "hidden")
+        assert head.region.bottom == table.region.y  # the line, then the rows
+        labels = [_text(s) for s in head.query(Static)]
+        assert labels == ["Provider", "Status"]
+        status = head.query(Static)[1]
+        pad = table.cell_padding
+        provider_width = next(iter(table.columns.values())).width
+        assert status.region.x == table.region.x + provider_width + 2 * pad + pad
         for key in _rows(screen):
             name = table.get_row(key)[0]
             assert "bold" not in str(getattr(name, "style", "")), key
@@ -567,7 +581,16 @@ async def test_the_tui_reads_only_what_official_docs_wrote() -> None:
     async with app.run_test(size=(160, 40)) as pilot:
         screen = await _config(pilot, app)
         written = {e.provider for e in setup_provider_traits().picker}
-        assert len(written) == 7
+        assert written == {  # Hopscotch added from its docs, operator 2026-11-26
+            "anthropic",
+            "gemini",
+            "glm",
+            "hopscotch",
+            "local",
+            "openai",
+            "openrouter",
+            "reflection",
+        }
         await _go_to(pilot, screen, "anthropic")
         assert set(_rows(screen)) == written - {"openrouter"}
         await pilot.press("enter")
