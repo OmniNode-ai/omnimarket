@@ -49,6 +49,7 @@ from omnimarket.nodes.node_overlay_assertion_stale_compute.handlers import (
 from omnimarket.nodes.node_overlay_store_load_effect.runtime_overlay_store_load import (
     NODE,
     _alarm,
+    _reassert,
     _run,
 )
 
@@ -138,6 +139,20 @@ def _unchanged(
         if (now - asserted).total_seconds() >= REASSERT_AFTER_S:
             return False
     return True
+
+
+def _reassert_due(
+    published: dict[str, dict[str, str]], overlay_id: str, now: datetime
+) -> bool:
+    """True when a store-only row was never asserted by this loader or its last assertion is ``REASSERT_AFTER_S`` old."""
+    last = published.get(overlay_id)
+    if last is None:
+        return True
+    try:
+        asserted = datetime.fromisoformat(str(last.get("asserted_at")))
+    except ValueError:
+        return True
+    return (now - asserted).total_seconds() >= REASSERT_AFTER_S
 
 
 def _stale_alarms(
@@ -240,10 +255,14 @@ def main(argv: list[str] | None = None) -> int:
             )
             return EXIT_STALE_CLONE
         now = _utc_now()
-        ids = list(overlay.overlay_ids)
+        home_ids = list(overlay.overlay_ids)
+        store_only = [i for i in overlay.store_only_ids if i not in home_ids]
+        ids = home_ids + store_only
         held = {i: v for i, v in _published(args.state_dir).items() if i in ids}
-        due = [i for i in ids if not _unchanged(held, state["head"], [i], now)]
-        unchanged = [f"{i}@{state['head']}" for i in ids if i not in due]
+        due = [i for i in home_ids if not _unchanged(held, state["head"], [i], now)]
+        unchanged = [f"{i}@{state['head']}" for i in home_ids if i not in due]
+        store_due = [i for i in store_only if _reassert_due(held, i, now)]
+        unchanged += [f"{i}@store" for i in store_only if i not in store_due]
         loaded: list[dict[str, Any]] = []
         refused: dict[str, str] = {}
         if due:
@@ -294,6 +313,28 @@ def main(argv: list[str] | None = None) -> int:
                     for row in loaded
                 }
             )
+        if store_due:
+            try:
+                again = asyncio.run(_reassert(overlay, clone, store_due, None))
+            except Exception as exc:  # a broker that does not answer leaves each row's age growing, and alarms below
+                sys.stderr.write(f"{NODE}: bus: {type(exc).__name__}: {exc}\n")
+                refused.update(dict.fromkeys(store_due, f"bus: {exc}"))
+            else:
+                for result in again.results:
+                    row = result.model_dump(mode="json")
+                    loaded.append(row)
+                    sys.stdout.write(json.dumps(row, sort_keys=True) + "\n")
+                    held[row["overlay_id"]] = {
+                        "source_ref": row["source_ref"],
+                        "digest": row["digest"],
+                        "asserted_at": now.isoformat(),
+                    }
+                for refusal in again.refused:
+                    refused[refusal.overlay_id] = refusal.reason
+                    sys.stderr.write(
+                        f"{NODE}: refused {refusal.overlay_id}: {refusal.reason}\n"
+                    )
+        if due or store_due:
             _write_atomically(
                 args.state_dir / _LAST_LOAD_FILE, json.dumps(held, sort_keys=True)
             )

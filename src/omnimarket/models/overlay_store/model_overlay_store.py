@@ -243,6 +243,10 @@ class ModelOverlayStoreLoadOverlay(_Frozen):
     clone_relpath: str | None = Field(default=None, min_length=1)
     clone_branch: str | None = Field(default=None, min_length=1)
     overlay_ids: tuple[str, ...] = ()
+    # Rows set through the store that the overlay home holds no file for. The loader republishes each one's live
+    # record with a fresh time on the reassert interval, so a reader's staleness bound does not run out on a row
+    # nothing else asserts. Needs ``live_read_window_s``; the names come from the overlay, never from code.
+    store_only_ids: tuple[str, ...] = ()
     # How long a run listens on the snapshot topic for the live record of an overlay before it loads: the record
     # tells which settings an operator set, and those keep their live value (OMN-26495). Unset, a run reads no live
     # record and replaces the whole document, as before.

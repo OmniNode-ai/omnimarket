@@ -70,6 +70,27 @@ async def _run(
     kafka_bootstrap: str | None,
 ) -> ModelOverlayStoreLoadBatch:
     """Load each id in order; a refused id is named in the batch and the ids after it still publish."""
+    return await _drive(overlay, clone, ids, kafka_bootstrap, reassert=False)
+
+
+async def _reassert(
+    overlay: ModelOverlayStoreLoadOverlay,
+    clone: Path,
+    ids: list[str],
+    kafka_bootstrap: str | None,
+) -> ModelOverlayStoreLoadBatch:
+    """Re-assert each store-only id's live record; a refused id is named and the ids after it still publish."""
+    return await _drive(overlay, clone, ids, kafka_bootstrap, reassert=True)
+
+
+async def _drive(
+    overlay: ModelOverlayStoreLoadOverlay,
+    clone: Path,
+    ids: list[str],
+    kafka_bootstrap: str | None,
+    *,
+    reassert: bool,
+) -> ModelOverlayStoreLoadBatch:
     contract = _contract()
 
     def open_bus() -> AbstractAsyncContextManager[Any]:
@@ -99,6 +120,8 @@ async def _run(
             drift_topic=topics["overlay-store-drift"],
             refusal_topic=topics["overlay-store-refused"],
         )
+        if reassert:
+            return await handler.reassert_many(ids, correlation_id=run)
         return await handler.handle_many(ids, correlation_id=run)
 
 

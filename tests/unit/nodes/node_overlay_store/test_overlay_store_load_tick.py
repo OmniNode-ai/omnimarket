@@ -175,3 +175,50 @@ def test_error_an_overlay_naming_no_clone_branch_or_ids_is_refused(
     code = tick.main(["--omni-home", str(home), "--state-dir", str(tmp_path / "state")])
     assert code == tick.EXIT_REFUSED
     assert loaded == []
+
+
+def test_a_store_only_row_is_reasserted_by_the_tick_when_due_and_not_again_within_the_hour(
+    home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The overlay's store_only_ids reach the re-assert path (no row name in code), once per REASSERT_AFTER_S."""
+    clone = next(p for p in home.iterdir() if p.is_dir())
+    overlay_file = next(clone.rglob("overlay.yaml"))
+    overlay_file.write_text(
+        OVERLAY + "store_only_ids: [row_set_by_operator]\n", encoding="utf-8"
+    )
+    git(clone, "add", "-A")
+    git(clone, "commit", "-q", "-m", "y")
+    git(clone, "update-ref", "refs/remotes/origin/main", "HEAD")
+    loaded: list[str] = []
+    reasserted: list[str] = []
+
+    async def reassert(
+        overlay: Any, clone: Path, ids: list[str], bootstrap: Any
+    ) -> ModelOverlayStoreLoadBatch:
+        reasserted.extend(ids)
+        return ModelOverlayStoreLoadBatch(
+            results=tuple(
+                ModelOverlayStoreLoadResult(
+                    overlay_id=i,
+                    digest="d" * 64,
+                    source_ref="live",
+                    topic=LOADED_TOPIC,
+                    loaded_at=datetime(2026, 11, 9, tzinfo=UTC),
+                )
+                for i in ids
+            )
+        )
+
+    monkeypatch.setattr(tick, "_run", fake_run(loaded))
+    monkeypatch.setattr(tick, "_reassert", reassert)
+    state = tmp_path / "state"
+    argv = ["--omni-home", str(home), "--state-dir", str(state)]
+    assert tick.main(argv) == 0
+    assert reasserted == ["row_set_by_operator"]
+    assert tick.main(argv) == 0
+    assert reasserted == ["row_set_by_operator"]  # asserted under an hour ago
+    held = json.loads((state / "last-load.json").read_text(encoding="utf-8"))
+    held["row_set_by_operator"]["asserted_at"] = "2026-01-01T00:00:00+00:00"
+    (state / "last-load.json").write_text(json.dumps(held), encoding="utf-8")
+    assert tick.main(argv) == 0
+    assert reasserted == ["row_set_by_operator"] * 2  # an hour has passed

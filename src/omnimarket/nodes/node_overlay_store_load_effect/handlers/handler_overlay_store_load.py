@@ -314,6 +314,42 @@ class HandlerOverlayStoreLoad:
         record, drift = await self._prepare(overlay_id, run)
         return await self._publish(record, drift, run)
 
+    async def reassert_many(
+        self, overlay_ids: Sequence[str], *, correlation_id: str | None = None
+    ) -> ModelOverlayStoreLoadBatch:
+        """Republish the live record of each store-only id with a fresh time, changing nothing else.
+
+        A store-only row has no file in the overlay home, so nothing else asserts it after its set and a reader's
+        staleness bound runs out. An id the store holds no readable record for is named as refused and publishes
+        nothing; the ids after it still go.
+        """
+        run = correlation_id or str(uuid.uuid4())
+        results: list[ModelOverlayStoreLoadResult] = []
+        refused: list[ModelOverlayStoreRefusal] = []
+        for overlay_id in overlay_ids:
+            try:
+                if self._live is None:
+                    raise OverlayLoadRefusedError(
+                        f"overlay {overlay_id}: a re-assert reads the live record and this loader has no store to read"
+                    )
+                live = await self._read_live(overlay_id, run)
+                if live is None:
+                    raise await self._refuse(
+                        overlay_id, run, "the store holds no record to re-assert"
+                    )
+            except OverlayLoadRefusedError as exc:
+                refused.append(
+                    ModelOverlayStoreRefusal(overlay_id=overlay_id, reason=str(exc))
+                )
+                continue
+            record = live.model_copy(
+                update={"loaded_at": self._clock(), "loaded_by": self._loaded_by}
+            )
+            results.append(await self._publish(record, (), run))
+        return ModelOverlayStoreLoadBatch(
+            results=tuple(results), refused=tuple(refused)
+        )
+
     async def handle_many(
         self, overlay_ids: Sequence[str], *, correlation_id: str | None = None
     ) -> ModelOverlayStoreLoadBatch:

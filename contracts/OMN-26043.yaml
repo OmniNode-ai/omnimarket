@@ -196,3 +196,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_beta_board_effect/test_trigger_declaration.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26043-store-only-row-stays-live
+  description: "A store-only settings row (set through the store, no file in the overlay home) stays live while the overlay store loader runs: the overlay's store_only_ids (injected, no row name in code) are republished from their live record with a fresh time once REASSERT_AFTER_S has passed, so the reader's six hour bound no longer runs out on delegation_check_gateway and delegation_check_responders (C29 and C30 read PRECONDITION-ABSENT about 6 h after each set, measured). Known bad: a row set 7 h earlier reads STALE with no re-assert; known good: it reads FRESH after the loader's re-assert, with document, digest and operator paths unchanged; a row the store does not hold is refused by name. The tests fail on the base commit, where the loader has no re-assert path. This binds AC5: C29 reading a run needs its settings row live."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_overlay_store/test_store_only_row_stays_live.py tests/unit/nodes/node_overlay_store/test_overlay_store_load_tick.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
