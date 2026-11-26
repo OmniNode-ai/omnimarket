@@ -23,6 +23,9 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_qual
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_input import (
     ModelQualityGateInput,
 )
+from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
+    ModelQualityGateResult,
+)
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     resolve_task_class_dod_checks,
 )
@@ -33,7 +36,7 @@ _FUNCTION_ONLY = "```python\ndef add(a, b):\n    return a + b\n```"
 _PROMPT = "Write a function add(a, b) that returns the sum."
 
 
-def _run(task_type: str, tests_ran: bool):  # type: ignore[no-untyped-def]
+def _run(task_type: str, tests_ran: bool) -> ModelQualityGateResult:
     deterministic, heuristic = resolve_task_class_dod_checks(task_type, prompt=_PROMPT)
     return quality_gate_delta(
         ModelQualityGateInput(

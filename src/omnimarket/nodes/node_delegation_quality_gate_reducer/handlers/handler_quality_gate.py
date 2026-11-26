@@ -168,6 +168,7 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.prose_senten
     count_prose_sentences as _count_prose_sentences,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.response_contract_class_checks import (
+    scored_when_unvetoed,
     with_executed_class_checks,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_identifier_grounding import (
@@ -3900,36 +3901,21 @@ def _delta_over_answer_segment(
         # failed heuristic rule here did not veto -- the executed checks are the
         # authority and the marker rules are reject-only telemetry. Record it as
         # ``scored`` so a completed run does not carry a "blocking" failure.
-        rule_evaluations = tuple(
-            e.model_copy(update={"enforcement": "scored"})
-            if (not e.passed and e.enforcement == "blocking")
-            else e
-            for e in rule_evaluations
-        )
+        rule_evaluations = scored_when_unvetoed(rule_evaluations)
         # OMN-13642: the LLM-judge verdict is a co-required acceptance authority on
         # the verifiable path. A FAIL verdict VETOES acceptance even when the
         # weighted combined score cleared the bar above — the deterministic floor
         # (already passed) must never mask a judge FAIL. The combined score is
         # still recorded for telemetry so analysis sees the score that WOULD have
         # been accepted under the old score-only logic.
-        if judge_verdict is EnumDelegationJudgeVerdict.FAIL:
-            return ModelQualityGateResult(
-                correlation_id=gate_input.correlation_id,
-                passed=False,
-                fail_category="fail_heuristic",
-                quality_score=quality_score,
-                failure_reasons=(_JUDGE_FAIL_REASON,),
-                fallback_recommended=True,
-                rule_evaluations=rule_evaluations,
-                **(combined_acceptance_evidence or acceptance_evidence),
-            )
+        judge_vetoed = judge_verdict is EnumDelegationJudgeVerdict.FAIL
         return ModelQualityGateResult(
             correlation_id=gate_input.correlation_id,
-            passed=True,
-            fail_category="pass",
+            passed=not judge_vetoed,
+            fail_category="fail_heuristic" if judge_vetoed else "pass",
             quality_score=quality_score,
-            failure_reasons=(),
-            fallback_recommended=False,
+            failure_reasons=(_JUDGE_FAIL_REASON,) if judge_vetoed else (),
+            fallback_recommended=judge_vetoed,
             rule_evaluations=rule_evaluations,
             **(combined_acceptance_evidence or acceptance_evidence),
         )
