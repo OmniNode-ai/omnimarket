@@ -122,13 +122,22 @@ def _write_atomically(path: Path, text: str) -> None:
     held.replace(path)
 
 
+def _whole_check_leg(result: ModelDelegationCheckResult) -> str:
+    """A gateway-only check has no machine half: its whole verdict is its leg (PASS, FAIL; anything else is unmeasured)."""
+    if result.verdict is EnumCheckVerdict.PASS:
+        return "pass"
+    if result.verdict is EnumCheckVerdict.FAIL:
+        return "fail"
+    return "unmeasured"
+
+
 def append_history(
     path: Path, results: list[ModelDelegationCheckResult], keep: int
 ) -> None:
     """One JSON line per run (the run in ``ModelMvpRun`` shape plus check and verdict), newest last, trimmed to ``keep``.
 
-    A customer-local check's line also carries ``gateway_leg`` (pass, fail or unmeasured), the verdict of its gateway clauses alone:
-    the beta board reads that field for C13 and C14 in place of the cloud workflows (OMN-26043).
+    Every line carries ``gateway_leg`` (pass, fail or unmeasured): for a customer-local check the verdict of its gateway clauses
+    alone, for a gateway-only check (C16, C30 ...) its whole verdict. The beta board reads that field in place of a cloud job run.
     """
     lines: list[str] = []
     with contextlib.suppress(OSError):
@@ -139,10 +148,10 @@ def append_history(
                 **r.mvp_run(),
                 "check": r.check_id,
                 "verdict": r.verdict.value,
-                **(
-                    {"gateway_leg": gateway_leg_verdict(r.clauses)}
+                "gateway_leg": (
+                    gateway_leg_verdict(r.clauses)
                     if r.check_id in CUSTOMER_LOCAL_CHECKS
-                    else {}
+                    else _whole_check_leg(r)
                 ),
             },
             sort_keys=True,
