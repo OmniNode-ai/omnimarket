@@ -48,6 +48,11 @@ terminal_event: onex.evt.omnimarket.dev-signed-in-read-completed.v1
 
 runtime_dispatch:
   external_trigger: true
+  # No timer runs this node: a lane runs it by hand on the dev lane (the verb below), or posts the command topic to the
+  # dev runtime's ingress.
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_dev_signed_in_read_effect run --lane dev
+    owner: OmniNode Platform Team
   command_topic: onex.cmd.omnimarket.dev-signed-in-read-requested.v1
   terminal_events:
     success: onex.evt.omnimarket.dev-signed-in-read-completed.v1

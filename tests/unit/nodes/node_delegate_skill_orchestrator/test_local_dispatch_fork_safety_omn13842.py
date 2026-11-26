@@ -62,6 +62,8 @@ class SuccessfulEffectHandler:
             request_id=request.request_id,
             success=True,
             content="### ANSWER\nhello",
+            # OMN-18079: the provider reports the model that served the call.
+            served_model_id=request.model_id,
             output_hash="omn13842-output-hash",
             tokens_in=3,
             tokens_out=1,
@@ -177,11 +179,7 @@ def test_dispatch_returns_typed_receipt_through_process_boundary(
     assert isinstance(result, dict)
     assert result["status"] in {"completed", "failed"}
     assert result["content"] == "hello"
-    # OMN-16419 changed this field's source to
-    # ``result.served_model_id or backend.model_id``. This double leaves
-    # ``served_model_id`` unset (it offers no ``GET /v1/models`` evidence, exactly
-    # like a cloud backend), so the configured-id fallback is the branch under
-    # test and the fixture's ``model_name`` is still the correct expectation —
-    # verified, not assumed. Live-confirmed attribution is OMN-16419's own
-    # property and is asserted in its suite, not here.
+    # OMN-18079: the attribution is the model the effect REPORTED serving the call
+    # (this double returns the requested id as ``served_model_id``); with no
+    # served-side evidence it reads ``unknown``, never the configured name.
     assert result["model_name"] == "Qwen3.6-35B-A3B"

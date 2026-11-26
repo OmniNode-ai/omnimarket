@@ -16,8 +16,9 @@ its verification; the collector then
 * clamps the ceiling of every subprocess it does start to the time left, so no
   call runs past the budget.
 
-A verification run with no open budget (a start command, the local Done gate,
-the closeout sweep) is unchanged: :func:`clamp_to_budget` returns its argument.
+A hosted dod-verify-start command opens its own budget from the overlay-declared
+``DOD_VERIFY_START_BUDGET_S`` (OMN-25856). A verification run with no open budget
+(the local Done gate, the closeout sweep) is unchanged: :func:`clamp_to_budget` returns its argument.
 The dispatch deadline itself is not touched.
 """
 
@@ -36,6 +37,16 @@ ON_MERGE_BUDGET_ENV = "DOD_VERIFY_ON_MERGE_BUDGET_S"
 # verdict, the projection write and a loaded host, and for the one in-flight
 # call that the clamp cannot shorten below its own start-up.
 DEFAULT_ON_MERGE_BUDGET_S = 300.0
+
+# OMN-25856: the budget of a hosted dod-verify-start command, declared by the
+# overlay. There is NO code default: a runtime that does not declare it refuses
+# to start the checks, because a silent default is how the 600 s deadline was
+# outrun. The overlay declares 540 s (a start command's verdict publish and
+# projection write need the remaining minute).
+START_BUDGET_ENV = "DOD_VERIFY_START_BUDGET_S"
+
+# The runtime's dispatch deadline; a declared budget must be below it.
+DISPATCH_DEADLINE_S = 600.0
 
 # The floor of a clamped ceiling: a subprocess given less than this cannot
 # start, so the budget is treated as spent instead.
@@ -58,6 +69,28 @@ def on_merge_budget_s() -> float:
     except ValueError:
         return DEFAULT_ON_MERGE_BUDGET_S
     return value if value > 0 else DEFAULT_ON_MERGE_BUDGET_S
+
+
+def start_budget_s() -> float | None:
+    """The overlay-declared start-command budget, or None when not usable.
+
+    None for an absent, malformed, non-positive value, or one not below the
+    dispatch deadline: such a value cannot bound the dispatch, so the caller
+    refuses to start rather than substituting a default.
+    """
+    raw = os.environ.get(START_BUDGET_ENV, "").strip()
+    try:
+        value = float(raw)
+    except ValueError:
+        return None
+    if not 0 < value < DISPATCH_DEADLINE_S:
+        return None
+    return value
+
+
+def budget_is_open() -> bool:
+    """True when a dispatch budget is already open in this context."""
+    return _ACTIVE.get() is not None
 
 
 def _now() -> float:
@@ -117,7 +150,7 @@ def exhausted_message() -> str:
         f"{DISPATCH_BUDGET_MARKER} this merge-event dispatch's {total}"
         f"wall-clock budget ({ON_MERGE_BUDGET_ENV}) was spent before this "
         "check started, so it was NOT run and this is not a statement about "
-        "the ticket. A dod-verify start command runs it without this budget. "
+        "the ticket. "
         "This still blocks a Done-flip."
     )
 
@@ -125,11 +158,15 @@ def exhausted_message() -> str:
 __all__: list[str] = [
     "DEFAULT_ON_MERGE_BUDGET_S",
     "DISPATCH_BUDGET_MARKER",
+    "DISPATCH_DEADLINE_S",
     "ON_MERGE_BUDGET_ENV",
+    "START_BUDGET_ENV",
     "DispatchBudget",
     "budget_exhausted",
+    "budget_is_open",
     "clamp_to_budget",
     "dispatch_budget",
     "exhausted_message",
     "on_merge_budget_s",
+    "start_budget_s",
 ]

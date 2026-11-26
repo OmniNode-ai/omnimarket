@@ -1,0 +1,45 @@
+schema_version: 1.0.0
+title: A burst of gateway submits answers within the client timeout and one tenant's burst does not delay another tenant's job
+ticket_id: OMN-26681
+summary: >-
+  PostgresWorkflowStore.admit took a pooled connection and only then waited on the tenant's advisory lock, so N
+  same-tenant submits held N connections of the shared pool while they waited, and every other tenant's auth lookup,
+  rate-limit read and status update queued behind them. This change takes a per-tenant in-process gate before the
+  connection, so a burst waits holding nothing and at most one connection per tenant is parked on the lock. This pull
+  request owns AC3 (the cause with file and line and a test that fails on the base revision). AC1 and AC2 are dev
+  readbacks the orchestrator takes after the runtime is rolled; this change does not claim them.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26681-admit-gate
+  statement: A burst of same-tenant submits does not hold pooled connections while waiting for the tenant lock.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the cause of the blocked accepts is named with file and line and a failing test that reproduces it -- falsifier: the pull request cites no test that fails on the base revision'
+evidence_requirements:
+- kind: tests
+  description: The pool-parking test and the gateway node tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_workflow_gateway_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26681-ac3-pool-parking-test
+  description: 'AC3: store_postgres.py PostgresWorkflowStore.admit (the transaction opened before the advisory lock) is the cause; test_admit_pool_parking_omn26681 fails on the base revision (tenant B admit times out while a tenant A burst of three times the pool size waits on A''s lock) and passes with the per-tenant gate.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_workflow_gateway_effect/test_admit_pool_parking_omn26681.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26681-integration-proof-lab-run
+  description: 'Integration proof: the pushed head ran the gateway node tests, the pool-parking test included, on a lab host through the lab work runner and exited 0. The dev readback of a 60-submit burst (AC1) and a second tenant''s job (AC2) after the roll is the orchestrator''s.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26681 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_workflow_gateway_effect -q --no-cov -n 0 -p no:randomly'
+    cwd: .

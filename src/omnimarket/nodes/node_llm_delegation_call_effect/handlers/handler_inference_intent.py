@@ -255,6 +255,23 @@ class ModelListUnavailableError(RuntimeError):
     """
 
 
+def _answering_model(
+    data: dict[str, Any], requested: str, served_ids: frozenset[str] | None
+) -> str:
+    """Return the model that answered, or ``""`` when no evidence names it (OMN-18079).
+
+    The requested model is never the fallback: it is what was asked for, not
+    what answered. ``served_ids`` is the guard's ``GET /v1/models`` reading; the
+    guard refuses the call before this point unless ``requested`` is in it.
+    """
+    reported = data.get("model")
+    if isinstance(reported, str) and reported.strip():
+        return reported.strip()
+    if served_ids is not None and requested in served_ids:
+        return requested
+    return ""
+
+
 class ModelAttributionMismatchError(RuntimeError):
     """The configured model is not one the endpoint serves (OMN-17098).
 
@@ -1287,7 +1304,11 @@ class HandlerInferenceIntent:
         return ModelInferenceResponseData(
             correlation_id=intent.correlation_id,
             content=content,
-            model_used=intent.model,
+            # OMN-18079: the receipt names the model that ANSWERED. The provider's
+            # own reported ``model`` wins (an aggregator that fell back to another
+            # model says so there); else the live ``/v1/models`` confirmation of
+            # the requested id; else unknown (""), never the requested model.
+            model_used=_answering_model(data, intent.model, served_ids),
             llm_call_id=response_id,
             latency_ms=latency_ms,
             prompt_tokens=prompt_tokens,
