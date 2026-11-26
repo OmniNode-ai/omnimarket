@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-26227
+title: omnimarket pins the omnibase-core dev tag dev-20261126024324-05fa7e557a73, which carries the migration ledger shape
+summary: omnibase_infra#6295 needs omnibase-core with the migration ledger shape (omnibase_core#2378). With omnimarket locked to core 0.47.76, 27 omnimarket topology tests fail on it; with core dev tag dev-20261126024324-05fa7e557a73 all 86 pass. This change moves the omnibase-core source in pyproject.toml to that tag, relocks uv.lock with uv lock (core v0.47.81.dev2 at 05fa7e55), and records the new lock hash in the 70 work contracts that pin it.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26227-core-tag
+  statement: pyproject.toml and uv.lock name omnibase-core dev tag dev-20261126024324-05fa7e557a73 and the lock is fresh.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the lock is fresh and names the new core tag -- falsifier: uv lock --check exits non-zero, or tests/ci/test_sibling_core_pin_pair_omn17427.py::test_pyproject_and_lock_name_the_same_infra_and_core_tags fails'
+  - id: AC2
+    statement: 'AC2: the work contracts record the relocked hash and the topology tests pass -- falsifier: tests/ci/test_infra_pin_aa87c2dd6abe_work_contracts_omn23865.py fails, or tests/unit/runtime/test_topology_strict_wiring_omn15655.py fails'
+evidence_requirements:
+- kind: tests
+  description: The pin and topology tests at the pushed head.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/ci/test_infra_pin_aa87c2dd6abe_work_contracts_omn23865.py tests/unit/runtime/test_topology_strict_wiring_omn15655.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26227-ac1
+  description: The lock is fresh against pyproject.toml and both name the new core tag.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: uv lock --check
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_sibling_core_pin_pair_omn17427.py::test_pyproject_and_lock_name_the_same_infra_and_core_tags -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26227-ac2
+  description: The work contracts record the relocked hash and the topology tests pass.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_infra_pin_aa87c2dd6abe_work_contracts_omn23865.py tests/unit/runtime/test_topology_strict_wiring_omn15655.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26227-integration-proof
+  description: The topology tests run on a lab host at the pushed head through the lab work node; it binds no criterion.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26227 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/runtime/test_topology_strict_wiring_omn15655.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
