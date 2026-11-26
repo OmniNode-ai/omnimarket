@@ -14,6 +14,8 @@ from typing import Any
 from uuid import UUID
 
 TENANT_CREATED = "TENANT_CREATED"
+# The topic the outbox flush writes (the WRITE grant in contract.yaml); the seam's outbox row names it in ``topic``.
+TENANT_EVENTS_TOPIC = "onex.tenant.events"  # onex-topic-allow: control-plane tenant lifecycle topic the outbox flush writes
 
 
 def build_tenant_created_envelope(
@@ -43,4 +45,4 @@ def build_tenant_created_envelope(
     }
 
 
-__all__ = ["TENANT_CREATED", "build_tenant_created_envelope"]
+__all__ = ["TENANT_CREATED", "TENANT_EVENTS_TOPIC", "build_tenant_created_envelope"]

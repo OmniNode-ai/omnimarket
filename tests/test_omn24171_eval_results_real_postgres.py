@@ -14,6 +14,7 @@ import json
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import quote, quote_plus
@@ -474,3 +475,42 @@ async def test_omn26410_a_tick_attests_a_noop_and_a_judged_event_upserts_its_row
         assert landed["rows_upserted"] >= 1
         assert "projection_noop_reason" not in landed
         assert (await _counts(db))["eval_item_scores"] == 1
+
+
+@pytest.mark.integration
+async def test_omn26152_a_tick_inside_the_interval_opens_no_pool_and_a_publishing_tick_one() -> (
+    None
+):
+    """On a real schema, through the delivery path: only the tick that republishes connects."""
+    async with _migrated_schema() as (db, _admin):
+        connects: list[str] = []
+
+        class _Counting(_SchemaAdapter):
+            async def connect(self) -> None:
+                connects.append("connect")
+
+        counting = _Counting(cast(Any, db)._inner)
+        writer = EvalResultsProjectionWriter(overlay=overlay(), clock=lambda: at(100))
+        cast(Any, writer)._db = counting
+
+        async def publish(topic: str, value: bytes) -> None:
+            return None
+
+        writer._publish_fn = publish
+        meta = MessageMeta(partition=0, offset=0, fallback_id="", topic=TOPIC_TICK)
+
+        def tick(now: str) -> dict[str, Any]:
+            return {"now": now, "_envelope_timestamp": now, "_tenant_id": TENANT}
+
+        first = await writer._project_one_message(
+            TOPIC_TICK, tick(at(100).isoformat()), meta
+        )
+        assert first["snapshot"]["published"] is True
+        for second in range(1, 51):
+            inside = await writer._project_one_message(
+                TOPIC_TICK,
+                tick((at(100) + timedelta(seconds=second)).isoformat()),
+                meta,
+            )
+            assert inside["snapshot"] == {"published": False, "reason": "interval"}
+        assert connects == ["connect"]

@@ -7,6 +7,7 @@ The result carries names and ids only: never the key value. It has no field that
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
@@ -81,6 +82,7 @@ class ModelStabilityKeyProvisionResult(BaseModel):
     key_name: str | None = None
     secret_folder: str | None = None
     secret_key: str | None = None
+    expires_at: datetime | None = None
 
 
 __all__ = [

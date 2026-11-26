@@ -45,6 +45,10 @@ class ModelUsageCallEvent(BaseModel):
     # OMN-21015: the routing tier of the backend that served the call. A call
     # that does not say was not tier-routed, and is stored under not_tier_routed.
     cost_tier_name: str = ""
+    # OMN-25861: the backend the call was reached through (a routing alias such as
+    # byok-reflection). None means the producer did not say, which is unknown, not
+    # direct: a usage row counting such a call serves no backend list (JG-19).
+    backend: str | None = None
     session_id: str | None = None
     timestamp: datetime = Field(
         validation_alias=AliasChoices("timestamp", "emitted_at", "created_at")

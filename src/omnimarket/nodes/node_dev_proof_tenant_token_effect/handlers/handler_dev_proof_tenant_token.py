@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Signs the two dev proof tenant tokens with the lab test key and seeds them into the dev secret store.
+"""Signs the dev proof tenant token with the lab test key and seeds them into the dev secret store.
 
 The dev-only guard comes first and reads the contract's ``dev_only`` block, never code: a command lane, an overlay lane
 or a tenant the block does not declare is refused before the signing key is read and before any secret is written. The

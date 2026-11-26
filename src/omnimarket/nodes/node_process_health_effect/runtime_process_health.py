@@ -16,16 +16,24 @@ import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
+from omnimarket.handlers.ledger_rows_via_node import read_ledger_rows_range_via_node
 from omnimarket.nodes.node_process_health_effect.handlers.handler_process_health_run import (
     HandlerProcessHealthRun,
     OutputPathError,
+)
+from omnimarket.nodes.node_process_health_effect.handlers.source_readers import (
+    ProtocolRowsReader,
 )
 from omnimarket.nodes.node_process_health_effect.models.model_process_health_run import (
     ModelProcessHealthRunRequest,
 )
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    rows_reader: ProtocolRowsReader = read_ledger_rows_range_via_node,
+) -> int:
     parser = argparse.ArgumentParser(description="write the process-health series JSON")
     parser.add_argument("--output", default="")
     parser.add_argument("--generated-at", default="")
@@ -36,7 +44,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         else datetime.now(UTC).replace(microsecond=0)
     )
     try:
-        result = HandlerProcessHealthRun().handle(
+        result = HandlerProcessHealthRun(rows_reader).handle(
             ModelProcessHealthRunRequest(
                 environ=dict(os.environ),
                 generated_at=generated_at,

@@ -1,0 +1,24 @@
+name: node_ledger_outbox_drain_effect
+version: "1.0.0"
+description: "Drains a host's bus outbox: sends the stored request bytes first, restamps a row the serve's clock guard refused with its citing cells rewritten and resends under the same request id, and retries refused files longest-untried first"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_ledger_outbox_drain_effect: "omnimarket.nodes.node_ledger_outbox_drain_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "pyyaml>=6.0"
+  - "pydantic>=2.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["ledger", "outbox", "drain", "effect"]
+pack: "ledger"
+display_name: "Ledger Outbox Drain"
+node_role: "effect"

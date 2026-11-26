@@ -15,3 +15,10 @@ class EnumLaneEngine(StrEnum):
     CLAUDE_OPUS = "claude-opus"
     CODEX = "codex"
     GLM = "glm"
+
+
+# Lane names the failover treats as Claude: the two bare tier words and the
+# claude engine members (OMN-21805).
+CLAUDE_LANE_NAMES: frozenset[str] = frozenset(
+    {"opus", "sonnet", EnumLaneEngine.CLAUDE_OPUS, EnumLaneEngine.CLAUDE_SONNET}
+)

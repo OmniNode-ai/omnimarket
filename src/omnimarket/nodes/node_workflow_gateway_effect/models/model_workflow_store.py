@@ -60,6 +60,8 @@ class ModelWorkflowAdmission(BaseModel):
 
     admitted: bool
     quota: ModelWorkflowQuotaStatus
+    # Set when the tenant already holds a job under this correlation_id: nothing was inserted.
+    existing: ModelWorkflowRow | None = None
 
 
 class ModelRateLimitDecision(BaseModel):
