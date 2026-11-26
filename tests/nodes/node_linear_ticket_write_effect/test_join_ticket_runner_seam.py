@@ -95,6 +95,8 @@ REQUEST_KEYS: Final = frozenset(
         "day",
         "from_project",
         "project",
+        "draft",
+        "draft_id",
         "correlation_id",
         "idempotency_key",
         "requested_by_lane",
