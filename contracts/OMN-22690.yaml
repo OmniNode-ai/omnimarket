@@ -5,6 +5,17 @@ summary: A DoD verdict that failed on the contract lookup (CONTRACT_MISSING) jud
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn22690-dod-read-tests:
+    - label: AC1
+      criterion_hash: e40b24bb7cfd06d2f6bfe2bb30d19678cb9bef3cdc6f2baecd00d10d88ca7d58
+      proposed_by: lane=dod-closeout-bind-2026-11-26T0345Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-26T0345Z-c2
+    - label: AC2
+      criterion_hash: da6a72dd3062a894d2c30dd89a29e030452de969090ed497d2d102c759a70905
+      proposed_by: lane=dod-closeout-bind-2026-11-26T0345Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-26T0345Z-c2
 requirements:
 - id: req-omn22690-contract-missing-not-a-sample
   statement: The routing DoD read counts a verdict as a sample only when it judged the attempt.
