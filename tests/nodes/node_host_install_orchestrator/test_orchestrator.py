@@ -273,3 +273,34 @@ def test_handle_wraps_decide_in_envelopes_named_by_topic() -> None:
     output = asyncio.run(orchestrator.handle(envelope))
     assert [e.event_type for e in output.events] == [TOPIC_REGISTRY_REQUESTED]
     assert output.events[0].correlation_id == start.correlation_id
+
+
+def test_a_registry_result_is_joined_by_another_handler_instance() -> None:
+    """The runtime builds one handler instance per routing entry (OMN-26043).
+
+    Measured on the dev runtime: the request instance published the dry-run render command, and the registry result was
+    consumed by a different instance that held no context ("ignored a registry result"), so no terminal ever arrived.
+    """
+    request_instance = HandlerHostInstallOrchestrator(
+        orchestrator_overlay(), StepClock()
+    )
+    result_instance = HandlerHostInstallOrchestrator(
+        orchestrator_overlay(), StepClock()
+    )
+    key = uuid4()
+    request_instance.decide(request(key), key)
+    registry = ModelRegistryUnitsResult(
+        unit="unit-a", mode="dry-run", status="success", rendered=RENDER
+    )
+    outputs = result_instance.decide(registry, key)
+    assert [o.topic for o in outputs] == [TOPIC_STEP]
+
+
+def test_failing_control_a_result_for_an_install_no_instance_started_is_ignored() -> (
+    None
+):
+    registry = ModelRegistryUnitsResult(
+        unit="unit-a", mode="dry-run", status="success", rendered=RENDER
+    )
+    other = HandlerHostInstallOrchestrator(orchestrator_overlay(), StepClock())
+    assert other.decide(registry, uuid4()) == ()
