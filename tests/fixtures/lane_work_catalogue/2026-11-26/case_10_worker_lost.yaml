@@ -1,0 +1,85 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Catalogue fixture (OMN-26701): a pinned snapshot of the 2026-11-26 failure,
+# the raw results quoted verbatim from the sources below, each with the sha256 of
+# its quote. Roots: ledger (the ledger directory: path `live` is the live file,
+# `roll:<day>-split` an archive roll), remote-lane-receipts, open-work (the orchestrator handoff).
+schema: "lane_work_catalogue_fixture.v1"
+day: "2026-11-26"
+case: "case_10_worker_lost"
+catalogue_row: "10"
+summary: "Lanes ended with no report and fixes staged uncommitted."
+w_rows:
+  - "W913"
+  - "W936"
+entry_state: "fixing"
+sources:
+  - id: "s1"
+    role: "evidence"
+    root: "ledger"
+    path: "live"
+    row_timestamp: "2026-11-26T09:21:00Z"
+    lane: "deadrun2-62000"
+    row_kind: "TERMINAL"
+    quote: "| blocker=`check-release-identity` demands a bump past 0.4.328 (e.g. 0.4.329). I didn't bump, bypass or commit. The change is staged on `omn-26043-refused-request-failed-terminal` (base `dev` 0d1a5ee1c6)."
+    sha256: "942015fd102e6b9981fbfda29f3757b2d7cff93724eccb6cdfcabb070b3daeae"
+    redacted: false
+    note: "deadrun2: the change was staged and not committed"
+  - id: "s2"
+    role: "evidence"
+    root: "ledger"
+    path: "roll:2026-11-26-split"
+    row_timestamp: "2026-11-26T03:56:39Z"
+    lane: "gw2-46600"
+    row_kind: "TERMINAL"
+    quote: "| outcome=unknown | host=h201 | run=rlane-gw2-46600-cce165 | parent=orchestrator-31d9-swarm | delegated=0 delegation_reason=no-text-or-code | class=blocked-unstated"
+    sha256: "6d71f194d8a3161b068fbd691403d29444fae30ed90f0eb81401ac0167bbaedf"
+    redacted: false
+    note: "a lane that ended with no stated blocker"
+  - id: "s3"
+    role: "evidence"
+    root: "ledger"
+    path: "live"
+    row_timestamp: "2026-11-26T11:37:57Z"
+    lane: "hcodex-62400"
+    row_kind: "TERMINAL"
+    quote: "| outcome=failed | host=h201 | run=rlane-hcodex-62400-33b779 | parent=orchestrator-31d9-swarm | delegated=0 delegation_reason=not-attempted:crashed"
+    sha256: "d220555ec3f45ed12bc0f715b839ab6f446b50911152703a4660b94e53d4f573"
+    redacted: false
+    note: "a lane that crashed with no result"
+  - id: "s4"
+    role: "evidence"
+    root: "open-work"
+    path: "open-work.md"
+    w_row: "W913"
+    quote: "; nightly read 45776287508 07:34Z success -> lt25827b amends the drifted contract; lt26152b and lt26151b left no reports (DROPPED) -> lt26152c, lt26151c | orchestrator | +30m |"
+    sha256: "1e0b57dfeb2dbc4825cbe7fdd451806a353dc9681efdd972c3ffae642f362212"
+    redacted: false
+    note: "names lt26152b and lt26151b as lanes with no report; the receipt for lt26152b on this Mac reads no-host"
+  - id: "s5"
+    role: "evidence"
+    root: "open-work"
+    path: "open-work.md"
+    w_row: "W936"
+    quote: "| W936 | 13:50Z deadrun2: dead and invalid gateway runs stay published because the delegation request dispatcher returns INVALID_MESSAGE with no terminal; fix staged uncommitted -> deadrun3 (TOP); requeued c28consume2 openprs2 relid2 storereset2 after stale-claim and wording refusals | orchestrator | +20m |"
+    sha256: "d52eabf2a4ca6404c0eab5760e0cca6c6efbf3b58e157927c66359e34a2a4b90"
+    redacted: false
+replay:
+  - step: "tick"
+    at: "2026-11-26T09:51:00Z"
+    deadline: "worker"
+    expect:
+      event:
+        kind: "deadline_passed"
+        deadline: "worker"
+      state: "blocked"
+      action:
+        kind: "terminal"
+        reason: "worker_lost"
+        cites: "the last receipt"
+expected:
+  final_state: "blocked"
+  action:
+    kind: "terminal"
+    reason: "worker_lost"
+    cites: "the last receipt"
