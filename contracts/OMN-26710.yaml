@@ -46,6 +46,16 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_workflow_gateway_effect/test_overlay_example_omn26710.py -q -p no:randomly -k 'mount'"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26710-dnspython-lock-floor"
+    description: >-
+      The lock pins dnspython at or above 2.9.0 (Safety SFTY-20261027-41384 flags 2.8.0, which turned the required
+      Dependency Security Scan and CI Summary red on this pull request), and the work-contract uv.lock pins match it; a
+      planted 2.8.0 lock and a lock without the package are both caught.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_omn26710_dnspython_lock_floor.py tests/nodes/test_work_contract_pins_current.py -q -n 0 --no-cov"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn26710-integration-proof"
     description: >-
       Run the gateway's example and settings-mount tests on a lab host at the pushed head: the example validates against
