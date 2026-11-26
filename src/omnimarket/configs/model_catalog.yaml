@@ -52,6 +52,8 @@ provider_ids:
   openai: openai
   gemini: google
   reflection: reflection
+  anthropic: anthropic
+  glm: zai
 
 # Capability shown in the table -> how models.dev states it. `field`: a boolean
 # on the model; `input`: a value in modalities.input; `cost`: a priced field
