@@ -581,6 +581,15 @@ class ModelThroughputTickRequest(BaseModel):
             "unread register is never silently skipped."
         ),
     )
+    ruling_register_sink_errors: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The register read's journal write failures (OMN-24556), one "
+            "``<row_id>: <exception name>`` entry per row whose read event the journal did "
+            "not take; a non-empty value prints one UNKNOWN ruling-register-journal line "
+            "beside the register's own findings."
+        ),
+    )
 
 
 class ModelThroughputTickResult(BaseModel):

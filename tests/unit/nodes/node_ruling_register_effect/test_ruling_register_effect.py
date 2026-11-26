@@ -29,6 +29,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from omnimarket.models.model_ruling_register import (
     EnumReadStatus,
@@ -78,7 +79,8 @@ def route(**changes: object) -> ModelRulingRoute:
     """The route of these tests: ``local`` runs directly, ``host-a`` over ssh (RFC 5737)."""
     fields: dict[str, object] = {
         "kind": "command",
-        "timeout_seconds": 30,
+        "timeout_seconds": 10,
+        "total_timeout_seconds": 20,
         "remote_argv_prefix": ("ssh", "-o", "BatchMode=yes", "{target}"),
         "local_hosts": ("local",),
         "host_targets": {"host-a": "192.0.2.10"},
@@ -113,7 +115,23 @@ def row(
 
 
 def policy(*rows: ModelRulingRow) -> ModelRulingRegisterPolicy:
-    return ModelRulingRegisterPolicy(max_reading_age_seconds=600, rows=rows)
+    # every argv these tests run through a policy; each entry is an argv prefix
+    return ModelRulingRegisterPolicy(
+        max_reading_age_seconds=600,
+        rows=rows,
+        allowed_commands=(
+            "answer",
+            "answer-command",
+            "example-command",
+            "exit-refused",
+            "failing-command",
+            "raise-oserror",
+            "raise-timeout",
+            "raise-unicodedecode",
+            "raise-valueerror",
+            "uptime",
+        ),
+    )
 
 
 def fixture(row_id: str = "row-1", stdout: str = "") -> ModelRulingReading:
@@ -130,7 +148,16 @@ def handler(
     port: ProtocolRulingReadPort,
 ) -> tuple[HandlerRulingRegisterRead, InMemoryRulingSink]:
     sink = InMemoryRulingSink()
-    return HandlerRulingRegisterRead(port, sink, TOPICS, clock=lambda: NOW), sink
+    return (
+        HandlerRulingRegisterRead(
+            port,
+            sink,
+            TOPICS,
+            total_timeout_seconds=25,
+            clock=lambda: NOW,
+        ),
+        sink,
+    )
 
 
 def judged(err: str) -> dict[str, object]:
@@ -345,6 +372,7 @@ def test_a_failed_journal_write_costs_its_event_not_the_remaining_reads() -> Non
         ),
         sink,
         TOPICS,
+        total_timeout_seconds=25,
         clock=lambda: NOW,
     )
     result = h.handle(
@@ -432,26 +460,29 @@ def test_an_allowed_commands_register_refuses_a_row_outside_it_and_accepts_one_i
     None
 ):
     """The overlay is the deployment owner's trust boundary, so the restriction is
-    the policy's own field: a row whose argv head is not listed is refused naming
-    the row and the command, a listed row is accepted, and ``None`` restricts
-    nothing."""
+    the policy's own field: a row whose read.argv starts with no listed prefix is
+    refused into ``refused_rows`` naming the command, a listed row is accepted, and
+    an overlay that names no ``allowed_commands`` is refused outright."""
     the_row = row("row-shell", argv=("sh", "-c", "uptime"))
-    with pytest.raises(ValueError, match="row row-shell runs sh"):
-        ModelRulingRegisterPolicy(
-            max_reading_age_seconds=600,
-            rows=(the_row,),
-            allowed_commands=("example-census-command",),
-        )
+    outside = ModelRulingRegisterPolicy(
+        max_reading_age_seconds=600,
+        rows=(the_row,),
+        allowed_commands=("example-census-command",),
+    )
+    assert outside.rows == ()
+    (refused,) = outside.refused_rows
+    assert refused.row_id == "row-shell"
+    assert refused.reason == "runs sh, which is not in allowed_commands"
     inside = ModelRulingRegisterPolicy(
         max_reading_age_seconds=600,
         rows=(row("row-census", argv=("example-census-command",)),),
         allowed_commands=("example-census-command",),
     )
     assert inside.allowed_commands == ("example-census-command",)
-    unrestricted = ModelRulingRegisterPolicy(
-        max_reading_age_seconds=600, rows=(the_row,)
-    )
-    assert unrestricted.allowed_commands is None
+    assert [kept.row_id for kept in inside.rows] == ["row-census"]
+    assert inside.refused_rows == ()
+    with pytest.raises(ValidationError, match="allowed_commands"):
+        ModelRulingRegisterPolicy(max_reading_age_seconds=600, rows=(the_row,))
 
 
 # ---- the CLI -------------------------------------------------------------------------------------
@@ -484,7 +515,12 @@ def cli_env(
         monkeypatch,
         tmp_path,
         "node_ruling_register_compute",
-        {"max_reading_age_seconds": 600, "rows": rows},
+        {
+            "max_reading_age_seconds": 600,
+            # the CLI's rows run the interpreter itself: python -c <code>
+            "allowed_commands": [sys.executable],
+            "rows": rows,
+        },
     )
     install_node_overlay(
         monkeypatch,
@@ -492,7 +528,8 @@ def cli_env(
         "node_ruling_register_effect",
         {
             "kind": "command",
-            "timeout_seconds": 60,
+            "timeout_seconds": 10,
+            "total_timeout_seconds": 20,
             "remote_argv_prefix": ["ssh", "-o", "BatchMode=yes", "{target}"],
             "local_hosts": ["local"],
             "host_targets": {},

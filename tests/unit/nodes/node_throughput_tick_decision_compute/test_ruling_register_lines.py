@@ -6,6 +6,9 @@ A standing ruling the register judged FALSE or UNREAD prints one MISSING `ruling
 line through the tick's report and lands in `missing`; a TRUE row prints nothing; the absent field
 leaves the check out of `checked`. A register the facts read could not read is the reason on
 `ruling_register_unread`: one MISSING `ruling-not-running:register` line, never a silent skip. The
+read's journal write failures (`ruling_register_sink_errors`, OMN-24556) print one UNKNOWN
+`ruling-register-journal` line beside the register's own findings, and `checked` still carries
+`ruling-register` once. The
 seam tests run the real compute handler (and, end to end, the real facts handler) and hold the
 tick's lines to `result.lines()` of its result, so the compute line shape and the tick line shape
 cannot drift apart.
@@ -137,6 +140,7 @@ def register(
             now=NOW,
             policy=ModelRulingRegisterPolicy(
                 max_reading_age_seconds=BOUND_SECONDS,
+                allowed_commands=tuple({row.read.argv[0] for row in policy_rows}),
                 rows=policy_rows,
             ),
             readings=readings,
@@ -273,21 +277,33 @@ def test_ruling_register_a_result_beats_the_unread_reason() -> None:
 
 
 class _StaticRegisterSource:
-    """The facts handler's register port, answered from one fixed result."""
+    """The facts handler's register port, answered from one fixed result and its
+    journal write failures."""
 
-    def __init__(self, result: ModelRulingRegisterResult) -> None:
+    def __init__(
+        self,
+        result: ModelRulingRegisterResult,
+        sink_errors: tuple[str, ...] = (),
+    ) -> None:
         self._result = result
+        self._sink_errors = sink_errors
 
-    def read(self, overlay_roots: str) -> ModelRulingRegisterResult:
-        return self._result
+    def read(
+        self, overlay_roots: str
+    ) -> tuple[ModelRulingRegisterResult, tuple[str, ...]]:
+        return self._result, self._sink_errors
 
 
-def tick_facts(judged: ModelRulingRegisterResult) -> dict[str, Any]:
+def tick_facts(
+    judged: ModelRulingRegisterResult,
+    sink_errors: tuple[str, ...] = (),
+) -> dict[str, Any]:
     """The facts the facts effect reads, dumped the way the runtime builds the tick
     request: ``model_dump(exclude_unset=True)`` of its facts model."""
     return (
         HandlerThroughputTickFacts(
-            ScriptedTickFactsSource(), ruling_register=_StaticRegisterSource(judged)
+            ScriptedTickFactsSource(),
+            ruling_register=_StaticRegisterSource(judged, sink_errors),
         )
         .handle(
             ModelThroughputTickFactsRequest(
@@ -324,3 +340,87 @@ def test_seam_failing_control_no_register_fact_prints_nothing() -> None:
     result = run(**facts)
     assert ruling_lines(result) == []
     assert "ruling-register" not in result.checked
+
+
+# ---- the register read's journal write failures (OMN-24556) ----------------------------------------
+
+
+def all_true() -> ModelRulingRegisterResult:
+    """The judged register of the three rows, every row TRUE."""
+    alpha, beta, gamma = rows()
+    return register(
+        (alpha, beta, gamma),
+        (
+            reading(alpha.row_id),
+            reading(beta.row_id, stdout="0"),
+            reading(gamma.row_id),
+        ),
+    )
+
+
+def journal_lines(result: ModelThroughputTickResult) -> list[str]:
+    return [line for line in result.lines if "ruling-register-journal" in line]
+
+
+def test_sink_errors_a_read_register_prints_one_journal_unknown() -> None:
+    result = run(
+        ruling_register=all_true(),
+        ruling_register_sink_errors=["row-a: OSError", "row-b: OSError"],
+    )
+    (line,) = journal_lines(result)
+    assert line == (
+        "UNKNOWN ruling-register-journal | the register's journal did not take "
+        "2 read event(s): row-a: OSError; row-b: OSError | FIX: make the journal path "
+        "the effect route's journal_env names writable on the tick host"
+    )
+    assert result.unknown.count("ruling-register-journal") == 1
+    assert result.checked.count("ruling-register") == 1
+    assert result.exit_code == 1
+
+
+def test_sink_errors_an_unread_register_prints_the_register_line_and_the_journal() -> (
+    None
+):
+    result = run(
+        ruling_register_unread=(
+            "NodeOverlayError: no node_ruling_register_compute overlay\n"
+            "under ONEX_SKILL_OVERLAY_ROOTS=unset"
+        ),
+        ruling_register_sink_errors=["row-a: OSError"],
+    )
+    assert ruling_missing(result) == [f"{LOOP_PREFIX}:register"]
+    assert result.unknown.count("ruling-register-journal") == 1
+    assert result.checked.count("ruling-register") == 1
+    assert result.exit_code == 1
+
+
+def test_sink_errors_positive_control_no_journal_failures_print_nothing_extra() -> None:
+    result = run(ruling_register=all_true())
+    assert journal_lines(result) == []
+    assert "ruling-register-journal" not in result.unknown
+    assert result.checked.count("ruling-register") == 1
+    assert ruling_missing(result) == []
+
+
+def test_sink_errors_seam_the_facts_effects_journal_failures_print_the_unknown() -> (
+    None
+):
+    judged = judged_with_one_false_and_one_unread_row()
+    result = run(**tick_facts(judged, ("row-a: OSError",)))
+    (line,) = journal_lines(result)
+    assert line == (
+        "UNKNOWN ruling-register-journal | the register's journal did not take "
+        "1 read event(s): row-a: OSError | FIX: make the journal path "
+        "the effect route's journal_env names writable on the tick host"
+    )
+    assert result.checked.count("ruling-register") == 1
+    assert ruling_missing(result) == [
+        f"{LOOP_PREFIX}:row-beta",
+        f"{LOOP_PREFIX}:row-gamma",
+    ]
+
+
+def test_sink_errors_seam_positive_control_the_taken_journal_prints_nothing() -> None:
+    result = run(**tick_facts(judged_with_one_false_and_one_unread_row()))
+    assert journal_lines(result) == []
+    assert "ruling-register-journal" not in result.unknown
