@@ -44,6 +44,7 @@ handler_routing:
         name: HandlerThroughputGoalCheck
         module: omnimarket.nodes.node_throughput_goal_check_compute.handlers.handler_throughput_goal_check
     - operation: check_goal_scope_stale
+      topic: onex.cmd.omnimarket.throughput-goal-check-requested.v1
       handler:
         name: HandlerGoalScopeStale
         module: omnimarket.nodes.node_throughput_goal_check_compute.handlers.handler_goal_scope_stale
