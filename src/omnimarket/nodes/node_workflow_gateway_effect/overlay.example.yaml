@@ -1,0 +1,76 @@
+# Example settings document for the workflow gateway (node_workflow_gateway_effect).
+# Copy to <settings folder>/node_workflow_gateway_effect/overlay.yaml and replace every value marked
+# CHANGE. It is validated against ModelWorkflowGatewayOverlay by
+# tests/nodes/node_workflow_gateway_effect/test_overlay_example_omn26710.py. Every key is required.
+# Nothing in it is a secret: the database is a logical secret name the runtime's secret resolver maps.
+identity:
+  # CHANGE: where the sign-in provider publishes its signing keys.
+  jwks_url: https://auth.example.com/realms/example/protocol/openid-connect/certs
+  # CHANGE: the expected `iss` claim.
+  issuer: https://auth.example.com/realms/example
+  # CHANGE: the expected `aud` claim.
+  audience: example-api
+  algorithms:
+  - RS256
+  tenant_id_claim: tenant_id
+  tenant_slug_claim: tenant_slug
+  principal_id_claim: sub
+  jwks_cache_seconds: 300
+  leeway_seconds: 30
+database:
+  secret_resolver_config_path: /app/data/delegation/secret_resolver.yaml
+  dsn_secret: gateway.database.dsn
+  pool_max_size: 4
+  query_timeout_seconds: 10
+api_key:
+  header: x-api-key
+  prefix: onxk_
+rate_limit:
+  refill_per_minute: 60
+  burst_capacity: 60
+quota:
+  metric_key: workflow_executions
+  window_key: month
+  lock_namespace: workflow_month_quota
+  rpm_metric_key: api_requests
+  rpm_window_key: minute
+gateway_instance_id: example-gateway
+envelope_schema_version: 1.1.0
+publish_timeout_seconds: 10
+catalog:
+  workflows:
+  - workflow_type: delegate-skill
+    contract_id: node_delegate_skill_orchestrator:1.2.0
+    command_topic: onex.cmd.omnimarket.delegate-skill.v1
+    event_type: omnimarket.delegate-skill
+    enabled: true
+    payload_schema:
+      type: object
+      required:
+      - prompt
+      - task_type
+      - source
+      additionalProperties: false
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 32768
+        task_type:
+          type: string
+        source:
+          type: string
+          pattern: ^(claude-code|codex|external-client)$
+        max_tokens:
+          type: integer
+          minimum: 1
+    wire:
+      payload_keys:
+      - prompt
+      - task_type
+      - source
+      - max_tokens
+      stamp_emitted_at: false
+      stamp_context_pack: false
+      canonical_tenant_id: true
+      stamp_tenant_principal: false

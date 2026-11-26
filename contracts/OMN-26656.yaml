@@ -17,6 +17,8 @@ requirements:
     statement: 'AC3: the receipt of a code answer names each class check and the contract check with its verdict -- falsifier: a receipt that shows only the contract check'
   - id: AC4
     statement: 'AC4: a count over the last 7 days of recorded runs says how many accepted code answers were governed by a response contract and how many were untested -- falsifier: no count, or one with no source named'
+  - id: AC5
+    statement: 'AC5: an own-key session whose chosen provider answers 429, answers 503 or is unreachable ends failed on that provider and never calls another provider with the customer''s key -- falsifier: a provider other than the chosen one receives a call in such a session'
 evidence_requirements:
 - kind: tests
   description: The focused tests, each failing against the replaced check set first and passing on the fix.
@@ -125,3 +127,19 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_code_eval_trial_orchestrator/test_loop_wall_and_turn_cap_settings.py -q --no-cov -n 0 -p no:randomly -k "declared_default or uses_its_value"
     cwd: .
+- id: dod-omn26656-own-key-never-leaves-provider
+  description: 'An own-key session whose chosen provider answers 429, answers 503 or is unreachable ends failed on that provider: the provider call log holds only the chosen provider (every declared successor rung sits behind a second recording provider that receives no call), every attempt names the key''s own backend, and the chosen provider is called with the customer''s key (positive control). The tests fail when the selection guard that passes over unselected rungs is removed.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/chains/local/test_chain_l12_own_key_never_leaves_provider_omn26656.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26656-own-key-integration-proof
+  description: Run the own-key no-swap tests on a lab host at the pushed head; hosted CI cannot place a lab run, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26656-ownkey --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/chains/local/test_chain_l12_own_key_never_leaves_provider_omn26656.py -q --no-cov -n 0 -p no:randomly
