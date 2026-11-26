@@ -101,9 +101,16 @@ def _gateway(accepts: str) -> HTTPServer:
     return server
 
 
-def _c11(store_value: str | None) -> tuple[Any, _Store]:
+class _UnreachableStore:
+    async def read(self, folder: str, name: str) -> SecretStr | None:
+        raise ConnectionError("the secret store did not answer")
+
+
+def _c11(
+    store_value: str | None, store: _Store | _UnreachableStore | None = None
+) -> tuple[Any, Any]:
     server = _gateway(STORED_KEY)
-    store = _Store(store_value)
+    store = store if store is not None else _Store(store_value)
     try:
         row = ModelDelegationCheckGatewayOverlay.model_construct(
             schema_version=1,
@@ -151,3 +158,10 @@ def test_c11_known_bad_a_store_holding_another_key_fails_the_tenant_arms() -> No
 def test_c11_known_bad_a_store_holding_nothing_is_precondition_absent() -> None:
     with pytest.raises(CollectorAbsentError, match="not in the dev secret store"):
         _c11(None)
+
+
+@pytest.mark.unit
+def test_c11_known_bad_an_unreachable_store_is_precondition_absent() -> None:
+    # An unanswered store is an absent instrument, never a crash of the probe and never a green reading.
+    with pytest.raises(CollectorAbsentError, match="cannot be read"):
+        _c11(None, _UnreachableStore())
