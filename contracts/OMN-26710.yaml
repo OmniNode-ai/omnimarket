@@ -67,6 +67,17 @@ dod_evidence:
         check_value: >-
           uv run --frozen python -I -c "import yaml,copy,unittest,glob;from omnimarket.nodes.node_workflow_gateway_effect.handlers.http_dependencies import ModelWorkflowGatewayOverlay as M;d=yaml.safe_load(open(glob.glob('${OMNI_HOME}/*/aws-dev/node_workflow_gateway_effect/overlay.yaml')[0]));m=M.model_validate(d);assert m.identity.issuer=='https://dev.auth.omninode.ai/realms/omninode' and m.identity.audience=='onex-api';b=copy.deepcopy(d);b['identity']['audience']='';b['identity'].pop('issuer');unittest.TestCase().assertRaises(Exception,M.model_validate,b);print('DEV-DOC-OK')"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26710-ac2-model-refuses-broken-document"
+    description: >-
+      AC2, the part hosted CI can run: the settings model the Dev document is validated against accepts the example document and
+      refuses a copy with the slug claim or the rate limit removed or a malformed key-set URL. The Dev document itself is
+      read only by the local Done gate item above.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_workflow_gateway_effect/test_overlay_example_omn26710.py -q -p no:randomly -k 'validates or broken'"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn26710-dnspython-lock-floor"
     description: >-
       The lock pins dnspython at or above 2.9.0 (Safety SFTY-20261027-41384 flags 2.8.0, which turned the required
