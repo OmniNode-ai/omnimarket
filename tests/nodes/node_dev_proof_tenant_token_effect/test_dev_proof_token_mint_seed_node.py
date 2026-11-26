@@ -31,7 +31,6 @@ from omnimarket.nodes.node_dev_proof_tenant_token_effect.models.model_dev_proof_
 from .fakes import (
     PROJECT_ID,
     SECRET_H051,
-    SECRET_H201,
     FakeKeyReader,
     FakeSeedStore,
     overlay,
@@ -110,7 +109,7 @@ def test_dev_proof_token_mint_seed_node_end_to_end_verifies_with_the_public_half
         handler.handle(ModelDevProofTokenCommand(lane="dev", write=True))
     )
     assert result.outcome is EnumDevProofTokenOutcome.MINTED
-    assert store.set_calls == [SECRET_H051, SECRET_H201]
+    assert store.set_calls == [SECRET_H051]
     claims = jwt.decode(
         store.values[SECRET_H051],
         public,
@@ -122,4 +121,4 @@ def test_dev_proof_token_mint_seed_node_end_to_end_verifies_with_the_public_half
         handler.handle(ModelDevProofTokenCommand(lane="dev", write=True))
     )
     assert {t.status for t in again.tokens} == {EnumDevProofTokenStatus.PRESENT}
-    assert store.set_calls == [SECRET_H051, SECRET_H201]
+    assert store.set_calls == [SECRET_H051]

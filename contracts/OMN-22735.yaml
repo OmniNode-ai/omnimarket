@@ -46,3 +46,53 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22735 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_reading_writer_effect -q --no-cov
     cwd: .
+- id: dod-omn22735-ac1-accepted-20261126t1145z
+  description: 'AC1 binding (accepted 2026-11-26T1145Z, proposed by lane=dod-closeout-bind-2026-11-26T1145Z-c2,
+    accepted by lane=dod-closeout-accept-2026-11-26T1145Z-c2). Re-run at omnimarket origin/dev 2fea1c9f92
+    passed (8 passed); at the parent of d23f72b0c0 with this test file laid over it, 4 failed and 4 passed.'
+  source: manual
+  binds_ac: [AC1]
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_reading_schedule_worktree_guard.py -q --no-cov
+    cwd: .
+- id: dod-omn22735-ac2-accepted-20261126t1145z
+  description: 'AC2 binding (accepted 2026-11-26T1145Z, proposed by lane=dod-closeout-bind-2026-11-26T1145Z-c2,
+    accepted by lane=dod-closeout-accept-2026-11-26T1145Z-c2). Re-run at omnimarket origin/dev 2fea1c9f92
+    passed (8 passed); at the parent of d23f72b0c0 with this test file laid over it, 4 failed and 4 passed.'
+  source: manual
+  binds_ac: [AC2]
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_reading_schedule_worktree_guard.py -q --no-cov
+    cwd: .
+- id: dod-omn22735-ac3-accepted-20261126t1145z
+  description: 'AC3 binding (accepted 2026-11-26T1145Z, proposed by lane=dod-closeout-bind-2026-11-26T1145Z-c2,
+    accepted by lane=dod-closeout-accept-2026-11-26T1145Z-c2). Re-run at omnimarket origin/dev 2fea1c9f92
+    passed (8 passed); at the parent of d23f72b0c0 with this test file laid over it, 4 failed and 4 passed.'
+  source: manual
+  binds_ac: [AC3]
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_reading_writer_effect/test_reading_schedule_worktree_guard.py -q --no-cov
+    cwd: .
+context:
+  ac_binding_provenance:
+    dod-omn22735-ac1-accepted-20261126t1145z:
+    - label: AC1
+      criterion_hash: 5b73b0ec56f6e5adf95112c8c795ef737e7e2e3f1a599b92e4f54d64efe664e9
+      proposed_by: lane=dod-closeout-bind-2026-11-26T1145Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-26T1145Z-c2
+      accepted_at: '2026-11-26T12:22:14Z'
+    dod-omn22735-ac2-accepted-20261126t1145z:
+    - label: AC2
+      criterion_hash: b9af6cd0a57a6beca721bb98a77180c9071be433691601e9d85a8afbf70615d8
+      proposed_by: lane=dod-closeout-bind-2026-11-26T1145Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-26T1145Z-c2
+      accepted_at: '2026-11-26T12:22:14Z'
+    dod-omn22735-ac3-accepted-20261126t1145z:
+    - label: AC3
+      criterion_hash: be2c2ce3e0dc37c81e96f37a8cf11c3d807dd0ddb69ed121a9f6d1dfbbdef68b
+      proposed_by: lane=dod-closeout-bind-2026-11-26T1145Z-c2
+      accepted_by: lane=dod-closeout-accept-2026-11-26T1145Z-c2
+      accepted_at: '2026-11-26T12:22:14Z'
