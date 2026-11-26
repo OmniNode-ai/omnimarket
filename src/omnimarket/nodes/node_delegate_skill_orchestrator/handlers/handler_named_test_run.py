@@ -24,6 +24,7 @@ from functools import partial
 from pathlib import Path
 
 from omnimarket.delegation.graded_ladder.graders import extract_code_block
+from omnimarket.handlers.named_test_outcome import run_named_tests
 from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 from omnimarket.models.delegation.wire.model_named_test_run_request import (
     EnumNamedTestRunStatus,
@@ -134,25 +135,6 @@ def _run_test(sandbox: Path, test_id: str, timeout_seconds: int) -> tuple[int, s
         return proc.returncode, f"{stdout}\n{stderr}"
 
 
-# Pytest's exit 4 covers both "the named file or test does not exist" (nothing to
-# run) and "the file exists but cannot be collected" (its import raised, the
-# delegated code is broken). Only the first is a not-run outcome.
-_NOT_FOUND_MARKERS = ("file or directory not found", "not found:")
-_COLLECTION_BROKEN_MARKERS = ("found no collectors", "error collecting")
-
-
-def _did_not_run(exit_code: int, output: str) -> bool:
-    """Whether a nonzero pytest exit means the named test never executed."""
-    if exit_code == 5:
-        return True
-    if exit_code != 4:
-        return False
-    lowered = output.lower()
-    if any(marker in lowered for marker in _COLLECTION_BROKEN_MARKERS):
-        return False
-    return any(marker in lowered for marker in _NOT_FOUND_MARKERS)
-
-
 class HandlerNamedTestRun:
     """Prepare an isolated workspace and collect ordered named-test evidence."""
 
@@ -197,40 +179,12 @@ class HandlerNamedTestRun:
                     extract_code_block(request.answer_content).rstrip() + "\n",
                 )
 
-                failed: list[str] = []
-                not_run: list[str] = []
-                first_exit_code = 0
-                first_output = ""
-                for test_id in spec.test_ids:
-                    exit_code, output = _run_test(
-                        sandbox, test_id, request.timeout_seconds
-                    )
-                    if exit_code != 0:
-                        if not failed and not not_run:
-                            first_exit_code = exit_code
-                            first_output = output[-1500:]
-                        if _did_not_run(exit_code, output):
-                            not_run.append(test_id)
-                        else:
-                            if not failed:
-                                first_exit_code = exit_code
-                                first_output = output[-1500:]
-                            failed.append(test_id)
-
-                total = len(spec.test_ids)
-                detail = f"all {total} named test(s) passed"
-                if not_run and not failed:
-                    summary = (
-                        f"{len(not_run)} of {total} named test(s) did not run "
-                        f"(exit {first_exit_code}): " + ", ".join(not_run)
-                    )
-                    detail = f"{summary[:2499]}\n{first_output}"
-                elif failed:
-                    summary = (
-                        f"{len(failed)} of {total} named test(s) failed: "
-                        + ", ".join(failed)
-                    )
-                    detail = f"{summary[:2499]}\n{first_output}"
+                failed, first_exit_code, detail = run_named_tests(
+                    spec.test_ids,
+                    partial(
+                        _run_test, sandbox, timeout_seconds=request.timeout_seconds
+                    ),
+                )
                 return ModelNamedTestRunResult(
                     status=EnumNamedTestRunStatus.COMPLETED,
                     run=ModelNamedTestRun(
