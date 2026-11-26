@@ -288,6 +288,22 @@ async def _git(*argv: str, cwd: Path, env: dict[str, str]) -> str:
     return stdout.decode().strip()
 
 
+def _validated_workspace(path: str, site: dict[str, Any]) -> Path:
+    """Resolve a caller-named workspace and keep it strictly inside a declared root."""
+    roots = [Path(root).resolve() for root in site.get("allowed_workspace_roots", ())]
+    if not roots:
+        raise ValueError("workspace refused: call site declares no allowed roots")
+    try:
+        resolved = Path(path).resolve(strict=True)
+    except (OSError, RuntimeError):
+        raise ValueError("workspace refused: path does not resolve") from None
+    if not resolved.is_dir():
+        raise ValueError("workspace refused: not a directory")
+    if not any(resolved != root and resolved.is_relative_to(root) for root in roots):
+        raise ValueError("workspace refused: outside the call site's allowed roots")
+    return resolved
+
+
 def _read_agent_result(path: Path, target: str) -> tuple[str, str | None, bool]:
     content, session_id, failed = "", None, False
     # The full stream remains at output_path, while bus receipts stay bounded.
@@ -433,17 +449,24 @@ class HandlerDelegationTarget:
         site: dict[str, Any],
         timeout: float,
     ) -> ModelDelegationTargetResult:
-        assert request.repo is not None
-        assert request.commit_sha is not None
-        owner, name = request.repo.split("/")
-        if owner not in self._config["allowed_owners"] or name in {".", ".."}:
-            raise ValueError("repository is outside this runtime's delegation scope")
-        root = Path(self._config["repository_root"]).resolve()
-        clone = (root / name).resolve()
-        if not clone.is_relative_to(root):
-            raise ValueError("repository resolves outside the configured root")
+        workspace: Path | None = None
+        if request.workspace_path is not None:
+            workspace = _validated_workspace(request.workspace_path, site)
+            clone = workspace
+        else:
+            assert request.repo is not None
+            assert request.commit_sha is not None
+            owner, name = request.repo.split("/")
+            if owner not in self._config["allowed_owners"] or name in {".", ".."}:
+                raise ValueError(
+                    "repository is outside this runtime's delegation scope"
+                )
+            root = Path(self._config["repository_root"]).resolve()
+            clone = (root / name).resolve()
+            if not clone.is_relative_to(root):
+                raise ValueError("repository resolves outside the configured root")
         run_root = Path(self._config["work_root"]).resolve() / str(request.request_id)
-        tree, output = run_root / "worktree", run_root / "output.jsonl"
+        tree, output = workspace or run_root / "worktree", run_root / "output.jsonl"
         receipt_path = run_root / "receipt.json"
         digest = hashlib.sha256(request.model_dump_json().encode()).hexdigest()
         started = time.monotonic()
@@ -522,18 +545,20 @@ class HandlerDelegationTarget:
                     raise AntigravityRefusalError("brief-too-large")
                 if shutil.which("agy", path=env.get("PATH")) is None:
                     raise AntigravityRefusalError("not-installed")
-            sha = await _git(
-                "rev-parse",
-                "--verify",
-                f"{request.commit_sha}^{{commit}}",
-                cwd=clone,
-                env=env,
-            )
-            if sha != request.commit_sha:
-                raise ValueError("resolved commit differs from requested commit")
-            await _git(
-                "worktree", "add", "--detach", str(tree), sha, cwd=clone, env=env
-            )
+            sha: str | None = None
+            if workspace is None:
+                sha = await _git(
+                    "rev-parse",
+                    "--verify",
+                    f"{request.commit_sha}^{{commit}}",
+                    cwd=clone,
+                    env=env,
+                )
+                if sha != request.commit_sha:
+                    raise ValueError("resolved commit differs from requested commit")
+                await _git(
+                    "worktree", "add", "--detach", str(tree), sha, cwd=clone, env=env
+                )
             with output.open("wb") as stream:
                 process = await asyncio.create_subprocess_exec(
                     *adapter.argv(request, model=model),
@@ -575,7 +600,11 @@ class HandlerDelegationTarget:
                     raise AntigravityRefusalError("not-logged-in")
             else:
                 content, session_id, failed = _read_agent_result(output, request.target)
-            head = await _git("rev-parse", "HEAD", cwd=tree, env=env)
+            head = (
+                await _git("rev-parse", "HEAD", cwd=tree, env=env)
+                if workspace is None
+                else None
+            )
             result = ModelDelegationTargetResult(
                 request_id=request.request_id,
                 target=request.target,
