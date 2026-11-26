@@ -8,6 +8,7 @@ import json
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -212,17 +213,22 @@ def _endpoint(
     return endpoint
 
 
-def create_app(*, dependencies: WorkflowGatewayDependencies | None = None) -> FastAPI:
+def create_app(
+    *,
+    dependencies: WorkflowGatewayDependencies | None = None,
+    settings_mount: Path | None = None,
+) -> FastAPI:
     """Build the mount without a database connection, a broker or a secret read.
 
     The runtime calls this with no argument: the dependencies are then built on the
     first request from the node's overlay document. ``dependencies`` replaces that
-    for the in-memory profile and tests.
+    for the in-memory profile and tests. ``settings_mount`` replaces the settings folder the
+    contract declares (a mounted ConfigMap in the cloud runtime).
     """
     provider: WorkflowGatewayDependencyProvider = (
         StaticWorkflowGatewayDependencies(dependencies)
         if dependencies is not None
-        else OverlayWorkflowGatewayDependencies()
+        else OverlayWorkflowGatewayDependencies(settings_mount)
     )
 
     @asynccontextmanager
