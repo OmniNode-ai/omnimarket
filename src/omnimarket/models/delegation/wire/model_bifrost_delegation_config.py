@@ -318,6 +318,13 @@ class ModelDelegationBackendConfig(BaseModel):
         # choice, refused in a packaged config like any provider.
         json_schema_extra=deployment_fact(EnumDeploymentFactKind.PROVIDER),
     )
+    effort: Literal["low", "medium", "high", "xhigh", "max"] | None = Field(
+        default=None,
+        description=(
+            "OMN-26043: the effort a Claude Code harness backend runs at, passed as "
+            "``--effort``. None runs the harness default."
+        ),
+    )
     surface: EnumDelegationBackendSurface = Field(
         default=EnumDelegationBackendSurface.ANY,
         description=(

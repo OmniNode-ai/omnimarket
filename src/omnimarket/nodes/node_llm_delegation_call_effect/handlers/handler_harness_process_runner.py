@@ -47,6 +47,25 @@ from omnimarket.protocols.protocol_process_environment import (
 )
 
 _CREDENTIAL_SUFFIXES = ("_KEY", "_TOKEN", "_PASSWORD")
+# The Claude subscription login is the only credential the ``claude`` harness runs on: an API key or an
+# auth token in the child's environment would bill a key instead (OMN-26043), so each is refused by name.
+_SUBSCRIPTION_REFUSED = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
+
+
+def _answering_model(record: dict[str, Any]) -> str | None:
+    """The model the result record reports it ran: its one ``modelUsage`` key, else the heaviest by output."""
+    usage = record.get("modelUsage")
+    if not isinstance(usage, dict) or not usage:
+        return None
+    if len(usage) == 1:
+        return str(next(iter(usage)))
+
+    def output(name: object) -> int:
+        row = usage[name]
+        value = row.get("outputTokens") if isinstance(row, dict) else None
+        return value if type(value) is int else 0
+
+    return str(max(usage, key=output))
 
 
 def _count(value: object) -> int | None:
@@ -99,6 +118,7 @@ def _claude_receipt(
         wall_seconds=wall,
         exit_cause=cause,
         exit_code=code,
+        model=_answering_model(record),
     )
 
 
@@ -159,6 +179,16 @@ class HandlerHarnessProcessRunner:
             exit_code=attempt.exit_code,
         )
 
+    def _subscription_violation(self, harness: EnumDelegationHarness) -> str | None:
+        """The name of a variable that would put an API key behind the subscription harness, or ``None``."""
+        config = self._agents.get(harness.value, {})
+        declared = {
+            *self._environment.environment(),
+            *config.get("env", {}),
+            *config.get("secret_env", {}),
+        }
+        return next((name for name in _SUBSCRIPTION_REFUSED if name in declared), None)
+
     async def _claude_environment(
         self, harness: EnumDelegationHarness
     ) -> dict[str, str] | None:
@@ -191,6 +221,17 @@ class HandlerHarnessProcessRunner:
         assert harness is not None
         glm = harness is EnumDelegationHarness.CLAUDE_GLM
         adapter = HandlerClaudeGlmArguments() if glm else HandlerClaudeCodeArguments()
+        if not glm:
+            present = self._subscription_violation(harness)
+            if present is not None:
+                return ModelHarnessRunReceipt(
+                    wall_seconds=time.monotonic() - started,
+                    exit_cause="credential_refused",
+                    detail=(
+                        f"{present} is set: the claude harness runs on the "
+                        "subscription login and never an API key"
+                    ),
+                )
         try:
             env = await self._claude_environment(harness)
         except (OSError, ValueError):
@@ -200,6 +241,8 @@ class HandlerHarnessProcessRunner:
                 wall_seconds=time.monotonic() - started, exit_cause="launch_failed"
             )
         argv = adapter.argv(None, model=backend.model_name)
+        if backend.effort is not None:
+            argv += ["--effort", backend.effort]
         with tempfile.TemporaryDirectory(prefix="harness-call-") as cwd:
             try:
                 process = await asyncio.create_subprocess_exec(
