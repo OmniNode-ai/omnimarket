@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+database:
+  dsn_secret: tenant_identity.database.dsn
+  secret_resolver_config_path: /etc/example/secret-resolver.yaml
+  pool_max_size: 2
+  query_timeout_seconds: 10.0
+broker_bootstrap_servers_env: KAFKA_BOOTSTRAP_SERVERS
+publish_timeout_seconds: 10.0

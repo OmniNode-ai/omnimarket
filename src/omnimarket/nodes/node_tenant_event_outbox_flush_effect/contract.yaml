@@ -1,0 +1,118 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Tenant Event Outbox Flush Effect
+#
+# The relay between tenant_event_outbox (written in the provision transaction) and onex.tenant.events, which
+# node_projection_tenant_registry mirrors into tenant_registry_mirror. node_tenant_provision_effect leaves the row
+# unpublished ("the flush is another node's work"); this is that node. Triggered by a flush command and by the provision
+# node's own completed event, so a created tenant is relayed without a timer.
+name: node_tenant_event_outbox_flush_effect
+contract_name: node_tenant_event_outbox_flush_effect
+node_name: node_tenant_event_outbox_flush_effect
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+lifecycle: experimental
+runtime_profiles: [effects]
+description: >
+  Publishes each unpublished tenant_event_outbox row to its topic and stamps published_at only after the broker
+  acknowledged the record; a failed publish leaves the row waiting and counts the attempt with the failing class name.
+handler:
+  module: omnimarket.nodes.node_tenant_event_outbox_flush_effect.handlers.handler_tenant_outbox_flush
+  class: HandlerTenantOutboxFlush
+  input_model: omnimarket.nodes.node_tenant_event_outbox_flush_effect.models.model_tenant_outbox_flush.ModelTenantOutboxFlushCommand
+input_model:
+  name: ModelTenantOutboxFlushCommand
+  module: omnimarket.nodes.node_tenant_event_outbox_flush_effect.models.model_tenant_outbox_flush
+  description: The flush bound; the provision-completed payload is accepted as the signal and its extra fields are ignored.
+output_model:
+  name: ModelTenantOutboxFlushResult
+  module: omnimarket.nodes.node_tenant_event_outbox_flush_effect.models.model_tenant_outbox_flush
+  description: The typed outcome with the published and failed counts.
+descriptor:
+  node_archetype: effect
+  purity: impure
+  runtime_profiles: [effects]
+  idempotent: true
+  side_effects: [database-write, kafka-publish]
+  timeout_ms: 30000
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - operation: tenant_outbox_flush
+      topic: onex.cmd.omnimarket.tenant-event-outbox-flush-requested.v1
+      message_category: command
+      event_model: omnimarket.nodes.node_tenant_event_outbox_flush_effect.models.model_tenant_outbox_flush.ModelTenantOutboxFlushCommand
+      handler_module: omnimarket.nodes.node_tenant_event_outbox_flush_effect.handlers.handler_tenant_outbox_flush
+      handler:
+        name: HandlerTenantOutboxFlush
+        module: omnimarket.nodes.node_tenant_event_outbox_flush_effect.handlers.handler_tenant_outbox_flush
+    - operation: tenant_outbox_flush_on_provision
+      topic: onex.evt.omnimarket.tenant-provision-completed.v1
+      message_category: event
+      event_model: omnimarket.nodes.node_tenant_event_outbox_flush_effect.models.model_tenant_outbox_flush.ModelTenantOutboxFlushCommand
+      handler_module: omnimarket.nodes.node_tenant_event_outbox_flush_effect.handlers.handler_tenant_outbox_flush
+      handler:
+        name: HandlerTenantOutboxFlush
+        module: omnimarket.nodes.node_tenant_event_outbox_flush_effect.handlers.handler_tenant_outbox_flush
+topics:
+  tenant_outbox_flush:
+    requested: onex.cmd.omnimarket.tenant-event-outbox-flush-requested.v1
+    completed: onex.evt.omnimarket.tenant-event-outbox-flush-completed.v1
+terminal_event: onex.evt.omnimarket.tenant-event-outbox-flush-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.tenant-event-outbox-flush-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.tenant-event-outbox-flush-completed.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.tenant-event-outbox-flush-requested.v1
+    - onex.evt.omnimarket.tenant-provision-completed.v1
+  publish_topics:
+    - onex.evt.omnimarket.tenant-event-outbox-flush-completed.v1
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.tenant-event-outbox-flush-requested.v1
+    producer: "the operator's CLI, the only principal holding WRITE on this topic (see broker_acl_grants) -- not a node contract"
+externally_consumed_topics:
+  - onex.evt.omnimarket.tenant-event-outbox-flush-completed.v1
+broker_acl_grants:
+  - principal: "${ONEX_ACL_TENANT_OPERATOR_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-event-outbox-flush-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-event-outbox-flush-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-event-outbox-flush-completed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-event-outbox-flush-completed.v1, operation: DESCRIBE}
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-event-outbox-flush-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-event-outbox-flush-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-provision-completed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-provision-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-event-outbox-flush-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-event-outbox-flush-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.tenant.events, operation: WRITE} # onex-topic-allow: control-plane tenant lifecycle topic the outbox flush writes
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.tenant.events, operation: DESCRIBE} # onex-topic-allow: control-plane tenant lifecycle topic the outbox flush writes
+overlay:
+  node: node_tenant_event_outbox_flush_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+config:
+  overlay_id: "node_tenant_event_outbox_flush_effect"
+secret_dependencies:
+  tenant_identity.database.dsn:
+    required: true
+    description: "The identity database's DSN, asked of the secret store by this logical name (the overlay's database.dsn_secret). The main runtime carries it."
+identity_io:
+  db_tables:
+    - name: tenant_event_outbox
+      database_ref: omninode_cloud
+      schema: public
+      migration: "20260816_tenant_event_outbox.sql"
+      access: read_update
+      role: tenant_identity
+golden_path:
+  - "A tenant is provisioned and one TENANT_CREATED row waits in tenant_event_outbox with no published_at"
+  - "The provision-completed event (or a flush command) reaches this node"
+  - "The envelope is published to onex.tenant.events and acknowledged"
+  - "published_at is stamped; node_projection_tenant_registry mirrors the tenant"
+metadata:
+  transport_type: database
