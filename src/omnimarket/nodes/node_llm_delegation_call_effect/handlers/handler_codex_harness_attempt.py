@@ -30,7 +30,7 @@ from ..models.model_codex_harness_attempt import (
     ModelCodexHarnessReceipt,
     ModelCodexHarnessRequest,
 )
-from .handler_codex_launch_guard import api_key_refusal, codex_argv, uses_api_key
+from .codex_launch_guard import api_key_refusal, codex_argv, uses_api_key
 
 
 def _terminate(process: subprocess.Popen[str], grace: float) -> tuple[str, str]:
