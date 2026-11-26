@@ -94,3 +94,17 @@ def test_known_bad_a_release_tag_on_head_fails(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     _git(repo, "tag", "v1.0.1")
     assert _run(repo) != 0
+
+
+def test_passes_when_dev_moved_on_with_a_release_train_bump(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    _git(repo, "checkout", "-q", "-b", "feature")
+    (repo / "x.txt").write_text("x")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "change")
+    _git(repo, "checkout", "-q", "dev")
+    (repo / "pyproject.toml").write_text(PYPROJECT.format(v="1.0.1"))
+    _git(repo, "commit", "-q", "-am", "release train bump on dev")
+    _git(repo, "update-ref", "refs/remotes/origin/dev", "HEAD")
+    _git(repo, "checkout", "-q", "feature")
+    assert _run(repo) == 0
