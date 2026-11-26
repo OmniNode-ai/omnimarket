@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+schema_version: "1.0.0"
+ticket_id: "OMN-26711"
+title: "AWS Dev: an install runbook for the onboarding owner and a smoke check that runs one delegation end to end through Dev"
+summary: >-
+  Acceptance for OMN-26711 in omnimarket. The smoke check is node_cloud_smoke_check_effect: one delegation through a gateway
+  whose URL and key come from settings, with the receipt read back for the answering model. AC2 and AC3 are bound to its
+  tests. AC1's runbook is a document in a sibling documents repository (its own pull request), so its item here
+  checks that the command surface the runbook documents exists; the runbook file and its recorded lab outputs are read in
+  that pull request.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn26711-runbook"
+    statement: >-
+      A runbook covers a Dev tenant and key, the command line against the Dev API, one delegation, its receipt and a 503.
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          a runbook covers getting a Dev tenant and an API key, pointing the command-line tool at the Dev API, submitting one delegation and reading its receipt, and what to do when the gateway answers 503 -- falsifier: the runbook file exists and every command in it is run once against the lab Dev stand-in with its output recorded
+  - id: "req-omn26711-smoke-check"
+    statement: >-
+      A smoke check runs one delegation end to end through a gateway from settings and names the answering model.
+    acceptance:
+      - id: "AC2"
+        statement: >-
+          a smoke check runs one delegation end to end through a Dev gateway URL with a customer-supplied key and reads back a receipt naming the model that answered -- falsifier: the smoke check passes against the lab dev gateway and fails with a named reason against a gateway with no settings
+      - id: "AC3"
+        statement: >-
+          the smoke check takes the gateway URL and key from settings or the environment, never hard-coded -- falsifier: grep for a host or key literal in the smoke check prints nothing
+evidence_requirements: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn26711-ac1-runbook"
+    description: >-
+      AC1: the commands the runbook documents (onex cloud login, status, delegate, receipt, logout) exist in the installed
+      client; the runbook itself is in a sibling documents repository and each command's lab output is recorded in this
+      pull request's body.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run onex cloud receipt --help
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26711-ac2-smoke-check"
+    description: >-
+      AC2: the smoke check's tests pass: a healthy gateway passes and names the model; no settings, an unreadable key file,
+      a 503, an unreachable gateway, a 401, a receipt with no model and a failed run each end with a named outcome.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_cloud_smoke_check_effect/test_cloud_smoke_check.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26711-ac3-no-literals"
+    description: >-
+      AC3: grep for a URL host, an IP address or a key-prefix literal in the smoke check's source prints nothing.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "command"
+        check_value: >-
+          sh -c '! grep -rEn "https?://[A-Za-z0-9]|[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}|onxk_" src/omnimarket/nodes/node_cloud_smoke_check_effect --include=*.py'
+        cwd: "${OMNI_HOME}/omnimarket"
