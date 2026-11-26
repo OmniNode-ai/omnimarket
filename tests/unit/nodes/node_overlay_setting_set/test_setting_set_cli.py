@@ -117,7 +117,9 @@ def _capture_run(monkeypatch: pytest.MonkeyPatch) -> list[float | None]:
     bounds: list[float | None] = []
 
     async def _fake_run(*args: object) -> object:
-        bounds.append(args[-1])  # type: ignore[arg-type]
+        bound = args[-1]
+        assert bound is None or isinstance(bound, float)
+        bounds.append(bound)
         raise ValueError("stub: nothing to publish")
 
     monkeypatch.setattr(runtime_overlay_setting_set, "_run", _fake_run)

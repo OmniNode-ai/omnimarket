@@ -15,6 +15,7 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+from omnibase_infra.enums import EnumDispatchStatus
 from omnibase_infra.event_bus.models.model_publish_receipt import ModelPublishReceipt
 from omnibase_infra.models.dispatch.model_dispatch_result import ModelDispatchResult
 from omnibase_infra.runtime.event_bus_subcontract_wiring import (
@@ -77,7 +78,7 @@ async def _topics_for_read_answer(contract_path: Path) -> list[str]:
     )
     await applier.apply(
         ModelDispatchResult(
-            status="success",  # type: ignore[arg-type]
+            status=EnumDispatchStatus.SUCCESS,
             topic="onex.cmd.omnimarket.tenant-read-requested.v1",
             started_at=datetime.now(tz=UTC),
             output_events=[answer],
