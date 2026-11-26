@@ -27,6 +27,12 @@ Failure modes:
   S9  once a server's models load, the model list holds the keyboard and Up
       never leaves it, so the providers cannot be reached (real terminal,
       80x24, 2026-11-26: eight Up presses, focus stayed on the list).
+  S10 a brand-new user (verify pass 2, 2026-11-26, real onex, empty home):
+      /config opens on the search line, but Up there moved the keyboard
+      past the top to the Guided setup button, so the name typed next went
+      nowhere and Enter left the TUI for the full terminal onboarding.
+  S11 when guided setup stops early the TUI said "Guided setup exited with
+      code 1", which tells the user nothing they can act on.
 """
 
 from __future__ import annotations
@@ -183,11 +189,12 @@ async def _focus_by_keys(pilot, app, widget_id: str, key: str = "up") -> None:
 
 @pytest.mark.parametrize("size", [(80, 24), (140, 40)])
 async def test_typing_on_the_list_moves_to_the_search(size: tuple[int, int]) -> None:
-    """S7: reach the list with the arrows, type, and the search line has it."""
+    """S7: reach the list with the arrows, type, and the search line has it.
+    /config opens on the search line, so Down is the way into the list."""
     app = _app(_Runner([], by_command=_selected_rows(connection=False)))
     async with app.run_test(size=size) as pilot:
         await _config(pilot, app)
-        await _focus_by_keys(pilot, app, "provider")
+        await _focus_by_keys(pilot, app, "provider", key="down")
         await _type(pilot, "anthro")
         await pilot.pause()
         screen = app.screen
@@ -231,3 +238,56 @@ async def test_up_from_the_loaded_models_reaches_the_providers(
         await pilot.pause()
         assert app.screen.query_one("#provider-search", Input).value == "anthro"
         assert _shown(app) == ["anthropic"]
+
+
+class _NewUser(_Runner):
+    """No model is set up; guided setup stops early when started."""
+
+    def __init__(self, setup_code: int = 0) -> None:
+        super().__init__([])
+        self._setup_code = setup_code
+
+    def in_terminal(self, argv: tuple[str, ...]) -> int:
+        self.terminal_calls.append(argv)
+        return self._setup_code
+
+
+@pytest.mark.parametrize("size", [(80, 24), (140, 40)])
+async def test_a_new_user_types_a_provider_name_as_config_opens(
+    size: tuple[int, int],
+) -> None:
+    """S10."""
+    runner = _NewUser()
+    app = _app(runner)
+    async with app.run_test(size=size) as pilot:
+        await _config(pilot, app)
+        assert app.focused is not None
+        assert app.focused.id == "provider-search", app.focused
+        for _ in range(4):  # as the real run pressed it
+            await pilot.press("up")
+            await pilot.pause()
+        assert app.focused is not None
+        assert app.focused.id == "provider-search", app.focused
+        await _type(pilot, "anthro")
+        await pilot.pause()
+        assert app.screen.query_one("#provider-search", Input).value == "anthro"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert runner.terminal_calls == []  # Enter did not start guided setup
+        assert app.screen.query_one("#provider").value == "anthropic"
+        assert app.focused is app.screen.query_one("#key", Input)
+
+
+async def test_guided_setup_that_stops_early_says_so_plainly() -> None:
+    """S11."""
+    runner = _NewUser(setup_code=1)
+    app = _app(runner)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await _config(pilot, app)
+        await pilot.press("ctrl+g")
+        for _ in range(6):
+            await pilot.pause()
+        assert runner.terminal_calls == [("setup",)]
+        said = str(app.screen.query_one("#note").render())
+        assert "did not finish" in said, said
+        assert "code" not in said, said

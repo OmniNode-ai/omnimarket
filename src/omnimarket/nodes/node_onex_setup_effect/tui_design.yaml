@@ -546,7 +546,8 @@ words:
   button_add: Add
   button_guided_setup: Guided setup
   guided_setup_pending: "Save or clear your pending model selections before starting guided setup."
-  guided_setup_exit: "Guided setup exited with code {code}."
+  # Said plainly: the exit code tells the user nothing (verify pass 2026-11-26).
+  guided_setup_exit: "Guided setup did not finish. Try it again."
   guided_setup_done: "Guided setup finished."
   button_save: Save
   button_cancel: Cancel

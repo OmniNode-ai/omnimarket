@@ -96,7 +96,8 @@ async def test_a_typed_key_never_reaches_the_screen_or_the_pane() -> None:
         await pilot.press("enter")
         await pilot.pause()
         assert isinstance(app.screen, SetupScreen)
-        await _focus(pilot, app, "provider")
+        # /config opens on the search line; the list is below it.
+        await _focus(pilot, app, "provider", key="down")
         await pilot.press("enter")
         await pilot.pause()
         # Down from the marked provider to OpenRouter in the order shown

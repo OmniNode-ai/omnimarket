@@ -1191,8 +1191,8 @@ async def test_guided_setup_uses_the_cli_terminal_from_the_config_tab(
         await pilot.pause()
         assert runner.terminal_calls == [("setup",)]
         assert app.screen.query_one("#guided-setup", Button).display
-        if code:
-            assert "3" in str(app.screen.query_one("#note").render())
+        if code:  # said plainly, not as the exit code (verify pass 2026-11-26)
+            assert "did not finish" in str(app.screen.query_one("#note").render())
         assert not [call for call in runner.calls if call[:2] == ("models", "add")]
 
 

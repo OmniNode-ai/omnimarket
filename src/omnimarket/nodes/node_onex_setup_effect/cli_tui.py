@@ -879,8 +879,8 @@ class _TabbedScreen(ModalScreen[_ResultT]):
         Binding("shift+tab", "tab(-1)", "Previous", priority=True, show=False),
         # Tab moves between the tabs, so the arrows move between a form's
         # fields; a list or an open picker keeps its own arrows.
-        Binding("down", "app.focus_next", "Next field", show=False),
-        Binding("up", "app.focus_previous", "Previous field", show=False),
+        Binding("down", "field(1)", "Next field", show=False),
+        Binding("up", "field(-1)", "Previous field", show=False),
     ]
 
     #: The part of the tab the setup fills: under a loading indicator
@@ -895,6 +895,18 @@ class _TabbedScreen(ModalScreen[_ResultT]):
     #: Below this many rows the tab is short: parts that take extra rows
     #: (a bordered search box, the row of space under it) take one.
     SHORT_HEIGHT: ClassVar[int] = 30
+
+    def action_field(self, step: int) -> None:
+        """The next or previous field, stopping at the first and the last: Up
+        on the search line used to wrap to the buttons, and Enter there left
+        the TUI for guided setup (verify pass 2, 2026-11-26)."""
+        chain = self.focus_chain
+        if self.focused not in chain:
+            self.focus_next() if step > 0 else self.focus_previous()
+            return
+        at = chain.index(self.focused) + step
+        if 0 <= at < len(chain):
+            chain[at].focus()
 
     def on_mount(self) -> None:
         # Runs after the tab's own on_mount (Textual calls each class's).
@@ -4374,6 +4386,8 @@ class OnexTui(App[int]):
             self.screen.focus_next()
         elif isinstance(focused, OptionList):
             getattr(focused, f"action_cursor_{key}")()
+        elif key in ("up", "down") and isinstance(self.screen, _TabbedScreen):
+            self.screen.action_field(-1 if key == "up" else 1)
         elif key in ("up", "down"):
             self.screen.focus_previous() if key == "up" else self.screen.focus_next()
         return True
@@ -4524,6 +4538,8 @@ class OnexTui(App[int]):
     async def guided_setup(self) -> Text:
         """Let the installed CLI collect choices, request consent and own the journal."""
         code = self._in_terminal(("setup",))
+        if code:  # the screen says it did not finish; the code goes to the log
+            _LOG.warning("guided setup exited with code %s", code)
         outcome = Text(
             _say("guided_setup_exit", code=code) if code else _say("guided_setup_done"),
             style=_style("error" if code else "success"),
