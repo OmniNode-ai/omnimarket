@@ -7,8 +7,10 @@ pass like Config": a Turn on that reads as a button, and the order table
 framed with a line under its column names and striped rows, as /config's.
 
 Failure modes:
-  L1  the toggle is drawn as plain text, or with more than one state's fill:
-      green on, grey off, dimmer grey while reading or switching.
+  L1  the toggle is not a rounded outline three rows tall (operator
+      2026-11-26 chose it: a flat bar "is bad too"), or ON is not green.
+  L6  on some onex theme the toggle's outline is too close to the ground
+      behind it to be seen (the filled grey vanished on the dark theme).
   L2  the hook's line sits on a line of its own, apart from the toggle.
   L3  the order table's column names have no line under them, or are not
       the layout's titles.
@@ -26,6 +28,8 @@ from textual.containers import Horizontal
 from textual.widgets import Button, DataTable, Static
 
 from omnimarket.nodes.node_onex_setup_effect.cli_tui import DelegationScreen
+from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import tui_design
+from tests.unit.nodes.node_onex_setup_effect import tabs_redesign_support as sup
 from tests.unit.nodes.node_onex_setup_effect.test_onex_tui import _Runner
 from tests.unit.nodes.node_onex_setup_effect.test_onex_tui_local_servers import (
     _app,
@@ -47,7 +51,7 @@ async def _delegation():
     return _app(runner)
 
 
-async def test_the_toggle_is_filled_by_its_state() -> None:
+async def test_the_toggle_is_a_rounded_outline() -> None:
     """L1."""
     app = await _delegation()
     async with app.run_test(size=(170, 46)) as pilot:
@@ -57,15 +61,18 @@ async def test_the_toggle_is_filled_by_its_state() -> None:
         assert isinstance(app.screen, DelegationScreen)
         screen = app.screen
         button = screen.query_one("#dturn", Button)
-        fills = {
-            "-on": "success",
-            "-off": "panel-lighten-2",
-            "-busy": "panel-lighten-1",
-        }
-        shown = [name for name in fills if button.has_class(name)]
-        assert len(shown) == 1, shown
-        fill = Color.parse(app.theme_variables[fills[shown[0]]])
-        assert button.styles.background == fill
+        states = [name for name in ("-on", "-off", "-busy") if button.has_class(name)]
+        assert len(states) == 1, states
+        sides = (
+            button.styles.border_top,
+            button.styles.border_right,
+            button.styles.border_bottom,
+            button.styles.border_left,
+        )
+        assert {kind for kind, _ in sides} == {"round"}, sides
+        assert button.outer_size.height == 3, button.outer_size
+        if states == ["-on"]:
+            assert sides[0][1] == Color.parse(app.theme_variables["success"])
 
 
 async def test_the_hook_line_is_on_the_toggle_row() -> None:
@@ -81,6 +88,32 @@ async def test_the_hook_line_is_on_the_toggle_row() -> None:
         hook = screen.query_one("#hook-prompt_hook", Static)
         assert hook.parent is row
         assert screen.query_one("#dturn", Button).parent is row
+
+
+@pytest.mark.parametrize("delegation", ["hook", "off"])
+async def test_the_toggle_stands_out_on_every_theme(delegation: str) -> None:
+    """L6."""
+    design = tui_design()
+    names = [design.theme.name, *(theme.name for theme in design.themes.values())]
+    hooks = {"prompt_hook": "installed" if delegation == "hook" else "missing"}
+    app = sup.app(delegation=delegation, hooks=hooks)
+    faint: list[tuple[str, float]] = []
+    async with app.run_test(size=(140, 40)) as pilot:
+        await sup.open_tab(pilot, app, "delegation")
+        for name in names:
+            app.theme = name
+            await sup.settle(pilot, 3)
+            button = app.screen.query_one("#dturn", Button)
+            ground = app.screen.query_one("#deleg").styles.background
+            if ground.a == 0:  # the terminal's own ground: dark or light
+                ground = (
+                    Color(0, 0, 0) if app.current_theme.dark else Color(255, 255, 255)
+                )
+            outline = ground + button.styles.border_top[1]
+            gap = abs(outline.brightness - ground.brightness)
+            if gap < 0.2:
+                faint.append((name, round(gap, 3)))
+    assert faint == [], faint
 
 
 async def test_the_order_table_has_a_line_under_its_column_names() -> None:

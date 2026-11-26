@@ -2462,13 +2462,22 @@ class DelegationScreen(_TabbedScreen[None]):
     /* OMN-26688: the toggle shows the state; the title line keeps none. */
     #on-state { display: none; }
     #hooks-title { color: $text-muted; height: 1; }
-    #dturn-row { height: 1; margin: 1 0 0 0; }
-    #dturn { width: auto; min-width: 12; height: 1; border: none; margin: 0 2 0 0; padding: 0 2; text-style: bold; }
-    #dturn:focus { text-style: bold; }
-    #dturn.-on { background: $success; color: $background; }
-    #dturn.-off { background: $panel-lighten-2; color: $text; }
-    #dturn.-busy { background: $panel-lighten-1; color: $text-muted; }
-    #dturn-row .hook { width: 1fr; }
+    /* OMN-26688: a switch drawn as a rounded outline, its knob on the side it
+       is switched to (operator 2026-11-26 chose it over a filled bar, whose
+       grey vanished on the dark theme). */
+    #dturn-row { height: 3; margin: 1 0 0 0; }
+    #dturn { width: auto; min-width: 16; height: 3; background: transparent; border: round $foreground 45%; margin: 0 2 0 0; padding: 0 2; text-style: bold; }
+    #dturn:focus { text-style: bold; background: transparent; }
+    #dturn:hover { background: transparent; }
+    #dturn.-on { border: round $success; color: $success; }
+    #dturn.-off { border: round $foreground 45%; color: $text-muted; }
+    #dturn.-busy { border: round $foreground 25%; color: $text-muted; }
+    #dturn-hint { width: auto; height: 3; margin: 0 2 0 0; content-align: left middle; color: $text-muted; }
+    /* A short screen keeps its rows for the models: no blank row above the
+       toggle or between the boxes (the toggle is three rows, OMN-26688). */
+    DelegationScreen.-short #dturn-row { margin: 0; }
+    DelegationScreen.-short #selected { margin-top: 0; }
+    #dturn-row .hook { width: 1fr; height: 3; content-align: left middle; }
     #dswitches { display: none; height: 0; }
     .hook { height: 1; text-wrap: nowrap; text-overflow: ellipsis; }
     #dstate { height: auto; border: round $border; padding: 0 1; }
@@ -2539,6 +2548,7 @@ class DelegationScreen(_TabbedScreen[None]):
                 # line beside it only when something is wrong.
                 with Horizontal(id="dturn-row"):
                     yield Button(self._toggle_label(), id="dturn")
+                    yield Static(self._toggle_hint(), id="dturn-hint")
                     for hook in words.hooks:
                         line = Static(
                             self._hook_text(hook.key),
@@ -2757,14 +2767,22 @@ class DelegationScreen(_TabbedScreen[None]):
             return _say("toggle_unread")
         dot = tui_design().glyphs.dot_on
         if self.any_on():
-            return f"{_say('toggle_on')}  {dot}"
-        return f"{dot}  {_say('toggle_off')}"
+            return f"{_say('toggle_on')}    {dot}"
+        return f"{dot}    {_say('toggle_off')}"
+
+    def _toggle_hint(self) -> str:
+        """What Space does now, beside the toggle; nothing while it runs or
+        the state is not read."""
+        if self._switching or self._saved in (None, "unknown"):
+            return ""
+        return _say("toggle_hint_on" if self.any_on() else "toggle_hint_off")
 
     def _show_turn(self) -> None:
         """The toggle shows the state: filled green on, grey off, dimmer grey
         while a switch runs or the state is not read (OMN-26688)."""
         button = self.query_one("#dturn", Button)
         button.label = self._toggle_label()
+        self.query_one("#dturn-hint", Static).update(self._toggle_hint())
         busy = self._switching or self._saved in (None, "unknown")
         on = self.any_on()
         button.set_class(busy, "-busy")

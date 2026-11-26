@@ -50,10 +50,12 @@ async def _text(size: tuple[int, int], **kwargs: object) -> str:
 async def test_the_toggle_shows_the_state(size: tuple[int, int]) -> None:
     """D1."""
     on = await _text(size)
-    assert "ON  ●" in on, on
+    assert "ON    ●" in on, on
+    assert "space to turn off" in on, on
     off = await _text(size, delegation="off", hooks={"prompt_hook": "missing"})
-    assert "●  OFF" in off, off
-    assert "ON  ●" not in off, off
+    assert "●    OFF" in off, off
+    assert "ON    ●" not in off, off
+    assert "space to turn on" in off, off
 
 
 @pytest.mark.parametrize("size", sup.SIZES)

@@ -327,9 +327,9 @@ delegation:
   hook_unread: not read
   hook_paused: paused
   # Save sends nothing from a state that was not read (review 2026-11-15).
-  save_reading: "Delegation's state is still being read, so Save changed nothing; save again once it shows."
-  save_unread: "Delegation's state could not be read, so Save changed nothing. Switch it on here, or run /delegation off to switch it off."
-  save_just_read: "Delegation's state was just read and is shown above; Save changed nothing."
+  save_reading: "Delegation's state is still being read, so nothing was switched; switch again once it shows."
+  save_unread: "Delegation's state could not be read, so nothing was switched. Switch it on here, or run /delegation off to switch it off."
+  save_just_read: "Delegation's state was just read and is shown above; nothing was switched."
   # OMN-23413, operator 2026-11-13: Claude Code is the user's own install; the
   # tab detects it with setup's read-only check and says so, and never installs it.
   claude_check: [delegation, status, --json]
@@ -560,6 +560,8 @@ words:
   toggle_switching: "switching…"
   toggle_reading: "reading…"
   toggle_unread: "not read"
+  toggle_hint_on: "space to turn off"
+  toggle_hint_off: "space to turn on"
   hook_label: Hook
   hook_state_installed: "✓ installed in Claude Code"
   hook_state_missing: "! not installed"
@@ -643,10 +645,10 @@ words:
   setup_busy: "another setup is still running (it may be installing Claude Code); wait for it to finish, then save again"
   claude_checking: "Claude Code: checking…"
   claude_ready: "Claude Code: ready"
-  claude_installed: "Claude Code: installed · Save adds the ONEX plugin and switches the hooks on"
-  claude_signed_out: "Claude Code: installed, not signed in · run claude and sign in, then save"
+  claude_installed: "Claude Code: installed · switching on adds the ONEX plugin and the hooks"
+  claude_signed_out: "Claude Code: installed, not signed in · run claude and sign in, then switch on"
   claude_missing: "Claude Code is not installed. Install it yourself from claude.com/claude-code, then switch delegation on here."
-  claude_unknown: "could not check Claude Code; Save will try and report what it finds"
+  claude_unknown: "could not check Claude Code; switching on will try and report what it finds"
   run_tokens: "{tokens} tokens"
   # Operator 2026-11-13: tokens in point down, tokens out point up.
   run_tokens_in_out: "↓{tokens_in} in · ↑{tokens_out} out"
