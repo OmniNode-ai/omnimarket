@@ -32,6 +32,9 @@ Failure modes:
       on the table does not search.
   T13 /config opened before the setup is read stays on Available once it
       lands, though providers are configured (seen on a real run, 2026-11-26).
+  T14 the table does not read as a table: no frame, both columns packed at the
+      left, every row one shade, or names in bold white (operator 2026-11-26,
+      on a screenshot: "why white text - cretae likea table").
 """
 
 from __future__ import annotations
@@ -503,3 +506,25 @@ async def test_config_opened_before_the_setup_read_lands_on_configured() -> None
         await _settle(pilot, 20)
         assert screen.view == "configured"
         assert _rows(screen) == ["openrouter", "ollama"]
+
+
+async def test_providers_read_as_a_framed_table_across_the_width() -> None:
+    """T14."""
+    app, _ = _make(_runner())
+    async with app.run_test(size=(160, 40)) as pilot:
+        screen = await _config(pilot, app)
+        table = _table(screen)
+        assert table.styles.border_top[0] not in ("", "none", "hidden")
+        assert table.zebra_stripes
+        for key in _rows(screen):
+            name = table.get_row(key)[0]
+            assert "bold" not in str(getattr(name, "style", "")), key
+        provider, status = (c.width for c in table.columns.values())
+        inside = table.size.width
+        assert provider >= inside * 0.35, (provider, inside)
+        assert provider + status >= inside * 0.8, (provider, status, inside)
+        await pilot.resize_terminal(110, 40)
+        await _settle(pilot, 4)
+        provider, status = (c.width for c in table.columns.values())
+        assert provider + status <= table.size.width, (provider, status)
+        assert provider + status >= table.size.width * 0.8

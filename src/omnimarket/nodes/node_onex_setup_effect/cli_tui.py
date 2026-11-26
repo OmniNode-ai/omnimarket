@@ -1396,6 +1396,10 @@ class _ProviderRows(DataTable[object]):
             return
         super().action_cursor_up()
 
+    def on_resize(self) -> None:
+        if isinstance(self.screen, ProvidersScreen):
+            self.screen.fit_columns()
+
     def action_cursor_left(self) -> None:
         if isinstance(self.screen, ProvidersScreen):
             self.screen.show_view("configured")
@@ -1429,6 +1433,10 @@ class ProvidersScreen(_TabbedScreen[None]):
     #cfg-count { width: auto; color: $text-muted; }
     #provider-search { height: 1; border: none; padding: 0 1; margin-top: 1; background: $boost; }
     #views { margin-top: 1; }
+    /* A framed table across the width (T14): header row, striped rows. */
+    #providers { border: round $border; }
+    #providers > .datatable--header { background: $boost; color: $text; text-style: bold; }
+    #providers > .datatable--even-row { background: $boost 40%; }
     #providers { height: 1fr; background: transparent; scrollbar-size-vertical: 1; scrollbar-color: $border; scrollbar-background: $panel; }
     #note { color: $text-muted; height: auto; }
     #cfg-foot { dock: bottom; height: 1; }
@@ -1486,7 +1494,7 @@ class ProvidersScreen(_TabbedScreen[None]):
                 active=f"view-{self._view}",
                 id="views",
             )
-            yield _ProviderRows(id="providers", cursor_type="row", zebra_stripes=False)
+            yield _ProviderRows(id="providers", cursor_type="row", zebra_stripes=True)
             yield Static("", id="note")
             with Horizontal(id="cfg-foot"):
                 yield Static(_tab_hint("tab_hint_config"), id="keys")
@@ -1513,6 +1521,22 @@ class ProvidersScreen(_TabbedScreen[None]):
             self._view = view
             self._view_chosen = True
             self._fill()
+
+    def fit_columns(self) -> None:
+        """Provider and Status share the table's width, about 45 and 55 (T14)."""
+        table = self.query_one("#providers", _ProviderRows)
+        pad = 2 * table.cell_padding
+        room = table.size.width - 2 * pad - 1  # and the scrollbar
+        if room < 20:
+            return
+        provider = max(room * 9 // 20, 16)
+        widths = (provider, room - provider)
+        if tuple(c.width for c in table.columns.values()) == widths:
+            return
+        table.clear(columns=True)
+        for key, width in zip(("col_provider", "col_status"), widths, strict=True):
+            table.add_column(_say(key), key=key, width=width)
+        self._fill()
 
     @property
     def view(self) -> str:
@@ -1601,9 +1625,10 @@ class ProvidersScreen(_TabbedScreen[None]):
         shown = views[self._view]
         table.clear()
         for entry in shown:
-            mine = self._view == "configured"
-            name = Text(entry.label, style=_style("foreground", "bold") if mine else "")
-            table.add_row(name, self._status(entry.provider), key=entry.provider)
+            # Plain names: the tab, not bold white, says which are yours (T14).
+            table.add_row(
+                Text(entry.label), self._status(entry.provider), key=entry.provider
+            )
         keys = [e.provider for e in shown]
         if was in keys:
             table.move_cursor(row=keys.index(was))
