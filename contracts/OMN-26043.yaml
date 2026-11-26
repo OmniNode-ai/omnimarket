@@ -196,6 +196,24 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_beta_board_effect/test_trigger_declaration.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26043-customer-machine-delegation-collector
+  description: "The clean-install customer machine runs one delegation through the customer path (the guide's install line in a disposable tool environment, the model declared as the guide's option A, the install's own onex under an egress recorder) and walks the installed product's routing, so C13 and C14 read a graded run instead of PRECONDITION-ABSENT. A good run grades every machine clause green for both checks; a receipt naming another model reads C13 fail, an external connect reads C13 fail, an unbindable tier reads C14 fail, a failed install reads fail and runs no driver, and a driver that prints no record is an absent collector, never a pass. The new tests fail on the previous commit, where the machine raised the absent-collector error for both calls. This binds AC5: C13 and C14 each reading a run is the precondition of reading it green."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_c13_c14_customer_machine_collector.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-c15-chain-tier-order
+  description: "C15 asserts the tier order of the responder chain it was handed (local, then OpenRouter, then the Claude API) as the clause responder_chain_tier_order beside its gateway clauses, which the chain audit found missing. The declared order grades ok, each other order grades red and names the declared and the expected order, and C15 over a chain naming the Claude API before OpenRouter reads FAIL with that clause the only red one (known good pass, known bad fail). The new tests fail on the previous commit, where no such grader existed. This binds AC5: C15 reading a run green has to mean the chain it ran through was in order."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_c15_chain_tier_order.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn26043-tenant-read-answers-on-its-topic
   description: "The tenant provision node's contract declares the tenant-read-completed topic as a publish topic and routes the read result class (ModelTenantReadResult) to it through published_events, and the provision result class to the provision-completed topic. On dev the read command was consumed and handled but its answer fell back to the provision-completed topic, so the dev identity bind waited 30 s on tenant-read-completed twice and timed out. The contract-shape tests fail on the previous commit, where publish_topics held only the terminal event and no published_events map existed, and pass after the change; the publish-parity gate exempts only a topic routed to a result class the node defines (negative control in the same test file). This binds AC5: the bind that reads the tenant row is the precondition of the C29 and C30 runs reading a precondition."
   source: manual

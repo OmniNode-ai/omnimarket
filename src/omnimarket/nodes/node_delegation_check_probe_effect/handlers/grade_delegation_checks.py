@@ -8,8 +8,13 @@ recorded one was running and saw the process that did the work, so a clause over
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from urllib.parse import urlsplit
 
+from omnimarket.models.overlay_documents.model_delegation_check_responders_overlay import (
+    CHAIN_TIER_ORDER,
+    ModelDelegationCheckResponder,
+)
 from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe import (
     ModelCheckClause,
     ModelDelegateObservation,
@@ -157,6 +162,22 @@ def grade_c14(
             if row4
             else f"judge private {routing.judge_endpoint_private}, needs credential {routing.judge_needs_credential}, serves {routing.judge_serves_model}, egress instrument {row4_instrument}, external {list(obs.egress_external)}",
         ),
+    )
+
+
+def grade_chain_tier_order(
+    responders: Sequence[ModelDelegationCheckResponder],
+) -> ModelCheckClause:
+    """C15: the responder chain is declared in tier order, local then OpenRouter then the Claude API."""
+    declared = [r.tier for r in responders]
+    rank = [CHAIN_TIER_ORDER.index(t) for t in declared]
+    ok = bool(declared) and rank == sorted(rank)
+    return ModelCheckClause(
+        name="responder_chain_tier_order",
+        ok=ok,
+        detail=f"the chain is declared {' then '.join(declared)}"
+        if ok
+        else f"the chain is declared {' then '.join(declared) or 'empty'}, not {' then '.join(CHAIN_TIER_ORDER)}",
     )
 
 
