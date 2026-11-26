@@ -246,6 +246,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_llm_delegation_call_effect/test_codex_harness_attempt.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26043-codex-tests-hermetic-env
+  description: "The Codex attempt tests clear OPENAI_API_KEY and CODEX_API_KEY themselves through an autouse fixture in the node's conftest, so a host with either variable set in its ambient environment no longer fails them. Known good: the attempt tests run with both variables set and pass; known bad: the same tests without the fixture, run with the variable set, failed 11 on lab host h202. The new test runs the attempt tests in a child process with both variables set and fails when any of them fails. This binds AC8."
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_llm_delegation_call_effect/test_codex_hermetic_env.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn26043-codex-launch-guard-module
   description: "The API-key login guard and the codex exec command line live in codex_launch_guard.py, so handler_codex_harness_attempt.py stays at or under its baselined code-line count and the canonical-file-shape ratchet passes. The guard's tests fail on the previous commit, where the module does not exist, and pass after the change. This binds AC8."
   source: manual
