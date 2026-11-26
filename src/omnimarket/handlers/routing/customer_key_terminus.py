@@ -215,6 +215,11 @@ _REASON_REMEDIATION: Final[Mapping[EnumCustomerKeyRefusalReason, str]] = {
         "key does not clear this; the route is a routing misconfiguration on "
         "the platform side."
     ),
+    EnumCustomerKeyRefusalReason.PROVIDER_KEY_REJECTED: (
+        "Refused because the provider rejected the key registered for this "
+        "tenant. Registering the same key again does not clear this; replace "
+        "it with a valid provider key and retry."
+    ),
 }
 
 
