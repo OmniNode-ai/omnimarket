@@ -49,6 +49,7 @@ from omnimarket.handlers.node_overlay_reader import (
     OVERLAY_FILE_NAME,
     OVERLAY_ROOTS_ENV,
 )
+from omnimarket.inference.provider_response_error import failure_class_for_status
 from omnimarket.models.delegation.model_execution_budget_overlay import (
     ModelExecutionBudgetOverlay,
 )
@@ -184,13 +185,18 @@ class ProtocolLegTransport(Protocol):
     def close(self) -> None: ...
 
 
-_STATUS_CLASS: dict[int, EnumDelegationFailureClass] = {
-    429: EnumDelegationFailureClass.RATE_LIMITED,
-    500: EnumDelegationFailureClass.MODEL_UNAVAILABLE,
-    502: EnumDelegationFailureClass.MODEL_UNAVAILABLE,
-    503: EnumDelegationFailureClass.MODEL_UNAVAILABLE,
-    504: EnumDelegationFailureClass.MODEL_UNAVAILABLE,
-}
+def _class_for_scripted_status(status_code: int) -> EnumDelegationFailureClass:
+    """The class the real delegation effect gives this status: the one shared classifier, else the outage fallback.
+
+    A scripted rung used to carry its own status table (429 and the 5xx only), so a rung scripted as a 401 or 403 raised a
+    KeyError where the real effect refuses on a rejected credential, and a scenario could not express a rejected key.
+    """
+    return (
+        failure_class_for_status(status_code)
+        or EnumDelegationFailureClass.MODEL_UNAVAILABLE
+    )
+
+
 _FAILURE_FOR_BEHAVIOUR: dict[str, EnumDelegationFailureClass] = {
     "stopped": EnumDelegationFailureClass.MODEL_UNAVAILABLE,
     "killed": EnumDelegationFailureClass.MODEL_UNAVAILABLE,
@@ -240,7 +246,7 @@ class ScriptedLegTransport:
                     cost_usd=rung.scripted_cost_usd,
                 )
             failure = (
-                _STATUS_CLASS[rung.status_code or 503]
+                _class_for_scripted_status(rung.status_code or 503)
                 if rung.behaviour == "status"
                 else _FAILURE_FOR_BEHAVIOUR[rung.behaviour]
             )
