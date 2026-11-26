@@ -364,7 +364,9 @@ async def test_plain_text_is_delegated_and_its_receipt_reaches_the_status_bar() 
         assert "saved $0.0104" in text
         status = str(app.query_one("#status").render())
         assert "$0.0000" in status
-        assert "175dde92" in status
+        # At 80 columns the run id stays on the task card, not cut off the
+        # status line (end-to-end pass 2026-11-26).
+        assert "175dde92" in text
 
 
 async def test_a_failed_command_shows_its_exit_and_the_app_keeps_running() -> None:

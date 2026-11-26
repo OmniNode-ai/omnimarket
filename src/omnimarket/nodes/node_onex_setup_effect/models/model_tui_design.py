@@ -345,6 +345,8 @@ class ModelTuiDashboard(BaseModel):
     dot_reading: str = Field(min_length=1)
     button_open: str
     note_opened: str
+    note_started: str
+    note_stopped: str
     could_not: str
     could_not_read: str
 
@@ -517,6 +519,8 @@ class ModelTuiDoctorPage(BaseModel):
     status_attention: str = Field(default="! needs attention", min_length=1)
     status_skipped: str = Field(default="– optional/skipped", min_length=1)  # noqa: RUF001
     fix_prefix: str = Field(default="fix:", min_length=1)
+    fixes: dict[str, str] = Field(default_factory=dict)
+    codes: dict[str, str] = Field(default_factory=dict)
 
 
 class ModelTuiMeteringPage(BaseModel):

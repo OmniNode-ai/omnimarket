@@ -93,6 +93,21 @@ def _safe_sentence(message: Any, status: str) -> str:
     return text
 
 
+def _table(key: str) -> Mapping[str, str]:
+    """A mapping from the page's design (fixes, codes), or empty."""
+    value = getattr(_page(), key, None)
+    return value if isinstance(value, Mapping) else {}
+
+
+def _coded(message: Any) -> str | None:
+    """The plain sentence for a message that opens with a "[code]" the page knows."""
+    text = "" if message is None else str(message).strip()
+    if not text.startswith("["):
+        return None
+    code = text[1 : text.find("]")] if "]" in text else ""
+    return _table("codes").get(code)
+
+
 def _mark_for(status: str) -> str:
     key = {
         "healthy": "status_ok",
@@ -157,19 +172,32 @@ def render_doctor_page(
     lines: list[str] = [title + (" " * gap) + summary]
 
     fix_prefix = _g("fix_prefix", "fix:").rstrip()
+    fixes = _table("fixes")
 
+    rows: list[tuple[str, str, str, str]] = []
     for check in report.get("checks", []) or []:
         if not isinstance(check, Mapping):
             continue
         status = str(check.get("status", "")).lower()
-        mark = _mark_for(status)
-        name = str(check.get("name", "")).strip()
+        raw_name = str(check.get("name", "")).strip()
+        name = raw_name
         if "_" in name:  # a raw identifier becomes plain words
             name = name.replace("_", " ").capitalize()
-        sentence = _safe_sentence(check.get("message"), status)
-        row = f"{mark}  {name:<14} {sentence}".rstrip()
-        if status != "healthy":
-            row = f"{row}  {fix_prefix} /config"
+        sentence = _coded(check.get("message")) or _safe_sentence(
+            check.get("message"), status
+        )
+        # Only a fix this page can name: /config cannot start Docker.
+        fix = fixes.get(raw_name, "") if status != "healthy" else ""
+        rows.append((_mark_for(status), name, sentence, fix))
+
+    # One column each for the mark, the name and the sentence.
+    mark_width = max((len(mark) for mark, _, _, _ in rows), default=0)
+    name_width = max((len(name) for _, name, _, _ in rows), default=0)
+    for mark, name, sentence, fix in rows:
+        said = "  ".join(
+            part for part in (sentence, f"{fix_prefix} {fix}" if fix else "") if part
+        )
+        row = f"{mark:<{mark_width}}  {name:<{name_width}}  {said}".rstrip()
         lines.append(row)
 
     return lines

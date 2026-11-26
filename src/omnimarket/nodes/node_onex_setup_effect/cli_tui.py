@@ -197,6 +197,15 @@ def _alias_paths() -> set[tuple[str, ...]]:
     return {(alias,) for alias in tui_design().aliases}
 
 
+def _quits(text: str) -> bool:
+    """ "exit" or "quit" typed alone, no slash: the user means to leave, not
+    to send the word to a model (end-to-end pass 2026-11-26)."""
+    words = {"quit"} | {
+        alias for alias, target in tui_design().aliases.items() if target == "quit"
+    }
+    return text.lower() in words
+
+
 _LOG = logging.getLogger(__name__)
 
 
@@ -2326,7 +2335,13 @@ class DashboardScreen(_TabbedScreen[None]):
             return line
         if name == "open":
             return Text(words.note_opened, style=_style("success"))
-        return ""
+        # The reply says what is running now: show it at once, rather than
+        # "Stopped" until the state is read again (end-to-end pass 2026-11-26).
+        app.remember_dashboard(document)
+        with contextlib.suppress(NoMatches):
+            self._show_state(document)
+        done = words.note_started if name == "start" else words.note_stopped
+        return Text(f"{tui_design().glyphs.done} {done}", style=_style("success"))
 
     def action_start_or_stop(self) -> None:
         if self._dash_running is None:
@@ -3721,6 +3736,8 @@ class OnexTui(App[int]):
         self._load_status = load_status or globals()["load_status"]
         self._status = StatusStore.load()
         self._last_run = ""
+        #: The last run without its run id, for a narrow window.
+        self._last_run_short = ""
         self._started = False
         self._welcome_tick = 0
         self._active_task: Worker[None] | None = None
@@ -3901,9 +3918,21 @@ class OnexTui(App[int]):
             sep,
             delegation,
         ]
-        if self._last_run:
-            parts += [sep, (self._last_run, _style("accent"))]
         line = Text.assemble(*parts)
+        # The last run whole, or without its run id, or not at all: never cut
+        # mid-part. Its card above says it in full.
+        room = self.size.width - 2 - len(line.plain) - len(sep[0])
+        last = next(
+            (
+                said
+                for said in (self._last_run, self._last_run_short)
+                if said and len(said) <= room
+            ),
+            "",
+        )
+        if last:
+            line.append(sep[0], style=sep[1])
+            line.append(last, style=_style("accent"))
         if self._active_task is None:  # while one runs, the live line says so
             room = self.size.width - 2 - len(line.plain) - len(sep[0])
             hint = KeyFooter().render("main", room)
@@ -4062,6 +4091,9 @@ class OnexTui(App[int]):
         palette = self.query_one("#palette", OptionList)
         if palette.display:
             palette.display = False
+            prompt = self.query_one("#prompt", Input)
+            if prompt.value.strip() == "/":  # only the key that opened it
+                prompt.value = ""
             self._layout()
         elif self._active_task is not None:
             self._active_task.cancel()
@@ -4324,6 +4356,8 @@ class OnexTui(App[int]):
     async def _run_prompt(self, value: str) -> None:
         """Run what was typed at the prompt: a task or a /command."""
         text = self._palette_choice(value.strip())
+        if _quits(text):
+            text = "/quit"
         prompt = self.query_one("#prompt", Input)
         prompt.value = ""
         self.action_close_palette()
@@ -4814,6 +4848,10 @@ class OnexTui(App[int]):
         self._dashboard_last = state
         return state
 
+    def remember_dashboard(self, state: dict[str, object]) -> None:
+        """A start or stop reply: the state as it is now, shown on the next open."""
+        self._dashboard_last = state
+
     def dashboard_last(self) -> dict[str, object] | None:
         """The dashboard state as last read, or ``None`` before any read."""
         return self._dashboard_last
@@ -4991,11 +5029,14 @@ class OnexTui(App[int]):
             kind="facts",
         )
         # The model that answered is the last run's, not the one tried first.
-        self._last_run = (
+        self._last_run_short = (
             _say("last_run", model=model, cost=f"{cost:.4f}")
             if cost is not None
             else _say("last_run_unmeasured", model=model)
-        ) + (f" · {_say('run_id', run=run_id[:8])}" if run_id else "")
+        )
+        self._last_run = self._last_run_short + (
+            f" · {_say('run_id', run=run_id[:8])}" if run_id else ""
+        )
         self._render_status()
 
 

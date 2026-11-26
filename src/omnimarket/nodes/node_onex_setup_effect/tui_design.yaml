@@ -358,6 +358,9 @@ dashboard:
   dot_reading: "◌"
   button_open: Open in browser
   note_opened: "Opened in your browser."
+  # After Start or Stop: short, as the footer already says how to open it.
+  note_started: "Dashboard running."
+  note_stopped: "Dashboard stopped."
   could_not: "Could not {action} the dashboard. Run /doctor."
   could_not_read: "Could not read the dashboard. Run /doctor."
 
@@ -743,6 +746,14 @@ doctor_page:
   status_attention: "! needs attention"
   status_skipped: "– optional/skipped"
   fix_prefix: "fix:"
+  # The checks /config can fix, by the name onex doctor gives them; no
+  # other row offers a fix it cannot make (end-to-end pass 2026-11-26).
+  fixes:
+    "Delegation API key": /config
+    "Delegation local model": /config
+  # A check's fault code, said plainly (its own text holds a URL or path).
+  codes:
+    local_model_not_serving: "A model server you added does not answer."
 
 # /metering page (OMN-26620 pages worker).
 metering_page:
