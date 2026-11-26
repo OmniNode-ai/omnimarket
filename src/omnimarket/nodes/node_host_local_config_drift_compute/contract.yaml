@@ -12,7 +12,7 @@ contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
 lifecycle: experimental
-runtime_profiles: []
+runtime_profiles: [effects]
 
 description: >
   The drift read of a host's hand-set local configuration. A host whose measured names all match its declaration reads working;
@@ -20,6 +20,16 @@ description: >
   included), an undeclared repo-local git key, an env directory holding more backup copies than its declared bound, a missing
   live env file and an undeclared env directory each read not working and are named. A measurement of another host, or a payload
   that is not a command, is answered with a typed failure event. Without its overlay the run is refused.
+
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - handler:
+        name: HandlerHostLocalConfigDrift
+        module: omnimarket.nodes.node_host_local_config_drift_compute.handlers.handler_host_local_config_drift
+      event_model:
+        name: ModelLocalConfigDriftCommand
+        module: omnimarket.nodes.node_host_local_config_drift_compute.models.model_host_local_config_drift
 
 handler:
   module: omnimarket.nodes.node_host_local_config_drift_compute.handlers.handler_host_local_config_drift
@@ -29,7 +39,7 @@ handler:
 
 descriptor:
   node_archetype: compute
-  runtime_profiles: []
+  runtime_profiles: [effects]
   purity: pure
   idempotent: true
   side_effects: []
@@ -47,6 +57,7 @@ output_model:
 terminal_event: onex.evt.omnimarket.host-local-config-drift-run-completed.v1
 
 runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.host-local-config-drift-requested.v1
   external_trigger: python -m omnimarket.nodes.node_host_local_config_drift_compute --host <name> --correlation-id <id> with the measured names on stdin and the overlay found under ONEX_SKILL_OVERLAY_ROOTS.
 
 # The topics by role; the handler's event mapping reads these and holds no topic string.
@@ -57,15 +68,27 @@ topics:
   host_local_config_drift_failed: onex.evt.omnimarket.host-local-config-drift-failed.v1
   host_local_config_drift_run_completed: onex.evt.omnimarket.host-local-config-drift-run-completed.v1
 
+# The bus a demand reaches the node on (OMN-25092): the command carries the declaration and the measured names, so the run
+# needs no overlay; the result is published on the run-completed topic.
 event_bus:
-  subscribe_topics: []
-  publish_topics: []
+  subscribe_topics:
+    - onex.cmd.omnimarket.host-local-config-drift-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.host-local-config-drift-run-completed.v1
 
 dependency_ownership:
   overlay: "Supplied by the node's own command line, which loads the overlay and constructs the handler in process."
 
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-local-config-drift-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.host-local-config-drift-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-local-config-drift-run-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.host-local-config-drift-run-completed.v1, operation: DESCRIBE}
+
 metadata:
-  transport_type: local
+  transport_type: kafka
 
 externally_consumed_topics:
   - onex.evt.omnimarket.host-local-config-drift-clean.v1

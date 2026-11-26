@@ -1,0 +1,65 @@
+schema_version: 1.0.0
+ticket_id: OMN-25092
+title: The host local config drift node declares its bus wiring so a demand reaches it on the dev runtime
+summary: node_host_local_config_drift_compute declared no subscribe topic and no publish topic, so onex run-node refused it and the dev runtime loaded it with nothing to deliver. Its contract now subscribes to its requested topic, publishes its run-completed result, names the command topic and grants the runtime principal those topics.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- public_api
+requirements:
+- id: req-omn25092-ac1
+  statement: One demand reaches the node on the dev runtime and its result is read on the bus
+  acceptance:
+  - id: AC1
+    statement: 'AC1: one run of the node on the dev runtime on h201 and its result read on the bus, read by the lane itself as a log line, dispatch, health read or job record, at a named revision -- falsifier: ssh read of the dev runtime log on h201 and a bus read of the result topic show no run of the node after the declaration lands'
+- id: req-omn25092-ac2
+  statement: The change is installed through the declared installer
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the change is installed, or the cause is fixed, through the declared installer with no hand edit of a host file, unit or plist, and the installed revision is read back; any code change is a draft PR with a Lab: line -- falsifier: the declared installer''s own status read on h201 names no omnimarket revision for it'
+- id: req-omn25092-ac3
+  statement: The STATUS row is on the ledger
+  acceptance:
+  - id: AC3
+    statement: 'AC3: a STATUS row `kv pr=omnimarket#6071 installed=<host>:<revision> observed=<what ran> read_at=<UTC>` is on the work ledger, so the next integration pass marks it SEEN RUNNING -- falsifier: python3 plugins/omni/skills/lane-brief/scripts/lane_brief.py grep ''pr=omnimarket#6071'' returns no row with installed= and observed='
+evidence_requirements:
+- kind: tests
+  description: The node's contract wiring, reading, golden chain, error chain and overlay tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_host_local_config_drift_compute -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25092-ac1
+  description: 'AC1: the contract subscribes to the requested topic, publishes the run-completed result and grants the runtime principal both; the lab read of the run on the dev runtime is in the PR comment that starts Lab: head=.'
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_host_local_config_drift_compute/test_contract_bus_wiring.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn25092-ac2
+  description: 'AC2: the branch is installed on the dev lane through the declared branch install and the installed revision is read back from the runtime manifest; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run --frozen pytest tests/nodes/node_host_local_config_drift_compute -q -p no:randomly --no-cov
+- id: dod-omn25092-ac3
+  description: 'AC3: the STATUS row with installed= and observed= for the pull request is on the ledger; hosted CI cannot read the ledger, so only the local Done gate runs this unbound check.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: python3 plugins/omni/skills/lane-brief/scripts/lane_brief.py grep 'pr=omnimarket#6071'
+- id: dod-omn25092-integration-proof
+  description: one demand carrying a synthetic declaration and a synthetic measurement of host-a, with a wildcard safe directory as the injected fault, is sent to the node on the dev lane over the bus and the run-completed result is read; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex run-node node_host_local_config_drift_compute --timeout 60 --input '{"correlation_id":"omn25092-integration-proof","declaration":{"host":"host-a","ssh_aliases":[{"alias":"host-b","hostname":"192.0.2.2"}],"git_safe_directories":["/srv/example/clone"],"git_allowed_local_keys":["core.hookspath"],"env_dirs":[{"directory":"~/.example","live_files":[".env"],"max_backups":2}]},"measured":{"host":"host-a","ssh_aliases":[{"alias":"host-b","hostname":"192.0.2.2"}],"git_safe_directories":["/srv/example/clone","*"],"git_local_keys":["core.hookspath"],"env_dirs":[{"directory":"~/.example","files":[".env"]}]}}'
