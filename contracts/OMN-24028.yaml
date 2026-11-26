@@ -108,3 +108,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/ci/test_no_removed_core_ledger_render_import.py tests/nodes/node_create_ticket/test_core_ticket_guard.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
+- id: dod-omn24028-snapshot-writer
+  description: 'Task 20: the host table keys ingest node also subscribes to the compacted snapshot topic and applies every overlay record to the injected settings store through its constructor; an older replayed record never moves a value back and a record with no revision is skipped and counted'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/settings_store/test_snapshot_writer.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
