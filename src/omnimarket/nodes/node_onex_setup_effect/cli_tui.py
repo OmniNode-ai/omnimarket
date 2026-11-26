@@ -436,12 +436,20 @@ def _needs_terminal(command: click.Command) -> bool:
     return False
 
 
-def command_tree(root: click.Group) -> tuple[ModelTuiCommand, ...]:
-    """Every leaf command under ``root``, read from click at call time."""
+def command_tree(
+    root: click.Group, keep: Callable[[tuple[str, ...]], bool] | None = None
+) -> tuple[ModelTuiCommand, ...]:
+    """Every leaf command under ``root``, read from click at call time.
+
+    ``keep`` decides from a command's path alone, before it is loaded: an onex
+    extension is imported when it is loaded, and some take seconds (OMN-26688).
+    """
     found: list[ModelTuiCommand] = []
 
     def walk(group: click.Group, ctx: click.Context, prefix: tuple[str, ...]) -> None:
         for name in group.list_commands(ctx):
+            if keep is not None and not keep((*prefix, name)):
+                continue
             try:
                 command = group.get_command(ctx, name)
             except Exception:  # an extension that fails to load is left out, not fatal
@@ -463,6 +471,17 @@ def command_tree(root: click.Group) -> tuple[ModelTuiCommand, ...]:
 
     walk(root, click.Context(root, info_name="onex"), ())
     return tuple(sorted(found, key=lambda entry: entry.path))
+
+
+def _runnable(path: tuple[str, ...]) -> bool:
+    """Whether the prompt can run ``path``, or a command under it."""
+    design = tui_design()
+    if design.replaces(path):
+        return False
+    return any(
+        path[: len(cmd)] == cmd or cmd[: len(path)] == path
+        for cmd in design.customer_commands
+    )
 
 
 def _last_json_object(text: str) -> dict[str, object] | None:
@@ -4717,9 +4736,11 @@ class OnexTui(App[int]):
             from omnibase_core.cli.cli_commands import cli
 
             root = cli
-        self._commands = tuple(
-            c for c in command_tree(root) if not tui_design().replaces(c.path)
-        )
+        # OMN-26688: only what the prompt can run is loaded (the customer
+        # commands, less those a tab replaces); loading every onex command
+        # held the first frame back by seconds.
+        self._commands = command_tree(root, keep=_runnable)
+        self._cli_root = root
         self._runner: ProtocolTuiRunner = runner or HandlerOnexCommand()
         #: The app made its own runner, the real CLI, which is slow to start.
         self._own_runner = runner is None
@@ -5334,6 +5355,31 @@ class OnexTui(App[int]):
             return text
         return f"/{palette.get_option_at_index(palette.highlighted).id}"
 
+    def _names_a_command(self, words: list[str]) -> bool:
+        """Whether ``words`` start with a real onex command the TUI did not load.
+
+        Only the commands on the path are loaded, and only now (OMN-26688).
+        """
+        command: click.Command = self._cli_root
+        ctx = click.Context(command, info_name="onex")
+        found = False
+        path: tuple[str, ...] = ()
+        for word in words:
+            path = (*path, word)
+            if not isinstance(command, click.Group) or tui_design().replaces(path):
+                break
+            try:
+                sub = command.get_command(ctx, word)
+            except Exception:  # an extension that fails to load names nothing
+                break
+            if sub is None or sub.hidden:
+                break
+            ctx = click.Context(sub, parent=ctx, info_name=word)
+            command = sub
+            if not isinstance(sub, click.Group) or sub.invoke_without_command:
+                found = True
+        return found
+
     def _resolve(self, words: list[str]) -> ModelTuiCommand | None:
         known = {entry.path: entry for entry in self._commands}
         for size in range(len(words), 0, -1):
@@ -5403,7 +5449,9 @@ class OnexTui(App[int]):
             return
         entry = self._resolve(words)
         if entry is None:
-            self._write(_say("no_match", command=" ".join(words)))
+            known = self._names_a_command(words)
+            key = "not_a_tui_command" if known else "no_match"
+            self._write(_say(key, command=" ".join(words)))
             return
         if not _is_customer_command(entry.path):
             self._write(_say("not_a_tui_command", command=" ".join(words)))
