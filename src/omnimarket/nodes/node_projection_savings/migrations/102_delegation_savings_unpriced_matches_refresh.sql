@@ -50,7 +50,6 @@ END$$;
 
 GRANT SELECT ON public.savings_priced_models TO app_dashboard;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.savings_priced_models TO tenant_projection_writer;
-GRANT SELECT, INSERT, UPDATE ON public.savings_priced_models TO tenant_projection_writer;
 
 CREATE OR REPLACE VIEW public.projection_delegation_savings AS
 WITH raw_savings_sessions AS (
