@@ -87,3 +87,7 @@ def test_hop3_the_writer_republishes_the_row_and_the_terminal_declares_its_event
     assert published.count(TOPIC_EXPOSURE_WORKFLOW) == 8
     assert published.count(TOPIC_EXPOSURE_TERMINAL) == 1
     assert _contract()["terminal_event"] == TOPIC_PROJECTION_APPLIED
+    assert (
+        _contract()["terminal_event"]
+        == "onex.evt.omnimarket.projection-lane-work-applied.v1"
+    )
