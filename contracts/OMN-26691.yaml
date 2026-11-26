@@ -28,6 +28,13 @@ requirements:
       - id: "AC4"
         statement: >-
           AC4: the integration-proof item's command, and the command it sends to the lab after --, each start with a program a lab host runs, so the lab does not refuse it -- falsifier: uv run pytest -q tests/contracts/test_omn26691_lab_item_allowed_program.py fails on omnimarket dev, where the item starts with env
+  - id: "req-omn26691-ac2-tag-check-item"
+    statement: >-
+      The AC2 tag-check item runs only at the local Done gate, checks the signed tag v1.1.16 by default, and starts with an allowed program.
+    acceptance:
+      - id: "AC5"
+        statement: >-
+          AC5: the contract's AC2 tag-check item (dod-omn26691-ac2-tag-check) runs only at the local Done gate, checks the signed tag v1.1.16 by default, and starts with a program our host and a lab host allow -- falsifier: uv run pytest -q tests/contracts/test_omn26691_ac2_tag_check_item.py fails on omnimarket dev, where the item does not exist
 evidence_requirements: []
 emergency_bypass:
   enabled: false
@@ -73,6 +80,16 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/projection/test_dashboard_bundle_pin_omn23212.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26691-ac5-ac2-tag-check-item"
+    description: >-
+      AC5: the AC2 tag-check item exists once, runs only at the local Done gate, binds no criterion, defaults
+      its tag to v1.1.16 and starts with a program in DEFAULT_ALLOWED_EXECUTABLES.
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest -q tests/contracts/test_omn26691_ac2_tag_check_item.py"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn26691-lab-item-allowed-program"
     description: >-
