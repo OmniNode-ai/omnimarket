@@ -44,6 +44,7 @@ from omnimarket.nodes.node_workflow_gateway_effect.protocols.protocol_workflow_r
 from omnimarket.nodes.node_workflow_gateway_effect.protocols.protocol_workflow_store import (
     ProtocolWorkflowStore,
     RateLimitEventRecordError,
+    WorkflowAdmitBusyError,
     WorkflowStoreUnavailableError,
 )
 
@@ -240,6 +241,16 @@ class HandlerWorkflowSubmit:
         # 7. Admit.
         try:
             admission = await self._store.admit(caller=caller, envelope=envelope)
+        except WorkflowAdmitBusyError as busy:
+            return ModelWorkflowHttpResponse(
+                status_code=429,
+                body={
+                    "detail": "tenant admission queue is busy",
+                    "workflow_type": submission.workflow_type,
+                    "retry_after_seconds": busy.retry_after_seconds,
+                },
+                headers={"Retry-After": str(busy.retry_after_seconds)},
+            )
         except WorkflowStoreUnavailableError:
             return ModelWorkflowHttpResponse(
                 status_code=503,

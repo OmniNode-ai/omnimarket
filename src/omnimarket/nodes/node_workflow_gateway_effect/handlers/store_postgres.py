@@ -33,6 +33,7 @@ from omnimarket.nodes.node_workflow_gateway_effect.models.model_workflow_store i
 )
 from omnimarket.nodes.node_workflow_gateway_effect.protocols.protocol_workflow_store import (
     RateLimitEventRecordError,
+    WorkflowAdmitBusyError,
     WorkflowStoreUnavailableError,
 )
 
@@ -159,6 +160,7 @@ class PostgresWorkflowStore:
         rpm_metric_key: str,
         rpm_window_key: str,
         clock: Callable[[], datetime],
+        admit_wait_seconds: float = 10.0,
     ) -> None:
         self._pool = pool
         self._metric_key = metric_key
@@ -167,6 +169,9 @@ class PostgresWorkflowStore:
         self._rpm_metric_key = rpm_metric_key
         self._rpm_window_key = rpm_window_key
         self._clock = clock
+        # OMN-26681: the longest a submit waits for its tenant's gate before it is refused
+        # busy (429 + Retry-After), so every submit is answered inside the client timeout.
+        self._admit_wait_seconds = admit_wait_seconds
         # OMN-26681: one in-process gate per tenant, taken BEFORE a pooled connection, so a
         # burst from one tenant waits here (holding nothing) rather than parking pool
         # connections on that tenant's advisory lock. Entries are dropped when idle.
@@ -177,8 +182,17 @@ class PostgresWorkflowStore:
         gate, users = self._tenant_gates.get(tenant_id, (asyncio.Lock(), 0))
         self._tenant_gates[tenant_id] = (gate, users + 1)
         try:
-            async with gate:
+            try:
+                async with asyncio.timeout(self._admit_wait_seconds):
+                    await gate.acquire()
+            except TimeoutError:
+                raise WorkflowAdmitBusyError(
+                    max(1, int(self._admit_wait_seconds))
+                ) from None
+            try:
                 yield
+            finally:
+                gate.release()
         finally:
             gate, users = self._tenant_gates[tenant_id]
             if users <= 1:

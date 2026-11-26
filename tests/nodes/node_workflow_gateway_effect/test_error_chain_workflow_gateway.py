@@ -7,6 +7,7 @@ Exemplar: tests/nodes/node_plan_list/test_http_plans.py (HTTP error cases throug
 
 from __future__ import annotations
 
+from typing import NoReturn
 from uuid import UUID, uuid4
 
 import httpx
@@ -393,3 +394,26 @@ async def test_control_a_tenant_scoped_handler_is_told_apart_from_the_real_one()
     narrowed = await _answers(_TenantScopedContractsRead(catalog=catalog))
     assert real[0] == real[1]
     assert narrowed[0] != narrowed[1]
+
+
+async def test_busy_tenant_admit_is_429_with_a_wait_time_and_publishes_nothing() -> (
+    None
+):
+    """OMN-26681: an admit that waited out its bound is a 429 with Retry-After, not a hang."""
+    from omnimarket.nodes.node_workflow_gateway_effect.protocols.protocol_workflow_store import (
+        WorkflowAdmitBusyError,
+    )
+
+    class BusyStore(InMemoryWorkflowStore):
+        async def admit(self, **_: object) -> NoReturn:
+            raise WorkflowAdmitBusyError(7)
+
+    gateway = build_gateway(
+        store=BusyStore(monthly_limit=None, hard_cap=False, clock=lambda: NOW)
+    )
+    async with _client(gateway) as client:
+        response = await client.post("/v1/workflows", json=SUBMISSION, headers=AUTH_A)
+    assert response.status_code == 429
+    assert response.headers["retry-after"] == "7"
+    assert response.json()["retry_after_seconds"] == 7
+    assert gateway.publisher.published == []

@@ -24,6 +24,14 @@ class WorkflowStoreUnavailableError(RuntimeError):
     """The store could not be reached or is not configured."""
 
 
+class WorkflowAdmitBusyError(RuntimeError):
+    """The tenant's admit queue did not reach this submit in time; retry after the wait."""
+
+    def __init__(self, retry_after_seconds: int) -> None:
+        super().__init__(f"admit busy; retry after {retry_after_seconds}s")
+        self.retry_after_seconds = retry_after_seconds
+
+
 class RateLimitEventRecordError(RuntimeError):
     """A rate-limit event could not be recorded."""
 
@@ -79,5 +87,6 @@ class ProtocolWorkflowStore(Protocol):
 __all__: list[str] = [
     "ProtocolWorkflowStore",
     "RateLimitEventRecordError",
+    "WorkflowAdmitBusyError",
     "WorkflowStoreUnavailableError",
 ]
