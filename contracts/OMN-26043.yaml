@@ -26,6 +26,11 @@ requirements:
   acceptance:
   - id: AC8
     statement: "AC8: HandlerCodexHarnessAttempt refuses a host whose Codex login or environment holds an API key with exit cause api_key_login_refused and launches nothing, forces forced_login_method chatgpt, and runs Codex with its working directory in an empty temporary directory -- falsifier: the three new tests in tests/nodes/node_llm_delegation_call_effect/test_codex_harness_attempt.py fail on the base commit and any of them fails at the head"
+- id: req-omn26043-authored-code-traceable
+  statement: The task_answer_traceable clause reads the code an answer itself authors as the deliverable, and still fails an invented ticket id, PR reference, path or prose identifier.
+  acceptance:
+  - id: AC9
+    statement: "AC9: a code answer whose fenced block holds member calls and sample strings the model wrote reads PASS on task_answer_traceable, and an invented path, ticket id or prose string beside or inside it still reads FAIL -- falsifier: tests/nodes/node_delegation_rubric_check_compute/test_authored_code_traceable_omn26043.py fails at the head, or its first test passes on the base commit"
 evidence_requirements:
 - kind: tests
   description: The call's pricing function with the real pricing index restored and every socket connect and fetch refused, on a cold ONEX home.
@@ -311,4 +316,22 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/delegation/test_harness_process_runner_omn26219.py -q --no-cov -n 0 -p no:randomly -k glm_without_declared_route
+    cwd: .
+- id: dod-omn26043-authored-code-traceable-tests
+  description: "The glm-5.3-flash and glm-5.3 harness tiers each answered a code_generation request with correct code and read FAIL on task_answer_traceable for seen.add, untraced.append and the test's own sample strings: the answer was sound and the clause read the model's authored code as claims about the run. The tests fail on the base commit (the authored-code case) and pass after; the controls show an invented path in prose, a ticket id and a path inside the fence, and a prose string the code never wrote still read FAIL."
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_rubric_check_compute/test_authored_code_traceable_omn26043.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-codex-handler-code-generation
+  description: "HandlerCodexHarnessAttempt on the ChatGPT account's default model (the one Codex tier; every named mini model is refused for a ChatGPT account) answered a real code_generation request, a test module for _authored_code_claims; the module is committed and passes. This binds AC8, the signed-in Codex harness handler doing lane work."
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_rubric_check_compute/test_authored_code_claims_codex_omn26043.py -q --no-cov -n 0 -p no:randomly
     cwd: .
