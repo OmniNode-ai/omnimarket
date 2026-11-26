@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.models.model_work_ledger_reader import (
     EnumReaderEventKind,
@@ -30,13 +30,29 @@ class EnumRowsStatus(StrEnum):
 
 
 class ModelRowsLoaderRequest(BaseModel):
-    """One named reader, its window in hours and the reader's rows answer."""
+    """One named reader, its window (the last N hours, or a since/until history range) and the reader's rows answer."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     reader: str = Field(pattern=r"^[a-z][a-z0-9-]{0,63}$")
-    window_hours: int = Field(ge=1, le=720)
+    window_hours: int | None = Field(default=None, ge=1, le=720)
+    since: AwareDatetime | None = None
+    until: AwareDatetime | None = None
     node_answer: ModelReaderResult
+
+    @model_validator(mode="after")
+    def _one_window(self) -> ModelRowsLoaderRequest:
+        if (self.window_hours is None) == (self.since is None):
+            raise ValueError("a read names exactly one of window_hours or since")
+        if self.until is not None and self.since is None:
+            raise ValueError("until needs since")
+        if (
+            self.since is not None
+            and self.until is not None
+            and self.until < self.since
+        ):
+            raise ValueError("until is before since")
+        return self
 
 
 class ModelRowsLoaderEvent(BaseModel):

@@ -144,6 +144,7 @@
           "terminal_model_used": "none",
           "terminal_remediation": "send a task class the registry declares",
           "terminal_total_tokens": 0,
+          "tests_outcome": null,
           "verifier": "probe",
           "workflow_id": "00000000-0000-0000-0000-000000000006",
           "workflow_type": "delegate-skill"
@@ -185,6 +186,7 @@
           "terminal_model_used": "Qwen3.8-27B",
           "terminal_remediation": null,
           "terminal_total_tokens": 41,
+          "tests_outcome": null,
           "verifier": "probe",
           "workflow_id": "00000000-0000-0000-0000-000000000003",
           "workflow_type": "delegate-skill"
@@ -210,6 +212,7 @@
           "terminal_model_used": "none",
           "terminal_remediation": "send a task class the registry declares",
           "terminal_total_tokens": 0,
+          "tests_outcome": null,
           "updated_at": "2026-11-13T12:00:00Z",
           "workflow_id": "00000000-0000-0000-0000-000000000006",
           "workflow_type": "delegate-skill"
@@ -244,6 +247,7 @@
           "terminal_model_used": "Qwen3.8-27B",
           "terminal_remediation": null,
           "terminal_total_tokens": 41,
+          "tests_outcome": null,
           "updated_at": "2026-11-13T12:00:00Z",
           "workflow_id": "00000000-0000-0000-0000-000000000003",
           "workflow_type": "delegate-skill"

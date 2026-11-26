@@ -75,6 +75,19 @@ class UnitRootRefusedError(ValueError):
         )
 
 
+class UnitProjectWorktreeError(ValueError):
+    """A unit's project is a linked git worktree, which is removed when the lane that made it ends."""
+
+    def __init__(self, unit: str, project: str) -> None:
+        self.unit = unit
+        self.project = project
+        super().__init__(
+            f"{unit} would run from {project}, a linked worktree of another checkout; the lane that made it "
+            "removes it when it ends and uv then exits 2 on every fire without starting the node. "
+            "Install from a main checkout (a clone), not from a linked worktree"
+        )
+
+
 class UnitRootPinnedError(ValueError):
     """A unit's overlay root pins a plugin version; ``paths`` names every offending path."""
 

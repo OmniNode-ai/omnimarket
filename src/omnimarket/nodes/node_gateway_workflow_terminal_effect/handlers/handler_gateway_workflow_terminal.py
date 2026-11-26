@@ -45,6 +45,12 @@ _CREDENTIAL_SOURCES: Final = frozenset({"customer_key", "house", "none"})
 _FAILURE_GRAMMAR: Final = re.compile(
     r"^(?P<cls>[A-Za-z_][A-Za-z0-9_.]*): (?P<code>[A-Za-z0-9_.\-]+)"
 )
+# OMN-26566: the dispatch engine's typed terminal for a command it refused as publisher_malformed
+# carries the correlation id and the refusal and nothing else (no tenant, model or metrics).
+_MALFORMED_COMMAND_CLASS: Final = "publisher_malformed"
+_MALFORMED_COMMAND_FAILURE_CLASS: Final = "PublisherMalformedError"
+_MALFORMED_COMMAND_DEFAULT_CODE: Final = "ONEX_CORE_345_ENVELOPE_VALIDATION_FAILED"
+_ONEX_CODE: Final = re.compile(r"^ONEX_[A-Z0-9_]+$")
 _OPERATION_STATUS: Final[dict[str, Literal["completed", "failed"]]] = {
     "apply_delegation_completed": "completed",
     "apply_delegation_failed": "failed",
@@ -222,6 +228,13 @@ class HandlerGatewayWorkflowTerminal:
     def _validate(
         self, payload: dict[str, Any], status: Literal["completed", "failed"]
     ) -> ModelTerminalUpdate | None:
+        if (
+            status == "failed"
+            and payload.get("failure_class") == _MALFORMED_COMMAND_CLASS
+            and payload.get("status") == "failed"
+            and "model_used" not in payload
+        ):
+            return self._malformed_command_update(payload)
         # Precedence: an unreadable correlation or tenant id, then a missing model name,
         # then bad metrics, a route/provider mismatch or a credential source outside its vocabulary.
         correlation_id = _as_uuid(payload.get("correlation_id"))
@@ -270,6 +283,26 @@ class HandlerGatewayWorkflowTerminal:
             failure_class=failure_class,
             failure_code=failure_code,
             rule_evaluations=list(evaluations or []),
+        )
+
+    def _malformed_command_update(self, payload: dict[str, Any]) -> ModelTerminalUpdate:
+        """Close the row of a command the engine refused; no model answered, so ``none``."""
+        correlation_id = _as_uuid(payload.get("correlation_id"))
+        reason = _optional_text(payload, "failure_reason") or None
+        stated = _optional_text(payload, "failure_code")
+        return ModelTerminalUpdate(
+            tenant_id=None,
+            correlation_id=correlation_id,
+            status="failed",
+            model_used="none",
+            total_tokens=0,
+            latency_ms=0,
+            failure_reason=reason,
+            failure_class=_MALFORMED_COMMAND_FAILURE_CLASS,
+            failure_code=stated
+            if stated and _ONEX_CODE.match(stated)
+            else _MALFORMED_COMMAND_DEFAULT_CODE,
+            rule_evaluations=[],
         )
 
     async def _publish_dead_letter(

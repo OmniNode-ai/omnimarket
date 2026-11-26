@@ -4,9 +4,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 from omnimarket.nodes.node_workflow_gateway_effect.handlers.workflow_advisory_key import (
@@ -67,14 +70,25 @@ _SQL_SET_STATUS = (
     "WHERE workflow_id = $2 AND tenant_id = $3 AND status NOT IN ('completed', 'failed')"
 )
 
-_SQL_FETCH_ROW = (
+_SQL_FETCH_ROW_COLUMNS = (
     "SELECT workflow_id, tenant_id, workflow_type, status, envelope_id, "
     "correlation_id, command_topic, submitted_at, updated_at, "
     "terminal_model_used, terminal_total_tokens, terminal_latency_ms, "
     "terminal_route, terminal_provider, terminal_credential_source, "
     "result_content, terminal_failure_class, terminal_failure_code, "
     "terminal_failure_reason, terminal_remediation, terminal_rule_evaluations "
-    "FROM public.gateway_workflows WHERE workflow_id = $1 AND tenant_id = $2"
+)
+
+_SQL_FETCH_ROW = (
+    _SQL_FETCH_ROW_COLUMNS
+    + "FROM public.gateway_workflows WHERE workflow_id = $1 AND tenant_id = $2"
+)
+
+# Oldest first, so a tenant that already holds repeats from before this rule reads the first job.
+_SQL_FETCH_BY_CORRELATION = (
+    _SQL_FETCH_ROW_COLUMNS
+    + "FROM public.gateway_workflows WHERE tenant_id = $1 AND correlation_id = $2 "
+    "ORDER BY submitted_at, workflow_id LIMIT 1"
 )
 
 _SQL_RPM_ENTITLEMENT = (
@@ -102,6 +116,32 @@ def _month_window(now: datetime) -> tuple[datetime, datetime]:
     return start, end
 
 
+def _to_row(row: Any) -> ModelWorkflowRow:
+    return ModelWorkflowRow(
+        workflow_id=row[0],
+        tenant_id=row[1],
+        workflow_type=row[2],
+        status=row[3],
+        envelope_id=row[4],
+        correlation_id=row[5],
+        command_topic=row[6],
+        submitted_at=row[7],
+        updated_at=row[8],
+        terminal_model_used=row[9],
+        terminal_total_tokens=row[10],
+        terminal_latency_ms=row[11],
+        terminal_route=row[12],
+        terminal_provider=row[13],
+        terminal_credential_source=row[14],
+        result_content=row[15],
+        terminal_failure_class=row[16],
+        terminal_failure_code=row[17],
+        terminal_failure_reason=row[18],
+        terminal_remediation=row[19],
+        terminal_rule_evaluations=row[20],
+    )
+
+
 def _iso_z(value: datetime) -> str:
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
@@ -127,6 +167,24 @@ class PostgresWorkflowStore:
         self._rpm_metric_key = rpm_metric_key
         self._rpm_window_key = rpm_window_key
         self._clock = clock
+        # OMN-26681: one in-process gate per tenant, taken BEFORE a pooled connection, so a
+        # burst from one tenant waits here (holding nothing) rather than parking pool
+        # connections on that tenant's advisory lock. Entries are dropped when idle.
+        self._tenant_gates: dict[UUID, tuple[asyncio.Lock, int]] = {}
+
+    @asynccontextmanager
+    async def _tenant_gate(self, tenant_id: UUID) -> AsyncIterator[None]:
+        gate, users = self._tenant_gates.get(tenant_id, (asyncio.Lock(), 0))
+        self._tenant_gates[tenant_id] = (gate, users + 1)
+        try:
+            async with gate:
+                yield
+        finally:
+            gate, users = self._tenant_gates[tenant_id]
+            if users <= 1:
+                del self._tenant_gates[tenant_id]
+            else:
+                self._tenant_gates[tenant_id] = (gate, users - 1)
 
     @staticmethod
     async def _plan_code(
@@ -170,14 +228,30 @@ class PostgresWorkflowStore:
     async def admit(
         self, *, caller: ModelWorkflowCaller, envelope: ModelWorkflowCommandEnvelope
     ) -> ModelWorkflowAdmission:
-        """Lock the tenant, read the monthly quota and insert the row in one transaction.
+        """Lock the tenant, find a job already under this correlation_id, read the monthly quota and insert the row in one transaction.
 
         The lock key is the hosted gateway's own, so a submission served here and one
         served there during the overlap serialize on the same tenant lock.
         """
         lock_key = advisory_lock_key(self._lock_namespace, str(caller.tenant_id))
-        async with self._pool.transaction() as tx:
+        async with (
+            self._tenant_gate(caller.tenant_id),
+            self._pool.transaction() as tx,
+        ):
             await tx.execute("SELECT pg_advisory_xact_lock($1)", lock_key)
+            # The tenant lock serializes every submit of this tenant, so this read and the
+            # insert below are one decision: a repeat of a correlation_id finds the first job
+            # and inserts nothing, however many repeats race. It runs before the quota read, so
+            # a repeat is never counted against the plan.
+            found = await tx.fetchrow(
+                _SQL_FETCH_BY_CORRELATION, caller.tenant_id, envelope.correlation_id
+            )
+            if found is not None:
+                return ModelWorkflowAdmission(
+                    admitted=False,
+                    quota=ModelWorkflowQuotaStatus(status="ok"),
+                    existing=_to_row(found),
+                )
             quota = await self._quota(tx, caller.tenant_id)
             if quota.status == "hard_limit_hit":
                 return ModelWorkflowAdmission(admitted=False, quota=quota)
@@ -215,29 +289,7 @@ class PostgresWorkflowStore:
             row = await self._pool.fetchrow(_SQL_FETCH_ROW, workflow_id, tenant_id)
             if row is None:
                 return None
-            return ModelWorkflowRow(
-                workflow_id=row[0],
-                tenant_id=row[1],
-                workflow_type=row[2],
-                status=row[3],
-                envelope_id=row[4],
-                correlation_id=row[5],
-                command_topic=row[6],
-                submitted_at=row[7],
-                updated_at=row[8],
-                terminal_model_used=row[9],
-                terminal_total_tokens=row[10],
-                terminal_latency_ms=row[11],
-                terminal_route=row[12],
-                terminal_provider=row[13],
-                terminal_credential_source=row[14],
-                result_content=row[15],
-                terminal_failure_class=row[16],
-                terminal_failure_code=row[17],
-                terminal_failure_reason=row[18],
-                terminal_remediation=row[19],
-                terminal_rule_evaluations=row[20],
-            )
+            return _to_row(row)
         except WorkflowStoreUnavailableError:
             raise
         except Exception as exc:

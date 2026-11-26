@@ -104,6 +104,24 @@ stability_only:
       generated_key_id: stability_gateway_api_key_c16
       api_key_name: stability-canary-c16-gateway
 
+# OMN-26476: the dev lane's own entry. The guard reads it from this file exactly as it reads stability_only: a dev command needs a
+# dev overlay (the same lane), and the dev entry never uses a stability name. Its tenant, key row names and generated key ids are
+# its own. `expires_in_seconds` is written to tenant_api_keys.expires_at (the gateway's key lookup refuses the key afterwards); an
+# entry without it writes no expiry. prod and the cloud lanes are never listed.
+dev_lane:
+  lanes:
+    - dev
+  tenant_slug: dev-gateway-proof
+  tenant_name: Dev gateway proof
+  api_key_name: dev-gateway-proof-key
+  generated_key_id: dev_gateway_api_key
+  expires_in_seconds: 259200
+  checks:
+    expiry:
+      generated_key_id: dev_gateway_api_key_expiry
+      api_key_name: dev-gateway-proof-expiry
+      expires_in_seconds: 120
+
 metadata:
   ticket: OMN-26586
   transport_type: database
