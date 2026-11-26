@@ -1,0 +1,84 @@
+schema_version: 1.0.0
+ticket_id: OMN-24676
+title: The GLM plan-limit gate reads the reset stamp as Beijing time, holds on code 1308 and 1310 from the declared rules, and never fails the step
+summary: The gate handler is bound from node_llm_delegation_call_effect's contract and its command line is that node's runtime_glm_quota_gate module. The zai quota rules declare the reset stamp's Beijing-time offset (reset_utc_offset_minutes) and parse_reset_instant applies it, so the bifrost path and the gate read the recorded stamp the same way. The gate reads its codes and fallback from load_provider_quota_policy, holds a code 1308, holds the declared fallback for a reset not after now, cuts a stamp past 35 days to LONGEST_HOLD, ignores text that only quotes a code, and prints the not-held line for a state root that cannot be used.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24676-gate-review-fixes
+  statement: The GLM quota gate is bound from a node contract, reads the Beijing-time stamp as such, holds the declared codes, and fails open.
+  acceptance:
+  - id: AC1
+    statement: "AC1: the Canonical File Shape job passes on the new head because HandlerGlmQuotaGate is bound from a node contract and the command line lives in that node's runtime module, with no baseline line added -- falsifier: uv run onex validate --rules file-shape --base origin/main --head HEAD in the omnimarket worktree exits non-zero"
+  - id: AC2
+    statement: "AC2: a test built from the recorded 1310 text with its Beijing-time reset stamp fails on the base parser (read as UTC) and passes on the fix, on both HandlerProviderQuotaReset and the gate -- falsifier: uv run pytest on the named Beijing test in omnimarket fails on the head"
+  - id: AC3
+    statement: "AC3: a note with code 1308 holds for the declared five-hour window, a 1310 noted with reset at or before now holds the unstated hold, a stamp past 35 days is cut to LONGEST_HOLD, and text that only quotes [1310] without the (429) refusal shape holds nothing, each with a test, with the codes and fallback read from load_provider_quota_policy() -- falsifier: uv run pytest on the named gate test file fails on any of the four cases"
+  - id: AC4
+    statement: "AC4: a state root with a file as a path component prints the not-held JSON line and exits 0 instead of a traceback, with a test, and the gate reads and writes provider_quota_state or the contract states why the lane step cannot -- falsifier: uv run pytest on the named fail-open test fails when the OSError is raised"
+  - id: AC5
+    statement: "AC5: contracts/OMN-24651.yaml carries AC1 and AC3 or names where they are met, and its falsifier is the behavioural Beijing test on the base parser, and the suites required for the repository pass on the lab with the new head commented on the pull request -- falsifier: uv run pytest of the contract test in omnimarket fails, and onex scm pr-view of omnimarket#6311 shows no comment naming the new head"
+evidence_requirements:
+- kind: tests
+  description: The gate, Beijing-time reset and node binding tests at the pushed head.
+  command: uv run --frozen pytest tests/handlers/test_handler_glm_quota_gate.py tests/handlers/test_handler_provider_quota_reset_beijing_time.py tests/handlers/test_glm_quota_gate_node_binding.py -q --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24676-ac1
+  description: "AC1: the node contract binds HandlerGlmQuotaGate, the command line is the node's runtime module, and the handler and runtime files carry no baseline line"
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/handlers/test_glm_quota_gate_node_binding.py -q --no-cov -p no:cacheprovider
+  binds_ac:
+  - AC1
+- id: dod-omn24676-ac1-file-shape
+  description: "AC1: the file-shape rule of the pinned core accepts the head against the landing branch; the local Done gate runs this unbound check because it installs the pinned core from the network"
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run --no-project --with "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261029151319-6e0a5eee541a" python -m omnibase_core.nodes.node_canonical_file_shape_check_compute.runtime_canonical_file_shape_check --rules file-shape --base origin/dev --head HEAD
+- id: dod-omn24676-ac2
+  description: "AC2: the recorded 1310 text reads as 2026-11-14T17:38:18Z on HandlerProviderQuotaReset (with the zai rule's declared offset) and on the gate; the base parser reads it eight hours later and the test fails"
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/handlers/test_handler_provider_quota_reset_beijing_time.py tests/handlers/test_handler_glm_quota_gate.py -q --no-cov -p no:cacheprovider -k "beijing or reset"
+  binds_ac:
+  - AC2
+- id: dod-omn24676-ac3
+  description: "AC3: code 1308 holds, a 1310 noted at or after its reset holds the declared fallback, a stamp past 35 days is cut to LONGEST_HOLD, and quoted code text holds nothing"
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/handlers/test_handler_glm_quota_gate.py -q --no-cov -p no:cacheprovider
+  binds_ac:
+  - AC3
+- id: dod-omn24676-ac4
+  description: "AC4: a state root with a file as a path component prints the not-held line and exits 0; the node contract states why the gate does not use provider_quota_state"
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/handlers/test_handler_glm_quota_gate.py tests/handlers/test_glm_quota_gate_node_binding.py -q --no-cov -p no:cacheprovider -k "file_as_a_path_component or provider_quota_state or fails_open"
+  binds_ac:
+  - AC4
+- id: dod-omn24676-ac5
+  description: "AC5: the OMN-24651 contract's falsifier names the Beijing-time reset test, which the pinned file lists; the suites required for the repository run on the lab and the pull request carries a comment naming the head"
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/handlers/test_handler_provider_quota_reset_beijing_time.py -q --no-cov -p no:cacheprovider
+  binds_ac:
+  - AC5
+- id: dod-omn24676-integration-proof
+  description: the gate tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24676 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/handlers/test_handler_glm_quota_gate.py tests/handlers/test_handler_provider_quota_reset_beijing_time.py tests/handlers/test_glm_quota_gate_node_binding.py -q --no-cov

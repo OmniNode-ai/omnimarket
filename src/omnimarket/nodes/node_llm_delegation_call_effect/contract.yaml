@@ -548,6 +548,29 @@ provider_quota_reset:
     name: "HandlerProviderQuotaReset"
     module: "omnimarket.handlers.handler_provider_quota_reset"
 
+# GLM Coding Plan quota gate (OMN-24651): the lane delegation step asks it before each GLM call (`check`) and tells it
+# the error text of a failed one (`note`). The handler is pure and reached only by its command line, so it is not in
+# handler_routing (a routed handler needs a subscribed topic). Which codes hold, what the reset stamp is read as and the
+# cooldown for a notice that states no reset are the zai rules of provider_quota_policy, not values here. CLI: python -m
+# omnimarket.nodes.node_llm_delegation_call_effect.runtime_glm_quota_gate check|note <state_root> [error text].
+glm_quota_gate:
+  request_model:
+    name: "ModelGlmQuotaGateRequest"
+    module: "omnimarket.models.delegation.model_glm_quota_gate"
+  handler:
+    name: "HandlerGlmQuotaGate"
+    module: "omnimarket.handlers.handler_glm_quota_gate"
+  marker_file: glm-quota-exhausted.json
+  # Why the hold is a marker file under the lane's state root and not a row of provider_quota_state. The state is read
+  # through a lane database-topology overlay (ONEX_DATABASE_TOPOLOGY_PROFILE) or a local SQLite store, and an unreadable
+  # read answers UNKNOWN, which bars every metered provider: the opposite of this gate, which reads every failure as not
+  # held so that it never bricks a ladder. The state is written only by node_projection_provider_quota, folding
+  # provider-quota observation events from the bus; the lane step runs this as a command line with no bus connection and
+  # holds no credential reference, which is part of the state's key. Consequence: each host's lane step pays one refused
+  # call before its marker is written, and the bifrost path reads the state, not this marker. The bifrost path reads
+  # the same z.ai stamp through the same rule, in Beijing time.
+  quota_state_not_used_because: no_bus_no_topology_overlay_and_fail_open
+
 # Credential probe (OMN-21626): one Claude Code call that proves the credential in the host's environment.
 # The credential is CLAUDE_CODE_OAUTH_TOKEN, exported by the caller on the host whose pool holds it; it is
 # never a field of the request or the receipt. The probe handler is reached only by its command line on the host and
