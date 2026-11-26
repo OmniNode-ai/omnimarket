@@ -110,3 +110,16 @@ async def test_any_other_delegate_skill_failure_is_left_alone() -> None:
     assert result.outcome is Outcome.NOT_A_GATEWAY_WORKFLOW
     assert store.rows[0].status == "published"
     assert dlq.records == []
+
+
+async def test_a_recorded_result_on_the_failure_topic_is_not_a_refusal() -> None:
+    """Known bad: a terminal that carries a model_used is a recorded result, never the engine's refusal."""
+    handler, store, dlq = _make()
+    result = await handler.handle(
+        ModelDelegationTerminalEnvelope(
+            topic=_SKILL_FAILED, payload=_terminal(model_used="m")
+        )
+    )
+    assert result.outcome is Outcome.NOT_A_GATEWAY_WORKFLOW
+    assert store.rows[0].status == "published"
+    assert dlq.records == []
