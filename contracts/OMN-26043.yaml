@@ -214,3 +214,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_c15_chain_tier_order.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26043-tenant-read-answers-on-its-topic
+  description: "The tenant provision node's contract declares the tenant-read-completed topic as a publish topic and routes the read result class (ModelTenantReadResult) to it through published_events, and the provision result class to the provision-completed topic. On dev the read command was consumed and handled but its answer fell back to the provision-completed topic, so the dev identity bind waited 30 s on tenant-read-completed twice and timed out. The contract-shape tests fail on the previous commit, where publish_topics held only the terminal event and no published_events map existed, and pass after the change; the publish-parity gate exempts only a topic routed to a result class the node defines (negative control in the same test file). This binds AC5: the bind that reads the tenant row is the precondition of the C29 and C30 runs reading a precondition."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_tenant_provision_effect/test_contract_shape.py tests/nodes/node_tenant_provision_effect/test_runtime_publishes_read_answer.py tests/gates/test_contract_publish_parity.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

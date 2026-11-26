@@ -534,3 +534,51 @@ def test_seven_day_count_counts_only_recent_accepted_contract_governed_code(
     _run_dir(tmp_path, "d", "code_generation", "failed", True, 1)
     _run_dir(tmp_path, "e", "code_generation", "success", True, 30)
     assert count_governed_code_answers(tmp_path / ".onex_state" / "runs") == 1
+
+
+def _add_rules(root: Path, name: str, rules: list[dict[str, Any]]) -> None:
+    path = root / ".onex_state" / "runs" / name / "receipt.json"
+    receipt = json.loads(path.read_text())
+    receipt["receipt"] = {
+        "result": {"terminal_payload": {"payload": {"rule_evaluations": rules}}}
+    }
+    stamp = path.stat().st_mtime
+    path.write_text(json.dumps(receipt))
+    import os
+
+    os.utime(path, (stamp, stamp))
+
+
+def test_seven_day_count_splits_untested_from_tested_and_names_its_source(
+    tmp_path: Path, capsys: Any
+) -> None:
+    from omnimarket.nodes.node_delegation_orchestrator.governed_code_count import (
+        count_governed_code_answers_by_outcome,
+        main,
+    )
+
+    runs = tmp_path / ".onex_state" / "runs"
+    _run_dir(tmp_path, "a", "code_generation", "success", True, 1)  # no verdict
+    _run_dir(tmp_path, "b", "code_generation", "success", True, 1)
+    _add_rules(
+        tmp_path, "b", [{"rule": "passes_existing_tests", "passed": True, "detail": ""}]
+    )
+    _run_dir(tmp_path, "c", "code_generation", "success", True, 1)
+    _add_rules(
+        tmp_path,
+        "c",
+        [
+            {
+                "rule": "passes_existing_tests",
+                "passed": True,
+                "detail": "UNTESTED: none named",
+            }
+        ],
+    )
+    counts = count_governed_code_answers_by_outcome(runs)
+    assert (counts.governed, counts.untested) == (3, 2)
+    assert main([str(runs)]) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert "accepted_code_governed_by_contract=3" in out
+    assert "accepted_code_governed_untested=2" in out
+    assert f"source={runs}" in out
