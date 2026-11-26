@@ -17,7 +17,7 @@
 #   shard_job_pattern        the pytest shard job names of the pull request workflow, one group: the shard number.
 #   artifact_max_bytes       the largest archive the gateway fetches (the gateway's own cap is 524288); larger is a shard in error.
 #   artifact_unzipped_max_bytes  the most bytes read out of one archive.
-nightly_shard_count: 10
+nightly_shard_count: 20
 nightly_min_test_files: 2000
 collector_max_lag_hours: 6
 nightly_slot_time_utc: "02:30"
