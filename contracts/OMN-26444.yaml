@@ -11,6 +11,11 @@ requirements:
   acceptance:
   - id: AC1
     statement: 'AC1: on a real Postgres seeded with the OMN-26413 cases, the shared savings view''s unpriced_call_count equals the shared metering summary''s runs_unknown_spend for the same tenant -- falsifier: a real-Postgres pytest written before the fix that fails on dev unless the two agree'
+- id: req-omn26444-lab-item-allowed-program
+  statement: The integration-proof item starts with programs a lab host runs, so the lab does not refuse it.
+  acceptance:
+  - id: AC3
+    statement: "AC3: the integration-proof item's command, and the command it sends to the lab after --, each start with a program a lab host runs, so the lab does not refuse it -- falsifier: uv run pytest -q tests/contracts/test_omn26444_lab_item_allowed_program.py fails at omnimarket#6629's head d2b838adf7968ef57a097adc91b65cc5aa46c933, where the item starts with env"
 evidence_requirements:
 - kind: tests
   description: The shared savings unpriced test passes at the pushed head on a real Postgres.
@@ -35,5 +40,14 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26444 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_omn26444_shared_savings_unpriced_matches_refresh_real_postgres.py -q --no-cov
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26444 --kind test -- uv run --frozen pytest tests/test_omn26444_shared_savings_unpriced_matches_refresh_real_postgres.py -q --no-cov
+    cwd: .
+- id: dod-omn26444-lab-item-allowed-program
+  description: The integration-proof item's command, and the command it sends to the lab after --, each start with a program a lab host runs (DEFAULT_ALLOWED_EXECUTABLES), so a lab host does not refuse the work unit.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -q tests/contracts/test_omn26444_lab_item_allowed_program.py
     cwd: .
