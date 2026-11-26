@@ -28,17 +28,6 @@ dod_evidence:
   binds_ac:
   - AC1
   - AC2
-  ac_bindings:
-  - label: AC1
-    criterion_hash: e40b24bb7cfd06d2f6bfe2bb30d19678cb9bef3cdc6f2baecd00d10d88ca7d58
-    proposed_by: lane=dod-closeout-bind-2026-11-26T0345Z-c2
-    accepted_by: lane=dod-closeout-accept-2026-11-26T0345Z-c2
-    accepted_at: '2026-11-26T04:10:56Z'
-  - label: AC2
-    criterion_hash: da6a72dd3062a894d2c30dd89a29e030452de969090ed497d2d102c759a70905
-    proposed_by: lane=dod-closeout-bind-2026-11-26T0345Z-c2
-    accepted_by: lane=dod-closeout-accept-2026-11-26T0345Z-c2
-    accepted_at: '2026-11-26T04:10:56Z'
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/unit/routing/test_dod_overlay_contract_missing_omn22478.py tests/unit/routing/test_dod_overlay.py -q --no-cov
