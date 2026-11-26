@@ -16,7 +16,8 @@ from typing import Any
 import pytest
 from omnibase_infra.adapters._internal import adapter_infisical as _adapter_module
 
-import omnimarket.projection.credential_publisher as cp
+import omnimarket.handlers.credential_writer_identity as cp
+import omnimarket.projection.credential_publisher as publisher
 from omnimarket.projection.credential_publisher import (
     CredentialStoreConfigurationError,
     _build_secret_store,
@@ -82,6 +83,6 @@ def test_half_a_writer_identity_is_a_configuration_error(
 ) -> None:
     monkeypatch.setenv(cp.WRITER_CLIENT_ID_VAR, _WRITER_ID)
     with pytest.raises(CredentialStoreConfigurationError) as excinfo:
-        cp._bootstrap_values()
+        publisher._bootstrap_values()
     assert cp.WRITER_CLIENT_SECRET_VAR in str(excinfo.value)
     assert _WRITER_ID not in str(excinfo.value)
