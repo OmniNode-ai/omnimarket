@@ -1,0 +1,60 @@
+schema_version: 1.0.0
+ticket_id: OMN-25296
+title: Run node_host_retention_effect from a declared host unit so its merge reads as running
+summary: 'node_host_retention_effect is a host-local node: its contract forbids a shared runtime from subscribing to its command topic, so the dev runtime on the shared host never runs it, and the merged-change reading finds no declared runner for omnimarket 6072. This change gives it the runner every other host-local node has: a scheduled tick entry (runtime_host_retention_tick) that runs the node''s uv cache class for the host named by the ledger host name input, and a systemd registry unit (host-retention-uv-cache-systemd) that the declared installer renders from the contract, six hourly, with a probe that runs no pass. The unit runs only the uv cache class; the node''s other classes stay unscheduled.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25296-host-unit
+  statement: The host retention node has a scheduled tick entry and a declared systemd installer unit that runs only its uv cache class for the named host, so a host_unit runner row can name it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the tick entry takes the host from its argument or the ledger host name environment variable, runs only the uv cache class by default, answers its probe without loading a pass, and exits 0 for a clean pass, 2 for a refusal and 3 for errors or an unnamed host -- falsifier: pytest tests/nodes/node_host_retention_effect/test_runtime_host_retention_tick.py -q'
+  - id: AC2
+    statement: 'AC2: the installer registry declares host-retention-uv-cache-systemd with its module, entry file, probe, overlay root, required host name input, six-hour schedule and evidence paths, and renders an ExecStart that runs the tick module with the unit''s omni home and state directory -- falsifier: pytest tests/nodes/node_host_installer_registry_units/test_host_retention_uv_cache_unit.py -q'
+  - id: AC3
+    statement: 'AC3: integrated: the unit installed from the pushed branch through onex-host-install-units on a lab host runs the node once and records an exit 0 with a status ok line -- falsifier: the installer status read on the host names no revision for the unit, or the unit''s last run exits non-zero'
+evidence_requirements:
+- kind: tests
+  description: The host retention and installer registry unit tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_host_retention_effect tests/nodes/node_host_installer_registry_units/test_host_retention_uv_cache_unit.py -q -p no:randomly --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25296-ac1
+  description: 'AC1: the tick tests pass at the head; at the merge base the tick module does not exist, so the file cannot import it.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_retention_effect/test_runtime_host_retention_tick.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn25296-ac2
+  description: 'AC2: the unit tests pass at the head; at the merge base the registry holds no host-retention-uv-cache-systemd unit.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_host_retention_uv_cache_unit.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn25296-ac3
+  description: 'hosted proxy for AC3: the tests above pass here; the installer receipt, the unit status read and the unit run line from the lab host are posted as a pull request comment naming the head.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_retention_effect tests/nodes/node_host_installer_registry_units/test_host_retention_uv_cache_unit.py -q -p no:randomly --no-cov
+    cwd: .
+- id: dod-omn25296-integration-proof
+  description: the tick and unit tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25296 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_host_retention_effect/test_runtime_host_retention_tick.py tests/nodes/node_host_installer_registry_units/test_host_retention_uv_cache_unit.py -q --no-cov -p no:randomly

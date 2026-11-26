@@ -14,7 +14,7 @@ import fnmatch
 import os
 import re
 import time
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -195,16 +195,28 @@ def validate_declarations(
     row: ModelHostRetention,
     bounds: ModelRetentionBounds,
     consent_roots: Mapping[str, str] | None = None,
+    classes: Collection[str] = (),
 ) -> list[str]:
     """Every refusal text for a host row (empty when valid).
 
     ``consent_roots`` defaults to the folders node_retention_cleanup's policy archives: a lane_results
     class on one of them that does not archive is refused.
+
+    ``classes`` is the classes the pass is asked to run (empty: every class). A declaration is checked for each
+    class that runs and for no other: a pass that only trims the uv cache never touches the runner roots, and a
+    declaration it never reads cannot make a removal unsafe. Every check of a class that runs applies in full.
     """
+
+    def runs(kind: str) -> bool:
+        return not classes or kind in classes
+
     refusals: list[str] = row.consent_refusals(
-        consent_archive_roots() if consent_roots is None else consent_roots
+        consent_archive_roots() if consent_roots is None else consent_roots,
+        classes,
     )
     for age in row.age_classes:
+        if not runs(age.kind):
+            continue
         try:
             _check_declared_path(
                 age.root, bounds.root_leaf_names[age.kind], "age class root"
@@ -227,7 +239,7 @@ def validate_declarations(
             refusals.append(
                 f"{age.name}: index_db {age.index_db!r} must sit directly inside the root"
             )
-    for group in row.runner_groups:
+    for group in row.runner_groups if runs("runner_work") else ():
         for runner_id in group.ids:
             if not _RUNNER_ID.fullmatch(runner_id):
                 refusals.append(f"runner id {runner_id!r} must match [A-Za-z0-9_-]+")
@@ -257,7 +269,7 @@ def validate_declarations(
                 refusals.append(
                     f"container root {container_root!r} is not under an allowed container root"
                 )
-    for cache in row.uv_caches:
+    for cache in row.uv_caches if runs("uv_cache") else ():
         try:
             _check_declared_path(
                 cache.path, bounds.root_leaf_names["uv_cache"], "uv cache path"
@@ -741,7 +753,7 @@ class HandlerHostRetention:
         try:
             bounds = load_bounds()
             row = host_row(load_overlay(request.overlay_file), request.host_name)
-            refusals = validate_declarations(row, bounds)
+            refusals = validate_declarations(row, bounds, classes=request.classes)
         except (RefusalError, ValidationError, NodeOverlayError) as exc:
             return self._refused(request, str(exc)[:300])
         if refusals:
