@@ -34,7 +34,10 @@ class _Conn:
 
     async def fetch(self, sql: str, *args: Any) -> list[Any]:
         self.statements.append((sql, args))
-        if sql == store_postgres.SQL_LOOKUP:
+        if sql in (
+            store_postgres.SQL_LOOKUP,
+            store_postgres.SQL_LOOKUP_BY_CORRELATION,
+        ):
             return self.lookup
         return [{"workflow_id": args[0]}] * self.applied
 
@@ -122,3 +125,20 @@ async def test_store_raises_when_update_does_not_change_exactly_one_row() -> Non
     )
     with pytest.raises(GatewayTerminalStoreError):
         await store.apply_terminal(_update())
+
+
+async def test_a_tenantless_terminal_joins_on_correlation_and_writes_the_rows_tenant() -> (
+    None
+):
+    wid, row_tenant = uuid4(), uuid4()
+    conn = _Conn([{"workflow_id": wid, "tenant_id": row_tenant, "status": "published"}])
+    store = store_postgres.PostgresGatewayTerminalStore(
+        cast("store_postgres.GatewayTerminalPostgresPool", _Pool(conn))
+    )
+    update = _update().model_copy(update={"tenant_id": None})
+    assert await store.apply_terminal(update) == (Store.APPLIED, wid)
+    lookup_sql, lookup_args = conn.statements[0]
+    assert lookup_sql == store_postgres.SQL_LOOKUP_BY_CORRELATION
+    assert lookup_args == (update.correlation_id,)
+    assert "tenant_id" not in lookup_sql.split("WHERE")[1]
+    assert conn.statements[1][1][:2] == (wid, row_tenant)
