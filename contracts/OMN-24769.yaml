@@ -1,0 +1,75 @@
+schema_version: 1.0.0
+ticket_id: OMN-24769
+title: 'omnimarket#6312: the schedule test carries no suppression comment, the ledger command default is runnable, and the PR body and test duration are current'
+summary: The third review of the key-credit probe's schedule unit found a type-ignore comment in the schedule test file that the canonical file shape ratchet refuses, a ledger command default naming a binary absent on the install host, a pull request body three heads stale and a recorded test duration far under the measured one. The test binds its heartbeat read to a typed name, the unit declares no ledger command default and requires the installing request's override, and the duration record is re-measured on the lab.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24769-no-suppression
+  statement: The schedule test file carries no suppression comment and the ratchet exits 0.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the schedule test file carries no suppression comment and `_heartbeat` returns a typed name, so the pinned Canonical File Shape ratchet exits 0 at the pushed head -- falsifier: the pinned ratchet run with --base fccc55217859 exits 0, and uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_schedule_omn24656.py passes'
+- id: req-omn24769-ledger-command
+  statement: A default install cannot reach a tick that exits 0 while its ledger command is absent.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: a default install of the unit cannot reach a tick that exits 0 while its ledger command is absent, by an empty default with required_environment_inputs or a tick refusal before the probe when the command''s first word is not executable -- falsifier: uv run pytest on a new test that renders the unit with an absent command fails before the change and passes after'
+- id: req-omn24769-pr-body
+  statement: The pull request body is current.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the PR body names the overlay follow-up ticket, the #6285 ordering, OMN-24681, OMN-24725, the install inputs passed as path overrides, the current test count and the lab run at the pushed head -- falsifier: onex scm pr-view omnimarket#6312 body read at the pushed head contains each name'
+- id: req-omn24769-duration
+  statement: The recorded duration matches a lab re-measure.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: the recorded duration in config/test_file_durations.d for the schedule test file matches a re-measure on the lab -- falsifier: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect with --durations on the lab, the file''s total within the recorded value'
+evidence_requirements:
+- kind: tests
+  description: The schedule test file at the pushed head.
+  command: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_schedule_omn24656.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24769-ac1-no-suppression
+  description: 'AC1: the schedule test file carries no suppression comment. Red at cb0117abd4aa (the ratchet refuses with suppression comments 0 -> 1), green after.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: "! grep -n 'type: ignore' tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_schedule_omn24656.py"
+    cwd: .
+- id: dod-omn24769-ac2-ledger-command
+  description: 'AC2: the unit declares no ledger command default and requires it at install; an install without the override is refused. Red before the contract change, green after.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_claude_review_gateway_effect/test_review_key_credit_probe_schedule_omn24656.py -q --no-cov -n 0 -p no:randomly -k 'a_default_install or lab_host_table or rendered_unit_carries'
+    cwd: .
+- id: dod-omn24769-ac3-pr-body
+  description: 'AC3: the pull request body is refreshed at the pushed head and names each item.'
+  source: manual
+  binds_ac:
+  - AC3
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex scm pr-view OmniNode-ai/omnimarket#6312
+    cwd: .
+- id: dod-omn24769-ac4-integration-proof
+  description: 'AC4: the duration record for the schedule test file is the lab re-measure.'
+  source: manual
+  binds_ac:
+  - AC4
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-duration-24769 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_claude_review_gateway_effect -q --no-cov -n 0 -p no:randomly --durations=5
+    cwd: .
