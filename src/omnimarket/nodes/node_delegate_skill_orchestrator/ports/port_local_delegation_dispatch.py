@@ -4110,7 +4110,7 @@ class LocalDelegationDispatchPort:
                 # backend.model_id when the endpoint offered no /v1/models
                 # evidence (e.g. a cloud backend), which is unchanged pre-ticket
                 # behavior.
-                attributed_model_id = result.served_model_id or backend.model_id
+                attributed_model_id = result.served_model_id or "unknown"  # OMN-18079
                 # 5. PROJECTION — materialize the local evidence row from the
                 #    terminal, carrying the REAL gate verdict and the CUMULATIVE
                 #    metered cost across every attempt (never a hardcoded PASS,
