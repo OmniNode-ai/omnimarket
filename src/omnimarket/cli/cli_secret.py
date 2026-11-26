@@ -921,7 +921,7 @@ models_group = ModelsGroup(
     help=(
         "local only: the server needs a key. It is read from stdin when piped, or "
         "asked for at a hidden prompt, and stored as onex setup stores a Local "
-        "Model's key (OMN-23413)."
+        "Model's key."
     ),
 )
 @model_json
@@ -1057,7 +1057,7 @@ def default_model(provider: str) -> None:
     """Print the model onboarding registers for PROVIDER. Nothing is stored.
 
     OpenRouter's comes from the deployment overlay, and no key is read. Every
-    other provider's key runs only models its owner chose (OMN-21059), so its
+    other provider's key runs only models its owner chose, so its
     default is read from the provider: the key (stdin when piped, else a hidden
     prompt) asks the provider which models it can use, and the best match among
     the catalogue's preferred families is printed. A model counts as chosen
@@ -1234,7 +1234,7 @@ def review_gateway(
     repository: str | None,
     dry_run: bool,
 ) -> None:
-    """Serve a Hostile Review voter endpoint on this host's Claude keys (OMN-21014)."""
+    """Serve a Hostile Review voter endpoint on this host's Claude keys."""
     from omnimarket.models.model_claude_review_gateway_request import (
         ModelClaudeReviewGatewayRequest,
     )

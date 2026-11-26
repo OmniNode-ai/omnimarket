@@ -56,7 +56,7 @@ def write_model_overlay(
     target: Path | None,
     marker: str | None,
 ) -> None:
-    """Write the model overlay for MODE so your local model is used (OMN-20330).
+    """Write the model overlay for MODE so your local model is used.
 
     Give --ollama-memory-gb to use the Ollama default for this machine, or --url,
     --model, --parameter-count and --context-window for a server you run. No key
