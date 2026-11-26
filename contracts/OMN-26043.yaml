@@ -255,3 +255,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_llm_delegation_call_effect/test_codex_launch_guard.py tests/nodes/node_llm_delegation_call_effect/test_codex_harness_attempt.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26043-host-install-shared-context
+  description: "The host install orchestrator keeps its working memory at class level, because the runtime builds one handler instance per routing entry: a registry result consumed by an instance other than the one that took the request now finds the install's context and publishes the next step, where it read 'ignored a registry result' and no terminal arrived (measured on the dev runtime for two dry runs of the delegation-check-probe unit on h053, 2026-11-26). The new test fails on the previous commit and passes after; its failing control shows a result for an install no instance started is still ignored. This binds AC5: the second delegation check runner on h053 cannot be installed until the orchestrator ends an install."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_install_orchestrator -q --no-cov -n 0 -p no:randomly
+    cwd: .
