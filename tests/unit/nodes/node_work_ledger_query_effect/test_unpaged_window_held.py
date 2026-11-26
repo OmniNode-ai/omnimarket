@@ -9,7 +9,7 @@ appended row must show on the next query, and the held answer must equal a fresh
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -93,8 +93,10 @@ def test_second_identical_unpaged_query_does_not_read_or_parse(
     parsed: list[int] = []
     real = replay.parse_rows
 
-    def counting(records):  # type: ignore[no-untyped-def]
-        records = tuple(records)
+    def counting(
+        incoming: Iterable[ModelWorkLedgerRowRecord],
+    ) -> list[replay.LedgerRow]:
+        records = tuple(incoming)
         parsed.append(len(records))
         return real(records)
 
