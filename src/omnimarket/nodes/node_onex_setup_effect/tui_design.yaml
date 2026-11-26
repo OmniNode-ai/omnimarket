@@ -291,7 +291,7 @@ model_table:
 
 # /delegation: one switch, the prompt hook; subagents always run on Claude (OMN-23413).
 delegation:
-  title: Claude Code delegation
+  title: Agent delegation
   table_title: Your selected models (from /config), in the order delegation tries them
   enable:
     - [delegation, "on", --json]
@@ -314,6 +314,30 @@ delegation:
   state_reading: "checking…"
   state_unread: "status could not be read"
   hooks_title: "Delegation runs through one hook in Claude Code; switching it off removes the hook."
+  # OMN-26688 (operator 2026-11-26): the agents onex delegates from, in the
+  # order of the operator's picture. Claude Code is live; the others'
+  # integration is in progress, so their switches send nothing yet.
+  agents:
+    - {key: claude_code, name: Claude Code, live: true}
+    - {key: codex, name: Codex CLI}
+    - {key: opencode, name: OpenCode}
+    - {key: pi, name: Pi}
+    - {key: cursor, name: Cursor CLI}
+    - {key: droid, name: Droid CLI}
+    - {key: hermes, name: Hermes Agent}
+    - {key: copilot, name: GitHub Copilot CLI}
+    - {key: antigravity, name: Google Antigravity CLI}
+    - {key: kilo, name: Kilo Code}
+    - {key: kiro, name: Kiro CLI}
+    - {key: goose, name: Goose}
+    - {key: cline, name: Cline CLI}
+    - {key: command_code, name: Command Code}
+    - {key: vibe, name: Mistral Vibe CLI}
+    - {key: kimi, name: Kimi Code CLI}
+    - {key: qwen, name: Qwen Code}
+    - {key: amp, name: Amp}
+    - {key: deepseek, name: DeepSeek Harness}
+    - {key: omp, name: "Oh My Pi (OMP)"}
   hooks:
     - key: prompt_hook
       label: Delegate prompts
@@ -551,7 +575,7 @@ words:
   tried_first: "Tried first: {mark} {model}"
   tried_first_auto: "Tried first: {mark} Auto picks per task"
   # Delegation tab (mockup page 6).
-  delegation_about: "Prompts go to your models first. Claude Code is the fallback."
+  delegation_about: "Your agents. Your models. Your choice."
   turn_on: "Turn on"
   turn_off: "Turn off"
   # OMN-26688: the Delegation tab's one toggle.
@@ -562,6 +586,12 @@ words:
   toggle_unread: "not read"
   toggle_hint_on: "space to turn off"
   toggle_hint_off: "space to turn on"
+  agents_enabled: "{on}/{total} enabled"
+  agent_in_progress: "integration in progress"
+  # One mark on each agent in progress; its meaning is said once, at the bottom.
+  agent_in_progress_mark: "ⓘ"
+  agent_on_note: "{agent} is on · integration in progress: onex starts delegating from it when that lands."
+  agent_off_note: "{agent} is off."
   hook_label: Hook
   hook_state_installed: "✓ installed in Claude Code"
   hook_state_missing: "! not installed"
@@ -578,7 +608,7 @@ words:
   tab_hint_config_mine: "↑↓ move · enter actions · esc close"
   tab_hint_model: "↑↓ move · enter first · + add · d info · esc close"
   tab_hint_add_models: "space tick · ctrl+s save · esc back to providers"
-  tab_hint_delegation: "space switch · esc close"
+  tab_hint_delegation: "↑↓ navigate · space toggle · esc close"
   tab_hint_dashboard_stopped: "s start · esc close"
   tab_hint_dashboard_running: "enter open · s stop · esc close"
   # The one line under the tabs: how many models, on how many servers, and the first.
@@ -742,8 +772,8 @@ themes:
     boost: "#00000008"
     border: "#b8b0a2"
     chip: "#e3ddd2"
-    toggle_on: "#d6ebcc"
-    toggle_off: "#e3ddd2"
+    toggle_on: "#c4e3b6"
+    toggle_off: "#cfc5b2"
     route_cheap: "#1b6f8a"
     route_fallback: "#8a6a00"
 

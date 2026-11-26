@@ -3,9 +3,9 @@
 
   D1  "not signed in" is said twice: the tab's own line, then the CLI's
       sentence that repeats it.
-  D2  with no model set up, the "Tried in this order" box is an empty frame
-      seven rows tall, above the note that says what to do.
-  D3  once a model is set up the order box is back.
+  D2  with no model set up, the note does not say what to do (the tab has
+      no models table since OMN-26688: the Model tab lists them).
+  D3  once a model is set up the note still says to add one.
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ async def _delegation(rows: dict[tuple[str, ...], str]):  # type: ignore[no-unty
         screen = app.screen
         claude = " ".join(str(screen.query_one("#claude", Static).render()).split())
         note = " ".join(str(screen.query_one("#dnote", Static).render()).split())
-        return claude, note, screen.query_one("#selected").display
+        return claude, note, len(screen.query("ModelTable"))
 
 
 async def test_signed_out_is_said_once() -> None:
@@ -72,15 +72,15 @@ async def test_signed_out_is_said_once() -> None:
     assert "sign in" in claude, claude
 
 
-async def test_no_model_hides_the_empty_order_box() -> None:
+async def test_no_model_says_what_to_do() -> None:
     """D2."""
-    _, note, shown = await _delegation({("models", "list"): ""})
-    assert not shown
+    _, note, tables = await _delegation({("models", "list"): ""})
+    assert tables == 0
     assert "Config tab" in note, note
 
 
-async def test_a_set_up_model_shows_the_order_box() -> None:
+async def test_a_set_up_model_needs_no_note() -> None:
     """D3."""
-    _, note, shown = await _delegation(_selected_rows(connection=False))
-    assert shown
+    _, note, tables = await _delegation(_selected_rows(connection=False))
+    assert tables == 0
     assert "Config tab" not in note, note

@@ -62,3 +62,7 @@ def _tui_state_in_a_throwaway_folder(
     monkeypatch.setattr(cli_tui.ThemeStore, "_path", tmp_path / "tui-theme")
     monkeypatch.setattr(cli_tui.LaunchStore, "_path", tmp_path / "tui-launches")
     monkeypatch.setattr(cli_tui.StatusStore, "_path", tmp_path / "tui-status.json")
+    # OMN-26688: the agents switched on the Delegation tab.
+    monkeypatch.setattr(
+        cli_tui.AgentStore, "_path", tmp_path / "tui-agents.json", raising=False
+    )

@@ -124,7 +124,8 @@ async def test_model_opens_with_one_row_per_server_and_each_its_own_test() -> No
 
 
 async def test_config_and_delegation_open_with_two_servers_of_one_model() -> None:
-    """FM1 on the other two screens that show the same table."""
+    """FM1: two servers of one model open /delegation, which lists the agents
+    and no models table since OMN-26688 (the Model tab's FM1 test has them)."""
     runner = _Runner(
         [],
         by_command={
@@ -136,7 +137,8 @@ async def test_config_and_delegation_open_with_two_servers_of_one_model() -> Non
     async with app.run_test(size=(160, 44)) as pilot:
         await _open(pilot, "/delegation")
         assert isinstance(app.screen, DelegationScreen)
-        assert app.screen.query_one("#selected").query_one(DataTable).row_count == 3
+        assert len(app.screen.query(".agent-name")) == 20
+        assert list(app.screen.query("ModelTable")) == []
 
 
 async def test_picking_the_second_server_sends_its_url() -> None:
@@ -270,8 +272,9 @@ async def test_config_shows_what_is_set_up_and_offers_the_users_own_server() -> 
         assert "3 models · 3 servers" in summary
 
 
-async def test_delegation_table_names_each_selected_server() -> None:
-    """S3: hook delegation includes each selected server."""
+async def test_the_model_table_names_each_selected_server() -> None:
+    """S3: each selected server is named, on the Model tab since the
+    Delegation tab lost its models table (OMN-26688)."""
     from textual.widgets import DataTable
 
     runner = _Runner(
@@ -291,8 +294,8 @@ async def test_delegation_table_names_each_selected_server() -> None:
 
     app = OnexTui(root=_root, runner=runner, load_status=_status, read_server=native)
     async with app.run_test(size=(170, 46)) as pilot:
-        await _open(pilot, "/delegation")
-        table = app.screen.query_one("#selected").query_one(DataTable)
+        await _open(pilot, "/model")
+        table = app.screen.query_one("#models").query_one(DataTable)
         rows = [
             " ".join(str(cell) for cell in table.get_row_at(i))
             for i in range(table.row_count)
@@ -611,7 +614,7 @@ async def test_a_tab_opens_from_the_last_read_setup_before_reading_again() -> No
         await pilot.press("tab")
         await pilot.pause(0.1)  # well inside the 0.3 s a read takes
         assert isinstance(app.screen, DelegationScreen)
-        assert app.screen.query_one("#selected").query_one(DataTable).row_count == 3
+        assert len(app.screen.query(".agent-name")) == 20
         await pilot.pause(0.5)
         assert runner.calls.count(("models", "list", "--json")) == reads + 1
 

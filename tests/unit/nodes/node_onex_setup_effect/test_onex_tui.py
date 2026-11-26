@@ -802,7 +802,8 @@ def _selected_rows(*, connection: bool) -> dict[tuple[str, ...], str]:
 
 
 async def test_delegation_asks_for_nothing_and_shows_the_selected_models() -> None:
-    """F8: no URL, model or credential field; the table is the stored selection."""
+    """F8: no URL, model or credential field, and no models table: the Model
+    tab lists the stored selection (OMN-26688, operator 2026-11-26)."""
     from textual.widgets import Input
 
     from omnimarket.nodes.node_onex_setup_effect.cli_tui import DelegationScreen
@@ -818,13 +819,7 @@ async def test_delegation_asks_for_nothing_and_shows_the_selected_models() -> No
         assert isinstance(screen, DelegationScreen)
         typed = [i.id for i in screen.query(Input) if i.id != "mt-search"]
         assert typed == []
-        table = screen.query_one("#selected")
-        shown = [(e.provider, e.model_id, e.status) for e in table.entries]
-        assert shown == [
-            ("openrouter", "qwen/qwen3.8-27b", "ready"),
-            ("ollama", "llama3.2", "untested"),
-        ]
-        assert table.entries[0].capabilities["Tools"] == "yes"  # same rows as /config
+        assert list(screen.query("ModelTable")) == []
 
 
 async def test_delegation_hook_mode_runs_the_design_commands_on_and_off() -> None:

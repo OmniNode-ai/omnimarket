@@ -74,6 +74,7 @@ from omnimarket.nodes.node_onex_setup_effect.cli_model_table import (
     ModelTable,
     entry_key,
 )
+from omnimarket.nodes.node_onex_setup_effect.cli_toggle import ToggleSwitch
 from omnimarket.nodes.node_onex_setup_effect.doctor_page import (
     DoctorPage,
     render_doctor_page,
@@ -91,6 +92,7 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits 
     setup_provider_traits,
 )
 from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
+    ModelTuiDelegationAgent,
     ModelTuiFooterKey,
     tui_design,
 )
@@ -2449,45 +2451,52 @@ class Choice(RadioSet):
             self._value = event.pressed.name
 
 
+class _AgentList(VerticalScroll, can_focus=False):
+    """The Delegation tab's agents; the switches take the keyboard, not the
+    list, so Up and Down move between switches instead of scrolling."""
+
+    BINDINGS = [
+        Binding("down", "screen.field(1)", show=False),
+        Binding("up", "screen.field(-1)", show=False),
+    ]
+
+
 class DelegationScreen(_TabbedScreen[None]):
-    """Your selected models and one switch per delegation hook; nothing is typed
-    (OMN-23413 AC25; operator 2026-11-15: "build separate switches")."""
+    """The agents onex delegates from, each with its own switch (OMN-26688,
+    operator 2026-11-26: a picture of an agent list, "do like this", and no
+    models here because the Model tab lists them). Claude Code's switch turns
+    delegation on and off through its hook (OMN-23413); an agent whose
+    integration is in progress switches and is remembered, and sends nothing."""
 
     CSS = """
     DelegationScreen { align: center middle; }
     #deleg { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
     #deleg .summary { display: none; }
+    #dstate { height: auto; padding: 1 1; border-bottom: solid $border; }
     #dhead { height: 1; }
     #dtitle { width: 1fr; text-style: bold; color: $primary; }
-    /* OMN-26688: the toggle shows the state; the title line keeps none. */
+    #dcount { width: auto; color: $text-muted; }
+    /* OMN-26688: each switch shows its state; the title line keeps none. */
     #on-state { display: none; }
-    #hooks-title { color: $text-muted; height: 1; }
-    /* OMN-26688: a switch drawn as a rounded outline, its knob on the side it
-       is switched to (operator 2026-11-26 chose it over a filled bar, whose
-       grey vanished on the dark theme). */
-    #dturn-row { height: 3; margin: 1 0 0 0; }
-    #dswitch { width: auto; height: 3; background: transparent; border: round $muted; margin: 0 2 0 0; }
-    #dswitch.-on { border: round $success; }
-    #dswitch.-busy { border: round $foreground 25%; }
-    #dturn { width: auto; min-width: 13; height: 1; border: none; padding: 0 2; text-style: bold; background: $toggle-off; color: $muted; }
-    #dturn:focus { text-style: bold; }
-    #dturn.-on { background: $toggle-on; color: $success; }
-    #dturn.-off { background: $toggle-off; color: $muted; }
-    #dturn.-busy { background: $toggle-off; color: $muted; }
-    #dturn-hint { width: auto; height: 3; margin: 0 2 0 0; content-align: left middle; color: $text-muted; }
-    /* A short screen keeps its rows for the models: no blank row above the
-       toggle or between the boxes (the toggle is three rows, OMN-26688). */
-    DelegationScreen.-short #dturn-row { margin: 0; }
-    DelegationScreen.-short #selected { margin-top: 0; }
-    #dturn-row .hook { width: 1fr; height: 3; content-align: left middle; }
+    #hooks-title { height: 1; margin-top: 1; color: $text-muted; }
     #dswitches { display: none; height: 0; }
+    /* A thin, quiet scrollbar: the list scrolls on a short window. */
+    #agents { height: 1fr; padding: 0 3 0 1; scrollbar-size-vertical: 1; scrollbar-color: $border; scrollbar-color-hover: $text-muted; scrollbar-color-active: $text-muted; scrollbar-background: $panel; scrollbar-background-hover: $panel; scrollbar-background-active: $panel; }
+    /* One line per agent: its name, then its switch at the right. */
+    .agent-row { height: 1; margin-top: 1; }
+    .agent-name { width: 1fr; height: 1; color: $foreground; text-wrap: nowrap; text-overflow: ellipsis; }
+    /* The row whose switch has the keyboard (-current, set on focus): its
+       name bold, in the accent colour. */
+    .agent-row.-current .agent-name { color: $primary; text-style: bold; }
+    #dlegend { height: 1; color: $text-muted; }
+    .agent-note { height: auto; }
     .hook { height: 1; text-wrap: nowrap; text-overflow: ellipsis; }
-    #dstate { height: auto; border: round $border; padding: 0 1; }
-    #dorder-title { display: none; }
-    #selected { height: 1fr; border: round $border; padding: 0 1; margin-top: 1; }
-    #selected DataTable { height: auto; max-height: 100%; }
     #claude { height: auto; }
-    #dfoot { dock: bottom; height: auto; }
+    /* A short screen keeps its rows for the agents. */
+    DelegationScreen.-short #dstate { padding: 0 1; }
+    DelegationScreen.-short #hooks-title { margin-top: 0; }
+    DelegationScreen.-short .agent-row { margin-top: 0; }
+    #dfoot { dock: bottom; height: auto; border-top: solid $border; }
     #dnote { color: $text-muted; height: auto; }
     #dbar { height: 1; }
     #dbar.-stacked { layout: vertical; height: 2; }
@@ -2499,12 +2508,13 @@ class DelegationScreen(_TabbedScreen[None]):
     """
     TAB = "delegation"
     NOTE = "#dnote"
-    BODY = "#selected"
+    #: No models table here (OMN-26688): the agents show while setup is read.
+    BODY = ""
     FOOT = ("#dbar", "#dkeys", "#dbuttons")
     PROBLEM = "problem_delegation"
     BINDINGS = [
         Binding("escape", "cancel", _say("button_cancel")),
-        # No Save: the toggle applies at once (OMN-26688). ctrl+s stays, not
+        # No Save: a switch applies at once (OMN-26688). ctrl+s stays, not
         # shown, for a state set from code.
         Binding("ctrl+s", "save", _say("button_save"), priority=True, show=False),
         Binding("space", "flip", "Switch", show=False),
@@ -2529,8 +2539,10 @@ class DelegationScreen(_TabbedScreen[None]):
         #: Claude Code's state once the check answers; "checking" until then.
         self._claude_state = "checking"
         self._claude_fix = ""
-        #: A switch the toggle started is running (OMN-26688).
+        #: A switch Claude Code's toggle started is running (OMN-26688).
         self._switching = False
+        #: The agents in progress the user switched, as last saved (OMN-26688).
+        self._agents = AgentStore.load()
 
     def compose(self) -> ComposeResult:
         words = tui_design().delegation
@@ -2540,48 +2552,54 @@ class DelegationScreen(_TabbedScreen[None]):
             with Vertical(id="dstate"):
                 with Horizontal(id="dhead"):
                     yield Static(Text(words.title), id="dtitle")
+                    yield Static(self._count_text(), id="dcount")
                     yield Static(self._state_text(), id="on-state")
                 yield Static(
                     Text(_say("delegation_about"), style=_style("muted")),
                     id="hooks-title",
                 )
-                # OMN-26688: one toggle that applies at once (operator
-                # 2026-11-26: "i want toogle button", "one button"); the hook's
-                # line beside it only when something is wrong.
-                with Horizontal(id="dturn-row"):
-                    # The rounded outline holds the filled track (OMN-26688).
-                    with Horizontal(id="dswitch"):
-                        yield Button(self._toggle_label(), id="dturn")
-                    yield Static(self._toggle_hint(), id="dturn-hint")
-                    for hook in words.hooks:
-                        line = Static(
-                            self._hook_text(hook.key),
-                            id=f"hook-{hook.key}",
-                            classes="hook",
-                        )
-                        line.display = self._hook_problem(hook.key)
-                        yield line
-                # The switches hold the pending state; the button and Space move them.
+                # The switches hold Claude Code's pending state; its toggle and
+                # Space move them.
                 with Horizontal(id="dswitches"):
                     saved = self._saved_boxes()
                     for hook in words.hooks:
                         with Horizontal(classes="hook-switch"):
                             yield Switch(value=saved[hook.key], id=f"use-{hook.key}")
-
-                # OMN-23413: is Claude Code there? Read from setup's own check.
-                yield Static(
-                    Text(_say("claude_checking"), style=_style("muted")), id="claude"
-                )
-            yield Static(
-                Text(_say("order_title"), style=_style("muted")), id="dorder-title"
-            )
-            yield ModelTable(
-                selectable=False,
-                provider_labels={e.provider: e.label for e in _picker()},
-                id="selected",
-                layout="order",
-            )
+            with _AgentList(id="agents"):
+                for agent in words.agents:
+                    with Horizontal(classes="agent-row", id=f"row-{agent.key}"):
+                        yield Static(self._name_text(agent), classes="agent-name")
+                        yield ToggleSwitch(
+                            id="dturn" if agent.live else f"agent-{agent.key}",
+                            name=agent.key,
+                        )
+                    if not agent.live:
+                        continue
+                    # Under Claude Code, only when something is wrong: its hook,
+                    # and whether Claude Code is there (OMN-23413).
+                    for hook in words.hooks:
+                        line = Static(
+                            self._hook_text(hook.key),
+                            id=f"hook-{hook.key}",
+                            classes="hook agent-note",
+                        )
+                        line.display = self._hook_problem(hook.key)
+                        yield line
+                    yield Static(
+                        Text(_say("claude_checking"), style=_style("muted")),
+                        id="claude",
+                        classes="agent-note",
+                    )
             with Vertical(id="dfoot"):
+                # What the mark on an agent means, said once (operator 2026-11-26).
+                yield Static(
+                    Text.assemble(
+                        (_say("agent_in_progress_mark"), _style("info")),
+                        " = ",
+                        _say("agent_in_progress"),
+                    ),
+                    id="dlegend",
+                )
                 yield Static("", id="dnote")
                 with Horizontal(id="dbar"):
                     yield Static(_tab_hint("tab_hint_delegation"), id="dkeys")
@@ -2591,13 +2609,24 @@ class DelegationScreen(_TabbedScreen[None]):
     def on_mount(self) -> None:
         self._show_turn()
         self.run_worker(self._check_claude(), group="claude", exclusive=True)
-        table = self.query_one("#selected", ModelTable)
-        table.border_title = _say("order_title")
-        table.set_entries(self._selection.entries)
-        self._fit_order()
-        # The keyboard goes to the list without scrolling the switch away.
-        table.query_one("#mt-rows", DataTable).focus(scroll_visible=False)
+        # The switches are drawn in the theme's colours: a new theme redraws them.
+        self.app.theme_changed_signal.subscribe(self, lambda _theme: self._show_turn())
+        self.query_one("#dturn", ToggleSwitch).focus(scroll_visible=False)
         if not self.reading:
+            self._empty_note()
+
+    def on_descendant_focus(self, _event: events.DescendantFocus) -> None:
+        self._mark_current()
+
+    def _mark_current(self) -> None:
+        """Mark the row whose switch has the keyboard, and no other."""
+        focused = self.focused
+        for row in self.query(".agent-row"):
+            row.set_class(focused is not None and focused.parent is row, "-current")
+
+    def selection_read(self, selection: ModelTuiSelection) -> None:
+        super().selection_read(selection)
+        with contextlib.suppress(NoMatches):
             self._empty_note()
 
     def _empty_note(self) -> None:
@@ -2605,6 +2634,16 @@ class DelegationScreen(_TabbedScreen[None]):
             self.query_one("#dnote", Static).update(
                 Text(tui_design().delegation.no_models, style=_style("warning"))
             )
+
+    @staticmethod
+    def _name_text(agent: ModelTuiDelegationAgent) -> Text:
+        """Its name; an agent whose integration is in progress carries the
+        mark the bottom line explains."""
+        text = Text(agent.name)
+        if not agent.live:
+            text.append(" ")
+            text.append(_say("agent_in_progress_mark"), style=_style("info"))
+        return text
 
     async def _check_claude(self) -> None:
         """Fill the Claude Code line: shown only when Claude Code is not ready."""
@@ -2632,8 +2671,22 @@ class DelegationScreen(_TabbedScreen[None]):
         widget.display = state != "ready"
 
     def action_flip(self) -> None:
-        """Space, Enter on the toggle or a click switches delegation at once:
-        on when it is off, otherwise off (OMN-26688: no Save)."""
+        """Space switches the agent whose switch has the keyboard."""
+        focused = self.focused
+        if isinstance(focused, ToggleSwitch) and focused.id != "dturn":
+            self._flip_agent(str(focused.name))
+            return
+        self._flip_claude()
+
+    def on_toggle_switch_pressed(self, event: ToggleSwitch.Pressed) -> None:
+        if event.switch.id == "dturn":
+            self._flip_claude()
+        else:
+            self._flip_agent(str(event.switch.name))
+
+    def _flip_claude(self) -> None:
+        """Claude Code's switch applies at once: on when it is off, otherwise
+        off (OMN-26688: no Save)."""
         if self._busy:
             return
         on = not all(self._boxes().values())
@@ -2644,6 +2697,17 @@ class DelegationScreen(_TabbedScreen[None]):
         self._switching = True
         self._show_turn()
         self._run(self._switch)
+
+    def _flip_agent(self, key: str) -> None:
+        """An agent whose integration is in progress: its switch moves and is
+        remembered; nothing is sent, and the note says so."""
+        on = not self._agents.get(key, False)
+        self._agents[key] = on
+        AgentStore.save(self._agents)
+        self._show_agents()
+        name = next(a.name for a in tui_design().delegation.agents if a.key == key)
+        said = _say("agent_on_note" if on else "agent_off_note", agent=name)
+        self._note(said, "info" if on else "muted")
 
     async def _switch(self, app: OnexTui) -> Text | str | None:
         """Apply the flip; afterwards the toggle shows the state as read, so a
@@ -2760,40 +2824,72 @@ class DelegationScreen(_TabbedScreen[None]):
         self.query_one("#on-state", Static).update(self._state_text())
         self._show_turn()
 
-    def _toggle_label(self) -> str:
-        """ON with its dot on the right, OFF with it on the left, as a phone's
-        switch; words while a switch runs or the state is not read yet."""
+    def _claude_look(self) -> tuple[bool | None, str]:
+        """Claude Code's switch: on or off, or no side and a word while a
+        switch runs or the state is not read."""
         if self._switching:
-            return _say("toggle_switching")
+            return None, _say("toggle_switching")
         if self._saved is None:
-            return _say("toggle_reading")
+            return None, _say("toggle_reading")
         if self._saved == "unknown":
-            return _say("toggle_unread")
-        dot = tui_design().glyphs.dot_on
-        if self.any_on():
-            return f"{_say('toggle_on')}    {dot}"
-        return f"{dot}    {_say('toggle_off')}"
+            return None, _say("toggle_unread")
+        on = self.any_on()
+        return on, _say("toggle_on" if on else "toggle_off")
 
-    def _toggle_hint(self) -> str:
-        """What Space does now, beside the toggle; nothing while it runs or
-        the state is not read."""
-        if self._switching or self._saved in (None, "unknown"):
-            return ""
-        return _say("toggle_hint_on" if self.any_on() else "toggle_hint_off")
+    def toggle_paint(self, on: bool | None) -> dict[str, str]:
+        """A switch's colours in the open theme: a green knob and word on a
+        dark green track when on; grey otherwise, its knob lighter than its
+        word."""
+        found = self.app.get_css_variables()
+        theme = tui_design().theme
+
+        def colour(name: str) -> str:
+            return found.get(name) or str(getattr(theme, name.replace("-", "_")))
+
+        if on:
+            green = colour("success")
+            return {"track": colour("toggle-on"), "knob": green, "ink": green}
+        muted = colour("muted")
+        try:
+            knob = Color.parse(muted).blend(Color.parse(colour("foreground")), 0.35).hex
+        except Exception:  # an ANSI colour has no shade to blend
+            knob = muted
+        return {"track": colour("toggle-off"), "knob": knob, "ink": muted}
+
+    def _count_text(self) -> Text:
+        """How many agents are switched on, of all listed."""
+        agents = tui_design().delegation.agents
+        on = int(self._claude_look()[0] is True) + sum(
+            self._agents.get(agent.key, False) for agent in agents if not agent.live
+        )
+        return Text(
+            _say("agents_enabled", on=on, total=len(agents)), style=_style("muted")
+        )
 
     def _show_turn(self) -> None:
-        """The toggle shows the state: filled green on, grey off, dimmer grey
-        while a switch runs or the state is not read (OMN-26688)."""
-        button = self.query_one("#dturn", Button)
-        switch = self.query_one("#dswitch", Horizontal)
-        button.label = self._toggle_label()
-        self.query_one("#dturn-hint", Static).update(self._toggle_hint())
-        busy = self._switching or self._saved in (None, "unknown")
-        on = self.any_on()
-        for widget in (button, switch):
-            widget.set_class(busy, "-busy")
-            widget.set_class(on and not busy, "-on")
-            widget.set_class(not on and not busy, "-off")
+        """Claude Code's switch shows the state: knob right and green on, left
+        and grey off, no knob while a switch runs or the state is not read."""
+        # One line, its ends round where the terminal draws them (cli_toggle).
+        switch = self.query_one("#dturn", ToggleSwitch)
+        on, word = self._claude_look()
+        switch.draw(on, word, self.toggle_paint(on))
+        switch.set_class(on is None, "-busy")
+        switch.set_class(on is True, "-on")
+        switch.set_class(on is False, "-off")
+        self._show_agents()
+
+    def _show_agents(self) -> None:
+        """Each agent in progress as switched, and the count."""
+        paint = {True: self.toggle_paint(True), False: self.toggle_paint(False)}
+        for agent in tui_design().delegation.agents:
+            if agent.live:
+                continue
+            on = self._agents.get(agent.key, False)
+            word = _say("toggle_on" if on else "toggle_off")
+            self.query_one(f"#agent-{agent.key}", ToggleSwitch).draw(
+                on, word, paint[on]
+            )
+        self.query_one("#dcount", Static).update(self._count_text())
 
     def action_save(self) -> None:
         """Switch here and stay; the outcome shows on this tab."""
@@ -2832,22 +2928,9 @@ class DelegationScreen(_TabbedScreen[None]):
             ModelTuiDelegationChoice(on=True, commands=words.enable)
         )
 
-    def _show_selection(self) -> None:
-        super()._show_selection()
-        self.query_one("#selected", ModelTable).set_entries(self._selection.entries)
-        self._fit_order()
-
-    def _fit_order(self) -> None:
-        """No model yet: no empty order box; the note says to add one."""
-        self.query_one("#selected").display = self.reading or bool(
-            self._selection.entries
-        )
-
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "dcancel":
             self._close()
-        elif event.button.id == "dturn":
-            self.action_flip()
 
     def action_cancel(self) -> None:
         self._close()
@@ -3428,6 +3511,35 @@ class StatusStore:
             )
         except (OSError, ValueError, AttributeError):
             return ModelTuiStatus()
+
+
+class AgentStore:
+    """The agents whose integration is in progress that the user switched on
+    or off on the Delegation tab (OMN-26688), kept for the next start."""
+
+    _path = Path.home() / ".config" / "onex" / "tui-agents.json"
+
+    @classmethod
+    def load(cls) -> dict[str, bool]:
+        try:
+            document = json.loads(cls._path.read_text())
+        except (OSError, ValueError):
+            return {}
+        if not isinstance(document, dict):
+            return {}
+        return {
+            str(key): value
+            for key, value in document.items()
+            if isinstance(value, bool)
+        }
+
+    @classmethod
+    def save(cls, agents: dict[str, bool]) -> None:
+        try:
+            cls._path.parent.mkdir(parents=True, exist_ok=True)
+            cls._path.write_text(json.dumps(agents, sort_keys=True))
+        except OSError:
+            _LOG.warning("could not remember the agent switches", exc_info=True)
 
 
 class LaunchStore:
