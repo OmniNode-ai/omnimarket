@@ -23,7 +23,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import click
 import yaml
@@ -121,7 +121,7 @@ def _current(store: ProtocolOverlayStore, path: str, overlay: str) -> JsonValue 
     if not isinstance(document, dict):
         return None
     found = get_at(document, path)
-    return None if found is MISSING else found  # type: ignore[return-value]
+    return None if found is MISSING else cast(JsonValue, found)
 
 
 bootstrap_option = click.option(
