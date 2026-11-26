@@ -115,3 +115,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/settings_store/test_snapshot_writer.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
+- id: dod-omn24028-host-table-from-store
+  description: 'Task 20: the board lab_hosts reader reads the host table through the injected settings store only; an absent overlay, a stale heartbeat, an unreachable store and a non-table document read unknown, never an empty list, and the reader module names no implementation and no environment variable'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/settings_store/test_host_table_from_store.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
