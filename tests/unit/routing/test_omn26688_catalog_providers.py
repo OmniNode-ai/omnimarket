@@ -35,6 +35,12 @@ Failure modes, each a test below:
       plan, an id taken by a declared or listed provider) or carries no source.
 
 Fakes only: the model list and the pinned delegation are stubs; no network.
+  C16 operator 2026-11-26 ("are they all working?"): a listed provider whose
+      address is gone (shut down, no DNS record, refused, the web site and
+      not the API) is offered anyway, and fails only after the user pastes a
+      key. Checked twice on 2026-11-26, read only and without a key.
+  C17 a withheld row names no reason or check, or outlives its provider on
+      the models.dev list, so nobody can tell why it is held or when to drop it.
 """
 
 from __future__ import annotations
@@ -69,6 +75,21 @@ _ROOT = Path(__file__).resolve().parents[3]
 _LIST = _ROOT / "src/omnimarket/handlers/routing/byok_catalog_providers.yaml"
 _RULINGS = _ROOT / "src/omnimarket/handlers/routing/byok_catalog_plan_rulings.yaml"
 _ADDED = _ROOT / "src/omnimarket/handlers/routing/byok_catalog_added_providers.yaml"
+_WITHHELD = (
+    _ROOT / "src/omnimarket/handlers/routing/byok_catalog_withheld_providers.yaml"
+)
+#: Checked 2026-11-26, twice: shut down (HTTP 410), origin down (521), no DNS
+#: record, connection refused, the web site not the API (406), no route (404),
+#: and a sign-in token where a key would go.
+_DEAD = (
+    "llmtech",
+    "aigrow",
+    "clarifai",
+    "drun",
+    "inference",
+    "jad-ai",
+    "github-copilot",
+)
 
 #: Two providers from the shipped list, read from models.dev on 2026-11-26: one base
 #: URL with no path and one with a trailing slash, one id with a hyphen.
@@ -606,3 +627,49 @@ def test_every_added_row_keeps_the_lists_rules_and_names_its_source() -> None:
         assert row["source"].startswith("https://"), row
     loaded = m.load_byok_catalog_providers()
     assert {row["id"] for row in rows} <= set(loaded)
+
+
+def test_a_provider_whose_address_does_not_work_is_offered_nowhere(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """C16."""
+    from omnimarket.handlers.model_provider_labels import MODEL_LABELS
+    from omnimarket.handlers.routing import byok_catalog_providers as m
+    from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
+        setup_provider_traits,
+    )
+
+    generated = m.load_generated_catalog_providers()
+    offered = m.load_byok_catalog_providers()
+    picked = {p.provider for p in setup_provider_traits().picker_providers()}
+    for pid in _DEAD:
+        assert pid in generated, pid  # models.dev still lists it
+        assert pid not in offered, pid
+        assert pid not in picked, pid
+        assert pid not in MODEL_LABELS, pid
+        assert resolve_byok_provider_backend(pid) is None, pid
+    _arrange(monkeypatch, tmp_path)
+    result = CliRunner().invoke(
+        models_group, ["add", "llmtech", "--model", "m"], input="sk-test-0000\n"
+    )
+    assert result.exit_code != 0, result.output
+    store = LocalByokCredentialStore()
+    assert asyncio.run(store.get_secret("llm.llmtech.api_key")) is None
+
+
+def test_every_withheld_row_says_why_and_is_still_listed() -> None:
+    """C17."""
+    from omnimarket.handlers.routing import byok_catalog_providers as m
+
+    raw = yaml.safe_load(_WITHHELD.read_text(encoding="utf-8"))
+    assert raw["schema_version"] == "byok_catalog_withheld_providers.v1"
+    rows = raw["providers"]
+    assert {row["provider"] for row in rows} == set(_DEAD)
+    generated = m.load_generated_catalog_providers()
+    for row in rows:
+        assert set(row) == {"provider", "reason", "evidence", "checked_on"}, row
+        assert row["provider"] in generated, row  # drop the row once it leaves
+        assert len(row["reason"].split()) >= 2, row
+        assert row["evidence"].strip(), row
+    held = {w.provider for w in m.load_byok_catalog_withheld()}
+    assert held == set(_DEAD)

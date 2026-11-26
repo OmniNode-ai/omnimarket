@@ -44,6 +44,10 @@ CATALOG_PROVIDERS_PATH = Path(__file__).with_name("byok_catalog_providers.yaml")
 PLAN_RULINGS_PATH = Path(__file__).with_name("byok_catalog_plan_rulings.yaml")
 ADDED_PROVIDERS_PATH = Path(__file__).with_name("byok_catalog_added_providers.yaml")
 ADDED_PROVIDERS_SCHEMA = "byok_catalog_added_providers.v1"
+WITHHELD_PROVIDERS_PATH = Path(__file__).with_name(
+    "byok_catalog_withheld_providers.yaml"
+)
+WITHHELD_PROVIDERS_SCHEMA = "byok_catalog_withheld_providers.v1"
 CATALOG_PROVIDERS_SCHEMA = "byok_catalog_providers.v1"
 PLAN_RULINGS_SCHEMA = "byok_catalog_plan_rulings.v1"
 OPENAI_COMPATIBLE_PACKAGE = "@ai-sdk/openai-compatible"
@@ -114,6 +118,19 @@ class ModelByokCatalogAddedProvider(ModelByokCatalogProvider):
         return ModelByokCatalogProvider(
             id=self.id, name=self.name, api=self.api, doc=self.doc
         )
+
+
+class ModelByokCatalogWithheld(BaseModel):
+    """A listed provider left out because its address was checked and does not
+    work: offered, it would fail only after the user pasted a key."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    provider: str = Field(pattern=_ID_PATTERN)
+    reason: str = Field(min_length=3)
+    #: What the check saw, so the next reader can run it again.
+    evidence: str = Field(min_length=3)
+    checked_on: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
 
 
 class ByokCatalogListError(ValueError):
@@ -220,7 +237,12 @@ def load_byok_catalog_plan_rulings() -> tuple[ModelByokCatalogPlanRuling, ...]:
 def load_byok_catalog_providers() -> dict[str, ModelByokCatalogProvider]:
     """Every provider offered from a list, by id: the generated models.dev list,
     then the operator's additions. Cached: both ship inside the wheel."""
-    found = dict(load_generated_catalog_providers())
+    held = {w.provider for w in load_byok_catalog_withheld()}
+    found = {
+        pid: row
+        for pid, row in load_generated_catalog_providers().items()
+        if pid not in held
+    }
     for added in load_byok_catalog_added_providers():
         if added.id in found:
             raise ByokCatalogListError(
@@ -249,6 +271,20 @@ def load_generated_catalog_providers() -> dict[str, ModelByokCatalogProvider]:
             )
         found[provider.id] = provider
     return found
+
+
+@lru_cache(maxsize=1)
+def load_byok_catalog_withheld() -> tuple[ModelByokCatalogWithheld, ...]:
+    """The listed providers withheld because their address does not work."""
+    rows = _read_yaml(WITHHELD_PROVIDERS_PATH, WITHHELD_PROVIDERS_SCHEMA).get(
+        "providers"
+    )
+    if not isinstance(rows, list):
+        raise ByokCatalogListError(f"{WITHHELD_PROVIDERS_PATH} has no 'providers' list")
+    held = tuple(ModelByokCatalogWithheld.model_validate(row) for row in rows)
+    if len({w.provider for w in held}) != len(held):
+        raise ByokCatalogListError(f"{WITHHELD_PROVIDERS_PATH} names one twice")
+    return held
 
 
 @lru_cache(maxsize=1)
