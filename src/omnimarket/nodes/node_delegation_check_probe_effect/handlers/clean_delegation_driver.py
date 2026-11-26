@@ -25,6 +25,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Mapping, Sequence
@@ -276,6 +277,16 @@ def _models_read(base_url: str) -> tuple[int | None, Any]:
         return status, None
 
 
+def counter_after(url: str, before: float, *, wait_s: float = 15.0) -> float:
+    """The responder's generated-token counter after the run; a server that publishes it a moment after the answer is waited for."""
+    deadline = time.monotonic() + wait_s
+    while True:
+        after = generated_tokens(_get(url.rstrip("/") + "/metrics")[1])
+        if after > before or time.monotonic() >= deadline:
+            return after
+        time.sleep(1.0)
+
+
 def declare_model(base_url: str, model: str) -> None:
     """The guide's option A: the model server's complete chat-completions address, for both local rungs."""
     endpoint = base_url.rstrip("/") + "/v1/chat/completions"
@@ -360,7 +371,7 @@ def drive() -> int:
     delegation = run(
         [onex, "delegate", PROMPT, "--json"], env=recorded(delegate_log), cwd=str(work)
     )
-    after = generated_tokens(_get(url.rstrip("/") + "/metrics")[1])
+    after = counter_after(url, before)
     control_log = scratch / "control.log"
     run([sys.executable, "-c", CONTROL_CODE], env=recorded(control_log), timeout=30)
     log = _read_log(delegate_log)

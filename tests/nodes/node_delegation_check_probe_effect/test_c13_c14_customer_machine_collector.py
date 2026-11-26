@@ -89,6 +89,23 @@ def test_the_token_counter_sums_the_generation_samples_and_ignores_the_rest() ->
     assert driver.generated_tokens("") == 0.0
 
 
+def test_a_counter_published_a_moment_after_the_answer_is_waited_for(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    texts = iter(["", "llamacpp:tokens_predicted_total 5\n"])
+    monkeypatch.setattr(driver, "_get", lambda _url: (200, next(texts)))
+    monkeypatch.setattr(driver.time, "sleep", lambda _s: None)
+    assert driver.counter_after(BASE, 0.0) == 5.0
+
+
+def test_a_counter_that_never_moves_is_returned_unmoved_after_the_wait(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(driver, "_get", lambda _url: (200, ""))
+    monkeypatch.setattr(driver.time, "sleep", lambda _s: None)
+    assert driver.counter_after(BASE, 0.0, wait_s=0.0) == 0.0
+
+
 def _write_run(root: Path, **over: Any) -> Path:
     run_dir = root / "runs" / "run-1"
     run_dir.mkdir(parents=True)
