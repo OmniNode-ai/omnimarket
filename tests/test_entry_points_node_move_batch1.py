@@ -14,6 +14,8 @@ from scripts.audit.market_node_runtime_dogfood import (
 
 ROOT = Path(__file__).resolve().parents[1]
 BATCH1_NODES = (
+    "node_c30_claude_code_plugin_probe_effect",
+    "node_c31_local_dashboard_parity_probe_effect",
     "node_c32_auth_boundary_probe_effect",
     "node_host_reconcile_effect",
     "node_pr_landing_liveness_read_effect",

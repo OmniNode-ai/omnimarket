@@ -1103,6 +1103,30 @@ events:
     partition_key_field: session_id
     required_fields: [activation_id, session_id, reason]
 
+  # C30 Claude Code plugin probe run (OMN-19966): one daily run of its node, the record the MVP launch reading (M1) reads C30 from. One record a day; the
+  # run history file on the host keeps every run. Carries the run id, trigger, verdict, graded clause names and details (never a credential value),
+  # and package versions.
+  c30.claude_code_plugin_probe.completed:
+    node_owned: true
+    fan_out:
+      - topic: "onex.evt.omnimarket.claude-code-plugin-probe-completed.v1"
+        tier: telemetry
+        description: "C30 Claude Code plugin probe run: verdict, conclusion, clauses and graded versions; no credential value"
+    partition_key_field: criterion
+    required_fields: [run_id, verdict, conclusion, criterion]
+
+  # C31 local dashboard parity probe run (OMN-19966): one daily run of its node, the record the MVP launch reading (M1) reads C31 from. One record a day; the
+  # run history file on the host keeps every run. Carries the run id, trigger, verdict, graded clause names and details (never a credential value),
+  # and package versions.
+  c31.local_dashboard_parity_probe.completed:
+    node_owned: true
+    fan_out:
+      - topic: "onex.evt.omnimarket.local-dashboard-parity-probe-completed.v1"
+        tier: telemetry
+        description: "C31 local dashboard parity probe run: verdict, conclusion, clauses and graded versions; no credential value"
+    partition_key_field: criterion
+    required_fields: [run_id, verdict, conclusion, criterion]
+
   # C32 local auth-boundary probe run (OMN-23213): one daily run of node_c32_auth_boundary_probe_effect, the record the MVP launch
   # reading (M1) reads C32 from. One record a day; the run history file on the host keeps every run. Carries the run id, trigger, verdict,
   # graded clause names and details (never a credential value: the probe only searches for its planted value), and package versions.
