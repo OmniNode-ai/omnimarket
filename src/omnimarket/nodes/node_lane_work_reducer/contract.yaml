@@ -49,6 +49,11 @@ handler_routing:
         name: HandlerLaneWorkReducer
         module: omnimarket.nodes.node_lane_work_reducer.handlers.handler_lane_work_reducer
 
+runtime_dispatch:
+  external_trigger: "Called in-process by the lane work orchestrator's fold for every accepted input; it holds no subscription of its own."
+  callers:
+    - path: src/omnimarket/nodes/node_lane_work_orchestrator/handlers/handler_lane_work_orchestrator.py
+
 descriptor:
   node_archetype: reducer
   purity: pure

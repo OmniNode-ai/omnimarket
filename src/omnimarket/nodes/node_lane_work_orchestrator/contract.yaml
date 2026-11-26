@@ -126,6 +126,7 @@ externally_produced_topics:
   - topic: onex.cmd.omnimarket.lane-work-event.v1
     producer: "onex run-node node_lane_work_orchestrator, from the orchestrator's session and from a worker lane"
 externally_consumed_topics:
+  - onex.evt.omnimarket.lane-work-step-completed.v1
   - onex.evt.omnimarket.lane-work-terminal.v1
 # The broker grants the node's topics need (OMN-24005 coverage gate): the runtime login reads the topics it
 # consumes and writes the topics it publishes. A caller's login is declared where that login is declared.
@@ -195,6 +196,16 @@ handler_routing:
         module: "omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit"
       topic: onex.evt.omnimarket.lab-work-unit-completed.v1
       description: "A lab proof's receipt, classified and re-published as a typed event."
+    - operation: "lane_work.intake.lab_proof_failed"
+      message_category: "event"
+      handler:
+        name: "HandlerLaneWorkIntake"
+        module: "omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_intake"
+      event_model:
+        name: "ModelLabWorkCommandFailure"
+        module: "omnimarket.lab_work.bus"
+      topic: onex.evt.omnimarket.lab-work-unit-failed.v1
+      description: "A lab proof's failure receipt, classified and re-published as a typed event."
     - operation: "lane_work.intake.ledger_query"
       message_category: "event"
       handler:
