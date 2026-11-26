@@ -222,6 +222,28 @@ REMOVALS: list[tuple[str, str, str, Any]] = [
     ),
     (
         "C13",
+        "receipt_hops_chain_order",
+        "the receipt records a cloud hop before a local one",
+        lambda: _c13(
+            attempt_hops=(
+                {
+                    "tier": "openrouter",
+                    "backend": "b",
+                    "model": "m",
+                    "outcome": "reject",
+                },
+                {"tier": "local", "backend": "b", "model": "m", "outcome": "accept"},
+            )
+        ),
+    ),
+    (
+        "C14",
+        "receipt_hops_chain_order",
+        "the receipt records no hop",
+        lambda: _c14({"attempt_hops": ()}),
+    ),
+    (
+        "C13",
         "zero_provider",
         "egress instrument recorded nothing",
         lambda: _c13(egress_recorded=False),
