@@ -112,6 +112,7 @@ from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import 
     ModelRepoEvidenceCheckRun,
     ModelTicketMergedPr,
 )
+from omnimarket.nodes.node_dod_verify.services.dispatch_budget import clamp_to_budget
 from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
     REPO_EVIDENCE_CHECK_NAME,
     DurableEvidenceGate,
@@ -240,7 +241,11 @@ def _gh_json(argv: list[str], timeout_s: int) -> tuple[object | None, str]:
     """
     try:
         result = subprocess.run(
-            argv, capture_output=True, text=True, timeout=timeout_s, check=False
+            argv,
+            capture_output=True,
+            text=True,
+            timeout=clamp_to_budget(timeout_s),
+            check=False,
         )
     except (subprocess.TimeoutExpired, OSError) as exc:
         return None, f"{argv[:2]} error: {exc}"
@@ -268,7 +273,11 @@ def _gh_json_lines(
     """
     try:
         result = subprocess.run(
-            argv, capture_output=True, text=True, timeout=timeout_s, check=False
+            argv,
+            capture_output=True,
+            text=True,
+            timeout=clamp_to_budget(timeout_s),
+            check=False,
         )
     except (subprocess.TimeoutExpired, OSError) as exc:
         return None, f"{argv[:2]} error: {exc}"
@@ -730,7 +739,7 @@ class HandlerDodEvidenceGithubEffect:
                 ],
                 capture_output=True,
                 text=True,
-                timeout=_GH_LIST_TIMEOUT_S,
+                timeout=clamp_to_budget(_GH_LIST_TIMEOUT_S),
             )
         except (subprocess.TimeoutExpired, OSError) as exc:
             logger.warning("gh pr list failed for %s (%s): %s", ticket_id, repo, exc)
@@ -844,7 +853,7 @@ class HandlerDodEvidenceGithubEffect:
                 ],
                 capture_output=True,
                 text=True,
-                timeout=_GH_LIST_TIMEOUT_S,
+                timeout=clamp_to_budget(_GH_LIST_TIMEOUT_S),
             )
         except (subprocess.TimeoutExpired, OSError) as exc:
             logger.warning("gh pr list failed for %s: %s", ticket_id, exc)
@@ -929,7 +938,7 @@ class HandlerDodEvidenceGithubEffect:
                 ],
                 capture_output=True,
                 text=True,
-                timeout=_GH_PR_TIMEOUT_S,
+                timeout=clamp_to_budget(_GH_PR_TIMEOUT_S),
                 check=False,
             )
         except (subprocess.TimeoutExpired, OSError) as exc:
@@ -2131,7 +2140,7 @@ def _gate_git(repo_path: str, *args: str) -> tuple[int, str]:
             ["git", "-C", repo_path, *args],
             capture_output=True,
             text=True,
-            timeout=_GATE_GIT_TIMEOUT_S,
+            timeout=clamp_to_budget(_GATE_GIT_TIMEOUT_S),
             check=False,
             env=scrub_git_location_env(os.environ),
         )
@@ -2191,7 +2200,9 @@ class HandlerDurableEvidenceGateEffect:
             headers={"Authorization": api_key, "Content-Type": "application/json"},
         )
         try:
-            with urllib.request.urlopen(request, timeout=_LINEAR_TIMEOUT_S) as response:
+            with urllib.request.urlopen(
+                request, timeout=clamp_to_budget(_LINEAR_TIMEOUT_S)
+            ) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
             return "", frozenset(), f"Linear read failed: {type(exc).__name__}"

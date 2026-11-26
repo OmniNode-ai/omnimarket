@@ -31,6 +31,11 @@ requirements:
   acceptance:
   - id: AC3
     statement: 'AC3: a start command whose checks exceed the declared budget returns inside the budget with an UNRESOLVED verdict that names how many checks ran and how many did not, and counts none of the unrun checks as passed -- falsifier: the command runs past the budget, the verdict is VERIFIED, or an unrun check is counted verified'
+- id: req-omn25856-budget-ends-dispatch
+  statement: A hosted dod-verify-start command whose budget is spent ends its dispatch with its typed result before the 600 s deadline, because every subprocess the dispatch starts (live-PR gh reads, the must-fail control, the durable-gate git reads, the Linear read) is clamped to the budget and a check finished at the budget's edge starts no follow-up step.
+  acceptance:
+  - id: AC12
+    statement: 'AC12: a slow gh or git step started under a spent start budget is cut at the budget and a green whose follow-up steps did not run is SKIPPED, not VERIFIED -- falsifier: a gh call under a 1.5 s budget runs for its own 30 s ceiling, or a spent budget still starts the live-PR and must-fail follow-ups'
 evidence_requirements:
 - kind: tests
   description: The focused regression, failing first with the surviving child process, then passing.
@@ -57,6 +62,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_25856_start_command_budget.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-ac12-budget-ends-dispatch
+  description: A gh read that would run 8 s returns inside a 1.5 s budget; the gate git ceiling is clamped to the budget and unchanged with no budget open; a spent budget starts no live-PR or must-fail follow-up and turns the VERIFIED head into SKIPPED / check_budget_exceeded, while with no budget both follow-ups still run.
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_25856_budget_ends_dispatch.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn25856-hosted-deploy-check
   description: 'Deploy check the hosted runner can run: the other command-check tests that stub the collector subprocess still pass through the process-group runner. This binds no criterion by itself.'
