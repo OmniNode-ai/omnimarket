@@ -34,8 +34,13 @@ requirements:
 - id: req-omn25856-budget-ends-dispatch
   statement: A hosted dod-verify-start command whose budget is spent ends its dispatch with its typed result before the 600 s deadline, because every subprocess the dispatch starts (live-PR gh reads, the must-fail control, the durable-gate git reads, the Linear read) is clamped to the budget and a check finished at the budget's edge starts no follow-up step.
   acceptance:
+  - id: AC13
+    statement: 'AC13: a slow gh or git step started under a spent start budget is cut at the budget and a green whose follow-up steps did not run is SKIPPED, not VERIFIED -- falsifier: a gh call under a 1.5 s budget runs for its own 30 s ceiling, or a spent budget still starts the live-PR and must-fail follow-ups'
+- id: req-omn25856-verifiable-path-rule-enforcement
+  statement: On the verifiable code path, where executed tests are the authority, a failed blocking heuristic rule is recorded as scored, never blocking, so an accepted run carries no failed blocking rule.
+  acceptance:
   - id: AC12
-    statement: 'AC12: a slow gh or git step started under a spent start budget is cut at the budget and a green whose follow-up steps did not run is SKIPPED, not VERIFIED -- falsifier: a gh call under a 1.5 s budget runs for its own 30 s ceiling, or a spent budget still starts the live-PR and must-fail follow-ups'
+    statement: 'AC12: an accepted code_generation run with passed executed tests records its failed marker rule as scored -- falsifier: the same run records that rule as blocking beside an accepted verdict, or a run without executed tests loses its blocking rule'
 evidence_requirements:
 - kind: tests
   description: The focused regression, failing first with the surviving child process, then passing.
@@ -63,11 +68,11 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_25856_start_command_budget.py -q --no-cov -n 0 -p no:randomly
     cwd: .
-- id: dod-omn25856-ac12-budget-ends-dispatch
+- id: dod-omn25856-ac13-budget-ends-dispatch
   description: A gh read that would run 8 s returns inside a 1.5 s budget; the gate git ceiling is clamped to the budget and unchanged with no budget open; a spent budget starts no live-PR or must-fail follow-up and turns the VERIFIED head into SKIPPED / check_budget_exceeded, while with no budget both follow-ups still run.
   source: manual
   binds_ac:
-  - AC12
+  - AC13
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_25856_budget_ends_dispatch.py -q --no-cov -n 0 -p no:randomly
@@ -146,4 +151,13 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/cost/test_inkling_local_priced_omn25856.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-accepted-run-no-blocking-fail
+  description: 'An accepted code_generation run (executed tests passed, function-only answer) records its failed marker rule as scored, never blocking; without executed tests the run records no failed blocking rule beside a pass. The test fails on the gate before the change.'
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_verifiable_path_rule_enforcement_omn25856.py -q --no-cov -n 0 -p no:randomly
     cwd: .

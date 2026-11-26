@@ -249,3 +249,10 @@ def test_the_0_4_328_bump_left_no_release_changelog() -> None:
     version = tuple(int(x) for x in _pyproject_version().split("."))
     assert version >= (0, 4, 328)
     assert not (ROOT / "CHANGELOG.md").exists()
+
+
+def test_the_0_4_329_bump_left_no_release_changelog() -> None:
+    """The 0.4.329 bump removes the CHANGELOG.md the 0.4.328 cut added."""
+    version = tuple(int(x) for x in _pyproject_version().split("."))
+    assert version >= (0, 4, 329)
+    assert not (ROOT / "CHANGELOG.md").exists()
