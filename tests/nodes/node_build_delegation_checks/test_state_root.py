@@ -265,10 +265,10 @@ def test_an_unreadable_history_is_named_by_the_store_not_raised_raw(
     history.write_text("[]", encoding="utf-8")
     real_read = Path.read_text
 
-    def deny(self: Path, *args: object, **kwargs: object) -> str:
+    def deny(self: Path, encoding: str | None = None) -> str:
         if self == history:
             raise PermissionError(13, "Permission denied", str(self))
-        return real_read(self, *args, **kwargs)  # type: ignore[arg-type]
+        return real_read(self, encoding=encoding)
 
     monkeypatch.setattr(Path, "read_text", deny)
 
