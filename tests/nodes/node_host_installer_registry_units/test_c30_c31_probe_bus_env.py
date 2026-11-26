@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """node_host_installer_registry_units: the C30 and C31 probe units carry the lane bus environment by reference (OMN-19915).
 
-The sibling delegation-check-probe unit reaches the dev lane through the lane declaration table found under OMNIBASE_PATH and
+The sibling delegation-check-probe unit reaches the dev lane through the lane declaration table found under
 ONEX_WORKSPACE_CONFIG_ROOT, and its lane credential comes from the host's own client store. The C30 and C31 units
 declared neither, so their tick could not publish on a lab host. No broker address or credential is written into a unit.
 """
@@ -24,7 +24,10 @@ from tests.nodes.node_host_installer_registry_units import (
     test_registry_units_systemd as base,
 )
 
-BUS_ENV = ("OMNIBASE_PATH", "ONEX_WORKSPACE_CONFIG_ROOT")
+# The lane table is found under the workspace config root. OMNIBASE_PATH is deliberately not declared: measured on h202
+# (2026-11-26), a C30 run with it set in the unit's environment graded 2 of 5 clauses (the /onex:delegate run inside the
+# scratch profile failed) and the same run without it graded 5 of 5. The broker resolver falls back to the unit's OMNI_HOME.
+BUS_ENV = ("ONEX_WORKSPACE_CONFIG_ROOT",)
 UNITS = {
     "c30-claude-code-plugin-probe": (
         "onex-c30-claude-code-plugin-probe",
@@ -47,6 +50,11 @@ def linux_host(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "shutil.which", lambda name: "/usr/bin/uv" if name == "uv" else None
     )
+
+
+@pytest.mark.parametrize("unit", sorted(UNITS))
+def test_the_declared_unit_does_not_set_omnibase_path(unit: str) -> None:
+    assert "OMNIBASE_PATH" not in load_units()[unit]["environment"]
 
 
 @pytest.mark.parametrize("name", BUS_ENV)
@@ -91,6 +99,7 @@ def test_the_rendered_service_carries_the_bus_environment_and_no_broker(
     service = (tmp_path / "home/.config/systemd/user" / f"{label}.service").read_text(
         encoding="utf-8"
     )
-    assert f'"OMNIBASE_PATH={tmp_path}/omni"' in service
+    assert f'"OMNI_HOME={tmp_path}/omni"' in service
+    assert "OMNIBASE_PATH" not in service
     assert f'"ONEX_WORKSPACE_CONFIG_ROOT={tmp_path}/config-root"' in service
     assert "KAFKA_" not in service

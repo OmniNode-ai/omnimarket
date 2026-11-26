@@ -24,7 +24,7 @@ requirements:
   statement: The C30 and C31 host units publish their run on the lane bus their node overlay declares, with the lane declaration table found by reference and no broker address or credential written into a unit.
   acceptance:
   - id: DoD3
-    statement: The C30 and C31 units declare OMNIBASE_PATH and ONEX_WORKSPACE_CONFIG_ROOT as the delegation-check-probe unit does, and each tick publishes through the declared broker publisher.
+    statement: The C30 and C31 units declare ONEX_WORKSPACE_CONFIG_ROOT (and not OMNIBASE_PATH, which measurably broke the C30 delegate clause on h202), and each tick publishes through the declared broker publisher.
 evidence_requirements:
 - kind: tests
   description: Real local runtime and bus adapter, with the existing stub Tart transport and a successful receipt control.
