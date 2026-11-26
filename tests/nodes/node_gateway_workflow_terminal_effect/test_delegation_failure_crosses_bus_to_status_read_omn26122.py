@@ -86,14 +86,19 @@ from omnimarket.nodes.node_workflow_gateway_effect.models.model_workflow_http im
     ModelWorkflowStatusCommand,
 )
 from tests.nodes.node_gateway_workflow_terminal_effect.fakes import FakeDeadLetter
-from tests.nodes.node_gateway_workflow_terminal_effect.test_integration_real_postgres_terminal import (  # noqa: F401  (the fixture is the exemplar's own)
+from tests.nodes.node_gateway_workflow_terminal_effect.test_integration_real_postgres_terminal import (
     _FixedSecretStore,
     _insert,
     _pool,
-    database,
+)
+from tests.nodes.node_gateway_workflow_terminal_effect.test_integration_real_postgres_terminal import (
+    database as _exemplar_database,
 )
 
 pytestmark = pytest.mark.integration
+
+# The exemplar's own fixture, exposed under the name the tests request.
+database = _exemplar_database
 
 _SKILL_CONTRACT = yaml.safe_load(
     (
@@ -206,7 +211,7 @@ async def _orchestrator_terminal(
 
 
 async def test_a_refused_request_crosses_the_bus_and_reads_back_failed(
-    database: str,  # noqa: F811
+    database: str,
 ) -> None:
     tenant, correlation = uuid4(), uuid4()
     run_id = await _insert(database, tenant, correlation)
@@ -245,7 +250,7 @@ async def _routed_workflow_terminal(
     await handler.handle(
         ModelDelegationRequest(
             prompt="Reply with the single word: alive.",
-            task_type="research",  # type: ignore[arg-type]
+            task_type=cast(Any, "research"),
             correlation_id=correlation_id,
             tenant_id=str(tenant),
             emitted_at=datetime.now(UTC),
@@ -284,7 +289,7 @@ async def _routed_workflow_terminal(
 
 
 async def test_a_routed_request_whose_inference_leg_died_reads_back_failed(
-    database: str,  # noqa: F811
+    database: str,
 ) -> None:
     """A different failure from the refused request: accepted, routed to a model, then died mid-flight."""
     tenant, correlation = uuid4(), uuid4()
@@ -374,7 +379,7 @@ def _never_runs(envelope: object) -> None:
 
 
 async def test_a_publisher_malformed_refusal_crosses_the_bus_and_reads_back_failed(
-    database: str,  # noqa: F811
+    database: str,
 ) -> None:
     tenant, correlation = uuid4(), uuid4()
     run_id = await _insert(database, tenant, correlation)
@@ -394,7 +399,7 @@ async def test_a_publisher_malformed_refusal_crosses_the_bus_and_reads_back_fail
 
 
 async def test_control_a_failure_for_another_run_leaves_this_run_published(
-    database: str,  # noqa: F811
+    database: str,
 ) -> None:
     """Known bad: the read says failed only for the run whose failure crossed the bus."""
     tenant, correlation = uuid4(), uuid4()
