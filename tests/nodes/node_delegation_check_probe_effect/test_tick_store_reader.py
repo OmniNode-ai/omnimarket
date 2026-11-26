@@ -16,6 +16,7 @@ from typing import Any
 import pytest
 from _gateway_fake import FakeGateway
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_delegation_check_probe_effect import (
     runtime_delegation_check_probe_tick as tick,
 )
@@ -24,6 +25,9 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_delega
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.handler_delegation_check_probe import (
     contract_topics,
+)
+from omnimarket.nodes.node_overlay_store_read_effect.handlers.handler_overlay_store_read import (
+    OverlayStaleError,
 )
 
 pytestmark = pytest.mark.unit
@@ -125,3 +129,26 @@ def test_a_store_that_serves_no_gateway_row_reads_precondition_absent(
     evidence = json.loads((tmp_path / "state" / tick.EVIDENCE_FILE).read_text())
     assert code != 0
     assert evidence["runs"][0]["verdict"] == "PRECONDITION-ABSENT"
+
+
+def test_an_overlay_the_store_does_not_keep_reads_as_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The store keeps the two settings rows but not the probe's own overlay (measured on h051): that falls to the file chain."""
+
+    def not_kept(overlay_id: str) -> object:
+        raise NodeOverlayError(f"overlay {overlay_id}: this host keeps ['lab_hosts']")
+
+    monkeypatch.setattr(tick, "read_overlay", not_kept)
+    assert tick.read_store_document(tick.NODE) is None
+
+
+def test_a_stale_refusal_is_not_read_as_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def stale(overlay_id: str) -> object:
+        raise OverlayStaleError(f"overlay {overlay_id}: stale")
+
+    monkeypatch.setattr(tick, "read_overlay", stale)
+    with pytest.raises(OverlayStaleError):
+        tick.read_store_document(tick.RESPONDERS_OVERLAY_ID)

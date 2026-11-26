@@ -78,7 +78,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.protocols.protocol_dele
     ProtocolGatewayClient,
 )
 from omnimarket.nodes.node_overlay_store_read_effect.handlers.handler_overlay_store_read import (
-    OverlayAbsentError,
+    OverlayStaleError,
 )
 from omnimarket.nodes.node_overlay_store_read_effect.runtime_overlay_store_read import (
     read_overlay,
@@ -104,7 +104,10 @@ def read_store_document(overlay_id: str) -> dict[str, Any] | None:
     """
     try:
         return dict(read_overlay(overlay_id).document)
-    except (NodeOverlayNotFoundError, OverlayAbsentError):
+    except OverlayStaleError:
+        raise
+    except NodeOverlayError:
+        # No usable snapshot, or an overlay this host's store does not keep (the probe's own overlay is a file overlay on h051).
         return None
 
 
