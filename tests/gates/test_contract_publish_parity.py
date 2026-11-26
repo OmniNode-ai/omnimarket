@@ -227,3 +227,55 @@ def test_failure_terminal_without_a_failure_cause_is_still_an_offender(
             undeclared_topics=("onex.evt.omnimarket.example-failed.v1",),
         )
     ]
+
+
+def _published_events_node(tmp_path: Path, handler_source: str) -> None:
+    node_dir = tmp_path / "node_example_effect"
+    (node_dir / "handlers").mkdir(parents=True)
+    (node_dir / "handlers" / "handler_example.py").write_text(
+        handler_source, encoding="utf-8"
+    )
+    (node_dir / "contract.yaml").write_text(
+        "\n".join(
+            [
+                "name: node_example_effect",
+                "terminal_event: onex.evt.omnimarket.example-completed.v1",
+                "event_bus:",
+                "  publish_topics:",
+                "    - onex.evt.omnimarket.example-completed.v1",
+                "    - onex.evt.omnimarket.example-read-completed.v1",
+                "published_events:",
+                "  - event_type: ModelExampleReadResult",
+                "    topic: onex.evt.omnimarket.example-read-completed.v1",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+@pytest.mark.unit
+def test_topic_the_runtime_routes_a_node_result_class_to_is_exempt(
+    tmp_path: Path,
+) -> None:
+    """The runtime publishes a handler's returned model on the topic ``published_events`` names for its class."""
+    _published_events_node(
+        tmp_path, "class ModelExampleReadResult:\n    ok: bool = True\n"
+    )
+
+    assert scan_publish_parity(tmp_path) == []
+
+
+@pytest.mark.unit
+def test_published_events_class_the_node_never_defines_is_still_an_offender(
+    tmp_path: Path,
+) -> None:
+    """Negative control: a published_events entry for a class no code of the node defines publishes nothing."""
+    _published_events_node(tmp_path, "class Other:\n    ok: bool = True\n")
+
+    assert scan_publish_parity(tmp_path) == [
+        ModelPublishParityFinding(
+            node="node_example_effect",
+            undeclared_topics=("onex.evt.omnimarket.example-read-completed.v1",),
+        )
+    ]

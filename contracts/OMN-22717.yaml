@@ -5,6 +5,14 @@ summary: The reading half of the automation liveness check prunes what the git c
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn22717-ac1-accepted-20261126t0745z:
+    - label: AC1
+      criterion_hash: 69fb3431cf067d8d391f811390a5c699b4a674d168da1689c96c3fd43076f6a1
+      proposed_by: lane=dod-closeout-bind-2026-11-26T0745Z-c3
+      accepted_by: lane=dod-closeout-accept-2026-11-26T0745Z-c3
+      accepted_at: '2026-11-26T08:13:56Z'
 requirements:
 - id: req-omn22717-ignored-not-read
   statement: The registry-wide liveness check on a host reports the same findings as a clean checkout of each repository, because git-ignored staged content is not read.
@@ -35,4 +43,17 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22717 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_automation_liveness_overlay_check_effect -q --no-cov
+    cwd: .
+- id: dod-omn22717-ac1-accepted-20261126t0745z
+  description: 'AC1 binding (accepted 2026-11-26T0745Z, proposed by lane=dod-closeout-bind-2026-11-26T0745Z-c3,
+    accepted by lane=dod-closeout-accept-2026-11-26T0745Z-c3). A planted unit file in a git-ignored directory
+    of a git checkout is not collected while a tracked file and an untracked, not ignored file are. Re-run at
+    omnimarket origin/dev 390dd34a36 passed (8 passed); with the product change of ae62b4291e reverted the
+    git-ignore test fails (1 failed, 7 passed).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_automation_liveness_overlay_check_effect -q --no-cov
     cwd: .
