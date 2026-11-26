@@ -6,7 +6,7 @@ title: "AWS Dev: an install runbook for the onboarding owner and a smoke check t
 summary: >-
   Acceptance for OMN-26711 in omnimarket. The smoke check is node_cloud_smoke_check_effect: one delegation through a gateway
   whose URL and key come from settings, with the receipt read back for the answering model. AC2 and AC3 are bound to its
-  tests. AC1's runbook is a document in a sibling documents repository (its own pull request), so its item here
+  tests, and to the clean-container customer-path test (node_customer_path_container_test_effect) that runs it as its delegation step. AC1's runbook is a document in a sibling documents repository (its own pull request), so its item here
   checks that the command surface the runbook documents exists; the runbook file and its recorded lab outputs are read in
   that pull request.
 is_seam_ticket: false
@@ -67,6 +67,28 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           sh -c '! grep -rEn "https?://[A-Za-z0-9]|[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}|onxk_" src/omnimarket/nodes/node_cloud_smoke_check_effect --include=*.py'
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26711-ctest-container-path"
+    description: >-
+      AC2: the clean-container customer-path test's tests pass: a healthy run reads the receipt (status, model, provider), and no
+      settings, a key file open to the group, a lab address that answers, a failed install, a failed smoke check, a receipt with
+      no model and a container that will not start each end with a named outcome; the key never reaches the result.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_customer_path_container_test_effect/test_customer_path_container_test.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26711-ctest-no-literals"
+    description: >-
+      AC3: grep for a URL host, an IP address or a key-prefix literal in the container test's Python source prints nothing; the
+      gateway, key file, lab probe targets and tenant slug come from settings.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "command"
+        check_value: >-
+          sh -c '! grep -rEn "https?://[A-Za-z0-9]|[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}|onxk_" src/omnimarket/nodes/node_customer_path_container_test_effect --include=*.py'
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn26711-integration-proof"
     description: >-

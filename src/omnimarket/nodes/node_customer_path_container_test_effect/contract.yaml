@@ -1,0 +1,155 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Customer Path Container Test Effect
+#
+# Level 3 of the 4 Dec test plan: a fresh ubuntu container, the lab network blocked, a new non-root user, and only the public
+# guide's commands. The steps below ARE the runner: the handler reads them in order, so there is no script file to drift from
+# the guide. The delegation step runs node_cloud_smoke_check_effect inside the container as a process, never by import.
+name: node_customer_path_container_test_effect
+contract_name: node_customer_path_container_test_effect
+node_name: node_customer_path_container_test_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Runs the customer path in a clean container: install onex from the public guide, point the cloud client at the gateway
+  named by ONEX_API_BASE_URL with the key from the owner-only file ONEX_API_KEY_FILE names, delegate one task through
+  node_cloud_smoke_check_effect and read the receipt back (final status, model, provider, tests). The lab network is blocked
+  inside the container with blackhole routes for every CIDR in ONEX_CUSTOMER_PATH_BLOCKED_RANGES, except one /32 route for the gateway address; every address in
+  ONEX_CUSTOMER_PATH_LAB_PROBE_TARGETS must fail to connect. The tenant slug comes from ONEX_CUSTOMER_PATH_TENANT_SLUG and the guide's uv installer address from ONEX_CUSTOMER_PATH_UV_INSTALL_URL. Every step is reported passed, failed or not_run, and each place
+  the guide was not enough is listed. The key is passed on stdin and never logged or returned.
+
+handler:
+  module: omnimarket.nodes.node_customer_path_container_test_effect.handlers.handler_customer_path_container_test
+  class: HandlerCustomerPathContainerTest
+  input_model: omnimarket.nodes.node_customer_path_container_test_effect.models.model_customer_path_container_test.ModelCustomerPathCommand
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: false
+  side_effects: [container-run, gateway-delegation-submit]
+  timeout_ms: 1800000
+
+input_model:
+  name: ModelCustomerPathCommand
+  module: omnimarket.nodes.node_customer_path_container_test_effect.models.model_customer_path_container_test
+  description: The image, the user name, an optional checkout of the unreleased smoke-check node and the delegation prompt; gateway, key and lab probe targets come from settings.
+output_model:
+  name: ModelCustomerPathResult
+  module: omnimarket.nodes.node_customer_path_container_test_effect.models.model_customer_path_container_test
+  description: Every step's reading, the receipt fields, the guide's gaps and one outcome; never the key.
+
+runtime_dispatch:
+  external_trigger: The test plan reruns the node daily on a lab host; nothing on the bus starts it.
+  on_demand:
+    command: uv run onex node node_customer_path_container_test_effect --input <command.json> --output receipt
+    owner: OmniNode Platform Team
+
+# No topics by design: the node is an operator-invoked action that drives a container runtime and one gateway.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+# The declared runner. kind: exec runs argv in the container; net_block, lab_probe and copy_source are computed by the handler.
+# The ranges to blackhole come from ONEX_CUSTOMER_PATH_BLOCKED_RANGES (a comma list of CIDRs; no default).
+# Placeholders: {uv_install_url} {tenant_slug} {base_url} {key_path} {user} {home} {target} {smoke_input}. as: root | customer. expect: success | failure.
+customer_path:
+  dns_resolver: "1.1.1.1"
+  steps:
+    - id: s01_base_packages
+      guide_ref: "Before you start"
+      as: root
+      argv: ["sh", "-c", "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl ca-certificates iproute2 git"]
+      timeout_s: 300
+      gap: "The guide's prerequisites list uv and a terminal but not curl or ca-certificates (and the test needs iproute2 for its routes and git for the checkout install); a clean ubuntu image has none of them, so the uv installer line cannot run until they are added."
+    - id: s02_block_lab_network
+      guide_ref: "test setup (not a guide step)"
+      kind: net_block
+      as: root
+      timeout_s: 60
+    - id: s03_new_user
+      guide_ref: "test setup (not a guide step)"
+      as: root
+      argv: ["useradd", "--create-home", "--shell", "/bin/bash", "{user}"]
+      timeout_s: 30
+    - id: s04_lab_address_unreachable
+      guide_ref: "test setup (not a guide step)"
+      kind: lab_probe
+      as: customer
+      argv: ["curl", "-sS", "--max-time", "6", "-o", "/dev/null", "{target}"]
+      expect: failure
+      timeout_s: 20
+    - id: s05_gateway_reachable
+      guide_ref: "Connecting to the OmniNode Cloud, section 3"
+      as: customer
+      argv: ["curl", "-sS", "--max-time", "15", "-o", "/dev/null", "{base_url}/openapi.json"]
+      timeout_s: 30
+    - id: s06_install_uv
+      guide_ref: "Before you start"
+      as: customer
+      argv: ["sh", "-c", "curl -LsSf {uv_install_url} | sh"]
+      timeout_s: 180
+    - id: s07_install_onex
+      guide_ref: "Step 1"
+      as: customer
+      argv: ["sh", "-c", "export PATH=\"$HOME/.local/bin:$PATH\" && uv tool install --python 3.12 --with 'omnibase-infra>=0.38.67' --with 'omnimarket>=0.4.205' 'omnibase-core>=0.46.8'"]
+      timeout_s: 900
+    - id: s08_onex_version
+      guide_ref: "Step 1"
+      as: customer
+      argv: ["sh", "-c", "export PATH=\"$HOME/.local/bin:$PATH\" && onex --version"]
+      timeout_s: 180
+    - id: s09_local_init
+      guide_ref: "Step 2"
+      as: customer
+      argv: ["sh", "-c", "export PATH=\"$HOME/.local/bin:$PATH\" && onex local init"]
+      timeout_s: 180
+    - id: s10_register_provider_key
+      guide_ref: "Step 3, option B"
+      kind: not_run
+      reason: "A credential lifecycle change needs a durable consent row naming the credential; none exists for this lane, and the dev test tenant already holds a registered route key."
+    - id: s11_copy_unreleased_node
+      guide_ref: "Step 1 (deviation)"
+      kind: copy_source
+      as: root
+      timeout_s: 120
+      gap: "A source install resolves git dependencies, so it needs git, which a clean image lacks and the guide never lists. The published omnimarket release does not carry node_cloud_smoke_check_effect, so the delegation step needs a checkout; the guide has no path for installing a node that is not yet released."
+    - id: s12_install_checkout
+      guide_ref: "Step 1 (deviation)"
+      as: customer
+      argv: ["sh", "-c", "export PATH=\"$HOME/.local/bin:$PATH\" && uv tool install --force --python 3.12 --with 'omnibase-infra>=0.38.67' --with {home}/omnimarket-src 'omnibase-core>=0.46.8'"]
+      timeout_s: 900
+    - id: s13_cloud_login
+      guide_ref: "Connecting to the OmniNode Cloud, section 3"
+      as: customer
+      stdin: key
+      argv: ["sh", "-c", "export PATH=\"$HOME/.local/bin:$PATH\" && onex cloud login --base-url {base_url} --tenant-slug {tenant_slug} --api-key-stdin"]
+      timeout_s: 120
+      gap: "The guide's login line has no --tenant-slug, and the client refuses it (Missing option '--tenant-slug'); the guide never says where the slug comes from."
+    - id: s14_cloud_status
+      guide_ref: "Connecting to the OmniNode Cloud, section 3"
+      as: customer
+      argv: ["sh", "-c", "export PATH=\"$HOME/.local/bin:$PATH\" && onex cloud status"]
+      timeout_s: 120
+    - id: s15_smoke_delegation
+      guide_ref: "Connecting to the OmniNode Cloud, section 4 (through node_cloud_smoke_check_effect)"
+      kind: smoke
+      as: customer
+      timeout_s: 400
+      gap: "The guide's delegation step is onex cloud delegate; it names no smoke check, so the node's two settings (a gateway URL and an owner-only key file) are not in the guide and the key file must be written separately from the login."
+    - id: s16_cloud_delegate
+      guide_ref: "Connecting to the OmniNode Cloud, section 4"
+      as: customer
+      argv: ["sh", "-c", "export PATH=\"$HOME/.local/bin:$PATH\" && onex cloud delegate {prompt_arg} --task-type {task_type}"]
+      timeout_s: 400
+    - id: s17_read_receipt
+      guide_ref: "Connecting to the OmniNode Cloud, section 4"
+      kind: receipt
+      as: customer
+      argv: ["sh", "-c", "cat \"$HOME\"/onex-delegations/*/receipt.json"]
+      timeout_s: 30
