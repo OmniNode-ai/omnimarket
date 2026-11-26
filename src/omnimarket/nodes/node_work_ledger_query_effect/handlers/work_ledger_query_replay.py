@@ -389,6 +389,8 @@ def open_claims(
                 lane=claim.lane,
                 claim=claim.row.record,
                 ticket=claim.row.cell("ticket") or claim.row.cell("tickets") or "none",
+                pr=claim.row.cell("pr") or "none",
+                plan=claim.row.cell("plan") or "none",
                 newest_row_stamp=newest.stamp,
                 newest_row_kind=newest.row_type,
                 rows=len(own),

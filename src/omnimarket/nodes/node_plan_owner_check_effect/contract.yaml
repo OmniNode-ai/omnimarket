@@ -18,9 +18,10 @@ runtime_profiles: [effects]
 description: >
   Decides OWNED, MISSING or UNKNOWN for one plan finding from the open-claims lines of the
   bus-fed work ledger query node, read through node_work_ledger_reader_effect. A claim names
-  the plan when its lane starts with one of the rule's lane prefixes or its ticket is one of
-  the rule's tickets, and its newest row is within the rule's live window; OWNED answers even
-  when the node's answer is stale. MISSING is returned only when the node answered fresh and
+  the plan when its ticket is one of the rule's tickets, its plan cell names one of the rule's
+  plan paths, or its pr cell names one of the rule's pull requests (all read from the claim's
+  own cells, never from its lane name), and its newest row is within the rule's live window;
+  OWNED answers even when the node's answer is stale. MISSING is returned only when the node answered fresh and
   no live claim names the plan. A read that failed, a stale answer with no owner, or an
   unparseable claim line is UNKNOWN, never MISSING. Every verdict emits a golden (OWNED,
   MISSING) or error (UNKNOWN) event.

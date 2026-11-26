@@ -51,8 +51,7 @@ rules:
   - finding: cutover-plan-owner
     # main's clock is pinned to the fixtures' NOW (2026-11-02T03:00Z); the fixture claim's newest
     # row is 30 minutes older, inside this window.
-    lane_prefixes: [lane-]
-    tickets: [OMN-19609]
+    tickets: [OMN-21948]
     live_window_minutes: 600
     why: no live lane CLAIM names the cutover plan
     fix: start a ledger cutover lane
