@@ -25,11 +25,13 @@ HarnessExitCause = Literal[
     "completed",
     "timeout",
     "launch_failed",
+    "not_logged_in",
     "process_failed",
     "startup_refused",
     "turn_failed",
     "invalid_output",
     "api_key_login_refused",
+    "credential_refused",
 ]
 
 
@@ -63,6 +65,10 @@ class ModelHarnessRunReceipt(BaseModel):
     wall_seconds: float = Field(ge=0, allow_inf_nan=False)
     exit_cause: HarnessExitCause
     exit_code: int | None = None
+    # The model the harness reports it ran, when it reports one; None is unknown, never the requested name.
+    model: str | None = None
+    # A refusal names the offending variable (never its value); empty otherwise.
+    detail: str = ""
 
 
 class ModelHarnessGateVerdict(BaseModel):

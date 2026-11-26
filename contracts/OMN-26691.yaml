@@ -1,0 +1,55 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+schema_version: "1.0.0"
+ticket_id: "OMN-26691"
+title: "OmniDash 1.1.16 ships the Overview Done and Running figures"
+summary: >-
+  Acceptance for OMN-26691 in omnimarket. omnimarket pins OmniDash v1.1.16 (sha256
+  61ff53566dd17948abe3be398d0a995d9414a81f9ca8399b61966e769fc48cef), the release that ships a74c18dc
+  (omnidash#531) and bb23d514 (omnidash#532). AC3 is bound to tests/projection/test_dashboard_bundle_pin_omn23212.py; AC1 and AC2 are
+  proved in omnidash (omnidash#544 and the v1.1.16 tag), so this contract lists only AC3.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn26691-omnimarket-pin-1116"
+    statement: >-
+      omnimarket pins the OmniDash v1.1.16 bundle that carries the Overview Done and Running figures.
+    acceptance:
+      - id: "AC3"
+        statement: >-
+          omnimarket dev pins OmniDash v1.1.16, with the packaged bundle parts matching the pinned sha256
+          -- falsifier: the omnimarket dashboard bundle pin test fails on the v1.1.15 pin and passes on the
+          v1.1.16 pin
+evidence_requirements: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn26691-ac3-bundle-pin-1116"
+    description: >-
+      AC3: the pin test reads v1.1.16, its sha256 and asset from the pin and verifies the packaged parts;
+      it fails on the v1.1.15 pin.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/projection/test_dashboard_bundle_pin_omn23212.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26691-integration-proof"
+    description: >-
+      Run the v1.1.16 pin's integration cases on a lab host at the pushed head: the pinned asset verifies
+      through ensure_bundle, carries the cursor walk and v1.1.13's pages and writes a zero amount with its
+      cents, and the release sidecar names the pinned digest. Hosted CI cannot reach the lab, so only the
+      local Done gate runs this unbound check.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha
+          "$(git rev-parse HEAD)" --lane dod-integration-proof-26691 --kind test -- env
+          PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/projection/test_dashboard_bundle_pin_omn23212.py
+          -m integration -q --no-cov
+        cwd: "${OMNI_HOME}/omnimarket"
