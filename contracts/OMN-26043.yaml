@@ -196,6 +196,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_beta_board_effect/test_trigger_declaration.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26043-tenant-key-absent-precondition
+  description: "A healthy delegation the dev runtime refuses ONEX_MARKET_CUSTOMER_PROVIDER_KEY_ABSENT (the test tenant holds no provider key, measured on the dev runtime for run c28-20261126T025132Z-77239c46: tenant 8044e4eb has no row in delegation_routing_tenant_overlay and none in tenant_registry_mirror) reads PRECONDITION-ABSENT naming tenant_provider_key with the refusal quoted, in C15, C16, C28 and C29, and every clause the run graded is still recorded; a healthy run that fails with any other code still reads FAIL, and an invalid payload that never terminates still reads FAIL. The new test file fails on the previous commit (four readings FAIL) and passes after the change. This binds AC5: a probe reading red names its real cause instead of a product defect that is not one."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_tenant_provider_key_absent.py tests/nodes/node_delegation_check_probe_effect/test_gateway_checks.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn26043-customer-machine-delegation-collector
   description: "The clean-install customer machine runs one delegation through the customer path (the guide's install line in a disposable tool environment, the model declared as the guide's option A, the install's own onex under an egress recorder) and walks the installed product's routing, so C13 and C14 read a graded run instead of PRECONDITION-ABSENT. A good run grades every machine clause green for both checks; a receipt naming another model reads C13 fail, an external connect reads C13 fail, an unbindable tier reads C14 fail, a failed install reads fail and runs no driver, and a driver that prints no record is an absent collector, never a pass. The new tests fail on the previous commit, where the machine raised the absent-collector error for both calls. This binds AC5: C13 and C14 each reading a run is the precondition of reading it green."
   source: manual
