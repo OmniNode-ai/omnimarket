@@ -47,7 +47,7 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           uv run onex cloud receipt --help
-        cwd: "${OMNI_HOME}/omnimarket"
+        cwd: "."
   - id: "dod-omn26711-ac2-smoke-check"
     description: >-
       AC2: the smoke check's tests pass: a healthy gateway passes and names the model; no settings, an unreadable key file,
@@ -56,8 +56,8 @@ dod_evidence:
     binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_cloud_smoke_check_effect/test_cloud_smoke_check.py -q -p no:randomly"
-        cwd: "${OMNI_HOME}/omnimarket"
+        check_value: "uv run pytest tests/nodes/node_cloud_smoke_check_effect/test_cloud_smoke_check.py -q --no-cov -n 0 -p no:randomly"
+        cwd: "."
   - id: "dod-omn26711-ac3-no-literals"
     description: >-
       AC3: grep for a URL host, an IP address or a key-prefix literal in the smoke check's source prints nothing.
@@ -67,7 +67,7 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           sh -c '! grep -rEn "https?://[A-Za-z0-9]|[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}|onxk_" src/omnimarket/nodes/node_cloud_smoke_check_effect --include=*.py'
-        cwd: "${OMNI_HOME}/omnimarket"
+        cwd: "."
   - id: "dod-omn26711-ctest-container-path"
     description: >-
       AC2: the clean-container customer-path test's tests pass: a healthy run reads the receipt (status, model, provider), and no
@@ -77,8 +77,8 @@ dod_evidence:
     binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_customer_path_container_test_effect/test_customer_path_container_test.py -q -p no:randomly"
-        cwd: "${OMNI_HOME}/omnimarket"
+        check_value: "uv run pytest tests/nodes/node_customer_path_container_test_effect/test_customer_path_container_test.py -q --no-cov -n 0 -p no:randomly"
+        cwd: "."
   - id: "dod-omn26711-ctest-no-literals"
     description: >-
       AC3: grep for a URL host, an IP address or a key-prefix literal in the container test's Python source prints nothing; the
@@ -89,7 +89,7 @@ dod_evidence:
       - check_type: "command"
         check_value: >-
           sh -c '! grep -rEn "https?://[A-Za-z0-9]|[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}|onxk_" src/omnimarket/nodes/node_customer_path_container_test_effect --include=*.py'
-        cwd: "${OMNI_HOME}/omnimarket"
+        cwd: "."
   - id: "dod-omn26711-integration-proof"
     description: >-
       Run the smoke check's tests on a lab host at the pushed head: a healthy gateway passes and names the model, and no
@@ -103,7 +103,7 @@ dod_evidence:
           uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha
           "$(git rev-parse HEAD)" --lane dod-integration-proof-26711 --kind test --
           uv run --frozen pytest tests/nodes/node_cloud_smoke_check_effect/test_cloud_smoke_check.py -q --no-cov
-        cwd: "${OMNI_HOME}/omnimarket"
+        cwd: "."
   - id: "dod-omn26711-check-deploy"
     description: >-
       Deploy probe the hosted runner can run: the smoke check's handler at the checked-out commit on GitHub names the

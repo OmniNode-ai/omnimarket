@@ -107,7 +107,9 @@ def _env(tmp_path: Path, mode: int = 0o600, **over: str) -> dict[str, str]:
 
 def _run(env: dict[str, str], runtime: FakeRuntime, **command: object):
     handler = HandlerCustomerPathContainerTest(environ=env, runtime=runtime)
-    request = ModelCustomerPathCommand(source_checkout="/checkout", **command)  # type: ignore[arg-type]
+    request = ModelCustomerPathCommand.model_validate(
+        {"source_checkout": "/checkout", **command}
+    )
     return asyncio.run(handler.handle(request))
 
 
