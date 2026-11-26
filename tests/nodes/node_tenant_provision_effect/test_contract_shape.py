@@ -49,7 +49,7 @@ def test_node_type_placement_and_routing() -> None:
     assert {(e["topic"], e["handler"]["name"]) for e in routing["handlers"]} == {
         (PROVISION_REQUESTED, "HandlerTenantProvision"),
         (READ_REQUESTED, "HandlerTenantRead"),
-        (PROVISION_COMPLETED, "HandlerTenantOutboxFlush"),
+        (PROVISION_COMPLETED, "HandlerTenantOutboxFlushOnProvisioned"),
         (FLUSH_REQUESTED, "HandlerTenantOutboxFlush"),
     }
 

@@ -26,6 +26,11 @@ requirements:
     statement: 'AC11: a tenant whose overlay row names no usable credential is refused locally and makes no outbound provider call -- falsifier: a withdrawn credential reaches the vendor with no Authorization header'
   - id: AC2
     statement: 'AC2: local Inkling-2-Mini has a zero marginal api cost row in cost_pricing.yaml and an unlisted local model still raises MissingCostPricingError -- falsifier: pricing Inkling-2-Mini raises, or an unlisted local model prices without error'
+- id: req-omn25856-tenant-provision-answers
+  statement: A tenant provision request whose overlay is missing is answered with a typed outcome, and every unpublished tenant-created outbox row is published once and stamped, so a signed-in customer gets a tenant on dev.
+  acceptance:
+  - id: AC12
+    statement: 'AC12: a missing overlay answers failed_store_unavailable and the outbox flush publishes each unpublished tenant-created row once and stamps it -- falsifier: a missing overlay raises instead of answering, or a refused send marks its row published'
 evidence_requirements:
 - kind: tests
   description: The focused regression, failing first with the surviving child process, then passing.
@@ -120,8 +125,10 @@ dod_evidence:
     check_value: uv run pytest tests/unit/cost/test_inkling_local_priced_omn25856.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn25856-tenant-provision-answers-and-flush
-  description: 'node_tenant_provision_effect answers a typed outcome when its overlay is missing (the measured dev cause of runtime_unreachable) and its outbox flush publishes each unpublished TENANT_CREATED row once and stamps it; a refused send keeps the row. This binds no criterion by itself.'
+  description: 'node_tenant_provision_effect answers a typed outcome when its overlay is missing (the measured dev cause of runtime_unreachable) and its outbox flush publishes each unpublished TENANT_CREATED row once and stamps it; a refused send keeps the row.'
   source: manual
+  binds_ac:
+  - AC12
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_tenant_provision_effect/test_overlay_missing_answers.py tests/nodes/node_tenant_provision_effect/test_outbox_flush.py tests/nodes/node_tenant_provision_effect/test_contract_shape.py -q --no-cov -n 0 -p no:randomly

@@ -27,6 +27,7 @@ from omnimarket.nodes.node_tenant_provision_effect.models.model_tenant_provision
     EnumTenantOutboxFlushOutcome,
     ModelTenantOutboxFlushCommand,
     ModelTenantOutboxFlushResult,
+    ModelTenantProvisionResult,
 )
 from omnimarket.nodes.node_tenant_provision_effect.overlay import (
     build_publisher,
@@ -125,4 +126,31 @@ class HandlerTenantOutboxFlush:
         )
 
 
-__all__ = ["HandlerTenantOutboxFlush"]
+class HandlerTenantOutboxFlushOnProvisioned:
+    """The provision completed event route: the event carries the provision result, and any completed provision flushes.
+
+    A route takes the model its own producer publishes, so this route does not share the command model of
+    ``HandlerTenantOutboxFlush``; it hands the flush a default command and answers what the flush answers.
+    """
+
+    def __init__(
+        self,
+        store: TenantIdentityPostgres | None = None,
+        *,
+        publisher: Publisher | None = None,
+        clock: Callable[[], datetime] = utc_now,
+        environ: Mapping[str, str] | None = None,
+    ) -> None:
+        self._flush = HandlerTenantOutboxFlush(
+            store, publisher=publisher, clock=clock, environ=environ
+        )
+
+    async def handle(
+        self, request: ModelTenantProvisionResult
+    ) -> ModelTenantOutboxFlushResult:
+        return await self._flush.handle(
+            ModelTenantOutboxFlushCommand(command_id=request.command_id)
+        )
+
+
+__all__ = ["HandlerTenantOutboxFlush", "HandlerTenantOutboxFlushOnProvisioned"]

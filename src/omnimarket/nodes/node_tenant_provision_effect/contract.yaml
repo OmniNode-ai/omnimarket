@@ -6,7 +6,7 @@
 # row and one TENANT_CREATED envelope into tenant_event_outbox, all in one transaction, and answers on the completed topic.
 # On tenant-read-requested it answers one tenant by id or slug. Every refusal and every handled error is a typed outcome
 # on a completed topic; there is no failed topic, so a caller's one read sees every answer. The outbox row is published
-# to its topic by the flush route (handler HandlerTenantOutboxFlush): the provision completed event, or the flush command, runs
+# to its topic by the flush route (handlers HandlerTenantOutboxFlush and HandlerTenantOutboxFlushOnProvisioned): the provision completed event, or the flush command, runs
 # it, each row is sent and then stamped published, and a refused send keeps the row for the next flush. Owner fields are refused (refused_owner_not_supported) until the owner
 # path exists.
 name: node_tenant_provision_effect
@@ -65,11 +65,11 @@ handler_routing:
     - operation: tenant_outbox_flush
       topic: onex.evt.omnimarket.tenant-provision-completed.v1
       message_category: event
-      event_model: omnimarket.nodes.node_tenant_provision_effect.models.model_tenant_provision.ModelTenantOutboxFlushCommand
-      input_model: omnimarket.nodes.node_tenant_provision_effect.models.model_tenant_provision.ModelTenantOutboxFlushCommand
+      event_model: omnimarket.nodes.node_tenant_provision_effect.models.model_tenant_provision.ModelTenantProvisionResult
+      input_model: omnimarket.nodes.node_tenant_provision_effect.models.model_tenant_provision.ModelTenantProvisionResult
       handler_module: omnimarket.nodes.node_tenant_provision_effect.handlers.handler_tenant_outbox_flush
       handler:
-        name: HandlerTenantOutboxFlush
+        name: HandlerTenantOutboxFlushOnProvisioned
         module: omnimarket.nodes.node_tenant_provision_effect.handlers.handler_tenant_outbox_flush
     - operation: tenant_outbox_flush
       topic: onex.cmd.omnimarket.tenant-outbox-flush-requested.v1

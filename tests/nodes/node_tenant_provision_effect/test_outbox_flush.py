@@ -19,6 +19,7 @@ import pytest
 
 from omnimarket.nodes.node_tenant_provision_effect.handlers.handler_tenant_outbox_flush import (
     HandlerTenantOutboxFlush,
+    HandlerTenantOutboxFlushOnProvisioned,
 )
 from omnimarket.nodes.node_tenant_provision_effect.handlers.tenant_identity_postgres import (
     OutboxRow,
@@ -27,8 +28,11 @@ from omnimarket.nodes.node_tenant_provision_effect.handlers.tenant_identity_post
 )
 from omnimarket.nodes.node_tenant_provision_effect.models.model_tenant_provision import (
     EnumTenantOutboxFlushOutcome,
+    EnumTenantProvisionOutcome,
     ModelTenantOutboxFlushCommand,
+    ModelTenantProvisionResult,
 )
+from omnimarket.validators.routing_input_model_fit import findings_for_contract_tree
 
 pytestmark = pytest.mark.asyncio
 
@@ -127,15 +131,36 @@ async def test_store_down_is_a_typed_outcome() -> None:
     assert answer.outcome is EnumTenantOutboxFlushOutcome.FAILED_STORE_UNAVAILABLE
 
 
-async def test_the_provision_completed_event_parses_as_a_flush_trigger() -> None:
-    event = {
-        "command_id": str(uuid4()),
-        "outcome": "created",
-        "detail": "tenant created",
-        "tenant_slug": "acme-labs",
-    }
-    command = ModelTenantOutboxFlushCommand.model_validate(event)
-    assert command.limit == 50
+async def test_the_provision_completed_event_flushes_the_outbox() -> None:
+    store, sent = (
+        FakeStore([OutboxRow(row_id=1, topic=TOPIC, envelope=_envelope(1))]),
+        Sent(),
+    )
+    handler = HandlerTenantOutboxFlushOnProvisioned(
+        store=cast(TenantIdentityPostgres, store),
+        publisher=sent,
+        clock=lambda: datetime(2026, 11, 26, tzinfo=UTC),
+    )
+    answer = await handler.handle(
+        ModelTenantProvisionResult(
+            command_id=uuid4(),
+            outcome=EnumTenantProvisionOutcome.CREATED,
+            detail="tenant created",
+            tenant_slug="acme-labs",
+            emitted_at=datetime(2026, 11, 26, tzinfo=UTC),
+        )
+    )
+    assert answer.outcome is EnumTenantOutboxFlushOutcome.FLUSHED
+    assert answer.published == 1
+
+
+async def test_no_handler_takes_one_model_under_two_message_categories() -> None:
+    node_dir = Path(__file__).resolve().parents[3] / "src/omnimarket/nodes"
+    findings, scanned = findings_for_contract_tree(
+        node_dir / "node_tenant_provision_effect"
+    )
+    assert scanned == 1
+    assert findings == ()
 
 
 async def test_no_overlay_is_a_typed_outcome(tmp_path: Path) -> None:
