@@ -19,6 +19,3 @@ tenants:
 - tenant_slug: cli-run-a
   tenant_id: 00000000-0000-0000-0000-000000000051
   secret_name: DEV_PROOF_TENANT_TOKEN_CLI_RUN_A
-- tenant_slug: cli-run-b
-  tenant_id: 00000000-0000-0000-0000-000000000201
-  secret_name: DEV_PROOF_TENANT_TOKEN_CLI_RUN_B

@@ -15,6 +15,8 @@ from omnibase_core.enums.enum_delegation_traffic_class import (
     EnumDelegationTrafficClass,
 )
 
+from omnimarket.models.model_delegated_code_edit import MAX_TURNS_CEILING
+
 
 def loop_limit_options[F: Callable[..., object]](command: F) -> F:
     """Declare the loop limits and the run's origin (--traffic-class, --source-surface)."""
@@ -48,7 +50,7 @@ def loop_limit_options[F: Callable[..., object]](command: F) -> F:
         ),
         click.option(
             "--max-turns",
-            type=click.IntRange(1, 40),
+            type=click.IntRange(1, MAX_TURNS_CEILING),
             default=None,
             help="The round limit; omitted, the node's overlay decides, else the request model's default.",
         ),

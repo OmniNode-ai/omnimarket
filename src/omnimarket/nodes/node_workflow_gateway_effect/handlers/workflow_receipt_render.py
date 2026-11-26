@@ -12,6 +12,9 @@ from omnibase_core.models.delegation.wire.model_quality_gate import (
     ModelQualityRuleEvaluation,
 )
 
+from omnimarket.models.delegation.wire.model_tests_outcome import (
+    tests_outcome_from_rules,
+)
 from omnimarket.nodes.node_workflow_gateway_effect.models.model_workflow_envelope import (
     ModelWorkflowReceipt,
 )
@@ -110,6 +113,7 @@ def render_workflow_receipt(
         terminal_failure_reason=row.terminal_failure_reason,
         terminal_remediation=row.terminal_remediation,
         rule_evaluations=rule_evaluations,
+        tests_outcome=tests_outcome_from_rules(rule_evaluations),
         event_count=1,
         projection_row_hash=_sha256(projection_row_payload),
         terminal_event_hash=_sha256(terminal_event_payload),

@@ -279,6 +279,8 @@ class _MeteredTierEffect:
                 if tier in self._pass_tiers
                 else _PerTierEffect._REFUSAL
             ),
+            # OMN-18079: the provider reports the model that served the call.
+            served_model_id=request.model_id,
             tokens_in=tokens_in,
             tokens_out=tokens_out,
             latency_ms=5,

@@ -24,6 +24,7 @@ from functools import partial
 from pathlib import Path
 
 from omnimarket.delegation.graded_ladder.graders import extract_code_block
+from omnimarket.handlers.named_test_outcome import run_named_tests
 from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 from omnimarket.models.delegation.wire.model_named_test_run_request import (
     EnumNamedTestRunStatus,
@@ -178,27 +179,12 @@ class HandlerNamedTestRun:
                     extract_code_block(request.answer_content).rstrip() + "\n",
                 )
 
-                failed: list[str] = []
-                first_exit_code = 0
-                first_output = ""
-                for test_id in spec.test_ids:
-                    exit_code, output = _run_test(
-                        sandbox, test_id, request.timeout_seconds
-                    )
-                    if exit_code != 0:
-                        if not failed:
-                            first_exit_code = exit_code
-                            first_output = output[-1500:]
-                        failed.append(test_id)
-
-                total = len(spec.test_ids)
-                detail = f"all {total} named test(s) passed"
-                if failed:
-                    summary = (
-                        f"{len(failed)} of {total} named test(s) failed: "
-                        + ", ".join(failed)
-                    )
-                    detail = f"{summary[:2499]}\n{first_output}"
+                failed, first_exit_code, detail = run_named_tests(
+                    spec.test_ids,
+                    partial(
+                        _run_test, sandbox, timeout_seconds=request.timeout_seconds
+                    ),
+                )
                 return ModelNamedTestRunResult(
                     status=EnumNamedTestRunStatus.COMPLETED,
                     run=ModelNamedTestRun(

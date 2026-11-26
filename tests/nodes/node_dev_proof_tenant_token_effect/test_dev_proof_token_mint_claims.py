@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The mint signs exactly the two proof tenants' tokens with the lab test key, read by its declared name.
+"""The mint signs exactly the one proof tenant's token with the lab test key, read by its declared name.
 
 Each token is decoded with the test key's public half: the claims are tenant_id, tenant_slug, audience gateway-attach
 and a one-hour expiry. A third tenant name is refused before the key is read. A name that already holds a value is left
@@ -28,11 +28,8 @@ from omnimarket.nodes.node_dev_proof_tenant_token_effect.models.model_dev_proof_
 
 from .fakes import (
     H051,
-    H201,
     ID_H051,
-    ID_H201,
     SECRET_H051,
-    SECRET_H201,
     SIGNING_FOLDER,
     SIGNING_NAME,
     FakeKeyReader,
@@ -77,14 +74,13 @@ def _decode(token: str, public: str, algorithm: str) -> dict[str, object]:
     )
 
 
-def test_dev_proof_token_mint_claims_of_both_tenants() -> None:
+def test_dev_proof_token_mint_claims_of_the_proof_tenant() -> None:
     result, reader, seeder = _run(ModelDevProofTokenCommand(lane="dev", write=True))
     assert result.outcome is EnumDevProofTokenOutcome.MINTED
     assert reader.calls == [(SIGNING_FOLDER, SIGNING_NAME)]
-    assert sorted(seeder.store) == sorted([SECRET_H051, SECRET_H201])
+    assert sorted(seeder.store) == [SECRET_H051]
     _, public = rsa_pair()
     h051 = _decode(seeder.store[SECRET_H051], public, "RS256")
-    h201 = _decode(seeder.store[SECRET_H201], public, "RS256")
     now = int(_NOW.timestamp())
     assert h051 == {
         "tenant_id": ID_H051,
@@ -93,14 +89,6 @@ def test_dev_proof_token_mint_claims_of_both_tenants() -> None:
         "iat": now,
         "exp": now + 3600,
     }
-    assert h201 == {
-        "tenant_id": ID_H201,
-        "tenant_slug": H201,
-        "aud": "gateway-attach",
-        "iat": now,
-        "exp": now + 3600,
-    }
-    assert h051["tenant_id"] != h201["tenant_id"]
 
 
 def test_dev_proof_token_mint_claims_signature_is_the_test_keys_only() -> None:
@@ -128,18 +116,20 @@ def test_dev_proof_token_mint_claims_with_es256_and_issuer() -> None:
     )
     assert result.outcome is EnumDevProofTokenOutcome.MINTED
     claims = jwt.decode(
-        seeder.store[SECRET_H201],
+        seeder.store[SECRET_H051],
         ec_pair()[1],
         algorithms=["ES256"],
         audience="gateway-attach",
         issuer="test-issuer",
         options={"verify_exp": False},
     )
-    assert claims["tenant_slug"] == H201
-    assert claims["tenant_id"] == ID_H201
+    assert claims["tenant_slug"] == H051
+    assert claims["tenant_id"] == ID_H051
 
 
-@pytest.mark.parametrize("tenant", ["cli-run-z", "cli-run-ax", "", "CLI-RUN-A"])
+@pytest.mark.parametrize(
+    "tenant", ["cli-run-b", "cli-run-z", "cli-run-ax", "", "CLI-RUN-A"]
+)
 def test_dev_proof_token_mint_claims_refuses_a_third_tenant(tenant: str) -> None:
     result, reader, seeder = _run(
         ModelDevProofTokenCommand(lane="dev", tenants=(H051, tenant), write=True)
@@ -152,10 +142,10 @@ def test_dev_proof_token_mint_claims_refuses_a_third_tenant(tenant: str) -> None
 
 def test_dev_proof_token_mint_claims_one_named_tenant_signs_one_token() -> None:
     result, _, seeder = _run(
-        ModelDevProofTokenCommand(lane="dev", tenants=(H201,), write=True)
+        ModelDevProofTokenCommand(lane="dev", tenants=(H051,), write=True)
     )
     assert result.outcome is EnumDevProofTokenOutcome.MINTED
-    assert list(seeder.store) == [SECRET_H201]
+    assert list(seeder.store) == [SECRET_H051]
 
 
 def test_dev_proof_token_mint_claims_overlay_with_a_third_tenant_is_refused() -> None:
@@ -197,10 +187,9 @@ def test_dev_proof_token_mint_claims_never_overwrites_a_held_name() -> None:
     statuses = {t.secret_name: t.status for t in result.tokens}
     assert statuses == {
         SECRET_H051: EnumDevProofTokenStatus.PRESENT,
-        SECRET_H201: EnumDevProofTokenStatus.WRITTEN,
     }
     assert seeder.store[SECRET_H051] == "already-held-value"
-    assert seeder.seed_calls == [SECRET_H201]
+    assert seeder.seed_calls == []
 
 
 def test_dev_proof_token_mint_claims_read_only_signs_and_writes_nothing() -> None:
