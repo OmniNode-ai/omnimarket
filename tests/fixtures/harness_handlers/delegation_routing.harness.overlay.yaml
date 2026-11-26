@@ -138,6 +138,12 @@ harness_tiers:
   - test
   - code_generation
   - reasoning
+- name: harness_opus
+  backend_id: harness-claude-opus
+  use_for:
+  - reasoning
+  - code_generation
+  - code_review
 escalation_chains:
 - task_class: code_generation
   escalate_on: acceptance_check

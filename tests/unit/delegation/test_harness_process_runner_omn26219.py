@@ -129,7 +129,7 @@ async def test_harness_process_runner_glm_without_declared_route_does_not_launch
     glm = load_overlay().backend_by_id()["harness-claude-glm-flash"]
     runner = HandlerHarnessProcessRunner(environment=Environment(tmp_path), agents={})
     got = await runner.run(glm, "p", 20)
-    assert got.exit_cause == "launch_failed"
+    assert got.exit_cause == "not_logged_in"
 
 
 async def test_harness_delegation_handler_delegates_to_its_bound_call() -> None:

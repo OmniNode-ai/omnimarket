@@ -9,6 +9,9 @@ from uuid import UUID
 
 import pytest
 
+from omnimarket.models.delegation.wire.model_quality_gate import (
+    NO_NAMED_TEST_RUN_REASON,
+)
 from omnimarket.nodes.node_workflow_gateway_effect.handlers.workflow_receipt_render import (
     render_workflow_receipt,
 )
@@ -97,6 +100,40 @@ def test_tests_that_ran_and_failed_read_failed() -> None:
         "ci",
     )
     assert receipt.tests_outcome == "failed"
+
+
+def test_named_tests_that_never_ran_read_not_run() -> None:
+    receipt = render_workflow_receipt(
+        _row(
+            [
+                {
+                    "rule": "named_tests_passed",
+                    "enforcement": "blocking",
+                    "passed": False,
+                    "detail": NO_NAMED_TEST_RUN_REASON,
+                }
+            ]
+        ),
+        "ci",
+    )
+    assert receipt.tests_outcome == "not_run"
+
+
+def test_quality_gate_check_with_no_test_run_reads_not_run() -> None:
+    receipt = render_workflow_receipt(
+        _row(
+            [
+                {
+                    "rule": "passes_existing_tests",
+                    "enforcement": "blocking",
+                    "passed": False,
+                    "detail": NO_NAMED_TEST_RUN_REASON,
+                }
+            ]
+        ),
+        "ci",
+    )
+    assert receipt.tests_outcome == "not_run"
 
 
 def test_an_answer_that_is_not_code_carries_no_tests_outcome() -> None:
