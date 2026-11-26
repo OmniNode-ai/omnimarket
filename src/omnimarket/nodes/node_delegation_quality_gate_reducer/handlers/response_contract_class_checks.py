@@ -23,6 +23,23 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 _RESPONSE_CONTRACT_RULE = "response_contract"
 
 
+def scored_when_unvetoed(
+    evaluations: tuple[ModelQualityRuleEvaluation, ...],
+) -> tuple[ModelQualityRuleEvaluation, ...]:
+    """Record a failed blocking rule that did not veto as ``scored`` (OMN-25856).
+
+    On the verifiable-acceptance path executed checks are the authority and the
+    heuristic marker rules are reject-only telemetry, so a failed "blocking" rule
+    there must not be recorded beside a completed run.
+    """
+    return tuple(
+        e.model_copy(update={"enforcement": "scored"})
+        if not e.passed and e.enforcement == "blocking"
+        else e
+        for e in evaluations
+    )
+
+
 def with_executed_class_checks(
     result: ModelQualityGateResult,
     gate_input: ModelQualityGateInput,

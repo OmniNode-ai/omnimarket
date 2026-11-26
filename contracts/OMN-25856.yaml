@@ -31,6 +31,11 @@ requirements:
   acceptance:
   - id: AC3
     statement: 'AC3: a start command whose checks exceed the declared budget returns inside the budget with an UNRESOLVED verdict that names how many checks ran and how many did not, and counts none of the unrun checks as passed -- falsifier: the command runs past the budget, the verdict is VERIFIED, or an unrun check is counted verified'
+- id: req-omn25856-verifiable-path-rule-enforcement
+  statement: On the verifiable code path, where executed tests are the authority, a failed blocking heuristic rule is recorded as scored, never blocking, so an accepted run carries no failed blocking rule.
+  acceptance:
+  - id: AC12
+    statement: 'AC12: an accepted code_generation run with passed executed tests records its failed marker rule as scored -- falsifier: the same run records that rule as blocking beside an accepted verdict, or a run without executed tests loses its blocking rule'
 evidence_requirements:
 - kind: tests
   description: The focused regression, failing first with the surviving child process, then passing.
@@ -132,4 +137,31 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/cost/test_inkling_local_priced_omn25856.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-gateway-named-tests-not-run-outcome
+  description: A delegation-inference submission carries named_tests through the gateway to the command topic (an undeclared key is still refused), and a receipt whose named tests never ran reads not_run, not an absent outcome.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_workflow_gateway_effect/test_named_tests_submission.py tests/nodes/node_workflow_gateway_effect/test_receipt_tests_outcome.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-named-tests-exit-4-5-not-run
+  description: A named-test run that exits 4 (file or test not found) or 5 (no tests collected) is read as not run, not as a code failure, and the receipt tests_outcome reads not_run with the typed INSUFFICIENT reason; a collection error from a delegated answer that does not import stays a code failure.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_named_tests_not_run_omn25856.py tests/unit/nodes/node_delegate_skill_orchestrator/test_handler_named_test_run_omn17427.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-accepted-run-no-blocking-fail
+  description: 'An accepted code_generation run (executed tests passed, function-only answer) records its failed marker rule as scored, never blocking; without executed tests the run records no failed blocking rule beside a pass. The test fails on the gate before the change.'
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_verifiable_path_rule_enforcement_omn25856.py -q --no-cov -n 0 -p no:randomly
     cwd: .

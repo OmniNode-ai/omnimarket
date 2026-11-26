@@ -10,6 +10,13 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+# pytest exit 4 is a usage error (file or test id not found); exit 5 is no tests
+# collected. Neither executed a test, so neither is evidence about the code. A
+# run that carries one of them and names no failed test did not run its tests.
+# This is read from the exit code, not a new field, because the released core
+# wire model this is validated into (extra="forbid") carries only these three.
+NOT_RUN_EXIT_CODES: frozenset[int] = frozenset({4, 5})
+
 
 class ModelNamedTestRun(BaseModel):
     """Executed named-test evidence supplied to the pure quality gate reducer."""
@@ -30,6 +37,11 @@ class ModelNamedTestRun(BaseModel):
         if any(test_id not in self.test_ids for test_id in self.failed_test_ids):
             raise ValueError("failed_test_ids must contain only entries from test_ids")
         return self
+
+    @property
+    def not_run(self) -> bool:
+        """Whether the named tests did not run (exit 4 or 5, none failed)."""
+        return self.exit_code in NOT_RUN_EXIT_CODES and not self.failed_test_ids
 
     @property
     def passed(self) -> bool:
