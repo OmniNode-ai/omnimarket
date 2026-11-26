@@ -1899,7 +1899,8 @@ omnibase-infra ={ git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag
 # omnibase_core#2335: the onex setup CLI calls ModelRunNodeHosted.run, and the removed run_node_in_process
 # is gone from every later core. Infra moves with it (the two tags move together).
 # OMN-26286: core moves to dev-20261120075721-2a9efbda3548 (core 0.47.76), the tag omnibase_infra dev-20261120235610-e1c7b1f075d2 (omnibase_infra#6116) and omnimemory dev-20261120144838-db14a337f1ab both lock.
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261120075721-2a9efbda3548" }
+# OMN-26708: core moves to dev-20261126163618-6baa5af6b65d, which carries omnibase_core#2381 (the lane work types the lane work projection folds).
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261126163618-6baa5af6b65d" }
 omnibase-spi = { git = "https://github.com/OmniNode-ai/omnibase_spi.git", tag = "dev-20261108170744-52946639a23a" }
 # OMN-26286: omnimemory moves to dev-20261120144838-db14a337f1ab, which locks the core tag above (omnibase-core dev-20261120075721-2a9efbda3548).
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", tag = "dev-20261120144838-db14a337f1ab" }
