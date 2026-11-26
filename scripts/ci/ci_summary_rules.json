@@ -378,6 +378,21 @@
             "in ci.yml (no needs/if), so a skip is anomalous and never a legitimate opt-out.",
             "bus-model-seam-gate"
           ]
+        },
+        {
+          "name": "hardcoded-model-config / hardcoded-model-config",
+          "note": [
+            "OMN-26651: the hard-coded model guard over the whole tree against",
+            "config/hardcoded_model_config_baseline.yaml, with --base on a pull request so a",
+            "grown baseline is refused. Registered on the same terms as \"Event Chain Gate\"",
+            "above: a FAILURE already fails CI Summary through the default-deny sweep, and this",
+            "row makes a skipped or absent conclusion fail closed too. The job is unconditional",
+            "in ci.yml (no needs/if), so a skip is anomalous and never a legitimate opt-out.",
+            "The name is the caller job key (it sets no `name:`) plus the reusable's inner job",
+            "name, the same \"<caller display> / <inner job>\" shape as \"Runner Route (OMN-18031)",
+            "/ route\" above. Pinned by tests/ci/test_omn26651_hardcoded_model_config_wiring.py.",
+            "hardcoded-model-config"
+          ]
         }
       ]
     },

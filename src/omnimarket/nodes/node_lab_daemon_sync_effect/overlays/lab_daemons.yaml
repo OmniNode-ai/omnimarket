@@ -7,6 +7,8 @@
 # an unset variable is skipped on that host with a diagnostic, never run half-expanded.
 # ONEX_PLUGIN_SOURCE_CLONE is the canonical clone carrying the plugin and controller source, and
 # ONEX_INSTALLERS_HOME the canonical clone carrying the launchd installers; the host tick sets both.
+# ONEX_LAB_FIX_LANE_MODEL is the model a detached fix lane runs on; the host tick sets it, and an unset
+# value refuses the overlay's fix_lane rather than running a default (OMN-26651).
 # `present_when` is a path that exists only on a host where the daemon is installed, so one
 # overlay serves every lab host without naming them.
 # Surfaces declare portable plugin trees, configuration and observed revisions by host role.
@@ -24,7 +26,7 @@ fix_lane:
   - --lane
   - "{lane}"
   - --model
-  - sonnet
+  - ${ONEX_LAB_FIX_LANE_MODEL}
   - --ticket
   - OMN-19998
   - --priority-class

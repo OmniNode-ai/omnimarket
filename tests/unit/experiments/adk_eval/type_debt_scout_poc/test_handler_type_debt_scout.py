@@ -169,7 +169,9 @@ class TestParsePriorities:
 class TestRunTypeDebtScout:
     async def test_builds_report_from_router(self) -> None:
         config = ModelTrackBConfig(
-            repo_name="unit-repo", base_url="http://llm.example.test:8000"
+            repo_name="unit-repo",
+            base_url="http://llm.example.test:8000",
+            model_id="fixture-model",
         )
         findings = _sample_findings()
         fake_response = ModelLlmAdapterResponse(
@@ -201,7 +203,9 @@ class TestRunTypeDebtScout:
 
     async def test_propagates_parse_failure(self) -> None:
         config = ModelTrackBConfig(
-            repo_name="unit-repo", base_url="http://llm.example.test:8000"
+            repo_name="unit-repo",
+            base_url="http://llm.example.test:8000",
+            model_id="fixture-model",
         )
         fake_response = ModelLlmAdapterResponse(
             generated_text="no json at all",
@@ -224,10 +228,53 @@ class TestEndpointIsADeploymentFact:
 
     def test_the_config_requires_an_endpoint(self) -> None:
         with pytest.raises(ValueError, match="base_url"):
-            ModelTrackBConfig.model_validate({"repo_name": "unit-repo"})
+            ModelTrackBConfig.model_validate(
+                {"repo_name": "unit-repo", "model_id": "fixture-model"}
+            )
 
     def test_the_config_carries_the_endpoint_it_is_given(self) -> None:
         config = ModelTrackBConfig(
-            repo_name="unit-repo", base_url="http://llm.example.test:8000"
+            repo_name="unit-repo",
+            base_url="http://llm.example.test:8000",
+            model_id="fixture-model",
         )
         assert config.base_url == "http://llm.example.test:8000"
+
+
+class TestModelIsADeploymentFact:
+    """OMN-26651: the experiment names no model of its own; the deployment supplies it."""
+
+    def test_the_config_requires_a_model_id(self) -> None:
+        with pytest.raises(ValueError, match="model_id"):
+            ModelTrackBConfig.model_validate(
+                {"repo_name": "unit-repo", "base_url": "http://llm.example.test:8000"}
+            )
+
+    def test_the_config_carries_the_model_id_it_is_given(self) -> None:
+        config = ModelTrackBConfig(
+            repo_name="unit-repo",
+            base_url="http://llm.example.test:8000",
+            model_id="fixture-model",
+        )
+        assert config.model_id == "fixture-model"
+
+    def test_the_cli_requires_a_model_id(self) -> None:
+        import importlib
+
+        package = ModelTrackBConfig.__module__.rsplit(".", 1)[0]
+        _parse_args = importlib.import_module(f"{package}.__main__")._parse_args
+
+        base = [
+            "--input", "in.jsonl", "--output", "out.json", "--metrics", "m.json",
+            "--base-url", "http://llm.example.test:8000",
+        ]  # fmt: skip
+        with pytest.raises(SystemExit):
+            _parse_args(base)
+        args = _parse_args([*base, "--model-id", "fixture-model"])
+        assert args.model_id == "fixture-model"
+
+    def test_the_registered_provider_name_names_no_model(self) -> None:
+        import sys
+
+        module = sys.modules[ModelTrackBConfig.__module__]
+        assert "qwen" not in module._PROVIDER_NAME.lower()

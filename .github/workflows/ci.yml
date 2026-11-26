@@ -4662,6 +4662,25 @@ jobs:
       vocabulary_ref: ${{ github.sha }}
       context_name: merge-hold-gate / evaluate
 
+  # OMN-26651: the hard-coded model guard runs on every omnimarket pull request,
+  # over the whole tracked tree, against config/hardcoded_model_config_baseline.yaml.
+  # omnimarket hosts hardcoded-model-config-reusable.yml and calls it locally
+  # (`uses: ./...`), so a change to the reusable is exercised by the pull request that
+  # makes it. On a pull request the reusable also passes --base <base sha>, so a
+  # baseline that carries an entry the base branch did not is refused: entries only
+  # leave. core_ref is the omnibase_core commit the guard is installed from; it is the
+  # commit the .pre-commit-config.yaml hook rev names, and the wiring test asserts the
+  # two agree. Registered in STRICT_GATE_JOBS (scripts/ci/ci_summary_rules.json) as
+  # "hardcoded-model-config / hardcoded-model-config", the caller job key plus the
+  # reusable's inner job name, so a skipped or absent conclusion fails CI Summary.
+  # Unconditional: no `if:`, no `needs:`.
+  hardcoded-model-config:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/hardcoded-model-config-reusable.yml
+    with:
+      core_ref: 095ea7558cf0584f84ef4ba71319ef66ec0369e1  # pragma: allowlist secret
+
   # Canonical-file-shape ratchet (OMN-20304). Operator ruling 2026-10-01: no
   # new scripts, plugins or exceptions in any repository. Refuses a new code
   # file outside src/<pkg>/{nodes,handlers,models,protocols,contracts,enums}/,

@@ -20,6 +20,9 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.handlers.routing.byok_provider_backends import (
+    resolve_byok_backend_by_id,
+)
 from omnimarket.nodes.node_projection_delegation.handlers import byok_actual_cost
 from omnimarket.projection.runner import MessageMeta
 from tests.test_omn15909_real_postgres_projection_write_path_gate import (
@@ -30,6 +33,10 @@ from tests.test_omn15909_real_postgres_projection_write_path_gate import (
 # glm-5.3-flash on the general API plan is declared at 0.15 in / 0.50 out USD per 1M tokens:
 # (231 * 0.15 + 277 * 0.50) / 1_000_000.
 _DECLARED_COST_USD = 0.00017315
+
+# The price key is the catalogue's own first priced model of the backend, never spelled in a test (OMN-26651).
+_BACKEND = "byok-glm-general"
+_PRICED_MODEL = resolve_byok_backend_by_id(_BACKEND).model_prices[0].model_name
 
 
 def _byok_payload(*, correlation_id: str, model: str) -> dict[str, object]:
@@ -55,7 +62,7 @@ class TestByokPricedCostLandsInRealRow:
     async def test_declared_model_row_carries_cost_above_zero(self) -> None:
         async with _provisioned_runner() as (runner, admin_conn, _schema):
             correlation_id = str(uuid4())
-            data = _byok_payload(correlation_id=correlation_id, model="glm-5.3-flash")
+            data = _byok_payload(correlation_id=correlation_id, model=_PRICED_MODEL)
             meta = MessageMeta(partition=0, offset=0, fallback_id=correlation_id)
 
             ok = await runner.project_event(
@@ -146,7 +153,7 @@ class TestByokPricedCostLandsInRealRow:
         caplog.set_level(logging.INFO, logger=byok_actual_cost.logger.name)
         async with _provisioned_runner() as (runner, admin_conn, _schema):
             correlation_id = str(uuid4())
-            data = _byok_payload(correlation_id=correlation_id, model="glm-5.3-flash")
+            data = _byok_payload(correlation_id=correlation_id, model=_PRICED_MODEL)
             meta = MessageMeta(partition=0, offset=0, fallback_id=correlation_id)
 
             ok = await runner.project_event(
@@ -168,7 +175,7 @@ class TestByokPricedCostLandsInRealRow:
         ]
         assert any(
             "backend_id=byok-glm-general" in line
-            and "model=glm-5.3-flash" in line
+            and f"model={_PRICED_MODEL}" in line
             and "price_source=byok_provider_backends" in line
             for line in lines
         ), lines

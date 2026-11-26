@@ -44,7 +44,7 @@ from tests.nodes.node_delegation_scenario_r2_effect.test_golden_chain_scenario_r
 pytestmark = pytest.mark.unit
 
 GONE_URL = "http://gone.invalid:8000"
-GONE_MODEL = "Qwen3.8-27B"
+GONE_MODEL = "fixture-local-model"
 BUSY = ModelLocalServer(base_url="http://busy.invalid:8000", model_id="model-busy")
 IDLE = ModelLocalServer(base_url="http://idle.invalid:8000", model_id="model-idle")
 LIVE_PIN = ModelLocalServer(base_url="http://pc2.invalid:8000", model_id=GONE_MODEL)

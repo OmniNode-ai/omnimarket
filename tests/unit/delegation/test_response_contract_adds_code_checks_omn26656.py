@@ -100,7 +100,7 @@ _FAILED_RUN = ModelNamedTestRun(
 _PASSED_RUN = ModelNamedTestRun(test_ids=(_TEST_ID,), exit_code=0)
 _LOCAL_BACKEND = ModelResolvedDelegationBackend(
     backend_id="local-coder",
-    model_id="Qwen3.8-27B",
+    model_id="fixture-local-model",
     endpoint_ref="https://local.example/v1/chat/completions",
     tier="local",
     max_tokens=4096,

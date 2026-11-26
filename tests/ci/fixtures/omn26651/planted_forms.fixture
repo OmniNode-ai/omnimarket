@@ -1,0 +1,36 @@
+# One planted model choice per form, read by tests/ci/test_omn26651_hardcoded_model_config_wiring.py.
+# The suffix is not one the guard scans (the guard's own acceptance corpus uses it for the
+# same reason): the file exists to hand the guard a model choice, so the guard must not
+# judge the file itself. Each entry: the path the text is scanned as, the text, the family.
+bare model id:
+  path: src/omnimarket/nodes/node_planted_effect/handler_planted.py
+  text: "DEFAULT_MODEL = \"gpt-4o\"\n"
+  family: M
+bare model id in a test:
+  path: tests/unit/test_planted.py
+  text: "MODEL = \"claude-sonnet-5-5\"\n"
+  family: M
+environment name:
+  path: src/omnimarket/nodes/node_planted_effect/planted.yaml
+  text: "environment: qwen3-lab\n"
+  family: M
+price key:
+  path: src/omnimarket/nodes/node_planted_effect/handler_planted.py
+  text: "PRICES = {\"gemini-2.5-pro\": 1.25}\n"
+  family: M
+model value in yaml:
+  path: src/omnimarket/nodes/node_planted_effect/planted.yaml
+  text: "model: deepseek-chat\n"
+  family: M
+tier alias:
+  path: src/omnimarket/nodes/node_planted_effect/planted.yaml
+  text: "model: sonnet\n"
+  family: T
+engine label:
+  path: src/omnimarket/nodes/node_planted_effect/handler_planted.py
+  text: "ENGINE = \"codex\"\n"
+  family: N
+inference endpoint:
+  path: src/omnimarket/nodes/node_planted_effect/handler_planted.py
+  text: "URL = \"http://inference.example.test/v1/chat/completions\"\n"
+  family: E
