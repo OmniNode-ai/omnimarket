@@ -214,6 +214,13 @@ class EvalResultsProjectionWriter(BaseProjectionRunner):
     async def _project_one_message(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> dict[str, Any]:
+        if topic == TOPIC_TICK:
+            # A pool belongs to the loop that opened it, so none outlives this delivery. A tick
+            # inside the publish interval owes no work, and opening a pool for it cost about
+            # 2,400 connect/close pairs per 30 minutes on the dev runtime (OMN-26152).
+            skipped = self._tick_inside_interval(data)
+            if skipped is not None:
+                return skipped
         try:
             await bounded("connect", self.db.connect(), self._stage_deadline_s)
             return await self._project(topic, data, meta)
@@ -457,17 +464,27 @@ class EvalResultsProjectionWriter(BaseProjectionRunner):
             else:
                 self._run_locks[key] = (lock, waiting - 1)
 
+    def _tick_inside_interval(self, data: dict[str, Any]) -> dict[str, Any] | None:
+        """The no-op outcome of a tick inside the publish interval, or ``None`` when it owes a republish."""
+        now = _instant(data.get("now") or data.get(INJECTED_ENVELOPE_TIMESTAMP_KEY))
+        last = self._last_published_at
+        if (
+            last is None
+            or (now - last).total_seconds() >= self.overlay().publish_interval_s
+        ):
+            return None
+        return {
+            "rows_upserted": 0,
+            "snapshot": {"published": False, "reason": "interval"},
+            NOOP_REASON_KEY: EnumProjectionNoopReason.TICK.value,
+        }
+
     async def _tick(self, data: dict[str, Any]) -> dict[str, Any]:
         """Republish the snapshot at the tick's time once per publish interval; reads no other clock."""
+        skipped = self._tick_inside_interval(data)
+        if skipped is not None:
+            return skipped
         now = _instant(data.get("now") or data.get(INJECTED_ENVELOPE_TIMESTAMP_KEY))
-        interval = self.overlay().publish_interval_s
-        last = self._last_published_at
-        if last is not None and (now - last).total_seconds() < interval:
-            return {
-                "rows_upserted": 0,
-                "snapshot": {"published": False, "reason": "interval"},
-                NOOP_REASON_KEY: EnumProjectionNoopReason.TICK.value,
-            }
         snapshot = await self._publish(
             self._store_factory(self.db), self._default_tenant(data), published_at=now
         )
