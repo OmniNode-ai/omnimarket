@@ -14,6 +14,7 @@ from .handler_lab_lane_priority import (
     load_factory_epics,
     load_priority_rules,
     priority_class_args,
+    read_red_checks,
 )
 from .handler_lab_placement import (
     HandlerLabPlacement,
@@ -48,5 +49,6 @@ __all__ = [
     "newest_per_host",
     "parse_ledger_row",
     "priority_class_args",
+    "read_red_checks",
     "repo_name",
 ]

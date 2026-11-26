@@ -7,12 +7,62 @@ The lab placement contract declares the classes, holdbacks and classification ru
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 #: The class a unit of no named class takes, and the last of the contract's classes.
 PRIORITY_OTHER = "other"
+
+
+class ModelRedCheckRules(BaseModel):
+    """The ``priority.red_checks`` block (OMN-26624): which delegation checks count, the class a red one takes, where read."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", populate_by_name=True)
+
+    #: The class a lane takes when its ticket text or brief names a red declared check.
+    class_: str = Field(..., alias="class")
+    #: The delegation check ids that count; a red check outside the list changes no lane's class.
+    checks: tuple[str, ...] = Field(..., min_length=1)
+    #: Where the result is read, in order: the first source that reads decides, a later one is read only when it fails.
+    sources: tuple[str, ...] = Field(..., min_length=1)
+
+    @model_validator(mode="after")
+    def _consistent(self) -> ModelRedCheckRules:
+        if len({c.upper() for c in self.checks}) != len(self.checks):
+            raise ValueError("priority.red_checks.checks repeats a check")
+        if len(set(self.sources)) != len(self.sources):
+            raise ValueError("priority.red_checks.sources repeats a source")
+        return self
+
+    def declared(self, check: str) -> str | None:
+        """The declared spelling of ``check`` (case-insensitive), else None."""
+        wanted = check.strip().upper()
+        return next((c for c in self.checks if c.upper() == wanted), None)
+
+    def named_in(self, *texts: str | None) -> tuple[str, ...]:
+        """The declared checks the texts name as whole words (``C13`` but not ``C130`` or ``abC13``), in declared order."""
+        text = "\n".join(t for t in texts if t)
+        return tuple(
+            c
+            for c in self.checks
+            if re.search(rf"(?<![A-Za-z0-9]){re.escape(c)}(?![A-Za-z0-9])", text, re.I)
+        )
+
+
+class ModelRedCheckReading(BaseModel):
+    """What a caller read of the delegation check results: the red check ids, or why they could not be read.
+
+    ``unreadable`` set means the result is not known: it is never read as green."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    red: tuple[str, ...] = ()
+    #: The source the result came from (one of the contract's ``sources``); empty when unreadable.
+    read_from: str = ""
+    #: Why no source could be read, one ``<source>: <reason>`` per source; None when a source was read.
+    unreadable: str | None = None
 
 
 class ModelPriorityRules(BaseModel):
@@ -27,9 +77,15 @@ class ModelPriorityRules(BaseModel):
     factory_class: str
     repos: dict[str, tuple[str, ...]] = Field(default_factory=dict)
     tickets: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+    #: OMN-26624: the delegation check input; None declares none, and no lane takes a red-check class.
+    red_checks: ModelRedCheckRules | None = None
 
     @model_validator(mode="after")
     def _consistent(self) -> ModelPriorityRules:
+        if self.red_checks is not None and self.red_checks.class_ not in self.classes:
+            raise ValueError(
+                f"priority.red_checks.class {self.red_checks.class_!r} is not a class of {list(self.classes)}"
+            )
         if len(set(self.classes)) != len(self.classes):
             raise ValueError("priority.classes repeats a class")
         if self.classes[-1] != PRIORITY_OTHER:

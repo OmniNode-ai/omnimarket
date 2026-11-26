@@ -82,6 +82,11 @@ from omnimarket.nodes.node_lab_fill_effect.protocols.local_lab_fill_live_work im
 )
 from omnimarket.nodes.node_lab_fill_effect.select_entry import main as run_select_entry
 from omnimarket.nodes.node_lab_fill_effect.tick_entry import main as run_tick_entry
+from omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_lane_priority import (
+    RedCheckSource,
+    load_priority_rules,
+    read_red_checks,
+)
 from omnimarket.nodes.node_lane_host_pool_snapshot_effect.handlers.adapter_snapshot_file import (
     StampedSnapshotFileLaneHostPool,
 )
@@ -313,8 +318,12 @@ def run_once(
     ticker: HandlerLabFillTick | None = None,
     stdout: TextIO,
     stderr: TextIO,
+    red_check_readers: Mapping[str, RedCheckSource] | None = None,
 ) -> int:
-    """One pass: the exit code. The tick runs only when every input was read."""
+    """One pass: the exit code. The tick runs only when every input was read.
+
+    OMN-26624: the delegation check results are read through ``red_check_readers`` (source name -> reader) in the
+    contract's order; with none wired the reading is unreadable, which the tick reports and never reads as green."""
     now = clock()
     try:
         hosts = _hosts_from_snapshot(overlay, clock)
@@ -338,6 +347,9 @@ def run_once(
         ledger_path=str(resolve_path(overlay.ledger_path)),
         brief_dir=str(resolve_path(overlay.brief_dir)),
         state_path=str(resolve_path(overlay.state_path)) if overlay.state_path else "",
+        red_check_reading=read_red_checks(
+            load_priority_rules(), red_check_readers or {}
+        ),
     )
     stderr.write(
         f"lab-fill unit: step={_STEP} hosts={len(hosts)} held={len(holds)}"

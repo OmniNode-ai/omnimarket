@@ -1,0 +1,82 @@
+schema_version: 1.0.0
+ticket_id: OMN-26624
+title: The lane priority contract reads delegation check results, so a lane on a red delegation check is ordered first in the lab fill, the throughput tick and the remote-lane queue
+summary: node_lab_placement_compute's priority block declares red_checks (the delegation checks that count, the class a red one takes, and the ordered sources its result is read from); HandlerLabLanePriority resolves a lane whose ticket text or brief names a red declared check to that class, reports an unread or unreadable result and never reads it as green; the lab fill places a row naming a red check before every other row and reports a red check no row names.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26624-red-check-priority
+  statement: A lane on a red delegation check takes the class the placement contract declares for it and is ordered before other work; an unreadable result is never read as green.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the placement contract declares the red-check input as data (which delegation checks count, the class a red one takes, and where the result is read) and no check id or class is written in code -- falsifier: uv run pytest on the contract loader test in tests/nodes/node_lab_placement_compute that loads the contract and asserts the field, its class and the absence of a literal check id in the handler'
+  - id: AC2
+    statement: 'AC2: a lane whose ticket text or brief names a red delegation check resolves to the declared class, and the same lane with the check green resolves as it does today -- falsifier: uv run pytest on HandlerLabLanePriority with one red and one green check result for the same ticket text'
+  - id: AC3
+    statement: 'AC3: the lab fill, the throughput tick and the remote-lane queue order a red-check lane before other work, and a red check with no live lane is placed before any other fill work -- falsifier: uv run pytest on each caller with a red check, a feature item and a free slot asserting the red-check lane is first'
+  - id: AC4
+    statement: 'AC4: a regression test built from the recorded 2026-11-23 data (C13, C14 and C29 lanes that ran as priority=other, fixture path in the PR) fails on today''s code and passes on the fix -- falsifier: uv run pytest tests/nodes/node_lab_placement_compute -k red_check'
+  - id: AC5
+    statement: 'AC5: a result that cannot be read (the regression event or the probes'' latest results absent) never silently becomes green and the placement says so -- falsifier: uv run pytest on the loader with the source unreadable asserting the report line and the fallback class'
+evidence_requirements:
+- kind: tests
+  description: The red-check tests of this change pass at the pushed head.
+  command: uv run pytest tests/nodes/node_lab_placement_compute/test_red_check_priority.py tests/nodes/node_lab_fill_effect/test_red_check_order_lab_fill.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26624-ac1
+  description: 'AC1: the contract''s priority.red_checks block and the handler without a literal check id or class (test_contract_declares_the_red_check_input, test_handler_holds_no_check_id_and_no_declared_class_in_code)'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_placement_compute/test_red_check_priority.py tests/nodes/node_lab_fill_effect/test_red_check_order_lab_fill.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26624-ac2
+  description: 'AC2: the red and the green resolution of the same ticket text (test_red_check_in_ticket_text_takes_the_declared_class, test_same_lane_with_the_check_green_resolves_as_today)'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_placement_compute/test_red_check_priority.py tests/nodes/node_lab_fill_effect/test_red_check_order_lab_fill.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26624-ac3
+  description: 'AC3: the lab fill places the row naming a red check before an MVP row in the one free slot and reports a red check no row names (test_red_check_order_lab_fill.py); the remote-lane queue and runner half is the plugin change of the same ticket'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_placement_compute/test_red_check_priority.py tests/nodes/node_lab_fill_effect/test_red_check_order_lab_fill.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26624-ac4
+  description: 'AC4: the six recorded 2026-11-23 lanes (fixture tests/nodes/node_lab_placement_compute/fixtures/red_check_1123/claims.json) resolve to other without the input and to the declared class with it (test_red_check_recorded_lanes_were_other_and_now_take_the_declared_class)'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_placement_compute/test_red_check_priority.py tests/nodes/node_lab_fill_effect/test_red_check_order_lab_fill.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26624-ac5
+  description: 'AC5: an unreadable or unread result is reported and the lane falls back (test_unreadable_result_is_reported_and_the_lane_falls_back_as_today, test_reader_with_every_source_unreadable_is_unreadable_not_green)'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_placement_compute/test_red_check_priority.py tests/nodes/node_lab_fill_effect/test_red_check_order_lab_fill.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26624-integration-proof
+  description: the red-check placement and fill tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26624 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lab_placement_compute/test_red_check_priority.py tests/nodes/node_lab_fill_effect/test_red_check_order_lab_fill.py -q --no-cov

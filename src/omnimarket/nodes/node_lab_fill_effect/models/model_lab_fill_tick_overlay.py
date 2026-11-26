@@ -12,6 +12,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from omnimarket.models.model_priority_rules import ModelRedCheckReading
+
 from .model_lab_fill_effect import LANE_PATTERN
 from .model_lab_fill_tick import (
     ModelLabFillTickCloud,
@@ -104,6 +106,7 @@ class ModelLabFillTickOverlay(BaseModel):
         ledger_path: str,
         brief_dir: str,
         state_path: str,
+        red_check_reading: ModelRedCheckReading | None = None,
     ) -> ModelLabFillTickRequest:
         """Build the tick request from the overlay fields plus the fire arguments."""
         return ModelLabFillTickRequest(
@@ -134,4 +137,5 @@ class ModelLabFillTickOverlay(BaseModel):
             host_reach=self.host_reach,
             fact_hosts=self.fact_hosts,
             selection_holds=selection_holds,
+            red_check_reading=red_check_reading,
         )

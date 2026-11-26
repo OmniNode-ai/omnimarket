@@ -18,6 +18,9 @@ from omnimarket.models.model_priority_rules import (
 from omnimarket.models.model_priority_rules import (
     ModelPriorityRules as ModelPriorityRules,
 )
+from omnimarket.models.model_priority_rules import (
+    ModelRedCheckReading,
+)
 
 
 class ModelLanePriorityOverlay(BaseModel):
@@ -47,6 +50,10 @@ class ModelLanePriorityRequest(BaseModel):
     parent: str | None = None
     #: The ticket text the caller fetched, read for its ``Class:`` line; None: the caller read no ticket.
     ticket_text: str | None = None
+    #: The lane's brief text, read for the delegation checks it names (OMN-26624).
+    brief_text: str | None = None
+    #: What the caller read of the delegation check results (``read_red_checks``); None: the caller read none.
+    red_check_reading: ModelRedCheckReading | None = None
     #: The factory epics of the private overlay (``lane_priority.factory_epics``); a ticket whose parent is one is factory work.
     factory_epics: tuple[str, ...] = ()
     #: The class the caller declared (``--priority-class`` or the lab-fill environment); a name that is not a class is no declaration.
@@ -65,12 +72,17 @@ class ModelLanePriorityResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     priority_class: str
-    #: ``declared``, ``class-line``, ``ticket``, ``factory-epic``, ``repository`` or ``default``.
+    #: ``red-check``, ``declared``, ``class-line``, ``ticket``, ``factory-epic``, ``repository`` or ``default``.
     source: str
     #: ``PRIORITY-HOLDBACK: ...`` or ``NO-FREE-SLOT: ...`` when the pool refuses the lane, else None.
     refusal: str | None = None
     #: ``CLASS-LINE-MISSING: ...`` or ``CLASS-LINE-UNKNOWN: ...`` when the ticket's text gave no class and the lane fell back.
     fallback: str | None = None
+    #: The red declared checks the lane names (OMN-26624); empty when none.
+    red_checks: tuple[str, ...] = ()
+    #: ``RED-CHECK-UNREADABLE: ...`` or ``RED-CHECK-UNREAD: ...`` when the lane names a declared check and no result was
+    #: read: the check is not read as green, and the lane takes the class it would take without the input.
+    red_check_report: str | None = None
 
     @property
     def admitted(self) -> bool:

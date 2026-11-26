@@ -47,6 +47,7 @@ FIRE_ARGUMENTS = {
     "fire_id",
     "hosts",
     "selection_holds",
+    "red_check_reading",
     "ledger_path",
     "approved_work_path",
     "brief_dir",
