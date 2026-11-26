@@ -16,7 +16,9 @@ from omnimarket.events.enum_ledger_row_type import (
 )
 from omnimarket.nodes.node_projection_work_ledger.contract_topics import (
     ALL_SUBSCRIBE_TOPICS,
+    ROLLBACK_ROW_TOPICS,
     SUBSCRIBE_TOPICS,
+    TOPIC_ACCEPTED_ROW,
 )
 from omnimarket.nodes.node_projection_work_ledger.handlers.handler_work_ledger_projection import (
     HandlerProjectionWorkLedger,
@@ -113,13 +115,13 @@ def test_the_writer_declares_in_process_dispatch() -> None:
     assert WorkLedgerProjectionWriter.onex_runtime_inprocess_dispatch is True
 
 
-def test_the_writer_subscribes_to_the_eleven_row_topics_the_contract_declares() -> None:
-    assert sorted(_writer(_FakeDb()).subscribe_topics) == sorted(
-        topic for t in EnumLedgerRowType for topic in (t.topic, t.typed_topic)
-    )
+def test_the_writer_subscribes_to_the_accepted_row_topic_alone() -> None:
+    assert _writer(_FakeDb()).subscribe_topics == [TOPIC_ACCEPTED_ROW]
     contract = yaml.safe_load((_NODE / "contract.yaml").read_text())
-    assert sorted(contract["event_bus"]["subscribe_topics"]) == sorted(
-        ALL_SUBSCRIBE_TOPICS
+    assert contract["event_bus"]["subscribe_topics"] == list(ALL_SUBSCRIBE_TOPICS)
+    # the 22 old topics are the rollback list: still folded if a rollback re-subscribes them, never subscribed now
+    assert sorted(ROLLBACK_ROW_TOPICS) == sorted(
+        topic for t in EnumLedgerRowType for topic in (t.topic, t.typed_topic)
     )
     assert len(SUBSCRIBE_TOPICS) == 11
 

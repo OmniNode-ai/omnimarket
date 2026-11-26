@@ -25,6 +25,10 @@ class MalformedLedgerMsgError(ValueError):
     """The record is not a well-formed MSG row event."""
 
 
+class NotMsgRowError(ValueError):
+    """A well-formed accepted row of another type: the accepted-row topic carries every row type (OMN-25630)."""
+
+
 def decode_msg_record(value: bytes, consumer_group: str) -> ModelAgentInboxSpoolEntry:
     try:
         decoded = json.loads(value)
@@ -41,8 +45,10 @@ def decode_msg_record(value: bytes, consumer_group: str) -> ModelAgentInboxSpool
     if work_ledger_row_id(raw_row) != row_id:
         raise MalformedLedgerMsgError("row_id does not match raw_row")
     parts = raw_row.strip().split(_SEPARATOR)
-    if len(parts) < 3 or parts[1] != "MSG":
-        raise MalformedLedgerMsgError("row is not a MSG row")
+    if len(parts) < 3:
+        raise MalformedLedgerMsgError("row has no type cell")
+    if parts[1] != "MSG":
+        raise NotMsgRowError(parts[1])
     cells: dict[str, str] = {}
     index = 2
     while index < len(parts):
