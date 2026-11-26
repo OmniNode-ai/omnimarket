@@ -8,7 +8,7 @@ the nudge cadence, the agent's turn and diff ceilings, the draft checks, the
 tools the runner needs, the source surface, the unit lane prefix, the onex
 executable and the caller's ticket. No key has a default but the two retry and
 void keys of OMN-24173 (0 retries and a tenth, so an overlay written before them
-loads): an absent key refuses the load, and an invalid file names its fields.
+loads) and the loop wall budget of OMN-26656 (3600 seconds): an absent key refuses the load, and an invalid file names its fields.
 """
 
 from __future__ import annotations
@@ -41,8 +41,8 @@ class ModelCodeEvalRunnerOverlay(BaseModel):
     receipt_slack_seconds: int = Field(ge=0)
     nudge_interval_seconds: int = Field(ge=1)
     max_turns: int = Field(ge=1, le=MAX_TURNS_CEILING)
-    #: Wall seconds one loop may use (OMN-26656); no default, so an overlay without it refuses.
-    loop_wall_budget_seconds: int = Field(ge=1, le=7200)
+    #: Wall seconds one loop may use (OMN-26656); an overlay without it takes the declared 3600.
+    loop_wall_budget_seconds: int = Field(default=3600, ge=1, le=7200)
     max_diff_bytes: int = Field(ge=1)
     draft_checks: tuple[str, ...] = Field(min_length=1)
     need_tools: tuple[str, ...]

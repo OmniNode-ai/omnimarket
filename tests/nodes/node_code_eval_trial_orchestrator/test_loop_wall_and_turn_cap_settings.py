@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """OMN-26656 -- the loop's wall budget and turn cap are declared overlay values.
 
-A trial overlay with no ``loop_wall_budget_seconds`` refuses to load (no default, so no silent
+A trial overlay with no ``loop_wall_budget_seconds`` takes the declared 3600 s default (never a silent
 300 s); a turn cap of 100 loads; the draft unit carries both to the loop request.
 """
 
@@ -39,11 +39,22 @@ EXAMPLE = (
 )
 
 
-def test_overlay_without_a_loop_wall_budget_refuses_to_load() -> None:
+def test_overlay_without_a_loop_wall_budget_uses_the_declared_default() -> None:
     values = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
     del values["loop_wall_budget_seconds"]
-    with pytest.raises(ValidationError, match="loop_wall_budget_seconds"):
-        ModelCodeEvalRunnerOverlay.model_validate(values)
+    assert (
+        ModelCodeEvalRunnerOverlay.model_validate(values).loop_wall_budget_seconds
+        == 3600
+    )
+
+
+def test_overlay_with_a_loop_wall_budget_uses_its_value() -> None:
+    values = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
+    values["loop_wall_budget_seconds"] = 900
+    assert (
+        ModelCodeEvalRunnerOverlay.model_validate(values).loop_wall_budget_seconds
+        == 900
+    )
 
 
 def test_example_overlay_declares_a_3600_second_loop_wall_budget() -> None:
