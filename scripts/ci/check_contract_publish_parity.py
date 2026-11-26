@@ -17,7 +17,8 @@ Rule
 For every ``src/omnimarket/nodes/*/contract.yaml``: each declared publish topic
 that is NOT the contract's ``terminal_event`` requires evidence of a publish or
 emit call somewhere in that node package's Python. ``terminal_event`` is exempt
-because the runtime publishes it on the handler's behalf. So is a declared
+because the runtime publishes it on the handler's behalf. So is a topic ``published_events`` routes one of the
+node's own result classes to (the runtime publishes the returned model there), and so is a declared
 failure terminal (``runtime_dispatch.terminal_events.failure``) when the node's
 Python carries ``terminal_failure_cause``: the runtime's failure-terminal guard
 publishes a result carrying one on that topic (OMN-20867). Without that field no
@@ -90,6 +91,7 @@ def scan_publish_parity(root: Path) -> list[ModelPublishParityFinding]:
         exempt = {str(raw.get("terminal_event"))}
         if _returns_failure_cause(node_dir):
             exempt |= _failure_terminals(raw)
+        exempt |= _routed_result_topics(raw, node_dir)
         candidates = sorted({str(topic) for topic in declared} - exempt)
         if not candidates:
             continue
@@ -113,6 +115,33 @@ def _failure_terminals(raw: dict[str, object]) -> set[str]:
         return set()
     failure = terminal_events.get("failure")
     return {failure} if isinstance(failure, str) and failure else set()
+
+
+def _routed_result_topics(raw: dict[str, object], node_dir: Path) -> set[str]:
+    """Topics the runtime routes one of the node's own result classes to (``published_events``).
+
+    The runtime publishes a handler's returned model on the topic ``published_events`` names for its class, so a
+    topic whose class the node's Python defines is published without a publish call. A class the node never defines
+    exempts nothing.
+    """
+    entries = raw.get("published_events")
+    if not isinstance(entries, list):
+        return set()
+    source = "\n".join(
+        path.read_text(encoding="utf-8") for path in sorted(node_dir.rglob("*.py"))
+    )
+    routed: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        event_type, topic = entry.get("event_type"), entry.get("topic")
+        if (
+            isinstance(event_type, str)
+            and isinstance(topic, str)
+            and re.search(rf"^class {re.escape(event_type)}\b", source, re.MULTILINE)
+        ):
+            routed.add(topic)
+    return routed
 
 
 def _returns_failure_cause(node_dir: Path) -> bool:

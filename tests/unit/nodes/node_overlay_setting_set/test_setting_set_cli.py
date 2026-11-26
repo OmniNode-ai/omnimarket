@@ -110,3 +110,28 @@ def test_a_value_file_that_is_not_json_exits_65(
     )
     assert code == 65
     assert "JSONDecodeError" in capsys.readouterr().err
+
+
+def _capture_run(monkeypatch: pytest.MonkeyPatch) -> list[float | None]:
+    """Replace the bus run with a stub that records the live-age bound the command handed it."""
+    bounds: list[float | None] = []
+
+    async def _fake_run(*args: object) -> object:
+        bounds.append(args[-1])  # type: ignore[arg-type]
+        raise ValueError("stub: nothing to publish")
+
+    monkeypatch.setattr(runtime_overlay_setting_set, "_run", _fake_run)
+    return bounds
+
+
+def test_max_live_age_flag_reaches_the_run_and_its_absence_leaves_the_contract_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A store-only row nothing re-asserts ages past the contract bound; the caller names the age it accepts."""
+    _inmemory_loader_overlay(monkeypatch)
+    bounds = _capture_run(monkeypatch)
+    base = ["--overlay", OVERLAY_ID, "--key", KEY, "--value-json", "{}"]
+    base += ["--actor", ACTOR]
+    runtime_overlay_setting_set.main([*base, "--max-live-age-s", "90000"])
+    runtime_overlay_setting_set.main(base)
+    assert bounds == [90000.0, None]

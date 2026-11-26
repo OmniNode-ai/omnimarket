@@ -80,6 +80,7 @@ async def _run(
     overlay: ModelOverlayStoreLoadOverlay,
     kafka_bootstrap: str | None,
     read_window_s: float | None,
+    max_live_age_s: float | None = None,
 ) -> ModelOverlaySettingSetResult:
     contract = _contract()
     bootstrap = kafka_bootstrap or overlay.kafka_bootstrap
@@ -106,7 +107,9 @@ async def _run(
             settings=load_settable_settings(contract),
             loaded_topic=topics[0],
             audit_topic=topics[1],
-            max_live_age_s=float(contract["config"]["max_live_age_s"]),
+            max_live_age_s=max_live_age_s
+            if max_live_age_s is not None
+            else float(contract["config"]["max_live_age_s"]),
         )
         return await handler.handle(request)
 
@@ -125,6 +128,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--kafka-bootstrap", default=None)
     parser.add_argument("--read-window-s", type=float, default=None)
+    parser.add_argument(
+        "--max-live-age-s",
+        type=float,
+        default=None,
+        help="the oldest live record this set accepts as its base, in seconds; default is the contract's bound. "
+        "A row set into the store alone is asserted by no loader, so it ages past the bound; naming the age "
+        "re-asserts it, and the audit row still names who set it and the previous and new value",
+    )
     args = parser.parse_args(argv)
     try:
         text = (
@@ -142,7 +153,13 @@ def main(argv: list[str] | None = None) -> int:
             LOADER_NODE, ModelOverlayStoreLoadOverlay, os.environ
         )
         result = asyncio.run(
-            _run(request, overlay, args.kafka_bootstrap, args.read_window_s)
+            _run(
+                request,
+                overlay,
+                args.kafka_bootstrap,
+                args.read_window_s,
+                args.max_live_age_s,
+            )
         )
     except SettingAuditFailedError as exc:
         sys.stderr.write(f"{NODE}: {type(exc).__name__}: {exc}\n")
