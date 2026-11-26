@@ -22,6 +22,7 @@ Failure modes:
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Callable
 from pathlib import Path
@@ -740,6 +741,21 @@ async def test_config_refuses_to_save_with_no_model_selected() -> None:
         assert not [call for call in runner.calls if call[0] == "setup"]
 
 
+async def test_config_refusal_note_survives_the_late_auto_find() -> None:
+    """The auto-find that the typed URL starts lands after Save was refused.
+
+    On a loaded runner the find result arrives between the Save press and the
+    note read, so the refusal note must not be replaced by the find's own text.
+    """
+    runner = _Runner([])
+    app = _app(runner)
+    async with app.run_test(size=(100, 44)) as pilot:
+        await _open_config(pilot, app)
+        await _press(pilot, app, "save")
+        await _wait_for_models(pilot)
+        assert "at least one model" in str(app.screen.query_one("#note").render())
+
+
 def _selected_rows(*, connection: bool) -> dict[tuple[str, ...], str]:
     """`models list` and `models connections` as the CLI prints them."""
     rows = "\n".join(
@@ -1437,6 +1453,49 @@ async def test_tab_and_shift_tab_cycle_the_three_screens_and_a_click_opens_one()
         assert isinstance(app.screen, ModelPickScreen)
 
 
+class _HeldDiscoverRunner(_Runner):
+    """A runner whose `models discover` waits until the test lets it answer."""
+
+    def __init__(self) -> None:
+        super().__init__([], by_command=_selected_rows(connection=False))
+        self.release = asyncio.Event()
+
+    async def capture(
+        self, argv: tuple[str, ...], stdin: str | None = None
+    ) -> tuple[int, str, str]:
+        if argv[:2] == ("models", "discover"):
+            self.calls.append(argv)
+            await self.release.wait()
+            return 0, json.dumps({"status": "ready", "models": ["llama3.2"]}), ""
+        return await super().capture(argv, stdin)
+
+
+async def test_a_list_that_answers_after_the_config_tab_was_left_is_dropped() -> None:
+    """The list answers after the user tabbed away (a slow runner answers late,
+    as in CI, after the screen is gone but before its worker is cancelled):
+    nothing is read from the departed screen and nothing raises."""
+    from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
+        ModelPickScreen,
+        SetupScreen,
+    )
+
+    runner = _HeldDiscoverRunner()
+    app = _app(runner)
+    async with app.run_test(size=(140, 44)) as pilot:
+        await _open_config(pilot, app)
+        setup = app.screen
+        assert isinstance(setup, SetupScreen)
+        loading = asyncio.create_task(setup._find())
+        await pilot.pause()
+        assert not loading.done()  # `models discover` is still out
+        await pilot.press("tab")
+        for _ in range(6):
+            await pilot.pause()
+        assert isinstance(app.screen, ModelPickScreen)
+        runner.release.set()
+        await loading  # the late answer lands on a screen that is gone
+
+
 async def test_one_click_ticks_a_row_and_the_list_takes_focus_when_it_loads() -> None:
     """T2."""
     from textual.widgets import DataTable
@@ -1468,6 +1527,10 @@ async def test_saving_with_nothing_ticked_warns_and_runs_nothing() -> None:
     app = _app(runner)
     async with app.run_test(size=(120, 44)) as pilot:
         await _open_config(pilot, app)
+        # The URL just typed starts an auto find; let it end first, or on a slow
+        # runner its "no models found" lands after the warning and replaces it.
+        await _wait_for_models(pilot)
+        await app.workers.wait_for_complete()
         await pilot.press("ctrl+s")
         await pilot.pause()
         assert tui_design().delegation.nothing_ticked in str(
@@ -1513,3 +1576,24 @@ async def test_a_failed_switch_prints_one_line_with_the_step_and_its_fix() -> No
         assert "Install or repair the customer asset bundle" in flat
         assert "Welcome To OmniNode" not in text
         assert "The rest" not in text
+
+
+async def test_switching_provider_never_lists_models_with_the_previous_providers_key() -> (
+    None
+):
+    list_models, seen = _hosted_listing()
+    app = OnexTui(
+        root=_root, runner=_Runner([]), load_status=_status, list_models=list_models
+    )
+    async with app.run_test(size=(120, 50)) as pilot:
+        await _open_config(pilot, app)
+        screen = app.screen
+        screen.query_one("#provider").value = "openrouter"
+        await pilot.pause()
+        screen.query_one("#key").value = "sk-or-switching"
+        await _wait_for_models(pilot)
+        seen.clear()
+        screen.query_one("#provider").value = "gemini"
+        await _wait_for_models(pilot)
+        assert screen.query_one("#key").value == ""
+        assert [call for call in seen if call[0] == "gemini"] == []

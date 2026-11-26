@@ -1,0 +1,85 @@
+schema_version: 1.0.0
+ticket_id: OMN-25391
+title: Fix the review findings on the dev signed-in read route PR
+summary: 'The review of the dev signed-in read route PR returned seven blocking findings. The route declared an event type that matches no inbound command, so the runtime answered the command with no dispatcher; the route test compared YAML with YAML; the dev guard ran after the transport and secret store were built; a missing overlay raised out of the handler; and the checks of the ticket contract for the route could not fail. The route contract now declares the event type the runtime matches, the tests load the contract through the runtime loader and dispatch on an in-memory bus, the handler resolves only the overlay before the guard and returns a typed failed result for a missing overlay, and the checks of the route ticket contract read a head-specific run line or a cause and an actor. Interface change, declared here as in the route ticket contract: the completed and failed topics are published for the first time, the result gains the overlay_unavailable outcome and its realm may be null; no other repository reads these topics, so no consumer needs a change.'
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- events
+- topics
+requirements:
+- id: req-omn25391-review-findings
+  statement: Each blocking review finding on the dev signed-in read route PR is fixed with a test that fails on the reviewed head and passes on the new one, or argued with evidence in a PR comment.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the contract checks of contracts/OMN-25342.yaml can fail: the AC3 pattern is `\.(service|plist|timer)$`, it diffs against the merge base and compares the receipt revision to the installed unit, the AC1 check requires `read_at=` and this head''s revision, AC2 binds to a run line or a cause-and-actor row, and `--refuse-skips` is on the pytest commands, with a test that fails on the old check and passes on the new one -- falsifier: `uv run pytest tests -k OMN_25342_contract -q` run at the merge base shows the new tests red and at the new head shows them green'
+  - id: AC2
+    statement: 'AC2: the route test loads the node contract through the runtime loader, publishes the command on an in-memory bus and asserts the handler ran and a terminal event reached the completed or failed topic, so a typo in the declared module or operation fails it -- falsifier: `uv run pytest tests -k dev_signed_in_read_runtime_route -q` fails when the operation_match value or a handler module path in the contract is changed'
+  - id: AC3
+    statement: 'AC3: the dev guard refuses before any secret read or HTTP call, with a refusal test that passes a real secret_store and patches that fail on construction, and a missing overlay returns a typed failed result that the handler emits as the failed event -- falsifier: `uv run pytest tests -k dev_signed_in_read_guard -q` fails at the merge base and passes at the new head'
+  - id: AC4
+    statement: 'AC4: every async test carries a working asyncio marker or asyncio_mode is read as auto, and the required suites of the PR are run on the lab at the new head (in parts, with the parts named, if the whole run times out) with the result in a comment that starts `Lab: head=<full head sha>` -- falsifier: `uv run pytest tests/nodes -k dev_signed_in_read -q --refuse-skips` on the lab exits non-zero when any selected test is skipped'
+  - id: AC5
+    statement: 'AC5: findings 1 and 8 and 9 are each fixed or argued in a PR comment that names the evidence, and the PR comment names the new head -- falsifier: `onex scm pr-view OmniNode-ai/omnimarket#6372` shows no comment naming the new head and none answering findings 1, 8 and 9'
+evidence_requirements:
+- kind: tests
+  description: The focused tests of the change at the pushed head. The failing control is the reviewed head, where the route tests, the guard tests and the contract check tests fail.
+  command: uv run --frozen pytest tests/test_omn_25342_contract.py tests/nodes/node_dev_signed_in_read_effect -q --no-cov -n 0 -p no:randomly --refuse-skips
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25391-ac1-contract-checks-can-fail
+  description: The shell checks of the route ticket contract are run against fixture ledgers and a throwaway git repository; each new check refuses the input its old form passed.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_omn_25342_contract.py -q --no-cov -n 0 -p no:randomly --refuse-skips
+    cwd: .
+- id: dod-omn25391-ac2-runtime-route
+  description: The node contract is discovered and wired by the runtime's own loader onto an in-memory bus, one command is dispatched and the answer reaches the completed or failed topic; a typo in the event type or the handler module fails the tests.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_signed_in_read_effect/test_runtime_route.py -q --no-cov -n 0 -p no:randomly --refuse-skips -k dev_signed_in_read_runtime_route
+    cwd: .
+- id: dod-omn25391-ac3-guard
+  description: A real secret_store block with transport and secret store constructors that fail the test, and a missing or invalid overlay answered with the typed overlay_unavailable result.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_dev_signed_in_read_effect/test_guard.py -q --no-cov -n 0 -p no:randomly --refuse-skips -k dev_signed_in_read_guard
+    cwd: .
+- id: dod-omn25391-ac4-asyncio-and-skips
+  description: asyncio_mode is auto, --refuse-skips is a registered option, and the node's tests run with skips refused; a lab run of the suites at the new head is named in the PR comment that starts with the Lab line, so only the local Done gate runs the lab check.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_omn_25342_contract.py tests/nodes/node_dev_signed_in_read_effect -q --no-cov -n 0 -p no:randomly --refuse-skips -k "refuse_skips_is_a_registered_option or dev_signed_in_read"
+    cwd: .
+- id: dod-omn25391-ac5-status-row-check
+  description: The check that reads this head's run line, or the cause and the actor, in the lane's STATUS row for the route PR can fail (it refuses a row for an older revision, a cause with no actor and a run line for another head). The PR comment that names the new head and answers findings 1, 8 and 9 is read from the PR by the orchestrator.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_omn_25342_contract.py -q --no-cov -n 0 -p no:randomly --refuse-skips -k "ac2_needs_a_run_line or ac2_is_bound"
+    cwd: .
+- id: dod-omn25391-integration-proof
+  description: The pushed head ran the node tests and the contract check tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25391 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_omn_25342_contract.py tests/nodes/node_dev_signed_in_read_effect -q --no-cov --refuse-skips
+    cwd: .

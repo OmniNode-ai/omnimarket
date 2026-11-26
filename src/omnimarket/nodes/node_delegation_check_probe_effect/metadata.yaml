@@ -1,0 +1,25 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_delegation_check_probe_effect
+version: "0.1.0"
+description: "Effect: run the ten delegation checks and put each run on the bus, where the beta board reads them: C13, C14 and C17 through the delegation responder chain, the other seven through the dev gateway the settings store names."
+pack: pipeline
+node_role: effect
+display_name: "Delegation Check Probe Effect"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_delegation_check_probe_effect: "omnimarket.nodes.node_delegation_check_probe_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "pyyaml>=6.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "probe", "delegation", "c11", "c12", "c13", "c14", "c15", "c16", "c17", "c28", "c29", "c30", "gateway", "OMN-26043", "OMN-26642"]

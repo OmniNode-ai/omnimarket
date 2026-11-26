@@ -1,0 +1,190 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lane push effect (OMN-26666, design and first slice)
+#
+# A lane does not run `git push`. It hands the repository, the branch, the remote
+# head it expects and its commits (a bundle or a ref it stored) to this node on the
+# bus, and reads back one answer: pushed, refused with the reason, or moved.
+#
+# Prior art read before this contract was written:
+#   - node_push_validation_effect pushes a pre-validated head, but with the worker
+#     host's own `gh` login and not the App credential, and takes no ruling guard,
+#     contract check or release identity check. This node is the lane-facing seam;
+#     the follow-up slice decides whether the two merge (see the report).
+#   - node_github_repo_write_effect has no push operation (pull requests, comments,
+#     dispatch, statuses, variables, runners).
+#   - node_github_git_credential_effect issues the push credential (the writer App's
+#     installation token narrowed to one repository, sealed to a one-request key).
+#     This node is its only caller on this path; a lane never calls it to push.
+name: node_lane_push_effect
+lifecycle: experimental
+node_type: EFFECT_GENERIC
+runtime_profiles: [effects]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  EFFECT: one push for one lane. One ModelLanePushRequest on
+  onex.cmd.omnimarket.lane-push-requested.v1 is answered by one
+  ModelLanePushResult on onex.evt.omnimarket.lane-push-completed.v1, whose outcome is
+  exactly one of pushed, refused (with a typed reason naming the check that refused)
+  or moved (the remote head is not the head the lane expected). The request carries
+  repository, branch, expected_remote_head, the commits as a bundle or a stored ref,
+  and the lane; it has no field that holds a credential and extra fields are
+  forbidden, so a lane cannot hand one in. Order, every step fail-closed: (1) the
+  remote head is read and compared with expected_remote_head, a difference answers
+  moved with no check run and no credential asked for; (2) the commits are
+  materialised and every declared check runs, none skipped and none reordered to
+  the end, the first refusal answers refused with the check id and its finding;
+  (3) only then the credential is requested from node_github_git_credential_effect
+  for this one repository; (4) the remote head is read again, a difference answers
+  moved; (5) the push is a plain push of the validated commit to the branch with no
+  force of any kind, and its readback must show the validated commit or the node
+  answers refused with push_rejected, never pushed. A repository that is not in
+  lane_push.test_repositories is refused first of all (no remote read, no check, no
+  credential), and a branch in {dev, main} is refused. No person's token is read on any path. Suite failure of a check is a
+  successful node run (the result is on the completed topic); infrastructure faults
+  (the bus, the object store, the credential node unreachable) raise to the failed topic.
+
+input_model:
+  name: ModelLanePushRequest
+  module: omnimarket.nodes.node_lane_push_effect.models.model_lane_push
+
+output_model:
+  name: ModelLanePushResult
+  module: omnimarket.nodes.node_lane_push_effect.models.model_lane_push
+
+handler_routing:
+  routing_strategy: "payload_type_match"
+  handlers:
+    - operation: "lane_push.push"
+      message_category: "command"
+      handler:
+        name: "HandlerLanePushEffect"
+        module: "omnimarket.nodes.node_lane_push_effect.handlers.handler_lane_push"
+      event_model:
+        name: "ModelLanePushRequest"
+        module: "omnimarket.nodes.node_lane_push_effect.models.model_lane_push"
+      topic: onex.cmd.omnimarket.lane-push-requested.v1
+      description: "One lane's commits for one branch; answered by one completed event (pushed, refused or moved)."
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_LANE_PUSH_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lane-push-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lane-push-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lane-push-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lane-push-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lane-push-failed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lane-push-failed.v1, operation: DESCRIBE}
+
+event_bus:
+  version: {major: 1, minor: 0, patch: 0}
+  subscribe_topics:
+    - onex.cmd.omnimarket.lane-push-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.lane-push-completed.v1
+    - onex.evt.omnimarket.lane-push-failed.v1
+
+published_events:
+  - event_type: "LanePushCompleted"
+    topic: onex.evt.omnimarket.lane-push-completed.v1
+    description: "pushed, refused with the reason, or moved; carries the remote head read back."
+  - event_type: "LanePushFailed"
+    topic: onex.evt.omnimarket.lane-push-failed.v1
+    description: "An infrastructure fault; no push was made."
+
+terminal_event: onex.evt.omnimarket.lane-push-completed.v1
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.lane-push-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.lane-push-completed.v1
+    failure: onex.evt.omnimarket.lane-push-failed.v1
+
+# The lane (and the landing controller) read both results.
+externally_consumed_topics:
+  - onex.evt.omnimarket.lane-push-completed.v1
+  - onex.evt.omnimarket.lane-push-failed.v1
+
+# The node holds no secret of its own: the credential is requested per push from
+# node_github_git_credential_effect and is never in a request, a result or a log.
+# The object store, the work root and every endpoint come injected into the handler's
+# ports (the handler slice adds the policy overlay); none is spelled here or in the handler.
+
+# Every check a push passes today, applied here and none skipped. `checks` is the whole
+# list: the handler refuses to be built with a check missing from it, and
+# tests/nodes/node_lane_push_effect pins the pre_push entries to the repository's
+# own .pre-commit-config.yaml pre-push stage so a hook added there that is not named
+# here fails the test. Where each check runs today is in the OMN-26666 report.
+lane_push:
+  checks:
+    - id: ruling_guard
+      source: "node_work_ledger_reader_effect"
+      description: "OMN-18645: the lane's CLAIM and every later RULING and ACK, read from the bus (30 day window); a ruling with no ACK refuses."
+    - id: release_identity
+      source: "omnibase_core check-release-identity"
+      description: "OMN-16344: no packaged-source change on a published version without a bump."
+    - id: pre_push:ticket-contract-prerequisite
+      source: "node_ticket_contract_prerequisite_effect"
+      description: "OMN-20864: the ticket contract at the pushed head."
+    - id: pre_push:check-direct-model-call
+      source: "omnibase_core hook"
+      description: "OMN-20295: no new direct model call, judged against the merge base."
+    - id: pre_push:effect-bypass-ratchet
+      source: "node_effect_bypass_scan_effect"
+      description: "OMN-24432: no new bypass of an effect node."
+    - id: pre_push:topic-naming-lint
+      source: "scripts/validation/run_topic_lint.sh"
+      description: "Topic naming lint."
+    - id: pre_push:mypy-type-check
+      source: "mypy strict"
+      description: "Type check of src/omnimarket."
+    - id: pre_push:main-target-guard
+      source: "pre-commit local hook"
+      description: "OMN-20780: warns on a push to main; this node refuses it."
+  refused_branches: [dev, main]
+  # The node pushes to these repositories and to no other. A repository outside the list
+  # is refused before the remote is read, a check runs or a credential is asked for.
+  # Every name carries "test"; the handler refuses to start on a name that does not.
+  test_repositories:
+    - OmniNode-ai/onex-lane-push-test
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 180000
+  runtime_profiles:
+    - effects
+
+side_effects:
+  reads:
+    - git
+    - bus
+  writes:
+    - git_remote_branch
+  duplicate_key_fields:
+    - repository
+    - branch
+    - expected_remote_head
+  duplicate_handling: idempotent
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+  nodes:
+    - node_github_git_credential_effect
+    - node_work_ledger_reader_effect
+    - node_ticket_contract_prerequisite_effect
+
+metadata:
+  transport_type: kafka
+  description: "A lane hands its commits to one node; the node runs every push check and pushes with the writer App credential"
+  author: "OmniNode Team"
+  tags:
+    - "effect"
+    - "github"
+    - "push"
+  related_tickets:
+    - "OMN-26666"

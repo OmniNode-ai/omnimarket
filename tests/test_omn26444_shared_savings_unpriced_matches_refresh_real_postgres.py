@@ -20,13 +20,8 @@ from omnimarket.models.model_metering_summary_refresh_requested import (
     EnumMeteringRefreshReason,
     ModelMeteringSummaryRefreshRequested,
 )
-from omnimarket.nodes.node_metering_summary_compute import (
-    HandlerMeteringSummary,
-    ModelMeteringSummaryRequest,
-    ModelMeteringWindow,
-)
-from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_summary_store_refresh import (
-    refresh_from_store,
+from omnimarket.nodes.node_projection_metering_summary.metering_incremental_refresh import (
+    refresh_incrementally,
 )
 from tests.test_omn17426_savings_aggregate_views_per_tenant import (
     _CONCURRENT_INDEX,
@@ -174,11 +169,15 @@ class _Reads:
 
 
 async def _refresh(tenant: uuid.UUID, conn) -> int:
-    captured: dict = {}
+    captured: list = []
 
-    async def capture(plan):
-        captured["plan"] = plan
-        return {"rows_upserted": 0}
+    async def store_rows(rows):
+        rows = list(rows)
+        captured.extend(rows)
+        return len(rows)
+
+    async def run_blocking(fn, *args):
+        return fn(*args)
 
     req = ModelMeteringSummaryRefreshRequested(
         refresh_id=str(uuid.uuid4()),
@@ -187,26 +186,22 @@ async def _refresh(tenant: uuid.UUID, conn) -> int:
         days=None,
         requested_at=WHEN,
     )
-    result = await refresh_from_store(
-        req, reads_for=lambda _name: _Reads(conn), fold_and_store=capture
+    result = await refresh_incrementally(
+        req,
+        reads_for=lambda _name: _Reads(conn),
+        store_rows=store_rows,
+        run_blocking=run_blocking,
+        full_rebuild_reasons=(_REASON,),
+        chunk_records=1000,
     )
-    if "plan" not in captured:
+    if not captured:
         # A tenant whose every run the refresh leaves out (fixture, experiment) is
         # reported without runs and never folded: its unknown spend is zero.
         assert result["tenants_without_runs"] == [str(tenant)], result
         return 0
-    plan = captured["plan"]
-    return (
-        HandlerMeteringSummary()
-        .handle(
-            ModelMeteringSummaryRequest(
-                window=ModelMeteringWindow(label="all", start=None, end=plan.as_of),
-                records=plan.records,
-                baseline=plan.baseline,
-            )
-        )
-        .runs_unknown_spend
-    )
+    all_rows = [row for row in captured if row.window_kind == "all"]
+    assert len(all_rows) == 1, all_rows
+    return all_rows[0].runs_unknown_spend
 
 
 async def _view_count(conn, tenant: uuid.UUID) -> int:

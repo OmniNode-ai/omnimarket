@@ -1,0 +1,87 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-25565"
+title: "The ledger bus outbox restamps a request refused for the clock guard and retries a refused file, built in omnimarket"
+summary: >-
+  A ledger bus request that waited in the outbox past the host's clock guard is refused, and a refused request had no
+  retry. The change was first written against the frozen private ledger repository (its pull request 1597); the logic
+  now lives in omnimarket as the node node_ledger_outbox_drain_effect and that pull request is closed with a link to this
+  one. The drain sends the stored request bytes first; only a refusal naming the clock guard restamps a stale row
+  (replay time as the stamp, the original in late-replay-of=) and rewrites the cells that cite the old stamp
+  (closes-CLAIM=, closes=, id=, re=); the resend carries the same request id; a request the host already holds is
+  answered duplicate. The drain's retry mode retries the longest-untried refused file first and reports remaining=.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn25565-outbox-drain"
+    statement: "The omnimarket outbox drain restamps a clock-guard refusal under the same request id with every citing cell resolvable, and retries a refused file by one command that reports remaining= and tries the longest-untried file first."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: in omnimarket the outbox drain restamps only a row refused for the clock guard, keeps every cell that cites the old stamp resolvable, and resends under the same request id -- falsifier: a pytest unit test file for the restamp cases (stale row, cited stamps, same request id, advancing clock) that fails at the base commit and passes at the head"
+      - id: "AC2"
+        statement: "AC2: a refused outbox file can be retried by one command that reports remaining= and tries the file not tried for longest first -- falsifier: a pytest unit test of the retry path that fails when the ordering or the remaining count is removed"
+      - id: "AC3"
+        statement: "AC3: the frozen private ledger repository's pull request 1597 is closed with a comment linking the omnimarket pull request, and no line of that logic is added to that repository -- falsifier: onex scm pr-view on that pull request reads state CLOSED and a diff of the omnimarket pull request against that repository shows no added line there"
+evidence_requirements:
+  - kind: "tests"
+    description: "The outbox drain tests pass at the head; at the base commit the node does not exist and the restamp and retry cases cannot even be collected."
+    command: "uv run pytest tests/nodes/node_ledger_outbox_drain_effect -q --no-cov -p no:randomly"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn25565-ac1-restamp"
+    description: "AC1: the restamp cases (stale row sent stored first and restamped only after a clock-guard refusal, a non-clock-guard refusal never restamps, a claim and its terminal and a message and its ack keep their citations, one request id across every replay with an advancing clock, the restamp bound inside the host tolerance, the host validation text, the ledger file left untouched) pass at the head. At the base commit the node does not exist, so every case fails at import."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_ledger_outbox_drain_effect/test_outbox_restamp.py -q --no-cov -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC1"]
+  - id: "dod-omn25565-ac2-retry-refused"
+    description: "AC2: the retry mode tries the refused file not tried for longest first (the file names sort the other way, so removing the ordering fails the case), reports the refused files left as remaining=, leaves the pending queue alone when nothing is refused, and the verb exits 75 while one is left."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_ledger_outbox_drain_effect/test_outbox_retry_refused.py -q --no-cov -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC2"]
+  - id: "dod-omn25565-ac3-no-logic-in-the-frozen-repository"
+    description: "AC3, the part the hosted runner can read: the checked-out tree holds the drain logic in omnimarket and no source file outside src/omnimarket. The closed state of the frozen repository's pull request 1597 and its link comment are read with onex scm pr-view after the pull request is opened and are recorded in a pull request comment that names the head."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_ledger_outbox_drain_effect/test_logic_lives_in_omnimarket.py -q --no-cov -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+    binds_ac: ["AC3"]
+  - id: "dod-omn25565-node-entry"
+    description: "The node runs through its entry point with a publisher from the request, the adapter passes the request id and the lane of the first row, and the node's contract loads."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_ledger_outbox_drain_effect/test_publisher_sender.py tests/nodes/node_ledger_outbox_drain_effect/test_golden_chain_outbox_drain.py -q --no-cov -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn25565-no-delegation-health-row-on-pr-head"
+    description: "A pull request head carries no delegation-health row: the caller workflow runs on schedule and push to dev only. The old head ran it on pull_request and merge_group, so its red row held the branch; the merged head fails the old file and passes the new."
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_delegation_health_caller_no_pr_row_omn25565.py -q --no-cov -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn25565-deploy-outbox-drain-probe"
+    description: "Deploy probe. GitHub serves the outbox drain handler at the checked-out HEAD with the clock-guard restamp and the retry ordering. It fails at the merge base, which has no such handler, and needs only GitHub access and Python on the hosted runner."
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_ledger_outbox_drain_effect/handlers/handler_outbox_drain.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; source = sys.stdin.read(); assert all(name in source for name in ("clock_guard_refused", "restamp_stale", "oldest_retry_first", "late-replay-of")); print("outbox drain deploy probe: PASS")'
+  - id: "dod-omn25565-integration-proof"
+    description: "Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check: the outbox drain tests run on a lab host through onex lab-work at the checked-out head."
+    source: "manual"
+    execution_scope: local_done_gate
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-25565 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_ledger_outbox_drain_effect -q --no-cov -n 0 -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"

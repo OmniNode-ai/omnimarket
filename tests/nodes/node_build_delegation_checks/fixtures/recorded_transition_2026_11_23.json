@@ -1,0 +1,176 @@
+{
+ "description": "The recorded transition of 2026-11-23 around the C29 and C14 reds, read from the probes' own finished scheduled runs and from the dev branch's first-parent history. No value is imagined.",
+ "sources": {
+  "probe_runs": "Finished scheduled runs of each delegation check's workflow in the cloud repository, read through the SCM gateway (onex scm run-list) on 2026-11-24 between 01:25Z and 01:45Z; run id, finish time and success/failure conclusion only. The C14 runs 45185798731 (success) and 45196274344 (failure) were re-read by the building lane; the other checks' runs were read by the same gateway in the same session.",
+  "dev_history": "git log origin/dev --first-parent --since=2026-11-23T12:00:00Z --until=2026-11-23T14:30:00Z --format=%H|%cI|%s on the omnimarket canonical clone",
+  "builds": "A build is a dev head commit of that history. The deploy agent's own build record is not readable from a lane, so every first-parent commit from 12:34Z on is taken as a build and a probe run is read as taken on the newest build whose commit time is at or before the run's finish time."
+ },
+ "dev_log": [
+  "5b1931de8af410783bd81f8e489d218394e79045|2026-11-23T14:25:56Z|OMN-25547: add real-client and shared-topic tests for node_gateway_batch_ingest_effect (#6635)",
+  "f42e0c134e55b105b396bac32b8c32713db88657|2026-11-23T13:28:35Z|OMN-26473: node_tenant_provision_effect creates a tenant, its default plan and its outbox row from a bus command (#6618)",
+  "a2ee434928eb08196683737d5d7defd435f65724|2026-11-23T13:19:12Z|OMN-26490: Refuse an added node whose overlay is not on overlays main or in the store (#6627)",
+  "7bad80860d271f51f834a6b4ca2072e62f39ee4b|2026-11-23T07:16:38-06:00|chore: release omnimarket 0.4.325 (OMN-18595) (#6616)",
+  "831b18bf50ad67f1b91bc1ff926d4ca9c3642e62|2026-11-23T13:02:57Z|OMN-26310: node_dod_verify bounds a merged-PR dispatch so dev stays healthy (#6641)",
+  "c13764f9a0e6901ef41724dcc5160051e6bbd4eb|2026-11-23T12:50:08Z|OMN-26274: smart-test stage 1 decided by one deterministic comparison, selection_stage 1 (#6634)",
+  "130e2ba49752dbca0d203f98b9fa0d27e638d9b1|2026-11-23T12:45:18Z|OMN-26489: refuse a changed node that declares no caller, schedule or tick (#6628)",
+  "3827ab95b927a7e757ae3dbc1ec45249c68bb8a3|2026-11-23T07:41:31-05:00|OMN-26504: the gateway final-status writer receives its topic and event type (#6638)",
+  "af66da71fbcff9b410f10977cf214b56e5d92d5a|2026-11-23T12:40:27Z|OMN-26376: the lab-fill unit's stale or absent inputs print a MISSING line, and the pool snapshot is written first (#6648)",
+  "7f5e3a1a26af4ecdbdc7f3df2e9d169a56aa6020|2026-11-23T12:34:25Z|fix(OMN-26501): the dev roll window gate publishes each released deploy command with the multi-event publish seam unset (#6631)",
+  "ee0479588baf0197f33c35e9ee1bec033834e69a|2026-11-23T12:23:37Z|fix(OMN-25878): add dev_readiness_host to host installer registry units (#6644)",
+  "ac4bd461d0c83bda6e8660a950f16723e075643b|2026-11-23T12:15:52Z|OMN-16176: the census tick accepts --probe, so the daily census unit installs (#6640)",
+  "c7d5f2fe126ee5bd1efde5b7b90e95ada7759657|2026-11-23T12:14:26Z|evidence(OMN-22164): accepted acceptance-criterion bindings (2026-11-23T0745Z) (#6639)"
+ ],
+ "builds": [
+  "7f5e3a1a26af4ecdbdc7f3df2e9d169a56aa6020",
+  "af66da71fbcff9b410f10977cf214b56e5d92d5a",
+  "3827ab95b927a7e757ae3dbc1ec45249c68bb8a3",
+  "130e2ba49752dbca0d203f98b9fa0d27e638d9b1",
+  "c13764f9a0e6901ef41724dcc5160051e6bbd4eb",
+  "831b18bf50ad67f1b91bc1ff926d4ca9c3642e62",
+  "7bad80860d271f51f834a6b4ca2072e62f39ee4b",
+  "a2ee434928eb08196683737d5d7defd435f65724",
+  "f42e0c134e55b105b396bac32b8c32713db88657",
+  "5b1931de8af410783bd81f8e489d218394e79045"
+ ],
+ "runs": {
+  "C11": [
+   {
+    "run_id": "45173613759",
+    "finished_at": "2026-11-23T12:27:00Z",
+    "verdict": "pass"
+   },
+   {
+    "run_id": "45182320601",
+    "finished_at": "2026-11-23T13:16:56Z",
+    "verdict": "pass"
+   },
+   {
+    "run_id": "45192390233",
+    "finished_at": "2026-11-23T14:18:23Z",
+    "verdict": "pass"
+   }
+  ],
+  "C12": [
+   {
+    "run_id": "45175527147",
+    "finished_at": "2026-11-23T12:34:48Z",
+    "verdict": "pass"
+   },
+   {
+    "run_id": "45184387995",
+    "finished_at": "2026-11-23T13:29:54Z",
+    "verdict": "pass"
+   },
+   {
+    "run_id": "45194713356",
+    "finished_at": "2026-11-23T14:29:59Z",
+    "verdict": "pass"
+   }
+  ],
+  "C13": [
+   {
+    "run_id": "45174649419",
+    "finished_at": "2026-11-23T12:30:47Z",
+    "verdict": "pass"
+   },
+   {
+    "run_id": "45183356368",
+    "finished_at": "2026-11-23T13:24:40Z",
+    "verdict": "pass"
+   },
+   {
+    "run_id": "45193589250",
+    "finished_at": "2026-11-23T14:25:11Z",
+    "verdict": "pass"
+   }
+  ],
+  "C14": [
+   {
+    "run_id": "45176536916",
+    "finished_at": "2026-11-23T12:42:41Z",
+    "verdict": "pass"
+   },
+   {
+    "run_id": "45185798731",
+    "finished_at": "2026-11-23T13:39:31Z",
+    "verdict": "pass"
+   },
+   {
+    "run_id": "45196274344",
+    "finished_at": "2026-11-23T14:39:17Z",
+    "verdict": "fail"
+   }
+  ],
+  "C15": [
+   {
+    "run_id": "45186943472",
+    "finished_at": "2026-11-23T13:45:18Z",
+    "verdict": "fail"
+   }
+  ],
+  "C16": [],
+  "C17": [
+   {
+    "run_id": "45175401519",
+    "finished_at": "2026-11-23T12:34:33Z",
+    "verdict": "fail"
+   },
+   {
+    "run_id": "45184223960",
+    "finished_at": "2026-11-23T13:29:21Z",
+    "verdict": "pass"
+   },
+   {
+    "run_id": "45194535600",
+    "finished_at": "2026-11-23T14:29:29Z",
+    "verdict": "pass"
+   }
+  ],
+  "C28": [
+   {
+    "run_id": "45173091046",
+    "finished_at": "2026-11-23T12:19:36Z",
+    "verdict": "fail"
+   },
+   {
+    "run_id": "45181884678",
+    "finished_at": "2026-11-23T13:14:51Z",
+    "verdict": "fail"
+   },
+   {
+    "run_id": "45191990283",
+    "finished_at": "2026-11-23T14:14:53Z",
+    "verdict": "fail"
+   }
+  ],
+  "C29": [
+   {
+    "run_id": "45169848474",
+    "finished_at": "2026-11-23T12:00:04Z",
+    "verdict": "pass"
+   },
+   {
+    "run_id": "45179185106",
+    "finished_at": "2026-11-23T13:00:21Z",
+    "verdict": "pass"
+   },
+   {
+    "run_id": "45189064181",
+    "finished_at": "2026-11-23T14:00:35Z",
+    "verdict": "fail"
+   },
+   {
+    "run_id": "45199819331",
+    "finished_at": "2026-11-23T14:59:53Z",
+    "verdict": "fail"
+   }
+  ],
+  "C30": [
+   {
+    "run_id": "45174406010",
+    "finished_at": "2026-11-23T12:28:46Z",
+    "verdict": "pass"
+   }
+  ]
+ }
+}

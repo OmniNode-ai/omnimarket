@@ -59,6 +59,14 @@
 #                           starts and not changed during it.
 #   record_check_name_prefix the check run that carries a night's published attribution record is named
 #                           <prefix>:<slot date>, on the tested head commit the receipt names for that night.
+#   savings_report_first_pr the pull request that took the stage live: operation report_stage_savings covers
+#                           every pull request merged at or after it. Not a stage target; the report only
+#                           measures the three targets a stage receipt names.
+#   savings_report_workflow the workflow file whose run carries a pull request's selection record artifact.
+#   savings_report_pr_limit most pull requests the report lists from the repository gateway in one read; the
+#                           report refuses, rather than truncates, when the first pull request is not inside.
+#   savings_report_artifact_max_bytes
+#                           largest selection record archive the report fetches (a record is under 1 KiB).
 target_shard_seconds: 571
 max_narrowed_shards: 5
 narrowed_bound_seconds: 1800
@@ -83,3 +91,7 @@ stage_min_compared_changes: 10
 graph_compared_stage: 0
 graph_min_valid_comparisons: 20
 record_check_name_prefix: nightly-attribution
+savings_report_first_pr: 6634
+savings_report_workflow: ci.yml
+savings_report_pr_limit: 300
+savings_report_artifact_max_bytes: 65536

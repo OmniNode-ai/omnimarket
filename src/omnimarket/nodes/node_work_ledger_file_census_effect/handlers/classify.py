@@ -191,6 +191,53 @@ def _patterns(overlay: ModelCensusOverlay) -> tuple[re.Pattern[str], re.Pattern[
     return bare, cited
 
 
+# A line that opens, reads or writes anything is never a name-only line, whatever else it holds.
+_IO_ON_LINE = re.compile(
+    r"\bopen\(|\bread|\bwrite|\bPath\(|\.open\b|\bload|\bsubprocess\b|\bcat\b|\bglob\b|/\s*[A-Za-z_\"']"
+)
+_CONST_DEF = re.compile(
+    r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?::[^=]+)?=\s*[\"'][^\"']*[\"']\s*$"
+)
+
+
+def _name_only_py(
+    lines: dict[int, str], hit_numbers: list[int], overlay: ModelCensusOverlay
+) -> set[int]:
+    """Hit lines of a Python file that only name the ledger: a comparison or membership test of its
+    name, a constant bound to it whose every other use is such a test, or the path variable as a
+    key of a child process's ``env=`` mapping. A line that does any I/O is never one of them.
+    """
+    path_vars = "|".join(re.escape(v) for v in overlay.path_variables)
+    env_key = re.compile(rf"\benv\s*=\s*\{{\s*[\"'](?:{path_vars})[\"']\s*:")
+    compare = re.compile(
+        r"(?:==|!=)\s*[\"']|[\"']\s*(?:==|!=)|\bin\s*[\(\[\{]|\bnot\s+in\b"
+    )
+    named: set[int] = set()
+    for number in hit_numbers:
+        line = lines[number]
+        if _IO_ON_LINE.search(line) or re.search(r"\bfor\b", line):
+            continue
+        if env_key.search(line):
+            named.add(number)
+            continue
+        match = _CONST_DEF.match(line)
+        if match is not None:
+            ident = re.compile(
+                rf"(?<![A-Za-z0-9_.]){re.escape(match.group(1))}(?![A-Za-z0-9_])"
+            )
+            uses = [
+                n for n, other in lines.items() if n != number and ident.search(other)
+            ]
+            if all(
+                not _IO_ON_LINE.search(lines[n]) and compare.search(lines[n])
+                for n in uses
+            ):
+                named.add(number)
+        elif compare.search(line) and not re.search(r"\bin\s*[\(\[\{]\s*$", line):
+            named.add(number)
+    return named
+
+
 def executable_hits(
     path: str, text: str, overlay: ModelCensusOverlay
 ) -> tuple[ModelCensusHit, ...]:
@@ -199,9 +246,13 @@ def executable_hits(
     bare, cited = _patterns(overlay)
     writers = [re.compile(marker) for marker in overlay.writer_markers]
     hits: list[ModelCensusHit] = []
-    for number, line in code_lines(path, text, overlay).items():
-        remaining = cited.sub(" ", line)
-        if not bare.search(remaining):
+    lines = code_lines(path, text, overlay)
+    hit_numbers = [n for n, line in lines.items() if bare.search(cited.sub(" ", line))]
+    skip = (
+        _name_only_py(lines, hit_numbers, overlay) if _suffix(path) == ".py" else set()
+    )
+    for number, line in lines.items():
+        if number not in hit_numbers or number in skip:
             continue
         kind = (
             EnumCensusKind.WRITER

@@ -273,6 +273,7 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_stale_inference_
 from omnimarket.nodes.node_delegation_orchestrator.quality_bar_authority import (
     RequiredBarAuthority,
     RequiredBarAuthorityError,
+    checks_in_force_under_response_contract,
     is_quality_accepted,
     resolve_required_bar_authority,
     with_executed_check_verdict,
@@ -286,6 +287,7 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     NO_HIGHER_TIER_REASON_TOKEN,
     describe_no_higher_tier_available,
+    first_eligible_tier,
     is_free_tier,
     lead_backend_refs,
     next_eligible_tier,
@@ -306,6 +308,7 @@ from omnimarket.pricing import (
     get_manifest_version_int,
     recompute_actual_cost_and_savings,
 )
+from omnimarket.routing.tenant_overlay_resolver import HOUSE_OVERLAY_COST_TIER
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
 # A request id or byte count containing 429 was misread as a rate limit.
@@ -883,6 +886,12 @@ def _finish_reason_of_failed_call(
     return None
 
 
+# The code ``CredentialUnresolvedError`` (node_llm_delegation_call_effect) leads
+# its message with; spelled here because a node does not import another node's
+# handler.
+_CREDENTIAL_UNRESOLVED_ERROR_CODE = "ONEX_MARKET_EFFECT_CREDENTIAL_UNRESOLVED"
+
+
 def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureClass:
     """Classify a retryable inference error into a failure class for the escalation
     event (OMN-13140). The classification is derived from the error text the
@@ -893,6 +902,13 @@ def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureC
     if provider_class is not None:
         return provider_class
     normalized = error_message.lower()
+    # OMN-25827: the inference effect refused the call locally because no
+    # credential resolved for the route (``CredentialUnresolvedError``). No
+    # provider answered, so this is never a rejected credential; its sentence
+    # names the "Authorization header" and so is matched before every marker
+    # below.
+    if _CREDENTIAL_UNRESOLVED_ERROR_CODE.lower() in normalized:
+        return EnumDelegationFailureClass.PROVIDER_CREDENTIAL_MISSING
     # OMN-20157: a typed provider refusal about the account or the model leads
     # its message with the class value (``describe_provider_refusal``), and is
     # matched before every generic marker below, since a billing or not-found
@@ -932,7 +948,7 @@ def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureC
         return EnumDelegationFailureClass.TIMEOUT
     if "rate limit" in normalized or _HTTP_429_TOKEN_PATTERN.search(normalized):
         return EnumDelegationFailureClass.RATE_LIMITED
-    if "401" in normalized or "unauthorized" in normalized or "auth" in normalized:
+    if "401" in normalized or "unauthorized" in normalized:
         return EnumDelegationFailureClass.PROVIDER_AUTH_FAILED
     if "unavailable" in normalized or "connection" in normalized or "503" in normalized:
         return EnumDelegationFailureClass.MODEL_UNAVAILABLE
@@ -1195,7 +1211,9 @@ def expected_credential_source_for(
 
     The tenant-overlay TIER decides first, before the reference is consulted at
     all. A decision resolved from a tenant overlay row is a customer route
-    whether or not it still carries a usable reference, and a route whose
+    whether or not it still carries a usable reference (the house tenant's own
+    row, stamped ``house_overlay`` by the reducer, is the one exception and is
+    read by its reference like a platform rung), and a route whose
     reference has already gone missing is exactly the case that must not read as
     an auth-free backend. Keying on the reference alone would classify that
     ``NONE`` and license the headerless call this exists to refuse.
@@ -1211,7 +1229,12 @@ def expected_credential_source_for(
     credential is correct, and saying so positively is what distinguishes it
     from a producer that predates this field and makes no claim.
     """
-    if (decision.tier_name or "").strip() == TENANT_OVERLAY_TIER_NAME:
+    # OMN-26365: the house tenant's own overlay row is not a customer route; the
+    # reducer stamps its owner as ``cost_tier`` and it falls to the reference check.
+    if (
+        (decision.tier_name or "").strip() == TENANT_OVERLAY_TIER_NAME
+        and decision.cost_tier != HOUSE_OVERLAY_COST_TIER
+    ):
         return EnumCredentialSource.CUSTOMER_KEY
     ref = (decision.api_key_ref or "").strip()
     if not ref:
@@ -1341,6 +1364,25 @@ def _gate_result_with_output_refusal(
         workflow.output_refusal,
         raw_content=workflow.gate_content_override or "",
     )
+
+
+_UNSET_REQUEST_MAX_TOKENS: Final[int] = int(
+    ModelDelegationRequest.model_fields["max_tokens"].default
+)
+
+
+def _provider_max_tokens(request_max_tokens: int, backend_ceiling: int) -> int:
+    """The output limit the provider call carries.
+
+    The routing decision's contract-declared ceiling (cloud-glm: 65536) is the
+    bound. A request limit below the request model's own default is a deliberate cut by the
+    caller (a job payload asking for 3 tokens) and is passed through, never
+    above the ceiling. A request at or above that default is the unset value and posts the
+    ceiling, as OMN-13345 requires.
+    """
+    if request_max_tokens < _UNSET_REQUEST_MAX_TOKENS:
+        return min(request_max_tokens, backend_ceiling)
+    return backend_ceiling
 
 
 def _build_model_inference_intent(
@@ -1632,7 +1674,9 @@ def _evaluate_compliance(
             # DELEGATION_MAX_TOKENS_HARD_LIMIT default and would truncate cloud
             # GLM (finish_reason=length), tanking the quality gate. Same defect
             # class as OMN-13342/#1282 (generation path).
-            max_tokens=workflow.routing_decision.max_tokens,
+            max_tokens=_provider_max_tokens(
+                workflow.request.max_tokens, workflow.routing_decision.max_tokens
+            ),
             temperature=temperature,
             timeout_seconds=_inference_timeout_seconds(workflow),
             correlation_id=workflow.correlation_id,
@@ -2521,6 +2565,20 @@ class DelegationWorkflowState:
     tenant_id: str | None = None
 
 
+def _is_house_overlay_route(workflow: DelegationWorkflowState) -> bool:
+    """Whether the route the workflow is on is the house tenant's own overlay row.
+
+    OMN-25827. A customer's overlay route has no lawful successor (INV-068); the
+    house tenant's row is one rung of the platform chain and has one.
+    """
+    decision = workflow.routing_decision
+    return (
+        decision is not None
+        and (decision.tier_name or "").strip() == TENANT_OVERLAY_TIER_NAME
+        and decision.cost_tier == HOUSE_OVERLAY_COST_TIER
+    )
+
+
 def _routing_prompt(workflow: DelegationWorkflowState) -> str:
     """The prompt every tier and sibling resolution of ``workflow`` routes on.
 
@@ -2779,14 +2837,25 @@ class HandlerDelegationWorkflow:
             # OMN-20154: a backend whose provider quota key is blocked is
             # skipped exactly like one that already failed in this workflow.
             skip_refs = excluded_backend_refs | self._quota_blocked_refs(workflow)
-            next_tier = next_eligible_tier(
-                workflow.current_tier_name,
-                excluded_tiers,
-                task_type=task_type,
-                excluded_backend_refs=skip_refs,
-                correlation_id=workflow.correlation_id,
-                prompt=_routing_prompt(workflow),
-            )
+            if _is_house_overlay_route(workflow) and task_type is not None:
+                # OMN-25827: ``tenant_overlay`` is not a rung of the platform
+                # ladder, so walking on from it finds nothing and the run ended
+                # on the one house backend. A failed house route falls back to
+                # the ladder's first rung.
+                next_tier = first_eligible_tier(
+                    task_type,
+                    correlation_id=workflow.correlation_id,
+                    prompt=_routing_prompt(workflow),
+                )
+            else:
+                next_tier = next_eligible_tier(
+                    workflow.current_tier_name,
+                    excluded_tiers,
+                    task_type=task_type,
+                    excluded_backend_refs=skip_refs,
+                    correlation_id=workflow.correlation_id,
+                    prompt=_routing_prompt(workflow),
+                )
             if next_tier is None:
                 no_higher_tier_reason = (
                     describe_no_higher_tier_available(
@@ -3098,7 +3167,9 @@ class HandlerDelegationWorkflow:
                 # DELEGATION_MAX_TOKENS_HARD_LIMIT default and truncates cloud
                 # GLM (finish_reason=length). Same defect class as
                 # OMN-13342/#1282 (generation path).
-                max_tokens=decision.max_tokens,
+                max_tokens=_provider_max_tokens(
+                    workflow.request.max_tokens, decision.max_tokens
+                ),
                 temperature=temperature,
                 timeout_seconds=_inference_timeout_seconds(workflow),
                 correlation_id=cid,
@@ -4378,12 +4449,13 @@ class HandlerDelegationWorkflow:
 
         # OMN-21077: a code answer the gate passed with no executed test run is
         # refused here exactly as the gate refuses it, before anything decides.
-        # A response contract replaces the class DoD at the gate (OMN-15193), so
-        # the check set in force is then empty and the schema alone decides.
-        declared_deterministic = (
-            ()
-            if workflow.effective_response_contract is not None
-            else workflow.routing_decision.dod_deterministic
+        # A response contract replaces the class DoD at the gate (OMN-15193) for
+        # a class not accepted by executed tests. For a code class it adds to
+        # the executed checks and never empties them (OMN-26656).
+        declared_deterministic = checks_in_force_under_response_contract(
+            workflow.routing_decision.dod_deterministic,
+            required_bar_authority,
+            response_contract_governed=workflow.effective_response_contract is not None,
         )
         result = with_executed_check_verdict(
             result,

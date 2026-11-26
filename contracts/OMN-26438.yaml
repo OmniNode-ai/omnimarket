@@ -13,10 +13,19 @@ requirements:
     statement: 'AC1: a schedule entry or a producer of the command topic is declared in the contract of node_stall_responder_compute -- falsifier: uv run pytest tests/nodes/node_stall_responder_compute -q with a contract test that fails when no trigger is declared'
   - id: AC2
     statement: 'AC2: a producer or schedule of the freeze command of node_review_replay_set_effect is declared in its contract -- falsifier: uv run pytest tests/nodes -q -k review_replay_set with a contract test that fails when no trigger is declared'
+- id: req-omn26438-topic-reaper-caller
+  statement: The merged topic reaper node has a declared caller that runs it on the runtime tick as a dry run, and the report of lane proof3-3-1210 names the gap this closes.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: a test built from the real contracts fails at the merge base and passes at the pull request head: node_topic_reaper_compute names a caller that exists, and the caller subscribes to the runtime tick, declares its schedule and calls the reaper with the broker observation and an injected clock -- falsifier: the test passes at the merge base'
+  - id: AC5
+    statement: 'AC5: the caller never deletes: the reaper is handed a policy with enforce false whatever the overlay says, and the new code names no delete effect -- falsifier: grep of the new code finds node_broker_topic_delete_effect'
+  - id: AC6
+    statement: 'AC6: one reaper run line per run names the flagged and deletable counts, and REAPER_POLICY_MISSING when the overlay holds no policy -- falsifier: the dev runtime log read after the build holds zero lines for the node'
 evidence_requirements:
 - kind: tests
   description: The trigger contract tests of both nodes pass.
-  command: uv run pytest tests/nodes/node_stall_responder_compute tests/nodes/node_review_replay_set_effect -q
+  command: uv run pytest tests/nodes/node_stall_responder_compute tests/nodes/node_review_replay_set_effect tests/nodes/node_topic_reaper_scheduled_effect -q
 emergency_bypass:
   enabled: false
   justification: ''
@@ -38,10 +47,41 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes -q --no-cov -k review_replay_set
+- id: dod-omn26438-reaper-ac1
+  description: The topic reaper caller tests, built from the real contracts of node_topic_reaper_compute and node_topic_reaper_scheduled_effect, pass at the head; at the merge base the node does not exist and all nine fail.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_topic_reaper_scheduled_effect -q --no-cov
+- id: dod-omn26438-reaper-ac2
+  description: 'The never-delete tests pass: the reaper receives enforce false from an enforcing overlay, the run line names no delete, and the source of the caller and its import closure hold no delete effect.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_topic_reaper_scheduled_effect -q --no-cov -k "never or dry_run"
+- id: dod-omn26438-reaper-ac3
+  description: The run-line tests pass (one line per due tick, REAPER_POLICY_MISSING with no overlay and no broker read). The line in the dev runtime log is read after a dev build carries the node; that read is not run by hosted CI.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_topic_reaper_scheduled_effect -q --no-cov -k "logs or missing or once_per_interval"
+- id: dod-omn26438-reaper-deploy
+  description: 'Deploy probe the hosted runner can run: the caller contract at the checked-out commit on GitHub subscribes to the runtime tick; the node does not exist at the merge base, so the probe fails there.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_topic_reaper_scheduled_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "topic_reaper.scheduled_tick" > /dev/null'
+    cwd: .
 - id: dod-omn26438-integration-proof
   description: Run both nodes' trigger tests on a lab host at the pushed head. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
   source: manual
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26438 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_stall_responder_compute tests/nodes/node_review_replay_set_effect -q --no-cov
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26438 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_stall_responder_compute tests/nodes/node_review_replay_set_effect tests/nodes/node_topic_reaper_scheduled_effect -q --no-cov

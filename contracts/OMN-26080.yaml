@@ -1,0 +1,110 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: OMN-26080
+title: prove 5 merged L0 changes running on h201 (batch 1700-L0-c)
+summary: Record dev execution and the exact trigger gaps, wire the landing snapshot liveness reader and schedule the container restart probe.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched: []
+requirements:
+  - id: req-runtime-trigger-evidence
+    statement: Read the declared triggers and collect attributable evidence from the h201 dev runtime.
+    acceptance:
+      - id: AC1
+        statement: >-
+          AC1: one STATUS row per change on the rolling ledger reads kv pr=repo#n installed=host:revision observed=what ran read_at=UTC, or blocked=access or owner, or ci-only=contract file and reason -- falsifier: the authoritative ledger query finds no qualifying STATUS row for omnimarket#6298
+      - id: AC2
+        statement: >-
+          AC2: each change reads running where it belongs (a dev log run line with its time), or names the trigger to declare with its contract file, or is CI-ONLY with reason -- falsifier: a STATUS row carries none of an observed= cell, a named trigger or a CI-ONLY reason
+      - id: AC3
+        statement: >-
+          AC3: the shared dev runtime was not restarted by the lane and no host file, unit or plist was edited by hand -- falsifier: a branch install registers restart: true, or a STATUS row cites no installer receipt
+evidence_requirements:
+  - kind: tests
+    description: The exact-head liveness caller and optional runtime restart probe are exercised in focused tests.
+    command: uv run --frozen pytest tests/nodes/node_pr_landing_snapshot_effect/test_snapshot_real_backend.py tests/nodes/node_lab_alarm_scheduled_effect/test_golden_chain_lab_alarm_scheduled.py -q -n 0 --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26080-ac1-disposition-check
+    description: Hosted controls require one attributed STATUS disposition per PR and reject missing or unrelated rows. The live ledger read runs at the local Done gate.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/contracts/test_omn26080_contract_evidence.py::test_status_dispositions_are_attributed_and_complete -q -n 0 --no-cov -p no:randomly
+        cwd: .
+  - id: dod-omn26080-ac2-trigger-seams
+    description: The snapshot publishes the liveness fact for the checked-out head and the tick publishes the optional restart probe run event. Live execution and remaining trigger gaps are recorded in the ledger.
+    binds_ac: [AC1, AC2, AC3]
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_pr_landing_snapshot_effect/test_snapshot_real_backend.py::test_runtime_reads_liveness_at_the_snapshot_pr_head -q -n 0 --no-cov -p no:randomly
+        cwd: .
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_lab_alarm_scheduled_effect/test_golden_chain_lab_alarm_scheduled.py::test_runtime_tick_publishes_lag_and_restart_probe_events -q -n 0 --no-cov -p no:randomly
+        cwd: .
+  - id: dod-omn26080-ac3-install-receipt-check
+    description: Hosted controls require zero lane restarts and host edits and a branch installer receipt with restart disabled. The live closeout and branch receipt run at the local Done gate.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/contracts/test_omn26080_contract_evidence.py::test_branch_install_evidence_requires_a_receipt_and_restart_disabled -q -n 0 --no-cov -p no:randomly
+        cwd: .
+  - id: dod-omn26080-integration-proof
+    description: On h201 the scheduled restart job reads at least one container from the declared live source after the overlay is installed. Hosted runners cannot access h201.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --host h201
+          --lane dod-integration-proof-26080 --kind test --
+          bash -o pipefail -c 'docker logs --since 15m omninode-runtime 2>&1 |
+          grep -E " scheduled container_restarts probe outcome=(ok|alarm) readings=[1-9][0-9]* correlation_id="'
+        cwd: .
+  - id: dod-omn26080-live-ledger-evidence
+    description: Read the authoritative ledger over the dev bus for the batch dispositions, terminal counters and no-restart branch installer receipt. This stays red until the installer receipt is recorded.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          bash -o pipefail -c 'onex ledger query --query rows --ticket OMN-26080
+          --since 2026-11-19T19:57:16Z --kind STATUS --kind TERMINAL --limit 100 |
+          uv run --frozen python tests/contracts/test_omn26080_contract_evidence.py'
+        cwd: .
+  - id: dod-omn26080-deploy-overlay-smoke
+    description: In a disposable hosted container, validate the deployment settings with the same Python models the snapshot and scheduler load. The previous models refuse the new keys.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |
+          docker run --rm -i --mount "type=bind,source=$PWD,target=/checkout,readonly" \
+            --workdir /checkout -e PYTHONPATH=/checkout/src -e PYTHONDONTWRITEBYTECODE=1 \
+            python:3.12-slim sh -ec 'python -m pip install --disable-pip-version-check --quiet pydantic==2.13.5 && python -' <<'PY'
+          from runpy import run_path
+
+          root = "src/omnimarket/nodes"
+          snapshot = run_path(f"{root}/node_pr_landing_snapshot_effect/models/model_snapshot_overlay.py")["ModelSnapshotOverlay"]
+          assert snapshot(
+              backend="inmemory", record_topic="record", failed_topic="failed",
+              floor_piece=9, read_liveness=True,
+          ).read_liveness
+          schedule = run_path(f"{root}/node_lab_alarm_scheduled_effect/models/model_lab_alarm_schedule_overlay.py")["ModelLabAlarmScheduleOverlay"]
+          declaration = schedule(
+              job_id="lab_alarm", run_interval_seconds=300, grace_seconds=120,
+              alarm_overlay_id="node_lab_alarm_runtime",
+              container_restarts_probe={
+                  "job_id": "lab_alarm_container_restarts",
+                  "run_interval_seconds": 60,
+                  "grace_seconds": 30,
+              },
+          )
+          assert declaration.container_restarts_probe.job_id == "lab_alarm_container_restarts"
+          PY
+        cwd: .

@@ -7,7 +7,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
@@ -19,6 +19,7 @@ from omnimarket.handlers.handler_savings_priced_models_fill import (
     refresh_shared_priced_models,
 )
 from omnimarket.models.model_metering_summary_refresh_requested import (
+    EnumMeteringRefreshReason,
     ModelMeteringSummaryRefreshRequested,
 )
 from omnimarket.models.model_projection_request import ModelProjectionRequest
@@ -28,10 +29,12 @@ from omnimarket.nodes.node_projection_metering_summary import (
 )
 from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_summary_store_refresh import (
     ProtocolMeteringStoreReads,
-    refresh_from_store,
 )
 from omnimarket.nodes.node_projection_metering_summary.handlers.handler_projection_metering_summary import (
     HandlerProjectionMeteringSummary,
+)
+from omnimarket.nodes.node_projection_metering_summary.metering_incremental_refresh import (
+    refresh_incrementally,
 )
 from omnimarket.nodes.node_projection_metering_summary.metering_refresh_coalescer import (
     MeteringRefreshCoalescer,
@@ -86,6 +89,29 @@ def coalesce_default_seconds() -> int:
     )
 
 
+@lru_cache(maxsize=1)
+def full_rebuild_reasons() -> frozenset[EnumMeteringRefreshReason]:
+    """The refresh reasons that fold every stored run, as the contract names them (OMN-21288)."""
+    contract = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
+    return frozenset(
+        EnumMeteringRefreshReason(reason)
+        for reason in contract["config"]["metering_summary"]["incremental_refresh"][
+            "full_rebuild_reasons"
+        ]
+    )
+
+
+@lru_cache(maxsize=1)
+def fold_chunk_records() -> int:
+    """How many runs one worker-thread step of a refresh folds, as the contract names it (OMN-21288)."""
+    contract = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
+    return int(
+        contract["config"]["metering_summary"]["incremental_refresh"][
+            "fold_chunk_records"
+        ]
+    )
+
+
 def _utc_now() -> datetime:
     return datetime.now(UTC)
 
@@ -116,6 +142,9 @@ class MeteringSummaryProjectionWriter(BaseProjectionRunner):
     _coalescer: MeteringRefreshCoalescer | None = None
     _coalescer_lock = threading.Lock()
     _clock: Callable[[], datetime] | None = None
+    # OMN-21288: where the CPU-bound steps of a refresh run. None reads as a
+    # worker thread (asyncio.to_thread), so the loop awaiting the refresh keeps serving.
+    _run_blocking: Callable[..., Awaitable[Any]] | None = None
 
     def __init__(
         self,
@@ -123,6 +152,7 @@ class MeteringSummaryProjectionWriter(BaseProjectionRunner):
         *,
         coalescer: MeteringRefreshCoalescer | None = None,
         clock: Callable[[], datetime] | None = None,
+        run_blocking: Callable[..., Awaitable[Any]] | None = None,
     ) -> None:
         super().__init__()
         path = contract_path or _CONTRACT_PATH
@@ -130,6 +160,12 @@ class MeteringSummaryProjectionWriter(BaseProjectionRunner):
         self._coalescer = coalescer
         if clock is not None:
             self._clock = clock
+        if run_blocking is not None:
+            self._run_blocking = run_blocking
+
+    async def _blocking(self, fn: Callable[..., Any], *args: Any) -> Any:
+        """Run CPU-bound ``fn`` off the loop (OMN-21288)."""
+        return await (self._run_blocking or asyncio.to_thread)(fn, *args)
 
     @property
     def coalescer(self) -> MeteringRefreshCoalescer:
@@ -261,10 +297,13 @@ class MeteringSummaryProjectionWriter(BaseProjectionRunner):
             # fill runs on the writer's own adapter, the same tenant_projection_writer
             # principal migration 102 grants on the table.
             await refresh_shared_priced_models(self.db_for("metering_summary"))
-            result = await refresh_from_store(
+            result = await refresh_incrementally(
                 decision.request,
                 reads_for=self._reads_for,
-                fold_and_store=self._project,
+                store_rows=self._store_rows,
+                run_blocking=self._blocking,
+                full_rebuild_reasons=full_rebuild_reasons(),
+                chunk_records=fold_chunk_records(),
             )
         except BaseException:
             coalescer.rollback(decision)
@@ -283,9 +322,20 @@ class MeteringSummaryProjectionWriter(BaseProjectionRunner):
     async def _project(
         self, request: ModelMeteringSummaryFoldRequest
     ) -> dict[str, Any]:
-        result = HandlerProjectionMeteringSummary().handle(request)
+        result = await self._blocking(
+            HandlerProjectionMeteringSummary().handle, request
+        )
+        count = await self._store_rows(result.rows)
+        return {
+            "rows_upserted": count,
+            "tenant_id": request.tenant_id,
+            "baseline_model": request.baseline_model,
+        }
+
+    async def _store_rows(self, rows: Sequence[ModelMeteringSummaryRow]) -> int:
+        """Upsert the rows under their own tenants; the count the store returned."""
         count = 0
-        for row in result.rows:
+        for row in rows:
             values = row.model_dump(mode="json")
             # OMN-19513: the upsert names tenant_id, so the adapter refuses it
             # without the row's own tenant (OMN-15919). Unbound, every refresh
@@ -302,8 +352,4 @@ class MeteringSummaryProjectionWriter(BaseProjectionRunner):
                 ),
             )
             count += len(returned)
-        return {
-            "rows_upserted": count,
-            "tenant_id": request.tenant_id,
-            "baseline_model": request.baseline_model,
-        }
+        return count

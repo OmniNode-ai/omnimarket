@@ -24,6 +24,11 @@ requirements:
   acceptance:
   - id: AC6
     statement: 'AC6: the ledger-file census ratchet runs as a step of the strict lint job that gates CI Summary, and that step and the ledger-file-census pre-commit hook both pass the ratchet file named in the census overlay. -- falsifier: uv run pytest tests/ci/test_ledger_census_wiring.py -q --no-cov'
+- id: req-omn24445-census-operator-tests
+  statement: The eight operator capture and access mode test files stay cleared of the ledger file name, and the census ratchet holds no row for them.
+  acceptance:
+  - id: AC7
+    statement: 'AC7: the census run over this tree prints no reader or writer hit for any of the eight cleared operator test files, the per-file ratchet table holds no row for them, and the omnimarket ratchet row equals the count of its file rows (a put-back of a reader in one of them fails). -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_group5_operator_tests_omn24445.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
 - kind: tests
   description: The node's tests pass at the pushed head.
@@ -31,6 +36,9 @@ evidence_requirements:
 - kind: tests
   description: The census wiring test passes at the pushed head.
   command: uv run pytest tests/ci/test_ledger_census_wiring.py -q --no-cov
+- kind: tests
+  description: The cleared-operator-tests census test passes at the pushed head.
+  command: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_group5_operator_tests_omn24445.py -q --no-cov -n 0 -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
@@ -106,4 +114,13 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/ci/test_ledger_census_wiring.py -q --no-cov
+    cwd: .
+- id: dod-omn24445-ac7
+  description: The census run prints no hit for the eight cleared operator test files, the ratchet table holds no row for them, and the omnimarket row equals its file-row count; the merge-base control has no such test file and fails.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_group5_operator_tests_omn24445.py -q --no-cov -n 0 -p no:randomly
     cwd: .

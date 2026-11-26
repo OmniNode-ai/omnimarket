@@ -17,7 +17,7 @@ import json
 
 from pydantic import ValidationError
 
-from ..adapters.adapter_harness_runner import HarnessDelegateCaller
+from ..adapters.adapter_harness_runner import HarnessBackendCaller
 from ..models import (
     ModelHarnessFinding,
     ModelHarnessRun,
@@ -94,7 +94,7 @@ class HandlerAgentReviewHarnessRung:
         self._runner = runner
 
     async def handle(self, request: ModelHarnessVoteRequest) -> ModelHarnessVote:
-        runner = self._runner if self._runner is not None else HarnessDelegateCaller()
+        runner = self._runner if self._runner is not None else HarnessBackendCaller()
         run = await runner.run(request.prompt, request.model, request.rung)
         return vote_from_run(request, run)
 

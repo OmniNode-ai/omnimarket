@@ -11,6 +11,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
+from omnimarket.enums.enum_cost_source import EnumCostSource
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 
 
@@ -52,6 +53,8 @@ class ModelLlmDelegationCompletedEvent(BaseModel):
     # Cost provenance
     usage_source: EnumUsageSource
     cost_basis: EnumCostBasis
+    # Whether actual_cost_usd is the provider's reported charge or tokens times a price.
+    cost_source: EnumCostSource = EnumCostSource.ESTIMATED
     pricing_manifest_version: str
     pricing_manifest_hash: str
 

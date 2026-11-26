@@ -6,6 +6,7 @@ from omnimarket.nodes.node_overlay_store_load_effect.handlers.handler_overlay_st
     HandlerOverlayStoreLoad,
     OverlayHomeSource,
     OverlayLoadRefusedError,
+    ProtocolOverlayLive,
     ProtocolOverlaySource,
 )
 
@@ -13,5 +14,6 @@ __all__ = [
     "HandlerOverlayStoreLoad",
     "OverlayHomeSource",
     "OverlayLoadRefusedError",
+    "ProtocolOverlayLive",
     "ProtocolOverlaySource",
 ]

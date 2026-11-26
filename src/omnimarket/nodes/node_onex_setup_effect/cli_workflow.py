@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
@@ -39,6 +40,9 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider import 
 from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
     setup_provider_traits,
 )
+from omnimarket.nodes.node_onex_setup_effect.models.model_setup_shell import (
+    ModelSetupShellConflict,
+)
 
 
 def _credential_key(selection: Mapping[str, object]) -> str:
@@ -71,6 +75,68 @@ def _refuse_a_shared_credential_slot(
                 "choose a provider that does not use this slot."
             )
         owners[slot] = name
+
+
+def shell_conflict_lines(value: object) -> list[str] | None:
+    """Render a shell-safety conflicts evidence value as one plain line per conflict.
+
+    The handler stores this evidence as a JSON string of structured
+    ``ModelSetupShellConflict`` objects (the machine surface, kept verbatim for
+    ``--json``). The human loop renders it here instead of printing the blob. Any
+    value that is not that structured list (malformed JSON, unknown kind, empty,
+    unexpected shape) returns ``None`` so the caller prints it verbatim and never
+    crashes the walk (OMN-26614).
+    """
+    try:
+        parsed = (
+            json.loads(value) if isinstance(value, (str, bytes, bytearray)) else None
+        )
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return None
+    if not isinstance(parsed, list) or not parsed:
+        return None
+    conflicts: list[ModelSetupShellConflict] = []
+    for row in parsed:
+        if not isinstance(row, dict):
+            return None
+        try:
+            conflicts.append(ModelSetupShellConflict.model_validate(row))
+        except Exception:
+            return None
+    rendered: list[str] = []
+    for conflict in conflicts:
+        if conflict.kind == "profile":
+            where = (
+                f"{conflict.location} line {conflict.line}"
+                if conflict.line is not None
+                else conflict.location
+            )
+            remedy = (
+                "--set-aside preserves and disables it when setup runs again."
+                if conflict.recoverable
+                else "resolve it by hand."
+            )
+            rendered.append(
+                f"{where}: {conflict.name} is set by this profile line; {remedy}"
+            )
+        elif conflict.kind == "environment":
+            rendered.append(
+                f"{conflict.location}: {conflict.name} is inherited from the current "
+                "environment; resolve it by hand."
+            )
+        elif conflict.kind == "executable":
+            rendered.append(
+                f"{conflict.location}: another onex executable resolves first on "
+                "PATH; resolve it by hand."
+            )
+        elif conflict.kind == "unsafe-profile":
+            rendered.append(
+                f"{conflict.location}: this profile is not a regular readable file; "
+                "resolve it by hand."
+            )
+        else:
+            return None
+    return rendered
 
 
 def run_workflow_cli(
@@ -303,6 +369,12 @@ def run_workflow_cli(
                 f"[{item.status}] {item.step} ({'changed' if item.changed else 'unchanged'})"
             )
             for label, value in item.evidence.items():
+                if item.step == "shell-safety" and label == "conflicts":
+                    rendered = shell_conflict_lines(value)
+                    if rendered is not None:
+                        for line in rendered:
+                            click.echo(f"  {line}")
+                        continue
                 click.echo(f"  {label}: {value}")
             for receipt in item.receipts:
                 click.echo(

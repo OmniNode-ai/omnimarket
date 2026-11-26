@@ -79,12 +79,12 @@ node_scoped_modules:
 # set plus the tests that read the files: a test whose text spells the file or enumerates its
 # directory (through an imported helper too), and the
 # readers data_reader_overrides names (data glob -> test files) for a reader the text cannot show. Any
-# other unmatched file keeps the full escalation. The rule changes what a pull request runs, so it stays
-# off until its stage is entered: selection_stage in the selector's policy.yaml rises one stage at a time,
+# other unmatched file keeps the full escalation. The rule changes what a pull request runs, so it is on
+# only once its stage is entered: selection_stage in the selector's policy.yaml rises one stage at a time,
 # each on a receipt under config/test_selection_stage_receipts/ that
 # tests/ci/test_selection_stage_evidence.py recomputes (stage 1 from one comparison over the recorded set,
-# a later stage from the published nightly records).
-data_only_selection_enabled: false
+# a later stage from the published nightly records). Stage 1 is entered, so this is on.
+data_only_selection_enabled: true
 data_only_globs:
   - contracts/OMN-*.yaml
   - "*.md"
@@ -96,19 +96,61 @@ data_reader_overrides: {}
 # enumerate its directory with glob, rglob or iterdir, the tests that import a helper among those, the tests
 # that import a src/ file naming it, and data_reader_overrides. Adding, changing, renaming and deleting are the
 # same, and a rename or delete looks up the old path. A file with no reader selects the always set only: a path
-# built at run time with no literal part is the nightly's to catch. This is the stage 2 entry, so it stays off
-# until a stage advance turns it on. Off, a fixture keeps the full-suite escalation it had
-# (data_reader_gated_infrastructure_paths); on, a Python file under those paths and every path in
-# test_infrastructure_paths still takes the full suite, a changed uv.lock beside a fixture included.
-data_file_readers_enabled: false
+# built at run time with no literal part is the nightly's to catch. Off, a fixture keeps the full-suite
+# escalation it had (data_reader_gated_infrastructure_paths); on, a Python file under those paths and every
+# path in test_infrastructure_paths still takes the full suite, a changed uv.lock beside a fixture included.
+# On (OMN-24562): test_infrastructure was the reason that stopped most recorded merges (22 of 60 in the stage 0
+# replay, 18 of them pyproject.toml, which the section rule below decides, and the 4 fixture-only merges
+# tests/fixtures/ alone stopped). The replay of those 4 narrows all four with no test that names a changed
+# file left out of the selection; the two merges that also change uv.lock stay full.
+data_file_readers_enabled: true
+# OMN-24562: the rule is on for the fixture tree only. A node's own contract.yaml and a contracts/ file are
+# read by many tests that only name the file kind, so under the wider roots their change selects too much and
+# takes the full suite (narrowed_selection_too_heavy) where it narrows today; those keep their present rules.
 data_reader_roots:
-  - tests/
-  - contracts/
-  - src/omnimarket/nodes/
+  - tests/fixtures/
 data_reader_fixture_roots:
   - tests/fixtures/
 data_reader_gated_infrastructure_paths:
   - tests/fixtures/
+# A pyproject.toml change narrows by section instead of taking the full suite as test infrastructure.
+# The selector compares the file's base and head text key by key (a git source-diff adapter); only a
+# changed key matching pyproject_narrowable_keys narrows, to the tests that read the file plus the closure
+# of the entry points that moved. Any other key, one this list has never seen, an unparseable side, or a
+# uv.lock change beyond the package's own version line keeps the full suite (reason test_infrastructure).
+# project.version narrows beside a lock change only when the lock's sole change is the package's own
+# version line. pyproject_reader_globs are the source files indexed for a read of pyproject.toml (a file
+# that opens it or reads entry-point metadata); the tests that import one, transitively, are readers.
+# The rule is the stage 2 entry of the selection record and is on; it needs the base ref
+# (detect_test_paths --base-ref), and a change with no base ref keeps the full suite. A replay of the 60
+# pinned merges (18 change pyproject.toml, 4 of them with a dependency or a lock change beyond the version
+# line) narrows one pyproject merge and no dependency or lock change; over the 83 merges since #6634 it
+# changes no pull request's selection, because the pyproject merges there also hit another escalation.
+# A changed tests/unit/**/*.py file selects itself, the tests that import it in any folder and the tests
+# that spell its path, instead of the whole tests/unit/ directory; a helper nothing imports or spells, a
+# non-python file and a package marker keep their directory. The replay reads the frozen snapshot's own
+# adjacency, which predates this key, so the stage 0 receipts are unchanged.
+unit_file_selection_enabled: true
+pyproject_section_selection_enabled: true
+pyproject_paths:
+  - pyproject.toml
+pyproject_lock_paths:
+  - uv.lock
+pyproject_narrowable_keys:
+  - project.entry-points.onex.nodes.*
+  - project.version
+  - tool.onex.dashboard_bundle.*
+pyproject_reader_globs:
+  - src/omnimarket/**/*.py
+# Decision (OMN-26487): at or above the policy's file_level_closure_stage the file-level closure runs
+# and the rule above adds its tests to the closure's selection (seeds, option b). It reuses
+# pyproject_narrowable_keys, pyproject_lock_paths (the lock's own version line) and
+# pyproject_reader_globs unchanged, so one allowlist rules both sides of the stage; a section-rule
+# escalation (a key off the allowlist, an unparseable or unread diff, a lock change beyond the version
+# line) takes the full suite whatever else the closure selected. Reason: the closure reads no project
+# file, and the rule that narrows a change at a lower stage must narrow it at a higher one, not widen
+# it to the full suite. full_suite (option c) is the value an absent entry takes.
+closure_stage_pyproject_rule: seeds
 
 # Test infrastructure — any change forces the full suite.
 test_infrastructure_paths:

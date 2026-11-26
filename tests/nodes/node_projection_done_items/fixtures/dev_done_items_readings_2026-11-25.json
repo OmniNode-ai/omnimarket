@@ -1,0 +1,22 @@
+{
+  "ticket": "OMN-26520",
+  "host": "omni-201 dev runtime, read only",
+  "source": "lane ls26520-34400 (report ls26520-34400-2026-11-25T2320Z) and lane ac26520-37200 (ledger FRICTION row 2026-11-25T23:54:37Z)",
+  "health": {
+    "container": "omninode-runtime",
+    "read_at": "2026-11-25T23:01:35Z",
+    "docker_health": "healthy",
+    "failing_streak": 0
+  },
+  "done_items_reads": [
+    {"read_at": "2026-11-25T23:04:41Z", "rows": 136, "max_projected_at": "2026-11-25T22:15:00Z"},
+    {"read_at": "2026-11-25T23:15:43Z", "rows": 136, "max_projected_at": "2026-11-25T22:15:00Z"},
+    {"read_at": "2026-11-25T23:43:00Z", "rows": 139, "max_projected_at": "2026-11-25T23:47:10Z", "note": "read time as given in the close-out brief; it precedes max_projected_at, so treat it as approximate"}
+  ],
+  "ten_minute_window_after_139": {
+    "rows_first": 139,
+    "rows_second": 139,
+    "seconds_apart": 627,
+    "note": "count flat; only projected_at advanced (ledger FRICTION row 2026-11-25T23:54:37Z)"
+  }
+}
