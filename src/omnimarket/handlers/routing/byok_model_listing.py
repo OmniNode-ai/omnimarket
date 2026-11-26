@@ -30,6 +30,7 @@ from omnimarket.handlers.routing import byok_model_discovery as discovery
 from omnimarket.handlers.routing.byok_provider_backends import (
     resolve_byok_provider_backend,
 )
+from omnimarket.handlers.routing.provider_client_headers import client_headers
 from omnimarket.inference.provider_response_error import (
     failure_class_for_status,
     provider_message_from_text,
@@ -374,7 +375,10 @@ def list_byok_models(
             provider=provider, outcome="rejected", message="enter an API key first"
         )
     fetch = get if get is not None else discovery.get_models_json
-    headers = discovery.models_request_headers(backend, secret.strip())
+    headers = {
+        **discovery.models_request_headers(backend, secret.strip()),
+        **client_headers(backend.models_url, None),  # OMN-26688
+    }
     bodies: list[Any] = []
     url: str | None = backend.models_url
     read: set[str] = set()

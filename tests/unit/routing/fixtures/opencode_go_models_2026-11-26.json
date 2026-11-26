@@ -1,0 +1,442 @@
+{
+ "object": "list",
+ "data": [
+  {
+   "id": "deepseek-v4.1-flash",
+   "object": "model",
+   "created": 1795706507,
+   "owned_by": "opencode",
+   "name": "DeepSeek V4.1 Flash 1017",
+   "canonical_id": "deepseek/deepseek-v4.1-flash-1017",
+   "type": "chat",
+   "description": "October 17 update of DeepSeek V4.1 Flash with improved reasoning, coding, agentic tasks, and visual understanding",
+   "family": "deepseek-flash",
+   "open_weights": true,
+   "knowledge": "2025-05",
+   "release_date": "2026-10-17",
+   "last_updated": "2026-10-17",
+   "modalities": {
+    "input": [
+     "text",
+     "image/jpeg",
+     "image/png",
+     "image/gif",
+     "image/webp"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "capabilities": {
+    "tools": {
+     "supported": true
+    },
+    "reasoning": {
+     "supported": true,
+     "effort": [
+      "low",
+      "high",
+      "max"
+     ]
+    },
+    "structured_output": true,
+    "temperature": true,
+    "top_p": true,
+    "top_k": true,
+    "system_updates": true,
+    "effort_updates": false
+   },
+   "limit": {
+    "context": 1000000,
+    "output": 384000
+   },
+   "cost": {
+    "text": {
+     "input": {
+      "price": 0.15,
+      "cache": {
+       "read": 0.003
+      }
+     },
+     "output": {
+      "price": 0.6
+     }
+    },
+    "multipliers": [
+     {
+      "when": {
+       "utc_days": {
+        "in": [
+         "mon",
+         "tue",
+         "wed",
+         "thu",
+         "fri"
+        ]
+       },
+       "any": [
+        {
+         "all": [
+          {
+           "utc_hours": {
+            "gte": "01:00"
+           }
+          },
+          {
+           "utc_hours": {
+            "lt": "04:00"
+           }
+          }
+         ]
+        },
+        {
+         "all": [
+          {
+           "utc_hours": {
+            "gte": "06:00"
+           }
+          },
+          {
+           "utc_hours": {
+            "lt": "10:00"
+           }
+          }
+         ]
+        }
+       ]
+      },
+      "factor": 2
+     }
+    ]
+   },
+   "api": {
+    "chat-completions": {
+     "base_url": "https://opencode.ai/inference/go/openai/v1",
+     "sdk": {
+      "aisdk": "@ai-sdk/openai-compatible",
+      "opencodeai": "@opencode/ai/providers/openai-compatible"
+     },
+     "compatibility": {
+      "reasoning_field": "reasoning_content"
+     },
+     "capabilities": {
+      "tools": {
+       "choice": [
+        "auto",
+        "none",
+        "required",
+        "tool"
+       ],
+       "updates": []
+      }
+     }
+    }
+   },
+   "recommended_api": "chat-completions",
+   "go": {
+    "monthly_usage": {
+     "go": 100,
+     "go-plus": 200,
+     "go-teams": 105
+    },
+    "training": false,
+    "zdr": true,
+    "limited_regions": false,
+    "featured": true
+   }
+  },
+  {
+   "id": "claude-haiku-5-5",
+   "object": "model",
+   "created": 1795706507,
+   "owned_by": "opencode",
+   "name": "Claude Haiku 5.5",
+   "canonical_id": "anthropic/claude-haiku-5-5",
+   "type": "chat",
+   "description": "Fast Claude model for responsive assistance, classification, and lightweight agents",
+   "family": "claude-haiku",
+   "open_weights": false,
+   "knowledge": "2026-06",
+   "release_date": "2026-10-07",
+   "last_updated": "2026-10-07",
+   "modalities": {
+    "input": [
+     "text",
+     "image/jpeg",
+     "image/png",
+     "image/gif",
+     "image/webp",
+     "application/pdf"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "capabilities": {
+    "tools": {
+     "supported": true
+    },
+    "reasoning": {
+     "supported": true,
+     "toggle": true,
+     "effort": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+     ]
+    },
+    "structured_output": true,
+    "temperature": false,
+    "top_p": false,
+    "top_k": false,
+    "system_updates": true,
+    "effort_updates": true
+   },
+   "limit": {
+    "context": 1000000,
+    "output": 128000
+   },
+   "cost": {
+    "text": {
+     "input": {
+      "price": 0.1,
+      "cache": {
+       "read": 0.01,
+       "write": 0.125
+      },
+      "overrides": [
+       {
+        "when": {
+         "context": {
+          "gt": 100000
+         }
+        },
+        "price": 0.5,
+        "cache": {
+         "read": 0.05,
+         "write": 0.625
+        }
+       }
+      ]
+     },
+     "output": {
+      "price": 0.5,
+      "overrides": [
+       {
+        "when": {
+         "context": {
+          "gt": 100000
+         }
+        },
+        "price": 2.5
+       }
+      ]
+     }
+    }
+   },
+   "api": {
+    "messages": {
+     "base_url": "https://opencode.ai/inference/go/anthropic/v1",
+     "sdk": {
+      "aisdk": "@ai-sdk/anthropic",
+      "opencodeai": "@opencode/ai/providers/anthropic"
+     },
+     "capabilities": {
+      "tools": {
+       "strict": true,
+       "choice": [
+        "auto",
+        "none",
+        "required",
+        "tool"
+       ],
+       "search": true,
+       "updates": [
+        "add",
+        "remove",
+        "replace"
+       ]
+      }
+     }
+    }
+   },
+   "recommended_api": "messages",
+   "go": {
+    "monthly_usage": {
+     "go": 15,
+     "go-plus": 60,
+     "go-teams": 20
+    },
+    "training": false,
+    "zdr": false,
+    "limited_regions": false,
+    "featured": true
+   }
+  },
+  {
+   "id": "beam-free",
+   "object": "model",
+   "created": 1795706507,
+   "owned_by": "opencode",
+   "name": "Beam Free",
+   "canonical_id": "reflection/beam-1.0-501b-a23b",
+   "type": "chat",
+   "description": "Sparse mixture-of-experts reasoning model with 23B active parameters for coding and agentic workflows",
+   "family": "beam-free",
+   "open_weights": true,
+   "knowledge": "2026-06-30",
+   "release_date": "2026-10-05",
+   "last_updated": "2026-10-16",
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "text"
+    ]
+   },
+   "capabilities": {
+    "tools": {
+     "supported": true
+    },
+    "reasoning": {
+     "supported": true,
+     "effort": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+     ]
+    },
+    "structured_output": true,
+    "temperature": true,
+    "top_p": true,
+    "top_k": true,
+    "system_updates": false,
+    "effort_updates": false
+   },
+   "limit": {
+    "context": 1048576,
+    "output": 131072
+   },
+   "cost": {
+    "text": {
+     "input": {
+      "price": 0,
+      "cache": {
+       "read": 0
+      }
+     },
+     "output": {
+      "price": 0
+     }
+    }
+   },
+   "api": {
+    "chat-completions": {
+     "base_url": "https://opencode.ai/inference/go/openai/v1",
+     "sdk": {
+      "aisdk": "@ai-sdk/openai-compatible",
+      "opencodeai": "@opencode/ai/providers/openai-compatible"
+     },
+     "compatibility": {
+      "reasoning_field": "reasoning_content"
+     },
+     "capabilities": {
+      "tools": {
+       "strict": true,
+       "choice": [
+        "auto",
+        "none",
+        "required",
+        "tool"
+       ],
+       "updates": []
+      }
+     }
+    }
+   },
+   "recommended_api": "chat-completions",
+   "go": {
+    "monthly_usage": null,
+    "training": false,
+    "zdr": false,
+    "limited_regions": true,
+    "featured": true
+   }
+  },
+  {
+   "id": "text-embedding-3-small",
+   "object": "model",
+   "created": 1795706507,
+   "owned_by": "opencode",
+   "name": "text-embedding-3-small",
+   "type": "embedding",
+   "canonical_id": "openai/text-embedding-3-small",
+   "description": "Small, efficient OpenAI text embedding model",
+   "family": "text-embedding",
+   "open_weights": false,
+   "release_date": "2024-01-25",
+   "last_updated": "2024-01-25",
+   "modalities": {
+    "input": [
+     "text"
+    ],
+    "output": [
+     "embedding"
+    ]
+   },
+   "capabilities": {
+    "tools": {
+     "supported": false
+    },
+    "reasoning": {
+     "supported": false
+    },
+    "temperature": false,
+    "top_p": false,
+    "top_k": false,
+    "system_updates": false,
+    "effort_updates": false
+   },
+   "limit": {
+    "context": 8192,
+    "output": 0
+   },
+   "cost": {
+    "text": {
+     "input": {
+      "price": 0.02
+     },
+     "output": {
+      "price": 0
+     }
+    }
+   },
+   "api": {
+    "embeddings": {
+     "base_url": "https://opencode.ai/inference/go/openai/v1",
+     "sdk": {
+      "aisdk": "@ai-sdk/openai",
+      "opencodeai": "@opencode/ai/providers/openai/embeddings"
+     }
+    }
+   },
+   "recommended_api": "embeddings",
+   "go": {
+    "monthly_usage": {
+     "go": 10,
+     "go-plus": 40,
+     "go-teams": 15
+    },
+    "training": false,
+    "zdr": false,
+    "limited_regions": false,
+    "featured": false
+   }
+  }
+ ]
+}

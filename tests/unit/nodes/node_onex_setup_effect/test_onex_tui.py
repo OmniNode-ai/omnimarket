@@ -1054,6 +1054,7 @@ def test_config_providers_come_from_the_traits_file_in_its_order() -> None:
             "hopscotch",
             # Operator 2026-11-26, from its own docs (OMN-26688).
             "opencode",
+            "opencode-go",
             "local",
         ]
         if provider_turned_off("hopscotch") is None or name != "hopscotch"

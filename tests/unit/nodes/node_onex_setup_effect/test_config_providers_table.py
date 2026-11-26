@@ -594,6 +594,7 @@ async def test_the_tui_reads_only_what_official_docs_wrote() -> None:
             "local",
             "openai",
             "opencode",  # operator 2026-11-26, from its own docs
+            "opencode-go",  # operator 2026-11-26: "add both"
             "openrouter",
             "reflection",
         }

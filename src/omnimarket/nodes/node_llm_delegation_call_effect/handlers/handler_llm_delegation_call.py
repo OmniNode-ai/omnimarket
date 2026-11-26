@@ -71,6 +71,7 @@ from omnimarket.handlers.routing.byok_provider_backends import (
     resolve_byok_backend_by_endpoint,
     token_limit_field_for_endpoint,
 )
+from omnimarket.handlers.routing.provider_client_headers import client_headers
 from omnimarket.handlers.routing.routing_tiers_path import (
     load_delegation_routing_overlay,
 )
@@ -1915,7 +1916,12 @@ class HandlerLlmDelegationCall:
             return anthropic_messages.native_headers(
                 request, None if api_key is None else api_key.get_secret_value()
             ), source
-        headers = {**request.extra_headers, **request.provider_headers}
+        headers = {
+            **request.extra_headers,
+            **request.provider_headers,
+            # OMN-26688: what the provider's docs ask every client to send.
+            **client_headers(request.endpoint_ref, request.correlation_id),
+        }
         if api_key is not None:
             headers["Authorization"] = f"Bearer {api_key.get_secret_value()}"
         return headers, source

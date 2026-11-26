@@ -54,14 +54,22 @@ picker:
   # a key is made in the Console at opencode.ai/console (Account, Personal API
   # keys) and shown once; the base URL is opencode.ai/inference with
   # /openai/v1/chat/completions. Free-tier models answer only OpenCode itself.
-  # OpenCode Go is not offered here: its docs ask every client for an
-  # x-opencode-session header onex does not send. OMN-26688, operator
-  # 2026-11-26: "add https://opencode.ai/ as a provider".
+  # OMN-26688, operator 2026-11-26: "add https://opencode.ai/ as a provider".
   - provider: opencode
     label: OpenCode
     hint: >-
       Create a key in the OpenCode Console at opencode.ai/console: Account, then
       Personal API keys. Paid models only; the free ones answer only OpenCode.
+  # opencode.ai/docs/go (read 2026-11-26): a subscription ($10, $40, or $20 a
+  # member a month); subscribe, then copy the Console key. The base URL is
+  # opencode.ai/inference/go; every request carries the client's own user agent
+  # and an x-opencode-session id (provider_client_headers.py); a key with no Go
+  # subscription is refused. OMN-26688, operator 2026-11-26: "add both".
+  - provider: opencode-go
+    label: OpenCode Go
+    hint: >-
+      Needs a Go subscription: subscribe at opencode.ai/console, then create a
+      key there under Account, Personal API keys.
   - provider: local
     label: Local Model
     hint: >-

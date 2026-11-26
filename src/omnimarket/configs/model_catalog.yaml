@@ -60,6 +60,8 @@ provider_ids:
   hopscotch: hopscotch
   # OpenCode (pay as you go), offered by /config from its own docs (OMN-26688).
   opencode: opencode
+  # OpenCode Go (subscription), offered by /config from its own docs (OMN-26688).
+  opencode-go: opencode-go
 
 # Capability shown in the table -> how models.dev states it. `field`: a boolean
 # on the model; `input`: a value in modalities.input; `cost`: a priced field

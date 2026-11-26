@@ -13,8 +13,8 @@ Failure modes, each with a test:
      the Local Model (the server the user runs stays last).
   O2 the key window for it does not say where the key goes or where to make
      one, or opening it runs a command.
-  O3 OpenCode Go is offered too: its docs ask every client for a session id
-     header onex does not send, so it is left out of /config.
+  O3 OpenCode Go is folded into it rather than offered as its own choice
+     (operator 2026-11-26: "add both").
 """
 
 from __future__ import annotations
@@ -66,6 +66,7 @@ async def test_its_key_window_says_where_the_key_goes_and_where_to_make_one() ->
     assert seen == []
 
 
-def test_opencode_go_is_not_offered() -> None:
-    """O3."""
-    assert "opencode-go" not in {e.provider for e in cli_tui._picker()}
+def test_opencode_go_is_its_own_choice() -> None:
+    """O3: Go is offered beside it, as its own provider (test_opencode_go)."""
+    choices = [e.provider for e in cli_tui._picker()]
+    assert choices.index("opencode") < choices.index("opencode-go")
