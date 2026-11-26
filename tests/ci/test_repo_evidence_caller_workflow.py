@@ -983,3 +983,23 @@ def test_omn18079_contract_binds_its_own_item_to_a_declared_criterion() -> None:
     assert bound, "dod-answering-model-receipt binds no criterion"
     assert set(bound) <= declared, (bound, declared)
     assert not items["dod-omn18079-integration-proof"].get("binds_ac")
+
+
+def test_omn18079_every_bound_item_runs_the_test_that_fails_at_the_merge_base() -> None:
+    """OMN-18079: the hosted must-fail control refuses a bound item that passes at the merge base.
+
+    The control runs every bound item on the merge base with the head's tests
+    laid over it; an item that still passes there is refused. Only the
+    answering-model test file fails without the change (8 failed in that
+    reproduction). The SEA golden chain and the contract-shape test both pass
+    there, so neither may be a bound item.
+    """
+    path = REPO_ROOT / "contracts" / "OMN-18079.yaml"
+    contract = yaml.load(path.read_text(encoding="utf-8"), Loader=_CONTRACT_LOADER)
+    for item in contract["dod_evidence"]:
+        if not item.get("binds_ac"):
+            continue
+        for check in item["checks"]:
+            assert "tests/test_omn18079_receipt_names_answering_model.py" in str(
+                check.get("check_value")
+            ), (item["id"], check)

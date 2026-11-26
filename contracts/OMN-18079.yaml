@@ -40,22 +40,6 @@ dod_evidence:
       - check_type: "command"
         check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-18079 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_omn18079_receipt_names_answering_model.py -q --no-cov'
         cwd: .
-  - id: "dod-omn18079-evidence-item-shape"
-    description: "The answering-model evidence item is a test_passes check with --no-cov; as it stood (a command check without --no-cov) the shape test fails, and with the change it passes."
-    source: "manual"
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -n 0 -p no:randomly -k omn18079"
-        cwd: .
-  - id: "dod-omn18079-sea-chain-model-named"
-    description: "The SEA acceptance golden chain names the answering model the endpoint reported on its chat completion; with the receipt no longer falling back to the requested model, a response with no model made the projected row read unknown, and with the response naming its model it passes."
-    source: "manual"
-    binds_ac:
-      - AC4
-    checks:
-      - check_type: "test_passes"
-        check_value: "uv run pytest tests/integration/golden_chain/test_sea_acceptance_chain.py -q --no-cov -n 0 -p no:randomly"
-        cwd: .
   - id: "dod-omn18079-generation-id-on-receipt"
     description: "The receipt records the provider's own generation id when it returns one; with none returned the id and the answering model read unknown, never the requested model. Both tests fail on the base head (no such field)."
     source: "manual"
