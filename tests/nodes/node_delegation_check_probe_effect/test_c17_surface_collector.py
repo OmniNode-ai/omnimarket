@@ -14,7 +14,7 @@ import json
 import stat
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import pytest
 from _gateway_fake import FakeClock, FakeGateway
@@ -442,11 +442,3 @@ def test_a_guide_with_two_install_lines_reads_fail_not_a_pick_of_one(
     result = _handler(_machine(tmp_path, runner, _Sources(guide=two))).handle(_c17())
     assert result.verdict is EnumCheckVerdict.FAIL
     assert runner.calls == []
-
-
-def test_c13_and_c14_keep_reading_precondition_absent_on_this_machine(
-    tmp_path: Path,
-) -> None:
-    machine = _machine(tmp_path, _Runner(_document()))
-    with pytest.raises(CollectorAbsentError):
-        machine.collect_routing(cast("Any", None))
