@@ -137,7 +137,10 @@ def partition_stale_holds(
     live: list[ModelWorkLedgerHoldInForce] = []
     stale: list[ModelWorkLedgerHoldInForce] = []
     for hold in holds:
-        is_stale = stale_hold(hold.until, hold.row.row_ts, now, stale_after)
+        # A partly released hold (a scoped RELEASE freed some of its PRs) still stands.
+        is_stale = not hold.freed and stale_hold(
+            hold.until, hold.row.row_ts, now, stale_after
+        )
         (stale if is_stale else live).append(hold)
     return live, stale
 

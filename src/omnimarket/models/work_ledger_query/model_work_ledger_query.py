@@ -226,6 +226,7 @@ class ModelWorkLedgerRowRecord(BaseModel):
     source: str
     projected_at: datetime | None = None
     ledger_seq: int | None = Field(default=None, ge=1)
+    legacy_ordinal: int | None = Field(default=None, ge=1)
     ingested_at: AwareDatetime | None = None
 
 
@@ -256,6 +257,7 @@ class ModelWorkLedgerHoldInForce(BaseModel):
     pr: str | None = None
     surface: str | None = None
     until: str | None = None
+    freed: tuple[str, ...] = ()
     row: ModelWorkLedgerRowRecord
 
 
