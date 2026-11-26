@@ -53,7 +53,7 @@ description: |
   never grounds to change credentials, CODEX_HOME or sandbox permissions.
 
   The Claude harness (harness: claude) runs claude -p on the subscription login in a clean
-  temporary directory at the effort its overlay backend declares. An ANTHROPIC_API_KEY or
+  temporary directory at the effort of its model family (haiku low, sonnet medium, opus high; held in the handler, not on the backend wire model). An ANTHROPIC_API_KEY or
   ANTHROPIC_AUTH_TOKEN in its environment is refused by name (exit_cause credential_refused),
   never launched, and the receipt carries the model the harness reported it ran (OMN-26043).
 

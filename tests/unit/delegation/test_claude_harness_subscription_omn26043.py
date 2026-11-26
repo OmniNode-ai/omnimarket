@@ -71,12 +71,26 @@ def declared(tier: str) -> ModelDelegationBackendConfig:
     return overlay.backend_by_id()[overlay.tier_by_name()[tier].backend_id]
 
 
-def test_overlay_declares_three_claude_tiers_with_model_and_effort() -> None:
-    for tier, (model, effort) in TIERS.items():
+def test_overlay_declares_three_claude_tiers_with_model() -> None:
+    for tier, (model, _effort) in TIERS.items():
         backend = declared(tier)
         assert backend.harness is not None
         assert backend.harness.value == "claude"
-        assert (backend.model_name, backend.effort) == (model, effort)
+        assert backend.model_name == model
+
+
+def test_backend_wire_model_carries_no_effort_field() -> None:
+    """A new key on this wire model is refused by the pinned consumer's extra=forbid decode."""
+    assert "effort" not in ModelDelegationBackendConfig.model_fields
+
+
+@pytest.mark.parametrize("tier", sorted(TIERS))
+async def test_each_tier_runs_at_its_effort(tmp_path: Path, tier: str) -> None:
+    seen = fake_claude(tmp_path)
+    runner = HandlerHarnessProcessRunner(environment=Environment(tmp_path), agents={})
+    await runner.run(declared(tier), "p", 20)
+    args = json.loads(seen.read_text())["argv"]
+    assert args[args.index("--effort") + 1] == TIERS[tier][1]
 
 
 async def test_effort_is_passed_and_the_child_runs_in_a_clean_directory(

@@ -50,6 +50,17 @@ _CREDENTIAL_SUFFIXES = ("_KEY", "_TOKEN", "_PASSWORD")
 # The Claude subscription login is the only credential the ``claude`` harness runs on: an API key or an
 # auth token in the child's environment would bill a key instead (OMN-26043), so each is refused by name.
 _SUBSCRIPTION_REFUSED = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
+# The effort each Claude tier runs at, by model family. Kept out of the backend wire model on purpose: a
+# new key there is refused by the deployed consumers' extra=forbid decode (wire compatibility gate).
+_CLAUDE_TIER_EFFORT = (("haiku", "low"), ("sonnet", "medium"), ("opus", "high"))
+
+
+def _claude_effort(model_name: str | None) -> str | None:
+    """The ``--effort`` for a Claude model name, or ``None`` for a family with no declared tier effort."""
+    name = (model_name or "").lower()
+    return next(
+        (effort for family, effort in _CLAUDE_TIER_EFFORT if family in name), None
+    )
 
 
 def _answering_model(record: dict[str, Any]) -> str | None:
@@ -241,8 +252,9 @@ class HandlerHarnessProcessRunner:
                 wall_seconds=time.monotonic() - started, exit_cause="launch_failed"
             )
         argv = adapter.argv(None, model=backend.model_name)
-        if backend.effort is not None:
-            argv += ["--effort", backend.effort]
+        effort = None if glm else _claude_effort(backend.model_name)
+        if effort is not None:
+            argv += ["--effort", effort]
         with tempfile.TemporaryDirectory(prefix="harness-call-") as cwd:
             try:
                 process = await asyncio.create_subprocess_exec(

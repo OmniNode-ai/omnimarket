@@ -60,7 +60,6 @@ harness_backends:
   tenant_scope: house
   explicit_pin_only: true
   model_name: claude-haiku-5-5
-  effort: low
   tier: harness
   timeout_ms: 600000
   max_tokens: 65536
@@ -75,7 +74,6 @@ harness_backends:
   tenant_scope: house
   explicit_pin_only: true
   model_name: claude-sonnet-5-5
-  effort: medium
   tier: harness
   timeout_ms: 600000
   max_tokens: 65536
@@ -94,7 +92,6 @@ harness_backends:
   tenant_scope: house
   explicit_pin_only: true
   model_name: claude-opus-5-5
-  effort: high
   tier: harness
   timeout_ms: 600000
   max_tokens: 65536
