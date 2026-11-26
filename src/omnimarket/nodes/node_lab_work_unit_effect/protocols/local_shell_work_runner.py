@@ -109,12 +109,22 @@ class LocalShellLabWorkExecutor:
         )
 
     def _staged_diff(
-        self, tree: Path, commit_sha: str, cap: int, env: dict[str, str]
+        self,
+        tree: Path,
+        commit_sha: str,
+        cap: int,
+        env: dict[str, str],
+        seeded: tuple[str, ...] = (),
     ) -> tuple[str, bool]:
-        """The worktree's edits against ``commit_sha``, cut to ``cap`` bytes."""
+        """The worktree's edits against ``commit_sha``, cut to ``cap`` bytes.
+
+        ``seeded`` paths were put there by the runner, not the model: they stay out.
+        """
         if not tree.is_dir():
             return "", False
         self._git("-C", str(tree), "add", "-A", env=env)
+        if seeded:
+            self._git("-C", str(tree), "reset", "-q", "--", *seeded, env=env)
         diff = subprocess.run(
             ["git", "-C", str(tree), "diff", "--cached", "--no-color", commit_sha],
             capture_output=True,
@@ -159,6 +169,7 @@ class LocalShellLabWorkExecutor:
             checks=draft.checks,
             formatter=draft.formatter,
             max_turns=draft.max_turns,
+            wall_budget_seconds=draft.wall_budget_seconds,
             caller_lane=draft.caller_lane,
             ticket=draft.ticket,
             traffic_class=(
@@ -208,7 +219,11 @@ class LocalShellLabWorkExecutor:
                 # Taken now, while the worktree exists: the finally below only
                 # removes it, and a killed loop's edits are still in it.
                 diff, truncated = self._staged_diff(
-                    tree, request.commit_sha, request.code_draft.max_diff_bytes, env
+                    tree,
+                    request.commit_sha,
+                    request.code_draft.max_diff_bytes,
+                    env,
+                    tuple(seed.path for seed in request.code_draft.seed_files),
                 )
                 loop_result = self._loop_result(state_dir, request.work_unit_id)
             return ModelLabWorkUnitReceipt(
@@ -297,6 +312,11 @@ class LocalShellLabWorkExecutor:
                 LAB_WORK_REPO=request.repo,
                 LAB_WORK_LANE=request.lane,
             )
+            if request.code_draft is not None:
+                for seed in request.code_draft.seed_files:
+                    target = tree / seed.path
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_text(seed.content, encoding="utf-8")
             argv = self._draft_argv(request, tree, state_dir)
             started = time.monotonic()
             with log.open("wb") as out:
