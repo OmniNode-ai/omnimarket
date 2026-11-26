@@ -133,3 +133,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/cost/test_inkling_local_priced_omn25856.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn25856-gateway-named-tests-not-run-outcome
+  description: A delegation-inference submission carries named_tests through the gateway to the command topic (an undeclared key is still refused), and a receipt whose named tests never ran reads not_run, not an absent outcome.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_workflow_gateway_effect/test_named_tests_submission.py tests/nodes/node_workflow_gateway_effect/test_receipt_tests_outcome.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
