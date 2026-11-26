@@ -1250,6 +1250,34 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_overlay_store/migrations/0000_create_overlay_store.sql
       access: read_write
       role: overlay_store
+    # OMN-26635: the four tables a set writes in one transaction with overlay_store,
+    # created by node_projection_overlay_store migration 0003. The runtime role's
+    # write grants (INSERT, SELECT, UPDATE, never DELETE) are migration 0004; the
+    # projection binding refuses to boot without a declaration for each table.
+    - name: overlay_store_revision
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_overlay_store/migrations/0003_overlay_store_revision_provenance_audit.sql
+      access: write
+      role: overlay_store_revision
+    - name: overlay_store_write
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_overlay_store/migrations/0003_overlay_store_revision_provenance_audit.sql
+      access: write
+      role: overlay_store_write
+    - name: overlay_store_provenance
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_overlay_store/migrations/0003_overlay_store_revision_provenance_audit.sql
+      access: write
+      role: overlay_store_provenance
+    - name: overlay_store_audit
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_overlay_store/migrations/0003_overlay_store_revision_provenance_audit.sql
+      access: write
+      role: overlay_store_audit
 
 database_objects:
   # OMN-23888: the trigger helper migration 114 creates for code_eval_trial_state.

@@ -9008,16 +9008,18 @@
     },
     {
       "accessor_nodes": [
-        "node_projection_overlay_store"
+        "node_projection_overlay_store",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
-        "src/omnimarket/nodes/node_projection_overlay_store/migrations/0002_overlay_store_revision_provenance_audit.sql"
+        "src/omnimarket/nodes/node_projection_overlay_store/migrations/0003_overlay_store_revision_provenance_audit.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "contract.yaml -> db_io.db_tables schema",
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_overlay_store/contract.yaml"
       ],
       "current_schema": [
@@ -9053,21 +9055,24 @@
       "readers": [],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_overlay_store"
+        "node_projection_overlay_store",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
       "accessor_nodes": [
-        "node_projection_overlay_store"
+        "node_projection_overlay_store",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
-        "src/omnimarket/nodes/node_projection_overlay_store/migrations/0002_overlay_store_revision_provenance_audit.sql"
+        "src/omnimarket/nodes/node_projection_overlay_store/migrations/0003_overlay_store_revision_provenance_audit.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "contract.yaml -> db_io.db_tables schema",
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_overlay_store/contract.yaml"
       ],
       "current_schema": [
@@ -9101,21 +9106,24 @@
       "readers": [],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_overlay_store"
+        "node_projection_overlay_store",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
       "accessor_nodes": [
-        "node_projection_overlay_store"
+        "node_projection_overlay_store",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
-        "src/omnimarket/nodes/node_projection_overlay_store/migrations/0002_overlay_store_revision_provenance_audit.sql"
+        "src/omnimarket/nodes/node_projection_overlay_store/migrations/0003_overlay_store_revision_provenance_audit.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "contract.yaml -> db_io.db_tables schema",
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_overlay_store/contract.yaml"
       ],
       "current_schema": [
@@ -9149,21 +9157,24 @@
       "readers": [],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_overlay_store"
+        "node_projection_overlay_store",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
       "accessor_nodes": [
-        "node_projection_overlay_store"
+        "node_projection_overlay_store",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
-        "src/omnimarket/nodes/node_projection_overlay_store/migrations/0002_overlay_store_revision_provenance_audit.sql"
+        "src/omnimarket/nodes/node_projection_overlay_store/migrations/0003_overlay_store_revision_provenance_audit.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "contract.yaml -> db_io.db_tables schema",
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_overlay_store/contract.yaml"
       ],
       "current_schema": [
@@ -9197,7 +9208,8 @@
       "readers": [],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_overlay_store"
+        "node_projection_overlay_store",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
