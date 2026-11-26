@@ -20,6 +20,10 @@ A provider is left out when:
     ``byok_catalog_plan_rulings.yaml`` records the provider's own doc URL, the
     sentence that allows API-key use in other tools, and the date it was read. That
     file ships empty: each plan is ruled on one at a time with the operator's approval.
+
+A provider the operator names that models.dev does not list is a row of
+``byok_catalog_added_providers.yaml``, written by hand from the provider's own docs:
+the same rules hold for it, and the row names the page it was read from and when.
 """
 
 from __future__ import annotations
@@ -38,6 +42,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 CATALOG_PROVIDERS_PATH = Path(__file__).with_name("byok_catalog_providers.yaml")
 PLAN_RULINGS_PATH = Path(__file__).with_name("byok_catalog_plan_rulings.yaml")
+ADDED_PROVIDERS_PATH = Path(__file__).with_name("byok_catalog_added_providers.yaml")
+ADDED_PROVIDERS_SCHEMA = "byok_catalog_added_providers.v1"
 CATALOG_PROVIDERS_SCHEMA = "byok_catalog_providers.v1"
 PLAN_RULINGS_SCHEMA = "byok_catalog_plan_rulings.v1"
 OPENAI_COMPATIBLE_PACKAGE = "@ai-sdk/openai-compatible"
@@ -95,6 +101,19 @@ class ModelByokCatalogPlanRuling(BaseModel):
     #: The sentence on that page that allows API-key use in other tools.
     quote: str = Field(min_length=1)
     read_on: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+
+class ModelByokCatalogAddedProvider(ModelByokCatalogProvider):
+    """A provider the operator named, read from its own docs (not on models.dev)."""
+
+    #: The provider's own page the base URL was read from.
+    source: str = Field(pattern=r"^https://[^\s\x00-\x1f\x7f]+$")
+    read_on: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+
+    def listed(self) -> ModelByokCatalogProvider:
+        return ModelByokCatalogProvider(
+            id=self.id, name=self.name, api=self.api, doc=self.doc
+        )
 
 
 class ByokCatalogListError(ValueError):
@@ -199,7 +218,22 @@ def load_byok_catalog_plan_rulings() -> tuple[ModelByokCatalogPlanRuling, ...]:
 
 @lru_cache(maxsize=1)
 def load_byok_catalog_providers() -> dict[str, ModelByokCatalogProvider]:
-    """The shipped list, by provider id. Cached: it ships inside the wheel."""
+    """Every provider offered from a list, by id: the generated models.dev list,
+    then the operator's additions. Cached: both ship inside the wheel."""
+    found = dict(load_generated_catalog_providers())
+    for added in load_byok_catalog_added_providers():
+        if added.id in found:
+            raise ByokCatalogListError(
+                f"{added.id!r} is on the models.dev list now: remove its row from "
+                f"{ADDED_PROVIDERS_PATH.name}"
+            )
+        found[added.id] = added.listed()
+    return found
+
+
+@lru_cache(maxsize=1)
+def load_generated_catalog_providers() -> dict[str, ModelByokCatalogProvider]:
+    """The generated models.dev list alone, by provider id."""
     rows = _read_yaml(CATALOG_PROVIDERS_PATH, CATALOG_PROVIDERS_SCHEMA).get("providers")
     if not isinstance(rows, list):
         raise ByokCatalogListError(f"{CATALOG_PROVIDERS_PATH} has no 'providers' list")
@@ -215,6 +249,28 @@ def load_byok_catalog_providers() -> dict[str, ModelByokCatalogProvider]:
             )
         found[provider.id] = provider
     return found
+
+
+@lru_cache(maxsize=1)
+def load_byok_catalog_added_providers() -> tuple[ModelByokCatalogAddedProvider, ...]:
+    """The providers the operator named that models.dev does not list, each held to
+    the list's rules: a fixed https URL off this machine, a plain id, and no plan."""
+    rows = _read_yaml(ADDED_PROVIDERS_PATH, ADDED_PROVIDERS_SCHEMA).get("providers")
+    if not isinstance(rows, list):
+        raise ByokCatalogListError(f"{ADDED_PROVIDERS_PATH} has no 'providers' list")
+    added: list[ModelByokCatalogAddedProvider] = []
+    for row in rows:
+        provider = ModelByokCatalogAddedProvider.model_validate(row)
+        if _fixed_https_base(provider.api) != provider.api:
+            raise ByokCatalogListError(f"{provider.id!r} has no fixed https base URL")
+        if _is_plan(provider.id, provider.name):
+            raise ByokCatalogListError(
+                f"{provider.id!r} is a plan; plans need a ruling"
+            )
+        if any(a.id == provider.id for a in added):
+            raise ByokCatalogListError(f"{provider.id!r} is added more than once")
+        added.append(provider)
+    return tuple(added)
 
 
 def main(argv: list[str] | None = None) -> int:

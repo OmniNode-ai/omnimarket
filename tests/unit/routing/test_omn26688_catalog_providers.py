@@ -29,6 +29,10 @@ Failure modes, each a test below:
       "anthropic" across two lines, so the usage named no such provider.
   C13 ``onex models zai`` gave no hint, while ``onex models deepseek`` said
       "Did you mean 'onex models add deepseek'?".
+  C14 a provider the operator names that models.dev does not list (Hopscotch,
+      2026-11-26) cannot be added, routed or picked, or its key goes elsewhere.
+  C15 a row added by hand skips the list's rules (a templated or local URL, a
+      plan, an id taken by a declared or listed provider) or carries no source.
 
 Fakes only: the model list and the pinned delegation are stubs; no network.
 """
@@ -64,6 +68,7 @@ pytestmark = pytest.mark.unit
 _ROOT = Path(__file__).resolve().parents[3]
 _LIST = _ROOT / "src/omnimarket/handlers/routing/byok_catalog_providers.yaml"
 _RULINGS = _ROOT / "src/omnimarket/handlers/routing/byok_catalog_plan_rulings.yaml"
+_ADDED = _ROOT / "src/omnimarket/handlers/routing/byok_catalog_added_providers.yaml"
 
 #: Two providers from the shipped list, read from models.dev on 2026-11-26: one base
 #: URL with no path and one with a trailing slash, one id with a hyphen.
@@ -374,13 +379,13 @@ def test_the_shipped_list_follows_every_rule() -> None:
 def test_the_shipped_list_is_what_the_generator_writes() -> None:
     """C9: the list round-trips through the generator's own writer."""
     from omnimarket.handlers.routing.byok_catalog_providers import (
-        load_byok_catalog_providers,
+        load_generated_catalog_providers,
         render_catalog_providers,
     )
 
     shipped = _LIST.read_text()
     assert (
-        render_catalog_providers(tuple(load_byok_catalog_providers().values()))
+        render_catalog_providers(tuple(load_generated_catalog_providers().values()))
         == shipped
     )
 
@@ -530,3 +535,74 @@ def test_a_bare_zai_is_pointed_at_models_add() -> None:
     result = CliRunner().invoke(models_group, ["zai"])
     assert result.exit_code == 2, result.output
     assert "onex models add zai" in result.output, result.output
+
+
+# --------------------------------------------------------------------------- C14-C15
+
+#: docs.hopscotchlabs.ai/get-started/quickstart (read 2026-11-26): "An OpenAI SDK
+#: base_url" is https://api.hopscotchlabs.ai/v1; keys start ub_live_.
+_HOPSCOTCH = ("hopscotch", "Hopscotch", "https://api.hopscotchlabs.ai/v1")
+_HOPSCOTCH_KEY = "ub_live_synthetic-omn26688-hopscotch-never-printed"
+
+
+def test_hopscotch_is_added_routed_and_picked_under_its_own_key(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """C14."""
+    pid, name, base = _HOPSCOTCH
+    models, delegate = _arrange(monkeypatch, tmp_path)
+    result = CliRunner().invoke(
+        models_group,
+        ["add", pid, "--model", "fixture-model-1"],
+        input=f"{_HOPSCOTCH_KEY}\n",
+    )
+    assert result.exit_code == 0, result.output
+    assert dict(models.calls) == {
+        f"{base}/models": dict(models.calls)[f"{base}/models"]
+    }
+    assert _HOPSCOTCH_KEY in dict(models.calls)[f"{base}/models"]
+    assert delegate.pins == [f"byok-{pid}"]
+    store = LocalByokCredentialStore()
+    assert asyncio.run(store.get_secret(f"llm.{pid}.api_key")) == _HOPSCOTCH_KEY
+    row = resolve_byok_provider_backend(pid)
+    assert row is not None
+    assert row.endpoint_url == f"{base}/chat/completions"
+    from omnimarket.handlers.model_provider_labels import MODEL_LABELS
+    from omnimarket.nodes.node_onex_setup_effect.models.model_setup_provider_traits import (
+        setup_provider_traits,
+    )
+
+    assert MODEL_LABELS.get(pid) == name
+    picked = {p.provider: p.label for p in setup_provider_traits().picker_providers()}
+    assert picked.get(pid) == name
+
+
+def test_every_added_row_keeps_the_lists_rules_and_names_its_source() -> None:
+    """C15."""
+    from omnimarket.handlers.routing import byok_catalog_providers as m
+
+    raw = yaml.safe_load(_ADDED.read_text(encoding="utf-8"))
+    assert raw["schema_version"] == "byok_catalog_added_providers.v1"
+    listed = yaml.safe_load(_LIST.read_text(encoding="utf-8"))["providers"]
+    listed_ids = {row["id"] for row in listed}
+    declared = {
+        "gemini",
+        "openai",
+        "openrouter",
+        "reflection",
+        "anthropic",
+        "glm",
+        "zai",
+        "local",
+        "openai_compatible",
+    }
+    rows = raw["providers"]
+    assert {row["id"] for row in rows} >= {"hopscotch"}
+    for row in rows:
+        assert set(row) == {"id", "name", "api", "doc", "source", "read_on"}, row
+        assert m._fixed_https_base(row["api"]) == row["api"], row
+        assert row["id"] not in listed_ids | declared, row
+        assert not m._is_plan(row["id"], row["name"]), row
+        assert row["source"].startswith("https://"), row
+    loaded = m.load_byok_catalog_providers()
+    assert {row["id"] for row in rows} <= set(loaded)
