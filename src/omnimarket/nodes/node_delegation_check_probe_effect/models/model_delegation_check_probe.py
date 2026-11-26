@@ -11,6 +11,7 @@ conclude ``failure``: neither is evidence of green.
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from enum import StrEnum
 from typing import Final, Literal
 
@@ -179,6 +180,10 @@ class ModelDelegationCheckReading(_Frozen):
     chosen_responder: str | None = None
     served_model: str | None = None
     window: int | None = None
+    # The chosen responder's capabilities and price, read from the chain's live catalog when the check ran (OMN-26628).
+    capabilities: dict[str, str] = Field(default_factory=dict)
+    input_usd_per_million: Decimal | None = None
+    output_usd_per_million: Decimal | None = None
     # NOT_MEASURED: the task never reached a local responder that answered.
     not_measured: str | None = None
     versions: dict[str, str] = Field(default_factory=dict)
@@ -220,6 +225,10 @@ class ModelDelegationCheckResult(_Frozen):
     chosen_responder: str | None = None
     served_model: str | None = None
     window: int | None = None
+    # The chosen responder's capabilities and price, read from the chain's live catalog when the check ran (OMN-26628).
+    capabilities: dict[str, str] = Field(default_factory=dict)
+    input_usd_per_million: Decimal | None = None
+    output_usd_per_million: Decimal | None = None
     versions: dict[str, str] = Field(default_factory=dict)
     error: str | None = None
     emitted: bool = False

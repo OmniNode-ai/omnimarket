@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The delegation responder chain a delegation check sends its task through (OMN-26043).
+"""The delegation responder chain a delegation check sends its task through (OMN-26043, OMN-26628).
 
 No check names one model. A check reads the ordered responder row of the settings store (local
 responders, then OpenRouter, then the Claude API), asks each local responder what it serves, and
@@ -14,12 +14,18 @@ declares neither is skipped with the reason ``no-window``, so the chain never ad
 check cannot use (the C14 resolve step read only ``max_model_len`` and read red every hour once the
 chain fell from a vLLM server to a llama.cpp one).
 
+The chain's live catalog carries three facts per responder, read at the time of the check and never held by a check: the
+window, the capabilities the server states, and the price in USD per million tokens (a server the lab runs is priced zero
+by the deployment, an unknown price stays None and is never read as zero). A model swapped behind an endpoint changes all
+three on the next read, so no check holds a window, a price or a model name of its own.
+
 This module holds the pure resolution. Reading ``/v1/models`` is the caller's port.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -49,6 +55,10 @@ class ModelResponderReading(BaseModel):
     n_ctx: int | None = None
     # Requests in flight on the responder, when it reports them; None when it does not.
     busy: int | None = None
+    # What the server states it can do ("yes", "no", "unknown" per capability) and what a million tokens cost on it.
+    capabilities: dict[str, str] = Field(default_factory=dict)
+    input_usd_per_million: Decimal | None = None
+    output_usd_per_million: Decimal | None = None
 
 
 class ModelResponderAttempt(BaseModel):
@@ -62,6 +72,9 @@ class ModelResponderAttempt(BaseModel):
     served_model: str | None = None
     window: int | None = None
     busy: int | None = None
+    capabilities: dict[str, str] = Field(default_factory=dict)
+    input_usd_per_million: Decimal | None = None
+    output_usd_per_million: Decimal | None = None
 
 
 class ModelChainResolution(BaseModel):
@@ -74,6 +87,9 @@ class ModelChainResolution(BaseModel):
     base_url: str | None = None
     served_model: str | None = None
     window: int | None = None
+    capabilities: dict[str, str] = Field(default_factory=dict)
+    input_usd_per_million: Decimal | None = None
+    output_usd_per_million: Decimal | None = None
     attempts: tuple[ModelResponderAttempt, ...] = ()
 
     @property
@@ -158,6 +174,9 @@ def resolve_chain(
                 served_model=reading.served_model,
                 window=window,
                 busy=reading.busy,
+                capabilities=reading.capabilities,
+                input_usd_per_million=reading.input_usd_per_million,
+                output_usd_per_million=reading.output_usd_per_million,
             )
         )
     if usable:
@@ -182,6 +201,9 @@ def resolve_chain(
             base_url=winner.base_url,
             served_model=winner.served_model,
             window=window,
+            capabilities=winner.capabilities,
+            input_usd_per_million=winner.input_usd_per_million,
+            output_usd_per_million=winner.output_usd_per_million,
             attempts=marked,
         )
     cloud = [r for r in responders if not r.names_base]

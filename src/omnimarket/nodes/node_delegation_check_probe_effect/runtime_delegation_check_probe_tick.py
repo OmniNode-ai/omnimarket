@@ -104,6 +104,14 @@ def evidence_for(result: ModelDelegationCheckResult) -> dict[str, Any]:
         "chosen_tier": result.chosen_tier,
         "chosen_responder": result.chosen_responder,
         "served_model": result.served_model,
+        "window": result.window,
+        "capabilities": result.capabilities,
+        "input_usd_per_million": str(result.input_usd_per_million)
+        if result.input_usd_per_million is not None
+        else None,
+        "output_usd_per_million": str(result.output_usd_per_million)
+        if result.output_usd_per_million is not None
+        else None,
         "chain": [f"{a.base_url or a.tier}:{a.outcome}" for a in result.chain],
         "failed_clauses": [c.name for c in result.clauses if not c.ok],
         "absent": [p.name for p in result.preconditions if not p.present],
