@@ -27,6 +27,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe import (
     CheckId,
     ModelCheckClause,
+    ModelCheckPrecondition,
     ModelDelegationCheckReading,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.models.model_gateway_check import (
@@ -70,6 +71,9 @@ UNKNOWN_SOURCE: Final = "not-a-source"
 HOUSE_REF = re.compile(r"^llm\.[a-z0-9_]+\.[a-z0-9_]+$")
 FAILURE_CLASS = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(Error|Exception)$")
 FAILURE_CODE = re.compile(r"^ONEX_[A-Z0-9_]+$")
+#: The refusal the runtime gives a customer tenant with no registered provider key (customer_key_terminus.py): no customer runs on
+#: a house key, so a test tenant without a key of its own cannot complete a healthy delegation. That is a missing instrument.
+TENANT_KEY_ABSENT_CODE: Final = "ONEX_MARKET_CUSTOMER_PROVIDER_KEY_ABSENT"
 ABSENT_ID: Final = "00000000-0000-4000-8000-0000000000{n:02d}"
 RUNNER_QUERY: Final = "?runner_identity="
 
@@ -170,6 +174,7 @@ class _Session:
         self._sleep = sleep
         self._monotonic = monotonic
         self._new_uuid = new_uuid
+        self.preconditions: list[ModelCheckPrecondition] = []
 
     def call(
         self,
@@ -257,7 +262,18 @@ class _Session:
 def _healthy(
     s: _Session, source: str = "external-client"
 ) -> tuple[str | None, Mapping[str, Any] | None, Mapping[str, Any] | None, str]:
-    return s.run("test", source)
+    workflow_id, status, receipt, answered = s.run("test", source)
+    code = status.get("terminal_failure_code") if status else None
+    if status and status.get("status") == "failed" and code == TENANT_KEY_ABSENT_CODE:
+        s.preconditions.append(
+            ModelCheckPrecondition(
+                name="tenant_provider_key",
+                present=False,
+                detail=f"the run {workflow_id} was refused {code}: the test tenant holds no provider key, "
+                "so a healthy delegation cannot complete as it",
+            )
+        )
+    return workflow_id, status, receipt, answered
 
 
 def _identity_clause(name: str, receipt: Mapping[str, Any] | None) -> ModelCheckClause:
@@ -660,7 +676,9 @@ def run_gateway_check(
         return ModelDelegationCheckReading(
             **head, not_measured=f"the gateway did not answer: {exc}"
         )
-    return ModelDelegationCheckReading(**head, clauses=clauses)
+    return ModelDelegationCheckReading(
+        **head, clauses=clauses, preconditions=tuple(session.preconditions)
+    )
 
 
 __all__ = [
