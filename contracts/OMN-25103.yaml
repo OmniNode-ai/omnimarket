@@ -33,6 +33,15 @@ requirements:
           AC4: one pass publishes both the snapshot and the event, with the same payload -- falsifier: uv run
           --frozen pytest tests/nodes/node_integration_reading_publish_effect/test_integration_pass_event_omn25103.py
           -q -n 0 -p no:randomly --no-cov; two of its three tests fail on the base commit
+  - id: req-omn25103-lab-item-allowed-program
+    statement: The integration-proof item starts with programs a lab host runs, so the lab does not refuse it.
+    acceptance:
+      - id: AC6
+        statement: >-
+          AC6: the integration-proof item's command, and the command it sends to the lab after --, each start with
+          a program a lab host runs, so the lab does not refuse it -- falsifier: uv run pytest -q
+          tests/contracts/test_omn25103_lab_item_allowed_program.py fails on omnimarket dev, where the item starts
+          with env
 evidence_requirements:
   - kind: tests
     description: The floor integration writer and the integration publisher.
@@ -67,6 +76,17 @@ dod_evidence:
           tests/nodes/node_integration_reading_publish_effect/test_integration_pass_event_omn25103.py
           -q -n 0 -p no:randomly --no-cov
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn25103-lab-item-allowed-program
+    description: >-
+      The integration-proof item's command, and the command it sends to the lab after --, each start with a
+      program a lab host runs (DEFAULT_ALLOWED_EXECUTABLES), so a lab host does not refuse the work unit.
+    source: manual
+    binds_ac:
+      - AC6
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/contracts/test_omn25103_lab_item_allowed_program.py
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: dod-omn25103-integration-proof
     description: >-
       The pushed head runs the floor integration writer and the integration publisher suites, golden chain
@@ -77,8 +97,8 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: >-
-          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
-          --lane dod-integration-proof-25103 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+          --lane dod-integration-proof-25103 --kind test -- uv run --frozen pytest
           tests/nodes/node_projection_floor_integration tests/nodes/node_integration_reading_publish_effect -q --no-cov
           -m 'not kafka'
         cwd: .
