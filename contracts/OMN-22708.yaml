@@ -28,17 +28,6 @@ dod_evidence:
   binds_ac:
   - AC1
   - AC2
-  ac_bindings:
-  - label: AC1
-    criterion_hash: 251893b8648c23128c3643c0b9e730c7d0f7156fda7c21e23d536302e1106892
-    proposed_by: lane=dod-closeout-bind-2026-11-26T0545Z-c3
-    accepted_by: lane=dod-closeout-accept-2026-11-26T0545Z-c3
-    accepted_at: '2026-11-26T06:10:22Z'
-  - label: AC2
-    criterion_hash: b50128332f853af169e71bce7e3cc30b57bce034401f4ca8cdf6aec1081cf9a2
-    proposed_by: lane=dod-closeout-bind-2026-11-26T0545Z-c3
-    accepted_by: lane=dod-closeout-accept-2026-11-26T0545Z-c3
-    accepted_at: '2026-11-26T06:10:22Z'
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/unit/delegation/test_omn22478_abandoned_cause_recorded_rows.py tests/unit/delegation/test_omn18296_completion_bound.py -q --no-cov -p no:randomly
