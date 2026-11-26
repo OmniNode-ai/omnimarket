@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -89,19 +89,19 @@ def _writer() -> tuple[
 ]:
     writer = LaneWorkProjectionWriter()
     db = _FakeDb()
-    writer._db = db  # type: ignore[assignment]
+    cast(Any, writer)._db = db
     published: list[tuple[str, dict[str, Any]]] = []
 
     async def _capture(exposure: Any, **kwargs: Any) -> bool:
         published.append((exposure.topic, kwargs["row"]))
         return True
 
-    writer.publish_snapshot_delta = _capture  # type: ignore[method-assign]
+    cast(Any, writer).publish_snapshot_delta = _capture
 
     async def _no_producer() -> None:
         return None
 
-    writer._stop_producer = _no_producer  # type: ignore[method-assign]
+    cast(Any, writer)._stop_producer = _no_producer
     return writer, db, published
 
 
