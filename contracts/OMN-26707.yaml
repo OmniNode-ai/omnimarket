@@ -95,7 +95,7 @@ dod_evidence:
     binds_ac: ["AC6"]
     checks:
       - check_type: "command"
-        check_value: "test -z \"$(grep -nE 'guard_ledger_cell|release_identity|base_inherited' src/omnimarket/nodes/node_lane_work_event_classify_compute/handlers/handler_lane_work_event_classify.py)\""
+        check_value: "test -s src/omnimarket/nodes/node_lane_work_event_classify_compute/handlers/handler_lane_work_event_classify.py && test -z \"$(grep -nE 'guard_ledger_cell|release_identity|base_inherited' src/omnimarket/nodes/node_lane_work_event_classify_compute/handlers/handler_lane_work_event_classify.py)\""
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn26707-ac7"
     description: >-
