@@ -3896,6 +3896,16 @@ def _delta_over_answer_segment(
         }
 
     if deterministic_acceptance_authority:
+        # OMN-25856: no deterministic check failed (that returned above), so a
+        # failed heuristic rule here did not veto -- the executed checks are the
+        # authority and the marker rules are reject-only telemetry. Record it as
+        # ``scored`` so a completed run does not carry a "blocking" failure.
+        rule_evaluations = tuple(
+            e.model_copy(update={"enforcement": "scored"})
+            if (not e.passed and e.enforcement == "blocking")
+            else e
+            for e in rule_evaluations
+        )
         # OMN-13642: the LLM-judge verdict is a co-required acceptance authority on
         # the verifiable path. A FAIL verdict VETOES acceptance even when the
         # weighted combined score cleared the bar above — the deterministic floor

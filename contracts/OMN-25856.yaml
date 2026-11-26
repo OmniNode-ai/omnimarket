@@ -133,3 +133,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/cost/test_inkling_local_priced_omn25856.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn25856-accepted-run-no-blocking-fail
+  description: 'An accepted code_generation run (executed tests passed, function-only answer) records its failed marker rule as scored, never blocking; without executed tests the run records no failed blocking rule beside a pass. The test fails on the gate before the change.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_verifiable_path_rule_enforcement_omn25856.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
