@@ -71,6 +71,11 @@ requirements:
   acceptance:
   - id: AC10
     statement: 'AC10: the live reader chooses a responder whose listing carries meta.n_ctx only, skips a dead one and orders by load -- falsifier: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_http_responder_reader_live_shapes.py -q fails'
+- id: req-omn24562-etcd-lab-members-overlay-model
+  statement: The lab etcd voter set has a typed overlay model in omnimarket that the overlay home can pin ahead of its document, with the rules the provisioning script expects and a read that renders the text of members.tsv.
+  acceptance:
+  - id: AC11
+    statement: 'AC11: ModelEtcdLabMembersOverlay accepts the current five voters, renders their members.tsv rows, and refuses a sixth voter, a repeated name, a second learner and a second laptop voter -- falsifier: tests/unit/models/test_etcd_lab_members_overlay_document_omn24562.py fails collection or any of its tests fails'
 evidence_requirements:
 - kind: tests
   description: The inode alarm tests pass at the pushed head.
@@ -229,4 +234,13 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_additive_rows_omn22016.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24562-etcd-lab-members-overlay-model-tests
+  description: The overlay document model for the lab etcd member set accepts the current five voters and renders their members.tsv rows, and refuses a sixth voter, a repeated name, a second learner and a second laptop voter; the test file fails at collection with ModuleNotFoundError before the model module exists and passes after (26 passed).
+  source: manual
+  binds_ac:
+  - AC11
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_etcd_lab_members_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
     cwd: .
