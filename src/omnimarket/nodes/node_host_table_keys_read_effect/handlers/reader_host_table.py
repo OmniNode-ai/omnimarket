@@ -1,43 +1,48 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The one function a reader of the host table calls to read it from the key-value store (OMN-23983)."""
+"""The one function a reader of the host table calls: the table as the injected settings store holds it (Task 20).
+
+The store arrives as the protocol. This module names no implementation, address, key prefix or environment variable,
+and reads no file: an absent overlay, a stale heartbeat, an unreachable store and a document that is not a host table
+all read ``None``, never an empty tuple.
+"""
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import datetime
 
-from omnimarket.handlers.node_overlay_reader import load_structured_overlay
-from omnimarket.models.host_table import (
-    ModelHostTableRow,
+from omnibase_spi.protocols.storage import ProtocolOverlayStore
+from pydantic import ValidationError
+
+from omnimarket.handlers.overlay_store.tick_from_store import (
+    TickStoreUnavailableError,
+    read_tick_overlays,
 )
-from omnimarket.models.host_table_keys import (
-    ModelHostTableKeysOverlay,
-)
-from omnimarket.nodes.node_host_table_keys_ingest_effect.handlers.store_host_keys import (
-    StoreHostKeysValkey,
-)
-from omnimarket.nodes.node_host_table_keys_read_effect.handlers.handler_host_table_keys_read import (
-    HandlerHostTableKeysRead,
-)
-from omnimarket.nodes.node_host_table_keys_read_effect.models.model_host_table_keys_read import (
-    ModelHostTableKeysReadRequest,
+from omnimarket.models.host_table import ModelHostTableRequest, ModelHostTableRow
+from omnimarket.models.overlay_keys import ModelLabHostsTable
+from omnimarket.nodes.node_host_table_compute.handlers.handler_host_table import (
+    HandlerHostTable,
+    HostTableRefusedError,
 )
 
-OVERLAY_ID = "node_host_table_keys_ingest_effect"
+OVERLAY_ID = "lab_hosts"
 
 
-def read_host_table_rows(
-    environ: Mapping[str, str],
+async def read_host_table_rows_from_store(
+    store: ProtocolOverlayStore,
+    *,
+    now: datetime,
+    max_staleness_seconds: float,
 ) -> tuple[ModelHostTableRow, ...] | None:
-    """The host rows the key-value store holds, or None when the reading is UNKNOWN (never an empty tuple)."""
-    overlay = load_structured_overlay(OVERLAY_ID, ModelHostTableKeysOverlay, environ)
-    handler = HandlerHostTableKeysRead(
-        store=StoreHostKeysValkey.from_environment(overlay, environ),
-        overlay=overlay,
-        clock=lambda: datetime.now(UTC),
-    )
-    reading = handler.handle(ModelHostTableKeysReadRequest())
-    if reading.document is None:
+    """The host rows the injected store holds, or None when the reading is UNKNOWN (never an empty tuple)."""
+    try:
+        documents = await read_tick_overlays(
+            store,
+            (OVERLAY_ID,),
+            now=now,
+            max_staleness_seconds=max_staleness_seconds,
+        )
+        table = ModelLabHostsTable.model_validate(documents[OVERLAY_ID])
+        return HandlerHostTable().handle(ModelHostTableRequest(table=table)).rows
+    except (TickStoreUnavailableError, ValidationError, HostTableRefusedError):
         return None
-    return reading.document.table.rows
