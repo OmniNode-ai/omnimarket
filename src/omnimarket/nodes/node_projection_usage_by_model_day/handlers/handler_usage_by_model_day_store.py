@@ -9,6 +9,9 @@ from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.nodes.node_projection_usage_by_model_day.models import (
     ModelUsageCallDelta,
 )
+from omnimarket.nodes.node_projection_usage_by_model_day.stores import (
+    UsageBackendColumns,
+)
 from omnimarket.projection.protocol_database import DatabaseAdapter
 
 CALLS_TABLE = "usage_by_model_day_calls"
@@ -37,20 +40,9 @@ def apply_usage_call(delta: ModelUsageCallDelta, db: DatabaseAdapter) -> bool:
         "cost_tier_name": delta.cost_tier_name,
     }
     updated_at = datetime.now(UTC).isoformat()
-    db.upsert(
-        CALLS_TABLE,
-        "call_id",
-        {
-            **key,
-            "call_id": delta.call_id,
-            "input_tokens": delta.input_tokens,
-            "output_tokens": delta.output_tokens,
-            "cost_usd": delta.cost_usd,
-            "usage_source": delta.usage_source.value,
-            "occurred_at": delta.occurred_at.isoformat(),
-            "ingested_at": updated_at,
-        },
-    )
+    # OMN-25861: 0004's two columns are written only where they exist.
+    in_force = UsageBackendColumns.of(db, CALLS_TABLE, AGGREGATE_TABLE)
+    db.upsert(CALLS_TABLE, "call_id", in_force.call_row(delta, key, updated_at))
     calls = db.query(CALLS_TABLE, key)
     if not calls:
         # The call was just written under `key`, so an empty read means the store lost the write. Refuse rather than
@@ -89,6 +81,7 @@ def apply_usage_call(delta: ModelUsageCallDelta, db: DatabaseAdapter) -> bool:
             "unmeasured_call_count": len(calls) - len(measured),
             "call_count": len(calls),
             "call_share": len(calls) / day_calls,
+            **in_force.row_backends(delta.model_id, calls),
             "updated_at": updated_at,
         },
     )
