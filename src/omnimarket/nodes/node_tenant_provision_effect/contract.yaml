@@ -62,7 +62,7 @@ handler_routing:
       handler:
         name: HandlerTenantRead
         module: omnimarket.nodes.node_tenant_provision_effect.handlers.handler_tenant_read
-    - operation: tenant_outbox_flush
+    - operation: tenant_outbox_flush_on_provisioned
       topic: onex.evt.omnimarket.tenant-provision-completed.v1
       message_category: event
       event_model: omnimarket.nodes.node_tenant_provision_effect.models.model_tenant_provision.ModelTenantProvisionResult
