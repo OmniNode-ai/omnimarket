@@ -77,6 +77,7 @@ def _run_main(
         "PATH": "/usr/bin:/bin:/usr/local/bin",
         "PYTHONPATH": pythonpath,
         "HOME": _os.environ.get("HOME", ""),
+        "DOD_VERIFY_START_BUDGET_S": _os.environ["DOD_VERIFY_START_BUDGET_S"],
     }
     if evidence_root is not None:
         env["ONEX_EVIDENCE_ROOT"] = str(evidence_root)
