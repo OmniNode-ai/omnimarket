@@ -64,6 +64,15 @@ dod_evidence:
     check_value: >-
       python3 -I -c 'import re,sys; t=open("pyproject.toml").read(); f=[tuple(map(int,m)) for m in re.findall(r"^\s*\"omnibase-core>=(\d+)\.(\d+)\.(\d+)[,\"]",t,re.M)]; print(f); sys.exit(0 if len(f)==2 and all(x>=(0,47,74) for x in f) else 1)'
     cwd: .
+- id: dod-omn26115-ac3-floor-test
+  description: The floor evidence is tested, not only run. Every omnibase-core floor check this contract binds to AC3 passes on the pinned tree, and the floor check refuses a floor of 0.47.73. At the merge base the earlier literal check exits 1 against the 0.47.75 floor dev carries, so this test fails there and passes at the fix head.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_omn26115_ac3_floor_contract.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn26115-ac2-fresh-venv
   description: A fresh venv built with uv venv in a temporary directory installs the checked-out tree with its dependencies resolved from the published packages (no git sources), so the omnibase-core it gets is the newest published one the tree's own floor allows, and python -c "import omnimarket.nodes.node_onex_setup_effect.cli" in that venv exits 0. The command exits with the exit code of that import.
   source: manual
