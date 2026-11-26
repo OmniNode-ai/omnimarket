@@ -28,6 +28,7 @@ import importlib
 import importlib.metadata as md
 import ipaddress
 import json
+import re
 import selectors
 import shutil
 import socket
@@ -39,6 +40,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import quote, urlsplit
+
+_SAFE_TARGET = re.compile(r"/[A-Za-z0-9._~!$&'()*+,;=:@%/?-]*")
 
 PRODUCT_DISTS = ("omnibase-core", "omnibase-infra", "omnimarket")
 PRODUCT_MODULES = ("omnimarket", "omnibase_infra", "omnibase_core")
@@ -181,11 +184,7 @@ class EgressRecorder:
                 }
                 path = parts.path + (f"?{parts.query}" if parts.query else "")
                 path = path or "/"
-                if (
-                    not path.startswith("/")
-                    or path.startswith("//")
-                    or any(c.isspace() or ord(c) < 32 for c in path)
-                ):
+                if _SAFE_TARGET.fullmatch(path) is None or path.startswith("//"):
                     self.send_error(400, "c14 probe: malformed request target")
                     return
                 try:
