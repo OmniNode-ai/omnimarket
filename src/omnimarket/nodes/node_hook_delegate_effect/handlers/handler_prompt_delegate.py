@@ -86,6 +86,29 @@ _LOCAL_STATE_QUESTION = re.compile(
     r"|\b(?:text|answer)\b.*\byellow\b)",
     re.IGNORECASE,
 )
+# A request for Claude's own tools or agents; a delegated model has neither, so it
+# could only refuse (interactive test 2026-11-26, run 664: "Use the Agent tool to
+# launch one general-purpose subagent ..." drew "I can't launch an Agent tool").
+# The verb must be an instruction (opening the prompt or a clause, or after
+# "please", "you", "to", "and", "then"): "How do agents use tools?" is a question.
+_CLAUDE_TOOLS = re.compile(
+    r"(?:^|[.;:!?,]\s*|\b(?:please|and|then|you|to)\s+)"
+    r"(?:use|call|launch|spawn|start|invoke|dispatch)\s+"
+    r"(?:(?:the|a|an|one|two|three|some|your)\s+)?(?:[\w-]+\s+){0,2}?"
+    r"(?:tool|tools|sub-?agents?|agents?)\b",
+    re.IGNORECASE,
+)
+# A reply that opens by saying the model cannot do what was asked (runs 654, 664).
+# The action word must follow within six words: "I can't think of anything faster"
+# is an answer.
+_CANNOT = re.compile(
+    r"\W*(?:(?:sorry|unfortunately)\W+)?i\s*(?:can(?:'|\u2019)?t|cannot|can\s+not"
+    r"|(?:am|'m|\u2019m)\s+(?:not\s+able|unable)|do\s*(?:not|n't|n\u2019t)\s+have"
+    r"\s+(?:access|the\s+ability))\b(?:\W+\w+){0,6}?\W+"
+    r"(?:use|launch|run|access|execute|call|open|read|spawn|start|invoke|perform"
+    r"|complete|browse|check|edit|write|modify)\b",
+    re.IGNORECASE,
+)
 _CORRECTION = re.compile(
     r"\b(?:i(?:'ve|\s+have)?|we(?:'ve|\s+have)?)\s+(?:already\s+)?"
     r"(?:removed|changed|deleted|disabled|enabled|updated|decided|cancelled|canceled)\b",
@@ -154,6 +177,7 @@ def skip_reason(prompt: str) -> EnumPromptDelegateOutcome | None:
         _WORK_REQUEST.match(text)
         or _LOCAL_STATE_QUESTION.match(text)
         or _PERMISSION_REQUEST.match(text)
+        or _CLAUDE_TOOLS.search(text)
     ):
         return EnumPromptDelegateOutcome.CONTROL
     if not _INFORMATION.match(text) and "?" not in text and _CORRECTION.search(text):
@@ -219,17 +243,21 @@ def transcript_excerpt(path: str, limit: int = CONTEXT_CHARS) -> str:
 
 def block_output(answer: str, model: str, run_id: str, correlation_id: str = "") -> str:
     """decision "block" stops Claude Code before any model call (verified
-    2026-11-13: num_turns 0, total_cost_usd 0) and shows the reason to the user."""
+    2026-11-13: num_turns 0, total_cost_usd 0) and shows the reason to the user.
+
+    Claude Code puts "UserPromptSubmit operation blocked by hook:" above it, so
+    the first line says who answered (interactive test 2026-11-26, OMN-26688).
+    """
+    details = f"Details: run {run_id}" + (
+        f", or open it with: onex dashboard open --correlation-id {correlation_id}"
+        if correlation_id
+        else ""
+    )
     reason = (
-        answer.rstrip("\n") + f"\n\n[Answered by {model} through ONEX delegation, "
-        f"run {run_id}"
-        + (
-            f", correlation {correlation_id}. Dashboard: /workflow?correlation_id={correlation_id}"
-            f" (onex dashboard open --correlation-id {correlation_id})"
-            if correlation_id
-            else ""
-        )
-        + f". Start a prompt with {SKIP_PREFIX} to ask Claude instead.]"
+        f"Answered by onex with {model}. Claude was not used.\n\n"
+        + answer.strip("\n")
+        + f"\n\n{details}\n"
+        f"To ask Claude instead, start your prompt with {SKIP_PREFIX}."
     )
     return json.dumps({"decision": "block", "reason": reason})
 
@@ -273,7 +301,9 @@ class HandlerPromptDelegate:
             return self._pass(request.session_id, EnumPromptDelegateOutcome.SENSITIVE)
         hook_request, excerpt = self._hook_request(request)
         result = self._delegate.delegate(hook_request)
-        if result.outcome is EnumHookDelegateOutcome.DECLINED:
+        if result.outcome is EnumHookDelegateOutcome.DECLINED or (
+            result.answered and _CANNOT.match(result.answer)
+        ):
             return self._pass(
                 request.session_id,
                 EnumPromptDelegateOutcome.DECLINED,

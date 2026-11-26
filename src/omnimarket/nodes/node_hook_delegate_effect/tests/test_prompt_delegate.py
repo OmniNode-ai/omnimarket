@@ -127,8 +127,6 @@ def test_receipt_and_correlation_identity_are_not_interchanged(wrapped: bool) ->
     assert result.correlation_id == correlation
     reason = json.loads(result.hook_output)["reason"]
     assert "run receipt-run" in reason
-    assert f"correlation {correlation}" in reason
-    assert f"/workflow?correlation_id={correlation}" in reason
     assert f"onex dashboard open --correlation-id {correlation}" in reason
 
 
@@ -216,7 +214,8 @@ def test_any_prompt_is_delegated_and_its_answer_blocks_claude() -> None:
     assert result.outcome is EnumPromptDelegateOutcome.ANSWERED
     out = json.loads(result.hook_output)
     assert out["decision"] == "block"
-    assert out["reason"].startswith("Hello! How can I help?")
+    assert out["reason"].startswith("Answered by onex with Qwen3.8-27B.")
+    assert "Hello! How can I help?" in out["reason"]
     assert "Qwen3.8-27B" in out["reason"]
     assert "run r-hi" in out["reason"]
     assert "@claude" in out["reason"]
