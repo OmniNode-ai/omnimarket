@@ -73,6 +73,16 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_projection_done_items/test_done_items_real_postgres.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
+- id: dod-omn26520-ac5-dev-readings
+  description: 'AC5 as measured on the dev runtime: omninode-runtime read healthy (23:01:35Z), and the done_items row count rose from 136 (23:04Z and 23:15Z reads) to 139 while done events arrived, max projected_at advancing to 23:47:10Z. A later pair of reads 627 s apart read 139 both times, so a rise inside a ten minute window is shown only where a done event arrived in it. The recorded readings are the committed fixture; the file tests/nodes/node_projection_done_items/test_done_items_dev_readings_omn26520.py does not exist at origin/dev.'
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_projection_done_items/test_done_items_dev_readings_omn26520.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
 - id: dod-omn26520-ac5-live-read
   description: 'AC5 live read on the dev runtime on omni-201 only after the deploy agent applies the merged change; hosted CI cannot reach it, so only the local Done gate runs this unbound check.'
   source: manual
