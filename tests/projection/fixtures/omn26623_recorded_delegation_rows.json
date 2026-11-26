@@ -1,0 +1,1207 @@
+{
+ "source": "~/.omninode/delegation/delegation.sqlite delegation_events on riverraftlabs-0000-NUC13ANHH7, read 2026-11-26; columns the exposure reads only, attempt ladders cut to the five fields the definitions use; tenant replaced by the test tenant",
+ "rows": [
+  {
+   "correlation_id": "efce3805-1731-420b-b2d6-36588bc65f83",
+   "created_at": "2026-11-20T12:50:29.982057+00:00",
+   "task_type": "document",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "refused_before_dispatch",
+   "data_source": "real",
+   "attempt_history": []
+  },
+  {
+   "correlation_id": "003b5940-50b4-45c1-bcd6-2f6d4c9f21c8",
+   "created_at": "2026-11-20T12:51:15.227183+00:00",
+   "task_type": "document",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "c65e8c77-87ff-5a83-a04d-ac2127a6f9b5",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "6834658e-29f8-4f76-a915-3c3a5d72c265",
+   "created_at": "2026-11-21T02:23:27.850740+00:00",
+   "task_type": "planning",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "quality_gate_refused",
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "242824f7-36bd-59d3-8659-ea0fd3964a76",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "b3fcc6eb-6cf8-5a1d-95fc-7257b0423a74",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "e2f54fbe-2afa-5e8b-9b50-27c1515f9515",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "b1450140-4fa9-5f58-81dd-0f7593a326db",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    }
+   ]
+  },
+  {
+   "correlation_id": "db68bc27-345f-405a-9e2f-61565d161360",
+   "created_at": "2026-11-21T12:57:09.484552+00:00",
+   "task_type": "test",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "quality_gate_refused",
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "a9cefde7-5a65-573c-a366-e53da8abcdd5",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "a454050c-965e-5d38-a323-3cfec24aeada",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    }
+   ]
+  },
+  {
+   "correlation_id": "c8711221-4910-4db5-9d1b-757f56ea1025",
+   "created_at": "2026-11-21T13:03:08.720478+00:00",
+   "task_type": "code_generation",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "31ebb41c-7347-512a-9518-85d802b3862f",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "92eb9766-c1e7-4caa-807a-db0b0c650728",
+   "created_at": "2026-11-21T20:31:25.574792+00:00",
+   "task_type": "review",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "5c5045c8-0fae-59a9-aff5-2830c495a0ca",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "12c9ea42-7591-4261-90c1-f132c539cb19",
+   "created_at": "2026-11-21T20:32:20.338254+00:00",
+   "task_type": "review",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "quality_gate_refused",
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "02cb98f9-bafd-5127-a601-611f3df0b4fe",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    }
+   ]
+  },
+  {
+   "correlation_id": "fe3e2a7a-4b63-4477-9c8f-e97876f5ace5",
+   "created_at": "2026-11-21T21:44:59.136063+00:00",
+   "task_type": "planning",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "quality_gate_refused",
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "38823957-efcd-5a03-94d6-6aef62e47a34",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "8f7b441b-99f5-5f2c-9288-8be62c042dd4",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "0f419817-ca77-5b03-81fb-413ea0e61462",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "f1892664-d3e9-5dfb-a7df-d9dd27ec530b",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    }
+   ]
+  },
+  {
+   "correlation_id": "e36711d1-c4a8-482b-85ed-17bf80671aae",
+   "created_at": "2026-11-21T21:49:02.530634+00:00",
+   "task_type": "code_generation",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "7b66bdc5-9228-5bbb-aa7b-ddd772cffd05",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "f86599a1-150c-43eb-a980-4f024e8d373e",
+   "created_at": "2026-11-21T22:39:36.610099+00:00",
+   "task_type": "document",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "fd3b097a-bb59-5d36-9cb3-abf538809eee",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "3e7f72b2-5fd6-47a3-b0cd-3383f77a1c55",
+   "created_at": "2026-11-21T23:34:32.044758+00:00",
+   "task_type": "document",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "7d6a34e7-afe8-5dc7-bfb1-47291b68fa7b",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "f22c5201-3dec-4a4c-ab31-9e8fec5155b3",
+   "created_at": "2026-11-22T03:40:41.580758+00:00",
+   "task_type": "review",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "303658ab-d9ac-5e75-ae76-263cdad35e7b",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "da5929e2-9bd1-48e4-9fb5-ec873fb58686",
+   "created_at": "2026-11-22T03:58:42.789344+00:00",
+   "task_type": "refactor",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "quality_gate_refused",
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "03ff11da-0a68-5f9f-baa6-2d4937acff28",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "a8807914-d59c-547d-afcb-0891106c0ae3",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    }
+   ]
+  },
+  {
+   "correlation_id": "41c89d7c-01a7-4276-b34a-036e359122a2",
+   "created_at": "2026-11-22T04:29:18.172093+00:00",
+   "task_type": "summarization",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "e3b36c24-289c-5f94-a72e-cf6d885e2ccf",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "d4e35f6d-9270-439f-b5a9-52d0fcdf76aa",
+   "created_at": "2026-11-22T04:57:04.576595+00:00",
+   "task_type": "code_generation",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "7c854b7c-6a65-5d39-84f2-68c538fd2646",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "538457ba-d5e8-4c70-ab46-4d95ec18e7c3",
+   "created_at": "2026-11-22T05:21:40.390651+00:00",
+   "task_type": "code_generation",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "quality_gate_refused",
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "1fa1ceac-4caf-5d07-b52f-9593f3137f28",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "9988e760-8b9e-5619-86f4-ce3233d52766",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    }
+   ]
+  },
+  {
+   "correlation_id": "e6f9d934-e6a1-47b0-a2fe-b9941a9a30b4",
+   "created_at": "2026-11-22T05:23:19.513371+00:00",
+   "task_type": "review",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "8cc9cfa6-76f2-5997-92a9-a58e38684adf",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "f321c510-0683-43d4-bab7-7279958f1704",
+   "created_at": "2026-11-22T07:22:44.687669+00:00",
+   "task_type": "summarization",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "b3df1191-0bd2-5a36-a77d-f14074099016",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "bc2f846b-62e2-4bc8-8610-22fd32536b83",
+   "created_at": "2026-11-22T07:53:26.635071+00:00",
+   "task_type": "document",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "3483696d-6cfc-5e0f-9afc-900419a4523a",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "5c1ae004-14d7-4e7f-8c80-c71707357765",
+   "created_at": "2026-11-22T08:23:49.789970+00:00",
+   "task_type": "document",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "6ebbf832-0291-5341-abad-f6dd2f93e8d3",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "191919d8-60e5-440d-a85c-957474b300f6",
+   "created_at": "2026-11-22T08:49:07.823166+00:00",
+   "task_type": "planning",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "quality_gate_refused",
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "74f6febc-d595-5bdd-b26f-a26336528b5e",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "30fa0a1b-aea5-59f9-902d-09217a09f5ad",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "c2c791bc-d080-59c7-8d7d-7d7586befd2c",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "20a8fe4b-3cda-5c6f-b980-97a26133ba11",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    }
+   ]
+  },
+  {
+   "correlation_id": "23226655-ad32-4870-89ce-3a5d53116b03",
+   "created_at": "2026-11-22T08:58:13.685684+00:00",
+   "task_type": "document",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "faf77adf-4763-5d26-b24b-95a3fb8500b7",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "2acc8d14-d609-4861-aa45-2f92595cf439",
+   "created_at": "2026-11-22T09:27:21.734106+00:00",
+   "task_type": "review",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "15917739-6f84-54d0-9b98-8ecda45d186c",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "9d7a7fd9-d71d-45c4-a5e0-d1e45aa46798",
+   "created_at": "2026-11-22T09:57:16.374657+00:00",
+   "task_type": "document",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "78a06a8f-4038-5560-8de0-4f42b219849f",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "b1dd4342-e07f-457d-bb4c-2a6fed2841f4",
+   "created_at": "2026-11-22T10:07:19.790530+00:00",
+   "task_type": "summarization",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "quality_gate_refused",
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "d784d657-4027-5617-b72a-489539f9cf4f",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    }
+   ]
+  },
+  {
+   "correlation_id": "cc9cea32-07b7-46a3-9e92-c91268acf916",
+   "created_at": "2026-11-22T10:20:27.039595+00:00",
+   "task_type": "document",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "91347e3a-6bab-54db-acc4-f5f053cfdf80",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "4069d8f9-ab39-4623-b42f-84436572a1aa",
+   "created_at": "2026-11-22T10:20:55.092407+00:00",
+   "task_type": "test",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "quality_gate_refused",
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "d4e33652-02d2-58f3-b5a6-163e179664f5",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "15b3e171-6193-52ef-b997-bf8db98f2791",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    }
+   ]
+  },
+  {
+   "correlation_id": "abb31f4d-2503-4747-9cda-f606822c3736",
+   "created_at": "2026-11-22T10:43:47.731163+00:00",
+   "task_type": "planning",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "0ff22df5-15c0-53cc-a710-b7e48dc28090",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "62b45f9a-2476-4ca7-a9ce-90d8900be369",
+   "created_at": "2026-11-22T12:09:34.971012+00:00",
+   "task_type": "summarization",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "7f95b579-62b7-5061-b5b0-974c56157b5d",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "fcd48bdd-6a9e-4fb2-ba19-bfa607415e5d",
+   "created_at": "2026-11-22T12:11:53.432145+00:00",
+   "task_type": "code_generation",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "quality_gate_refused",
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "dd329259-c985-537d-adb9-3c188f131298",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "e26f387a-eb0d-5cd2-b5ea-2542ff511546",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    }
+   ]
+  },
+  {
+   "correlation_id": "cd8471cc-6556-4933-bd97-eea79c54e676",
+   "created_at": "2026-11-22T12:29:38.980834+00:00",
+   "task_type": "summarization",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "643035dc-cd5f-545f-ad36-d612830ee526",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "769542be-c85e-44c7-9fdf-a39274efa276",
+   "created_at": "2026-11-22T12:41:33.090631+00:00",
+   "task_type": "summarization",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "1e8cc736-fcb4-5a91-be71-0af288c20ed0",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "model_unavailable"
+    },
+    {
+     "attempt_id": "20a8b697-7371-5d65-9724-2ed64060b301",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "c8294328-50df-498f-9dee-f82b2284c7c8",
+   "created_at": "2026-11-22T12:52:11.956118+00:00",
+   "task_type": "document",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "a51c049a-df00-5f18-9492-af8bc16cd5a2",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "1aea029f-0416-4787-b80a-f5d274cdaa78",
+   "created_at": "2026-11-22T13:11:24.393931+00:00",
+   "task_type": "code_generation",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "quality_gate_refused",
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "a6865695-39de-5041-9453-a5b55b5f3f60",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "862aa550-1c1d-504b-a88e-68d13f246e17",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    }
+   ]
+  },
+  {
+   "correlation_id": "98e77cb1-fcec-44df-bb89-7499980222f0",
+   "created_at": "2026-11-22T13:15:35.175086+00:00",
+   "task_type": "summarization",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "c1014881-2abb-5218-9169-492b7bba4984",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "0fccb11a-86d1-4507-bba5-38ce6c04ffff",
+   "created_at": "2026-11-22T13:39:50.487146+00:00",
+   "task_type": "summarization",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "4661284f-343a-522d-a68d-ef9a2e2e6bbf",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "4e069ccf-71e0-40b3-97cc-8472360c3335",
+   "created_at": "2026-11-22T14:38:19.723889+00:00",
+   "task_type": "summarization",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "quality_gate_refused",
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "6e4e9dfa-9f23-54ae-9c58-ba656f2ee05d",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    }
+   ]
+  },
+  {
+   "correlation_id": "2af12fbc-f03d-4179-b104-169360902f23",
+   "created_at": "2026-11-22T15:01:16.994874+00:00",
+   "task_type": "document",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "7d953263-15c6-51db-b97c-1d9cb32633b0",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "b4d2e3e1-8204-4e81-b3af-454bb66324e7",
+   "created_at": "2026-11-22T15:23:24.061129+00:00",
+   "task_type": "planning",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "quality_gate_refused",
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "dbc4278d-f100-511c-869a-5eb5df534f70",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "a2eaa29b-121a-535e-a0d3-b5c1ac4b0116",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "ba952371-6424-55e9-8338-3179ea79d48b",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "fa6371d3-dabc-5a9c-a24e-050bdbb1cc2f",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    }
+   ]
+  },
+  {
+   "correlation_id": "b5c78be6-2bb0-443d-bde1-876d9edc2981",
+   "created_at": "2026-11-22T16:16:50.219410+00:00",
+   "task_type": "document",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "df6fc0be-703c-5c7e-a6ae-cbd7ce3e05a2",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "d15e6d2f-6459-4448-b385-6fd699519079",
+   "created_at": "2026-11-22T17:13:25.694143+00:00",
+   "task_type": "review",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "2ee0ff9b-ded8-50f8-8748-0884e0e64691",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "a4e957ca-71f9-40bf-9ac1-eebf9c8f2d88",
+   "created_at": "2026-11-22T17:54:24.440633+00:00",
+   "task_type": "evidence_comment",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "106c27f6-4ea9-5a3a-b4e4-ffea0d392417",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "f47094bf-22b7-42d0-b3b1-ee772d454489",
+   "created_at": "2026-11-22T20:16:20.077118+00:00",
+   "task_type": "test",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "quality_gate_refused",
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "2df351b6-1903-5920-bc9e-4729a91ab72a",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "ebe4fe80-71d9-5968-9e72-da48814ec5d6",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    }
+   ]
+  },
+  {
+   "correlation_id": "01fe4256-668c-48b3-8f8e-2a400f039de5",
+   "created_at": "2026-11-23T00:50:05.985669+00:00",
+   "task_type": "document",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "8194d79e-26dd-55c1-8f7f-d415c7630d5c",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "97836dae-da01-40f7-9ed4-699d0a717a31",
+   "created_at": "2026-11-23T03:28:27.284410+00:00",
+   "task_type": "summarization",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "e293998d-29f0-50b3-a126-c5141ff55bc3",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "0175f1c7-0eba-41a4-81b2-2c8dcd16ce9b",
+   "created_at": "2026-11-23T04:58:26.747395+00:00",
+   "task_type": "document",
+   "terminal_ok": 1,
+   "terminal_failure_cause": null,
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "10e78e33-3ef5-5a5d-806b-d764fcb1edc8",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": true,
+     "failure_class": null
+    }
+   ]
+  },
+  {
+   "correlation_id": "6da51fe7-dddd-4152-b18d-fe6ee65cd685",
+   "created_at": "2026-11-24T15:55:27.472349+00:00",
+   "task_type": "documentation",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "quality_gate_refused",
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "3c483698-0d9e-531f-904c-0570dd56b99e",
+     "attempt_kind": "first_try",
+     "model_id": "Beam-1.0-501B-A23B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    }
+   ]
+  },
+  {
+   "correlation_id": "07d58ace-d51a-4260-8a97-f9943ccf91c8",
+   "created_at": "2026-11-24T16:04:57.274763+00:00",
+   "task_type": "summarization",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "quality_gate_refused",
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "0435c632-78ab-5734-99d1-51b90fb9d8aa",
+     "attempt_kind": "first_try",
+     "model_id": "Beam-1.0-501B-A23B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    }
+   ]
+  },
+  {
+   "correlation_id": "bd78df87-44d5-4de2-905c-32abc7e28857",
+   "created_at": "2026-11-24T16:05:01.480975+00:00",
+   "task_type": "summarization",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "quality_gate_refused",
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "0bd424b5-ef80-5636-9fa6-7c9c60720886",
+     "attempt_kind": "first_try",
+     "model_id": "Beam-1.0-501B-A23B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    }
+   ]
+  },
+  {
+   "correlation_id": "8a4a0d53-23d6-404a-95e9-2c82aa4c3299",
+   "created_at": "2026-11-24T16:46:36.616117+00:00",
+   "task_type": "summarization",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "quality_gate_refused",
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "a0ad10a4-3f13-5d0e-b477-dd10bf695bc7",
+     "attempt_kind": "first_try",
+     "model_id": "Beam-1.0-501B-A23B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    }
+   ]
+  },
+  {
+   "correlation_id": "4e6cac30-86a5-4786-8c9c-e813ad217c8d",
+   "created_at": "2026-11-24T16:49:46.141850+00:00",
+   "task_type": "summarization",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "quality_gate_refused",
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "849738a9-445a-5ca9-b985-e1df850b7a89",
+     "attempt_kind": "first_try",
+     "model_id": "Beam-1.0-501B-A23B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    }
+   ]
+  },
+  {
+   "correlation_id": "1cce64a6-96c1-44f3-9df0-9d3bf48c6a07",
+   "created_at": "2026-11-24T19:03:31.744880+00:00",
+   "task_type": "code_generation",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "quality_gate_refused",
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "f94f8685-07f0-5987-b9b2-16750b2d718c",
+     "attempt_kind": "first_try",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "61e66161-52a5-5996-8eb2-ef880d4a064e",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "c5894f73-da52-50c7-801c-c85cfa99e586",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "26e64456-31a4-5736-b6ad-b76e1537e484",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "model_unavailable"
+    },
+    {
+     "attempt_id": "2377dac9-e05b-5acb-8f86-a473281f229b",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Beam-1.0-501B-A23B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    }
+   ]
+  },
+  {
+   "correlation_id": "d5ae120b-730a-4b0e-b6c9-c7bb7eaa23d4",
+   "created_at": "2026-11-24T19:10:05.221049+00:00",
+   "task_type": "summarization",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "quality_gate_refused",
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "91c683e9-1f06-5b95-a4cd-cd6d54892796",
+     "attempt_kind": "first_try",
+     "model_id": "Beam-1.0-501B-A23B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    }
+   ]
+  },
+  {
+   "correlation_id": "681a6e3a-84bd-4fe9-b73b-8bacef6900f8",
+   "created_at": "2026-11-24T19:12:12.100984+00:00",
+   "task_type": "summarization",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "quality_gate_refused",
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "1c0d5e41-4f38-5811-b0b0-ca11267bf807",
+     "attempt_kind": "first_try",
+     "model_id": "Beam-1.0-501B-A23B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    }
+   ]
+  },
+  {
+   "correlation_id": "21c49105-5b4a-4a85-a52b-abfa18ada88c",
+   "created_at": "2026-11-26T04:05:02.430341+00:00",
+   "task_type": "code_generation",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "quality_gate_refused",
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "9ad0d0f8-2dec-5456-a5c6-a5f77cfd2960",
+     "attempt_kind": "first_try",
+     "model_id": "Beam-1.0-501B-A23B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "dc12cd88-b763-5adf-b7ed-f6c1259c7b0b",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "3031ff96-e479-5527-b204-2aa5b32413a1",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "981abcee-5213-5bf0-98bb-d9b575047ce2",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "20b6b340-dc7a-5144-817d-583eb69b901a",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "model_unavailable"
+    }
+   ]
+  },
+  {
+   "correlation_id": "ee886490-e224-411d-9394-2b100598e417",
+   "created_at": "2026-11-26T04:06:20.767976+00:00",
+   "task_type": "code_generation",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "quality_gate_refused",
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "5770c64a-ddcd-5c70-b12b-fc7a23e9836c",
+     "attempt_kind": "first_try",
+     "model_id": "Beam-1.0-501B-A23B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "35751720-a2d6-50a0-9f4f-a19045835f55",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "cf74d0a5-04ad-57d5-bf88-a4e85bbd2d3d",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "b162188b-2158-5098-a4ee-d9cb134493a9",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    },
+    {
+     "attempt_id": "101f806f-d90a-5757-a097-a98d4ca02681",
+     "attempt_kind": "whole_escalation",
+     "model_id": "Qwen3.8-27B",
+     "quality_gate_passed": false,
+     "failure_class": "model_unavailable"
+    }
+   ]
+  },
+  {
+   "correlation_id": "68219c35-2cd2-4439-accb-97ff8d7de138",
+   "created_at": "2026-11-26T04:19:04.784605+00:00",
+   "task_type": "code_generation",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "quality_gate_refused",
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "e874edac-81a8-5d19-bea0-1bc41d4b004c",
+     "attempt_kind": "first_try",
+     "model_id": "Beam-1.0-501B-A23B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    }
+   ]
+  },
+  {
+   "correlation_id": "6fda09f6-862f-4f05-b14d-6760b31f1032",
+   "created_at": "2026-11-26T04:20:29.338524+00:00",
+   "task_type": "code_generation",
+   "terminal_ok": 0,
+   "terminal_failure_cause": "quality_gate_refused",
+   "data_source": "real",
+   "attempt_history": [
+    {
+     "attempt_id": "e3ef7f4e-5827-569b-a3f4-8227cd64f2f2",
+     "attempt_kind": "first_try",
+     "model_id": "Beam-1.0-501B-A23B",
+     "quality_gate_passed": false,
+     "failure_class": "quality_gate_failed"
+    }
+   ]
+  }
+ ]
+}

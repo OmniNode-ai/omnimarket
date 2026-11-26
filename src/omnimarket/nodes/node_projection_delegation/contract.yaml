@@ -329,6 +329,15 @@ db_io:
       migration: "0067_delegation_daily_view.sql"
       access: read
       role: aggregate_daily
+    # OMN-26623. A SQL VIEW over delegation_events: the weekly delegation-quality cells, one row per tenant.
+    # Declared for the same reason as the views above, and it inherits delegation_events'
+    # row-level security the same way.
+    - name: projection_delegation_quality_weekly
+      database_ref: application
+      schema: public
+      migration: "0070_delegation_quality_weekly_view.sql"
+      access: read
+      role: aggregate_quality_weekly
 
 event_bus:
   subscribe_topics:
@@ -367,6 +376,7 @@ event_bus:
     - onex.snapshot.projection.delegation.judge-verdicts.v1  # onex-topic-allow: projection snapshot topic
     - onex.snapshot.projection.delegation.budget-state.v1  # onex-topic-allow: projection snapshot topic
     - onex.snapshot.projection.delegation.daily.v1  # onex-topic-allow: projection snapshot topic
+    - onex.snapshot.projection.delegation.quality-weekly.v1  # onex-topic-allow: projection snapshot topic
   # OMN-13548 (D-03): malformed inbound events (ValidationError / missing required
   # fields) are routed here as a DURABLE failure signal carrying the offending
   # envelope + correlation_id, instead of being logged + dropped silently.
@@ -385,6 +395,7 @@ externally_consumed_topics:
   - onex.snapshot.projection.delegation.judge-verdicts.v1  # onex-topic-allow: projection snapshot topic
   - onex.snapshot.projection.delegation.budget-state.v1  # onex-topic-allow: projection snapshot topic
   - onex.snapshot.projection.delegation.daily.v1  # onex-topic-allow: projection snapshot topic
+  - onex.snapshot.projection.delegation.quality-weekly.v1  # onex-topic-allow: projection snapshot topic
   - onex.evt.omnimarket.projection-delegation-applied.v1
 
 projection_api:
@@ -1223,6 +1234,45 @@ projection_api:
         status-page backend reader reads this daily aggregate yet. The change
         that adds that reader deletes this opt-out and the
         exposure-reader-coverage gate then checks the reader.
+    # OMN-26623
+    # the delegation-quality weekly cells
+    # SINGLETON AGGREGATE, one row per tenant from the SQL view projection_delegation_quality_weekly over delegation_events, whose cells list holds every ISO week, task type and first-rung model with runs, first-try passes and moves down the chain
+    # a week with no runs is served with runs 0 and null rates, never 0
+    # keyed and republished like delegation.daily.v1
+    - topic: onex.snapshot.projection.delegation.quality-weekly.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      topic_config:
+        kafka_config:
+          "cleanup.policy": "compact"
+      key_grain: "mutable"
+      table: projection_delegation_quality_weekly
+      schema: public
+      columns:
+        - tenant_id
+        - cells
+        - total_runs
+        - latest_projection_updated_at
+      json_columns:
+        - cells
+      freshness_column: latest_projection_updated_at
+      cursor_column: latest_projection_updated_at
+      limit: 1
+      bus_backed: true
+      key_columns:
+        - snapshot_grain
+        - tenant_id
+      tenant_column: tenant_id
+      consumers: none
+      consumers_reason: >-
+        The omnidash delegation-quality section that reads this exposure lands with the same
+        ticket but is not yet in the omnidash release omnibase_infra pins. The change that
+        moves that pin deletes this opt-out and the exposure-reader-coverage gate then checks the reader.
+
+# OMN-26623: the runtime principal publishes the weekly delegation-quality snapshot (OMN-24005 coverage).
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.delegation.quality-weekly.v1, operation: WRITE}  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.delegation.quality-weekly.v1, operation: DESCRIBE}  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
 
 metadata:
   transport_type: kafka
@@ -1240,6 +1290,7 @@ metadata:
     - onex.snapshot.projection.delegation.judge-verdicts.v1  # onex-topic-allow: projection snapshot topic
     - onex.snapshot.projection.delegation.budget-state.v1  # onex-topic-allow: projection snapshot topic
     - onex.snapshot.projection.delegation.daily.v1  # onex-topic-allow: projection snapshot topic
+    - onex.snapshot.projection.delegation.quality-weekly.v1  # onex-topic-allow: projection snapshot topic
 
 # OMN-22664 (one-runtime plan T10, under OMN-21288): when the fold moves this
 # writer from its own container into the runtime, the runtime's consumer groups

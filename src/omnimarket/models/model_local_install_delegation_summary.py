@@ -125,4 +125,12 @@ DELEGATION_VIEW_REPLACE_STEPS: tuple[tuple[str, tuple[str, str], str], ...] = (
         ),
         "counted a tier model's unmeasured cost only over the runs the metering headline classes as priced or unknown spend",
     ),
+    (
+        "omn26623_delegation_quality_weekly_view",
+        (
+            "projection_delegation_quality_weekly",
+            "sqlite/delegation_quality_weekly_view.sql",
+        ),
+        "created the delegation-quality weekly view",
+    ),
 )
