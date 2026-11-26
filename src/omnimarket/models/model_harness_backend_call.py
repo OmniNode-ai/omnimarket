@@ -30,6 +30,7 @@ HarnessExitCause = Literal[
     "startup_refused",
     "turn_failed",
     "invalid_output",
+    "api_key_login_refused",
     "credential_refused",
 ]
 
