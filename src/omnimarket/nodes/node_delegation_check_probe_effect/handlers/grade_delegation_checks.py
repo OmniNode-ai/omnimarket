@@ -9,6 +9,7 @@ recorded one was running and saw the process that did the work, so a clause over
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from typing import Final
 from urllib.parse import urlsplit
 
 from omnimarket.models.overlay_documents.model_delegation_check_responders_overlay import (
@@ -207,21 +208,31 @@ def grade_no_model_named(
     )
 
 
+#: The provider words a receipt carries for each chain tier, read on the dev lane from delegation receipts (terminal payload
+#: provider): the local tier stamps "local", the OpenRouter tier "openrouter", and the routing tier named "claude" is backed by a Gemini backend
+#: and stamps "gemini". No dev receipt names "claude_api"; that is the chain tier's name, not a provider.
+CHAIN_TIER_PROVIDER_WORDS: Final[Mapping[str, tuple[str, ...]]] = {
+    "local": ("local",),
+    "openrouter": ("openrouter",),
+    "claude_api": ("gemini",),
+}
+
+
 def grade_serving_tier(
     receipt_provider: str | None, chain_tier: str | None
 ) -> ModelCheckClause:
     """The tier that served the run is the one the chain picked: the first available tier in the declared order."""
     ok = (
-        receipt_provider in CHAIN_TIER_ORDER
+        receipt_provider is not None
         and chain_tier is not None
-        and receipt_provider == chain_tier
+        and receipt_provider in CHAIN_TIER_PROVIDER_WORDS.get(chain_tier, ())
     )
     return ModelCheckClause(
         name="serving_tier_is_chain_pick",
         ok=ok,
-        detail=f"the receipt names tier {receipt_provider}, the one the chain picked"
+        detail=f"the receipt names provider {receipt_provider}, the one the chain's {chain_tier} tier stamps"
         if ok
-        else f"the receipt names provider {receipt_provider!r}; the chain picked {chain_tier!r} out of {list(CHAIN_TIER_ORDER)}",
+        else f"the receipt names provider {receipt_provider!r}; the chain picked {chain_tier!r} out of {list(CHAIN_TIER_ORDER)} ({CHAIN_TIER_PROVIDER_WORDS.get(chain_tier or '')} expected)",
     )
 
 

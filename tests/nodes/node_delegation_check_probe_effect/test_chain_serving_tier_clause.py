@@ -63,6 +63,7 @@ def _run(
     receipt_provider: str | None = None,
     chosen_provider: str | None = "local",
     gateway: FakeGateway | None = None,
+    chain: tuple[ModelDelegationCheckResponder, ...] = CHAIN,
 ) -> Any:
     gateway = gateway or FakeGateway()
     gateway.chosen_provider = chosen_provider
@@ -90,7 +91,7 @@ def _run(
         n_ctx=4096 if local_answers else None,
     )
     handler = HandlerDelegationCheckProbe(
-        responders=CHAIN,
+        responders=chain,
         reader=InMemoryResponderReader({BASE: reading}),
         machine=AbsentCustomerMachine("none"),
         publisher=InMemoryCheckPublisher(),
@@ -163,6 +164,28 @@ def test_the_clause_reads_the_declared_chain_pick() -> None:
     assert not grade_serving_tier("local", None).ok
     assert not grade_serving_tier(None, "local").ok
     assert not grade_serving_tier("claude_api", "openrouter").ok
+
+
+def test_the_clause_reads_the_provider_words_a_real_dev_receipt_carries() -> None:
+    # Read on the dev lane (delegation receipts, terminal payload provider): the local tier stamps "local", the OpenRouter
+    # tier "openrouter", and the routing tier named "claude" is backed by a Gemini backend and stamps "gemini". No dev
+    # receipt names "claude_api": the chain tier name is not a provider word.
+    assert grade_serving_tier("local", "local").ok
+    assert grade_serving_tier("openrouter", "openrouter").ok
+    assert grade_serving_tier("gemini", "claude_api").ok
+    assert not grade_serving_tier("claude_api", "claude_api").ok
+    assert not grade_serving_tier("gemini", "openrouter").ok
+    assert not grade_serving_tier("local", "claude_api").ok
+    assert not grade_serving_tier("openrouter", "claude_api").ok
+
+
+def test_known_good_chain_that_reached_the_claude_tier_served_by_its_dev_provider_passes() -> (
+    None
+):
+    result = _run(
+        "C15", local_answers=False, receipt_provider="gemini", chain=(LOCAL, CLAUDE)
+    )
+    assert _named(result)[SERVING] is True
 
 
 def test_a_request_naming_a_model_backend_or_provider_fails_the_clause() -> None:
