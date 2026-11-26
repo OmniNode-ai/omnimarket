@@ -2141,6 +2141,11 @@ def _v2_routed_failure_cause(
     return None
 
 
+INVALID_REQUEST_FAILURE_REASON = (
+    "DelegationRequestInvalidError: ONEX_DELEGATION_REQUEST_INVALID"
+)
+"""The ``terminal_failure_reason`` of a request refused by the wire model (OMN-26043)."""
+
 TERMINAL_CONSTRUCTION_FAILED_REASON = "terminal_construction_failed"
 """The ``terminal_failure_reason`` a degraded terminal carries (OMN-18978).
 
@@ -3066,6 +3071,70 @@ class HandlerDelegationWorkflow:
                 route=workflow.inference_route,
                 provider=workflow.inference_provider,
                 credential_source=workflow.inference_credential_source,
+                backend_ref=None,
+                pricing_manifest_version=None,
+                unrouted_reason=EnumDelegationUnroutedReason.ROUTING_CONFIGURATION_INVALID,
+            )
+        )
+
+    def reject_invalid_request(
+        self,
+        *,
+        correlation_id: UUID,
+        task_type: str,
+        tenant_id: str | None,
+        detail: str,
+    ) -> list[BaseModel]:
+        """Answer a request the wire model refused with a typed FAILED terminal (OMN-26043).
+
+        A request whose task class the contract does not declare, or whose payload
+        fails the wire model, opens no run and calls no provider. It used to end
+        with no output event, so the gateway row stayed ``published`` for good.
+        The terminal names the refusal as ``<Class>: <CODE>`` (the grammar the
+        gateway terminal writer splits into the typed failure class and code).
+        ``detail`` is a one-line, value-free summary of the validation error.
+        """
+        reason = f"delegation request refused before routing ({detail}); no provider was called"
+        _logger.warning("%s correlation_id=%s", reason, correlation_id)
+        return self._emit_terminal(
+            TerminalEmissionInputs(
+                completed=False,
+                correlation_id=correlation_id,
+                task_type=task_type,
+                model_used="none",
+                endpoint_url="none",
+                content="",
+                quality_passed=False,
+                quality_score=None,
+                operational_outcome=EnumDelegationOperationalOutcome.BOUNDARY_FAILURE,
+                content_verdict=EnumDelegationContentVerdict.NOT_APPLICABLE,
+                latency_ms=0,
+                prompt_tokens=0,
+                completion_tokens=0,
+                total_tokens=0,
+                fallback_to_claude=False,
+                failure_reason=reason,
+                tokens_to_compliance=0,
+                compliance_attempts=1,
+                cost_tier_name="",
+                premium_counterfactual=None,
+                escalation_count=0,
+                escalation_history=(),
+                terminal_failure_reason=INVALID_REQUEST_FAILURE_REASON,
+                routing_tiers_hash=None,
+                escalation_config_hash=None,
+                attempts_count=0,
+                model_name="none",
+                session_id=None,
+                tenant_id=tenant_id,
+                quality_gates_checked=[],
+                quality_gates_failed=[],
+                llm_call_id="",
+                context_pack_hash="",
+                provenance=None,
+                route=None,
+                provider=None,
+                credential_source=None,
                 backend_ref=None,
                 pricing_manifest_version=None,
                 unrouted_reason=EnumDelegationUnroutedReason.ROUTING_CONFIGURATION_INVALID,
