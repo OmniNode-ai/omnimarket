@@ -241,11 +241,7 @@ def _gh_json(argv: list[str], timeout_s: int) -> tuple[object | None, str]:
     """
     try:
         result = subprocess.run(
-            argv,
-            capture_output=True,
-            text=True,
-            timeout=clamp_to_budget(timeout_s),
-            check=False,
+            argv, capture_output=True, text=True, timeout=clamp_to_budget(timeout_s)
         )
     except (subprocess.TimeoutExpired, OSError) as exc:
         return None, f"{argv[:2]} error: {exc}"
@@ -273,11 +269,7 @@ def _gh_json_lines(
     """
     try:
         result = subprocess.run(
-            argv,
-            capture_output=True,
-            text=True,
-            timeout=clamp_to_budget(timeout_s),
-            check=False,
+            argv, capture_output=True, text=True, timeout=clamp_to_budget(timeout_s)
         )
     except (subprocess.TimeoutExpired, OSError) as exc:
         return None, f"{argv[:2]} error: {exc}"
@@ -939,7 +931,6 @@ class HandlerDodEvidenceGithubEffect:
                 capture_output=True,
                 text=True,
                 timeout=clamp_to_budget(_GH_PR_TIMEOUT_S),
-                check=False,
             )
         except (subprocess.TimeoutExpired, OSError) as exc:
             logger.warning("gh pr view failed for %s#%d: %s", repo, pr_number, exc)
@@ -2141,7 +2132,6 @@ def _gate_git(repo_path: str, *args: str) -> tuple[int, str]:
             capture_output=True,
             text=True,
             timeout=clamp_to_budget(_GATE_GIT_TIMEOUT_S),
-            check=False,
             env=scrub_git_location_env(os.environ),
         )
     except (subprocess.TimeoutExpired, OSError) as exc:
@@ -2200,9 +2190,8 @@ class HandlerDurableEvidenceGateEffect:
             headers={"Authorization": api_key, "Content-Type": "application/json"},
         )
         try:
-            with urllib.request.urlopen(
-                request, timeout=clamp_to_budget(_LINEAR_TIMEOUT_S)
-            ) as response:
+            timeout_s = clamp_to_budget(_LINEAR_TIMEOUT_S)
+            with urllib.request.urlopen(request, timeout=timeout_s) as response:
                 payload = json.loads(response.read().decode("utf-8"))
         except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
             return "", frozenset(), f"Linear read failed: {type(exc).__name__}"

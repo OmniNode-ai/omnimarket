@@ -93,8 +93,11 @@ def test_gate_git_ceiling_is_unchanged_without_a_budget(
 class _Collector(EvidenceCollector):
     followups = 0
 
-    def _check_evidence_item(  # type: ignore[override]
-        self, item: Any, ticket_id: str, contract_path: Path | None = None
+    def _check_evidence_item(
+        self,
+        item: dict[str, Any],
+        ticket_id: str,
+        contract_path: Path | None = None,
     ) -> ModelEvidenceCheckResult:
         return ModelEvidenceCheckResult(
             evidence_id="e",
