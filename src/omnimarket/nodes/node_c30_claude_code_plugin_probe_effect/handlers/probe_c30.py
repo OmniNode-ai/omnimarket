@@ -55,6 +55,7 @@ from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlunsplit
 
 from omnimarket.nodes.node_c30_claude_code_plugin_probe_effect.handlers.probe_base import (
     Clause,
@@ -67,6 +68,10 @@ from omnimarket.nodes.node_c30_claude_code_plugin_probe_effect.handlers.probe_ba
     onex_cli,
     read_exposure,
     running_dashboard,
+)
+from omnimarket.nodes.node_c30_claude_code_plugin_probe_effect.models.model_c30_probe import (
+    DECISIONS_TOPIC,
+    TRACE_TOPIC,
 )
 
 CRITERION = "C30"
@@ -82,11 +87,6 @@ RECEIPT_COLUMNS = (
     "tokens_input",
     "tokens_output",
 )
-DECISIONS_TOPIC = "onex.snapshot.projection.delegation.decisions.v1"
-#: The one served exposure that declares a per-run `cost_usd` keyed by
-#: correlation id (omnimarket node_projection_delegation contract). The Runs
-#: exposure itself declares no cost column.
-TRACE_TOPIC = "onex.snapshot.projection.delegation.correlation-trace.v1"
 DASHBOARD_CLAUSE = "the dashboard shows that run's model, tokens, cost and receipt"
 
 
@@ -632,7 +632,8 @@ def loopback_model_server() -> Iterator[str]:
     )
     thread.start()
     try:
-        yield f"http://127.0.0.1:{server.server_port}/v1/chat/completions"
+        host, port = server.server_address[0], server.server_address[1]
+        yield urlunsplit(("http", f"{host!s}:{port}", "/v1/chat/completions", "", ""))
     finally:
         server.shutdown()
         server.server_close()

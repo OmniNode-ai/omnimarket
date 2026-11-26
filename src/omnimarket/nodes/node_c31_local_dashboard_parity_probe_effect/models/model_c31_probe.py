@@ -19,6 +19,8 @@ from omnimarket.models.bus_binding.model_node_event_bus import ModelNodeEventBus
 
 #: The dashboard snapshot topic whose rows the probe reads; the node does not own it.
 DECISIONS_TOPIC = "onex.snapshot.projection.delegation.decisions.v1"
+#: The exposure Overview's Savings widget binds: the metering summary's `all` window row.
+METERING_SUMMARY_TOPIC = "onex.snapshot.projection.metering-summary.v1"
 
 
 class _Frozen(BaseModel):
