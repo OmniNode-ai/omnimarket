@@ -38,7 +38,7 @@ import os
 import socket
 import sys
 from collections.abc import Awaitable, Callable, Mapping
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from getpass import getpass
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -80,8 +80,9 @@ from omnimarket.handlers.routing.customer_key_revoke import (
 )
 from omnimarket.handlers.routing.gateway_tenant_key_client import (
     GatewayKeyRegistrationError,
-    load_signed_in_gateway,
-    register_through_gateway,
+    parse_expires,
+    register_signed_in,
+    signed_in_gateway,
 )
 from omnimarket.handlers.routing.local_byok_route import house_provider_slug
 from omnimarket.inference.local_byok_credential_adapter import (
@@ -240,14 +241,7 @@ def _central_secret_handler() -> HandlerSecretStore:
     return HandlerSecretStore()
 
 
-def _signed_in_gateway() -> tuple[str, SecretStr, Any] | None:
-    """The gateway this CLI is signed in to (origin, key, transport), else ``None``.
-
-    The transport is ``None`` in production (the client opens its own); tests
-    inject one so a fake gateway and the dev gateway run the same command.
-    """
-    signed = load_signed_in_gateway()
-    return None if signed is None else (signed[0], signed[1], None)
+_signed_in_gateway = signed_in_gateway
 
 
 def _tenant_key_event_bus() -> ProtocolCredentialEventBus | None:
@@ -487,7 +481,7 @@ def register_tenant_key(
     """
     if tenant is not None and not tenant.strip():
         raise click.ClickException("--tenant must not be empty; nothing was stored.")
-    expires_at = _parse_expires(expires)
+    expires_at = parse_expires(expires)
     signed_in = (
         _signed_in_gateway() if host is None and store_choice == "local" else None
     )
@@ -504,23 +498,19 @@ def register_tenant_key(
     if signed_in is not None:
         try:
             click.echo(
-                json.dumps(
-                    register_through_gateway(
-                        base_url=signed_in[0],
-                        api_key=signed_in[1],
-                        http_client=signed_in[2],
-                        value=value,
-                        provider=provider,
-                        name=name if name is not None else provider,
-                        models=list(model_option) if model_option else None,
-                        tenant=tenant,
-                        plan=plan,
-                        expected_version=expected_version,
-                        expires_at=expires_at,
-                        workspace_id=workspace_id,
-                        base_url_override=base_url,
-                        connection_id=connection_id,
-                    )
+                register_signed_in(
+                    signed_in,
+                    value,
+                    provider=provider,
+                    name=name,
+                    model_option=model_option,
+                    tenant=tenant,
+                    plan=plan,
+                    expected_version=expected_version,
+                    expires_at=expires_at,
+                    workspace_id=workspace_id,
+                    base_url=base_url,
+                    connection_id=connection_id,
                 )
             )
         except GatewayKeyRegistrationError as exc:
@@ -631,24 +621,6 @@ def revoke_tenant_key(
 
 def _fold_registered_tenant_key(response: Any, tenant: str) -> None:
     fold_registered_tenant_key(response, tenant, _tenant_key_store())
-
-
-def _parse_expires(expires: str | None) -> datetime | None:
-    """``--expires YYYY-MM-DD`` as midnight UTC that day, or a refusal.
-
-    Read before the key, so a typo costs nothing: the value is never read from
-    stdin and nothing is stored.
-    """
-    if expires is None:
-        return None
-    try:
-        day = date.fromisoformat(expires.strip())
-    except ValueError as exc:
-        raise click.ClickException(
-            f"--expires {expires!r} is not a date in the form YYYY-MM-DD; "
-            "nothing was stored."
-        ) from exc
-    return datetime(day.year, day.month, day.day, tzinfo=UTC)
 
 
 def _drain_pending_credential_events(db_path: Path) -> None:
