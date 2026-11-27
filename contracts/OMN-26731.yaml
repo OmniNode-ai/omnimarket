@@ -60,3 +60,32 @@ dod_evidence:
       - check_type: "command"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --bus-lane dev --omnibase-path \"${OMNI_HOME:?}\" --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-26731 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/cli/test_omn26731_register_tenant_key_gateway.py -q --no-cov"
         cwd: "."
+  - id: dod-omn26731-own-key-delegation-receipt
+    description: >-
+      After registering a provider key through the gateway from the clean container on h201 as tenant cli-run-a with
+      omnimarket#7021 installed from its pushed head b368d6b03b476095a7659c675c9f6a058846b8b3, one onex cloud delegate
+      (code_generation) answered with the receipt naming the chosen model qwen/qwen3-coder, credential_source customer_key
+      and route byok-openrouter, status completed (workflow 80ca9828-a88e-4915-88e4-1e3b0ff7a1a6). An earlier delegation
+      of the same session on task type reasoning was answered by meta-llama/llama-3.1-8b-instruct, also on the customer key;
+      the committed receipt is the code_generation one, the run that names the chosen model. The check pins the committed
+      receipt by hash and refuses a receipt that names another model or a platform credential.
+    source: manual
+    binds_ac:
+    - AC3
+    checks:
+    - check_type: command
+      check_value: |-
+        env PYTHONDONTWRITEBYTECODE=1 uv run --frozen python - <<'READBACK'
+        import hashlib
+        import json
+        from pathlib import Path
+
+        raw = Path('contracts/evidence/OMN-26731/ac3-own-key-delegation-receipt.json').read_bytes()
+        assert hashlib.sha256(raw).hexdigest() == '24492c3235cca11aa1811075266f9958b23dcd3bad8fa6eefece370cbfd3f247'
+        receipt = json.loads(raw)
+        assert receipt['terminal_model_used'] == 'qwen/qwen3-coder'
+        assert receipt['credential_source'] == 'customer_key'
+        assert receipt['route'] == 'byok-openrouter'
+        assert receipt['status'] == 'completed'
+        READBACK
+      cwd: .
