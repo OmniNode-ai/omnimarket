@@ -42,6 +42,7 @@ PROBE_SETTING: Final = "ONEX_CUSTOMER_PATH_LAB_PROBE_TARGETS"
 TENANT_SETTING: Final = "ONEX_CUSTOMER_PATH_TENANT_SLUG"
 BLOCKED_SETTING: Final = "ONEX_CUSTOMER_PATH_BLOCKED_RANGES"
 UV_URL_SETTING: Final = "ONEX_CUSTOMER_PATH_UV_INSTALL_URL"
+PROVIDER_KEY_FILE_SETTING: Final = "ONEX_CUSTOMER_PATH_PROVIDER_KEY_FILE"
 CONTRACT: Final = Path(__file__).resolve().parents[1] / "contract.yaml"
 TAIL: Final = 400
 KEY_PATH_IN_CONTAINER: Final = "gateway.key"
@@ -166,6 +167,7 @@ class HandlerCustomerPathContainerTest:
             if r.strip()
         ]
         uv_url = (self._environ.get(UV_URL_SETTING) or "").strip()
+        provider_file = (self._environ.get(PROVIDER_KEY_FILE_SETTING) or "").strip()
         missing = [
             n
             for n, v in (
@@ -189,6 +191,14 @@ class HandlerCustomerPathContainerTest:
                 EnumCustomerPathOutcome.KEY_FILE_REFUSED,
                 f"the file {KEY_FILE_SETTING} names is missing, empty, unreadable or not owner-only (0600)",
             )
+        provider_key: str | None = None
+        if provider_file:
+            provider_key = self._read_key(Path(provider_file))
+            if provider_key is None:
+                return self._result(
+                    EnumCustomerPathOutcome.KEY_FILE_REFUSED,
+                    f"the file {PROVIDER_KEY_FILE_SETTING} names is missing, empty, unreadable or not owner-only (0600)",
+                )
         try:
             container = self._runtime.start(request.image, request.container_ttl_s)
         except (RuntimeError, OSError) as exc:
@@ -197,7 +207,15 @@ class HandlerCustomerPathContainerTest:
             )
         try:
             return self._run_steps(
-                request, container, base_url, probes, key, tenant_slug, uv_url, blocked
+                request,
+                container,
+                base_url,
+                probes,
+                key,
+                tenant_slug,
+                uv_url,
+                blocked,
+                provider_key,
             )
         finally:
             self._runtime.remove(container)
@@ -212,6 +230,7 @@ class HandlerCustomerPathContainerTest:
         tenant_slug: str,
         uv_url: str,
         blocked: list[str],
+        provider_key: str | None = None,
     ) -> ModelCustomerPathResult:
         user = request.customer_user
         home = f"/home/{user}"
@@ -229,7 +248,10 @@ class HandlerCustomerPathContainerTest:
         extra: dict[str, str | None] = {}
 
         def scrub(text: str) -> str:
-            return text.replace(key, "<key>")[-TAIL:]
+            text = text.replace(key, "<key>")
+            if provider_key:
+                text = text.replace(provider_key, "<provider-key>")
+            return text[-TAIL:]
 
         def run(
             step: Mapping[str, Any],
@@ -273,6 +295,17 @@ class HandlerCustomerPathContainerTest:
                         guide_ref=step["guide_ref"],
                         status=EnumStepStatus.NOT_RUN,
                         detail="not reached: an earlier step failed",
+                    )
+                )
+                continue
+            if kind == "own_key" and not provider_key:
+                readings.append(
+                    ModelStepReading(
+                        step_id=step["id"],
+                        guide_ref=step["guide_ref"],
+                        status=EnumStepStatus.NOT_RUN,
+                        detail=step["reason"],
+                        guide_gap=step.get("gap"),
                     )
                 )
                 continue
@@ -402,9 +435,8 @@ class HandlerCustomerPathContainerTest:
                 readings.append(reading(step, ok, detail, done))
                 failed = not ok
                 continue
-            done = run(
-                step, step["argv"], stdin=key if step.get("stdin") == "key" else None
-            )
+            stdin_by_name = {"key": key, "provider_key": provider_key}
+            done = run(step, step["argv"], stdin=stdin_by_name.get(step.get("stdin")))
             expect_failure = step.get("expect") == "failure"
             ok = (done.exit_code != 0) if expect_failure else (done.exit_code == 0)
             if kind == "receipt" and ok:

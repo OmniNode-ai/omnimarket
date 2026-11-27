@@ -292,3 +292,75 @@ def test_source_holds_no_host_or_key_literal() -> None:
         if pattern.search(p.read_text(encoding="utf-8"))
     ]
     assert hits == []
+
+
+PROVIDER_VALUE = "synthetic-provider-key-never-printed"
+
+
+def _provider_file(tmp_path: Path, mode: int = 0o600) -> Path:
+    path = tmp_path / "provider-key"
+    path.write_text(PROVIDER_VALUE + "\n", encoding="utf-8")
+    path.chmod(mode)
+    return path
+
+
+def test_own_key_step_registers_the_provider_key_on_stdin_when_a_file_is_named(
+    tmp_path: Path,
+) -> None:
+    runtime = FakeRuntime()
+    env = _env(
+        tmp_path,
+        ONEX_CUSTOMER_PATH_PROVIDER_KEY_FILE=str(_provider_file(tmp_path)),
+    )
+    result = _run(env, runtime)
+    by_id = {s.step_id: s for s in result.steps}
+    assert by_id["s10_register_provider_key"].status is EnumStepStatus.PASSED
+    assert result.outcome is EnumCustomerPathOutcome.PASSED
+    calls = [c for c in runtime.calls if "register-tenant-key" in " ".join(c[1])]
+    assert len(calls) == 1
+    assert "--tenant 'tenant-t'" in " ".join(
+        calls[0][1]
+    ) or "--tenant tenant-t" in " ".join(calls[0][1])
+    assert calls[0][2] == "customer"
+    assert calls[0][3] == PROVIDER_VALUE
+    assert PROVIDER_VALUE not in " ".join(" ".join(c[1]) for c in runtime.calls)
+
+
+def test_own_key_step_is_not_run_and_says_why_when_no_file_is_named(
+    tmp_path: Path,
+) -> None:
+    result = _run(_env(tmp_path), FakeRuntime())
+    step = {s.step_id: s for s in result.steps}["s10_register_provider_key"]
+    assert step.status is EnumStepStatus.NOT_RUN
+    assert "ONEX_CUSTOMER_PATH_PROVIDER_KEY_FILE" in step.detail
+
+
+def test_a_provider_key_file_that_is_not_owner_only_is_refused(tmp_path: Path) -> None:
+    runtime = FakeRuntime()
+    env = _env(
+        tmp_path,
+        ONEX_CUSTOMER_PATH_PROVIDER_KEY_FILE=str(_provider_file(tmp_path, 0o644)),
+    )
+    result = _run(env, runtime)
+    assert result.outcome is EnumCustomerPathOutcome.KEY_FILE_REFUSED
+    assert runtime.started == []
+
+
+def test_the_provider_key_is_scrubbed_from_output_and_a_refusal_names_the_step(
+    tmp_path: Path,
+) -> None:
+    runtime = FakeRuntime(
+        {
+            "register-tenant-key": ModelExecResult(
+                exit_code=1, stderr=f"refused {PROVIDER_VALUE}"
+            )
+        }
+    )
+    env = _env(
+        tmp_path,
+        ONEX_CUSTOMER_PATH_PROVIDER_KEY_FILE=str(_provider_file(tmp_path)),
+    )
+    result = _run(env, runtime)
+    assert result.outcome is EnumCustomerPathOutcome.STEP_FAILED
+    assert result.detail.startswith("s10_register_provider_key")
+    assert PROVIDER_VALUE not in result.model_dump_json()
