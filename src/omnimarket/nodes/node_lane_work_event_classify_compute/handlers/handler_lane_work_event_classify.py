@@ -282,7 +282,7 @@ class HandlerLaneWorkEventClassify:
         """Made before the last push or head change; proof of freshness is owed once one exists."""
         if payload.get("observed_after_last_push") is False:
             return True
-        last = state.last_head_change_at
+        last = getattr(state, "last_head_change_at", None)
         if last is None:
             return False
         stamps = [t for t in (observed_at, ci_read_at) if t is not None]
@@ -421,8 +421,11 @@ class HandlerLaneWorkEventClassify:
         named = payload.get("action_id")
         if named:
             return str(named)
-        if len(state.outstanding_action_ids) == 1:
-            return state.outstanding_action_ids[0]
+        outstanding = getattr(state, "outstanding_action_ids", None)
+        if outstanding is None:
+            outstanding = tuple(getattr(state, "outstanding_actions", {}))
+        if len(outstanding) == 1:
+            return str(outstanding[0])
         return build_action_id(state.workflow_id, state.seq, 0)
 
     @staticmethod

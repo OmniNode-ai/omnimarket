@@ -98,7 +98,7 @@ replay:
     expect:
       event:
         kind: "commit_refused"
-        cls: "release_identity"
+        event_class: "release_identity"
       state: "waiting_release"
       action:
         kind: "arm_poll_deadline"
@@ -120,7 +120,7 @@ replay:
     expect:
       event:
         kind: "commit_refused"
-        cls: "release_identity"
+        event_class: "release_identity"
       state: "waiting_release"
       action:
         kind: "arm_poll_deadline"

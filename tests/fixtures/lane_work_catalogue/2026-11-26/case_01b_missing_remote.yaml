@@ -77,7 +77,7 @@ replay:
     expect:
       event:
         kind: "push_refused"
-        cls: "missing_remote"
+        event_class: "missing_remote"
       state: "help_requested"
       action:
         kind: "help_request"

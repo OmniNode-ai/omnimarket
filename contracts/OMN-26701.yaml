@@ -70,3 +70,23 @@ dod_evidence:
       - check_type: "command"
         check_value: "test -d tests/fixtures/lane_work_catalogue/2026-11-26"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26701-ac2-replay-on-stack"
+    description: >-
+      AC2: with the reducer (task 3) and the classifier (task 4) branches merged in, the eight replay
+      cases pass through the classifier and the reducer, none skipped.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_reducer/test_catalogue_replay.py -k test_catalogue_replay -rs -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26701-integration-proof"
+    description: >-
+      The catalogue replay runs on a lab host at the pushed head.
+    source: "manual"
+    binds_ac: ["AC2"]
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-26701 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_lane_work_reducer/test_catalogue_replay.py -q --no-cov -n 0 -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"

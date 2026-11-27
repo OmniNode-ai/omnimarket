@@ -175,7 +175,9 @@ class HandlerLaneWorkReducer:
             or ModelLaneWorkChange(owner="OmniNode-ai", repo="omnimarket", pr_number=1),
             name=name,
             help_tiers=cfg.help_tiers,
-            handoff_request_id="R1" if fixture else None,
+            handoff_request_id=(fixture or {}).get("entry_request")
+            or ("R1" if fixture else None),
+            expected_head=(fixture or {}).get("entry_head"),
         )
         armed, times, counter, _ = self._arm_entry(base, name, None, cfg)
         return base.model_copy(

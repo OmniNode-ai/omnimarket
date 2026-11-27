@@ -96,7 +96,7 @@ replay:
     expect:
       event:
         kind: "push_refused"
-        cls: "guard_ledger_cell"
+        event_class: "guard_ledger_cell"
       state: "help_requested"
       action:
         kind: "help_request"
