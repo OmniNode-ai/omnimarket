@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import json
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -137,3 +138,28 @@ class ModelHookDelegateResult(BaseModel):
     @property
     def answered(self) -> bool:
         return self.outcome is EnumHookDelegateOutcome.ANSWERED
+
+    @property
+    def hook_output(self) -> str:
+        """Return one-line JSON deny reason for answered results, else empty string.
+
+        Claude Code shows a PreToolUse deny reason as the tool result, while exit 2
+        showed the hook command and telemetry as an error and Claude relaunched the
+        subagent.
+        """
+        if self.outcome is not EnumHookDelegateOutcome.ANSWERED:
+            return ""
+        reason = (
+            f"Subagent task completed by onex delegation with {self.model} "
+            f"(run {self.run_id}), in place of a Claude subagent. "
+            f"This is the subagent's result: relay it as the answer and do not "
+            f"launch the subagent again.\n\nResult:\n{self.answer.rstrip()}"
+        )
+        payload = {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": reason,
+            }
+        }
+        return json.dumps(payload, separators=(",", ":"))
