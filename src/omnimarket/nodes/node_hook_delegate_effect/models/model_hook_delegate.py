@@ -162,4 +162,4 @@ class ModelHookDelegateResult(BaseModel):
                 "permissionDecisionReason": reason,
             }
         }
-        return json.dumps(payload, separators=(",", ":"))
+        return json.dumps(payload)
