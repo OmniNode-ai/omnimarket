@@ -68,9 +68,8 @@ dod_evidence:
     source: "manual"
     binds_ac: ["AC3"]
     checks:
-      - check_type: "command"
-        check_value: >-
-          sh -c 'test -d src/omnimarket/nodes/node_cloud_smoke_check_effect && ! grep -rEn "https?://[A-Za-z0-9]|[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}|onxk_" src/omnimarket/nodes/node_cloud_smoke_check_effect --include=*.py'
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_cloud_smoke_check_effect/test_no_literals.py -q --no-cov -n 0 -p no:randomly -k cloud_smoke_check_effect"
         cwd: "."
   - id: "dod-omn26711-ctest-container-path"
     description: >-
@@ -90,9 +89,8 @@ dod_evidence:
     source: "manual"
     binds_ac: ["AC3"]
     checks:
-      - check_type: "command"
-        check_value: >-
-          sh -c 'test -f src/omnimarket/nodes/node_customer_path_container_test_effect/adapters/adapter_docker_runtime.py && test -f src/omnimarket/nodes/node_customer_path_container_test_effect/handlers/handler_customer_path_container_test.py && ! grep -rEn "https?://[A-Za-z0-9]|[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}|onxk_" src/omnimarket/nodes/node_customer_path_container_test_effect --include=*.py'
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_cloud_smoke_check_effect/test_no_literals.py -q --no-cov -n 0 -p no:randomly -k customer_path_container_test_effect"
         cwd: "."
   - id: "dod-omn26711-integration-proof"
     description: >-
@@ -113,7 +111,6 @@ dod_evidence:
       Deploy probe the hosted runner can run: the smoke check's handler at the checked-out commit on GitHub names the
       settings the gateway URL comes from; the node does not exist at the merge base, so the probe fails there.
     source: "manual"
-    binds_ac: ["AC3"]
     checks:
       - check_type: "command"
         check_value: >-
