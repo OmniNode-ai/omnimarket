@@ -34,6 +34,11 @@ event_bus:
 runtime_dispatch:
   external_trigger: Direct Python invocation by a reader of the lab host table (read_host_table_rows_from_store), which names the
     admitted hosts and the excluded ones with their reasons from the key-value store.
+  # A reader of the host table calls the handler in process, and a person or a lane reads one document by hand;
+  # nothing on the bus starts this node and it never runs on a timer.
+  on_demand:
+    command: uv run onex node node_host_table_keys_read_effect --input <request.json> --output reading
+    owner: OmniNode Platform Team
 descriptor:
   node_archetype: effect
   purity: impure
