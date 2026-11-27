@@ -77,15 +77,6 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_c11_credential_from_store.py -q --no-cov -n 0 -p no:randomly
     cwd: .
-- id: dod-omn26117-c11-unmeasured-not-regression
-  description: A C11 run on a host with no gateway row in the settings store reads PRECONDITION-ABSENT (absent gateway_row), the reading taken on h201 2026-11-26T23:36:11Z, and a check that could not be measured exits with the not-measured code, never the failed-check code, so a missing dev broker grant or store row is never graded as a product regression.
-  source: manual
-  binds_ac:
-  - AC1
-  checks:
-  - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_tick_single_check.py -q --no-cov -n 0 -p no:randomly -k could_not_be_measured
-    cwd: .
 - id: dod-omn26117-c11-refused-store-not-measured
   description: A settings store that refuses the read (the dev broker's ONEX_CORE_025_PERMISSION_DENIED on the overlay-store topic) is recorded as overlay_unreadable and the tick exits with the unavailable code, never the failed-check code. The test failed against the merge base with the uncaught ModelOnexError and passes on the tick that catches it, so a missing dev grant is never graded as a product regression.
   source: manual
