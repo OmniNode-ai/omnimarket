@@ -1366,6 +1366,25 @@ def _gate_result_with_output_refusal(
     )
 
 
+_UNSET_REQUEST_MAX_TOKENS: Final[int] = int(
+    ModelDelegationRequest.model_fields["max_tokens"].default
+)
+
+
+def _provider_max_tokens(request_max_tokens: int, backend_ceiling: int) -> int:
+    """The output limit the provider call carries.
+
+    The routing decision's contract-declared ceiling (cloud-glm: 65536) is the
+    bound. A request limit below the request model's own default is a deliberate cut by the
+    caller (a job payload asking for 3 tokens) and is passed through, never
+    above the ceiling. A request at or above that default is the unset value and posts the
+    ceiling, as OMN-13345 requires.
+    """
+    if request_max_tokens < _UNSET_REQUEST_MAX_TOKENS:
+        return min(request_max_tokens, backend_ceiling)
+    return backend_ceiling
+
+
 def _build_model_inference_intent(
     *,
     base_url: str,
@@ -1655,7 +1674,9 @@ def _evaluate_compliance(
             # DELEGATION_MAX_TOKENS_HARD_LIMIT default and would truncate cloud
             # GLM (finish_reason=length), tanking the quality gate. Same defect
             # class as OMN-13342/#1282 (generation path).
-            max_tokens=workflow.routing_decision.max_tokens,
+            max_tokens=_provider_max_tokens(
+                workflow.request.max_tokens, workflow.routing_decision.max_tokens
+            ),
             temperature=temperature,
             timeout_seconds=_inference_timeout_seconds(workflow),
             correlation_id=workflow.correlation_id,
@@ -3146,7 +3167,9 @@ class HandlerDelegationWorkflow:
                 # DELEGATION_MAX_TOKENS_HARD_LIMIT default and truncates cloud
                 # GLM (finish_reason=length). Same defect class as
                 # OMN-13342/#1282 (generation path).
-                max_tokens=decision.max_tokens,
+                max_tokens=_provider_max_tokens(
+                    workflow.request.max_tokens, decision.max_tokens
+                ),
                 temperature=temperature,
                 timeout_seconds=_inference_timeout_seconds(workflow),
                 correlation_id=cid,

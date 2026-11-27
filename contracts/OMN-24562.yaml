@@ -31,11 +31,26 @@ requirements:
   acceptance:
   - id: AC4
     statement: 'AC4: ModelTenantApiKeyOverlay validates the overlay document of the tenant gateway key node and refuses a malformed one -- falsifier: tests/unit/models/test_tenant_api_key_overlay_document_omn24562.py fails collection or any of its tests fails'
+- id: req-omn24562-unit-file-scoped-root
+  statement: A changed file under tests/unit/ selects that file and what imports or names it, not the whole tests/unit/ directory, and a change the rule cannot attribute keeps the directory.
+  acceptance:
+  - id: AC8
+    statement: 'AC8: a changed tests/unit file selects itself, its importers in any folder and the tests that spell its path, and an unattributable helper keeps tests/unit/ -- falsifier: tests/nodes/node_test_selection_selector_compute/test_unit_file_scoped_root.py fails when the unit branch of the resolver is removed'
 - id: req-omn24562-lint-split-parallel
   statement: The required lint context is an aggregate of parallel group jobs, every old lint step still runs in exactly one group, and the Direct Model Call Gate positive control judges each planted case on a scratch repository holding only that file.
   acceptance:
   - id: AC6
     statement: 'AC6: ci.yml carries lint-group-1 to lint-group-6 and a lint aggregate that needs all of them, each of the 128 steps listed in tests/ci/lint_steps_before_omn24562.txt runs in one group, and the Direct Model Call Gate positive control runs with --repo-root on a scratch repository -- falsifier: uv run pytest tests/ci/test_lint_split_omn24562.py tests/ci/test_direct_model_call_ci_gate.py fails when a step is dropped from every group or the control scans the whole tree'
+- id: req-omn24562-tui-refusal-note-stable
+  statement: The setup screen's refusal to save with nothing chosen is not replaced by a later model find, so the full suite does not fail on a loaded runner.
+  acceptance:
+  - id: AC9
+    statement: 'AC9: after Save is refused with no model chosen, the pending or running auto-find does not replace the refusal note -- falsifier: tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py::test_config_refusal_note_survives_the_late_auto_find fails when the find is not cancelled on refusal'
+- id: req-omn24562-customer-key-removal
+  statement: A customer provider key registers unbound, routes, and is revoked before its secret is deleted, so a refused revoke publish never leaves an unrevoked row with no secret.
+  acceptance:
+  - id: AC8
+    statement: 'AC8: register-tenant-key without --host stores the key unbound and revoke-tenant-key publishes the revoke before it deletes the stored secret -- falsifier: uv run pytest tests/test_credential_publisher.py tests/unit/cli/test_omn24562_revoke_tenant_key_command.py tests/unit/cli/test_omn21012_register_tenant_key_host.py fails when a refused publish still deletes the secret or the key carries the registering host'
 - id: req-omn24562-suite-admission-both-ways
   statement: A code eval suite task is kept only if its known-good answer passes and an empty answer fails, both through the grader's own score handler.
   acceptance:
@@ -46,6 +61,21 @@ requirements:
   acceptance:
   - id: AC8
     statement: 'AC8: the 1d, 7d and 30d windowed read answers 200 for every node contract declaring a freshness_column on real Postgres, and table_reader.py stays at or under its 914 code lines -- falsifier: uv run pytest tests/test_omn24562_windowed_read_every_exposure_real_postgres.py tests/test_omn24562_table_reader_unserved_freshness.py fails when the window order alias is dropped or the reader grows'
+- id: req-omn24562-fixture-readers-on
+  statement: A pull request whose only test-infrastructure trigger is a changed data fixture under tests/fixtures/ runs the tests that read the fixture and not the full suite.
+  acceptance:
+  - id: AC9
+    statement: 'AC9: with the shipped adjacency file, each of the four recorded fixture-only merges narrows and no test file naming a changed file is left out of its selection, and a selection with its readers removed reports misses -- falsifier: uv run pytest tests/nodes/node_test_selection_selector_compute/test_data_readers.py -k shipped fails when data_file_readers_enabled is false'
+- id: req-omn24562-responder-reader
+  statement: The delegation check responder reader answers a llama.cpp listing without max_model_len, advances past a dead responder and prefers the least busy one.
+  acceptance:
+  - id: AC10
+    statement: 'AC10: the live reader chooses a responder whose listing carries meta.n_ctx only, skips a dead one and orders by load -- falsifier: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_http_responder_reader_live_shapes.py -q fails'
+- id: req-omn24562-etcd-lab-members-overlay-model
+  statement: The lab etcd voter set has a typed overlay model in omnimarket that the overlay home can pin ahead of its document, with the rules the provisioning script expects and a read that renders the text of members.tsv.
+  acceptance:
+  - id: AC11
+    statement: 'AC11: ModelEtcdLabMembersOverlay accepts the current five voters, renders their members.tsv rows, and refuses a sixth voter, a repeated name, a second learner and a second laptop voter -- falsifier: tests/unit/models/test_etcd_lab_members_overlay_document_omn24562.py fails collection or any of its tests fails'
 evidence_requirements:
 - kind: tests
   description: The inode alarm tests pass at the pushed head.
@@ -107,6 +137,24 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/models/test_tenant_api_key_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn24562-unit-file-scoped-root
+  description: 'AC8: a changed tests/unit test file selects the file only; a helper selects its importers in another unit folder and the test that spells its path; an unattributable helper, a non-python file and a package marker keep their directory (failing control: most of the new tests fail at the merge base, where the directory is selected; the rule is the adjacency switch unit_file_selection_enabled, on in the shipped adjacency and off in the frozen replay snapshot, so the stage 0 receipts are unchanged). Replay over the 60 pinned merges: 18 change tests/unit, narrowed 10 to 12, full suite 50 to 48, selected seconds 574954.625506 to 552493.098902.'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_test_selection_selector_compute/test_unit_file_scoped_root.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24562-unit-file-scoped-root-detect-paths
+  description: 'AC8: the detect_test_paths fixtures that pin the old behaviour run with the unit file-scoped switch off in a copy of the shipped adjacency, and a new test shows the same tests/unit change narrowing with the switch on (failing control: with the switch on, the four old-behaviour tests see a narrowed selection and fail).'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/scripts/test_detect_test_paths.py -q -n 0 --no-cov -p no:randomly -k "unit_rule or unit_test_change_is_not_a_protected_surface or unit_tree_takes_the_full_suite_matrix or heavy_selection_is_the_planned_matrix"
+    cwd: .
 - id: dod-omn24562-lint-split-parallel
   description: 'AC6: the lint job is split into six parallel group jobs behind a lint aggregate with the same name; the test lists every old step and refuses a missing one (failing control: before the split the test fails on 128 missing steps, dropping Ruff check from every group fails test_dropping_a_step_is_refused), and the Direct Model Call Gate positive control runs each plant on a scratch repository.'
   source: manual
@@ -116,6 +164,14 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/ci/test_lint_split_omn24562.py tests/ci/test_direct_model_call_ci_gate.py -q -n 0 --no-cov -p no:randomly
     cwd: .
+- id: dod-omn24562-tui-refusal-note-stable
+  description: 'AC9: the refusal note stays after the auto-find window passes (failing control: at the merge base the same test fails with the note reading no models found, the text the find writes).'
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py -q -n 0 --no-cov -p no:randomly -k "refusal_note_survives or refuses_to_save_with_no_model_selected"
 - id: dod-omn24562-suite-admission-both-ways
   description: A code eval suite task is kept only if its known-good answer passes and an empty answer fails, both run through the grader's own score handler; a recorded task whose merge carries another ticket's contract or a deploy-time check is read by the suite's recorded held paths and check items (the test file fails at collection before the admission helper exists and passes after).
   source: manual
@@ -125,6 +181,24 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_code_eval_trial_orchestrator/test_suite_admission_both_ways.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn24562-unit-file-scoped-root-reference-cache
+  description: 'AC8: a deleted-file lookup reuses the parsed references of every test file instead of parsing the tree again, so test_split_count_by_duration_no_narrowed_shard_past_target finishes inside its shard timeout (failing control: at the previous head the second lookup parses every file again and the test fails; recorded 308 s before, 89 s after on the same host).'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_test_selection_selector_compute/test_unit_file_scoped_root.py -q -n 0 --no-cov -p no:randomly -k second_deleted_file_does_not_reparse_the_tree
+    cwd: .
+- id: dod-omn24562-customer-key-removal
+  description: 'AC8: a customer key registers unbound and is revoked before its secret is deleted; a refused publish keeps the secret and a central-store key is reported as not deletable (failing control: at the base the revoke command is absent and the publisher deletes before it publishes, so these files fail there).'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_credential_publisher.py tests/unit/cli/test_omn24562_revoke_tenant_key_command.py tests/unit/cli/test_omn21012_register_tenant_key_host.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
 - id: dod-omn24562-windowed-read-every-exposure
   description: 'Every node contract that declares a freshness_column (61) answers the 1d, 7d and 30d windowed read through the real store path on real Postgres, built from its own migrations (failing control: the same walk answers 503 for a TEXT freshness column under the window expression before OMN-21288, and for an exposure whose freshness column is not a served column before this change).'
   source: manual
@@ -133,4 +207,40 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/test_omn24562_windowed_read_every_exposure_real_postgres.py tests/test_omn24562_table_reader_unserved_freshness.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24562-fixture-readers-on
+  description: 'AC9: the shipped adjacency file turns data_file_readers_enabled on. Replay of the 4 recorded fixture-only merges with the shipped file: all 4 narrow, zero test files naming a changed file are missed, the known-bad selection (readers removed) reports misses, and the 2 merges that also change uv.lock stay a full suite (failing control: the shipped-settings tests fail against the previous adjacency file).'
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_test_selection_selector_compute/test_data_readers.py -q -n 0 --no-cov -p no:randomly -k shipped
+    cwd: .
+- id: dod-omn24562-responder-reader-ac10
+  description: 'AC10: four tests over real loopback sockets pass; they fail if the reader raises on a listing with no max_model_len, stops at a dead first responder, or ignores load.'
+  source: manual
+  binds_ac:
+  - AC10
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_http_responder_reader_live_shapes.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24562-additive-latency-no-wall-clock
+  description: 'AC10: the two additive latency tests of the hook adapter read the injected clock and the deadline handed to the client, never the runner wall clock; with every wait stretched by 0.7 s the old per_prompt test fails (1.2 s against a 0.9 s limit, as Tests (Split 13/20) failed at 1.15 s) and the file passes.'
+  source: manual
+  binds_ac:
+  - AC10
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_additive_rows_omn22016.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24562-etcd-lab-members-overlay-model-tests
+  description: The overlay document model for the lab etcd member set accepts the current five voters and renders their members.tsv rows, and refuses a sixth voter, a repeated name, a second learner and a second laptop voter; the test file fails at collection with ModuleNotFoundError before the model module exists and passes after (26 passed).
+  source: manual
+  binds_ac:
+  - AC11
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_etcd_lab_members_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
     cwd: .

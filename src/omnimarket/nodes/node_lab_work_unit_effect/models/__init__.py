@@ -12,6 +12,7 @@ from omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit impor
     ModelLabCodeDraft,
     ModelLabWorkUnitReceipt,
     ModelLabWorkUnitRequest,
+    ModelSeedFile,
     WorkKind,
 )
 
@@ -25,5 +26,6 @@ __all__ = [
     "ModelLabCodeDraft",
     "ModelLabWorkUnitReceipt",
     "ModelLabWorkUnitRequest",
+    "ModelSeedFile",
     "WorkKind",
 ]

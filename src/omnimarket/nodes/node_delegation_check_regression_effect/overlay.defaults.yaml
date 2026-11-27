@@ -8,6 +8,8 @@ condition: delegation_check_regression
 alarm_deadline_seconds: 900
 # A target an alarm never reaches.
 refused_targets: [prod]
+# The lane a settings-change trigger (the settings audit topic) runs the checks against.
+trigger_target: dev
 # A change selects the delegation checks that read what it changed. The responder chain resolves every customer check's
 # model, so a change to a local endpoint, a harness backend, an escalation chain or a task-kind rung of the routing
 # overlay, a host's model server, or a release of the package the customer machine installs selects the customer checks.
