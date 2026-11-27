@@ -188,7 +188,9 @@ async def test_the_live_line_sits_right_under_the_conversation() -> None:
         written = len(output.lines)
         gap = _activity(app).region.y - (output.content_region.y + written)
         assert written < output.content_region.height + 20  # not a full screen
-        assert 0 <= gap <= 1, (gap, written)
+        # one blank row above the line on purpose (operator 2026-11-25:
+        # "alignment and space not proper"), never more
+        assert 0 <= gap <= 2, (gap, written)
         runner.release.set()
 
 

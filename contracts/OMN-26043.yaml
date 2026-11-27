@@ -21,6 +21,11 @@ requirements:
   acceptance:
   - id: AC7
     statement: "AC7: the delegation checks C13, C14 and C17 run as node_delegation_check_probe_effect through the responder chain and publish each run on the declared result topic -- falsifier: the node's tests pass on the base commit, where neither the node nor the chain module exists"
+- id: req-omn26043-codex-harness-signed-in-only
+  statement: The Codex harness handler answers only from a ChatGPT sign-in, refuses an API-key login by name, and runs the CLI in a clean temporary directory.
+  acceptance:
+  - id: AC8
+    statement: "AC8: HandlerCodexHarnessAttempt refuses a host whose Codex login or environment holds an API key with exit cause api_key_login_refused and launches nothing, forces forced_login_method chatgpt, and runs Codex with its working directory in an empty temporary directory -- falsifier: the three new tests in tests/nodes/node_llm_delegation_call_effect/test_codex_harness_attempt.py fail on the base commit and any of them fails at the head"
 evidence_requirements:
 - kind: tests
   description: The call's pricing function with the real pricing index restored and every socket connect and fetch refused, on a cold ONEX home.
@@ -141,4 +146,169 @@ dod_evidence:
     cwd: .
   - check_type: command
     check_value: grep -q 'NodeOverlayNotFoundError' src/omnimarket/nodes/node_delegation_check_probe_effect/runtime_delegation_check_probe_tick.py
+    cwd: .
+- id: dod-omn26043-probe-unit-bus-environment
+  description: "The delegation-check-probe registry unit declares the lane bus environment by reference (OMNIBASE_PATH and ONEX_WORKSPACE_CONFIG_ROOT, the same two variables the overlay-store-load unit renders) and names no broker address; the rendered service carries both, and the overlay-store-load render is unchanged. The new test file fails on the base commit, where the unit declared neither variable (measured on h051: event not delivered, KAFKA_BOOTSTRAP_SERVERS), and passes after the change. This binds AC5: the probe unit delivering its result is the precondition of each probe reading a run."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_delegation_check_probe_bus_env.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-probe-unit-overlay-snapshot-root
+  description: "The delegation-check-probe registry unit names the overlay store reader's snapshot directory (home/.local/state/onex/overlay-store) as the last of its overlay roots, so the probe finds the delegation_check_responders and delegation_check_gateway rows the reader keeps; the rendered service carries it after every root the unit declares. The two new tests fail on the previous commit, where the unit named no snapshot directory among its roots (measured on h051: C13 and C14 PRECONDITION-ABSENT with responders_row and gateway_row absent, C17 gateway_row absent). This binds AC5: the probe unit delivering its result is the precondition of each probe reading a run."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_installer_registry_units/test_delegation_check_probe_bus_env.py -q --no-cov -n 0 -p no:randomly -k snapshot_root
+    cwd: .
+- id: dod-omn26043-probe-delivers-on-declared-broker
+  description: "The probe tick publishes its run record through the declared broker publisher, which reads the lane from the node overlay's event_bus and never from KAFKA_BOOTSTRAP_SERVERS, and the publisher passes the check id as the partition key. The new test file fails on the previous commit, where the tick defaulted to the emit effect and a lab host's tick ended with KeyError KAFKA_BOOTSTRAP_SERVERS and exit 3, and passes after the change; a tick whose overlay declares no event_bus still exits 3. This binds AC5: the probe unit delivering its result is the precondition of each probe reading a run."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_probe_delivery_declared_broker.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-probe-record-flat-on-topic
+  description: "The probe tick publishes its run record flat, the payload alone as the record value, the wire shape every other record on the result topic carries (read from the dev broker on h051: check_id, verdict and run_id at the top level), where the default declared broker publisher wraps it as event_type, event_id, correlation_id and payload; the publisher keeps the wrapped shape for its other callers. The new test fails on the previous commit, where the tick sent the wrapped record and the publisher took no flat option, and passes after the change. This binds AC5: the probe unit delivering its result is the precondition of each probe reading a run."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_probe_delivery_declared_broker.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-beta-board-reads-gateway-leg
+  description: "A beta board probe that names a gateway check (C13 or C14) is read from that check's gateway_leg in the delegation check probe node's run history, never from the cloud workflow (ruling 2026-11-24T13:11:36Z). A green gateway leg beside a red cloud workflow reads pass, a red gateway leg reads fail, an unmeasured leg or a missing history reads unread or is no reading, an old leg reads stale, and the tick writes gateway_leg on each customer-local history line (known good pass, known bad fail). The new tests fail on the previous commit, where the board model had no gateway_check and the history line no gateway_leg, and pass after the change. This binds AC5: the probe reading its newest run is how C13 and C14 read green."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_beta_board_effect/test_gateway_leg_reading.py tests/nodes/node_delegation_check_probe_effect/test_tick_single_check.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-beta-board-declares-its-trigger
+  description: "The beta board node, which subscribes to no topic, declares what runs it: runtime_dispatch.callers names the factory floor publish node's contract, whose beta_board step runs the module, so the node trigger declaration check no longer refuses the changed node (it read refused=1 with no-trigger-declared on the previous commit and reads refused=0 after). The new test runs the check on the node's own contract; it fails on the previous commit and passes after the change. This binds AC5: the board reading the gateway legs has to pass the changed-node gate before C13 and C14 can be read from it."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_beta_board_effect/test_trigger_declaration.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-proof-tenant-contract-matches-overlay
+  description: "The dev proof tenant token node's contract declares only the proof tenant that has a tenant row (cli-run-a), the same set as the dev overlay and the example overlay; a tenant outside it (cli-run-b included) is refused before the key is read. The tests fail on the base commit, where the contract also lists cli-run-b and the handler refuses the one-tenant overlay. This binds AC5: the proof tenant token mint is the precondition of the C29 and C30 runs reading a precondition."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_dev_proof_tenant_token_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+  - check_type: command
+    check_value: uv run python -m omnimarket.nodes.node_trigger_declaration_check_effect --root . --contract src/omnimarket/nodes/node_dev_proof_tenant_token_effect/contract.yaml
+    cwd: .
+- id: dod-omn26043-tenant-key-absent-precondition
+  description: "A healthy delegation the dev runtime refuses ONEX_MARKET_CUSTOMER_PROVIDER_KEY_ABSENT (the test tenant holds no provider key, measured on the dev runtime for run c28-20261126T025132Z-77239c46: tenant 8044e4eb has no row in delegation_routing_tenant_overlay and none in tenant_registry_mirror) reads PRECONDITION-ABSENT naming tenant_provider_key with the refusal quoted, in C15, C16, C28 and C29, and every clause the run graded is still recorded; a healthy run that fails with any other code still reads FAIL, and an invalid payload that never terminates still reads FAIL. The new test file fails on the previous commit (four readings FAIL) and passes after the change. This binds AC5: a probe reading red names its real cause instead of a product defect that is not one."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_tenant_provider_key_absent.py tests/nodes/node_delegation_check_probe_effect/test_gateway_checks.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-customer-machine-delegation-collector
+  description: "The clean-install customer machine runs one delegation through the customer path (the guide's install line in a disposable tool environment, the model declared as the guide's option A, the install's own onex under an egress recorder) and walks the installed product's routing, so C13 and C14 read a graded run instead of PRECONDITION-ABSENT. A good run grades every machine clause green for both checks; a receipt naming another model reads C13 fail, an external connect reads C13 fail, an unbindable tier reads C14 fail, a failed install reads fail and runs no driver, and a driver that prints no record is an absent collector, never a pass. The new tests fail on the previous commit, where the machine raised the absent-collector error for both calls. This binds AC5: C13 and C14 each reading a run is the precondition of reading it green."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_c13_c14_customer_machine_collector.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-c15-chain-tier-order
+  description: "C15 asserts the tier order of the responder chain it was handed (local, then OpenRouter, then the Claude API) as the clause responder_chain_tier_order beside its gateway clauses, which the chain audit found missing. The declared order grades ok, each other order grades red and names the declared and the expected order, and C15 over a chain naming the Claude API before OpenRouter reads FAIL with that clause the only red one (known good pass, known bad fail). The new tests fail on the previous commit, where no such grader existed. This binds AC5: C15 reading a run green has to mean the chain it ran through was in order."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_c15_chain_tier_order.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-tenant-read-answers-on-its-topic
+  description: "The tenant provision node's contract declares the tenant-read-completed topic as a publish topic and routes the read result class (ModelTenantReadResult) to it through published_events, and the provision result class to the provision-completed topic. On dev the read command was consumed and handled but its answer fell back to the provision-completed topic, so the dev identity bind waited 30 s on tenant-read-completed twice and timed out. The contract-shape tests fail on the previous commit, where publish_topics held only the terminal event and no published_events map existed, and pass after the change; the publish-parity gate exempts only a topic routed to a result class the node defines (negative control in the same test file). This binds AC5: the bind that reads the tenant row is the precondition of the C29 and C30 runs reading a precondition."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_tenant_provision_effect/test_contract_shape.py tests/nodes/node_tenant_provision_effect/test_runtime_publishes_read_answer.py tests/gates/test_contract_publish_parity.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-codex-harness-signed-in-only
+  description: "The Codex harness handler refuses an API-key login (auth.json carrying auth_mode apikey or an OPENAI_API_KEY field, or an OPENAI_API_KEY or CODEX_API_KEY variable in the child environment) with exit cause api_key_login_refused before launching anything, forces forced_login_method chatgpt, and runs the CLI with its working directory in an empty temporary directory under the policy workdir. Known good: a ChatGPT sign-in runs and completes with no file of the caller's tree visible; known bad: either API-key form is refused with the engine never started. The new tests fail on the base commit, where the receipt had no such cause and the CLI ran in the policy workdir, and pass after the change. This binds AC8."
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_llm_delegation_call_effect/test_codex_harness_attempt.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-codex-tests-hermetic-env
+  description: "The Codex attempt tests clear OPENAI_API_KEY and CODEX_API_KEY themselves through an autouse fixture in the node's conftest, so a host with either variable set in its ambient environment no longer fails them. Known good: the attempt tests run with both variables set and pass; known bad: the same tests without the fixture, run with the variable set, failed 11 on lab host h202. The new test runs the attempt tests in a child process with both variables set and fails when any of them fails. This binds AC8."
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_llm_delegation_call_effect/test_codex_hermetic_env.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-codex-launch-guard-module
+  description: "The API-key login guard and the codex exec command line live in codex_launch_guard.py, so handler_codex_harness_attempt.py stays at or under its baselined code-line count and the canonical-file-shape ratchet passes. The guard's tests fail on the previous commit, where the module does not exist, and pass after the change. This binds AC8."
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_llm_delegation_call_effect/test_codex_launch_guard.py tests/nodes/node_llm_delegation_call_effect/test_codex_harness_attempt.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-refused-request-failed-terminal
+  description: A delegation request the wire model refuses (a task class the contract does not declare, an invalid payload field) now ends with a failed terminal carrying the request's correlation id and tenant and a typed class and code, so a gateway run reads failed instead of staying published. A request with no readable correlation id still emits no terminal, and a valid request still routes. The tests fail on the base commit, where the dispatcher answered INVALID_MESSAGE with no output event, and pass after the change. This binds AC5 (the dead-run clauses of C14, C16 and C28).
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_invalid_request_failed_terminal_omn26043.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-gateway-check-budget-completes
+  description: "A gateway check's submission carries an output budget of 512 tokens, not 32, and a prompt that asks for the one code block a task_type test run's gate grades. C29 run c29-20261126T044722Z-f2c5a20f read FAIL on completed_under_tenant_key with the tenant's own OpenRouter key answering: the workflow failed with finish_reason=length because the probe asked for 32 tokens, and the gateway refusing a truncated answer is intended behaviour; the check's budget was the defect (a lab run at 128 still truncated; at 1024 the old prompt failed the gate with TASK_MISMATCH on 2 of 4 runs; with the new prompt and 512, 5 of 5 completed). The new test fails on the previous commit, where every submit carried 32, and passes after the change. This binds AC5: C29 reading green needs a healthy run that can finish."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_gateway_check_token_budget.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-host-install-shared-context
+  description: "The host install orchestrator keeps its working memory at class level, because the runtime builds one handler instance per routing entry: a registry result consumed by an instance other than the one that took the request now finds the install's context and publishes the next step, where it read 'ignored a registry result' and no terminal arrived (measured on the dev runtime for two dry runs of the delegation-check-probe unit on h053, 2026-11-26). The new test fails on the previous commit and passes after; its failing control shows a result for an install no instance started is still ignored. This binds AC5: the second delegation check runner on h053 cannot be installed until the orchestrator ends an install."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_install_orchestrator -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26043-glm-harness-not-logged-in
+  description: The GLM harness handler (claude-glm run through Claude Code in a clean temporary directory) refuses by name with exit cause not_logged_in when the declared provider route or credential reference is unusable, and never launches the process or falls back to a key. The focused test reads launch_failed on the base commit and not_logged_in after the change. This binds AC5 -- a probe or delegation run that reads red because the GLM login is unusable names that real cause instead of the generic launch_failed.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_harness_process_runner_omn26219.py -q --no-cov -n 0 -p no:randomly -k glm_without_declared_route
     cwd: .

@@ -5,6 +5,20 @@ summary: The write-time tenant resolver waited up to 20 s for every event whose 
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn22629-ac1-accepted-20261125t1345z:
+    - label: AC1
+      criterion_hash: aac27c82691fbdc6ff005f6f65dd10ac0d81c1d753de8928b1314c7011ba7141
+      proposed_by: lane=dod-closeout-bind-2026-11-25T1345Z-c3
+      accepted_by: lane=dod-closeout-accept-2026-11-25T1345Z-c3
+      accepted_at: '2026-11-25T14:17:06Z'
+    dod-omn22629-ac2-accepted-20261125t1345z:
+    - label: AC2
+      criterion_hash: d9a19818d61a31995ed3bcffcdef2e3f41dc27f8b15ac326d227f1cb9bf8e51f
+      proposed_by: lane=dod-closeout-bind-2026-11-25T1345Z-c3
+      accepted_by: lane=dod-closeout-accept-2026-11-25T1345Z-c3
+      accepted_at: '2026-11-25T14:17:06Z'
 requirements:
 - id: req-omn22629-stale-event-no-wait
   statement: The write-time tenant resolver does not wait for an event older than the catch-up window, still raises the typed refusal the runner dead-letters with the cause named, and still waits for a fresh event inside the window.
@@ -39,4 +53,22 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22629 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_omn22478_mirror_catchup_stale_events.py tests/test_omn18198_mirror_catchup_race.py -q --no-cov
+    cwd: .
+- id: dod-omn22629-ac1-accepted-20261125t1345z
+  description: 'Accepted binding (2026-11-25T1345Z): an event 45 s old whose tenant the mirror lacks raises TenantRegistryResolutionError naming OMN-22478, the watermark and the produced_at with zero sleeps, and a fresh event inside the window still waits and resolves. The test file does not exist at the merge base.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_omn22478_mirror_catchup_stale_events.py::test_error_an_event_older_than_the_window_is_refused_without_a_wait tests/test_omn22478_mirror_catchup_stale_events.py::test_golden_a_fresh_event_inside_the_window_still_waits_and_resolves -q --no-cov
+    cwd: .
+- id: dod-omn22629-ac2-accepted-20261125t1345z
+  description: 'Accepted binding (2026-11-25T1345Z): setting tenant_mirror_catchup_event_age_limit_seconds past the event age makes the wait apply again, and a zero limit waits for no event.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_omn22478_mirror_catchup_stale_events.py::test_the_age_limit_is_set_by_the_overlay_setting tests/test_omn22478_mirror_catchup_stale_events.py::test_a_zero_age_limit_waits_for_no_event -q --no-cov
     cwd: .

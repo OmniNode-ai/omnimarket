@@ -11,6 +11,7 @@ answered 503, never served unauthenticated.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -26,6 +27,7 @@ from omnimarket.handlers.edge_bearer_jwt_identity import (
     JwksSigningKeyProvider,
 )
 from omnimarket.handlers.node_overlay_reader import (
+    OVERLAY_ROOTS_ENV,
     NodeOverlayError,
     NodeOverlayNotFoundError,
     load_structured_overlay,
@@ -150,14 +152,31 @@ class OverlayWorkflowGatewayDependencies:
     not cached.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, settings_mount: Path | None = None) -> None:
         self._deps: WorkflowGatewayDependencies | None = None
+        self._settings_mount = (
+            settings_mount
+            if settings_mount is not None
+            else Path(load_contract_config()["settings_mount"]["path"])
+        )
+
+    def _environ(self) -> dict[str, str]:
+        """The process environment with the contract's settings mount after the declared roots."""
+        env = dict(os.environ)
+        roots = [
+            root for root in env.get(OVERLAY_ROOTS_ENV, "").split(os.pathsep) if root
+        ]
+        roots.append(str(self._settings_mount))
+        env[OVERLAY_ROOTS_ENV] = os.pathsep.join(roots)
+        return env
 
     async def get(self) -> WorkflowGatewayDependencies | None:
         if self._deps is not None:
             return self._deps
         try:
-            overlay = load_structured_overlay(OVERLAY_ID, ModelWorkflowGatewayOverlay)
+            overlay = load_structured_overlay(
+                OVERLAY_ID, ModelWorkflowGatewayOverlay, self._environ()
+            )
         except NodeOverlayNotFoundError:
             return None
         except NodeOverlayError as exc:

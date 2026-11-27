@@ -54,9 +54,9 @@ def _app_main() -> None:
     app.run()
 
 
-def _expect(fd: int, text: bytes) -> None:
+def _expect(fd: int, text: bytes, timeout: float = 25, *, fail: bool = True) -> bool:
     received = bytearray()
-    end = time.monotonic() + 25
+    end = time.monotonic() + timeout
     while time.monotonic() < end:
         readable, _, _ = select.select([fd], [], [], 0.2)
         if readable:
@@ -68,8 +68,10 @@ def _expect(fd: int, text: bytes) -> None:
                 break
             received.extend(part)
             if text in received:
-                return
-    pytest.fail(f"Terminal never showed {text!r}. Last output: {received[-200:]!r}")
+                return True
+    if fail:
+        pytest.fail(f"Terminal never showed {text!r}. Last output: {received[-200:]!r}")
+    return False
 
 
 @pytest.mark.skipif(os.name != "posix", reason="requires a POSIX controlling terminal")
@@ -94,8 +96,16 @@ def test_ctrl_c_at_guided_setup_keeps_the_tui_usable(tmp_path: Path) -> None:
         os.write(master, b"\x07")
         _expect(master, b"Approve test setup")
         os.write(master, b"\x03")
-        _expect(master, b"Guided setup exited with code 1")
-        os.write(master, b"\x1b")
+        _expect(master, b"Guided setup did not finish")
+        # The message shows (in a notice) while the tab still reads the setup
+        # again, and the tab refuses Esc until that ends, so press it until
+        # the main screen's prompt is back.
+        for _ in range(40):
+            os.write(master, b"\x1b")
+            if _expect(master, b"Ask onex", timeout=0.5, fail=False):
+                break
+        else:
+            pytest.fail("Esc never closed /config after guided setup stopped")
         time.sleep(0.25)
         for key in b"/doctor\r":
             os.write(master, bytes([key]))

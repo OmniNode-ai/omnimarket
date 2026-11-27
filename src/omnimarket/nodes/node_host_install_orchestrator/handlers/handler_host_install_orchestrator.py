@@ -20,7 +20,7 @@ from collections import OrderedDict
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 from uuid import UUID, uuid4
 
 import yaml
@@ -110,7 +110,18 @@ def _utc_now() -> datetime:
 
 
 class HandlerHostInstallOrchestrator:
-    """``handle(envelope)`` routes one consumed payload; ``decide`` is the same routing without the runtime wrapper."""
+    """``handle(envelope)`` routes one consumed payload; ``decide`` is the same routing without the runtime wrapper.
+
+    The runtime builds one handler instance per routing entry, so the request is consumed by one instance and the registry,
+    file, readback and record results by others. The working memory is therefore class level, shared by every instance in
+    the process (OMN-26043: with an instance-level store the registry result found no context and no terminal arrived).
+    It does not survive a restart or a second runtime process consuming the same topics.
+    """
+
+    _contexts: ClassVar[OrderedDict[UUID, ModelHostInstallContext]] = OrderedDict()
+    _tree_install_orders: ClassVar[
+        OrderedDict[tuple[UUID, str], ModelInstallRequest]
+    ] = OrderedDict()
 
     def __init__(
         self,
@@ -119,10 +130,6 @@ class HandlerHostInstallOrchestrator:
     ) -> None:
         self._configured_overlay = overlay
         self._clock = clock if clock is not None else _utc_now
-        self._contexts: OrderedDict[UUID, ModelHostInstallContext] = OrderedDict()
-        self._tree_install_orders: OrderedDict[
-            tuple[UUID, str], ModelInstallRequest
-        ] = OrderedDict()
 
     @property
     def _overlay(self) -> ModelHostInstallOrchestratorOverlay:

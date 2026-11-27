@@ -261,9 +261,9 @@ class TestListTestRemove:
             lines[1],
             f"{_label('openrouter')} not set up",
             f"{_label('reflection')} not set up",
-            f"{_label('local')} not set up",
             f"{_label('anthropic')} not set up",
             f"{_label('glm')} not set up",
+            f"{_label('local')} not set up",
             f"{_label('openai_compatible')} not set up",
         ]
         assert lines[1].startswith(f"{_label('openai')} set up, last test passed ")

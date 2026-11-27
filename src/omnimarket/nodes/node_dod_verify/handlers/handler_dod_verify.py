@@ -13,11 +13,15 @@ from __future__ import annotations
 
 import json
 import logging
+from contextlib import ExitStack
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
 from omnimarket.enums.enum_dod_acceptance_basis import EnumDodAcceptanceBasis
+from omnimarket.enums.enum_dod_verify_execution_audience import (
+    EnumDodVerifyExecutionAudience,
+)
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
 )
@@ -50,6 +54,13 @@ from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import 
 from omnimarket.nodes.node_dod_verify.services.criteria_drift import (
     ProtocolDodTicketCriteriaReader,
     invalidate_drifted_results,
+)
+from omnimarket.nodes.node_dod_verify.services.dispatch_budget import (
+    DISPATCH_BUDGET_MARKER,
+    START_BUDGET_ENV,
+    budget_is_open,
+    dispatch_budget,
+    start_budget_s,
 )
 
 if TYPE_CHECKING:
@@ -206,6 +217,22 @@ class HandlerDodVerify:
                     ),
                 )
             ]
+        # OMN-25856: a hosted start command is bounded as a whole, by a budget
+        # the overlay declares. Without one the command refuses to start: no
+        # check runs, because a default is what let the sum outrun the deadline.
+        budget_stack = ExitStack()
+        budget_refused = False
+        if (
+            evidence_results is None
+            and execution_audience is EnumDodVerifyExecutionAudience.HOSTED
+            and not budget_is_open()
+        ):
+            declared_budget_s = start_budget_s()
+            if declared_budget_s is None:
+                budget_refused = True
+                evidence_results = []
+            else:
+                budget_stack.enter_context(dispatch_budget(declared_budget_s))
         if evidence_results is None:
             assert execution_audience is not None
             collector = self._make_collector()
@@ -257,9 +284,11 @@ class HandlerDodVerify:
                     finished if isinstance(finished, ModelCriteriaCheck) else None
                 )
             finally:
+                budget_stack.close()
                 close_collector = getattr(collector, "close", None)
                 if callable(close_collector):
                     close_collector()
+        budget_stack.close()
 
         # OMN-20858: a pass that rests on a criterion the ticket no longer carries
         # in the text it was accepted against stops counting before anything is
@@ -575,8 +604,52 @@ class HandlerDodVerify:
         ):
             overall = EnumDodVerifyStatus.SKIPPED
 
+        # OMN-25856: checks the dispatch budget did not start are reported, never
+        # counted as passed. Distinguished from a single check's own timeout by
+        # the marker the collector writes only for a spent budget.
+        budget_deferred = [
+            r
+            for r in executable_checks
+            if r.unverifiable_cause
+            is EnumEvidenceUnverifiableCause.CHECK_BUDGET_EXCEEDED
+            and (r.message or "").startswith(DISPATCH_BUDGET_MARKER)
+        ]
+        budget_checks_run: int | None = None
+        budget_checks_not_run: int | None = None
+        if budget_refused:
+            overall = EnumDodVerifyStatus.UNRESOLVED
+            unresolved_cause = EnumDodVerifyUnresolvedCause.DISPATCH_BUDGET_NOT_DECLARED
+        elif budget_deferred:
+            budget_checks_not_run = len(budget_deferred)
+            budget_checks_run = len(executable_checks) - budget_checks_not_run
+            if failed == 0 and overall is not EnumDodVerifyStatus.UNRESOLVED:
+                overall = EnumDodVerifyStatus.UNRESOLVED
+                unresolved_cause = (
+                    EnumDodVerifyUnresolvedCause.DISPATCH_BUDGET_EXHAUSTED
+                )
+
         error_message: str | None = None
-        if unresolved_cause is EnumDodVerifyUnresolvedCause.TICKET_UNAVAILABLE:
+        if (
+            unresolved_cause
+            is EnumDodVerifyUnresolvedCause.DISPATCH_BUDGET_NOT_DECLARED
+        ):
+            error_message = (
+                f"DISPATCH_BUDGET_NOT_DECLARED: {command.ticket_id} was refused "
+                f"before any check ran: {START_BUDGET_ENV} is absent, malformed "
+                "or not below the dispatch deadline. The overlay must declare "
+                "the start-command budget (540 s); no default is assumed."
+            )
+        elif unresolved_cause is EnumDodVerifyUnresolvedCause.DISPATCH_BUDGET_EXHAUSTED:
+            error_message = (
+                f"DISPATCH_BUDGET_EXHAUSTED: {budget_checks_run} of "
+                f"{len(executable_checks)} checks ran, {budget_checks_not_run} did "
+                f"not, for {command.ticket_id}: the dispatch's wall-clock budget "
+                f"({START_BUDGET_ENV}) was spent first. The checks that did not "
+                "run are reported SKIPPED and are not counted as passed; this is "
+                "not a verdict about the work. The closeout sweep, which has no "
+                "dispatch deadline, verifies them."
+            )
+        elif unresolved_cause is EnumDodVerifyUnresolvedCause.TICKET_UNAVAILABLE:
             error_message = (
                 f"VERIFICATION_UNRESOLVED: {unresolved_cause.value} — the live "
                 f"ticket {command.ticket_id} could not be read "
@@ -797,6 +870,8 @@ class HandlerDodVerify:
             skipped_count=skipped,
             error_message=error_message,
             superseded_count=superseded,
+            budget_checks_run=budget_checks_run,
+            budget_checks_not_run=budget_checks_not_run,
             non_probative_count=non_probative,
             behavior_proving_count=behavior_proving,
             readback_proving_count=readback_proving,
@@ -886,6 +961,8 @@ class HandlerDodVerify:
             failed_count=state.failed_count,
             skipped_count=state.skipped_count,
             superseded_count=state.superseded_count,
+            budget_checks_run=state.budget_checks_run,
+            budget_checks_not_run=state.budget_checks_not_run,
             non_probative_count=state.non_probative_count,
             behavior_proving_count=state.behavior_proving_count,
             readback_proving_count=state.readback_proving_count,

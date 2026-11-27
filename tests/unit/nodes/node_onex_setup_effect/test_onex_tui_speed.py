@@ -51,8 +51,9 @@ from tests.unit.nodes.node_onex_setup_effect.test_onex_tui import (
 pytestmark = pytest.mark.unit
 
 _TABS = ("config", "model", "delegation", "dashboard")
-#: The frames the live line draws from (the design file's, not a copy).
-_FRAMES = tui_design().activity.frames
+#: The frames the live line draws from (the design file's, as this terminal
+#: can show them: braille or the plain fallback).
+_FRAMES = cli_tui._spinner_frames()
 
 
 @pytest.fixture(autouse=True)
@@ -238,19 +239,30 @@ async def test_a_slow_command_shows_a_spinner_and_its_step_then_esc_cancels() ->
         assert "esc to cancel" in _live_line(app)
         await pilot.press("escape")
         await pilot.pause()
-        assert runner.cancelled == [("doctor",)]
+        # The doctor page is read as JSON (OMN-26620).
+        assert runner.cancelled == [("doctor", "--json")]
         assert _live_line(app) == ""
 
 
 async def test_opening_a_tab_that_waits_shows_a_spinner_and_esc_cancels() -> None:
-    """AC2 / S3: the first read of the setup is slow."""
+    """AC2 / S3: the first read of the setup is slow. The tab opens at once
+    (OMN-26620) and its summary line spins and names the read until it lands;
+    Esc leaves the tab and the wait with it."""
     runner = _Slow(lambda argv: argv[:2] == ("models", "list"))
     app = OnexTui(root=_root, runner=runner, load_status=_status)
     async with app.run_test(size=(140, 45)) as pilot:
         await _type(pilot, "/model")
         await pilot.press("enter")
-        took = await _wait_for(pilot, lambda: _spinning(_live_line(app), "Model"), 0.2)
-        assert took is not None, f"no spinner with the step name: {_live_line(app)!r}"
+        step = tui_design().words["step_read_setup"]
+        took = await _wait_for(
+            pilot,
+            lambda: (
+                isinstance(app.screen, ModelPickScreen)
+                and _spinning(_tab_line(app, "#summary"), step)
+            ),
+            0.2,
+        )
+        assert took is not None, f"no spinner with the step name: {app.screen!r}"
         await pilot.press("escape")
         await pilot.pause()
         assert not isinstance(app.screen, _TabbedScreen)
@@ -295,6 +307,7 @@ async def test_the_model_list_opens_from_saved_data_and_refreshes_in_the_backgro
     runner = _Slow(lambda _argv: False, by_command=_selected_rows(connection=False))
     app = OnexTui(root=_root, runner=runner, load_status=_status, load_index=slow_index)
     async with app.run_test(size=(140, 45)) as pilot:
+        launched = time.monotonic()  # the start-up read begins with the app
         await _type(pilot, "/model")
         start = time.monotonic()
         await pilot.press("enter")
@@ -324,4 +337,5 @@ async def test_the_model_list_opens_from_saved_data_and_refreshes_in_the_backgro
             slow_seconds + 3,
         )
         assert landed is not None, "the background refresh never filled the table"
-        assert time.monotonic() - start >= slow_seconds - 0.5
+        # The prices are the slow read's: they cannot land before it ends.
+        assert time.monotonic() - launched >= slow_seconds - 0.5

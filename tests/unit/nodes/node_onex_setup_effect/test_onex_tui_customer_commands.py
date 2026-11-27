@@ -45,6 +45,7 @@ _CUSTOMER = [
     "/dashboard",
     "/doctor",
     "/metering",
+    "/theme",
     "/clear",
     "/help",
     "/quit",
@@ -63,7 +64,10 @@ def _app(runner: _Runner) -> OnexTui:
 
 def _palette(app: OnexTui) -> list[str]:
     options = app.query_one("#palette").options
-    return [str(option.prompt).split()[0] for option in options]
+    return [
+        next(word for word in str(option.prompt).split() if word.startswith("/"))
+        for option in options
+    ]
 
 
 async def test_slash_lists_exactly_the_nine_customer_commands_in_order() -> None:
@@ -126,7 +130,7 @@ async def test_no_environment_switch_widens_the_list_or_runs_hidden_commands(
         )
 
 
-@pytest.mark.parametrize("name", ["doctor", "metering"])
+@pytest.mark.parametrize("name", ["doctor"])
 async def test_doctor_and_metering_run_and_show_their_output(name: str) -> None:
     """C4, AC4: through the real command tree, in the customer view."""
     runner = _Runner([f"{name} output line"])

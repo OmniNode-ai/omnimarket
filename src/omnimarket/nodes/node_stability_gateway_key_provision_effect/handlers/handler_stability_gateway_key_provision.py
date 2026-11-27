@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -46,11 +48,14 @@ logger = logging.getLogger(__name__)
 _CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
 
 
-def _load_stability_only(contract_path: Path | None) -> dict[str, Any]:
-    """The contract's ``stability_only`` block; the guard reads it from the file, never from code."""
+# The contract blocks that declare lanes, in the order a command lane is looked up (OMN-26476 adds the dev entry).
+_LANE_BLOCKS = ("stability_only", "dev_lane")
+
+
+def _load_lane_blocks(contract_path: Path | None) -> dict[str, dict[str, Any]]:
+    """The contract's lane blocks by name; the guard reads them from the file, never from code."""
     document = yaml.safe_load((contract_path or _CONTRACT_PATH).read_text("utf-8"))
-    block: dict[str, Any] = document["stability_only"]
-    return block
+    return {name: document[name] for name in _LANE_BLOCKS if name in document}
 
 
 class HandlerStabilityGatewayKeyProvision:
@@ -64,12 +69,14 @@ class HandlerStabilityGatewayKeyProvision:
         settings_store: ProtocolSettingStore,
         key_generator: ProtocolKeyGenerator,
         contract_path: Path | None = None,
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._overlay_lane = overlay_lane
         self._identity_store = identity_store
         self._settings_store = settings_store
         self._key_generator = key_generator
         self._contract_path = contract_path
+        self._clock = clock
 
     def _result(
         self,
@@ -82,6 +89,7 @@ class HandlerStabilityGatewayKeyProvision:
         key_name: str | None = None,
         secret_folder: str | None = None,
         secret_key: str | None = None,
+        expires_at: datetime | None = None,
     ) -> ModelStabilityKeyProvisionResult:
         ok = outcome in (
             EnumStabilityKeyOutcome.PROVISIONED,
@@ -103,6 +111,7 @@ class HandlerStabilityGatewayKeyProvision:
             key_name=key_name,
             secret_folder=secret_folder,
             secret_key=secret_key,
+            expires_at=expires_at,
         )
 
     def _lane_guard(
@@ -124,7 +133,7 @@ class HandlerStabilityGatewayKeyProvision:
 
     def _chosen_key(
         self, lane: str, check: str | None, declared: dict[str, Any]
-    ) -> tuple[str, str] | ModelStabilityKeyProvisionResult:
+    ) -> tuple[str, str, int | None] | ModelStabilityKeyProvisionResult:
         """The (generated key id, key row name) this run uses, or the refusal when the check cannot have its own key.
 
         No check is the default run. A named check must be declared and must differ from the default in both the generated
@@ -133,7 +142,7 @@ class HandlerStabilityGatewayKeyProvision:
         """
         default = (declared["generated_key_id"], declared["api_key_name"])
         if check is None:
-            return default
+            return (*default, declared.get("expires_in_seconds"))
         entry = (declared.get("checks") or {}).get(check)
         if entry is None:
             return self._result(
@@ -148,13 +157,21 @@ class HandlerStabilityGatewayKeyProvision:
                 lane=lane,
                 detail=f"check {check!r} reuses the default key id or key name; a check needs its own; nothing was read or written",
             )
-        return chosen
+        return (*chosen, entry.get("expires_in_seconds"))
 
     async def handle(
         self, request: ModelStabilityKeyProvisionCommand
     ) -> ModelStabilityKeyProvisionResult:
         lane = request.lane
-        declared = _load_stability_only(self._contract_path)
+        blocks = _load_lane_blocks(self._contract_path)
+        declared = next((b for b in blocks.values() if lane in b["lanes"]), None)
+        if declared is None:
+            every = sorted({name for b in blocks.values() for name in b["lanes"]})
+            return self._result(
+                EnumStabilityKeyOutcome.REFUSED_LANE_NOT_ALLOWED,
+                lane=lane,
+                detail=f"command lane {lane!r} is not a lane the contract declares {every}; nothing was read or written",
+            )
         guard = self._lane_guard(lane, list(declared["lanes"]))
         if guard is not None:
             return guard
@@ -162,7 +179,12 @@ class HandlerStabilityGatewayKeyProvision:
         chosen = self._chosen_key(lane, request.check, declared)
         if isinstance(chosen, ModelStabilityKeyProvisionResult):
             return chosen
-        key_id, key_name = chosen
+        key_id, key_name, expires_in = chosen
+        expires_at = (
+            None
+            if expires_in is None
+            else self._clock() + timedelta(seconds=expires_in)
+        )
 
         generated = await self._key_generator.generate(key_id)
         if (
@@ -200,7 +222,10 @@ class HandlerStabilityGatewayKeyProvision:
                     tenant_slug=slug,
                 )
             written = await self._identity_store.ensure_api_key(
-                tenant_id=tenant.tenant_id, name=key_name, key_hash=key_hash
+                tenant_id=tenant.tenant_id,
+                name=key_name,
+                key_hash=key_hash,
+                expires_at=expires_at,
             )
         except TenantStoreUnavailableError as exc:
             return self._result(
@@ -223,6 +248,7 @@ class HandlerStabilityGatewayKeyProvision:
                     lane=lane,
                     detail="the tenant and one active gateway key are in place; the key value is only in the secret store",
                     **names,
+                    expires_at=expires_at,
                 )
             case EnumApiKeyEnsure.EXISTS:
                 return self._result(
@@ -230,6 +256,7 @@ class HandlerStabilityGatewayKeyProvision:
                     lane=lane,
                     detail="the tenant and its active gateway key already existed; nothing written",
                     **names,
+                    expires_at=expires_at,
                 )
             case EnumApiKeyEnsure.NAME_CONFLICT:
                 return self._result(
@@ -237,6 +264,7 @@ class HandlerStabilityGatewayKeyProvision:
                     lane=lane,
                     detail="another key is already active under this name for the tenant; nothing was replaced or revoked",
                     **names,
+                    expires_at=expires_at,
                 )
             case EnumApiKeyEnsure.HASH_TAKEN:
                 return self._result(
@@ -244,6 +272,7 @@ class HandlerStabilityGatewayKeyProvision:
                     lane=lane,
                     detail="the key's hash belongs to another key row; nothing written",
                     **names,
+                    expires_at=expires_at,
                 )
 
 

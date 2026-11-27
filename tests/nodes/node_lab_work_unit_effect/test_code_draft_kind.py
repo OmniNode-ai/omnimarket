@@ -51,6 +51,9 @@ opts = {{argv[i]: argv[i + 1] for i in range(2, len(argv) - 1, 2)}}
 pathlib.Path(opts["--state-root"], "..", "argv.json").resolve().write_text(json.dumps(argv))
 request = json.loads(pathlib.Path(opts["--request"]).read_text())
 pathlib.Path("answer.py").write_text("ANSWER = 42\\n" * 200)
+seed = pathlib.Path("tests/test_answer.py")
+pathlib.Path(opts["--state-root"], "..", "seen.json").resolve().write_text(
+    json.dumps(seed.read_text() if seed.exists() else None))
 if "SLEEP" in request["task"]:
     time.sleep(30)
 out = pathlib.Path(opts["--state-root"], "runs", request["correlation_id"])
@@ -270,3 +273,27 @@ def test_failure_terminal_carries_the_commands_correlation_id(
     assert uuid.UUID(str(sent))
     assert failure["payload"]["correlation_id"] == str(sent)
     assert failure["correlation_id"] == str(sent)
+
+
+_SEED = "def test_answer():\n    assert True\n"
+
+
+def test_seed_files_are_in_the_tree_when_the_loop_starts_and_out_of_the_diff(
+    world: tuple[Path, str],
+) -> None:
+    root, sha = world
+    draft = _draft(
+        context_paths=("tests/test_answer.py",),
+        seed_files=({"path": "tests/test_answer.py", "content": _SEED},),
+    )
+    receipt = _run(root, _request(sha, draft))
+    seen = next((root / "work").rglob("seen.json"))
+    assert json.loads(seen.read_text()) == _SEED
+    assert "answer.py" in receipt.diff
+    assert "tests/test_answer.py" not in receipt.diff
+
+
+@pytest.mark.parametrize("bad", ["../escape.py", "/abs.py", "a/../../b.py"])
+def test_a_seed_file_path_must_stay_inside_the_tree(bad: str) -> None:
+    with pytest.raises(ValidationError):
+        _draft(seed_files=({"path": bad, "content": "x"},))

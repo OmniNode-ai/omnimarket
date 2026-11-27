@@ -344,10 +344,12 @@ async def test_a_tab_after_a_failed_read_says_so_and_save_sends_nothing(
         note = _text(app, "#dnote")
     assert tui_design().words["delegation_off"] not in bar, bar
     assert tui_design().words["delegation_unknown"] in bar
-    assert ("onex was not found" if case == "exception" else "exit 1") in log
+    assert tui_design().words["status_unreadable"] not in log
+    assert "onex was not found" not in log
+    assert "exit 1" not in log
     assert words.state_off not in label, label
     assert words.state_unread in label
-    assert _state(row) == words.hook_unread
+    assert tui_design().words["hook_state_unread"] in row  # OMN-26620
     assert _switches(runner) == []
     assert words.save_unread in note
 

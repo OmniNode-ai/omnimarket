@@ -232,6 +232,17 @@ def _ensure_omni_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _declared_dod_verify_start_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Declare the overlay's dod-verify start budget for every test (OMN-25856).
+
+    A hosted dod-verify-start command refuses to start without the budget the
+    overlay declares, so a test of the verifier declares the overlay's 540 s the
+    way the runtime does. A test of the refusal removes it in its own body.
+    """
+    monkeypatch.setenv("DOD_VERIFY_START_BUDGET_S", "540")
+
+
+@pytest.fixture(autouse=True)
 def _no_real_models_dev_price_reads(
     monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
 ) -> None:

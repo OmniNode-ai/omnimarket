@@ -7,56 +7,75 @@
 # the row cursor and buttons; teal for the summary and keys; violet highlights;
 # green for success; cyan for information; on warm charcoal.
 theme:
-  name: onex
+  name: onex-dark
   dark: true
-  primary: "#f2c14e"
-  secondary: "#2ec4b6"
-  accent: "#b48ead"
-  success: "#8ac926"
-  info: "#56c7dc"
-  warning: "#f4a259"
-  error: "#e76f51"
-  foreground: "#efe7dc"
-  muted: "#a39686"
-  background: "#1c1915"
-  surface: "#241f1a"
-  panel: "#2c2620"
+  # terminal: the screen shows the terminal's own background (nothing painted);
+  # black: the screen is painted with the background, surface and panel below.
+  ground: terminal
+  primary: "#F0B90B"
+  secondary: "#E5C07B"
+  accent: "#FFD866"
+  success: "#7fd88f"
+  info: "#79b8ff"
+  warning: "#f5a742"
+  error: "#e06c75"
+  foreground: "#eeeeee"
+  muted: "#9a9a9a"
+  background: "#000000"
+  surface: "#000000"
+  panel: "#0a0a0a"
+  boost: "#FFFFFF08"
+  border: "#6c6c6c"
+  chip: "#2c313c"
+  route_cheap: "#79b8ff"
+  route_fallback: "#ffea7f"
 
-# Left-to-right colour ramps for the banner words, from the same five colours.
-gradients:
-  cool: ["#56c7dc", "#2ec4b6", "#8ac926", "#f2c14e"]
-  warm: ["#f2c14e", "#f4a259", "#d08c9a", "#b48ead"]
-  fresh: ["#8ac926", "#2ec4b6", "#56c7dc", "#b48ead"]
+# The two-row ONEX wordmark on the start screen (OMN-26620 AC2).
+wordmark:
+  rows: ["▄▀▄ █▄ █ █▀▀ ▀▄▀", "▀▄▀ █ ▀█ ██▄ █ █"]
+  style: primary
 
-# Three-row block letters for the banner words.
-font:
-  " ": ["  ", "  ", "  "]
-  A: ["▄▀▀▄", "█▀▀█", "▀  ▀"]
-  C: ["▄▀▀▀", "█   ", " ▀▀▀"]
-  D: ["█▀▀▄", "█  █", "▀▀▀ "]
-  E: ["█▀▀▀", "█▀▀ ", "▀▀▀▀"]
-  G: ["▄▀▀▀", "█ ▀█", " ▀▀▀"]
-  I: ["█", "█", "▀"]
-  L: ["█   ", "█   ", "▀▀▀▀"]
-  M: ["█▄ ▄█", "█ ▀ █", "▀   ▀"]
-  N: ["█▄  █", "█ ▀▄█", "▀   ▀"]
-  O: ["▄▀▀▄", "█  █", " ▀▀ "]
-  T: ["▀█▀", " █ ", " ▀ "]
-  W: ["█   █", "█ █ █", " ▀ ▀ "]
-
-banner:
-  greeting: ""
-  words:
-    - {text: WELCOME TO, gradient: fresh}
-    - {text: OMNINODE, gradient: cool}
-    - {text: DELEGATION, gradient: warm}
-  tagline: "Your tasks, your models: run them where it costs least."
-  tips:
-    - {key: type a task, text: and press Enter to delegate it}
-    - {key: /config, text: "providers, keys and models"}
-    - {key: /model, text: pick the model to use first}
-    - {key: /delegation, text: Claude Code on or off}
-    - {key: /, text: "all commands   ·   ↑↓ history   ·   ctrl+c quit"}
+# The welcome screen shown in a roomy terminal (operator's reference image, 2026-11-25):
+# a large pixel wordmark, the brand line, the tagline and four cards. A smaller terminal
+# keeps the compact header. Each pixel of a letter is drawn with `pixel`.
+welcome:
+  min_width: 100
+  min_height: 34
+  headline: "Build more. Spend less."
+  subline: "The right intelligence, at the right cost."
+  brand: "OmniNode Delegation · {version}"
+  brand_rule: "──────"
+  pixel: "██"
+  letter_gap: 2
+  order: "ONEX"
+  letter_styles: [foreground, foreground, primary, primary]
+  # The routing diagram: your task goes through ONEX and comes out as three outcomes.
+  diagram:
+    heading: "How it works"
+    task: "Your Task"
+    hub_title: "ONEX"
+    hub_subtitle: "Smart Routing"
+    hub_tagline: "cost · speed · fit"
+    outcome_icons: ["$", "ϟ", "◎"]
+    outcomes: ["Lower Cost", "Faster Results", "Right Model"]
+    # The dots on the connectors travel slowly; false keeps them still.
+    pulse: true
+    pulse_seconds: 0.2
+  # The Setup Guide: a static welcome guide to the four tabs. Each box says what its
+  # feature does; the tabs themselves show the live state.
+  guide:
+    title: "Setup Guide"
+    min_height: 40
+    steps:
+      - {id: config, key: "1", title: Config, text: "Add providers, keys and models."}
+      - {id: model, key: "2", title: Model, text: "Pick the model tried first."}
+      - {id: delegation, key: "3", title: Delegation, text: "Turn Claude Code delegation on or off."}
+      - {id: dashboard, key: "4", title: Dashboard, text: "See usage, cost and savings."}
+  letters:
+    O: [".###.", "#...#", "#...#", "#...#", ".###."]
+    N: ["#...#", "##..#", "#.#.#", "#..##", "#...#"]
+    E: ["#####", "#....", "####.", "#....", "#####"]
+    X: ["#...#", ".#.#.", "..#..", ".#.#.", "#...#"]
 
 # Shortcuts are the TUI's own commands; customer_commands below picks what / lists.
 shortcuts:
@@ -64,8 +83,8 @@ shortcuts:
   - {path: [model], action: model, help: Pick the model every task tries first.}
   - {path: [delegation], action: delegation, help: Turn delegation on or off for Claude Code.}
   - {path: [dashboard], action: dashboard, help: "Start, open or stop the local dashboard."}
-  - {path: [doctor], action: run, help: Run diagnostic checks on your ONEX environment.}
-  - {path: [metering], action: run, help: "Read this install's own delegation metering and savings."}
+  - {path: [metering], action: metering, help: "See your usage, cost and modelled savings."}
+  - {path: [theme], action: themes, help: Pick a colour theme with a live preview.}
   - {path: [clear], action: clear, help: Clear the output.}
   - {path: [help], action: help, help: Show keys and how commands work.}
   - {path: [quit], action: quit, help: Leave the TUI.}
@@ -79,6 +98,7 @@ customer_commands:
   - [dashboard]
   - [doctor]
   - [metering]
+  - [theme]
   - [clear]
   - [help]
   - [quit]
@@ -117,14 +137,15 @@ glyphs:
   done: "✓"
   unchanged: "·"
   failed: "✗"
+  dot_on: "●"
+  dot_off: "○"
+  prompt: "❯"
+  cancelled: "⊘"
 
-prompt_placeholder: Ask ONEX to delegate a task, or type / for commands
-help: >-
-  Type a task and press Enter to delegate it. /config sets up providers, keys
-  and models, /model picks the model tried first, /delegation turns Claude Code
-  delegation on or off, /clear empties this pane. Type / to list the
-  commands; keep typing to filter, Tab to complete, Enter to run, Esc to close.
-  Up and Down recall earlier entries.
+prompt_placeholder: Ask onex to delegate a task, or type / for commands
+# /help: this sentence, then each command as the / menu shows it, then
+# words.help_keys (each pair is a key and its word).
+help: Type a task and press Enter to delegate it, or run one of these commands.
 
 # /config loads a provider's models this long after the key or URL stops
 # changing; a key shorter than min_key_length is never sent.
@@ -133,11 +154,15 @@ auto_find_seconds: 0.8
 # 2026-11-13: "like coding agents cli: spinner verb ... can cancel esc"). The
 # frames are braille dots, which every terminal font draws.
 activity:
-  frames: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-  frame_seconds: 0.1
+  frames: ["◐", "◓", "◑", "◒"]
+  frame_seconds: 0.15
   verbs: ["Delegating", "Working", "Thinking", "Reasoning", "Composing"]
   verb_seconds: 3
   line: "{frame} {verb}… {seconds}s · esc to cancel"
+  # The task's path, with a dot travelling it while the task runs.
+  flow: ["Your task", "ONEX", "{model}"]
+  flow_auto: "best model"
+  flow_gap: 6
 # A Done or Failed pop-up after an action stays this long.
 toast_seconds: 6
 # A test's failure reason is cut to this many characters on screen.
@@ -228,6 +253,55 @@ model_table:
     model: "Tab next screen · Enter selects · A auto · R remove · I details · / search · F filter · S sort · Esc back"
     delegation: "Tab next screen · Space switches · I details · Ctrl+S saves · Esc back"
     dashboard: "Tab next screen · S start · Enter opens · X stop · Esc back"
+  # The tables on the Config tab (found models, tick boxes) and the Model tab
+  # (the set-up models, the one tried first marked), mockups pages 4 and 5.
+  tab_table:
+    ticked: "[✓]"
+    unticked: "[ ]"
+    marker_first: "◉"
+    marker_other: "○"
+    context_thousand: k
+    context_million: M
+    capability_join: ", "
+    status:
+      ready: {text: "✓ ready", colour: success}
+      listed: {text: "· available", colour: info}
+      untested: {text: "· not tested yet", colour: warning}
+      failed: {text: "✗ not working", colour: error}
+      unavailable: {text: "! needs a key", colour: warning}
+    layouts:
+      # Every list shows a model's shared facts the same way, under the same
+      # titles: name, Context, In $/1M, Out $/1M (operator 2026-11-26).
+      order:
+        header: true
+        columns:
+          # The position leads the name, as the Model tab's marker does.
+          - {key: model_numbered, title: "  Model"}
+          - {key: context, title: Context}
+          - {key: price_in, title: "In $/1M"}
+          - {key: price_out, title: "Out $/1M"}
+          - {key: status, title: Status}
+      found:
+        header: true
+        search: true
+        columns:
+          - {key: pick, title: " "}
+          - {key: model, title: Model}
+          # The same cells and titles as the Model tab (operator 2026-11-26:
+          # in and out are named once, in the titles, never in each row).
+          - {key: context, title: Context}
+          - {key: price_in, title: "In $/1M"}
+          - {key: price_out, title: "Out $/1M"}
+          - {key: capabilities, title: Capabilities}
+      pick:
+        header: true
+        columns:
+          # The marker leads the model name; the title is indented past it.
+          - {key: model_marked, title: "  Model"}
+          - {key: context, title: Context}
+          - {key: price_in, title: "In $/1M"}
+          - {key: price_out, title: "Out $/1M"}
+          - {key: status, title: Status}
 
 # /delegation: one switch, the prompt hook; subagents always run on Claude (OMN-23413).
 delegation:
@@ -241,7 +315,7 @@ delegation:
   switched_off: "Claude Code delegation is off."
   not_switched: "Claude Code delegation was not switched {state}: {reason}"
   nothing_ticked: "Tick at least one model first: click it, or press Space on it."
-  no_models: "Select a model with /config first: Claude delegation needs at least one selected model."
+  no_models: "Add a model in the Config tab first: delegation needs at least one."
   # OMN-23413, operator 2026-11-14: the switch's state is written out, and the
   # hook it installs is shown with whether Claude Code has it (one hook, 2026-11-17).
   glyph_on: "●"
@@ -288,14 +362,31 @@ dashboard:
   opened: "Opened in your browser. Press Enter, use the Open button, or run onex dashboard open to open it again."
   stopped: "Dashboard stopped"
   failed: "Dashboard {action} did not work: {reason}"
+  # The Dashboard tab (OMN-26620 mockup page 7): state beside the title, the
+  # address under it, one footer line; a failure is one plain sentence.
+  state_running: "{dot} Running · pid {pid}"
+  state_running_nopid: "{dot} Running"
+  state_stopped: "{dot_off} Stopped"
+  state_reading: "{dot_reading} checking…"
+  state_unread: "{dot_reading} status unknown"
+  dot_on: "●"
+  dot_off: "○"
+  dot_reading: "◌"
+  button_open: Open in browser
+  note_opened: "Opened in your browser."
+  # After Start or Stop: short, as the footer already says how to open it.
+  note_started: "Dashboard running."
+  note_stopped: "Dashboard stopped."
+  could_not: "Could not {action} the dashboard. Run /doctor."
+  could_not_read: "Could not read the dashboard. Run /doctor."
 
 # /config, /model and /delegation are three tabs of one place: Tab and
 # Shift+Tab move between them, and a click on a tab opens it.
 tabs:
-  - {id: config, label: "  Config  "}
-  - {id: model, label: "  Model  "}
-  - {id: delegation, label: "  Delegation  "}
-  - {id: dashboard, label: "  Dashboard  "}
+  - {id: config, label: Config}
+  - {id: model, label: Model}
+  - {id: delegation, label: Delegation}
+  - {id: dashboard, label: Dashboard}
 
 # Every word the /config, /model and /delegation screens show; {name} parts
 # are filled in. The screens hold no sentence of their own (OMN-23413 AC27).
@@ -316,7 +407,10 @@ words:
   model_title: "Choose the model every task tries first"
   model_now: "Now: {current}"
   cannot_be_first: "{model} cannot be tried first: {reason}"
-  nothing_set_up: "No model is set up yet. Type /config to connect one."
+  nothing_set_up: "No model is set up yet. Open the Config tab (Shift+Tab) to connect one."
+  tab_too_small: "This window is {width}×{height}. The tabs need at least {min_width}×{min_height}: make the window bigger, or press Esc to go back."
+  help_keys: "/ commands · ↑↓ history · tab complete · ctrl+p palette · esc close · ctrl+c quit"
+  task_no_model: "No model is set up yet, so there is nothing to delegate to. Run /config to add a provider key or a local server."
   now_first: "{model} is now tried first ({provider})"
   # The model tried first, and the server it runs on when it was added by URL.
   first_model: "{model} ({provider})"
@@ -354,7 +448,7 @@ words:
   tab_loading: "opening {tab}…"
   # The step the live line names while a wait lasts (OMN-26611): a spinner, this
   # name and the seconds, within 0.2 s of the action starting.
-  step_open_tab: "Opening {tab}"
+  step_read_setup: "Reading your setup"
   step_run: "Running onex {command}"
   step_guided_setup: "Running guided setup"
   step_save_models: "Saving your models"
@@ -363,6 +457,116 @@ words:
   step_model_remove: "Removing the model"
   step_dashboard: "Dashboard {action}"
   step_find_models: "Loading {provider} models"
+  step_save_key: "Saving the new {provider} key"
+  step_remove_provider: "Removing {provider}"
+  # The heavy rule under the open tab, and the footer line of each tab: the
+  # first word of each part is its key, drawn bold (mockups pages 4 to 7).
+  tab_rule: "━"
+  hint_separator: " · "
+  # A problem is said in plain words with the next step; the raw cause goes to
+  # the log only (OMN-26620 AC9). A line holding an errno, a path, an exception
+  # name or an environment name is replaced by its tab's sentence.
+  raw_text_pattern: '\[Errno|Traceback|\w+(Error|Exception)\b|(?:^|[\s(\x27"])(?:/[\w.\-]+){2,}|~/[\w.\-]+|\b[A-Za-z]:\\|\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b'
+  problem_config: "Could not add the models. Run /doctor."
+  problem_model: "Could not change the model. Run /doctor."
+  problem_delegation: "Could not change delegation. Run /doctor."
+  problem_dashboard: "Could not start the dashboard. Run /doctor."
+  problem_metering: "Could not read your usage. Run /doctor."
+  problem_themes: "Could not change the theme."
+  metering_title: "Usage and cost"
+  metering_reading: "reading your usage…"
+  metering_empty: "No usage yet. Your first delegated task shows here."
+  metering_card_tasks: "Tasks"
+  metering_card_tokens: "Tokens"
+  metering_card_cost: "Cost"
+  metering_card_saved: "Saved ≈ (modelled)"
+  metering_models_title: "By model"
+  metering_col_model: "Model"
+  metering_col_tasks: "Tasks"
+  metering_col_tokens: "Tokens"
+  metering_col_cost: "Cost"
+  metering_note: "Savings are modelled, not billed."
+  tab_hint_metering: "r refresh · esc close"
+  tab_hint_themes: "↑↓ preview · enter keep · esc close"
+  themes_title: "Themes"
+  themes_list_title: "Pick a theme"
+  themes_preview_title: "Preview"
+  themes_sample_heading: "Build more. Spend less."
+  themes_sample_text: "The right intelligence, at the right cost."
+  themes_kept: "{theme} kept."
+  # Config tab (mockup page 4).
+  add_title: Add models
+  step_of: "step {step} of 3"
+  provider_box: Provider
+  # Provider list: search, then set-up first and A-Z (operator 2026-11-26).
+  provider_search: "Type to search"
+  provider_set_up: "{label} ✓"
+  provider_not_set_up: "{label}"
+  # Two lists (operator 2026-11-26: "Added provider should be in different
+  # list and user can change api key, remove it also"): yours, then the rest.
+  mine_box: Your providers
+  mine_title: Manage providers
+  add_box: Add a provider
+  detail_ready: all tests passed
+  detail_failed: last test failed
+  detail_untested: not tested yet
+  detail_key: key stored
+  detail_server: "on {server}"
+  detail_models: "Models  {models}"
+  detail_no_models: none yet
+  button_change_key: Change key
+  button_add_models: Add models
+  button_test: Test
+  button_remove: Remove
+  new_key_placeholder: "New API key, then Enter"
+  new_key_hint: "Paste the new {provider} key and press Enter. Your models stay, and each is tested with it."
+  # The step a Test button's spinner names; the spinner adds the dots.
+  testing_provider: "Testing {provider}: one real delegation per model, which can take a minute"
+  test_failed: "{provider} could not be tested: {reason}"
+  remove_title: Remove provider
+  remove_question: "Remove {provider}? onex stops using its {models} and deletes its key or server from this machine. You can add it again any time."
+  provider_removed: "{provider} removed"
+  remove_provider_failed: "{provider} was not removed: {reason}"
+  # Under the provider list (operator 2026-11-26: "show count too").
+  provider_count: "{total} providers"
+  provider_count_shown: "{shown} of {total}"
+  key_box: Key
+  url_box: Server URL
+  key_valid: "✓ valid"
+  key_rejected: "! not accepted"
+  url_valid: "✓ reachable"
+  radio_on: "●"
+  radio_off: "○"
+  models_found: "{count} models found · Space to tick"
+  models_found_one: "1 model found · Space to tick"
+  model_glyph: "◈"
+  selected: "Selected  {models}"
+  selected_none: "Selected  none yet"
+  # Model tab (mockup page 5).
+  tried_first: "Tried first: {mark} {model}"
+  tried_first_auto: "Tried first: {mark} Auto picks per task"
+  # Delegation tab (mockup page 6).
+  delegation_about: "Prompts go to your models first. Claude Code is the fallback."
+  turn_on: "Turn on"
+  turn_off: "Turn off"
+  hook_label: Hook
+  hook_state_installed: "✓ installed in Claude Code"
+  hook_state_missing: "! not installed"
+  hook_state_paused: "! paused"
+  hook_state_unknown: "– not read yet"
+  hook_state_unread: "! could not be read"
+  order_title: "Tried in this order"
+  models_box_title: "Your models"
+  # Short, so it shares the bottom row with the key hints at any width.
+  auto_button: "Use Auto (A)"
+  dashboard_about: "A local web page with your tasks, cost and savings over time, in your browser."
+  order_none: "No models yet. Run /config."
+  tab_hint_config: "tab next · space tick · ctrl+s save · esc close"
+  tab_hint_config_mine: "↑↓ move · enter actions · esc close"
+  tab_hint_model: "↑↓ move · enter make first · d details · esc close"
+  tab_hint_delegation: "space switch · ctrl+s save · esc close"
+  tab_hint_dashboard_stopped: "s start · esc close"
+  tab_hint_dashboard_running: "enter open · s stop · esc close"
   # The one line under the tabs: how many models, on how many servers, and the first.
   summary: "{dot} {models} · {servers} · {first}"
   summary_no_servers: "{dot} {models} · {first}"
@@ -372,23 +576,36 @@ words:
   status_reading: "reading your setup…"
   status_none: "no model set up · /config"
   status_auto: "Auto · {count}"
+  header_auto: "Auto"
   status_first: "{model} first"
   # Claude Code delegation in the status bar, as it is (OMN-23413).
   delegation_off: "delegation off"
   delegation_hook: "delegation on"
   delegation_hook_paused: "delegation on · paused"
   delegation_reading: "delegation: checking…"
-  delegation_unknown: "delegation: status could not be read"
-  delegation_unreadable: "could not read delegation's state ({reason}); /delegation shows it as not read"
+  delegation_unknown: "delegation status unknown"
+  # The start screen's status block and first-launch tip (OMN-26620 AC2).
+  tips_first_launch: "Type a task and press Enter, or try /config or /doctor"
+  summary_on: "Delegation on"
+  summary_on_note: "Claude Code sends tasks to your models"
+  summary_off: "Delegation off"
+  summary_off_note: "Claude Code uses its own model"
+  summary_unknown: "Delegation status unknown"
+  summary_unknown_note: "Run /doctor to check it"
+  summary_models: "{count} models ready"
+  start_first: "{model} is tried first"
+  summary_none: "No models set up"
+  summary_none_note: "Run /config to add one"
   status_no_line: "no status line"
   status_working: "working {seconds}s · esc cancels"
   status_hint: "/ commands · ctrl+c quit"
-  status_unavailable: "status unavailable: {error}"
+  status_unreadable: "Could not read the delegation status. Run /doctor."
   # Buttons on /config and /delegation.
   button_add: Add
   button_guided_setup: Guided setup
   guided_setup_pending: "Save or clear your pending model selections before starting guided setup."
-  guided_setup_exit: "Guided setup exited with code {code}."
+  # Said plainly: the exit code tells the user nothing (verify pass 2026-11-26).
+  guided_setup_exit: "Guided setup did not finish. Try it again."
   guided_setup_done: "Guided setup finished."
   button_save: Save
   button_cancel: Cancel
@@ -430,3 +647,208 @@ words:
   run_id: "run {run}"
   last_run: "last run {model} ${cost}"
   last_run_unmeasured: "last run {model} · cost not measured"
+
+# Compact header on the start screen (OMN-26620 AC2): two rows, one per
+# wordmark row; {version} {model} {folder} are filled in at run time.
+header:
+  lines:
+    - "{mark}   {version}"
+    - "{mark}   {model} · {folder}"
+  version: "v{version}"
+  packages: [omninode-onex, omnimarket]
+  home: "~"
+  ellipsis: "…"
+  compact: true
+
+# Delegated task card (OMN-26620 AC3).
+task_card:
+  state_bar_colour: success
+  facts_template: "{model} · {tokens} tokens · {seconds} s · ${cost}"
+  fallback_facts_template: "{model} · {tokens} tokens · {seconds} s"
+  failure_template: "Could not reach {model}. Check its key with /config."
+  glyphs:
+    running: "⠋"
+    done: "✓"
+    fallback: "◐"
+    failed: "✗"
+  bar_colours:
+    running: route_cheap
+    done: success
+    fallback: route_fallback
+    failed: error
+
+# Spinner (OMN-26620 AC11).
+spinner:
+  frames: ["◐", "◓", "◑", "◒"]
+  fallback_frames: ["|", "/", "-", "\\"]
+  ascii_frames: ["|", "/", "-", "\\"]
+  frame_seconds: 0.1
+  text: "Thinking… (ctrl+c to interrupt)"
+  wording: "Thinking… (ctrl+c to interrupt)"
+  message: "Thinking… (ctrl+c to interrupt)"
+  line: "Thinking… (ctrl+c to interrupt)"
+
+# Key footer (OMN-26620 AC4): per-screen keys and drop order.
+footer:
+  separator: " · "
+  screens:
+    main:
+      keys:
+        - {label: "/", words: commands}
+        - {label: "↑↓", words: history}
+        - {label: ctrl+p, words: palette}
+        - {label: "?", words: help}
+        - {label: ctrl+c, words: quit}
+      drop_order: [ctrl+p, "?", "↑↓", "/"]
+    config:
+      keys:
+        - {label: Space}
+        - {label: Enter}
+        - {label: Esc}
+        - {label: Ctrl+S}
+      drop_order: [Ctrl+S, Enter, Space, Esc]
+
+# /theme registry (OMN-26620 AC5).
+themes:
+  onex-light:
+    name: onex-light
+    dark: false
+    primary: "#7a5c00"
+    secondary: "#1b7a70"
+    accent: "#6b4c8a"
+    success: "#3a7d12"
+    info: "#1b6f8a"
+    warning: "#8a5a1b"
+    error: "#8a3a2a"
+    foreground: "#1c1915"
+    muted: "#5a5246"
+    background: "#f4efe6"
+    surface: "#ece6dc"
+    panel: "#e3ddd2"
+    boost: "#00000008"
+    border: "#b8b0a2"
+    chip: "#e3ddd2"
+    route_cheap: "#1b6f8a"
+    route_fallback: "#8a6a00"
+
+# Icons (OMN-26620 AC6): Unicode symbols by default, Nerd Font glyphs only when
+# mode is nerd, plain ASCII when mode is ascii. Each icon carries all three.
+icons:
+  mode: plain
+  enabled: false
+  glyphs:
+    ask:
+      nerd: "\uf120"
+      fallback: "❯"
+      ascii: ">"
+    answer:
+      nerd: "\uf005"
+      fallback: "◆"
+      ascii: "*"
+    done:
+      nerd: "\uf00c"
+      fallback: "✓"
+      ascii: "v"
+    task:
+      nerd: "\uf054"
+      fallback: "›"
+      ascii: ">"
+    cmd_config:
+      nerd: "\uf013"
+      fallback: "⚙"
+      ascii: "*"
+    cmd_model:
+      nerd: "\uf2db"
+      fallback: "◈"
+      ascii: "+"
+    cmd_delegation:
+      nerd: "\uf0ec"
+      fallback: "⇄"
+      ascii: "<>"
+    cmd_dashboard:
+      nerd: "\uf0e4"
+      fallback: "▦"
+      ascii: "#"
+    cmd_doctor:
+      nerd: "\uf0f1"
+      fallback: "✚"
+      ascii: "+"
+    cmd_theme:
+      nerd: "\uf1fc"
+      fallback: "◐"
+      ascii: "~"
+    cmd_metering:
+      nerd: "\uf080"
+      fallback: "≋"
+      ascii: "="
+
+# The / palette and ctrl+p (OMN-26620): a short hint per customer command, the
+# commands that carry an icon, the width of the name column, and Themes.
+palette:
+  name_width: 14
+  themes_title: Themes
+  themes_help: Pick a colour theme
+  icon_commands: [config, model, delegation, dashboard, doctor, metering, theme]
+  hints:
+    config: providers, keys and models
+    model: pick the model to try first
+    delegation: Claude Code on or off
+    dashboard: open the local dashboard
+    doctor: check your setup
+    metering: usage and cost
+    theme: pick a colour theme
+    clear: clear the screen
+    help: keys and how commands work
+    quit: leave onex
+
+# /doctor page (OMN-26620 pages worker).
+doctor_page:
+  title: "Setup check"
+  summary_all_good: "✓ all good · {passed} of {total}"
+  summary_attention: "{problems} need attention · {passed} of {total}"
+  status_ok: "✓ ok"
+  status_attention: "! needs attention"
+  status_skipped: "– optional/skipped"
+  fix_prefix: "fix:"
+  # The checks /config can fix, by the name onex doctor gives them; no
+  # other row offers a fix it cannot make (end-to-end pass 2026-11-26).
+  fixes:
+    "Delegation API key": /config
+    "Delegation local model": /config
+  # A check's fault code, said plainly (its own text holds a URL or path).
+  # Every code omnibase_infra's EnumDelegationDoctorFault names.
+  codes:
+    no_identity: "Not signed in to OmniNode delegation."
+    no_key: "No OmniNode delegation key is stored."
+    wrong_key: "OmniNode delegation refused the stored key."
+    gateway_down: "OmniNode delegation does not answer."
+    quota_exhausted: "The delegation quota is used up."
+    no_local_model: "No local model server is set up."
+    local_model_not_serving: "A model server you added does not answer."
+    local_model_id_mismatch: "A model server you added serves a different model."
+  # A check's own text by how it starts, said plainly (verify pass 2026-11-26).
+  starts:
+    "Node.js not found": "Node.js is not installed."
+    "Node.js not working": "Node.js is installed but does not run."
+  # "Missing: A, B" names settings; each by a plain name, never its own.
+  missing: "Not set: {names}."
+  settings:
+    LINEAR_API_KEY: "Linear key (only Linear features use it)"
+  # A row that needs attention never shows no reason at all.
+  fallback: "Run onex doctor in a terminal for the details."
+
+# /metering page (OMN-26620 pages worker).
+metering_page:
+  title: "Usage and cost"
+  tasks: "Tasks"
+  tokens: "Tokens"
+  cost: "Cost"
+  saved: "Saved ≈ {amount} (modelled)"
+  unmeasured: "not measured"
+  savings_line: "Savings are modelled, not billed."
+  period: "{period}"
+
+# Plain messages for customer-visible errors (OMN-26620 AC9).
+messages:
+  could_not: "Could not {what}."
+  next_step: "Run /doctor."

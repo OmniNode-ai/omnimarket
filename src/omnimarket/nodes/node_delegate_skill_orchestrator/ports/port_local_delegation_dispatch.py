@@ -162,6 +162,7 @@ from omnimarket.handlers.routing.byok_provider_backends import (
     resolve_byok_backend_by_id,
 )
 from omnimarket.handlers.routing.customer_key_terminus import (
+    CUSTOMER_PROVIDER_KEY_REJECTED_MESSAGE,
     EnumDelegationSurface,
     enforce_customer_key_terminus,
     is_customer_attributed,
@@ -287,6 +288,9 @@ from omnimarket.models.delegation.wire.model_answer_gate_request import (
 )
 from omnimarket.models.delegation.wire.model_attempt_configuration import (
     ModelAttemptConfiguration,
+)
+from omnimarket.models.delegation.wire.model_attempt_rubric_verdict import (
+    ModelAttemptRubricVerdict,
 )
 from omnimarket.models.delegation.wire.model_named_test_run import ModelNamedTestRun
 from omnimarket.models.delegation.wire.model_named_test_run_request import (
@@ -640,6 +644,7 @@ def derive_attempt_acceptance(
     required_bar: float | None,
     rule_evaluations: tuple[ModelQualityRuleEvaluation, ...],
     no_rung_can_satisfy: bool = False,
+    rubric_verdict: ModelAttemptRubricVerdict | None = None,
 ) -> tuple[EnumDelegationAcceptanceDecision, EnumDelegationAcceptanceReason, str]:
     """Derive the typed accept/climb verdict and a reason that names the decider.
 
@@ -690,10 +695,19 @@ def derive_attempt_acceptance(
             f"score_vs_bar="
             f"{'below_bar' if quality_score < required_bar else 'at_or_above_bar'}"
         )
+    if rubric_verdict is not None and rubric_verdict.outcome == "UNDETERMINED":
+        # OMN-26705: an undetermined rubric is said, never folded into a pass.
+        undetermined = ",".join(rubric_verdict.undetermined_criteria) or "none_named"
+        detail = f"{detail} rubric=UNDETERMINED undetermined_criteria={undetermined}"
     if quality_passed:
+        # OMN-26705: accepted with a score under its declared bar (a code class
+        # decided by executed checks) is not "the bar was met".
+        below_bar = required_bar is not None and quality_score < required_bar
         return (
             EnumDelegationAcceptanceDecision.ACCEPT,
-            EnumDelegationAcceptanceReason.QUALITY_BAR_MET,
+            EnumDelegationAcceptanceReason.EXECUTED_CHECKS_PASSED
+            if below_bar
+            else EnumDelegationAcceptanceReason.QUALITY_BAR_MET,
             detail,
         )
     named_vetoes = _named_blocking_vetoes(rule_evaluations)
@@ -3259,6 +3273,14 @@ class LocalDelegationDispatchPort:
                 # typed refusal about the account or the model terminalises it:
                 # there is no house fallback for a customer (INV-068).
                 customer_route = _is_customer_byok_route(backend)
+                # OMN-25506: a customer's own key the provider refused states
+                # the typed reason, never the provider's sentence.
+                if (
+                    customer_route
+                    and transport_failure_class
+                    is EnumDelegationFailureClass.PROVIDER_AUTH_FAILED
+                ):
+                    transport_failure_message = CUSTOMER_PROVIDER_KEY_REJECTED_MESSAGE
                 typed_refusal = (
                     transport_failure_class in _TYPED_ACCOUNT_OR_MODEL_REFUSALS
                 )
@@ -3310,7 +3332,11 @@ class LocalDelegationDispatchPort:
                 if local_next is not None:
                     cumulative_cost_usd += transport_result.actual_cost_usd
                     attempt_usage.append(
-                        _AttemptUsage.of(transport_result, model_id=backend.model_id)
+                        _AttemptUsage.of(
+                            transport_result,
+                            model_id=backend.model_id,
+                            backend=backend,
+                        )
                     )
                     attempts.append(
                         _local_rung_attempt(
@@ -3425,7 +3451,11 @@ class LocalDelegationDispatchPort:
                 # post-success banking below without requiring a gate verdict.
                 cumulative_cost_usd += transport_result.actual_cost_usd
                 attempt_usage.append(
-                    _AttemptUsage.of(transport_result, model_id=backend.model_id)
+                    _AttemptUsage.of(
+                        transport_result,
+                        model_id=backend.model_id,
+                        backend=backend,
+                    )
                 )
                 attempts.append(
                     {
@@ -3692,7 +3722,9 @@ class LocalDelegationDispatchPort:
             cumulative_cost_usd += result.actual_cost_usd
             attempt_usage.append(
                 _AttemptUsage.of(
-                    result, model_id=result.served_model_id or backend.model_id
+                    result,
+                    model_id=result.served_model_id or backend.model_id,
+                    backend=backend,
                 )
             )
 
@@ -3802,6 +3834,7 @@ class LocalDelegationDispatchPort:
                 required_bar=_declared_required_bar(task_type),
                 rule_evaluations=gate_result.rule_evaluations,
                 no_rung_can_satisfy=gate_result.no_rung_can_satisfy,
+                rubric_verdict=rubric_verdict,
             )
             # OMN-22212: a refused secret or exfiltration request is terminal.
             # The refusal is the right answer and no other rung improves it, so
@@ -4100,7 +4133,7 @@ class LocalDelegationDispatchPort:
                 # backend.model_id when the endpoint offered no /v1/models
                 # evidence (e.g. a cloud backend), which is unchanged pre-ticket
                 # behavior.
-                attributed_model_id = result.served_model_id or backend.model_id
+                attributed_model_id = result.served_model_id or "unknown"  # OMN-18079
                 # 5. PROJECTION — materialize the local evidence row from the
                 #    terminal, carrying the REAL gate verdict and the CUMULATIVE
                 #    metered cost across every attempt (never a hardcoded PASS,
@@ -6682,6 +6715,7 @@ class LocalDelegationDispatchPort:
                     estimated_cost_usd=float(usage.cost_usd),
                     usage_source=usage.usage_source,
                     cost_tier_name=run_cost_tier_name,
+                    backend=usage.backend,
                     timestamp=emitted_at,
                 )
                 apply_usage_call(
@@ -6809,6 +6843,12 @@ class _AttemptUsage:
     """What one banked effect call consumed, on the model that served it."""
 
     model_id: str
+    # OMN-25861: the alias the attempt reached its model through: the backend_id of a
+    # customer's own BYOK route (byok-reflection, a registered named connection), else
+    # the model itself, which the usage row counts as direct and lists nothing for (D1).
+    # Required, so no build site can leave it out; None when the route could not be
+    # classified, which the row serves as unknown, never as direct (JG-19).
+    backend: str | None
     tokens_in: int
     tokens_out: int
     cost_usd: Decimal
@@ -6817,10 +6857,28 @@ class _AttemptUsage:
 
     @classmethod
     def of(
-        cls, result: ModelLlmDelegationCallResult, *, model_id: str
+        cls,
+        result: ModelLlmDelegationCallResult,
+        *,
+        model_id: str,
+        backend: ModelResolvedDelegationBackend,
     ) -> _AttemptUsage:
+        # The provider has answered and its cost is banked by now: classifying the route
+        # (which may read the credential store) must not break the run (OMN-25861).
+        alias: str | None
+        try:
+            alias = backend.backend_id if _is_customer_byok_route(backend) else model_id
+        except Exception:
+            logger.warning(
+                "could not tell whether backend %s is a customer BYOK route; its usage "
+                "call books no backend",
+                backend.backend_id,
+                exc_info=True,
+            )
+            alias = None
         return cls(
             model_id=model_id,
+            backend=alias,
             tokens_in=result.tokens_in,
             tokens_out=result.tokens_out,
             cost_usd=result.actual_cost_usd,

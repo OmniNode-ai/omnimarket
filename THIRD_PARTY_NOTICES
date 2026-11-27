@@ -1,0 +1,11 @@
+Third-party notices
+============
+
+Design references (no code copied)
+----------------------------------
+
+The spinner frames and their plain-text fallback follow the common braille
+sequence and the ASCII fallback idea seen in opencode (MIT), aider (Apache-2.0)
+and Kimi CLI (Apache-2.0). Only the frame characters are used; no source code
+was taken from those projects. This section is a reference list and carries no
+copied-code entry.

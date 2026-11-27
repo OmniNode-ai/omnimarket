@@ -99,6 +99,8 @@ def _effect_returning(content: str) -> port_mod._EffectHandler:
             request_id=request.request_id,
             success=True,
             content=f"### ANSWER\n{content}" if content else content,
+            # OMN-18079: the provider reports the model that served the call.
+            served_model_id=request.model_id,
             tokens_in=20,
             tokens_out=90,
             latency_ms=13000,

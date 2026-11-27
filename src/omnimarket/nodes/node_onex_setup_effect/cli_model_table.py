@@ -13,6 +13,7 @@ from collections.abc import Sequence
 from decimal import Decimal
 from urllib.parse import urlparse
 
+from rich.cells import cell_len
 from rich.text import Text
 from textual import events, on
 from textual.app import ComposeResult
@@ -68,6 +69,52 @@ def context_text(tokens: int | None) -> str:
         whole, rest = divmod(tokens, 1_000_000)
         return f"{whole}M" if rest == 0 else f"{tokens / 1_000_000:.1f}M"
     return f"{round(tokens / 1000)}K"
+
+
+def _named(entry: ModelCatalogEntry) -> str:
+    """The model's name, and the server that runs it when it runs on one, so two
+    servers running a model of one name stay two different rows."""
+    if not entry.server_url:
+        return entry.model_id
+    host = urlparse(entry.server_url).netloc or entry.server_url
+    return (
+        tui_design().words["model_on_server"].format(model=entry.model_id, server=host)
+    )
+
+
+def _say_expired(text: Text, entry: ModelCatalogEntry) -> None:
+    """AC4: a provider's kept list that has expired is said beside its models."""
+    if entry.provider_list_expired:
+        text.append(f"  {_table().listing_expired}", style=_colour("warning"))
+
+
+def context_words(tokens: int | None) -> str:
+    """'32k' or '1M' for a tab table; the unknown mark when no source says."""
+    words = _table().tab_table
+    if tokens is None:
+        return _table().unknown_mark
+    if tokens >= 1_000_000:
+        whole, rest = divmod(tokens, 1_000_000)
+        number = f"{whole}" if rest == 0 else f"{tokens / 1_000_000:.1f}"
+        return number + words.context_million
+    return f"{round(tokens / 1000)}{words.context_thousand}"
+
+
+def price_in_words(entry: ModelCatalogEntry, *, output: bool = False) -> str:
+    """One price as '$0.10'; the local word for a local model; never free when unknown."""
+    if entry.deployment == "local":
+        return _table().price_local
+    value = entry.output_usd_per_million if output else entry.input_usd_per_million
+    return _money(value) if value is not None else _table().price_unknown
+
+
+def capability_words(entry: ModelCatalogEntry) -> Text:
+    """'tools, vision': the supported capabilities in plain lower-case words."""
+    supported = [label for label, state in entry.capabilities.items() if state == "yes"]
+    if not supported:
+        return Text(_table().unknown_mark, style=_colour("muted"))
+    joined = _table().tab_table.capability_join.join(s.lower() for s in supported)
+    return Text(joined, style=_colour("muted"))
 
 
 def capability_text(entry: ModelCatalogEntry) -> Text:
@@ -168,6 +215,15 @@ def _sort_key(entry: ModelCatalogEntry, sort: str) -> tuple[object, ...]:
 class _Rows(DataTable[object]):
     """A row is chosen by one click, not by clicking it a second time."""
 
+    def action_cursor_up(self) -> None:
+        """Up on the first row moves to the field above, so the keyboard is
+        never held in the list (a real terminal on 2026-11-26: with a server's
+        models loaded, the providers above could not be reached)."""
+        if self.cursor_row <= 0:
+            self.screen.focus_previous()
+            return
+        super().action_cursor_up()
+
     async def _on_click(self, event: events.Click) -> None:
         # Textual also runs DataTable's own click handler after this one, and it
         # selects only a click on the cell the cursor is already on. Moving the
@@ -178,12 +234,45 @@ class _Rows(DataTable[object]):
             self.cursor_coordinate = Coordinate(row, column)
 
 
+def _cut_middle(name: Text, room: int) -> Text:
+    """``name`` in ``room`` cells with "…" in the middle: the start names the
+    model and the end its server, so two servers' copies stay apart."""
+    plain = name.plain
+    keep = room - 1
+    head = (keep + 1) // 2
+    tail = keep - head
+    if keep <= 0 or len(plain) != cell_len(plain):  # wide glyphs: cut the end
+        cut = name.copy()
+        cut.truncate(room, overflow="ellipsis")
+        return cut
+    cut = name[:head]
+    cut.append("…", style=_colour("muted"))
+    if tail:
+        cut.append_text(name[len(plain) - tail :])
+    return cut
+
+
+#: A model name is never cut shorter than this: past it, the table scrolls.
+_NAME_FLOOR = 14
+
+
 class ModelTable(Widget):
     """Search, filter and sort a model list; optionally tick any number of rows."""
 
     DEFAULT_CSS = """
     ModelTable { height: 1fr; }
-    ModelTable #mt-search { margin-bottom: 0; }
+    /* a row of space between the search box and the column names (M3) */
+    ModelTable #mt-search { margin-bottom: 1; }
+    /* Column names are quiet: muted bold words, no coloured bar. Textual's
+       default is white on $panel, and white on bright blue in ANSI (M1, M2). */
+    ModelTable DataTable > .datatable--header {
+        background: $surface; color: $text-muted; text-style: bold;
+    }
+    ModelTable DataTable:ansi > .datatable--header {
+        background: ansi_default; color: ansi_bright_black; text-style: bold;
+    }
+    ModelTable DataTable > .datatable--header-hover { background: $surface; }
+    ModelTable DataTable:ansi > .datatable--header-hover { background: ansi_default; }
     ModelTable #mt-bar { height: 1; color: $text-muted; }
     ModelTable DataTable { height: 1fr; }
     """
@@ -211,8 +300,16 @@ class ModelTable(Widget):
         selectable: bool,
         provider_labels: dict[str, str] | None = None,
         id: str | None = None,
+        layout: str | None = None,
     ) -> None:
         super().__init__(id=id)
+        #: A tab layout from tui_design.yaml (model_table.tab_table.layouts), or
+        #: None for the classic table with its search, filter and sort bar.
+        self._layout = layout
+        #: How many digits the last position has (the Delegation list).
+        self._digits = 1
+        #: The row tried first, drawn with the first marker (the Model tab).
+        self._first: str | None = None
         self._selectable = selectable
         self._labels = provider_labels or {}
         self._entries: tuple[ModelCatalogEntry, ...] = ()
@@ -227,11 +324,28 @@ class ModelTable(Widget):
 
     def on_mount(self) -> None:
         rows = self.query_one("#mt-rows", DataTable)
-        for column in _table().columns:
-            if column.key == "pick" and not self._selectable:
-                continue
-            rows.add_column(column.title, key=column.key)
+        if self._layout is not None:
+            spec = _table().tab_table.layouts[self._layout]
+            rows.show_header = spec.header
+            rows.zebra_stripes = False
+            self.query_one("#mt-search").display = spec.search
+            self.query_one("#mt-bar").display = False
+            for tab_column in spec.columns:
+                if tab_column.key == "pick" and not self._selectable:
+                    continue
+                rows.add_column(tab_column.title, key=tab_column.key)
+        else:
+            for column in _table().columns:
+                if column.key == "pick" and not self._selectable:
+                    continue
+                rows.add_column(column.title, key=column.key)
         self._redraw()
+
+    def set_first(self, key: str | None) -> None:
+        """Mark one row (by entry_key) as the model tried first."""
+        self._first = key
+        if self.is_mounted:
+            self._redraw()
 
     def _label(self, entry: ModelCatalogEntry) -> str:
         """The row's own label (a local server's kind) before the provider's."""
@@ -285,9 +399,62 @@ class ModelTable(Widget):
             if (self._filter == _table().filters[0] or e.deployment == self._filter)
             and all(w in _search_blob(e, self._label(e)) for w in words)
         ]
+        if self._layout is not None:  # a tab keeps the order delegation tries them in
+            return shown
         return sorted(shown, key=lambda e: _sort_key(e, self._sort))
 
-    def _cells(self, entry: ModelCatalogEntry) -> list[object]:
+    def _tab_cells(self, entry: ModelCatalogEntry, position: int) -> list[object]:
+        """A row of a tab layout: plain words, no coloured pills."""
+        words = _table().tab_table
+        cells: list[object] = []
+        for column in words.layouts[self._layout or ""].columns:
+            key = column.key
+            if key == "pick":
+                if self._selectable:
+                    on = entry_key(entry) in self._ticked
+                    cells.append(
+                        Text(
+                            words.ticked if on else words.unticked,
+                            style=_colour("success" if on else "muted"),
+                        )
+                    )
+            elif key == "model":
+                named = Text(_named(entry), style=_colour("foreground"))
+                _say_expired(named, entry)
+                cells.append(named)
+            elif key == "model_numbered":
+                # The position in the name cell, right-aligned, as the Model
+                # tab leads with its marker: one column fewer, so an
+                # 80-column window keeps the status whole.
+                named = Text(f"{position:>{self._digits}} ", style=_colour("muted"))
+                named.append(_named(entry), style=_colour("foreground"))
+                _say_expired(named, entry)
+                cells.append(named)
+            elif key == "model_marked":
+                first = entry_key(entry) == self._first
+                marked = Text(
+                    (words.marker_first if first else words.marker_other) + " ",
+                    style=_colour("primary" if first else "muted"),
+                )
+                marked.append(_named(entry), style=_colour("foreground"))
+                _say_expired(marked, entry)
+                cells.append(marked)
+            elif key == "context":
+                cells.append(Text(context_words(entry.context_tokens)))
+            elif key == "price_in":
+                cells.append(Text(price_in_words(entry)))
+            elif key == "price_out":
+                cells.append(Text(price_in_words(entry, output=True)))
+            elif key == "capabilities":
+                cells.append(capability_words(entry))
+            elif key == "status":
+                word = words.status[entry.status]
+                cells.append(Text(word.text, style=_colour(word.colour)))
+        return cells
+
+    def _cells(self, entry: ModelCatalogEntry, position: int = 0) -> list[object]:
+        if self._layout is not None:
+            return self._tab_cells(entry, position)
         words = _table()
         cells: list[object] = []
         for column in words.columns:
@@ -317,13 +484,62 @@ class ModelTable(Widget):
                 cells.append(status_text(entry))
         return cells
 
+    def on_resize(self) -> None:
+        if self._layout is not None:  # names are fitted to the width
+            self.call_after_refresh(self._redraw)
+
+    def _fit_names(self, rows: DataTable[object], built: list[list[object]]) -> None:
+        """Shorten long model names with "…" so every other column, the
+        status last of all, keeps its full width (an 80-column window)."""
+        if self._layout is None or not built:
+            return
+        columns = [
+            column
+            for column in _table().tab_table.layouts[self._layout].columns
+            if not (column.key == "pick" and not self._selectable)
+        ]
+        named = [
+            i
+            for i, column in enumerate(columns)
+            if column.key in ("model", "model_numbered", "model_marked")
+        ]
+        width = rows.scrollable_content_region.width
+        if not named or width <= 0:
+            return
+        pad = 2 * rows.cell_padding
+        others = sum(
+            max(
+                [cell_len(column.title)]
+                + [cell_len(str(cells[i])) for cells in built if i < len(cells)]
+            )
+            + pad
+            for i, column in enumerate(columns)
+            if i != named[0]
+        )
+        room = max(width - others - pad, _NAME_FLOOR)
+        for cells in built:
+            name = cells[named[0]]
+            if isinstance(name, Text) and name.cell_len > room:
+                cells[named[0]] = _cut_middle(name, room)
+
     def _redraw(self) -> None:
         rows = self.query_one("#mt-rows", DataTable)
         keep = self.current()
         rows.clear()
+        if self._layout is not None:
+            # DataTable.clear keeps each column's widest cell: start from the
+            # titles so a fitted (shortened) name can narrow its column.
+            for column in rows.columns.values():
+                column.content_width = column.label.cell_len
         visible = self._visible()
-        for entry in visible:
-            rows.add_row(*self._cells(entry), key=entry_key(entry))
+        self._digits = len(str(len(visible)))
+        built = [
+            self._cells(entry, position)
+            for position, entry in enumerate(visible, start=1)
+        ]
+        self._fit_names(rows, built)
+        for entry, cells in zip(visible, built, strict=True):
+            rows.add_row(*cells, key=entry_key(entry))
         words = _table()
         ticked = (
             words.bar_ticked.format(count=len(self._ticked)) if self._selectable else ""

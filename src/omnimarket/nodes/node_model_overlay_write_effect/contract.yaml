@@ -92,6 +92,8 @@ event_bus:
 
 runtime_dispatch:
   external_trigger: "onex models overlay --mode <native|local-stack>, which builds the request, calls HandlerModelOverlayWrite.handle and prints the outcome"
+  callers:
+    - path: src/omnimarket/handlers/models_only_command.py
 
 metadata:
   transport_type: local

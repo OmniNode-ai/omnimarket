@@ -129,7 +129,6 @@ class HandlerSetupDashboard:
                         "url": record.url,
                         "pid": str(record.pid),
                         "credential_ref": record.credential_ref,
-                        "tenant_id": record.tenant_id,
                     },
                 )
             return ModelSetupObservation(

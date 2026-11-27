@@ -154,10 +154,13 @@ async def test_the_key_line_and_a_long_note_stay_above_the_buttons(
         buttons = app.screen.query_one("#dbuttons")
         keys = app.screen.query_one("#dkeys")
         note = app.screen.query_one("#dnote")
-        keys_ok, note_ok = _above(keys, buttons), _above(note, buttons)
+        keys_ok = keys.region.height > 0 and not keys.region.intersection(
+            buttons.region
+        )
+        note_ok = _above(note, buttons)
         regions = (keys.region, note.region, buttons.region)
         key_text, note_text = _shown(keys), _shown(note)
-    hint = tui_design().model_table.help["delegation"]
+    hint = tui_design().words["tab_hint_delegation"]
     assert keys_ok, regions
     assert note_ok, regions
     for word in hint.replace("·", " ").split():
