@@ -57,6 +57,8 @@ dod_evidence:
     description: "The shared runtime dispatches the writer in-process"
   - test: tests/test_omn19978_usage_by_model_day.py::test_the_postgres_migration_declares_both_tables
     description: "Migration owns calls, aggregates, composite key, and cursor"
+  - test: tests/projection/test_omn25861_usage_backends.py::test_b1_a_model_reached_through_byok_reflection_serves_it
+    description: "Two calls to one model, one through byok-reflection, serve the row's backends as [\"byok-reflection\"]"
 db_io:
   db_tables:
     - name: usage_by_model_day_calls
@@ -109,8 +111,14 @@ projection_api:
     - unmeasured_call_count
     - call_count
     - call_share
+    # OMN-25861: the sorted distinct backends the row's calls were reached through
+    # where the backend differs from the model ([] when every call was direct),
+    # NULL when any call stated no backend. A JSON array on both stores.
+    - backends
     - updated_at
     - projection_cursor
+  json_columns:
+    - backends
   order_by: "usage_day DESC, model_id ASC, cost_tier_name ASC"
   cursor_column: projection_cursor
   freshness_column: updated_at

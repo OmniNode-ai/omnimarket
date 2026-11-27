@@ -276,6 +276,25 @@ def test_a_status_that_disagrees_with_the_receipt_fails_and_names_the_agreement_
         ("C16", "status_agrees_with_receipt"),
     ],
 )
+def test_a_status_whose_tests_outcome_differs_from_the_receipt_fails_the_agreement_clause(
+    check: str, clause: str
+) -> None:
+    """tests_outcome is an agreement field (OMN-26682): a status reading it differently from the receipt is refused."""
+    assert "tests_outcome" in AGREEMENT_FIELDS
+    verdict, failed = _grade(
+        check, _edit(_body("status_healthy", "tests_outcome", "passed"))
+    )
+    assert verdict is EnumCheckVerdict.FAIL
+    assert clause in failed
+
+
+@pytest.mark.parametrize(
+    ("check", "clause"),
+    [
+        ("C14", "gateway_status_agrees_with_receipt"),
+        ("C16", "status_agrees_with_receipt"),
+    ],
+)
 def test_a_status_body_missing_from_the_run_fails_the_agreement_clause(
     check: str, clause: str
 ) -> None:

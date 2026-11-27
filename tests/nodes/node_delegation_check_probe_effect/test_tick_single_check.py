@@ -142,3 +142,20 @@ def test_a_tick_with_no_responders_row_still_runs_c17_and_publishes_c13_and_c14_
     assert verdicts["C14"] == "PRECONDITION-ABSENT"
     assert verdicts["C17"] == "PASS"
     assert code != tick.EXIT_OVERLAY
+
+
+def test_a_customer_local_runs_history_line_carries_its_gateway_leg_verdict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The beta board reads C13 and C14 from the gateway leg (ruling 2026-11-24T13:11:36Z): the history line names its verdict."""
+    _run(tmp_path, monkeypatch)
+    lines = [
+        json.loads(x)
+        for x in (tmp_path / "state" / "runs.jsonl").read_text().splitlines()
+    ]
+    assert [x["check"] for x in lines] == ["C13", "C14", "C17"]
+    for line in lines:
+        assert line["gateway_leg"] in ("pass", "fail", "unmeasured"), line
+    # The leg is the gateway clauses alone: the machine side reads NOT_MEASURED here, the gateway leg was graded on its own.
+    assert lines[0]["verdict"] == "NOT_MEASURED"
+    assert lines[0]["gateway_leg"] in ("pass", "fail")

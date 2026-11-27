@@ -1,0 +1,37 @@
+{
+  "ticket": "OMN-26520",
+  "host": "omni-201 dev runtime, read only",
+  "source": "lane ac26520-36800: a read of the done_items table and docker inspect of omninode-runtime",
+  "container_started_at": "2026-11-26T01:54:30Z",
+  "reads": [
+    {
+      "read_at": "2026-11-26T01:52:07Z",
+      "docker_health": "unhealthy",
+      "failing_streak": 13,
+      "rows": 142,
+      "max_projected_at": "2026-11-26T01:50:26Z",
+      "note": "container started 01:01:15Z; /health answered 503 (runtime not ready, contract_attach 0/44 pending); the container was replaced at 01:54:30Z"
+    },
+    {
+      "read_at": "2026-11-26T02:02:30Z",
+      "docker_health": "healthy",
+      "failing_streak": 0,
+      "rows": 142,
+      "max_projected_at": "2026-11-26T01:58:38Z",
+      "note": "10 min 23 s after the first read: count flat, an existing row was re-projected (projected_at advanced)"
+    },
+    {
+      "read_at": "2026-11-26T02:13:44Z",
+      "docker_health": "healthy",
+      "failing_streak": 0,
+      "rows": 143,
+      "max_projected_at": "2026-11-26T02:08:40Z",
+      "note": "11 min 14 s after the second read: one new done row"
+    }
+  ],
+  "filtered_events_logged": {
+    "window": "02:03:07Z to 02:11:18Z",
+    "count": 5,
+    "line": "Projection handler filtered the event, no row owed (expected): outcome=EVENT_NOT_APPLICABLE handler=DoneItemsProjectionWriter topic=onex.evt.omnimarket.work-ledger-terminal.v1"
+  }
+}

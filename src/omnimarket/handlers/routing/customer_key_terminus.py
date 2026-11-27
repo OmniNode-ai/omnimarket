@@ -169,6 +169,10 @@ class EnumCustomerKeyRefusalReason(StrEnum):
     # inference and a customer's own credential does not make our GPU theirs.
     # Not actionable by the customer: a routing/overlay misconfiguration.
     LAB_BACKEND_ON_CUSTOMER_PATH = "lab_backend_on_customer_path"
+    # OMN-25506: the customer's registered key was accepted at register time but
+    # the provider refused it at run time (HTTP 401 or 403). Actionable: replace
+    # the key. Never escalated to another tier or a house key.
+    PROVIDER_KEY_REJECTED = "provider_key_rejected"
 
 
 # Per-reason phrasing for the message that crosses the consume boundary. The
@@ -189,7 +193,44 @@ _BOUNDARY_REASON_PHRASES: Final[Mapping[EnumCustomerKeyRefusalReason, str]] = {
         "the resolved route points at OmniNode's own lab hardware, which "
         "customer work may never use"
     ),
+    EnumCustomerKeyRefusalReason.PROVIDER_KEY_REJECTED: (
+        "the provider refused the key registered for this tenant"
+    ),
 }
+
+
+# OMN-24562. Two refusal reasons are not fixed by registering a key: the route
+# itself is wrong. Telling the customer to register a key sends them to a step
+# that cannot clear the refusal, so each of these names its own reason. Phrased
+# with no ``SENSITIVE_PATTERNS`` token so it also survives the boundary.
+_REASON_REMEDIATION: Final[Mapping[EnumCustomerKeyRefusalReason, str]] = {
+    EnumCustomerKeyRefusalReason.HOUSE_CREDENTIAL_ON_CUSTOMER_PATH: (
+        "Refused because the resolved route would run on a platform-owned key. "
+        "Registering a provider key does not clear this; the route is a "
+        "routing misconfiguration on the platform side."
+    ),
+    EnumCustomerKeyRefusalReason.LAB_BACKEND_ON_CUSTOMER_PATH: (
+        "Refused because the resolved route points at OmniNode's own lab "
+        "hardware, which customer work may never use. Registering a provider "
+        "key does not clear this; the route is a routing misconfiguration on "
+        "the platform side."
+    ),
+    EnumCustomerKeyRefusalReason.PROVIDER_KEY_REJECTED: (
+        "Refused because the provider rejected the key registered for this "
+        "tenant. Registering the same key again does not clear this; replace "
+        "it with a valid provider key and retry."
+    ),
+}
+
+
+# OMN-25506: what a customer reads when the provider refused their own key. It
+# names no provider text, URL or identifier: the provider's sentence can carry all
+# three. Phrased to survive ``sanitize_error_message`` like the boundary phrases.
+CUSTOMER_PROVIDER_KEY_REJECTED_MESSAGE: Final[str] = (
+    f"{EnumCustomerKeyRefusalReason.PROVIDER_KEY_REJECTED.value}: the provider "
+    "refused the key registered for this tenant. Replace it with a valid "
+    "provider key and retry."
+)
 
 
 class ModelCustomerKeyRefusal(BaseModel):
@@ -247,6 +288,20 @@ class ModelCustomerKeyRefusal(BaseModel):
         """
         if isinstance(data, dict) and "remediation" not in data:
             surface = data.get("surface")
+            reason = data.get("reason")
+            named = None
+            if isinstance(reason, str):
+                try:
+                    named = _REASON_REMEDIATION.get(
+                        EnumCustomerKeyRefusalReason(reason)
+                    )
+                except ValueError:
+                    named = None
+            local = surface == EnumDelegationSurface.CUSTOMER_LOCAL or surface == (
+                EnumDelegationSurface.CUSTOMER_LOCAL.value
+            )
+            if named is not None and not local:
+                return {**data, "remediation": named}
             if surface == EnumDelegationSurface.CUSTOMER_LOCAL or surface == (
                 EnumDelegationSurface.CUSTOMER_LOCAL.value
             ):
@@ -283,9 +338,12 @@ class ModelCustomerKeyRefusal(BaseModel):
         )
 
     def _boundary_remediation(self) -> str:
-        """The sanitizer-safe remediation for this refusal's surface."""
+        """The sanitizer-safe remediation for this refusal's reason and surface."""
         if self.surface is EnumDelegationSurface.CUSTOMER_LOCAL:
             return _BOUNDARY_REMEDIATION_CUSTOMER_LOCAL
+        named = _REASON_REMEDIATION.get(self.reason)
+        if named is not None:
+            return named
         return _BOUNDARY_REMEDIATION
 
 
@@ -640,6 +698,7 @@ __all__: list[str] = [
     "CUSTOMER_LOCAL_KEY_REMEDIATION",
     "CUSTOMER_PROVIDER_KEY_ABSENT_ERROR_CODE",
     "CUSTOMER_PROVIDER_KEY_ABSENT_ONEX_CODE",
+    "CUSTOMER_PROVIDER_KEY_REJECTED_MESSAGE",
     "CustomerKeyRefusedError",
     "EnumCustomerKeyRefusalReason",
     "EnumDelegationSurface",

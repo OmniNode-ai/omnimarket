@@ -62,6 +62,8 @@ from omnimarket.handlers.projection_table_page_view import (
     TablePageView as TablePageView,
 )
 from omnimarket.handlers.projection_table_sql import (
+    UNIQUE_KEY_CATALOGUE_SQL,
+    WINDOW_ORDER_ALIAS,
     _dated_first_sql,
     _latest_per_key_sql,
     _parse_timestamp,
@@ -71,6 +73,7 @@ from omnimarket.handlers.projection_table_sql import (
     quote_identifier,
     select_list,
     serialise_row,
+    serves_column,
 )
 from omnimarket.handlers.projection_window_instant import (
     freshness_column_type,
@@ -285,11 +288,13 @@ def build_window_query(
             f"now() - (${len(params)}::double precision * interval '1 second')"
         )
     newest_by_recency = False
+    hidden = False
     if window_seconds is not None and since is None:
         # A windowed read is the newest rows inside the window, never the
         # ascending walk from the oldest row of the table.
         assert window_column is not None
         window_order = f"{window_instant} DESC"
+        hidden = not serves_column(cfg, window_column)
     elif since is not None or (selection == "walk" and cfg.cursor_column is not None):
         window_order = (
             f"{quote_identifier(recency)} ASC"
@@ -337,13 +342,24 @@ def build_window_query(
     else:
         where_sql = f" WHERE {' AND '.join(where)}" if where else ""
         inner_order = f" ORDER BY {window_order}" if window_order else ""
-        inner = f"SELECT {columns} FROM {source}{where_sql}{inner_order} LIMIT {retain}"
+        carried = (
+            f"{columns}, {window_instant} AS {WINDOW_ORDER_ALIAS}"
+            if hidden
+            else columns
+        )
+        inner = f"SELECT {carried} FROM {source}{where_sql}{inner_order} LIMIT {retain}"
     outer_order = order_clause(order_spec)
+    outer_columns = "*"
     if window_seconds is not None and since is None:
         # The page cuts its first rows, so a windowed page must hand it the newest first.
         assert window_column is not None
         outer_order = f"{quote_identifier(window_column)} DESC"
-    sql = f"SELECT * FROM ({inner}) AS served_window" + (
+        if hidden:
+            # The outer query cannot order by a column the exposure does not
+            # serve: the inner read carries the instant under an alias and the
+            # outer read serves the declared columns only (OMN-24562).
+            outer_order, outer_columns = f"{WINDOW_ORDER_ALIAS} DESC", columns
+    sql = f"SELECT {outer_columns} FROM ({inner}) AS served_window" + (
         f" ORDER BY {outer_order}" if outer_order else ""
     )
     return WindowQuery(sql=sql, params=tuple(params))
@@ -611,22 +627,7 @@ class TableRowSource:
         if cached is not None and now - cached[0] < _UNIQUE_KEY_CATALOGUE_TTL_SECONDS:
             return cached[1]
         records = await connection.fetch(
-            "SELECT ARRAY(SELECT pg_get_indexdef(i.indexrelid, k, true) "
-            "FROM generate_series(1, i.indnkeyatts) AS k ORDER BY k) AS key_columns, "
-            "i.indisvalid AS is_valid, i.indpred IS NOT NULL AS is_partial, "
-            "(SELECT count(*) FROM generate_series(1, i.indnkeyatts) AS k "
-            "JOIN pg_attribute AS a ON a.attrelid = i.indrelid "
-            "AND a.attnum = i.indkey[k - 1] "
-            "JOIN pg_opclass AS o ON o.oid = i.indclass[k - 1] "
-            "WHERE a.attcollation = i.indcollation[k - 1] AND o.opcdefault) "
-            "= i.indnkeyatts AS plain_equality, "
-            "ARRAY(SELECT c.column_name::text FROM information_schema.columns AS c "
-            "WHERE c.table_schema = n.nspname AND c.table_name = r.relname "
-            "AND c.is_nullable = 'NO') AS not_null_columns "
-            "FROM pg_index AS i JOIN pg_class AS r ON r.oid = i.indrelid "
-            "JOIN pg_namespace AS n ON n.oid = r.relnamespace "
-            "WHERE i.indrelid = to_regclass($1) "
-            "AND i.indisunique AND i.indexprs IS NULL",
+            UNIQUE_KEY_CATALOGUE_SQL,
             relation,
         )
         found = UniqueKeyCatalogue(

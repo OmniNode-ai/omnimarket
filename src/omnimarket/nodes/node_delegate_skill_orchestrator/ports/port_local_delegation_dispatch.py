@@ -162,6 +162,7 @@ from omnimarket.handlers.routing.byok_provider_backends import (
     resolve_byok_backend_by_id,
 )
 from omnimarket.handlers.routing.customer_key_terminus import (
+    CUSTOMER_PROVIDER_KEY_REJECTED_MESSAGE,
     EnumDelegationSurface,
     enforce_customer_key_terminus,
     is_customer_attributed,
@@ -3259,6 +3260,14 @@ class LocalDelegationDispatchPort:
                 # typed refusal about the account or the model terminalises it:
                 # there is no house fallback for a customer (INV-068).
                 customer_route = _is_customer_byok_route(backend)
+                # OMN-25506: a customer's own key the provider refused states
+                # the typed reason, never the provider's sentence.
+                if (
+                    customer_route
+                    and transport_failure_class
+                    is EnumDelegationFailureClass.PROVIDER_AUTH_FAILED
+                ):
+                    transport_failure_message = CUSTOMER_PROVIDER_KEY_REJECTED_MESSAGE
                 typed_refusal = (
                     transport_failure_class in _TYPED_ACCOUNT_OR_MODEL_REFUSALS
                 )
@@ -3310,7 +3319,11 @@ class LocalDelegationDispatchPort:
                 if local_next is not None:
                     cumulative_cost_usd += transport_result.actual_cost_usd
                     attempt_usage.append(
-                        _AttemptUsage.of(transport_result, model_id=backend.model_id)
+                        _AttemptUsage.of(
+                            transport_result,
+                            model_id=backend.model_id,
+                            backend=backend,
+                        )
                     )
                     attempts.append(
                         _local_rung_attempt(
@@ -3425,7 +3438,11 @@ class LocalDelegationDispatchPort:
                 # post-success banking below without requiring a gate verdict.
                 cumulative_cost_usd += transport_result.actual_cost_usd
                 attempt_usage.append(
-                    _AttemptUsage.of(transport_result, model_id=backend.model_id)
+                    _AttemptUsage.of(
+                        transport_result,
+                        model_id=backend.model_id,
+                        backend=backend,
+                    )
                 )
                 attempts.append(
                     {
@@ -3692,7 +3709,9 @@ class LocalDelegationDispatchPort:
             cumulative_cost_usd += result.actual_cost_usd
             attempt_usage.append(
                 _AttemptUsage.of(
-                    result, model_id=result.served_model_id or backend.model_id
+                    result,
+                    model_id=result.served_model_id or backend.model_id,
+                    backend=backend,
                 )
             )
 
@@ -4100,7 +4119,7 @@ class LocalDelegationDispatchPort:
                 # backend.model_id when the endpoint offered no /v1/models
                 # evidence (e.g. a cloud backend), which is unchanged pre-ticket
                 # behavior.
-                attributed_model_id = result.served_model_id or backend.model_id
+                attributed_model_id = result.served_model_id or "unknown"  # OMN-18079
                 # 5. PROJECTION — materialize the local evidence row from the
                 #    terminal, carrying the REAL gate verdict and the CUMULATIVE
                 #    metered cost across every attempt (never a hardcoded PASS,
@@ -6682,6 +6701,7 @@ class LocalDelegationDispatchPort:
                     estimated_cost_usd=float(usage.cost_usd),
                     usage_source=usage.usage_source,
                     cost_tier_name=run_cost_tier_name,
+                    backend=usage.backend,
                     timestamp=emitted_at,
                 )
                 apply_usage_call(
@@ -6809,6 +6829,12 @@ class _AttemptUsage:
     """What one banked effect call consumed, on the model that served it."""
 
     model_id: str
+    # OMN-25861: the alias the attempt reached its model through: the backend_id of a
+    # customer's own BYOK route (byok-reflection, a registered named connection), else
+    # the model itself, which the usage row counts as direct and lists nothing for (D1).
+    # Required, so no build site can leave it out; None when the route could not be
+    # classified, which the row serves as unknown, never as direct (JG-19).
+    backend: str | None
     tokens_in: int
     tokens_out: int
     cost_usd: Decimal
@@ -6817,10 +6843,28 @@ class _AttemptUsage:
 
     @classmethod
     def of(
-        cls, result: ModelLlmDelegationCallResult, *, model_id: str
+        cls,
+        result: ModelLlmDelegationCallResult,
+        *,
+        model_id: str,
+        backend: ModelResolvedDelegationBackend,
     ) -> _AttemptUsage:
+        # The provider has answered and its cost is banked by now: classifying the route
+        # (which may read the credential store) must not break the run (OMN-25861).
+        alias: str | None
+        try:
+            alias = backend.backend_id if _is_customer_byok_route(backend) else model_id
+        except Exception:
+            logger.warning(
+                "could not tell whether backend %s is a customer BYOK route; its usage "
+                "call books no backend",
+                backend.backend_id,
+                exc_info=True,
+            )
+            alias = None
         return cls(
             model_id=model_id,
+            backend=alias,
             tokens_in=result.tokens_in,
             tokens_out=result.tokens_out,
             cost_usd=result.actual_cost_usd,

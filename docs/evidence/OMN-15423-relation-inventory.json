@@ -8977,6 +8977,7 @@
       "producer": "node_projection_overlay_store",
       "readers": [
         "node_claude_token_pool_effect",
+        "node_delegation_check_regression_effect",
         "node_dev_identity_provision_effect",
         "node_floor_emissions_publish_effect",
         "node_floor_fill_scheduled_effect",
