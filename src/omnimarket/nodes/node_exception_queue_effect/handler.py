@@ -40,6 +40,7 @@ from omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_lane_prior
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     require_lane_model,
 )
+from omnimarket.protocols.protocol_ledger_rows_reader import ProtocolLedgerRowsReader
 
 from .models import (
     ModelExceptionCliRequest,
@@ -488,15 +489,16 @@ class HandlerStopEvent:
 class HandlerOpenStops:
     """The stops not yet cleared or declared false, and the recorded refusals, for ``stop_gate`` and the read."""
 
-    def __init__(self, *, ledger_path: Path | None = None) -> None:
-        self._ledger_path = ledger_path
+    def __init__(
+        self, *, ledger_reader: ProtocolLedgerRowsReader | None = None
+    ) -> None:
+        self._ledger_reader = ledger_reader
 
     def handle(self, request: ModelOpenStopsRequest) -> ModelOpenStopsResult:
         from omnimarket.models.stop_gate import ModelStopRecord
 
         reports: tuple[str, ...] = ()
-        ledger_path = request.ledger_path or self._ledger_path
-        if ledger_path is not None:
+        if self._ledger_reader is not None:
             from omnimarket.models.model_andon_ledger_holds import (
                 ModelAndonLedgerHoldsRequest,
             )
@@ -506,11 +508,10 @@ class HandlerOpenStops:
             )
 
             reports = (
-                create_handler_andon_ledger_holds()
+                create_handler_andon_ledger_holds(self._ledger_reader)
                 .handle(
                     ModelAndonLedgerHoldsRequest(
                         state_dir=request.state_dir,
-                        ledger_path=ledger_path,
                         now=request.now
                         if request.now is not None
                         else datetime.now(UTC),

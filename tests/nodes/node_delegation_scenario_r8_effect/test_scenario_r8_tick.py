@@ -114,3 +114,23 @@ def test_help_exits_zero() -> None:
     with pytest.raises(SystemExit) as caught:
         main(["--help"])
     assert caught.value.code == 0
+
+
+def test_separate_ticks_keep_the_last_success_and_reset_the_skip_count(
+    tmp_path: Path,
+) -> None:
+    _, state_dir = _tick(tmp_path, _build_for(_Result(EnumScenarioConclusion.SUCCESS)))
+    last_success_at = json.loads(_record_text(state_dir))["ran_at"]
+    for count in (1, 2, 3):
+        code, _ = _tick(tmp_path, _build_for(_Result(EnumScenarioConclusion.SKIPPED)))
+        assert code == 0
+        record = json.loads(_record_text(state_dir))
+        assert record["consecutive_skips"] == count
+        assert record["last_success_at"] == last_success_at
+    code, _ = _tick(tmp_path, _build_for(_Result(EnumScenarioConclusion.FAILURE)))
+    assert code == 1
+    code, _ = _tick(tmp_path, _build_for(_Result(EnumScenarioConclusion.SKIPPED)))
+    assert code == 0
+    record = json.loads(_record_text(state_dir))
+    assert record["consecutive_skips"] == 1
+    assert record["last_success_at"] == last_success_at

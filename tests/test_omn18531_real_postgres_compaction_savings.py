@@ -21,6 +21,9 @@ from uuid import uuid4
 
 import pytest
 
+from omnimarket.models.model_projection_delivery_context_error import (
+    ProjectionDeliveryContextMissingError,
+)
 from omnimarket.nodes.node_projection_savings.handlers.handler_compaction_savings import (
     COMPACTION_MOD_MODEL,
     COMPACTION_TASK_TYPE,
@@ -162,3 +165,33 @@ def test_ignored_hook_event_is_skipped_in_the_savings_writer_handle() -> None:
         }
     )
     assert out == {"projected": True}
+
+
+@pytest.mark.integration
+async def test_partition_missing_delivery_context_real_postgres_refusal_writes_no_row() -> (
+    None
+):
+    if not os.environ.get(
+        "INTEGRATION_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD")
+    ):
+        pytest.skip(
+            "no INTEGRATION_POSTGRES_PASSWORD -- skipping delivery-context test"
+        )
+    event = _post_compact(summary_length=0)
+    event["event_id"] = str(uuid4())
+    async with _provisioned_runner() as (runner, admin_conn):
+        with pytest.raises(ProjectionDeliveryContextMissingError) as refused:
+            SavingsProjectionWriter().handle({"_topic": HOOK_EVENT_TOPIC, **event})
+        rows_after_refusal = await admin_conn.fetch("SELECT 1 FROM savings_estimates")
+        meta = MessageMeta(
+            partition=0,
+            offset=0,
+            fallback_id=str(event["event_id"]),
+            topic=HOOK_EVENT_TOPIC,
+        )
+        assert await runner.project_event(HOOK_EVENT_TOPIC, dict(event), meta)
+        rows_after_control = await admin_conn.fetch("SELECT 1 FROM savings_estimates")
+
+    assert refused.value.missing_keys == ("_partition", "_offset")
+    assert rows_after_refusal == []
+    assert len(rows_after_control) == 1

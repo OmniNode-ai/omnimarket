@@ -138,6 +138,16 @@ class ProtocolHeartbeatSource(Protocol):
         ...
 
 
+class UnitStateUnreadableError(Exception):
+    """The unit's USER-scope state could not be read; the message names what failed."""
+
+
+class ProtocolUnitStateSource(Protocol):
+    def read(self) -> tuple[str, str]:
+        """The unit's (LoadState, ActiveState) in USER scope; raises UnitStateUnreadableError."""
+        ...
+
+
 class CanaryRunsUnreadableError(Exception):
     """The canary workflow's runs could not be read: the gateway did not answer or answered something untyped."""
 
@@ -194,6 +204,14 @@ class ProtocolAlarmDelivery(Protocol):
     ) -> ModelLabAlarmDeliveryResult:
         """Deliver the alarms one condition read (node_lab_alarm_deliver_effect), or raise ValueError or OSError."""
         ...
+
+
+class ProtocolDigestStore(Protocol):
+    def load(self) -> dict[str, Any]:
+        """The held digest days (``pending``, ``sent``), empty when there is none; raises ValueError or OSError."""
+        ...
+
+    def save(self, state: Mapping[str, Any]) -> None: ...
 
 
 class CensusUnreadableError(Exception):
@@ -264,6 +282,7 @@ __all__ = [
     "ProtocolCensusSource",
     "ProtocolContainerRestartReader",
     "ProtocolDeliveredShaSource",
+    "ProtocolDigestStore",
     "ProtocolEffectsGroupReader",
     "ProtocolGroupLagReader",
     "ProtocolGrowthStreakStore",
@@ -280,6 +299,7 @@ __all__ = [
     "ProtocolRunRecordReader",
     "ProtocolRunRecordStore",
     "ProtocolSampleStore",
+    "ProtocolUnitStateSource",
     "ReceiptAbsentError",
     "ReceiptMalformedError",
     "ReceiptSurfaceUnreadableError",
@@ -287,4 +307,5 @@ __all__ = [
     "RunRecordUnreadableError",
     "RunRecordUnwritableError",
     "ShaUnresolvedError",
+    "UnitStateUnreadableError",
 ]

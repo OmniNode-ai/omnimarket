@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# OMN-26215: the latest-core smoke, callable from a core PR against omnimarket dev.
+# A core PR adds a job that calls this workflow (workflow_call) and passes its own
+# build as `core_spec`; with no input the newest published omnibase-core is used.
+# SYNC with the `latest-core-smoke` job in ci.yml.
+name: Latest Core Smoke (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      core_spec:
+        description: "pip requirement for omnibase-core, e.g. 'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@<sha>'; empty = newest release"
+        type: string
+        default: ""
+      omnimarket_ref:
+        description: "omnimarket ref to check out"
+        type: string
+        default: "dev"
+  workflow_dispatch:
+    inputs:
+      core_spec:
+        description: "pip requirement for omnibase-core; empty = newest release"
+        type: string
+        default: ""
+      omnimarket_ref:
+        description: "omnimarket ref to check out"
+        type: string
+        default: "dev"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Latest Core Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}/omnimarket
+    steps:
+      # No `uses:` steps: the action-pin golden (OMN-20558) is keyed per workflow
+      # file, so a new file may not introduce pins. omnimarket is public.
+      - name: Check out omnimarket
+        env:
+          OMNIMARKET_REF: ${{ inputs.omnimarket_ref }}
+        working-directory: ${{ github.workspace }}
+        run: |
+          git clone --depth 1 --branch "${OMNIMARKET_REF:-dev}" https://github.com/OmniNode-ai/omnimarket.git "$GITHUB_WORKSPACE/omnimarket"
+      - name: Install uv
+        run: |
+          python3 -m pip install --user uv
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Build a throwaway venv with omnimarket (no lockfile)
+        run: |
+          uv venv --python 3.12 "$RUNNER_TEMP/smoke-venv"
+          uv pip install --python "$RUNNER_TEMP/smoke-venv/bin/python" -e .
+      - name: Replace core with the requested build
+        env:
+          CORE_SPEC: ${{ inputs.core_spec }}
+        run: |
+          uv pip install --python "$RUNNER_TEMP/smoke-venv/bin/python" --upgrade --no-deps "${CORE_SPEC:-omnibase-core}"
+          "$RUNNER_TEMP/smoke-venv/bin/python" -c "import importlib.metadata as m; print('omnibase-core', m.version('omnibase-core'))"
+      - name: Import every node entry point
+        env:
+          OMNI_HOME: ${{ github.workspace }}/omnimarket
+        run: |
+          "$RUNNER_TEMP/smoke-venv/bin/python" tests/ci/latest_core_smoke.py

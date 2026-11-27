@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The size cap pass for a uv cache: evict whole entries oldest-first until the measured total is at or under cap_gib."""
+"""The eviction passes for a uv cache: whole entries oldest-first, until the size cap or the free-disk target is met."""
 
 from __future__ import annotations
 
@@ -17,6 +17,8 @@ from omnimarket.nodes.node_host_retention_effect.models.model_host_retention imp
     ModelUvArchiveEntry,
     ModelUvBucketBound,
     ModelUvCache,
+    ModelUvCacheCap,
+    ModelUvFreeDiskRule,
 )
 from omnimarket.nodes.node_temp_retention_effect.handlers.handler_temp_retention import (
     ProcessReferences,
@@ -44,10 +46,13 @@ def _is_held(
     return leaf in seen[root]
 
 
-def evict_over_cap(
+def evict_oldest(
     cache: ModelUvCache,
+    rule: ModelUvCacheCap | ModelUvFreeDiskRule,
     *,
-    size_after: int,
+    bytes_needed: int,
+    dry_reason: str,
+    real_reason: str,
     now: float,
     dry_run: bool,
     buckets: dict[str, ModelUvBucketBound],
@@ -55,27 +60,20 @@ def evict_over_cap(
     ports: HostRetentionPorts,
     out: _Pass,
 ) -> None:
-    """Evict whole entries of the cap's buckets oldest-first until the measured total is at or under cap_gib.
+    """Evict whole entries of the rule's buckets oldest-first until ``bytes_needed`` of entry bytes are gone.
 
     ``buckets`` is the contract's evictable folders. An entry is kept (never removed) when, in a folder whose contract row says
     keep_linked, it is linked into a virtual environment, changed within keep_days, named by a live process, or a symlink or not a folder. A dry run lists the entries
-    it would evict and removes nothing; there the running total is the size read before the prune, because the prune frees an
-    unknown amount. A references failure adds an error and evicts nothing; a bucket whose scan fails adds an error and is
-    skipped, the others still run: the prune's result stands either way.
+    it would evict and removes nothing. A references failure adds an error and evicts nothing; a bucket whose scan fails adds an error and is
+    skipped, the others still run.
     """
-    cap = cache.cap
-    if cap is None:
-        return
-    target = cap.cap_gib * _GIB
-    if size_after <= target:
+    if bytes_needed <= 0:
         return
     if refs is None:
-        out.errors.append(
-            "process references unreadable; the uv cache cap pass is skipped"
-        )
+        out.errors.append("process references unreadable; the uv cache pass is skipped")
         return
     candidates: list[tuple[str, bool, ModelUvArchiveEntry]] = []
-    for bucket in cap.buckets:
+    for bucket in rule.buckets:
         bucket_dir = str(Path(cache.path) / bucket)
         try:
             scanned = ports.uv_archive.scan(
@@ -87,13 +85,13 @@ def evict_over_cap(
         candidates.extend(
             (bucket_dir, buckets[bucket].keep_linked, entry) for entry in scanned
         )
-    cutoff = now - cap.keep_days * _DAY
+    cutoff = now - rule.keep_days * _DAY
     seen: dict[str, set[str]] = {}
-    total = size_after
+    freed = 0
     for bucket_dir, keep_linked, entry in sorted(
         candidates, key=lambda c: (c[2].newest_mtime, c[0], c[2].name)
     ):
-        if total <= target:
+        if freed >= bytes_needed:
             return
         path = f"{bucket_dir}/{entry.name}"
         reason: str | None = None
@@ -114,12 +112,7 @@ def evict_over_cap(
                 path=path,
                 bytes=entry.bytes,
                 action="evict",
-                reason=(
-                    "dry run: the running total is the size read before the prune; "
-                    "the prune frees an unknown amount"
-                    if dry_run
-                    else f"uv cache at {size_after} bytes is over its cap_gib {cap.cap_gib}"
-                ),
+                reason=dry_reason if dry_run else real_reason,
             )
         )
         if not dry_run:
@@ -129,4 +122,77 @@ def evict_over_cap(
                 out.errors.append(f"{path}: {type(exc).__name__}")
                 continue
             out.done(CLASS_NAME, entry.bytes)
-        total -= entry.bytes
+        freed += entry.bytes
+
+
+def evict_over_cap(
+    cache: ModelUvCache,
+    *,
+    size_after: int,
+    now: float,
+    dry_run: bool,
+    buckets: dict[str, ModelUvBucketBound],
+    refs: ProcessReferences | None,
+    ports: HostRetentionPorts,
+    out: _Pass,
+) -> None:
+    """Evict oldest entries until the measured total is at or under cap_gib (the size-measuring rule).
+
+    A dry run lists the entries it would evict; there the running total is the size read before the prune, because the
+    prune frees an unknown amount.
+    """
+    cap = cache.cap
+    if cap is None:
+        return
+    excess = size_after - int(cap.cap_gib * _GIB)
+    if excess <= 0:
+        return
+    evict_oldest(
+        cache,
+        cap,
+        bytes_needed=excess,
+        dry_reason=(
+            "dry run: the running total is the size read before the prune; "
+            "the prune frees an unknown amount"
+        ),
+        real_reason=f"uv cache at {size_after} bytes is over its cap_gib {cap.cap_gib}",
+        now=now,
+        dry_run=dry_run,
+        buckets=buckets,
+        refs=refs,
+        ports=ports,
+        out=out,
+    )
+
+
+def evict_for_free_disk(
+    cache: ModelUvCache,
+    rule: ModelUvFreeDiskRule,
+    *,
+    free_bytes: int,
+    now: float,
+    dry_run: bool,
+    buckets: dict[str, ModelUvBucketBound],
+    refs: ProcessReferences | None,
+    ports: HostRetentionPorts,
+    out: _Pass,
+) -> None:
+    """Free the disk the cache sits on to ``target_free_gib`` by evicting entries untouched for keep_days, oldest first."""
+    wanted = int(rule.target_free_gib * _GIB) - free_bytes
+    evict_oldest(
+        cache,
+        rule,
+        bytes_needed=wanted,
+        dry_reason=(
+            f"dry run: free disk {free_bytes} bytes is under min_free_gib {rule.min_free_gib}"
+        ),
+        real_reason=(
+            f"free disk {free_bytes} bytes is under min_free_gib {rule.min_free_gib}"
+        ),
+        now=now,
+        dry_run=dry_run,
+        buckets=buckets,
+        refs=refs,
+        ports=ports,
+        out=out,
+    )

@@ -1,0 +1,77 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Dev Proof Tenant Token Effect
+#
+# Signs the dev-only proof tenant token (cli-run-a, the one proof tenant that has a tenant row) with the lab test key and writes each into the dev secret store through
+# node_secret_seed_effect. The result names secret names and a status only: never a token or a key value. A lane, an
+# overlay lane or a tenant the dev_only block does not declare is refused before the key is read or a secret written.
+name: node_dev_proof_tenant_token_effect
+contract_name: node_dev_proof_tenant_token_effect
+node_name: node_dev_proof_tenant_token_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Mints the dev proof tenant tokens. The dev-only guard refuses, with no side effect, any command lane, overlay lane or
+  tenant the dev_only block does not declare. A run reads the lab test private key from the dev secret store by the name
+  the overlay declares, signs one token per declared tenant (claims tenant_id and tenant_slug, the declared audience, the
+  declared expiry) and writes each through the seed node; a secret name that already holds a value is left as it is. A
+  run with write false reads only. Every failure is a typed result.
+
+handler:
+  module: omnimarket.nodes.node_dev_proof_tenant_token_effect.handlers.handler_dev_proof_tenant_token
+  class: HandlerDevProofTenantToken
+  input_model: omnimarket.nodes.node_dev_proof_tenant_token_effect.models.model_dev_proof_tenant_token.ModelDevProofTokenCommand
+
+# HandlerDevProofTenantToken takes the overlay, the key reader, the signer, the seeder, the contract path and a clock as
+# optional constructor parameters; with none it loads its overlay and uses the real adapters, so the node runs through
+# `onex node`, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [secret-store-write]
+  timeout_ms: 120000
+
+input_model:
+  name: ModelDevProofTokenCommand
+  module: omnimarket.nodes.node_dev_proof_tenant_token_effect.models.model_dev_proof_tenant_token
+  description: Which lane acts, which tenants, and whether to write anything.
+output_model:
+  name: ModelDevProofTokenResult
+  module: omnimarket.nodes.node_dev_proof_tenant_token_effect.models.model_dev_proof_tenant_token
+  description: The outcome, the lane, the signing key name and each token's secret name and status; never a token or a key value.
+
+runtime_dispatch:
+  external_trigger: An operator or a lab lane runs the node once from a command file; nothing on the bus starts it.
+  on_demand:
+    command: uv run onex node node_dev_proof_tenant_token_effect --input <command.json> --output receipt
+    owner: OmniNode Platform Team
+
+# No topics and no terminal event, by design (the seed node's own rule): a node that writes secrets is an
+# operator-invoked action, never a bus-triggered reaction, so it declares nothing a bus message could call.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+overlay:
+  node: node_dev_proof_tenant_token_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+dev_only:
+  # The guard reads this block from this file, never from code: a command lane, an overlay lane or a tenant not declared
+  # here is refused before the key is read and before any secret is written.
+  lane: dev
+  audience: gateway-attach
+  expiry_seconds: 3600
+  tenants:
+    - cli-run-a
+
+metadata:
+  ticket: OMN-26090
+  transport_type: inmemory

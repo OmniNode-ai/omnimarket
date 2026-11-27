@@ -130,11 +130,10 @@ def test_a_cancelled_slot_is_not_green() -> None:
     [
         EnumScenarioConclusion.FAILURE,
         EnumScenarioConclusion.TIMED_OUT,
-        EnumScenarioConclusion.SKIPPED,
         EnumScenarioConclusion.STARTUP_FAILURE,
     ],
 )
-def test_every_completed_conclusion_but_success_is_not_green(
+def test_non_success_failures_are_not_green(
     conclusion: EnumScenarioConclusion,
 ) -> None:
     results = _slots(HOURLY, 1)
@@ -267,3 +266,26 @@ def test_unreadable_is_red_for_every_declared_scenario_even_with_results_read() 
     )
     rows = HandlerScenarioGreenDays().handle(history).rows
     assert all(row.red and not row.readable for row in rows)
+
+
+def test_skipped_slot_neither_counts_as_green_nor_ends_the_streak() -> None:
+    results = _slots(DAILY, 1, conclusion=EnumScenarioConclusion.SKIPPED)
+    results += _slots(DAILY, 2) + _slots(DAILY, 3)
+    reading = HandlerScenarioGreenDays().handle(_history(DAILY, results)).by_id()["R6"]
+    assert reading.days[0].settled == 0
+    assert reading.days[0].failed == 0
+    assert not reading.days[0].green
+    assert reading.green_days == 2
+
+
+def test_skipped_slots_do_not_hide_other_failures_or_missing_slots() -> None:
+    today = AS_OF.replace(hour=0, minute=0, second=0, microsecond=0)
+    slot = today - timedelta(days=1)
+    skipped = _result(HOURLY, slot, conclusion=EnumScenarioConclusion.SKIPPED)
+    failure = _result(
+        HOURLY, slot + timedelta(hours=1), conclusion=EnumScenarioConclusion.FAILURE
+    )
+    older = _slots(HOURLY, 2)
+    assert _green_days(_history(HOURLY, [skipped, *older])) == 0
+    full_day = _slots(HOURLY, 1)
+    assert _green_days(_history(HOURLY, [skipped, failure, *full_day[2:], *older])) == 0

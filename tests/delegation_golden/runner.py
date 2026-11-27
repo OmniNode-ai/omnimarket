@@ -674,6 +674,51 @@ def _is_local_target(delegated_to: str | None) -> bool:
     return any(marker in target for marker in local_markers)
 
 
+# OMN-25827: a failed case names the cause the row recorded. The probe used to
+# score a failed row and drop the part that said why it failed, so a red night
+# read as "terminal failed, tokens 0/0" and four lanes could not name the cause
+# of cases I1, I3, I5 and I7 on run 45237936306 (three HTTP 401 answers from
+# backend byok-anthropic, ending every_rung_failed). The line is bounded: a
+# provider body can be arbitrarily long.
+_CAUSE_ERROR_CHARS = 300
+
+
+def _attempts_of(row: dict[str, Any]) -> list[dict[str, Any]]:
+    history = row.get("attempt_history")
+    if isinstance(history, str):
+        try:
+            history = json.loads(history)
+        except ValueError:
+            return []
+    if not isinstance(history, list):
+        return []
+    return [a for a in history if isinstance(a, dict)]
+
+
+def describe_failure_cause(row: dict[str, Any]) -> str | None:
+    """One line naming why a failed row failed, from the row itself, or None."""
+    cause = str(row.get("terminal_failure_cause") or "").strip()
+    attempts = _attempts_of(row)
+    if not cause and not attempts:
+        return None
+    parts = [f"delegation failure cause: {cause or 'not recorded'}"]
+    if attempts:
+        last = attempts[-1]
+        parts.append(f"attempts={len(attempts)}")
+        for key, label in (
+            ("tier", "tier"),
+            ("backend_id", "backend"),
+            ("model_id", "model"),
+            ("failure_class", "failure_class"),
+        ):
+            if last.get(key):
+                parts.append(f"last {label}={last[key]}")
+        error = str(last.get("error_message") or "").strip()
+        if error:
+            parts.append(f"last error: {error[:_CAUSE_ERROR_CHARS]}")
+    return "; ".join(parts)
+
+
 def evaluate_row(case: ModelCorpusCase, row: dict[str, Any]) -> list[str]:
     """Return a list of behavioral assertion failures for one case (empty == pass).
 
@@ -695,6 +740,45 @@ def evaluate_row(case: ModelCorpusCase, row: dict[str, Any]) -> list[str]:
         failures.append(f"delegation timeout: {detail}")
         if exp.terminal is not None and exp.terminal != terminal:
             failures.append(f"terminal: expected {exp.terminal!r}, got {terminal!r}")
+        return failures
+
+    # OMN-24831: a row whose outer outcome (``terminal_ok``) is NULL in the row
+    # read is named as that, once, instead of as several behavioural-looking
+    # misses. Scheduled run 43826372809 (job 133161076598) read back a row for
+    # every one of its ten cases, each with ``terminal_ok`` NULL and tokens 0/0
+    # (model populated on eight of them), and scored the eight non-xfail ones
+    # ``expected 'completed', got 'unknown'`` plus ``tokens: expected positive``.
+    # The gate is ``terminal_ok is None`` AND the reduced terminal being unknown,
+    # not the reduced terminal alone: ``row_terminal`` also returns "unknown" for
+    # an explicit ``terminal_state``/``status`` of "unknown" on a row that carries
+    # ``terminal_ok``, and that row is judged by the old lines. The case still
+    # FAILS (it carries a terminal expectation that was not observed); only a
+    # case that declares a terminal other than the one observed is
+    # short-circuited, so no pass/fail verdict changes -- only the text. The
+    # ``exp.terminal != terminal`` leg keeps that true for a case that declares
+    # "unknown" itself: it has no terminal failure here, as at the base, and is
+    # judged by the lines below. ``evaluate_row`` cannot know whether a settle
+    # window elapsed, so the message states only what the row read holds.
+    if (
+        terminal == "unknown"
+        and row.get("terminal_ok") is None
+        and exp.terminal is not None
+        and exp.terminal != terminal
+    ):
+        # An absent key and a NULL value both read None; the text says which.
+        terminal_ok_state = "NULL" if "terminal_ok" in row else "absent"
+        failures.append(
+            f"no terminal outcome: terminal_ok is "
+            f"{'NULL in' if terminal_ok_state == 'NULL' else 'absent from'} "
+            f"the row read "
+            f"(delegated_to={row.get('delegated_to')!r}, "
+            f"model_name={row.get('model_name')!r}, "
+            f"tokens={int(row.get('tokens_input') or 0)}/"
+            f"{int(row.get('tokens_output') or 0)}); expected terminal "
+            f"{exp.terminal!r} was not observed on lane {_LANE}. The row has no "
+            "outer outcome to judge, so the other expectations are not scored; "
+            "read the lane's delegate-skill consumer and projection."
+        )
         return failures
 
     delegated_to = row.get("delegated_to")
@@ -747,6 +831,11 @@ def evaluate_row(case: ModelCorpusCase, row: dict[str, Any]) -> list[str]:
                 f"cross_cutting: completed row has zero tokens "
                 f"(input={tokens_in} output={tokens_out})"
             )
+
+    if failures and terminal == "failed":
+        cause_line = describe_failure_cause(row)
+        if cause_line is not None:
+            failures.append(cause_line)
 
     return failures
 

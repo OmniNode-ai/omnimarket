@@ -51,9 +51,6 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=os.environ.get("OMNI_HOME"),
     )
-    parser.add_argument(
-        "--ledger", type=Path, default=os.environ.get("ONEX_LEDGER_PATH")
-    )
     parser.add_argument("--state-dir", type=Path)
     parser.add_argument(
         "--registry",
@@ -76,8 +73,6 @@ def main(argv: list[str] | None = None) -> int:
             ModelPatchApplyDispatchRequest(
                 now=args.now or datetime.now(UTC),
                 registry_root=args.registry_root,
-                ledger_path=args.ledger
-                or args.registry_root / "docs/tracking/ROLLING_WORK_LEDGER.md",
                 state_dir=args.state_dir or root / "patch-apply-dispatch",
                 repos=repos,
                 max_age_hours=args.max_age_hours,

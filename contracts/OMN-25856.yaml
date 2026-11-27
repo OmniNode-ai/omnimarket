@@ -1,0 +1,195 @@
+schema_version: 1.0.0
+ticket_id: OMN-25856
+title: A timed-out DoD verify command check kills its whole process tree
+summary: The evidence collector runs each command check in its own process group and kills the group when the check times out, so a check's uv and pytest children no longer outlive it inside the runtime container.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25856-check-process-group
+  statement: A DoD verify command check that exceeds its time budget leaves no process of its own running, so it cannot hold the runtime container's CPU quota against the event loop.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: after a command check times out, every process the check started is gone -- falsifier: a process started by the timed-out check is still running 3 s later'
+- id: req-omn25856-customer-key-defects
+  statement: A customer key can be registered, routed and revoked without leaving an unrevoked row whose secret is gone, a central key is never reported deleted, and a refusal says why it fired.
+  acceptance:
+  - id: AC7
+    statement: 'AC7: revoke publishes before it deletes -- falsifier: a refused publish that still deletes the secret'
+  - id: AC8
+    statement: 'AC8: register-tenant-key without --host stores the key unbound -- falsifier: bound_host set from the registering machine'
+  - id: AC9
+    statement: 'AC9: the lab-backend and house-key refusals name their reason -- falsifier: the text says Register a provider key'
+  - id: AC10
+    statement: 'AC10: onex secret revoke-tenant-key calls the existing revoke, and for a central-store key says it cannot be deleted and exits 0 after the revoke is published -- falsifier: no such command, or a central key reported deleted'
+  - id: AC11
+    statement: 'AC11: a tenant whose overlay row names no usable credential is refused locally and makes no outbound provider call -- falsifier: a withdrawn credential reaches the vendor with no Authorization header'
+  - id: AC2
+    statement: 'AC2: local Inkling-2-Mini has a zero marginal api cost row in cost_pricing.yaml and an unlisted local model still raises MissingCostPricingError -- falsifier: pricing Inkling-2-Mini raises, or an unlisted local model prices without error'
+- id: req-omn25856-byok-writer-identity
+  statement: The BYOK intake writes a customer key with its own writer machine identity, so a runtime whose process identity is read-only on the tenant-credential folder no longer answers 503 on register.
+  acceptance:
+  - id: AC12
+    statement: 'AC12: with both writer variables set the intake store authenticates as the writer identity, with neither set it keeps the process identity, and with exactly one set it refuses naming the missing variable -- falsifier: a register on a read-only process identity still builds its store from that identity'
+- id: req-omn25856-start-budget
+  statement: A hosted dod-verify-start command is bounded as a whole by an overlay-declared budget below the 600 s dispatch deadline, so a contract of many checks completes its dispatch with a typed unverifiable verdict instead of outrunning the deadline and leaving an orphaned dispatch.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: a start command whose checks exceed the declared budget returns inside the budget with an UNRESOLVED verdict that names how many checks ran and how many did not, and counts none of the unrun checks as passed -- falsifier: the command runs past the budget, the verdict is VERIFIED, or an unrun check is counted verified'
+- id: req-omn25856-budget-ends-dispatch
+  statement: A hosted dod-verify-start command whose budget is spent ends its dispatch with its typed result before the 600 s deadline, because every subprocess the dispatch starts (live-PR gh reads, the must-fail control, the durable-gate git reads, the Linear read) is clamped to the budget and a check finished at the budget's edge starts no follow-up step.
+  acceptance:
+  - id: AC13
+    statement: 'AC13: a slow gh or git step started under a spent start budget is cut at the budget and a green whose follow-up steps did not run is SKIPPED, not VERIFIED -- falsifier: a gh call under a 1.5 s budget runs for its own 30 s ceiling, or a spent budget still starts the live-PR and must-fail follow-ups'
+- id: req-omn25856-verifiable-path-rule-enforcement
+  statement: On the verifiable code path, where executed tests are the authority, a failed blocking heuristic rule is recorded as scored, never blocking, so an accepted run carries no failed blocking rule.
+  acceptance:
+  - id: AC12
+    statement: 'AC12: an accepted code_generation run with passed executed tests records its failed marker rule as scored -- falsifier: the same run records that rule as blocking beside an accepted verdict, or a run without executed tests loses its blocking rule'
+evidence_requirements:
+- kind: tests
+  description: The focused regression, failing first with the surviving child process, then passing.
+  command: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_25856_timed_out_check_leaves_no_orphan.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25856-ac12-byok-writer-identity
+  description: The intake store is built from the writer identity when both writer variables are set, from the process identity when neither is, and a half-set pair refuses without echoing a value.
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn25856_byok_writer_identity.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-ac1-no-orphan-after-timeout
+  description: A check whose shell starts a background child and waits is killed at its 1 s ceiling; the child's pid is read back and is not running 3 s later. The test fails on a collector that kills only the shell.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_25856_timed_out_check_leaves_no_orphan.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-ac2-start-command-budget
+  description: A hosted start command over twelve 0.4 s checks and a 2 s declared budget returns in under 2.5 s as UNRESOLVED / dispatch_budget_exhausted naming ran and not-run counts; with no declared budget it refuses before any check; a failing check inside the budget stays FAILED and a fast contract under the 540 s overlay value stays VERIFIED.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_25856_start_command_budget.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-ac13-budget-ends-dispatch
+  description: A gh read that would run 8 s returns inside a 1.5 s budget; the gate git ceiling is clamped to the budget and unchanged with no budget open; a spent budget starts no live-PR or must-fail follow-up and turns the VERIFIED head into SKIPPED / check_budget_exceeded, while with no budget both follow-ups still run.
+  source: manual
+  binds_ac:
+  - AC13
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_25856_budget_ends_dispatch.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-hosted-deploy-check
+  description: 'Deploy check the hosted runner can run: the other command-check tests that stub the collector subprocess still pass through the process-group runner. This binds no criterion by itself.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_15382_fail_closed_command_checks.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-integration-proof
+  description: Run the regression on a lab host at the pushed head, where the check's children are real processes under a container CPU quota. Hosted CI cannot place it on the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25856 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_dod_verify/test_omn_25856_timed_out_check_leaves_no_orphan.py -q --no-cov -n 0 -p no:randomly
+- id: dod-omn25856-ck1-revoke-order
+  description: A refused publish leaves the stored secret in place; publish precedes delete.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_credential_publisher.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-ck2-unbound-default
+  description: Without --host the registered key carries no bound_host; --host still binds.
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/cli/test_omn21012_register_tenant_key_host.py tests/unit/cli/test_omn20910_register_tenant_key_lane_bus.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-ck3-refusal-text
+  description: The lab-backend and house-key refusal text names its reason on the typed and boundary lines; INV-068 still refuses.
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/routing/test_omn24562_refusal_text_names_the_reason.py tests/test_omn17372_refusal_code_survives_boundary.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-ck4-revoke-command
+  description: revoke-tenant-key publishes then deletes, a refused publish keeps the secret, and a central-store key is reported as not deletable with exit 0 after the publish.
+  source: manual
+  binds_ac:
+  - AC10
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/cli/test_omn24562_revoke_tenant_key_command.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-ck5-withdrawn-credential-is-absent
+  description: A withdrawn credential is absent, not a keyless route; the refusal text change leaves the typed refusal and the no-outbound-call seam intact.
+  source: manual
+  binds_ac:
+  - AC11
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_routing_reducer/test_omn18191_withdrawn_credential_is_absent.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-customer-key-integration-proof
+  description: the customer key tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25856-keys --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_credential_publisher.py tests/unit/cli/test_omn24562_revoke_tenant_key_command.py tests/unit/routing/test_omn24562_refusal_text_names_the_reason.py -q --no-cov
+- id: dod-omn25856-inkling-priced-local
+  description: 'Inkling-2-Mini carries a zero marginal api cost row in the omnimarket cost pricing contract, and an unlisted local model stays unpriced (positive control). The test fails on a contract with no Inkling row.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/cost/test_inkling_local_priced_omn25856.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-gateway-named-tests-not-run-outcome
+  description: A delegation-inference submission carries named_tests through the gateway to the command topic (an undeclared key is still refused), and a receipt whose named tests never ran reads not_run, not an absent outcome.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_workflow_gateway_effect/test_named_tests_submission.py tests/nodes/node_workflow_gateway_effect/test_receipt_tests_outcome.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-named-tests-exit-4-5-not-run
+  description: A named-test run that exits 4 (file or test not found) or 5 (no tests collected) is read as not run, not as a code failure, and the receipt tests_outcome reads not_run with the typed INSUFFICIENT reason; a collection error from a delegated answer that does not import stays a code failure.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_named_tests_not_run_omn25856.py tests/unit/nodes/node_delegate_skill_orchestrator/test_handler_named_test_run_omn17427.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-accepted-run-no-blocking-fail
+  description: 'An accepted code_generation run (executed tests passed, function-only answer) records its failed marker rule as scored, never blocking; without executed tests the run records no failed blocking rule beside a pass. The test fails on the gate before the change.'
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_verifiable_path_rule_enforcement_omn25856.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

@@ -5,6 +5,26 @@ summary: node_remote_lane_effect gains two operations. ensure_shared_plugin_venv
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn22740-ac1:
+    - label: AC2
+      criterion_hash: bf69e8158a19c92dc65ed4829b5968bb6bb04dc4e7ae669a940a931c0b93bb7f
+      proposed_by: lane=dod-closeout-bind-2026-11-26T1145Z-c3
+      accepted_by: lane=dod-closeout-accept-2026-11-26T1145Z-c3
+      accepted_at: '2026-11-26T12:16:41Z'
+    dod-omn22740-ac3:
+    - label: AC3
+      criterion_hash: b3d9b930470ee8fe05d03b426270254100eaef7b8a63b7f1d487c30ee58d0fa6
+      proposed_by: lane=dod-closeout-bind-2026-11-26T1145Z-c3
+      accepted_by: lane=dod-closeout-accept-2026-11-26T1145Z-c3
+      accepted_at: '2026-11-26T12:16:41Z'
+    dod-omn22740-ac4:
+    - label: AC4
+      criterion_hash: a9105b22375d8d5187ad631862b300394ee2764a56ca8eae4257cc9827138cf3
+      proposed_by: lane=dod-closeout-bind-2026-11-26T1145Z-c3
+      accepted_by: lane=dod-closeout-accept-2026-11-26T1145Z-c3
+      accepted_at: '2026-11-26T12:16:41Z'
 requirements:
 - id: req-omn22740-shared-venv
   statement: A plugin tree placed in the lab store creates a few dozen files for its .venv instead of about 49,000, and its interpreter imports the locked dependencies from the shared venv and the project from the tree.
@@ -27,7 +47,7 @@ emergency_bypass:
   follow_up_ticket_id: ''
 dod_evidence:
 - id: dod-omn22740-ac1
-  description: The golden chain, the same-lock reuse and the error chain tests pass.
+  description: Binds AC1 and AC2 - the golden chain, the same-lock reuse and the error chain tests pass, including the injected shared build failure that leaves no ready marker and no link.
   source: manual
   binds_ac:
   - AC1
@@ -36,7 +56,7 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_plugin_shared_venv.py -q --no-cov
 - id: dod-omn22740-ac3
-  description: The never-rebuilt and concurrent-placement tests pass.
+  description: Binds AC3 - the never-rebuilt, new-lock-hash and concurrent-placement tests pass.
   source: manual
   binds_ac:
   - AC3
@@ -44,7 +64,7 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/nodes/node_remote_lane_effect/test_plugin_shared_venv.py -q --no-cov -k "new_lock or same_lock or at_once"
 - id: dod-omn22740-ac4
-  description: The prune tests pass.
+  description: Binds AC4 - the prune tests pass, removing an unlinked old shared venv and keeping a linked and a recent one.
   source: manual
   binds_ac:
   - AC4

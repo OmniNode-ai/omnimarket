@@ -13,6 +13,9 @@ from pathlib import Path
 
 import yaml
 
+from omnimarket.nodes.node_projection_query_api_effect.models.model_page_cache import (
+    ModelPageCacheSettings,
+)
 from omnimarket.nodes.node_projection_query_api_effect.models.model_query_route import (
     ModelQueryMount,
     ModelQueryRoute,
@@ -42,6 +45,11 @@ def contract_mount() -> ModelQueryMount:
     return ModelQueryMount.model_validate(_contract().get("http_mount"))
 
 
+def contract_page_cache() -> ModelPageCacheSettings:
+    """The contract's ``page_cache`` block: the expiry of a held page and where the Valkey is."""
+    return ModelPageCacheSettings.model_validate(_contract().get("page_cache"))
+
+
 def contract_route(route_id: str) -> ModelQueryRoute:
     """The declared route with this id; ``KeyError`` when the contract has none."""
     for route in contract_routes():
@@ -50,4 +58,9 @@ def contract_route(route_id: str) -> ModelQueryRoute:
     raise KeyError(f"contract declares no query route {route_id!r}")
 
 
-__all__ = ["contract_mount", "contract_route", "contract_routes"]
+__all__ = [
+    "contract_mount",
+    "contract_page_cache",
+    "contract_route",
+    "contract_routes",
+]

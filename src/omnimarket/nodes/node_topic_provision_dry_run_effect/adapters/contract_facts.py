@@ -13,6 +13,9 @@ from omnibase_infra.tools.contract_topic_extractor import read_projection_api_to
 from omnimarket.models.topic_provision.model_topic_provision_contract import (
     ModelTopicProvisionContract,
 )
+from omnimarket.models.topic_provision.model_writer_topics_template import (
+    ModelWriterTopicsTemplate,
+)
 
 
 def _extract_topics(data: dict[str, object]) -> list[str]:
@@ -52,6 +55,23 @@ def _extract_topics(data: dict[str, object]) -> list[str]:
                 _add(v)
 
     return sorted(topics)
+
+
+def _host_unit_publish_topics(data: dict[str, object]) -> tuple[str, ...]:
+    """The event_bus publish topics of a contract a host timer runs (runtime_dispatch.host_unit).
+
+    A timer is not a runtime node, so no runtime boot creates what it publishes.
+    """
+    dispatch = data.get("runtime_dispatch")
+    if not isinstance(dispatch, dict) or not dispatch.get("host_unit"):
+        return ()
+    event_bus = data.get("event_bus")
+    if not isinstance(event_bus, dict):
+        return ()
+    entries = event_bus.get("publish_topics")
+    if not isinstance(entries, list):
+        return ()
+    return tuple(sorted({e for e in entries if isinstance(e, str) and e}))
 
 
 def read_contract_facts(
@@ -103,11 +123,21 @@ def read_contract_facts(
             # one the boot-side per-contract provisioner uses, so the two cannot disagree.
             topics = sorted({*_extract_topics(data), *read_projection_api_topics(path)})
 
+            # A malformed writer_topics template raises: a contract that declares one wrongly
+            # must not provision silently without its writer topics.
+            template = data.get("writer_topics")
+            host_unit_topics = _host_unit_publish_topics(data)
             results.append(
                 ModelTopicProvisionContract(
                     contract_name=name,
                     runtime_profiles=tuple(sorted(profiles)),
                     topics=tuple(topics),
+                    writer_topics=(
+                        ModelWriterTopicsTemplate.model_validate(template)
+                        if template is not None
+                        else None
+                    ),
+                    host_unit_publish_topics=host_unit_topics,
                 )
             )
 

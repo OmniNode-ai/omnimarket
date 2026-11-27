@@ -11,8 +11,11 @@ from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+
 from .container import container_private_hosted_minutes_watch_effect
 from .models import ModelHostedMinutesWatchRequest
+from .private_scope import render_report
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -23,7 +26,6 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path.home() / ".local/state/omni/private-hosted-minutes-watch",
     )
-    parser.add_argument("--ledger", type=Path, default=None)
     parser.add_argument("--org", default="OmniNode-ai")
     parser.add_argument(
         "--day",
@@ -42,23 +44,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 org=args.org,
                 day=args.day,
                 state_dir=args.state_dir,
-                ledger=args.ledger,
             )
         )
+    except NodeOverlayError as exc:
+        sys.stderr.write(f"private-hosted-minutes-watch: overlay refused: {exc}\n")
+        return 2
     except RuntimeError as exc:
         sys.stderr.write(f"private-hosted-minutes-watch: billing read failed: {exc}\n")
         return 2
-    sys.stdout.write(
-        f"private-hosted-minutes-watch: day={result.day} "
-        f"hosted_minutes={round(result.total_day_minutes, 2):g} "
-        f"repos={len(result.day_minutes)} alert={result.alert} "
-        f"ledger_written={result.ledger_written}\n"
-    )
-    for row in result.day_minutes:
-        repository = (
-            row.repository.replace("|", "/").replace("\r", " ").replace("\n", " ")
-        )
-        sys.stdout.write(f"  {repository}: {round(row.minutes, 2):g} min\n")
+    sys.stdout.write(render_report(result))
     return (
         0
         if result.ledger_written and result.alert in {"none", "sent", "already-sent"}

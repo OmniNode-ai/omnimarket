@@ -82,6 +82,7 @@ from omnimarket.handlers.cause_signature import (
     cause_key,
     normalize_signature,
 )
+from omnimarket.models.model_downstream_gate import EnumDownstreamGateVerdict
 from omnimarket.models.model_landing_review import (
     EnumReviewGateVerdict,
 )
@@ -92,6 +93,10 @@ from omnimarket.nodes.node_lab_placement_compute.handlers.handler_lab_lane_prior
 )
 from omnimarket.nodes.node_lane_model_policy_compute.handlers.handler_lane_model_policy import (
     resolve_lane_model,
+)
+from omnimarket.nodes.node_pr_landing_decision_compute.downstream_gate import (
+    SKIP_FOR_DOWNSTREAM,
+    read_downstream_gate,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.lab_check import (
     SKIP_FOR_VERDICT,
@@ -132,7 +137,9 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_deci
     ModelLandingDegraded,
     ModelLandingGateRow,
     ModelLandingLandSkip,
+    ModelLandingNonRequiredRed,
     ModelLandingRecordedOutcome,
+    ModelLandingRequiredUnread,
     ModelLandingViolation,
     ModelLandingWorkerBrief,
 )
@@ -170,6 +177,9 @@ from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_stat
     ModelLandingRebuildRecord,
     ModelLandingUncovered,
     ModelLandingVerdictRerun,
+)
+from omnimarket.nodes.node_pr_landing_decision_compute.required_scope import (
+    scope_to_required,
 )
 from omnimarket.nodes.node_pr_landing_decision_compute.review_gate import (
     SKIP_FOR_REVIEW,
@@ -282,6 +292,8 @@ class _Tick:
     released: set[str] = field(default_factory=set)
     skips: dict[str, EnumLandingLandSkipReason] = field(default_factory=dict)
     liveness_files: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    non_required_red: tuple[ModelLandingNonRequiredRed, ...] = ()
+    required_unread: tuple[ModelLandingRequiredUnread, ...] = ()
 
     def emit(self, action: ModelLandingAction) -> None:
         if repo_of(action.subject) in self.observe:
@@ -1712,6 +1724,13 @@ def _merge(t: _Tick, p: ModelLandingPrFacts) -> None:
     if status is not None and status.verdict is not EnumReviewStatusVerdict.PASS:
         t.skips[p.pr] = SKIP_FOR_REVIEW_STATUS[status.verdict]
         return
+    downstream = read_downstream_gate(p, t.facts.policy)
+    if (
+        downstream is not None
+        and downstream.verdict is not EnumDownstreamGateVerdict.PASS
+    ):
+        t.skips[p.pr] = SKIP_FOR_DOWNSTREAM[downstream.verdict]
+        return
     undeclared = _liveness_undeclared(p)
     if undeclared:
         t.skips[p.pr] = EnumLandingLandSkipReason.LIVENESS_UNDECLARED
@@ -2366,8 +2385,11 @@ def _priority(
 # ---------------------------------------------------------------------- tick
 def decide_landing(facts: ModelLandingFacts) -> ModelLandingDecision:
     """One tick: facts and the controller's last state in, actions and next state out."""
+    facts, non_required_red, required_unread = scope_to_required(facts)
     state = facts.state
     t = _Tick(
+        non_required_red=non_required_red,
+        required_unread=required_unread,
         facts=facts,
         now=facts.observed_at,
         prs={p.pr: p for p in facts.prs},
@@ -2479,6 +2501,8 @@ def _decision(
         ),
         land_skips=land_skips,
         liveness_unread=_liveness_unread(t),
+        non_required_red=t.non_required_red,
+        required_contexts_unread=t.required_unread,
         next_state=next_state,
     )
 

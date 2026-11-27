@@ -453,7 +453,10 @@ def test_unhealthy_refusal_recorded_and_floor_retained(
     assert result.exit_code == 2
     assert result.surfaces[1].verdict == "UNHEALTHY"
     assert result.surfaces[1].owner == "lane"
-    assert "--record" in next(c for c in calls(root) if c[0] == "clone-refusal")
+    refusal = next(c for c in calls(root) if c[0] == "clone-refusal")
+    assert "--record" in refusal
+    # No ledger file path reaches the verifier: the refusal is explained and recorded without one.
+    assert "--ledger" not in refusal
     assert not result.floor_stamped
     assert floor.read_text() == "previous floor\n"
     assert all(c[0] != "floor" for c in calls(root))
@@ -711,7 +714,9 @@ def test_cli_all_environment_fields(
     for key, value in fields.items():
         monkeypatch.setenv("ONEX_RECONCILE_" + key, value)
     monkeypatch.setenv("ONEX_DISPATCH_VENV", "/dispatch")
-    monkeypatch.setenv("ONEX_LEDGER_PATH", "/ledger")
+    monkeypatch.setenv(
+        "ONEX_LEDGER_PATH", "/ledger"
+    )  # a set ledger path must not reach the command
     assert main(["--omni-home", "/workspace", "--branch", "branch"]) == 0
     cmd = seen[0]
     assert (cmd.workspace_root, cmd.branch, cmd.mode) == (
@@ -731,9 +736,9 @@ def test_cli_all_environment_fields(
         cmd.guard_delegate,
         cmd.receipt,
         cmd.dispatch_venv,
-        cmd.ledger,
         cmd.alert_command,
-    ) == ("/clone", "/venv", "/guard", "/receipt", "/dispatch", "/ledger", "alert")
+    ) == ("/clone", "/venv", "/guard", "/receipt", "/dispatch", "alert")
+    assert not hasattr(cmd, "ledger")
     assert json.loads(capsys.readouterr().out)["correlation_id"] == str(
         cmd.correlation_id
     )

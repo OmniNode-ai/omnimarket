@@ -255,6 +255,9 @@ class CommandLedgerRowSource:
             request["term"] = query.term
         if query.correlation_id is not None:
             request["correlation_id"] = wire_correlation_id(query.correlation_id)
+        # The read CLI stops at its own 60 s default unless ONEX_LEDGER_BUS_TIMEOUT_S says otherwise, so a route
+        # whose overlay gives the read longer than that must hand the same budget to the command it runs.
+        child_env = {**os.environ, "ONEX_LEDGER_BUS_TIMEOUT_S": str(self._timeout)}
         try:
             done = subprocess.run(
                 self._argv,
@@ -263,6 +266,7 @@ class CommandLedgerRowSource:
                 text=True,
                 timeout=self._timeout,
                 check=False,
+                env=child_env,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             return ModelLedgerRead(error=f"read-command-failed:{type(exc).__name__}")

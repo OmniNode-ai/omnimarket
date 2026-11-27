@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Stage 1 receipt: one deterministic comparison over the recorded set, recomputed by the stage gate on every
+# validation (operation validate_stage_receipt); no nightly record is read. The recorded set is the merges of
+# config/test_selection_replay_input.json replayed by the selector and the full-suite run
+# records of config/test_selection_observed_input.json, each pinned by digest below. Every figure is the
+# comparison's output, recomputed by the gate and refused when it differs; none is typed from a report.
+# 17 of the 60 changes have a readable full run (all succeeded, so no test failed) and 43 have none.
+stage: 1
+entered_from_stage: 0
+repository: OmniNode-ai/omnimarket
+selector_version: 1.0.0
+comparison:
+  replay_input_path: config/test_selection_replay_input.json
+  replay_input_sha256: d462fefb5a4b8f75c2fb76e7521d18ca49c010438b7e3280c6e25af88371ac30
+  observed_input_path: config/test_selection_observed_input.json
+  observed_input_sha256: e5b1f222c29a0dcde0b8cfefb106d3c0d5a076304e2a68081790bbc10050d8ff
+  changes_compared: 60
+  changes_narrowed: 10
+  runs_with_result: 17
+  runs_unavailable: 43
+  failing_tests: 0
+  failing_tests_selected: 0
+  misses: 0
+measured:
+  merge_narrowed_share: 0.166667
+  test_seconds_per_merge: 9582.577092
+  ci_minutes_per_pr: 36.548039

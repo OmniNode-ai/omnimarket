@@ -22,6 +22,12 @@ pytestmark = pytest.mark.unit
 
 _DEV_MERGE_TAG = r"dev-[0-9]{14}-[0-9a-f]{12}"
 
+#: libyaml's loader reads the same documents about ten times faster than the pure-Python one. This
+#: file reads every ticket contract, and it is selected for a data-only pull request (OMN-26270).
+_CONTRACT_LOADER: type[yaml.SafeLoader] | type[yaml.CSafeLoader] = getattr(
+    yaml, "CSafeLoader", yaml.SafeLoader
+)
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CALLER_PATH = REPO_ROOT / ".github" / "workflows" / "call-repo-evidence-gate.yml"
 
@@ -328,7 +334,7 @@ def test_every_repo_contract_binds_every_criterion() -> None:
     assert contracts, "expected at least one repo-owned contracts/OMN-*.yaml"
     violations: list[str] = []
     for path in contracts:
-        contract = yaml.safe_load(path.read_text(encoding="utf-8"))
+        contract = yaml.load(path.read_text(encoding="utf-8"), Loader=_CONTRACT_LOADER)
         for violation in contract_binds_violations(path.name, contract):
             violations.append(
                 f"{violation}\n{binds_diagnosis(contract, violation)}"
@@ -833,7 +839,7 @@ def test_no_repo_contract_binds_a_local_done_gate_item() -> None:
     """OMN-22403: no contract on the tree binds an acceptance criterion to a scoped item."""
     violations: list[str] = []
     for path in sorted((REPO_ROOT / "contracts").glob("OMN-*.yaml")):
-        contract = yaml.safe_load(path.read_text(encoding="utf-8"))
+        contract = yaml.load(path.read_text(encoding="utf-8"), Loader=_CONTRACT_LOADER)
         violations.extend(
             violation
             for violation in contract_binds_violations(path.name, contract)
@@ -850,7 +856,7 @@ def test_omn22496_items_bind_their_criterion_to_a_test_passes_check(
 ) -> None:
     """OMN-22702: each OMN-22496 item binds its criterion to pytest evidence."""
     path = REPO_ROOT / "contracts" / "OMN-22496.yaml"
-    contract = yaml.safe_load(path.read_text(encoding="utf-8"))
+    contract = yaml.load(path.read_text(encoding="utf-8"), Loader=_CONTRACT_LOADER)
     item = next(i for i in contract["dod_evidence"] if i["id"] == item_id)
     assert item["binds_ac"], f"{item_id} binds no criterion"
     kinds = [c.get("check_type") for c in item["checks"]]
@@ -892,3 +898,108 @@ def test_contract_binds_refuses_a_declared_criterion_with_no_hosted_binding() ->
         }
     )
     assert contract_binds_violations("OMN-0.yaml", contract) == []
+
+
+def test_no_repo_contract_hides_a_pytest_run_behind_uv_run_frozen_command() -> None:
+    """OMN-26488: a `command` check with `uv run --frozen pytest` binds no test file.
+
+    The binder finds a command-type run by the literal substring `uv run pytest`,
+    so a uv flag between `run` and `pytest` leaves the item unbound. Such a run
+    belongs in a `test_passes` check, whose parser skips uv flags.
+    """
+    offenders: list[str] = []
+    for path in sorted((REPO_ROOT / "contracts").glob("OMN-*.yaml")):
+        contract = yaml.load(path.read_text(encoding="utf-8"), Loader=_CONTRACT_LOADER)
+        for item in contract.get("dod_evidence") or []:
+            if not item.get("binds_ac"):
+                continue
+            for check in item.get("checks") or []:
+                value = str(check.get("check_value", ""))
+                if check.get("check_type") == "command" and re.search(
+                    r"^(?:env\s+(?:-u\s+)?\S+\s+)*uv run --frozen pytest", value
+                ):
+                    offenders.append(f"{path.name}:{item.get('id')}")
+    assert not offenders, "\n".join(offenders)
+
+
+@pytest.mark.parametrize("ticket", ["OMN-22621", "OMN-22623"])
+def test_accepted_pytest_bindings_use_test_passes(ticket: str) -> None:
+    """OMN-19998: the pytest runs that bind OMN-22621 AC1 and OMN-22623 AC2 are test_passes.
+
+    A `command` check binds no test file, so the verifier cannot tie the
+    criterion to the test that proves it.
+    """
+    path = REPO_ROOT / "contracts" / f"{ticket}.yaml"
+    contract = yaml.load(path.read_text(encoding="utf-8"), Loader=_CONTRACT_LOADER)
+    wanted = {"OMN-22621": "AC1", "OMN-22623": "AC2"}[ticket]
+    offenders = [
+        str(item.get("id"))
+        for item in contract.get("dod_evidence") or []
+        if wanted in (item.get("binds_ac") or [])
+        for check in item.get("checks") or []
+        if "pytest" in str(check.get("check_value", ""))
+        and check.get("check_type") != "test_passes"
+    ]
+    assert not offenders, "\n".join(offenders)
+
+
+def test_omn18079_answering_model_test_binds_through_test_passes_without_coverage() -> (
+    None
+):
+    """OMN-18079: the hosted verifier runs the answering-model test as a bound, coverage-free test_passes check.
+
+    A `command` check binds no test file, and a single-file run that keeps the
+    repo's coverage plugin on measures the whole tree, so the hosted gate is not
+    a reading of the test alone. The item is a test_passes check with --no-cov,
+    the shape the other repo contracts use.
+    """
+    path = REPO_ROOT / "contracts" / "OMN-18079.yaml"
+    contract = yaml.load(path.read_text(encoding="utf-8"), Loader=_CONTRACT_LOADER)
+    item = next(
+        i for i in contract["dod_evidence"] if i["id"] == "dod-answering-model-receipt"
+    )
+    checks = item["checks"]
+    assert [c.get("check_type") for c in checks] == ["test_passes"], checks
+    assert all("--no-cov" in str(c.get("check_value")) for c in checks), checks
+
+
+def test_omn18079_contract_binds_its_own_item_to_a_declared_criterion() -> None:
+    """OMN-18079: the hosted must-fail control needs a bound check, so one item binds a declared criterion.
+
+    The control at the merge base keeps only checks whose binds_ac is non-empty;
+    a contract that binds nothing is refused with "zero bound checks". The
+    answering-model test item binds a criterion the contract itself declares,
+    and the local-only integration proof stays unbound.
+    """
+    path = REPO_ROOT / "contracts" / "OMN-18079.yaml"
+    contract = yaml.load(path.read_text(encoding="utf-8"), Loader=_CONTRACT_LOADER)
+    declared = {
+        str(ac["id"])
+        for req in contract.get("requirements", [])
+        for ac in req.get("acceptance", [])
+    }
+    items = {i["id"]: i for i in contract["dod_evidence"]}
+    bound = items["dod-answering-model-receipt"].get("binds_ac") or []
+    assert bound, "dod-answering-model-receipt binds no criterion"
+    assert set(bound) <= declared, (bound, declared)
+    assert not items["dod-omn18079-integration-proof"].get("binds_ac")
+
+
+def test_omn18079_every_bound_item_runs_the_test_that_fails_at_the_merge_base() -> None:
+    """OMN-18079: the hosted must-fail control refuses a bound item that passes at the merge base.
+
+    The control runs every bound item on the merge base with the head's tests
+    laid over it; an item that still passes there is refused. Only the
+    answering-model test file fails without the change (8 failed in that
+    reproduction). The SEA golden chain and the contract-shape test both pass
+    there, so neither may be a bound item.
+    """
+    path = REPO_ROOT / "contracts" / "OMN-18079.yaml"
+    contract = yaml.load(path.read_text(encoding="utf-8"), Loader=_CONTRACT_LOADER)
+    for item in contract["dod_evidence"]:
+        if not item.get("binds_ac"):
+            continue
+        for check in item["checks"]:
+            assert "tests/test_omn18079_receipt_names_answering_model.py" in str(
+                check.get("check_value")
+            ), (item["id"], check)

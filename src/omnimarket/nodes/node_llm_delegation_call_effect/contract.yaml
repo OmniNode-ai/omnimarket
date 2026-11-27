@@ -52,6 +52,11 @@ description: |
   nested tool sandboxes can refuse that open. Startup refusal is a typed result,
   never grounds to change credentials, CODEX_HOME or sandbox permissions.
 
+  The Claude harness (harness: claude) runs claude -p on the subscription login in a clean
+  temporary directory at the effort of its model family (haiku low, sonnet medium, opus high; held in the handler, not on the backend wire model). An ANTHROPIC_API_KEY or
+  ANTHROPIC_AUTH_TOKEN in its environment is refused by name (exit_cause credential_refused),
+  never launched, and the receipt carries the model the harness reported it ran (OMN-26043).
+
   HandlerClaudeCredentialProbe runs one Claude Code call that proves the credential in
   the host's environment (OMN-21626). It takes ModelClaudeCredentialProbeRequest (prompt,
   model, timeout_seconds) and returns ModelClaudeCredentialProbeReceipt (redacted bounded
@@ -197,6 +202,8 @@ event_bus:
     - "onex.cmd.omnimarket.lab-job-submitted.v1"
     - "onex.cmd.omnimarket.delegation-execute.v1"
     - "onex.cmd.omnibase-infra.delegation-inference-request.v1"
+    # OMN-26219: one delegation through the kind: harness backends the routing overlay declares.
+    - "onex.cmd.omnimarket.delegation-harness-execute.v1"
 
   publish_topics:
     - "onex.evt.omnibase-infra.inference-response.v1"
@@ -215,6 +222,9 @@ event_bus:
     - "onex.evt.omnibase-infra.inference-response-failed.v1"
     - "onex.evt.omnimarket.delegation-target-completed.v1"
     - "onex.evt.omnimarket.lab-job-transitioned.v1"
+    # OMN-26219: the harness call's terminal, and the one cost record each of its attempts leaves.
+    - "onex.evt.omnimarket.delegation-harness-completed.v1"
+    - "onex.evt.omnimarket.delegation-harness-attempt-recorded.v1"
 
   subscribe_topic_metadata:
     "onex.cmd.omnimarket.delegation-target-execute.v1":
@@ -229,8 +239,18 @@ event_bus:
     "onex.cmd.omnibase-infra.delegation-inference-request.v1":
       schema_ref: "omnibase_core.models.delegation.wire.ModelInferenceIntent"
       description: "Inference intent from the delegation orchestrator. Handler resolves base_url directly."
+    "onex.cmd.omnimarket.delegation-harness-execute.v1":
+      schema_ref: "omnimarket.nodes.node_llm_delegation_call_effect.models.model_harness_backend_call.ModelHarnessBackendCallRequest"
+      description: "OMN-26219: a delegation for the kind: harness backends; the caller's tenant and surface travel in the request and the handler refuses a non-house tenant or a non-internal surface."
 
   publish_topic_metadata:
+    "onex.evt.omnimarket.delegation-harness-completed.v1":
+      schema_ref: "omnimarket.nodes.node_llm_delegation_call_effect.models.model_harness_backend_call.ModelHarnessBackendCallResult"
+      description: "OMN-26219: the harness call's outcome with every attempt, each attempt carrying its cost record and gate verdict."
+    "onex.evt.omnimarket.delegation-harness-attempt-recorded.v1":
+      schema_ref: "omnimarket.nodes.node_llm_delegation_call_effect.models.model_harness_backend_call.ModelHarnessAttemptRecord"
+      description: "OMN-26219: one cost record per harness attempt, accepted or not."
+
     "onex.evt.omnimarket.delegation-target-completed.v1":
       schema_ref: "omnimarket.models.delegation.model_delegation_target.ModelDelegationTargetResult"
       description: "Typed adapter result and session receipt reference, including failed/timed_out statuses."
@@ -319,11 +339,16 @@ externally_consumed_topics:
   - "onex.evt.omnimarket.delegation-escalation-triggered.v1"
   - "onex.evt.omnimarket.delegation-all-tiers-failed.v1"
   - "onex.evt.omnimarket.delegation-model-degraded.v1"
+  # OMN-26219: read by the delegation events projection and the cost table, separate nodes.
+  - "onex.evt.omnimarket.delegation-harness-completed.v1"
+  - "onex.evt.omnimarket.delegation-harness-attempt-recorded.v1"
 
 # === HANDLER ROUTING ===
 externally_produced_topics:
   - topic: "onex.cmd.omnimarket.delegation-target-execute.v1"
     producer: "Typed runtime ingress callers carrying ModelDelegationTargetRequest in ModelEventEnvelope v1."
+  - topic: "onex.cmd.omnimarket.delegation-harness-execute.v1"
+    producer: "node_delegate_skill_orchestrator (RuntimeDelegationDispatchPort, ports/port_harness_delegation_dispatch.py) for a delegation pinned to a kind: harness backend, carrying ModelHarnessBackendCallRequest in ModelEventEnvelope v1; the handler refuses a non-house tenant or a non-internal surface."
 
 handler_routing:
   routing_strategy: "payload_type_match"
@@ -362,6 +387,15 @@ handler_routing:
         name: "HandlerInferenceIntent"
         module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent"
       description: "Handle ModelInferenceIntent from delegation orchestrator; publish ModelInferenceResponseData to inference-response.v1 (OMN-12294). event_model type-scopes the dispatcher + validates the payload before handle()."
+    - operation: "execute_harness_delegation"
+      event_type: "omnimarket.delegation-harness-execute"
+      event_model:
+        name: "ModelHarnessBackendCallRequest"
+        module: "omnimarket.nodes.node_llm_delegation_call_effect.models.model_harness_backend_call"
+      handler:
+        name: "HandlerHarnessDelegation"
+        module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_harness_delegation"
+      description: "OMN-26219: walk the overlay's harness rungs for the task class, judge each answer with the delegation gates, climb on rejection, record one cost per attempt."
   default_handler: "HandlerLlmDelegationCall"
 
 # Maps HandlerInferenceIntent's returned model to its publish topic so the
@@ -369,6 +403,9 @@ handler_routing:
 # inference-response.v1. event_type is the Model-prefix-stripped short class
 # name the applier looks up (OMN-12294).
 published_events:
+  - event_type: "HarnessBackendCallResult"
+    topic: "onex.evt.omnimarket.delegation-harness-completed.v1"
+    description: "OMN-26219: the harness call's outcome; ok=false with status rejected or refused when no answer was accepted."
   - event_type: "DelegationTargetResult"
     topic: "onex.evt.omnimarket.delegation-target-completed.v1"
     description: "The terminal adapter receipt; status distinguishes completion, failure and timeout."
@@ -444,6 +481,12 @@ delegation_adapters:
       targets: [codex, claude-code, claude-glm, antigravity]
       timeout_seconds: 4500
       agents: {}
+    # OMN-26219: the Claude Code environment and credential references of the harness backends
+    # (agents.claude-glm.env / secret_env) come from the deployment overlay under this call site.
+    harness_backend:
+      targets: [codex, claude-code, claude-glm]
+      timeout_seconds: 600
+      agents: {}
   model_registry: {}
 
 db_io:
@@ -477,6 +520,24 @@ codex_harness:
   max_timeout_seconds: 600
   terminate_grace_seconds: 5
 
+# OMN-26219: the broker permissions of the harness call's three topics, for the runtime principal every node uses.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.delegation-harness-execute.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.delegation-harness-execute.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-harness-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-harness-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-harness-attempt-recorded.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-harness-attempt-recorded.v1, operation: DESCRIBE}
+
+# OMN-26219: the harness backend call. Which backends, models and rung order exist is the delegation routing
+# overlay's (harness_backends, harness_tiers, escalation_chains); this block names only where the handler reads the
+# Claude Code agent environment from and the topic the per-attempt cost record is published on.
+harness_backend_call:
+  agents_call_site: harness_backend
+  attempt_topic: "onex.evt.omnimarket.delegation-harness-attempt-recorded.v1"
+
 # Provider quota reset reader: called in-process by the quota policy through the shared classifier, never from the
 # bus. It is not in handler_routing because a routed handler needs a subscribed topic and an event_type.
 provider_quota_reset:
@@ -504,3 +565,21 @@ claude_credential_probe:
   max_timeout_seconds: 300
   terminate_grace_seconds: 5
   output_chars: 600
+
+# OMN-26219: the three collaborators HandlerHarnessDelegation calls in-process for each harness call. They hold no
+# subscribed topic or event_type, so they are not in handler_routing; each `handler` entry binds the module to this
+# node's contract.
+harness_backend_call_handler:
+  handler:
+    name: "HandlerHarnessBackendCall"
+    module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_harness_backend_call"
+
+harness_answer_gate:
+  handler:
+    name: "HandlerHarnessAnswerGate"
+    module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_harness_answer_gate"
+
+harness_process_runner:
+  handler:
+    name: "HandlerHarnessProcessRunner"
+    module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_harness_process_runner"

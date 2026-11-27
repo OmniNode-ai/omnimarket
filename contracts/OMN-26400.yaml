@@ -1,0 +1,87 @@
+schema_version: 1.0.0
+ticket_id: OMN-26400
+title: A scheduled effect on the dev runtime tick sends the collect and publish commands for each nightly slot after the 02:30 UTC full-suite nightly completes
+summary: Adds the scheduled effect node node_test_selector_nightly_sender_scheduled_effect, which on the runtime tick finds the nightly run for the slot date through the repository gateway, sends the collect command once the run is terminal and the publish command only after a collected answer, and records each settled night under the runtime state directory.
+is_seam_ticket: true
+interface_change: true
+interfaces_touched:
+- topics
+requirements:
+- id: req-omn26400-nightly-sender
+  statement: After each nightly the sender sends the collect and publish commands once, in order, from overlay values, and a night it cannot send is a named failed run event.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: with a fake runtime tick after 02:30Z and a fake run listing, a nightly run for slot date D that is not terminal sends nothing; once terminal it sends one collect_nightly command for D and only after that command returns COLLECTED one publish_attribution_record command for D, in that order; a second tick for the same D sends nothing -- falsifier: uv run --frozen pytest tests/nodes/node_test_selector_nightly_sender_scheduled_effect -q --no-cov -k sender_order_and_once'
+  - id: AC2
+    statement: 'AC2: a collect result that is not COLLECTED sends no publish command and the run event names the slot date and the reason; a nightly not terminal after collector_max_lag_hours of the slot gives a run event that names a missed night, never a silent skip -- falsifier: uv run --frozen pytest tests/nodes/node_test_selector_nightly_sender_scheduled_effect -q --no-cov -k sender_not_collected_or_missed'
+  - id: AC3
+    statement: 'AC3: the node contract declares the runtime tick subscription, the schedule overlay and the terminal event with no new script, timer or workflow file, and an overlay missing any key is refused naming the key -- falsifier: uv run --frozen pytest tests/nodes/node_test_selector_nightly_sender_scheduled_effect -q --no-cov -k contract_and_overlay'
+  - id: AC4
+    statement: 'AC4: the dev overlay for the node exists in the overlays repository at overlays/node_test_selector_nightly_sender_scheduled_effect/overlay.yaml and a test there holds it equal to the node''s overlay model and to the nightly''s 02:30 UTC schedule -- falsifier: uv run pytest tests/test_nightly_sender_overlay.py -q in the overlays clone; delete one key and it must fail'
+  - id: AC5
+    statement: 'AC5: the node runs on the dev runtime and one run line names the slot date it handled and the commands it sent -- falsifier: read the dev runtime log on the dev host for the node name after the runtime has loaded the overlay and a tick has passed; no line, no pass'
+evidence_requirements:
+- kind: tests
+  description: The sender's order, once, not-collected, missed-night and contract tests
+  command: uv run --frozen pytest tests/nodes/node_test_selector_nightly_sender_scheduled_effect -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26400-ac1
+  description: AC1 proven by the tests selected with -k sender_order_and_once, which do not exist at the merge base.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selector_nightly_sender_scheduled_effect -q --no-cov -k sender_order_and_once
+    cwd: .
+- id: dod-omn26400-ac2
+  description: AC2 proven by the tests selected with -k sender_not_collected_or_missed, which do not exist at the merge base.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selector_nightly_sender_scheduled_effect -q --no-cov -k sender_not_collected_or_missed
+    cwd: .
+- id: dod-omn26400-ac3
+  description: AC3 proven by the tests selected with -k contract_and_overlay, which do not exist at the merge base.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selector_nightly_sender_scheduled_effect -q --no-cov -k contract_and_overlay
+    cwd: .
+- id: dod-omn26400-ac4
+  description: AC4 is proven in the overlays repository by its nightly sender overlay test (the paired overlays pull request is named in this pull request); here the node's example overlay holds exactly the overlay model's keys, which does not exist at the merge base.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selector_nightly_sender_scheduled_effect -q --no-cov -k example_overlay_holds_exactly
+    cwd: .
+- id: dod-omn26400-deploy-sender
+  description: 'Deploy probe the hosted runner can run: the sender contract at the checked-out commit on GitHub names its handler class; the file does not exist at the merge base, so the probe fails there. AC5 is read on the dev runtime after the dev deploy: the run event line of the node on the schedule-run topic.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: command
+    check_value: 'bash -o pipefail -c ''gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_test_selector_nightly_sender_scheduled_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "HandlerNightlySenderScheduled" > /dev/null'''
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_test_selector_nightly_sender_scheduled_effect -q --no-cov -k contract_and_overlay
+    cwd: .
+- id: dod-omn26400-integration-proof
+  description: AC5 is read on the dev runtime after the dev deploy through the deploy agent; the pushed head is run on a lab host first and the deployed reading is named in the pull request.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane stpoll-2015 -- uv run --frozen pytest tests/nodes/node_test_selector_nightly_sender_scheduled_effect -q --no-cov
+    cwd: .

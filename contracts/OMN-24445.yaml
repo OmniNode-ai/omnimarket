@@ -19,10 +19,26 @@ requirements:
     statement: 'AC4: the CLI exits 0 when every finding is OWNED, 1 on MISSING, 2 on UNKNOWN, and journals one event per finding. -- falsifier: uv run --frozen pytest tests/unit/nodes/node_plan_owner_check_effect -q --no-cov -n 0 -p no:randomly -k runtime'
   - id: AC5
     statement: 'AC5: integrated: in the running hourly throughput tick, with the node and its overlay installed, the tick prints MISSING ledger-cutover-owner while no live lane CLAIM names the cutover plan, and prints nothing for it while one does. -- falsifier: read the tick output with and without a live ledger-cut lane claim'
+- id: req-omn24445-census-ci-step
+  statement: The ledger-file census ratchet is enforced in CI and in pre-commit by commands that both name its ratchet file.
+  acceptance:
+  - id: AC6
+    statement: 'AC6: the ledger-file census ratchet runs as a step of the strict lint job that gates CI Summary, and that step and the ledger-file-census pre-commit hook both pass the ratchet file named in the census overlay. -- falsifier: uv run pytest tests/ci/test_ledger_census_wiring.py -q --no-cov'
+- id: req-omn24445-census-operator-tests
+  statement: The eight operator capture and access mode test files stay cleared of the ledger file name, and the census ratchet holds no row for them.
+  acceptance:
+  - id: AC7
+    statement: 'AC7: the census run over this tree prints no reader or writer hit for any of the eight cleared operator test files, the per-file ratchet table holds no row for them, and the omnimarket ratchet row equals the count of its file rows (a put-back of a reader in one of them fails). -- falsifier: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_group5_operator_tests_omn24445.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
 - kind: tests
   description: The node's tests pass at the pushed head.
   command: uv run --frozen pytest tests/unit/nodes/node_plan_owner_check_effect -q --no-cov -n 0 -p no:randomly
+- kind: tests
+  description: The census wiring test passes at the pushed head.
+  command: uv run pytest tests/ci/test_ledger_census_wiring.py -q --no-cov
+- kind: tests
+  description: The cleared-operator-tests census test passes at the pushed head.
+  command: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_group5_operator_tests_omn24445.py -q --no-cov -n 0 -p no:randomly
 emergency_bypass:
   enabled: false
   justification: ''
@@ -89,4 +105,22 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24445 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_plan_owner_check_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24445-ac6
+  description: The census ratchet is run by the strict lint job and by the pre-commit hook, each naming the ratchet file.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_ledger_census_wiring.py -q --no-cov
+    cwd: .
+- id: dod-omn24445-ac7
+  description: The census run prints no hit for the eight cleared operator test files, the ratchet table holds no row for them, and the omnimarket row equals its file-row count; the merge-base control has no such test file and fails.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_file_census_effect/test_group5_operator_tests_omn24445.py -q --no-cov -n 0 -p no:randomly
     cwd: .

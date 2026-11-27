@@ -629,6 +629,7 @@ class ShutilDisk:
             used_bytes=usage.used,
             total_bytes=usage.total,
             used_percent=100.0 * usage.used / usage.total if usage.total else 0.0,
+            free_bytes=usage.free,
         )
 
 

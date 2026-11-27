@@ -1,0 +1,107 @@
+schema_version: 1.0.0
+ticket_id: OMN-26115
+title: the onex setup cli loads on the newest published omnibase_core because it calls ModelRunNodeHosted.run, not the removed run_node_in_process
+summary: node_onex_setup_effect/cli.py imported run_node_in_process from omnibase_core.cli.cli_run_node (added by omnimarket#6205). omnibase_core#2335 removed that function and moved the in-process hosting to ModelRunNodeHosted.run with the same four arguments. This repository's lock pinned a core that still carried the function, so its own CI never saw the ImportError, while a venv built with the newest core could not load the onex CLI. The change calls ModelRunNodeHosted.run, raises the omnibase-core floor to 0.47.74 in both places, moves the core and infra dev merge tags together to the build omnibase_infra dev already locks, relocks, and re-records the lock hash in the 70 work contracts that pin it.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26115-core-entry-point
+  statement: The setup cli names only symbols the pinned and the newest published omnibase_core carry, and the pin floor names a published core that carries ModelRunNodeHosted.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a test imports omnimarket.nodes.node_onex_setup_effect.cli and calls the setup runtime path against the pinned omnibase_core, and fails on omnimarket 89a814b284e2 and passes on the fix -- falsifier: uv run pytest tests/nodes/node_onex_setup_effect -q exits non-zero on the fix head, or exits zero on 89a814b284e2'
+  - id: AC2
+    statement: 'AC2: the onex CLI loads in a fresh venv built from the fix head, read as the setup cli import exiting 0 -- falsifier: uv run python -c "import omnimarket.nodes.node_onex_setup_effect.cli" in that venv raises ImportError'
+  - id: AC3
+    statement: 'AC3: the omnimarket pin floor on omnibase-core names a published core that carries the function the setup cli calls, with no release cut by this lane -- falsifier: uv lock --check exits non-zero, or the omnibase-core floor in pyproject.toml reads older than 0.47.74'
+evidence_requirements:
+- kind: tests
+  description: The new core entry point test, the pin tests and the setup unit tests at the pushed head.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_onex_setup_effect tests/ci/test_sibling_core_pin_pair_omn17427.py tests/ci/test_infra_pin_aa87c2dd6abe_work_contracts_omn23865.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26115-ac1
+  description: The core entry point test passes at the pushed head; on 89a814b284e2 with the newest published omnibase_core its module import raises ImportError for run_node_in_process.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_onex_setup_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26115-ac2
+  description: The setup cli module imports in the environment built from the lock of the pushed head, and no Python source file under src names the removed function (the search reads source text only, so a compiled file under __pycache__ never matches; tests may name it, because the code graph users test freezes the broken cli head as a regression fixture).
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: uv run --frozen python -c "import omnimarket.nodes.node_onex_setup_effect.cli"
+    cwd: .
+  - check_type: command
+    check_value: sh -c '! grep -rIn --include="*.py" run_node_in_process src'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_onex_setup_effect/test_setup_cli_core_entry_point.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26115-ac3
+  description: The lock is fresh, the pin tests pass, and both omnibase-core floors in pyproject.toml name a published core at or above 0.47.74, the first release carrying ModelRunNodeHosted.run. The floor check fails below 0.47.74 or with a count other than two floors, so the item fails at the parent of the merged fix.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: uv lock --check
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_sibling_core_pin_pair_omn17427.py tests/ci/test_infra_pin_aa87c2dd6abe_work_contracts_omn23865.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+  - check_type: command
+    check_value: >-
+      python3 -I -c 'import re,sys; t=open("pyproject.toml").read(); f=[tuple(map(int,m)) for m in re.findall(r"^\s*\"omnibase-core>=(\d+)\.(\d+)\.(\d+)[,\"]",t,re.M)]; print(f); sys.exit(0 if len(f)==2 and all(x>=(0,47,74) for x in f) else 1)'
+    cwd: .
+- id: dod-omn26115-ac3-floor-test
+  description: The floor evidence is tested, not only run. Every omnibase-core floor check this contract binds to AC3 passes on the pinned tree, and the floor check refuses a floor of 0.47.73. At the merge base the earlier literal check exits 1 against the 0.47.75 floor dev carries, so this test fails there and passes at the fix head.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_omn26115_ac3_floor_contract.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26115-ac2-fresh-venv
+  description: A fresh venv built with uv venv in a temporary directory installs the checked-out tree with its dependencies resolved from the published packages (no git sources), so the omnibase-core it gets is the newest published one the tree's own floor allows, and python -c "import omnimarket.nodes.node_onex_setup_effect.cli" in that venv exits 0. The command exits with the exit code of that import.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: sh -c 'set -eu; src="$PWD"; d="$(mktemp -d)"; trap "rm -rf \"$d\"" EXIT; uv venv -q "$d/venv"; uv pip install -q --python "$d/venv/bin/python" --no-sources "$src"; cd "$d"; "$d/venv/bin/python" -c "import omnimarket.nodes.node_onex_setup_effect.cli"'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_onex_setup_effect/test_setup_cli_core_entry_point.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26115-integration-proof
+  description: The setup cli entry point test and the setup cli import run on a lab host at the pushed head through the lab work node. Hosted CI cannot reach a lab host, so only the local Done gate runs this item; it binds no criterion, because the hosted check refuses a bound item it cannot run, and AC2 is bound by dod-omn26115-ac2-fresh-venv, which the hosted runner runs.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26115 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_onex_setup_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26115-grpcio-lock-floor
+  description: The grpcio lock-floor test parses uv.lock and asserts grpcio is 1.84.1 or later (Safety SFTY-20261027-51483 covers >=1.84.0,<1.84.1), with planted 1.84.0 and missing-package controls; the work-contract pin test confirms every uv.lock sha256 pin names the relocked file. A lock pinning grpcio 1.84.0 fails the real-lock test; dev now locks 1.85.4. This item binds AC3, the lock criterion, because it reads uv.lock itself and runs uv lock --check, so a stale or missing lock fails it.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: uv lock --check
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_omn26115_grpcio_lock_floor.py tests/nodes/test_work_contract_pins_current.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

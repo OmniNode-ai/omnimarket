@@ -58,3 +58,33 @@ dod_evidence:
       - check_type: "command"
         check_value: 'uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22403 -- uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -k "local_done_gate or every_repo_contract_binds"'
         cwd: "."
+  - id: "dod-omn22403-ac1-accepted-20261124t0345z"
+    description: "AC1: contract_binds_violations on the #4918 OMN-22159 shape with binds_ac [AC3] on the local_done_gate item returns exactly the recorded refusal violation."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py::test_contract_binds_refuses_a_bound_local_done_gate_item -q"
+        cwd: "."
+  - id: "dod-omn22403-ac2-accepted-20261124t0345z"
+    description: "AC2: no contract under contracts/OMN-*.yaml on dev produces a contract_binds_violations entry, the local_done_gate rule included."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_repo_evidence_caller_workflow.py::test_every_repo_contract_binds_every_criterion -q"
+        cwd: "."
+context:
+  ac_binding_provenance:
+    dod-omn22403-ac1-accepted-20261124t0345z:
+      - label: AC1
+        criterion_hash: 0bf9b5da1bcec4d6c95bbb288c234423df90eb3a2d3a87b3f82ef925de4e4c49
+        proposed_by: lane=dod-closeout-bind-2026-11-24T0345Z-c3
+        accepted_by: lane=dod-closeout-accept-2026-11-24T0345Z-c3
+        accepted_at: '2026-11-24T04:12:00Z'
+    dod-omn22403-ac2-accepted-20261124t0345z:
+      - label: AC2
+        criterion_hash: a5ce82becf94c2f3dbec205d790ecf31d873baf5ab98bf2570bbedf3195394e3
+        proposed_by: lane=dod-closeout-bind-2026-11-24T0345Z-c3
+        accepted_by: lane=dod-closeout-accept-2026-11-24T0345Z-c3
+        accepted_at: '2026-11-24T04:12:00Z'

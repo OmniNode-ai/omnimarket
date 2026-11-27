@@ -23,7 +23,7 @@ from omnibase_infra.runtime.core_runtime.routing_map_builder import build_routin
 from omnimarket.nodes.node_dev_roll_window_gate_effect.handlers import (
     HandlerDevRollWindowCompleted,
     HandlerDevRollWindowHold,
-    HandlerDevRollWindowTick,
+    HandlerDevRollWindowTickPublish,
 )
 from tests.unit.nodes.node_dev_roll_window_gate_effect.conftest import Clock, Gate
 
@@ -103,12 +103,12 @@ def chain(
     gate: Gate,
 ) -> tuple[RuntimeDispatch, InMemoryTransport, InMemoryBroker, frozenset[str]]:
     """RuntimeDispatch over this node's three subscribed topics, the handlers of one Gate."""
-    return chain_with(gate.hold, gate.tick, gate.completed, gate.clock)
+    return chain_with(gate.hold, gate.tick_publish, gate.completed, gate.clock)
 
 
 def chain_with(
     hold: HandlerDevRollWindowHold,
-    tick: HandlerDevRollWindowTick,
+    tick: HandlerDevRollWindowTickPublish,
     completed: HandlerDevRollWindowCompleted,
     clock: Clock,
 ) -> tuple[RuntimeDispatch, InMemoryTransport, InMemoryBroker, frozenset[str]]:
@@ -117,7 +117,7 @@ def chain_with(
         [CONTRACT],
         {
             "HandlerDevRollWindowHold": hold,
-            "HandlerDevRollWindowTick": tick,
+            "HandlerDevRollWindowTickPublish": tick,
             "HandlerDevRollWindowCompleted": completed,
         },
         clock,

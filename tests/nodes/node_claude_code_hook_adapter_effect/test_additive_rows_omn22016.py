@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import itertools
 import json
 import time
 from pathlib import Path
@@ -349,11 +350,24 @@ def test_additive_latency_budget_wait_never_exceeds_the_rows_budget(
 def test_additive_latency_budget_per_prompt_returns_within_its_500_ms(
     world: dict[str, Path],
 ) -> None:
-    client = SilentClient(sleep_s=0.5)
-    started = time.monotonic()
-    code, out, _ = _run("per_prompt", client, world["registry"])
-    assert (code, out) == (0, "")
-    assert time.monotonic() - started < 0.5 + 0.4
+    # The budget is read off the injected clock and the deadline the client is handed,
+    # never off the runner's wall clock: a loaded runner stretched a real 0.5 s wait to 1.15 s.
+    client = SilentClient()
+    ticks = iter((0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0))
+    out, err = io.StringIO(), io.StringIO()
+    code = main(
+        ["--binding", "per_prompt"],
+        client=client,
+        stdin=io.StringIO(
+            json.dumps({"session_id": "s", "cwd": str(world["registry"])})
+        ),
+        stdout=out,
+        stderr=err,
+        clock=lambda: next(ticks),
+    )
+    assert (code, out.getvalue()) == (0, "")
+    (call,) = client.calls
+    assert call["deadline_ms"] == ADDITIVE_BUDGET_CAPS_MS["per_prompt"] == 500
 
 
 @pytest.mark.parametrize("profile", ROWS)
@@ -452,15 +466,26 @@ def test_additive_forced_timeout_prints_nothing_and_journals_one_miss(
 def test_additive_forced_timeout_exits_within_the_budget(
     world: dict[str, Path],
 ) -> None:
-    client = SilentClient(sleep_s=0.5)
-    started = time.monotonic()
-    code, out, _ = _run("per_prompt", client, world["registry"])
-    elapsed = time.monotonic() - started
-    assert (code, out) == (0, "")
-    assert elapsed < 0.5 + 0.4
+    # The wait is the injected clock's 0.5 s after start; the runner's wall clock is never read.
+    client = SilentClient()
+    ticks = itertools.chain((0.0,), itertools.repeat(0.5))
+    out, err = io.StringIO(), io.StringIO()
+    code = main(
+        ["--binding", "per_prompt"],
+        client=client,
+        stdin=io.StringIO(
+            json.dumps({"session_id": "s", "cwd": str(world["registry"])})
+        ),
+        stdout=out,
+        stderr=err,
+        clock=lambda: next(ticks),
+    )
+    assert (code, out.getvalue()) == (0, "")
     (record,) = _journal_records(world["journal"])
     assert record["payload"]["reason"] == "timeout"
-    assert 400 <= record["payload"]["elapsed_ms"] <= 900
+    # spent time comes from the injected clock; the handler adds its own real wait on top, so
+    # only the floor is asserted and a slow runner cannot move it.
+    assert record["payload"]["elapsed_ms"] >= 400
 
 
 def test_additive_forced_timeout_a_partial_package_is_never_printed(

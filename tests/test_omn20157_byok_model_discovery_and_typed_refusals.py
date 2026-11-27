@@ -333,6 +333,8 @@ class FakeProvider:
         status = next(self.statuses)  # An unexpected retry fails the test.
         if status == 200:
             body = {
+                # OMN-18079: the provider reports the model that answered.
+                "model": payload["model"],
                 "choices": [
                     {
                         "message": {"content": "### ANSWER\nprint('ok')\n"},

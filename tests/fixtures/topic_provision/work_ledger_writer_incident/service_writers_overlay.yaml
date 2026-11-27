@@ -1,0 +1,5 @@
+# The lane-a row of overlays/node_work_ledger_append_effect/overlay.yaml (schema_version service_writers.v1), as read in the incident.
+schema_version: service_writers.v1
+writers:
+  - principal: lane-a
+    why: the dev runtime's own login, which appends to the work ledger over the bus from inside its container

@@ -30,6 +30,7 @@ from ..models.model_codex_harness_attempt import (
     ModelCodexHarnessReceipt,
     ModelCodexHarnessRequest,
 )
+from .codex_launch_guard import api_key_refusal, codex_argv, uses_api_key
 
 
 def _terminate(process: subprocess.Popen[str], grace: float) -> tuple[str, str]:
@@ -98,7 +99,7 @@ def _receipt(
         tokens_out=_counter(usage, "output_tokens"),
         tokens_cached=_counter(usage, "cached_input_tokens"),
         wall_seconds=time.monotonic() - started,
-        model=request.model,
+        model=request.model or "",
         exit_cause=cause,
         exit_code=code,
     )
@@ -130,38 +131,25 @@ class HandlerCodexHarnessAttempt:
         if request.timeout_seconds > self.policy.max_timeout_seconds:
             raise ValueError("requested timeout exceeds contract policy")
         started = time.monotonic()
+        child_environment = self._environment.environment()
+        if uses_api_key(child_environment):
+            return api_key_refusal(request, time.monotonic() - started)
         with tempfile.TemporaryDirectory(
             prefix="codex-attempt-", dir=self.policy.workdir
         ) as scratch:
-            answer_file = Path(scratch) / "answer.txt"
-            argv = [
-                self.policy.executable,
-                "exec",
-                "-C",
-                str(self.policy.workdir.resolve()),
-                "-c",
-                f"model_reasoning_effort={json.dumps(self.policy.reasoning_effort)}",
-                "-c",
-                f"approval_policy={json.dumps(self.policy.approval_policy)}",
-                "-s",
-                self.policy.sandbox,
-                "-c",
-                f"sandbox_workspace_write.network_access={str(self.policy.network_access).lower()}",
-                "--skip-git-repo-check",
-                "--json",
-                "-m",
-                request.model,
-                "-o",
-                str(answer_file),
-                "-",
-            ]
+            # Codex runs inside the empty attempt directory, never in the caller's tree.
+            answer_dir = Path(scratch)
+            workdir = answer_dir / "work"
+            workdir.mkdir()
+            answer_file = answer_dir / "answer.txt"
+            argv = codex_argv(self.policy, request, workdir, answer_file)
             # Preserve the host account/config and runtime environment as remote-lane
-            # does. Do not force a login method, replace HOME or copy credentials.
+            # does. The login method is pinned to ChatGPT; HOME and credentials are untouched.
             try:
                 process = subprocess.Popen(
                     argv,
-                    cwd=self.policy.workdir,
-                    env=self._environment.environment(),
+                    cwd=workdir,
+                    env=child_environment,
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
@@ -171,7 +159,7 @@ class HandlerCodexHarnessAttempt:
             except OSError:
                 return ModelCodexHarnessReceipt(
                     wall_seconds=time.monotonic() - started,
-                    model=request.model,
+                    model=request.model or "",
                     exit_cause="launch_failed",
                 )
             timed_out = False

@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "omninode-onex"
+version = "0.0.1.post1"
+description = "Installs the onex command line for customers, pinning every OmniNode distribution it installs exactly."
+readme = { text = "The OmniNode onex command line for customers. Install it with `uv tool install --python 3.12 omninode-onex`; it carries no code of its own, installs omnibase-core, omnibase-infra and omnimarket at exactly the versions it pins, and puts two commands on your PATH: onex and omni-agent.", content-type = "text/markdown" }
+authors = [{ name = "OmniNode.ai", email = "contact@omninode.ai" }]
+license = { text = "MIT" }
+requires-python = ">=3.12"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+]
+# Each distribution is pinned with == so a customer install resolves exactly the
+# reviewed set; a release bumps them together.
+dependencies = [
+    "omnibase-core==0.47.76",
+    "omnibase-infra==0.38.79",
+    "omnibase-spi==0.23.16",
+    "omnimarket==0.4.324",
+    "omninode-memory==0.18.16",
+]
+
+# The customer launchers. `uv tool install omninode-onex` links only these two.
+# omnibase-core declares the same two with the same target during the testing
+# phase, so developer installs of omnibase-core keep their onex.
+[project.scripts]
+onex = "omnibase_core.cli.cli_commands:cli"
+omni-agent = "omnibase_core.cli.cli_commands:cli"
+
+[project.urls]
+Homepage = "https://omninode.ai"
+Repository = "https://github.com/OmniNode-ai/omnimarket"
+
+# Metadata only: the wheel carries no code of its own.
+[tool.hatch.build.targets.wheel]
+bypass-selection = true

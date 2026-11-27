@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Example only: the real overlay lives in the overlays repository. Every value here is a placeholder.
+lane: dev
+store:
+  provider: infisical
+  address: https://secrets.example.invalid
+  project_id: 00000000-0000-0000-0000-000000000000
+  environment: dev
+  client_id_ref: example_client_id
+  client_secret_ref: example_client_secret
+signing_key:
+  secret_folder: /shared/env
+  secret_key: DEV_LAB_TEST_SIGNING_KEY
+  algorithm: RS256
+token_folder: /shared/env
+issuer: null
+tenants:
+- tenant_slug: cli-run-a
+  tenant_id: 00000000-0000-0000-0000-000000000051
+  secret_name: DEV_PROOF_TENANT_TOKEN_CLI_RUN_A

@@ -21,13 +21,23 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from omnimarket.handlers.projection_ordering import sort_for_presentation
+from omnimarket.handlers.projection_read_page_ordering import (
+    InvalidOrderByError,
+    base_order_by_spec,
+    effective_order_by_spec,
+    reported_ordering,
+)
+from omnimarket.handlers.projection_read_page_window import (
+    InvalidWindowError,
+    parse_window_seconds,
+    window_page,
+    window_read_kwargs,
+)
 from omnimarket.handlers.projection_serving import (
     ServeTimeJudgementError,
     judge_served_rows,
 )
-from omnimarket.projection.discovery import parse_order_by_clauses
 from omnimarket.projection.models import (
-    ProjectionOrderRank,
     ProjectionStatus,
     ProjectionTableConfig,
     UnrankedOrderValueError,
@@ -147,89 +157,6 @@ def resolve_effective_limit(requested: int | None, contract_limit: int) -> int:
     if requested is None or requested <= 0:
         return contract_limit
     return min(requested, contract_limit)
-
-
-class InvalidOrderByError(ValueError):
-    """A request-time ``order_by`` query value failed to parse or validate.
-
-    Distinct from :class:`~omnimarket.projection.discovery.MalformedOrderBySpecError`
-    (OMN-16290): that one is a contract-authoring defect and hard-fails
-    startup; this one is untrusted caller input on a live request and must
-    map to a ``422``, never crash the process or silently fall back to the
-    contract default (no-defensive-defaults).
-    """
-
-
-def base_order_by_spec(
-    cfg: ProjectionTableConfig, order_by: str | None
-) -> tuple[tuple[str, str, str | None], ...]:
-    """Resolve the order_by spec a request should sort by, BEFORE the
-    ``order`` direction flip is applied.
-
-    ``order_by=None`` (the common case) yields the contract-declared default
-    (``cfg.order_by_spec``), preserving prior behavior exactly. A caller-
-    supplied ``order_by`` (OMN-16290 -- previously accepted by FastAPI as an
-    unrecognised query param and silently dropped, so every request served
-    the fixed contract ordering regardless of what was requested) REPLACES
-    the default entirely with the parsed, column-validated request spec.
-    Raises :class:`InvalidOrderByError` on a malformed clause or a column not
-    declared on this topic -- rejected outright, never silently ignored or
-    coerced to the default (no-defensive-defaults).
-    """
-    if order_by is None:
-        return cfg.order_by_spec
-    try:
-        return parse_order_by_clauses(order_by, cfg.columns)
-    except ValueError as exc:
-        raise InvalidOrderByError(str(exc)) from exc
-
-
-def effective_order_by_spec(
-    order_by_spec: tuple[tuple[str, str, str | None], ...], order: str | None
-) -> tuple[tuple[str, str, str | None], ...]:
-    """Apply a caller-requested direction flip to the FIRST sort column of
-    ``order_by_spec`` (the contract default, or a caller-requested
-    ``order_by`` override -- see :func:`base_order_by_spec`).
-
-    Single source of truth for both the actual row order (fed to
-    the row source's ``rows(order_spec=...)``) and the reported
-    ``ordering`` string (:func:`reported_ordering`) -- computed once so the
-    two can never diverge (CodeRabbit, OMN-15800: a caller-requested ``order``
-    previously changed only the reported string, not the returned rows).
-    Every sort key beyond the first is preserved verbatim (OMN-15799), the
-    NULLS placement included (OMN-15800 defect A corrective round) -- a
-    caller-requested direction flip changes ASC/DESC only, never the
-    declared NULLS FIRST|LAST for that column.
-    """
-    if not order_by_spec:
-        return ()
-    first_column, first_direction, first_nulls = order_by_spec[0]
-    if order is not None:
-        normalised = order.strip().lower()
-        if normalised == "asc":
-            first_direction = "ASC"
-        elif normalised == "desc":
-            first_direction = "DESC"
-    return ((first_column, first_direction, first_nulls), *order_by_spec[1:])
-
-
-def reported_ordering(
-    order_by_spec: tuple[tuple[str, str, str | None], ...],
-    order_rank: ProjectionOrderRank | None = None,
-) -> str:
-    """Render the ``ordering`` response field FROM the typed, already-flipped spec.
-
-    A declared ``order_rank`` (OMN-17215) is rendered first, as the SQL term it
-    stands for, because it is the leading key the page is actually sorted by.
-    """
-    terms = [] if order_rank is None else [order_rank.sql_order_term()]
-    terms.extend(
-        f"{column} {direction}" + (f" NULLS {nulls}" if nulls else "")
-        for column, direction, nulls in order_by_spec
-    )
-    if not terms:
-        return "undefined"
-    return ", ".join(terms)
 
 
 def cursor_compare(value: Any, cursor: str) -> bool:
@@ -438,8 +365,16 @@ async def read_projection_page(
     order: str | None = None,
     order_by: str | None = None,
     tenant: str | None = None,
+    window: str | None = None,
 ) -> ProjectionPage:
-    """The page of one contract-declared exposure, or the named refusal."""
+    """The page of one contract-declared exposure, or the named refusal.
+
+    ``window`` (``24h``, ``7d``) bounds the read to the rows of the last that
+    long, newest first, at most one page of them: the statement carries the
+    window predicate and the row cap, so no read walks the whole history. A
+    windowed page is not cursor-paged (it has no ``next_cursor``); ``truncated``
+    says the window held more rows than the page.
+    """
     if topic not in topic_map:
         matches = [
             cfg.topic for cfg in topic_map.values() if topic in cfg.route_aliases
@@ -520,6 +455,33 @@ async def read_projection_page(
             },
         )
 
+    window_seconds: int | None = None
+    if window is not None:
+        try:
+            window_seconds = parse_window_seconds(window)
+        except InvalidWindowError as exc:
+            return ProjectionPage(
+                422,
+                {
+                    "error": "invalid_window",
+                    "topic": topic,
+                    "detail": str(exc),
+                },
+            )
+        if cfg.freshness_column is None:
+            return ProjectionPage(
+                422,
+                {
+                    "error": "unsupported_filter",
+                    "filter": "window",
+                    "topic": topic,
+                    "detail": (
+                        f"Topic '{topic}' does not declare a 'freshness_column' "
+                        "and cannot be read by 'window'."
+                    ),
+                },
+            )
+
     try:
         base_spec = base_order_by_spec(cfg, order_by)
     except InvalidOrderByError as exc:
@@ -551,8 +513,12 @@ async def read_projection_page(
     # with no cursor cannot walk (``since`` is refused above, so no page after
     # the first exists); it serves its newest rows, as the cache did. A ranked
     # exposure ranks the WHOLE set in the source, not a recency cut.
-    ranked_window = cfg.page_selection == "order_by" and since is None
-    if ranked_window:
+    ranked_window = (
+        cfg.page_selection == "order_by" and since is None and window is None
+    )
+    if window_seconds is not None and since is None:
+        selection = "newest"
+    elif ranked_window:
         selection = "ranked"
     elif cfg.cursor_column is not None:
         selection = "walk"
@@ -566,6 +532,7 @@ async def read_projection_page(
             since=since,
             correlation_id=correlation_id,
             selection=selection,
+            **window_read_kwargs(window_seconds, effective_limit),
         )
         # OMN-19971: one window read per page. The unfiltered newest window
         # already holds the newest row; any other window leaves the source to
@@ -628,7 +595,9 @@ async def read_projection_page(
     # the walk that follows starts at the first row, skips none, and repeats
     # only rows the ranked page already served.
     next_cursor: str | None = None
-    if cfg.cursor_column is not None and truncated:
+    if window_seconds is not None and since is None:
+        pass  # a windowed page is newest-first and not cursor-paged
+    elif cfg.cursor_column is not None and truncated:
         if ranked_window:
             try:
                 next_cursor = await source.walk_origin(cfg, tenant_id=scope_tenant)
@@ -649,34 +618,40 @@ async def read_projection_page(
         except ServeTimeJudgementError:
             return ProjectionPage(503, {"error": "serve_time_judgement_failed"})
 
-    return ProjectionPage(
-        200,
-        {
-            "topic": topic,
-            "projection_version": PROJECTION_VERSION,
-            "generated_at": generated_at,
-            "data_freshness": freshness,
-            "ordering": reported_ordering(order_by_spec, order_rank),
-            "row_limit": effective_limit,
-            "latest_event_at": latest_ts,
-            "latest_projection_updated_at": latest_ts,
-            "row_count": len(serialisable_rows),
-            "next_cursor": next_cursor,
-            # OMN-19841: which read this page answers -- "order_by" (the top
-            # rows by the declared order) or "cursor" (one page of the
-            # ascending cursor walk) -- and whether rows were left out of it.
-            "page_selection": "order_by" if ranked_window else "cursor",
-            "truncated": truncated,
-            "rows": serialisable_rows,
-            "backing": source.backing,
-            # OMN-18905 / OMN-20152: whether the serving path has fallen
-            # behind its source. A table read is the writer's durable state at
-            # request time, so it states that; how far the writer is behind
-            # shows in ``data_freshness``.
-            "staleness": source.staleness(topic, latest_ts),
-            # The tenant these rows are scoped to, or None for an exposure
-            # that declares no tenant_column. Stated on the response so a
-            # caller never has to assume which of the two it received.
-            "tenant": scope_tenant,
-        },
-    )
+    body: dict[str, Any] = {
+        "topic": topic,
+        "projection_version": PROJECTION_VERSION,
+        "generated_at": generated_at,
+        "data_freshness": freshness,
+        "ordering": reported_ordering(order_by_spec, order_rank),
+        "row_limit": effective_limit,
+        "latest_event_at": latest_ts,
+        "latest_projection_updated_at": latest_ts,
+        "row_count": len(serialisable_rows),
+        "next_cursor": next_cursor,
+        # OMN-19841: which read this page answers -- "order_by" (the top
+        # rows by the declared order) or "cursor" (one page of the
+        # ascending cursor walk) -- and whether rows were left out of it.
+        "page_selection": (
+            "window"
+            if window_seconds is not None and since is None
+            else "order_by"
+            if ranked_window
+            else "cursor"
+        ),
+        "truncated": truncated,
+        "rows": serialisable_rows,
+        "backing": source.backing,
+        # OMN-18905 / OMN-20152: whether the serving path has fallen
+        # behind its source. A table read is the writer's durable state at
+        # request time, so it states that; how far the writer is behind
+        # shows in ``data_freshness``.
+        "staleness": source.staleness(topic, latest_ts),
+        # The tenant these rows are scoped to, or None for an exposure
+        # that declares no tenant_column. Stated on the response so a
+        # caller never has to assume which of the two it received.
+        "tenant": scope_tenant,
+    }
+    if window_seconds is not None:
+        body["window"] = await window_page(source, cfg, scope_tenant, window, all_rows)
+    return ProjectionPage(200, body)

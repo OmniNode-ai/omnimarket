@@ -12,9 +12,8 @@
   append runner (:func:`runner_ledger_appender`), or, when it knows the operator principal, its
   own append handler (:func:`accepted_ledger_appender`), so each row is an accepted append
   command carrying ``req=`` and ``via=bus:`` cells like every other bus write (OMN-16176). The one-shot ``process`` command reads
-  ``ONEX_OPERATOR_CAPTURE_LEDGER_BIN`` (the command) and ``ONEX_LEDGER_PATH`` (the ledger); with
-  either unset the append fails and the prompt stays in the inbox for the next run, never
-  dropped.
+  ``ONEX_OPERATOR_CAPTURE_LEDGER_BIN`` (the command); with it unset the append fails and the prompt
+  stays in the inbox for the next run, never dropped.
 """
 
 from __future__ import annotations
@@ -44,7 +43,6 @@ from omnimarket.nodes.node_work_ledger_append_effect.protocols import (
 
 ONEX_BIN_ENV = "ONEX_OPERATOR_CAPTURE_ONEX_BIN"
 LEDGER_BIN_ENV = "ONEX_OPERATOR_CAPTURE_LEDGER_BIN"
-LEDGER_PATH_ENV = "ONEX_LEDGER_PATH"
 # 0 appended the row; 78 appended it too and says the ledger clone is stranded (OMN-18433: "the
 # row landed"), so a retry would write it a second time.
 LEDGER_ROW_LANDED_EXITS = frozenset({0, 78})
@@ -172,8 +170,6 @@ def onex_ledger_appender(env: Mapping[str, str] | None = None) -> LedgerAppender
         binary = environ.get(LEDGER_BIN_ENV, "").strip()
         if not binary:
             return False, f"{LEDGER_BIN_ENV} is unset: no ledger append command"
-        if not environ.get(LEDGER_PATH_ENV, "").strip():
-            return False, f"{LEDGER_PATH_ENV} is unset: no ledger to append to"
         try:
             done = subprocess.run(
                 [binary, "--append", row],
@@ -299,7 +295,6 @@ __all__ = [
     "CAPTURE_VIA",
     "DELEGATE_TASK_CLASS",
     "LEDGER_BIN_ENV",
-    "LEDGER_PATH_ENV",
     "LEDGER_ROW_LANDED_EXITS",
     "ONEX_BIN_ENV",
     "DelegateAnswer",

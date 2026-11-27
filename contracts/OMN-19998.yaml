@@ -261,6 +261,11 @@ requirements:
     acceptance:
       - id: AC133
         statement: 'AC133: the share rule is one share over all the changed lines of both diffs, added and removed together, less the removed lines the deployment overlay declares shared catalog lines for that path (a path glob and a line pattern per repository); two diffs that replace one declared catalog line with different fingerprints and add different rows pass with a note, identical added lines and two deletions of one line are still refused, and an overlap from a commit outside a replaced change still refuses -- falsifier: uv run --frozen pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard_shared_base_line.py tests/unit/handlers/scm/test_scm_duplicate_guard_replaces.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-evidence-binding-check-type
+    statement: An accepted-binding evidence item that runs a test names it in a test_passes check, so the repo binds-every-criterion test finds the test file.
+    acceptance:
+      - id: AC134
+        statement: 'AC134: the accepted bindings of OMN-22621 AC1 and OMN-22623 AC2 use check_type test_passes, every repo contract binds every criterion, and no command check hides a pytest run behind uv run --frozen -- falsifier: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -n 0 -p no:randomly -k "every_repo_contract_binds_every_criterion or hides_a_pytest_run or accepted_pytest_bindings"'
 evidence_requirements:
   - kind: tests
     description: Recorded gate subject spellings and named causes run through the production ledger parser and contract handler.
@@ -1000,4 +1005,12 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/nodes/node_pr_duplicate_guard_compute/test_pr_duplicate_guard_shared_base_line.py tests/unit/handlers/scm/test_scm_duplicate_guard_replaces.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn19998-evidence-binding-check-type
+    description: At the dev tip the binds-every-criterion test names OMN-22621 AC1 and OMN-22623 AC2 (command checks bind no test file) and fails; with both set to test_passes the same two tests pass.
+    source: manual
+    binds_ac: [AC134]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_repo_evidence_caller_workflow.py -q --no-cov -n 0 -p no:randomly -k "every_repo_contract_binds_every_criterion or hides_a_pytest_run or accepted_pytest_bindings"
         cwd: .

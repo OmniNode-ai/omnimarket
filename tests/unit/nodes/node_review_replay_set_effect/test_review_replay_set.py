@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
 from collections import Counter
@@ -12,6 +13,8 @@ from typing import Any
 
 import pytest
 import yaml
+from omnibase_core.enums.enum_workflow_result import EnumWorkflowResult
+from omnibase_core.runtime.runtime_local import RuntimeLocal
 from omnibase_core.validators.no_unguarded_git_subprocess import scrub_git_location_env
 
 from omnimarket.nodes.node_review_replay_set_effect.handlers.handler_review_replay_set import (
@@ -23,11 +26,16 @@ from omnimarket.nodes.node_review_replay_set_effect.models import (
     ModelPinnedItem,
     ModelReplayRepo,
     ModelReviewReplaySetRequest,
+    ModelReviewReplaySetResult,
 )
 
 pytestmark = pytest.mark.unit
 
 BINS = (199, 1000)
+CONTRACT = (
+    Path(__file__).parents[4]
+    / "src/omnimarket/nodes/node_review_replay_set_effect/contract.yaml"
+)
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -227,11 +235,7 @@ def test_git_source_reads_squash_merges_and_their_diffs(tmp_path: Path) -> None:
     assert "+three" in diff.read_text(encoding="utf-8")
 
 
-def test_main_freezes_from_a_request_file_and_exits_one_when_short(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    from omnimarket.nodes.node_review_replay_set_effect.__main__ import main
-
+def _clone_with_one_merge(tmp_path: Path) -> Path:
     repo = tmp_path / "clone"
     repo.mkdir()
     _git(repo, "init", "-q", "-b", "main")
@@ -240,10 +244,23 @@ def test_main_freezes_from_a_request_file_and_exits_one_when_short(
     _git(repo, "commit", "-q", "-m", "root")
     (repo / "a.txt").write_text("x\ny\n", encoding="utf-8")
     _git(repo, "commit", "-q", "-am", "feat: y (#3)")
+    return repo
+
+
+def test_main_freezes_from_a_request_file_and_exits_one_when_short(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from omnimarket.nodes.node_review_replay_set_effect.__main__ import main
 
     request = _request(
         tmp_path,
-        repos=(ModelReplayRepo(repo="clone", clone_path=str(repo), base_ref="main"),),
+        repos=(
+            ModelReplayRepo(
+                repo="clone",
+                clone_path=str(_clone_with_one_merge(tmp_path)),
+                base_ref="main",
+            ),
+        ),
         target_count=2,
     )
     request_file = tmp_path / "request.json"
@@ -256,11 +273,10 @@ def test_main_freezes_from_a_request_file_and_exits_one_when_short(
 
 
 def test_the_contract_names_the_command_and_the_frozen_event() -> None:
-    contract = yaml.safe_load(
-        (
-            Path(__file__).parents[4]
-            / "src/omnimarket/nodes/node_review_replay_set_effect/contract.yaml"
-        ).read_text(encoding="utf-8")
+    contract = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))
+    assert (
+        "onex run-node node_review_replay_set_effect"
+        in (contract["runtime_dispatch"]["external_trigger"])
     )
     assert contract["runtime_dispatch"]["command_topic"] == (
         "onex.cmd.omnimarket.review-replay-set-freeze-requested.v1"
@@ -268,3 +284,109 @@ def test_the_contract_names_the_command_and_the_frozen_event() -> None:
     assert (
         contract["terminal_event"] == "onex.evt.omnimarket.review-replay-set-frozen.v1"
     )
+
+
+def test_typed_freeze_command_runs_on_the_local_bus(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    request = _request(
+        tmp_path,
+        correlation_id="f0e20000-0000-4000-8000-000000026078",
+        repos=(
+            ModelReplayRepo(
+                repo="clone",
+                clone_path=str(_clone_with_one_merge(tmp_path)),
+                base_ref="main",
+            ),
+        ),
+        target_count=1,
+    )
+    request_file = tmp_path / "request.json"
+    request_file.write_text(request.model_dump_json(), encoding="utf-8")
+    runtime = RuntimeLocal(
+        workflow_path=CONTRACT,
+        state_root=tmp_path / "runtime",
+        input_path=request_file,
+        backend_overrides={"event_bus": "inmemory"},
+    )
+    with caplog.at_level(logging.INFO, logger="omnibase_core.runtime.runtime_local"):
+        assert runtime.run() is EnumWorkflowResult.COMPLETED
+    assert any(
+        "published initial command to 'onex.cmd.omnimarket.review-replay-set-freeze-requested.v1'"
+        in message
+        for message in caplog.messages
+    )
+    result = runtime.handler_result
+    assert isinstance(result, ModelReviewReplaySetResult)
+    assert result.item_count == 1
+    assert result.short_by == 0
+    assert Path(result.manifest_path).is_file()
+
+
+def _contract() -> dict[str, Any]:
+    loaded = yaml.safe_load(
+        (
+            Path(__file__).parents[4]
+            / "src/omnimarket/nodes/node_review_replay_set_effect/contract.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    assert isinstance(loaded, dict)
+    return loaded
+
+
+def test_every_operation_has_its_own_subscribed_command_topic() -> None:
+    contract = _contract()
+    handlers = contract["handler_routing"]["handlers"]
+    topics = {entry["operation"]: entry["topic"] for entry in handlers}
+    assert set(topics) == {
+        "review_replay_set.freeze",
+        "review_replay_set.freeze_recall_bar",
+        "review_replay_set.score_recall",
+    }
+    assert len(set(topics.values())) == len(topics)
+    subscribed = set(contract["event_bus"]["subscribe_topics"])
+    assert set(topics.values()) == subscribed
+    assert (
+        contract["runtime_dispatch"]["command_topic"]
+        == topics["review_replay_set.freeze"]
+    )
+
+
+def test_each_recall_operation_names_its_producer_and_its_result_topic() -> None:
+    contract = _contract()
+    produced = {
+        entry["topic"]: entry["producer"]
+        for entry in contract["externally_produced_topics"]
+    }
+    assert set(produced) == {
+        "onex.cmd.omnimarket.review-replay-recall-bar-freeze-requested.v1",
+        "onex.cmd.omnimarket.review-replay-recall-score-requested.v1",
+    }
+    assert all("onex run-node" in producer for producer in produced.values())
+    assert contract["event_bus"]["publish_topics"] == [contract["terminal_event"]]
+    published = {entry["topic"] for entry in contract["published_events"]}
+    assert published == {
+        "onex.evt.omnimarket.review-replay-set-frozen.v1",
+        "onex.evt.omnimarket.review-replay-recall-bar-frozen.v1",
+        "onex.evt.omnimarket.review-replay-recall-scored.v1",
+    }
+    assert published == set(contract["externally_consumed_topics"])
+
+
+def test_the_runtime_router_sends_each_result_model_to_its_own_topic() -> None:
+    from omnibase_infra.runtime.contract_topic_router import (
+        build_topic_router_from_contract,
+    )
+
+    from omnimarket.nodes.node_review_replay_set_effect.models import (
+        ModelFreezeRecallBarResult,
+        ModelReviewReplayRecallResult,
+        ModelReviewReplaySetResult,
+    )
+
+    router = build_topic_router_from_contract(_contract())
+    assert router == {
+        ModelReviewReplaySetResult.__name__: "onex.evt.omnimarket.review-replay-set-frozen.v1",
+        ModelFreezeRecallBarResult.__name__: "onex.evt.omnimarket.review-replay-recall-bar-frozen.v1",
+        ModelReviewReplayRecallResult.__name__: "onex.evt.omnimarket.review-replay-recall-scored.v1",
+    }

@@ -152,7 +152,7 @@ _SELECT_RAW_ROWS = """
 def _read_ledger_files(ledger: Path, archive_dir: Path | None) -> list[str]:
     paths = [ledger]
     if archive_dir is not None:
-        paths = sorted(archive_dir.glob("ROLLING_WORK_LEDGER_*-split.md")) + paths
+        paths = sorted(archive_dir.glob(f"{ledger.stem}_*-split.md")) + paths
     rows: list[str] = []
     for path in paths:
         rows.extend(split_ledger_rows(path.read_text(encoding="utf-8")))
@@ -722,7 +722,7 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__.split("\n\n")[0] if __doc__ else ""
     )
     parser.add_argument(
-        "--ledger", type=Path, help="markdown ledger (default: $ONEX_LEDGER_PATH)"
+        "--ledger", type=Path, required=True, help="markdown ledger (no default)"
     )
     parser.add_argument(
         "--archive-dir", type=Path, help="directory holding the archive splits"
@@ -779,9 +779,8 @@ def main(argv: list[str] | None = None) -> int:
             f"work_ledger_parity: error: --utc-day must be YYYY-MM-DD, got {args.utc_day!r}\n"
         )
         return 2
-    ledger = args.ledger or Path(os.environ["ONEX_LEDGER_PATH"])
     try:
-        file_rows = _read_ledger_files(ledger, args.archive_dir)
+        file_rows = _read_ledger_files(args.ledger, args.archive_dir)
         horizon = args.state_horizon or file_horizon(file_rows, until)
         if args.projection_json is not None:
             proj_rows, proj_state = load_projection_json(
@@ -846,7 +845,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.receipt:
         try:
             verb_diff = day_verb_diff(
-                args.verb_command, args.utc_day, file_rows, ledger
+                args.verb_command, args.utc_day, file_rows, args.ledger
             )
         except ValueError as exc:
             sys.stderr.write(f"work_ledger_parity: error: {exc}\n")

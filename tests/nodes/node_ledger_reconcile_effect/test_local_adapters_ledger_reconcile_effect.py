@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The local adapters reach the host's files, `gh`, `git` and the ledger writer the way the old tool did (OMN-20677)."""
+"""The local adapters reach the host's clones, `gh`, `git` and the work ledger over the bus (OMN-20677)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ import os
 import shlex
 import subprocess
 import sys
-import types
 from pathlib import Path
 
 import pytest
@@ -17,15 +16,16 @@ from omnibase_core.validators.no_unguarded_git_subprocess import (
     scrub_git_location_env,
 )
 
+from omnimarket.handlers.ledger_rows_unreadable_error import LedgerRowsUnreadableError
 from omnimarket.models.ledger_reconcile import ModelShaRef
 from omnimarket.nodes.node_ledger_reconcile_effect.protocols import ReconcilePortError
 from omnimarket.nodes.node_ledger_reconcile_effect.protocols import (
     local_ledger_reconcile_adapters as adapters,
 )
 from omnimarket.nodes.node_ledger_reconcile_effect.protocols.local_ledger_reconcile_adapters import (
+    BusLedgerAppender,
     GhPullRequests,
     GitCommits,
-    LedgerWriterAppender,
     LocalReconcileHost,
     SystemClock,
 )
@@ -42,7 +42,6 @@ branch_prefixes: [lane]
 def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in (
         "OMNI_HOME",
-        "ONEX_LEDGER_PATH",
         adapters.OVERLAY_ENV,
         adapters.OVERLAY_ROOTS_ENV,
         adapters.APPEND_COMMAND_ENV,
@@ -53,18 +52,24 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
 # --- prerequisites -----------------------------------------------------------
 
 
-@pytest.mark.parametrize("missing", ["OMNI_HOME", "ONEX_LEDGER_PATH"])
-def test_a_missing_required_variable_is_a_prerequisite_failure(
-    monkeypatch: pytest.MonkeyPatch, missing: str
+def test_a_missing_registry_root_is_a_prerequisite_failure(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(adapters.shutil, "which", lambda tool: "/bin/" + tool)
-    for name in ("OMNI_HOME", "ONEX_LEDGER_PATH"):
-        if name != missing:
-            monkeypatch.setenv(name, "/x")
     assert (
         LocalReconcileHost().prerequisites()
-        == f"{missing} is not set (required, no default)"
+        == "OMNI_HOME is not set (required, no default)"
     )
+
+
+def test_no_ledger_file_variable_is_required_to_reconcile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The ledger is read and written over the bus: a host with no ledger file path can reconcile."""
+    monkeypatch.setenv("OMNI_HOME", "/x")
+    monkeypatch.delenv("ONEX_LEDGER_PATH", raising=False)
+    monkeypatch.setattr(adapters.shutil, "which", lambda tool: "/bin/" + tool)
+    assert LocalReconcileHost().prerequisites() == ""
 
 
 @pytest.mark.parametrize(
@@ -78,7 +83,6 @@ def test_a_missing_tool_is_a_prerequisite_failure(
     monkeypatch: pytest.MonkeyPatch, absent: str, message: str
 ) -> None:
     monkeypatch.setenv("OMNI_HOME", "/x")
-    monkeypatch.setenv("ONEX_LEDGER_PATH", "/y")
     monkeypatch.setattr(
         adapters.shutil,
         "which",
@@ -91,7 +95,6 @@ def test_a_host_with_everything_has_no_prerequisite_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("OMNI_HOME", "/x")
-    monkeypatch.setenv("ONEX_LEDGER_PATH", "/y")
     monkeypatch.setattr(adapters.shutil, "which", lambda tool: "/bin/" + tool)
     assert LocalReconcileHost().prerequisites() == ""
 
@@ -99,33 +102,34 @@ def test_a_host_with_everything_has_no_prerequisite_failure(
 # --- ledger, archives, clones, roster -----------------------------------------
 
 
-def test_the_ledger_and_the_archives_beside_it_are_read_in_name_order(
-    tmp_path: Path,
+def test_the_ledger_rows_are_read_over_the_bus_as_one_window(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    ledger = tmp_path / "ROLLING_WORK_LEDGER.md"
-    ledger.write_text("live\n")
-    archive = tmp_path / "archive"
-    archive.mkdir()
-    (archive / "ROLLING_WORK_LEDGER_2026-09-02-split.md").write_text("second\n")
-    (archive / "ROLLING_WORK_LEDGER_2026-09-01-split.md").write_text("first\n")
-    (archive / "NOTES.md").write_text("not an archive\n")
-    live, archives = LocalReconcileHost().read_ledger(ledger)
-    assert (live.name, live.text) == ("ROLLING_WORK_LEDGER.md", "live\n")
-    assert [(a.name, a.text) for a in archives] == [
-        ("ROLLING_WORK_LEDGER_2026-09-01-split.md", "first\n"),
-        ("ROLLING_WORK_LEDGER_2026-09-02-split.md", "second\n"),
-    ]
+    """No ledger file is named: a file in the working directory is never opened."""
+    asked: list[tuple[str, int]] = []
+
+    def rows(reader: str, window_hours: int) -> tuple[str, ...]:
+        asked.append((reader, window_hours))
+        return ("row one", "row two")
+
+    monkeypatch.setattr(adapters, "read_ledger_rows_via_node", rows)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "ROLLING_WORK_LEDGER.md").write_text("never read\n")
+    live, archives = LocalReconcileHost().read_ledger()
+    assert (live.name, live.text) == ("work-ledger-rows", "row one\nrow two\n")
+    assert archives == ()
+    assert asked == [("ledger-reconcile", 720)]
 
 
-def test_a_ledger_with_no_archive_directory_reads_alone(tmp_path: Path) -> None:
-    ledger = tmp_path / "ledger.md"
-    ledger.write_text("live\n")
-    assert LocalReconcileHost().read_ledger(ledger)[1] == ()
+def test_an_unread_window_is_a_port_error_never_an_empty_ledger(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unread(reader: str, window_hours: int) -> tuple[str, ...]:
+        raise LedgerRowsUnreadableError("the rows loader exited 69")
 
-
-def test_a_missing_ledger_raises_a_port_error(tmp_path: Path) -> None:
-    with pytest.raises(ReconcilePortError, match="live ledger missing"):
-        LocalReconcileHost().read_ledger(tmp_path / "absent.md")
+    monkeypatch.setattr(adapters, "read_ledger_rows_via_node", unread)
+    with pytest.raises(ReconcilePortError, match="ledger rows unreadable over the bus"):
+        LocalReconcileHost().read_ledger()
 
 
 def test_clones_are_the_directories_that_hold_a_git_entry(tmp_path: Path) -> None:
@@ -409,89 +413,36 @@ def test_a_commit_in_no_candidate_is_not_found(registry: Path) -> None:
     assert not fact.landed
 
 
-# --- ledger writer -----------------------------------------------------------------
+# --- the bus append ------------------------------------------------------------------
 
 
 def _writer(tmp_path: Path, script: str) -> str:
-    """The command that runs ``script`` as the ledger writer (interpreted, never exec'd)."""
+    """The command that runs ``script`` as the work ledger command (interpreted, never exec'd)."""
     path = tmp_path / "writer.py"
     path.write_text(script)
     return f"{shlex.quote(sys.executable)} {shlex.quote(str(path))}"
 
 
-def test_a_row_is_appended_by_the_ledger_writer(
+def test_a_row_is_appended_over_the_bus_on_stdin_under_a_stable_request_id(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     out = tmp_path / "argv.json"
     writer = _writer(
         tmp_path,
-        f"import json, sys\nopen({str(out)!r}, 'w').write(json.dumps(sys.argv[1:]))\n",
+        "import json, sys\n"
+        f"open({str(out)!r}, 'w').write(json.dumps([sys.argv[1:], sys.stdin.read()]))\n",
     )
     monkeypatch.setenv(adapters.APPEND_COMMAND_ENV, writer)
-    error = LedgerWriterAppender().append(tmp_path / "ledger.md", "the row")
-    assert error == ""
-    assert json.loads(out.read_text()) == [
-        str(tmp_path / "ledger.md"),
-        "--append",
-        "the row",
-    ]
-
-
-def _record_backoff_sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
-    """Capture the adapter's own backoff sleeps and no other.
-
-    Patching ``time.sleep`` itself is process-wide: ``subprocess.run`` polls the
-    child with ``time.sleep`` on the main thread when the child is slow to exit,
-    so a ``0.001`` poll landed in the list on a loaded runner (Tests (Split 4/20)
-    on omnimarket#4521). The adapter module gets a stand-in ``time`` instead.
-    """
-    sleeps: list[float] = []
-    monkeypatch.setattr(adapters, "time", types.SimpleNamespace(sleep=sleeps.append))
-    return sleeps
-
-
-def test_contention_is_retried_then_given_up_with_the_attempt_count(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    writer = _writer(tmp_path, "import sys\nsys.exit(75)\n")
-    monkeypatch.setenv(adapters.APPEND_COMMAND_ENV, writer)
-    sleeps = _record_backoff_sleeps(monkeypatch)
-    error = LedgerWriterAppender().append(tmp_path / "ledger.md", "row")
-    assert error == "exit 75 (contention) after 5 attempts"
-    assert sleeps == [2.0, 4.0, 6.0, 8.0]
-
-
-def test_a_writer_slow_to_exit_adds_no_polling_sleep_to_the_backoff(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A child that closes its pipes and then lingers makes ``subprocess.run`` poll."""
-    writer = _writer(
-        tmp_path,
-        "import os, sys, time\nos.close(1)\nos.close(2)\ntime.sleep(0.05)\nsys.exit(75)\n",
-    )
-    monkeypatch.setenv(adapters.APPEND_COMMAND_ENV, writer)
-    sleeps = _record_backoff_sleeps(monkeypatch)
-    LedgerWriterAppender().append(tmp_path / "ledger.md", "row")
-    assert sleeps == [2.0, 4.0, 6.0, 8.0]
-
-
-def test_contention_that_clears_is_a_success(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    counter = tmp_path / "count"
-    writer = _writer(
-        tmp_path,
-        "import pathlib, sys\n"
-        f"p = pathlib.Path({str(counter)!r})\n"
-        "n = int(p.read_text()) + 1 if p.exists() else 1\n"
-        "p.write_text(str(n))\n"
-        "sys.exit(75 if n < 3 else 0)\n",
-    )
-    monkeypatch.setenv(adapters.APPEND_COMMAND_ENV, writer)
-    monkeypatch.setattr(adapters.time, "sleep", lambda *_args: None)
-    error = LedgerWriterAppender().append(tmp_path / "ledger.md", "row")
-    assert error == ""
-    assert counter.read_text() == "3"
+    refusal = BusLedgerAppender().append("the row")
+    assert refusal == ""
+    argv, stdin = json.loads(out.read_text())
+    assert argv[:3] == ["append", "--lane", "ledger-reconcile"]
+    first_id = argv[argv.index("--request-id") + 1]
+    assert stdin == "the row"
+    refusal = BusLedgerAppender().append("the row")
+    assert refusal == ""
+    again, _ = json.loads(out.read_text())
+    assert again[again.index("--request-id") + 1] == first_id
 
 
 def test_a_refusal_is_returned_with_its_exit_code_and_message(
@@ -502,13 +453,13 @@ def test_a_refusal_is_returned_with_its_exit_code_and_message(
         "import sys\nsys.stderr.write('row refused: bad grammar\\n')\nsys.exit(2)\n",
     )
     monkeypatch.setenv(adapters.APPEND_COMMAND_ENV, writer)
-    error = LedgerWriterAppender().append(tmp_path / "ledger.md", "row")
-    assert error == "ledger_lock exit 2: row refused: bad grammar"
+    error = BusLedgerAppender().append("row")
+    assert error == "ledger append exit 2: row refused: bad grammar\n"
 
 
 def test_a_writer_that_cannot_start_is_named(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv(adapters.APPEND_COMMAND_ENV, str(tmp_path / "no-such-writer"))
-    error = LedgerWriterAppender().append(tmp_path / "ledger.md", "row")
-    assert error.startswith("ledger writer did not run: FileNotFoundError")
+    error = BusLedgerAppender().append("row")
+    assert error.startswith("ledger append did not run")

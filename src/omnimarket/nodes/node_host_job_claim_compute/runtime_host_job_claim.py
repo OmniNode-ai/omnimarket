@@ -26,6 +26,7 @@ from omnimarket.nodes.node_host_job_claim_compute.handlers.handler_host_job_clai
 )
 from omnimarket.nodes.node_host_job_claim_compute.models import (
     ModelHostJobClaimRequest,
+    ModelHostJobClaimResult,
 )
 from omnimarket.nodes.node_host_job_claim_compute.overlay import load_overlay
 from omnimarket.nodes.node_host_job_claim_compute.protocols import (
@@ -45,17 +46,17 @@ def _find_role(overlay: ModelHostJobClaimOverlay, host: str) -> str:
     raise LookupError(host)
 
 
-def _run(
+def read_claim(
     host: str,
     correlation_id: str,
     port: ProtocolInstalledUnits | None = None,
-) -> int:
+) -> ModelHostJobClaimResult | None:
+    """The claim read of one host, or None when the overlay declares no role for it."""
     overlay = load_overlay()
     try:
         role_name = _find_role(overlay, host)
     except LookupError:
-        sys.stderr.write(f"REFUSED host {host} has no declared role\n")
-        return 2
+        return None
     baseline = next(role for role in overlay.roles if role.role == role_name)
     installed = (port or InstalledUnitsFiles()).installed(
         overlay.unit_dirs, overlay.unit_suffix
@@ -66,7 +67,18 @@ def _run(
         installed_units=installed,
         baseline=baseline,
     )
-    result = HandlerHostJobClaim().handle(request)
+    return HandlerHostJobClaim().handle(request)
+
+
+def _run(
+    host: str,
+    correlation_id: str,
+    port: ProtocolInstalledUnits | None = None,
+) -> int:
+    result = read_claim(host, correlation_id, port)
+    if result is None:
+        sys.stderr.write(f"REFUSED host {host} has no declared role\n")
+        return 2
     for finding in result.findings:
         sys.stdout.write(
             f"DRIFT {host} {finding.kind.value} {finding.job_id}:{finding.extra_unit} "
