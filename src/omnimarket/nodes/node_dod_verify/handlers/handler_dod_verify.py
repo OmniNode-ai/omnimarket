@@ -62,7 +62,7 @@ from omnimarket.nodes.node_dod_verify.services.dispatch_budget import (
     dispatch_budget,
     start_budget_s,
 )
-from omnimarket.nodes.node_dod_verify.services.local_done_gate_receipts import (
+from omnimarket.projection.local_done_gate_receipts import (
     receipt_from_results,
 )
 
