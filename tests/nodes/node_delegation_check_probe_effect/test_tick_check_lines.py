@@ -53,3 +53,19 @@ def test_a_refused_publish_is_loud_on_stderr(
     assert code == tick.EXIT_NOT_PUBLISHED
     assert "published=no" in cap.out
     assert cap.err.count("NOT PUBLISHED") == 3
+
+
+def test_contract_binds_the_probe_lines_item_to_a_declared_criterion() -> None:
+    """The hosted must-fail control keeps only bound items, so the new item binds a criterion the contract declares (OMN-26723)."""
+    import yaml
+
+    path = Path(__file__).resolve().parents[3] / "contracts" / "OMN-26723.yaml"
+    contract = yaml.safe_load(path.read_text(encoding="utf-8"))
+    declared = {
+        str(ac["id"]) for req in contract["requirements"] for ac in req["acceptance"]
+    }
+    items = {i["id"]: i for i in contract["dod_evidence"]}
+    bound = items["dod-omn26723-probe-check-lines"].get("binds_ac") or []
+    assert bound, "dod-omn26723-probe-check-lines binds no criterion"
+    assert set(bound) <= declared, (bound, declared)
+    assert not items["dod-omn26723-integration-proof"].get("binds_ac")
