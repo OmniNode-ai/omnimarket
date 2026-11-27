@@ -31,6 +31,11 @@ class ModelLaneWorkHelpMessage(BaseModel):
     requesting_lane: str = Field(..., min_length=1)
     requesting_host: str = Field(..., min_length=1)
     requested_at: datetime
+    worker_tier: str | None = None
+    no_responder: bool = Field(
+        default=False,
+        description="True when the tier is the worker's own: no tier is above it, so nothing is sent.",
+    )
 
 
 __all__: list[str] = ["ModelLaneWorkHelpMessage"]
