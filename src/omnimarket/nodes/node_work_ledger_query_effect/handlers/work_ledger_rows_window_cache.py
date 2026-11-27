@@ -122,6 +122,14 @@ class RowsWindowCache:
         self.hits = 0
         self.misses = 0
 
+    @property
+    def settings(self) -> ModelRowsWindowCacheSettings:
+        return self._settings
+
+    @property
+    def clock(self) -> Callable[[], float]:
+        return self._clock
+
     def get(self, key: tuple[object, ...]) -> WindowSnapshot | None:
         """The held snapshot for ``key``, or None when absent or expired."""
         now = self._clock()

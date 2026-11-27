@@ -40,6 +40,21 @@ def _declared_acs(document: dict[str, Any]) -> set[str]:
     return {ac["id"] for req in document["requirements"] for ac in req["acceptance"]}
 
 
+def test_criterion_ids_are_unique_and_the_item_owns_its_own() -> None:
+    document = _document()
+    ids = [ac["id"] for req in document["requirements"] for ac in req["acceptance"]]
+    own = [
+        ac["id"]
+        for req in document["requirements"]
+        if req["id"] == "req-omn25856-tenant-provision-answers"
+        for ac in req["acceptance"]
+    ]
+    assert own, "the tenant provisioning requirement declares no criterion"
+    for ac_id in own:
+        assert ids.count(ac_id) == 1, f"{ac_id} is declared more than once"
+    assert set(own) == set(_item(document).get("binds_ac", []))
+
+
 def test_item_binds_a_declared_criterion() -> None:
     document = _document()
     bound = _item(document).get("binds_ac")

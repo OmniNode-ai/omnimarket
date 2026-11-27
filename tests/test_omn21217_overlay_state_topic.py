@@ -41,6 +41,7 @@ from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant
     HandlerTenantCredentialsProjectionRunner,
 )
 from omnimarket.projection.runner import MessageMeta
+from tests.helpers.tenant_slug_mirror import mirror_fetchval
 
 pytestmark = pytest.mark.unit
 
@@ -113,6 +114,7 @@ def _state_message(row: dict[str, Any]) -> dict[str, Any]:
 @pytest.fixture
 def runner(monkeypatch: pytest.MonkeyPatch) -> HandlerTenantCredentialsProjectionRunner:
     db = AsyncMock()
+    db.fetchval = AsyncMock(side_effect=mirror_fetchval)
     db.execute = AsyncMock(return_value=[])
     r = HandlerTenantCredentialsProjectionRunner()
     r._db = db

@@ -25,6 +25,7 @@ from omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant
 )
 from omnimarket.projection.runner import MessageMeta
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
+from tests.helpers.tenant_slug_mirror import mirror_fetchval, slug_uuid
 
 TOPIC_REGISTERED = "onex.evt.omnimarket.credential-registered.v1"
 TOPIC_REVOKED = "onex.evt.omnimarket.credential-revoked.v1"
@@ -76,7 +77,7 @@ def mock_db() -> AsyncMock:
     db.execute = AsyncMock(return_value=[])
     db.execute_many = AsyncMock()
     db.execute_in_transaction = AsyncMock()
-    db.fetchval = AsyncMock(return_value=None)
+    db.fetchval = AsyncMock(side_effect=mirror_fetchval)
     db.connect = AsyncMock()
     db.close = AsyncMock()
     return db
@@ -115,7 +116,11 @@ class TestContractShape:
         # construction.
         assert (
             frozenset(
-                {"tenant_inference_credentials", "delegation_routing_tenant_overlay"}
+                {
+                    "tenant_inference_credentials",
+                    "delegation_routing_tenant_overlay",
+                    "tenant_registry_mirror",
+                }
             )
             == mod.KNOWN_PROJECTION_TABLES
         )
@@ -142,7 +147,7 @@ class TestCredentialRegistered:
         assert "ON CONFLICT (api_key_ref)" in args[0]
         assert args[1:] == (
             "cred_omninode_openrouter_abc123",
-            "omninode",
+            slug_uuid("omninode"),
             "my-openrouter-key",
             "openrouter",
             # OMN-19985: fingerprint and set_at; a hosted event sends neither.
@@ -262,7 +267,7 @@ class TestCredentialRevoked:
         assert "INSERT INTO tenant_inference_credentials" in args[0]
         assert "ON CONFLICT (api_key_ref) DO UPDATE" in args[0]
         assert "revoked_at = COALESCE(" in args[0]
-        assert args[1:] == ("cred_omninode_openrouter_abc123", "omninode")
+        assert args[1:] == ("cred_omninode_openrouter_abc123", slug_uuid("omninode"))
 
     @pytest.mark.asyncio
     async def test_revoke_of_unknown_ref_inserts_a_tombstone_row(
@@ -296,7 +301,7 @@ class TestCredentialRevoked:
         args = _credential_call(mock_db)
         assert "INSERT INTO tenant_inference_credentials" in args[0]
         assert "ON CONFLICT (api_key_ref) DO UPDATE" in args[0]
-        assert args[1:] == ("cred_never_seen", "omninode")
+        assert args[1:] == ("cred_never_seen", slug_uuid("omninode"))
 
     @pytest.mark.asyncio
     async def test_revoke_missing_ref_is_a_noop(
@@ -367,7 +372,7 @@ class TestHandleDefBEntrypoint:
         assert "INSERT INTO tenant_inference_credentials" in args[0]
         assert args[1:] == (
             "cred_omninode_openrouter_abc123",
-            "omninode",
+            slug_uuid("omninode"),
             "my-openrouter-key",
             "openrouter",
             # OMN-19985: fingerprint and set_at; a hosted event sends neither.

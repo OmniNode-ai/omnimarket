@@ -53,6 +53,10 @@ from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_query_r
     WorkLedgerReadError,
     load_work_ledger_query_source,
 )
+from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_read_cache import (
+    HeldRead,
+    ReadCache,
+)
 from omnimarket.nodes.node_work_ledger_query_effect.handlers.work_ledger_rows_bound import (
     bounded_since,
     count_bounded,
@@ -118,10 +122,16 @@ class HandlerWorkLedgerQuery:
         self._rows_window = load_rows_window(self._contract_path)
         self._rows_limit = load_rows_limit(self._contract_path)
         self._latest_page_size = load_latest_default_page_size(self._contract_path)
+        cache_settings = load_rows_window_cache_settings(self._contract_path)
         self._held_windows = (
             rows_window_cache
             if rows_window_cache is not None
-            else RowsWindowCache(load_rows_window_cache_settings(self._contract_path))
+            else RowsWindowCache(cache_settings)
+        )
+        self._held_reads = (
+            ReadCache(rows_window_cache.settings, rows_window_cache.clock)
+            if rows_window_cache is not None
+            else ReadCache(cache_settings)
         )
         self._now = now if now is not None else lambda: datetime.now(UTC)
         self._reader = (
@@ -334,9 +344,39 @@ class HandlerWorkLedgerQuery:
         until: datetime,
         effective_since: datetime | None,
     ) -> _WindowRead:
-        """One read of the window from the store: rows, freshness and the window's parity."""
-        records = self._read_rows(request, until, effective_since)
+        """One read of the window: rows, freshness and the window's parity.
+
+        The store's watermark is read first, every query. While it is unchanged, the parsed window
+        is the one held from an earlier read, cut to the asked bounds (OMN-26152); a changed
+        watermark reads and parses again. The parity receipts are read every time.
+        """
         newest_ts, newest_projected = self._reader.freshness(until=until)
+        key = self._read_key(request)
+        held = self._held_reads.get(key)
+        if held is not None and held.covers(
+            effective_since, until, newest_ts, newest_projected
+        ):
+            parsed, rows_read = held.cut(effective_since)
+            oldest_held = held.oldest_ts
+        else:
+            records = self._read_rows(request, until, effective_since)
+            parsed = replay.parse_rows(records)
+            if request.principal is not None:
+                parsed = [
+                    r for r in parsed if r.token("principal") == request.principal
+                ]
+            rows_read = len(records)
+            oldest_held = min((r.row_ts for r in records), default=None)
+            fresh = HeldRead.build(
+                since=effective_since,
+                until=until,
+                parsed=parsed,
+                record_ts=[r.row_ts for r in records],
+                newest_row_ts=newest_ts,
+                newest_projected_at=newest_projected,
+            )
+            if fresh is not None and records:
+                self._held_reads.put(key, fresh)
         first = effective_since
         if first is None:
             oldest = self._reader
@@ -344,7 +384,7 @@ class HandlerWorkLedgerQuery:
                 oldest.oldest_row_ts(until=until)
                 if isinstance(oldest, ProtocolWorkLedgerOldestRowReader)
                 and self._narrowed_without_start(request)
-                else min((r.row_ts for r in records), default=until)
+                else (oldest_held if oldest_held is not None else until)
             )
         first = first or until
         days = replay.utc_days(first, until)
@@ -359,10 +399,24 @@ class HandlerWorkLedgerQuery:
             parity = ModelWorkLedgerParity(
                 status=EnumWorkLedgerParityStatus.UNMEASURED, days=parity.days
             )
-        parsed = replay.parse_rows(records)
-        if request.principal is not None:
-            parsed = [r for r in parsed if r.token("principal") == request.principal]
-        return _WindowRead(parsed, len(records), newest_ts, newest_projected, parity)
+        return _WindowRead(parsed, rows_read, newest_ts, newest_projected, parity)
+
+    def _read_key(self, request: ModelWorkLedgerQueryRequest) -> tuple[object, ...]:
+        """What makes two whole-window reads one held read: everything that decides which rows the
+        store returns or which of them are kept, and not the window's bounds, which a hold is cut to."""
+        narrowed = request.query in {
+            EnumWorkLedgerQueryKind.ROWS,
+            EnumWorkLedgerQueryKind.RULINGS,
+        }
+        return (
+            request.query if narrowed else None,
+            request.since,
+            bounded_since(request, datetime.min, timedelta(0)) is not None,
+            request.lane if narrowed else None,
+            tuple(request.kinds) if narrowed else (),
+            request.term if narrowed else None,
+            request.principal,
+        )
 
     def _read_rows(
         self,
