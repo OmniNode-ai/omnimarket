@@ -64,6 +64,13 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.handler_delega
     HandlerDelegationCheckProbe,
     contract_topics,
 )
+from omnimarket.nodes.node_delegation_check_probe_effect.handlers.handler_regression_ticket import (
+    BusTicketWriter,
+    HandlerRegressionTicket,
+    JsonRegressionStateStore,
+    ProtocolTicketWriter,
+    failing_step_of,
+)
 from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe import (
     CheckId,
     EnumCheckVerdict,
@@ -71,6 +78,10 @@ from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation
     ModelDelegationCheckRequest,
     ModelDelegationCheckResult,
     gateway_leg_verdict,
+)
+from omnimarket.nodes.node_delegation_check_probe_effect.models.model_regression_ticket import (
+    ModelRegressionRunReading,
+    ModelRegressionTicketRequest,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.protocols.protocol_delegation_check import (
     ProtocolCheckResultPublisher,
@@ -200,6 +211,7 @@ def main(
     now: datetime | None = None,
     gateway: ProtocolGatewayClient | None = None,
     store_reader: ProtocolStoreDocumentReader | None = None,
+    ticket_writer: ProtocolTicketWriter | None = None,
 ) -> int:
     parser = argparse.ArgumentParser(prog=f"{NODE}.tick", description=__doc__)
     parser.add_argument("--omni-home", dest="registry_root", required=True, type=Path)
@@ -292,10 +304,47 @@ def main(
     finally:
         faulthandler.cancel_dump_traceback_later()
     append_history(args.state_dir / overlay.history_file, results, overlay.history_keep)
+    tickets: list[dict[str, str]] = []
+    # Only a scheduled run counts: a manual run is someone probing, not the check's own record.
+    if overlay.regression_ticket is not None and args.trigger == "schedule":
+        from omnimarket.nodes.node_create_ticket.handlers.core_ticket_guard import (
+            core_lane_intake_policy,
+        )
+
+        settings = overlay.regression_ticket
+        notice = HandlerRegressionTicket(
+            store=JsonRegressionStateStore(args.state_dir / settings.state_file),
+            writer=ticket_writer or BusTicketWriter(settings.lane),
+            parent=settings.parent,
+            stamp=f"{core_lane_intake_policy().stamp_prefix} {settings.lane}",
+            repo=settings.repo,
+        )
+        for r in results:
+            outcome = notice.handle(
+                ModelRegressionTicketRequest(
+                    reading=ModelRegressionRunReading(
+                        check_id=r.check_id,
+                        run_id=r.run_id,
+                        verdict=r.verdict,
+                        failing_step=failing_step_of(
+                            [(c.name, c.ok) for c in r.clauses], r.error
+                        ),
+                    )
+                )
+            )
+            tickets.append(
+                {
+                    "check": outcome.check_id,
+                    "action": outcome.action.value,
+                    "ticket": outcome.ticket_id,
+                    "detail": outcome.detail,
+                }
+            )
     readings = {
         "node": NODE,
         "ran_at": stamp.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "runs": [evidence_for(r) for r in results],
+        **({"regression_tickets": tickets} if tickets else {}),
     }
     _write_atomically(evidence_path, json.dumps(readings, sort_keys=True) + "\n")
     sys.stdout.write(json.dumps(readings, sort_keys=True) + "\n")
