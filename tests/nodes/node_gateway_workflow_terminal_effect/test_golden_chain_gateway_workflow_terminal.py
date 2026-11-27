@@ -389,7 +389,7 @@ def test_contract_declares_topics_and_dead_letter() -> None:
     contract = yaml.safe_load((_NODE / "contract.yaml").read_text("utf-8"))
     declared = set(contract["event_bus"]["subscribe_topics"])
     assert declared == set(_ROUTES)
-    assert len(declared) == 2
+    assert len(declared) == 3
     assert _DLQ in contract["event_bus"]["dlq_topics"]
     assert _DLQ not in contract["event_bus"]["publish_topics"]
     for module in (handler_module,):

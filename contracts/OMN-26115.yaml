@@ -91,5 +91,32 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26115 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_onex_setup_effect -q --no-cov -n 0 -p no:randomly
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --bus-lane dev --omnibase-path "${ONEX_WORKSPACE_CONFIG_ROOT:?}" --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26115 --kind test -- uv run --frozen pytest tests/nodes/node_onex_setup_effect -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26115-grpcio-lock-floor
+  description: The grpcio lock-floor test parses uv.lock and asserts grpcio is 1.84.1 or later (Safety SFTY-20261027-51483 covers >=1.84.0,<1.84.1), with planted 1.84.0 and missing-package controls; the work-contract pin test confirms every uv.lock sha256 pin names the relocked file. A lock pinning grpcio 1.84.0 fails the real-lock test; dev now locks 1.85.4. This item binds AC3, the lock criterion, because it reads uv.lock itself and runs uv lock --check, so a stale or missing lock fails it.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: uv lock --check
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_omn26115_grpcio_lock_floor.py tests/nodes/test_work_contract_pins_current.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26115-integration-proof-bus-lane
+  description: Every onex lab-work run check in this contract names a bus lane (--bus-lane), so the local Done gate runs the lab unit on a declared lane. The command fails when any lab-work check in contracts/OMN-26115.yaml carries no --bus-lane, and when the file holds no lab-work check at all. It binds AC2, the criterion the lab run proves, so hosted verification runs it and its must-fail control. The second check, no source file under src names the removed run_node_in_process, is the part of this item that fails with merged fix 0941025271b4 reverted and passes at the head; the lab run itself is dod-omn26115-integration-proof.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: command
+    check_value: python3 -I -c 'import sys; t=[l for l in open("contracts/OMN-26115.yaml") if l.split("check_value:")[-1].lstrip().startswith("env ") and " onex lab-work run " in l]; print(len(t)); sys.exit(0 if t and all("--bus-lane " in l for l in t) else 1)'
+    cwd: .
+  - check_type: command
+    check_value: sh -c '! grep -rIn --include="*.py" run_node_in_process src'
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_omn26115_bus_lane_contract.py -q --no-cov -n 0 -p no:randomly
     cwd: .

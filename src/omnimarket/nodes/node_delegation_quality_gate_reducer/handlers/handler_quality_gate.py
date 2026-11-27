@@ -115,6 +115,7 @@ from omnimarket.delegation.response_contract_conformance import (
     schema_violation_reasons as _schema_violation_reasons,
 )
 from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
+from omnimarket.handlers.named_test_outcome import check_passes_existing_tests
 from omnimarket.inference.provider_finish_reason import (
     TRUNCATED_RESPONSE_GATE_FAILURE_REASON,
     TRUNCATION_CHECK_NAME,
@@ -1981,22 +1982,6 @@ _GROUNDING_AWARE_HEURISTIC_CHECKS: dict[
 }
 
 
-def _check_passes_existing_tests(run: ModelNamedTestRun) -> str | None:
-    """Judge upstream named-test evidence without executing tests (OMN-21076)."""
-    if run.passed:
-        return None
-    if run.failed_test_ids:
-        return (
-            f"WEAK_OUTPUT: passes_existing_tests: {len(run.failed_test_ids)} of "
-            f"{len(run.test_ids)} named test(s) failed against the delegated code "
-            f"(exit {run.exit_code}): {', '.join(run.failed_test_ids)}"
-        )
-    return (
-        f"WEAK_OUTPUT: passes_existing_tests: the named test run exited "
-        f"{run.exit_code} with no passing result for: {', '.join(run.test_ids)}"
-    )
-
-
 def _evaluate_deterministic_checks(
     content: str,
     dod_deterministic: tuple[str, ...],
@@ -2057,7 +2042,7 @@ def _evaluate_deterministic_checks(
             reason = _unresolved_names_failure_reason(names_verdict.unresolved)
         elif check == "passes_existing_tests":
             if named_test_run is not None:
-                reason = _check_passes_existing_tests(named_test_run)
+                reason = check_passes_existing_tests(named_test_run)
             elif require_executed_tests:
                 reason = _NO_NAMED_TEST_RUN_REASON
             else:
