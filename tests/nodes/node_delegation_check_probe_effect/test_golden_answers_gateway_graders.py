@@ -25,6 +25,7 @@ import pytest
 from omnimarket.models.overlay_documents.model_delegation_check_responders_overlay import (
     ModelDelegationCheckResponder,
 )
+from omnimarket.nodes.node_delegation_check_probe_effect.handlers import gateway_checks
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_delegation_check import (
     AbsentCustomerMachine,
     InMemoryCheckPublisher,
@@ -56,6 +57,7 @@ ANSWERS: dict[str, Any] = json.loads(
     Path(__file__).with_name("golden_answers_gateway.json").read_text(encoding="utf-8")
 )["gateway"]
 DYING = "omn19181_not_a_task_class"
+_real_payload = gateway_checks._task_payload
 SETTINGS = GatewayRunSettings(run_budget_s=5.0, poll_interval_s=0.0)
 
 
@@ -75,6 +77,7 @@ class Replay:
 
     gateway_url = "http://gateway.test.example:4100"
     tenant_slug = "tenant-a"
+    chosen_provider: str | None = "local"
 
     def __init__(self, answers: dict[str, Any]) -> None:
         self.a = answers
@@ -342,6 +345,8 @@ def test_every_clause_of_every_grader_has_a_removal_that_fails_it_by_name(
     """A clause with no failing case is a clause that can never fail (a grader fault of the status_agrees class)."""
     covered = {clause for c, clause, _ in REMOVALS if c == check}
     covered |= {clause for c, clause, _ in DISAGREEMENTS if c == check}
+    # Graded off the request the check sent, not an answer: its removal case is test_a_request_that_names_a_model_fails_by_name.
+    covered |= {"no_model_named_in_request"}
     clauses = _clause_names(check)
     assert clauses, f"{check} graded no clause"
     assert set(clauses) - covered == set(), (
@@ -594,3 +599,18 @@ def test_a_real_run_whose_status_and_receipt_name_different_models_fails_the_agr
     reading = _run(check, _tampered(answer, "terminal_model_used", "another-model"))
     assert reading.verdict() is EnumCheckVerdict.FAIL
     assert clause in [c.name for c in reading.clauses if not c.ok]
+
+
+@pytest.mark.parametrize("check", ["C13", "C14", "C15", "C16", "C28", "C29", "C30"])
+def test_a_request_that_names_a_model_fails_by_name(
+    check: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The no-model clause reads the payload the check put on the wire: a check that pinned a model reads FAIL (OMN-26043)."""
+    monkeypatch.setattr(
+        gateway_checks,
+        "_task_payload",
+        lambda *a, **k: {**_real_payload(*a, **k), "model": "pinned"},
+    )
+    verdict, failed = _grade(check, ANSWERS)
+    assert verdict is EnumCheckVerdict.FAIL
+    assert "no_model_named_in_request" in failed

@@ -29,7 +29,7 @@ def _chain() -> tuple[ModelDelegationCheckResponder, ...]:
         ModelDelegationCheckResponder(tier="local", base_url=INKLING),
         ModelDelegationCheckResponder(tier="local", base_url=QWEN),
         ModelDelegationCheckResponder(tier="openrouter"),
-        ModelDelegationCheckResponder(tier="claude_api"),
+        ModelDelegationCheckResponder(tier="claude"),
     )
 
 
@@ -108,7 +108,7 @@ def test_a_busier_declared_first_responder_loses_to_an_idle_peer_that_reports_lo
     assert resolution.base_url == QWEN
 
 
-def test_no_usable_local_responder_advances_to_openrouter_then_claude_api() -> None:
+def test_no_usable_local_responder_advances_to_openrouter_then_claude() -> None:
     resolution = resolve_chain(_chain(), _reader({INKLING: None, QWEN: None}))
     assert resolution.tier == "openrouter"
     assert resolution.base_url is None
@@ -118,7 +118,7 @@ def test_no_usable_local_responder_advances_to_openrouter_then_claude_api() -> N
         "advanced-to-tier",
         "advanced-to-tier",
     ]
-    assert [a.tier for a in resolution.attempts][-2:] == ["openrouter", "claude_api"]
+    assert [a.tier for a in resolution.attempts][-2:] == ["openrouter", "claude"]
 
 
 def test_an_answer_with_no_served_model_is_no_model() -> None:
@@ -126,14 +126,14 @@ def test_an_answer_with_no_served_model_is_no_model() -> None:
     assert resolution.attempts[0].outcome == "no-model"
 
 
-def test_the_row_must_try_local_then_openrouter_then_claude_api() -> None:
+def test_the_row_must_try_local_then_openrouter_then_claude() -> None:
     ok = {
         "schema_version": 1,
         "responders": [
             {"tier": "local", "base_url": INKLING},
             {"tier": "local", "base_url": QWEN},
             {"tier": "openrouter"},
-            {"tier": "claude_api"},
+            {"tier": "claude"},
         ],
     }
     assert len(ModelDelegationCheckRespondersOverlay.model_validate(ok).responders) == 4
@@ -162,9 +162,9 @@ def test_a_tier_names_an_address_by_table_not_by_a_literal_comparison() -> None:
         ModelDelegationCheckResponder,
     )
 
-    assert TIER_NAMES_BASE == {"local": True, "openrouter": False, "claude_api": False}
+    assert TIER_NAMES_BASE == {"local": True, "openrouter": False, "claude": False}
     assert ModelDelegationCheckResponder(
         tier="local", base_url="http://127.0.0.11:8111"
     ).names_base
     assert not ModelDelegationCheckResponder(tier="openrouter").names_base
-    assert not ModelDelegationCheckResponder(tier="claude_api").names_base
+    assert not ModelDelegationCheckResponder(tier="claude").names_base

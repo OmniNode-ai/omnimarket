@@ -40,6 +40,9 @@ class ModelDelegationCheckGatewayOverlay(BaseModel):
     credential_kind: Literal["api_key", "jwt"]
     # The secret name of the tenant's credential in the dev secret store; with none the dev tenant node's overlay names it.
     secret_name: str | None = Field(default=None, min_length=1)
+    # The provider the tenant's own key reaches; the own-key check reads the receipt's provider against it. With none the
+    # own-key check reads PRECONDITION-ABSENT.
+    chosen_provider: Literal["local", "openrouter", "claude_api"] | None = None
 
     @field_validator("gateway_url")
     @classmethod

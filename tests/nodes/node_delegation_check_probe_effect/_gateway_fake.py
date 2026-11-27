@@ -22,6 +22,7 @@ class FakeGateway:
     def __init__(self, url: str = GATEWAY, tenant: str = TENANT) -> None:
         self.gateway_url = url
         self.tenant_slug = tenant
+        self.chosen_provider: str | None = "local"
         self.calls: list[tuple[str, str, str]] = []
         self.override: Callable[
             [str, str, str, Any], ModelGatewayObservation | None

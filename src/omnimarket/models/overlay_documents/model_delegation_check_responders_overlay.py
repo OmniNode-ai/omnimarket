@@ -3,7 +3,7 @@
 """Model the settings store validates the delegation check responder row through (OMN-26043).
 
 The row is one list: the delegation responder chain every delegation check sends its task through,
-in the order the chain tries it. Local responders come first, then OpenRouter, then the Claude API.
+in the order the chain tries it. Local responders come first, then OpenRouter, then Claude.
 A local responder is an ``http://<ipv4>:<port>`` base that serves ``/v1/models``; the two cloud
 tiers name no address, the routing contract resolves them. No value lives here.
 """
@@ -21,14 +21,14 @@ _LOCAL_BASE = re.compile(
 )
 
 #: The tiers of the chain, in the order the chain tries them.
-CHAIN_TIER_ORDER: tuple[str, ...] = ("local", "openrouter", "claude_api")
+CHAIN_TIER_ORDER: tuple[str, ...] = ("local", "openrouter", "claude")
 
 #: Whether a tier names an address of its own. A local responder does; the two cloud tiers are resolved by the routing
 #: contract. Code reads this table, never a tier name, so no route is chosen by a literal in code.
 TIER_NAMES_BASE: dict[str, bool] = {
     "local": True,
     "openrouter": False,
-    "claude_api": False,
+    "claude": False,
 }
 
 
@@ -37,7 +37,7 @@ class ModelDelegationCheckResponder(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    tier: Literal["local", "openrouter", "claude_api"]
+    tier: Literal["local", "openrouter", "claude"]
     # Required for a local responder, absent for a cloud tier.
     base_url: str | None = None
 
@@ -81,9 +81,9 @@ class ModelDelegationCheckRespondersOverlay(BaseModel):
         ranks = [CHAIN_TIER_ORDER.index(r.tier) for r in self.responders]
         if ranks != sorted(ranks):
             raise ValueError(
-                "the chain tries local responders first, then openrouter, then claude_api"
+                "the chain tries local responders first, then openrouter, then claude"
             )
-        for tier in ("openrouter", "claude_api"):
+        for tier in ("openrouter", "claude"):
             if [r.tier for r in self.responders].count(tier) > 1:
                 raise ValueError(f"the chain names {tier} at most once")
         bases = [r.base_url for r in self.responders if r.names_base]

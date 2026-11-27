@@ -17,6 +17,7 @@ import uuid
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Final
 
 import yaml
 
@@ -75,6 +76,14 @@ def _new_run_id(check_id: str, now: datetime) -> str:
     return f"{check_id.lower()}-{now.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
 
 
+#: Checks that run a delegation through the responder chain: the serving tier must be the chain's pick (OMN-26043).
+CHAIN_ROUTED_CHECKS: Final[frozenset[str]] = frozenset(
+    {"C13", "C14", "C15", "C16", "C28", "C30"}
+)
+#: Checks that run under the tenant's own key: only the provider the tenant chose may answer.
+OWN_KEY_CHECKS: Final[frozenset[str]] = frozenset({"C29"})
+
+
 class HandlerDelegationCheckProbe:
     def __init__(
         self,
@@ -103,6 +112,16 @@ class HandlerDelegationCheckProbe:
         self._sleep = sleep
         self._monotonic = monotonic
 
+    def _absent_reading(self, name: str, detail: str) -> ModelDelegationCheckReading:
+        assert self._gateway is not None
+        return ModelDelegationCheckReading(
+            endpoint=self._gateway.gateway_url,
+            tenant_slug=self._gateway.tenant_slug,
+            preconditions=(
+                ModelCheckPrecondition(name=name, present=False, detail=detail),
+            ),
+        )
+
     def _gateway_check(
         self, request: ModelDelegationCheckRequest
     ) -> ModelDelegationCheckReading:
@@ -117,6 +136,22 @@ class HandlerDelegationCheckProbe:
                     ),
                 )
             )
+        chain_tier: str | None = None
+        own_key_provider: str | None = None
+        if request.check_id in CHAIN_ROUTED_CHECKS:
+            if self._responders is None:
+                return self._absent_reading(
+                    "responders_row",
+                    "the settings store serves no delegation_check_responders row, so the tier the chain picks is unknown",
+                )
+            chain_tier = resolve_chain(self._responders, self._reader.read).tier
+        elif request.check_id in OWN_KEY_CHECKS:
+            own_key_provider = self._gateway.chosen_provider
+            if own_key_provider is None:
+                return self._absent_reading(
+                    "chosen_provider",
+                    "the delegation_check_gateway row names no chosen_provider, so which provider the tenant's own key must reach is unknown",
+                )
         try:
             return run_gateway_check(
                 request.check_id,
@@ -124,6 +159,8 @@ class HandlerDelegationCheckProbe:
                 self._gateway_settings,
                 sleep=self._sleep,
                 monotonic=self._monotonic,
+                chain_tier=chain_tier,
+                own_key_provider=own_key_provider,
             )
         except CollectorAbsentError as exc:
             # The row was read; the run keeps the address and the tenant beside the credential that is absent.
