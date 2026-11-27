@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Awaitable, Callable
 
 import pytest
 
@@ -159,11 +160,11 @@ async def _never() -> ModelTuiStatus:
 
 @pytest.mark.parametrize("reader", [_failing, _never])
 async def test_d4_a_fresh_home_never_reads_for_ever(
-    reader: object, monkeypatch: pytest.MonkeyPatch
+    reader: Callable[[], Awaitable[ModelTuiStatus]], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(cli_tui, "_status_timeout", lambda: 0.05)
     design = tui_design()
-    app = OnexTui(root=_root, runner=_Runner([]), load_status=reader)  # type: ignore[arg-type]
+    app = OnexTui(root=_root, runner=_Runner([]), load_status=reader)
     async with app.run_test() as pilot:
         await asyncio.sleep(0.3)
         await sup.settle(pilot)
