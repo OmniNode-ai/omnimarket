@@ -224,3 +224,36 @@ def test_a_store_that_refuses_the_read_exits_as_unmeasured_never_as_a_failed_che
     assert "PERMISSION_DENIED" in evidence["error"]
     assert code == tick.EXIT_OVERLAY
     assert code not in (0, tick.EXIT_FAILED)
+
+
+def test_evidence_keeps_the_detail_of_every_failed_clause() -> None:
+    """A red run's evidence names why each clause failed, so a FAIL is readable without rerunning the check."""
+    from datetime import UTC, datetime
+
+    from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe import (
+        EnumCheckVerdict,
+        ModelCheckClause,
+        ModelDelegationCheckResult,
+    )
+
+    now = datetime(2026, 11, 27, 12, 27, 53, tzinfo=UTC)
+    why = "the instrument saw no connect to the responder, or its token counter did not move"
+    result = ModelDelegationCheckResult(
+        correlation_id="corr-1",
+        check_id="C13",
+        run_id="c13-20261127T122753Z-cd03e0ef",
+        created_at=now,
+        finished_at=now,
+        event="schedule",
+        status="completed",
+        conclusion="failure",
+        verdict=EnumCheckVerdict.FAIL,
+        cause_class="product",
+        clauses=(
+            ModelCheckClause(name="no_checkout", ok=True, detail="fine"),
+            ModelCheckClause(name="zero_provider", ok=False, detail=why),
+        ),
+    )
+    evidence = tick.evidence_for(result)
+    assert evidence["failed_clauses"] == ["zero_provider"]
+    assert evidence["failed_clause_details"] == {"zero_provider": why}

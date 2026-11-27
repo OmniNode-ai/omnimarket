@@ -43,7 +43,6 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.grade_delegati
     grade_chain_tier_order,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe import (
-    CAUSE_LAB_MODEL,
     CAUSE_PRODUCT,
     EnumCheckVerdict,
     ModelChainSource,
@@ -286,6 +285,10 @@ class HandlerDelegationCheckProbe:
                 "clauses": (*reading.clauses, *leg.clauses),
                 "preconditions": (*reading.preconditions, *leg.preconditions),
                 "not_measured": reading.not_measured or leg.not_measured,
+                # A machine reading that was not measured keeps its own cause; else the gateway leg's.
+                "not_measured_cause": reading.not_measured_cause
+                if reading.not_measured
+                else leg.not_measured_cause,
                 "endpoint": leg.endpoint,
                 "tenant_slug": leg.tenant_slug,
             }
@@ -341,7 +344,7 @@ class HandlerDelegationCheckProbe:
             error = "no clause was graded and nothing was absent"
         cause = {
             EnumCheckVerdict.FAIL: CAUSE_PRODUCT,
-            EnumCheckVerdict.NOT_MEASURED: CAUSE_LAB_MODEL,
+            EnumCheckVerdict.NOT_MEASURED: reading.not_measured_cause,
         }.get(verdict)
         result = ModelDelegationCheckResult(
             correlation_id=request.correlation_id,

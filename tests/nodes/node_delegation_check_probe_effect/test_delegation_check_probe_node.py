@@ -50,6 +50,9 @@ from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation
     ModelRoutingCollection,
     ModelSurfaceObservation,
 )
+from omnimarket.nodes.node_delegation_check_probe_effect.models.model_gateway_check import (
+    ModelGatewayObservation,
+)
 from omnimarket.nodes.node_delegation_check_probe_effect.protocols.protocol_delegation_check import (
     ProtocolCustomerMachine,
 )
@@ -230,6 +233,33 @@ def test_c17_reads_pass_when_the_broken_entry_point_is_planted_with_the_operator
 
 
 # ----- errors ------------------------------------------------------------------------------------------------------
+
+
+def test_a_gateway_submit_timeout_is_cause_gateway_in_the_run_record() -> None:
+    """The 15:13Z C28 run read lab-model when the dev gateway's POST /v1/workflows timed out."""
+    pub = InMemoryCheckPublisher()
+    gateway = FakeGateway()
+    gateway.override = lambda m, p, _a, _b: (
+        ModelGatewayObservation(status=None, error="TimeoutError")
+        if (m, p) == ("POST", "/v1/workflows")
+        else None
+    )
+    h = HandlerDelegationCheckProbe(
+        responders=RESPONDERS,
+        reader=InMemoryResponderReader(READINGS),
+        machine=InMemoryCustomerMachine(),
+        publisher=pub,
+        topic=contract_topics()[0],
+        clock=_clock,
+        gateway=gateway,
+        gateway_settings=GatewayRunSettings(run_budget_s=5.0, poll_interval_s=0.0),
+        sleep=_GATEWAY_CLOCK.sleep,
+        monotonic=_GATEWAY_CLOCK.monotonic,
+    )
+    result = h.handle(request("C28"))
+    assert result.verdict is EnumCheckVerdict.NOT_MEASURED
+    assert result.cause_class == "gateway"
+    assert pub.events[0]["payload"]["cause_class"] == "gateway"
 
 
 def test_a_chain_with_no_local_responder_is_not_measured_and_sends_nothing() -> None:

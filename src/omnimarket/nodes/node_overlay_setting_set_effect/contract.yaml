@@ -5,13 +5,16 @@
 # initialized it goes to no file for its settings): a setting changes in the store. This node sets one declared key
 # of one overlay in the store and leaves one audit row. node_overlay_store_load_effect publishes the overlay home's
 # version, node_projection_overlay_store stores every version; this node publishes a version of its own on the same topic.
+# OMN-26635: the write names a write id, the revision it was built on and its audit row; the projection applies it on that
+# revision only, in one transaction with the audit row, publishes the audit row from the table and answers on the reply topic.
 name: overlay_setting_set_effect
 lifecycle: experimental
 node_type: effect
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
-description: Sets one declared key of one overlay in the settings store, refusing an undeclared key, and publishes one audit row naming who set it with the previous and the new value.
-output_model: omnimarket.nodes.node_overlay_setting_set_effect.models.model_overlay_setting_set_result.ModelOverlaySettingSetResult
+description: Sets one declared key of one overlay in the settings store, refusing an undeclared key, and waits for the store's reply to its write; the store leaves one audit row naming who set it with the previous and the new value.
+# What the node puts on the bus is the write; the handler's own output_model below is the result the command returns.
+output_model: omnimarket.models.overlay_store.ModelOverlayStoreWrite
 handler:
   module: omnimarket.nodes.node_overlay_setting_set_effect.handlers.handler_overlay_setting_set
   class: HandlerOverlaySettingSet
@@ -21,33 +24,38 @@ descriptor:
   node_archetype: effect
   purity: impure
   idempotent: true
-  side_effects: [bus-publish]
+  side_effects: [bus-publish, bus-subscribe]
   timeout_ms: 120000
   runtime_profiles: [effects]
 runtime_dispatch:
-  external_trigger: "python -m omnimarket.nodes.node_overlay_setting_set_effect --overlay <id> --key <declared key> --value-json <json> --actor <who>, which reads the live record from the snapshot topic and publishes the record and the audit row"
+  external_trigger: "python -m omnimarket.nodes.node_overlay_setting_set_effect --overlay <id> --key <declared key> --value-json <json> --actor <who>, which reads the live record from the snapshot topic, publishes the write and waits for the store's reply to it"
   # A setting changes when a person or a lane sets it, never on a timer: the command below is the whole trigger.
   on_demand:
     command: uv run python -m omnimarket.nodes.node_overlay_setting_set_effect --overlay <id> --key <declared key> --value-json <json> --actor <who>
     owner: OmniNode Platform Team
 event_bus:
+  # The store's answer to the write, committed or conflict, under the write id, is read by the command itself on its own
+  # consumer (the READ grants below), as it reads the snapshot topic; no dispatcher handles it, so it is not subscribed here.
   subscribe_topics: []
   publish_topics:
-    # The record: node_projection_overlay_store stores it as the overlay's current version.
+    # The write: node_projection_overlay_store stores it as the overlay's current version, with its audit row, when the
+    # revision it names is the current one.
     - onex.evt.omnimarket.overlay-store-loaded.v1
-    # The audit row: who set which key, the previous value and the new value.
-    - onex.evt.omnimarket.overlay-setting-set.v1
-# OMN-18013 sink declaration: no node contract subscribes to the audit row; it is read from the topic by operators and audit tooling.
+# OMN-18013 sink declaration: no node contract subscribes to the audit row, which node_projection_overlay_store publishes
+# from the table row of the committed write; it is read from the topic by operators and audit tooling.
 externally_consumed_topics:
   - onex.evt.omnimarket.overlay-setting-set.v1
-# The set runs under the same host login as the loader (the overlay scope broker_acl_principals), and writes the two topics it publishes.
+# The set runs under the same host login as the loader (the overlay scope broker_acl_principals), writes the topic it publishes and
+# reads the reply topic and the snapshot topic.
 broker_acl_grants:
   - principal: "${ONEX_ACL_HOST_RECONCILER_PRINCIPAL}"
     grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-store-loaded.v1, operation: WRITE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-store-loaded.v1, operation: DESCRIBE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-setting-set.v1, operation: WRITE}
-      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-setting-set.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-store-write-reply.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-store-write-reply.v1, operation: DESCRIBE}
+      - {resource_type: GROUP, pattern: PREFIXED, name: node_overlay_setting_set_effect.reply, operation: READ}
+      - {resource_type: GROUP, pattern: PREFIXED, name: node_overlay_setting_set_effect.reply, operation: DESCRIBE}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.overlay-store.v1, operation: READ}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.overlay-store.v1, operation: DESCRIBE}
       - {resource_type: GROUP, pattern: PREFIXED, name: node_overlay_setting_set_effect.live, operation: READ}
@@ -149,9 +157,17 @@ config:
   # How long the command listens on the snapshot topic for the live record.
   read_window_s: 30
   group_prefix: node_overlay_setting_set_effect.live
+  # The store's reply to a write is waited for this long; with none, the same write id is published again (the store applies it once).
+  reply_timeout_s: 30
+  reply_group_prefix: node_overlay_setting_set_effect.reply
+  # A write built on a revision another set had replaced is built again on what the store then holds, up to this many attempts.
+  max_attempts: 5
 snapshot_read:
   # onex-topic-allow: a projection snapshot topic has the projection's own name form.
   topic: onex.snapshot.projection.overlay-store.v1
+# The store's answer to a write, read by the command's own consumer under the READ grants above.
+reply_read:
+  topic: onex.evt.omnimarket.overlay-store-write-reply.v1
 overlay:
   node: node_overlay_store_load_effect
   roots_env: ONEX_SKILL_OVERLAY_ROOTS
