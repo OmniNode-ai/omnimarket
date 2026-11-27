@@ -58,9 +58,8 @@ dod_evidence:
       AC2: the aws-dev/node_workflow_gateway_effect/overlay.yaml document in the settings repository validates against
       ModelWorkflowGatewayOverlay with issuer https://dev.auth.omninode.ai/realms/omninode and audience onex-api, and a copy
       with the audience emptied and the issuer removed is refused. Reads the settings repository clone, which hosted CI does
-      not hold, so only the local Done gate runs it.
+      not hold, so only the local Done gate runs it. It binds no criterion itself, because the hosted control cannot run a local_done_gate item; the hosted-runnable item below binds AC2.
     source: "manual"
-    binds_ac: ["AC2"]
     execution_scope: "local_done_gate"
     checks:
       - check_type: "command"
