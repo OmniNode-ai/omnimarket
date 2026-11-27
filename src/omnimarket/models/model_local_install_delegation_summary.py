@@ -15,6 +15,7 @@ The store's migration runner (SqliteDatabaseAdapter) records and runs the steps.
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Callable, Iterator
 from importlib.resources import files
 
 _PACKAGE = "omnimarket.nodes.node_projection_delegation"
@@ -149,3 +150,19 @@ DELEGATION_QUALITY_WEEKLY_COLUMNS = frozenset(
         "task_type",
     }
 )
+
+
+def view_replace_steps(
+    existing_columns: Callable[[sqlite3.Connection, str], set[str]],
+    conn: sqlite3.Connection,
+) -> Iterator[tuple[str, tuple[str, str], str]]:
+    """
+    Yields view replace steps, skipping the weekly quality step unless the delegation_events table has all required columns.
+    Reads the existing columns at most once, only when the weekly quality step is reached.
+    """
+    for step, relation, done in DELEGATION_VIEW_REPLACE_STEPS:
+        if step == DELEGATION_QUALITY_WEEKLY_STEP:
+            columns = existing_columns(conn, "delegation_events")
+            if not DELEGATION_QUALITY_WEEKLY_COLUMNS.issubset(columns):
+                continue
+        yield step, relation, done

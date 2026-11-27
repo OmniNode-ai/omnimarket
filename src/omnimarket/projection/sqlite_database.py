@@ -47,11 +47,9 @@ from omnimarket.models.model_local_install_delegation_savings import (
     create_delegation_savings_view,
 )
 from omnimarket.models.model_local_install_delegation_summary import (
-    DELEGATION_QUALITY_WEEKLY_COLUMNS,
-    DELEGATION_QUALITY_WEEKLY_STEP,
     DELEGATION_SUMMARY_VIEW_STEPS,
-    DELEGATION_VIEW_REPLACE_STEPS,
     create_delegation_summary_view,
+    view_replace_steps,
 )
 from omnimarket.models.model_local_install_schema import (
     _CURSOR_TABLE_STEPS,
@@ -865,14 +863,7 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
                         done,
                     )
                 )
-        for step, relation, done in DELEGATION_VIEW_REPLACE_STEPS:
-            # OMN-26623: wait for all six delegation_events columns before creating the view
-            if (
-                step == DELEGATION_QUALITY_WEEKLY_STEP
-                and not cls._existing_columns(conn, "delegation_events")
-                >= DELEGATION_QUALITY_WEEKLY_COLUMNS
-            ):
-                continue
+        for step, relation, done in view_replace_steps(cls._existing_columns, conn):
             if not cls._store_step_recorded(conn, step):
                 replace = partial(cls._replace_delegation_view, relation=relation)
                 pending.append((step, replace, done))
