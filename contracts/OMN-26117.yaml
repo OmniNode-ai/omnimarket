@@ -77,6 +77,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_c11_credential_from_store.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26117-c11-refused-store-not-measured
+  description: A settings store that refuses the read (the dev broker's ONEX_CORE_025_PERMISSION_DENIED on the overlay-store topic) is recorded as overlay_unreadable and the tick exits with the unavailable code, never the failed-check code. The test failed against the merge base with the uncaught ModelOnexError and passes on the tick that catches it, so a missing dev grant is never graded as a product regression.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_tick_single_check.py -q --no-cov -n 0 -p no:randomly -k refuses_the_read
+    cwd: .
 - id: dod-omn26117-c11-integration-proof
   description: On a lab host, with the branch checked out at its pushed sha, the C11 credential tests run the real caller and the real tenant credential reader against a local gateway that accepts one key. The store's key grades every clause PASS; another key, a store holding nothing and a store that does not answer each fail as named. Hosted CI holds no lab host, so only the local Done gate runs this unbound check (the lab reading is in the PR's Lab comment).
   source: manual

@@ -15,6 +15,8 @@ from pathlib import Path
 import pytest
 import yaml
 from _gateway_fake import FakeGateway
+from omnibase_core.enums.enum_core_error_code import EnumCoreErrorCode
+from omnibase_core.errors.model_onex_error import ModelOnexError
 
 from omnimarket.nodes.node_delegation_check_probe_effect import (
     runtime_delegation_check_probe_tick as tick,
@@ -159,3 +161,66 @@ def test_a_customer_local_runs_history_line_carries_its_gateway_leg_verdict(
     # The leg is the gateway clauses alone: the machine side reads NOT_MEASURED here, the gateway leg was graded on its own.
     assert lines[0]["verdict"] == "NOT_MEASURED"
     assert lines[0]["gateway_leg"] in ("pass", "fail")
+
+
+def test_c11_with_no_gateway_row_reads_precondition_absent_and_exits_not_measured(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-26117: a dev host whose settings store serves no gateway row (the broker refused the overlay topic) could not
+    measure C11; the run names the absent gateway_row and the unit exits not-measured, never as a failed check."""
+    for key, value in _overlays(tmp_path, ["C11"]).items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
+    pub = InMemoryCheckPublisher()
+    code = tick.main(
+        [
+            "--omni-home",
+            str(tmp_path),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--check",
+            "C11",
+        ],
+        publisher=pub,
+    )
+    payload = pub.events[0]["payload"]
+    assert payload["criterion"] == "C11"
+    assert payload["verdict"] == "PRECONDITION-ABSENT"
+    assert "gateway_row" in json.dumps(payload)
+    assert code == tick.EXIT_NOT_MEASURED
+    assert code not in (0, tick.EXIT_FAILED)
+
+
+def test_a_store_that_refuses_the_read_exits_as_unmeasured_never_as_a_failed_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-26117: the dev broker refused the overlay-store topic (ONEX_CORE_025_PERMISSION_DENIED). The refusal is the
+    host's, not the product's, so the tick records it and exits with the unavailable code; an uncaught raise exited 1,
+    which the executor reads as a regression of the check."""
+    for key, value in _overlays(tmp_path, ["C11"]).items():
+        monkeypatch.setenv(key, value)
+
+    def refused(overlay_id: str) -> dict[str, object] | None:
+        raise ModelOnexError(
+            message=f"broker refused the read of {overlay_id}",
+            error_code=EnumCoreErrorCode.PERMISSION_DENIED,
+        )
+
+    pub = InMemoryCheckPublisher()
+    code = tick.main(
+        [
+            "--omni-home",
+            str(tmp_path),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--check",
+            "C11",
+        ],
+        publisher=pub,
+        store_reader=refused,
+    )
+    evidence = json.loads((tmp_path / "state" / tick.EVIDENCE_FILE).read_text())
+    assert evidence["status"] == "overlay_unreadable"
+    assert "PERMISSION_DENIED" in evidence["error"]
+    assert code == tick.EXIT_OVERLAY
+    assert code not in (0, tick.EXIT_FAILED)
