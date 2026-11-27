@@ -256,7 +256,7 @@ async def test_the_fill_runs_under_the_writer_role(store) -> None:
 
 
 async def test_unpriced_run_with_a_priced_saving_counts_in_both(store) -> None:
-    """Independent review of omnimarket#6629 (OMN-26444), defect 2: a run whose model has no named price but whose session has a priced savings_estimates row. The view's NOT savings_priced clause and the refresh must agree on it."""
+    """Independent review of omnimarket#6629 (OMN-26444), defect 2: a run whose model has no named price but whose session has a priced savings_estimates row. The view and the refresh must both count it (the view no longer excludes a run that has a saving)."""
     tenant = uuid.uuid4()
     run = uuid.uuid4()
     await _run(store, run, tenant, model=UNLISTED, cost=Decimal("0"))

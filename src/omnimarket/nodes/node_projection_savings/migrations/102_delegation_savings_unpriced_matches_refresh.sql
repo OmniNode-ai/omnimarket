@@ -9,6 +9,8 @@
 -- (handler_metering_summary_store_refresh.py) counts unknown spend only for runs
 -- whose data_source is not fixture or experiment, that were not returned to the
 -- caller, that recorded tokens, and whose cost has no named price (priced_spend).
+-- A run whose session also has a priced savings_estimates row is still unpriced by that
+-- rule, as it is for the refresh, so the count no longer excludes it (101 did).
 -- This revision changes only that flag. Every served column keeps its name, type
 -- and position; the flag stays inside the one combined_sessions pass (OMN-22675).
 --
@@ -214,8 +216,7 @@ combined_sessions AS (
         ) AS created_at,
         event_sessions.prompt_text,
         event_sessions.response_text,
-        event_sessions.unpriced_run,
-        savings_sessions.local_cost_usd IS NOT NULL AS savings_priced
+        event_sessions.unpriced_run
     FROM event_sessions
     LEFT JOIN savings_sessions
       ON savings_sessions.session_id = event_sessions.session_id
@@ -223,8 +224,7 @@ combined_sessions AS (
     UNION ALL
     SELECT
         savings_sessions.*,
-        FALSE AS unpriced_run,
-        FALSE AS savings_priced
+        FALSE AS unpriced_run
     FROM savings_sessions
     WHERE NOT EXISTS (
         SELECT 1
@@ -281,9 +281,7 @@ totals AS (
         COUNT(*) FILTER (WHERE usage_source = 'unknown')::int
             AS unknown_run_count,
         MAX(created_at) AS latest_projection_updated_at,
-        COUNT(*) FILTER (
-            WHERE unpriced_run AND NOT savings_priced
-        )::int AS unpriced_call_count
+        COUNT(*) FILTER (WHERE unpriced_run)::int AS unpriced_call_count
     FROM combined_sessions
     GROUP BY tenant_id
 ),
