@@ -517,3 +517,48 @@ def test_the_claims_read_names_the_lanes_the_last_hour_holds_and_no_other(
     assert "quiet-0100" not in named
     assert {"cause-core-0010", LANE} <= set(named)
     assert len(named) == len(set(named)) == HOUR_LANES + 2
+
+
+class LaneRecordingReader:
+    """Answers the one hour read with the rows given and records the lanes the claims read names."""
+
+    def __init__(self, hour_rows: tuple[str, ...], named: list[Sequence[str]]) -> None:
+        self.hour_rows = hour_rows
+        self.named = named
+
+    def rows(
+        self,
+        *,
+        reader: str,
+        window_hours: int,
+        kinds: Sequence[str] = (),
+        lanes: Sequence[str] = (),
+    ) -> tuple[str, ...]:
+        if not kinds:
+            return self.hour_rows
+        self.named.append(tuple(lanes))
+        return ()
+
+
+def test_a_heartbeat_row_whose_lane_is_no_lane_token_is_not_asked_for_in_the_claims_read() -> (
+    None
+):
+    """OMN-24562: from 2026-11-26T21:20Z a hook's FRICTION row named ``wt:<repo>/<worktree>`` as its lane.
+
+    The work-ledger query refuses a request whose ``lanes`` hold anything that is not a lane token (envelope validation:
+    ``lanes.N: String should match pattern``), so one such row in the last hour made every claims read exit 69 and every
+    ``onex scm pr-create`` refuse ``unchecked``. A cell that is no lane token cannot be the lane of a CLAIM (the ledger grammar's
+    lane is that token), so it is left out of the lane list; the real lanes are still asked for, and a read that fails still
+    refuses.
+    """
+    named: list[Sequence[str]] = []
+    odd = "2026-11-26T21:20:36Z | FRICTION | lane=wt:macleak/some-repo | actor=hook | class=refusal"
+    mine = _row(5, "STATUS", LANE, "working")
+
+    text = read_claims_text(
+        lambda _wait: LaneRecordingReader((odd, mine), named), stub_config()
+    )
+
+    assert named == [(LANE,)], named
+    assert odd in text
+    assert mine in text
