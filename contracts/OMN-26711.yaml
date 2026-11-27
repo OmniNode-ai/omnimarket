@@ -90,7 +90,7 @@ dod_evidence:
     binds_ac: ["AC3"]
     checks:
       - check_type: "test_passes"
-        check_value: "uv run pytest tests/nodes/node_cloud_smoke_check_effect/test_no_literals.py -q --no-cov -n 0 -p no:randomly -k customer_path_container_test_effect"
+        check_value: "uv run pytest tests/nodes/node_customer_path_container_test_effect/test_no_literals.py -q --no-cov -n 0 -p no:randomly"
         cwd: "."
   - id: "dod-omn26711-integration-proof"
     description: >-
