@@ -221,3 +221,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/delegation/test_verifiable_path_rule_enforcement_omn25856.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn25856-lab-item-bus-lane
+  description: The lab-work integration-proof items of OMN-26726 and OMN-25827 each name --bus-lane dev, so the local Done gate no longer reads the missing-broker refusal as a failed item; the test fails on the contracts at dev before this change.
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/contracts/test_omn25856_lab_item_bus_lane.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
