@@ -10,6 +10,10 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
+    tui_design,
+)
+
 _LOG_NAME = "omnimarket.nodes.node_onex_setup_effect.metering_page"
 
 
@@ -19,32 +23,9 @@ def _log() -> Any:
     return logging.getLogger(_LOG_NAME)
 
 
-def _design() -> Any:
-    try:
-        from .models.model_tui_design import tui_design
-
-        return tui_design()
-    except Exception:
-        return None
-
-
-def _page() -> Any:
-    design = _design()
-    return getattr(design, "metering_page", None) if design is not None else None
-
-
-def _g(key: str, default: str) -> str:
-    page = _page()
-    if page is None:
-        return default
-    value = getattr(page, key, None)
-    if isinstance(value, str) and value:
-        return value
-    if isinstance(page, Mapping):
-        value = page.get(key)
-        if isinstance(value, str) and value:
-            return value
-    return default
+def _g(key: str) -> str:
+    """One of the page's words from tui_design.yaml (AC8: none is written here)."""
+    return str(getattr(tui_design().metering_page, key))
 
 
 def _coerce(payload: Any) -> Mapping[str, Any] | None:
@@ -159,7 +140,7 @@ def parse_metering(payload: Any) -> MeteringSummary | None:
     if report is None:
         return None
     summary = _summary_mapping(report)
-    unmeasured = _g("unmeasured", "not measured")
+    unmeasured = _g("unmeasured")
     try:
         tokens_total = int(
             report.get("tokens_in", summary.get("tokens_in", 0)) or 0
@@ -209,19 +190,19 @@ def render_metering_page(
     if report is None:
         from .plain_messages import plain_message
 
-        title = _g("title", "Usage and cost")
+        title = _g("title")
         sentence = plain_message(
             raw, what="read your usage", next_step="Run /metering."
         )
         return [f"{title}  {sentence}"]
 
     summary = _summary_mapping(report)
-    unmeasured = _g("unmeasured", "not measured")
-    title = _g("title", "Usage and cost")
+    unmeasured = _g("unmeasured")
+    title = _g("title")
     period = _period(report, summary)
     # Fall back if format fails.
     try:
-        period_text = _g("period", "{period}").format(period=period)
+        period_text = _g("period").format(period=period)
     except (KeyError, ValueError, IndexError):
         period_text = period
 
@@ -236,22 +217,22 @@ def render_metering_page(
     saved_amount = _money(
         report.get("savings_usd", summary.get("savings_usd")), unmeasured
     )
-    saved_text = _g("saved", "Saved ≈ {amount} (modelled)").format(amount=saved_amount)
+    saved_text = _g("saved").format(amount=saved_amount)
 
     gap = max(1, width - len(title) - len(period_text))
     lines: list[str] = [title + (" " * gap) + period_text]
-    task_label = _g("tasks", "Tasks")
-    token_label = _g("tokens", "Tokens")
-    cost_label = _g("cost", "Cost")
+    task_label = _g("tasks")
+    token_label = _g("tokens")
+    cost_label = _g("cost")
     lines.append(
         f"{task_label} {tasks}    {token_label} {_compact_tokens(tokens_total)}    "
         f"{cost_label} {cost}    {saved_text}"
     )
     lines.append("")
-    model_h = "Model"
-    task_h = _g("tasks", "Tasks")
-    token_h = _g("tokens", "Tokens")
-    cost_h = _g("cost", "Cost")
+    model_h = _g("model")
+    task_h = _g("tasks")
+    token_h = _g("tokens")
+    cost_h = _g("cost")
     name_w = 30
     lines.append(
         f"  {model_h:<{name_w}} {task_h:>6} {token_h:>8} {cost_h:>12}".rstrip()
@@ -269,12 +250,14 @@ def render_metering_page(
             row.get("tokens_out", 0) or 0
         )
         row_cost = _money(row.get("spend_usd", row.get("cost")), unmeasured)
+        if len(name) > name_w:
+            name = name[: name_w - 1] + _g("ellipsis")
         lines.append(
-            f"  {(name if len(name) <= name_w else name[: name_w - 1] + '…'):<{name_w}} "
+            f"  {name:<{name_w}} "
             f"{row_tasks:>6} {_compact_tokens(row_tokens):>8} {row_cost:>12}".rstrip()
         )
     lines.append("")
-    lines.append(_g("savings_line", "Savings are modelled, not billed."))
+    lines.append(_g("savings_line"))
     return lines
 
 

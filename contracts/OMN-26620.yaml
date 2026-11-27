@@ -60,7 +60,7 @@ dod_evidence:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_footer.py::test_footer_all_keys_at_140 tests/unit/nodes/node_onex_setup_effect/test_footer.py::test_footer_no_wrap_at_80 -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_footer.py::test_footer_all_keys_at_140 tests/unit/nodes/node_onex_setup_effect/test_footer.py::test_footer_no_wrap_when_narrow -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26620-ac5
   description: 'AC5: /theme applies the chosen theme and it is restored on restart.'

@@ -50,6 +50,7 @@ async def test_theme_restored_on_restart() -> None:
     store = getattr(cli_tui, "ThemeStore", None)
     assert store is not None, "AC5: no persisted theme store"
     assert store.save("onex-light") is True
+    assert store._path.read_text() == "onex-light"  # the next start reads the file
     app = cli_tui.OnexTui()
     async with app.run_test() as pilot:
         await pilot.pause()

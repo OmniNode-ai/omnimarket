@@ -15,33 +15,19 @@ import textwrap
 from collections.abc import Mapping
 from typing import Any
 
-
-def _design() -> Any:
-    try:
-        from .models.model_tui_design import tui_design
-
-        return tui_design()
-    except Exception:
-        return None
+from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
+    ModelTuiDoctorPage,
+    tui_design,
+)
 
 
-def _page() -> Any:
-    design = _design()
-    return getattr(design, "doctor_page", None) if design is not None else None
+def _page() -> ModelTuiDoctorPage:
+    return tui_design().doctor_page
 
 
-def _g(key: str, default: str) -> str:
-    page = _page()
-    if page is None:
-        return default
-    value = getattr(page, key, None)
-    if isinstance(value, str) and value:
-        return value
-    if isinstance(page, Mapping):
-        value = page.get(key)
-        if isinstance(value, str) and value:
-            return value
-    return default
+def _g(key: str) -> str:
+    """One of the page's words from tui_design.yaml (AC8: none is written here)."""
+    return str(getattr(_page(), key))
 
 
 def _coerce(payload: Any) -> Mapping[str, Any] | None:
@@ -85,10 +71,10 @@ def _safe_sentence(message: Any, status: str) -> str:
         or ("skipped" in lowered and "_" in text)
     )
     if status == "healthy":
-        return text or "ok"
+        return text or _g("said_ok")
     if unsafe or not text:
         # the row's mark already says needs attention; do not say it twice
-        return "" if status in ("unhealthy", "degraded") else "not set up"
+        return "" if status in ("unhealthy", "degraded") else _g("said_not_set_up")
     return text
 
 
@@ -130,11 +116,7 @@ def _missing(message: Any) -> str | None:
     ]
     if not names:
         return None
-    template = _g("missing", "Not set: {names}.")
-    try:
-        return template.format(names=", ".join(names))
-    except (KeyError, ValueError, IndexError):
-        return f"Not set: {', '.join(names)}."
+    return _g("missing").format(names=", ".join(names))
 
 
 def _sentence(message: Any, status: str, *, has_fix: bool = False) -> str:
@@ -148,7 +130,7 @@ def _sentence(message: Any, status: str, *, has_fix: bool = False) -> str:
         or _safe_sentence(message, status)
     )
     if not said and not has_fix and status in ("unhealthy", "degraded"):
-        return _g("fallback", "Run onex doctor in a terminal for the details.")
+        return _g("fallback")
     return said
 
 
@@ -159,12 +141,7 @@ def _mark_for(status: str) -> str:
         "degraded": "status_attention",
         "unknown": "status_skipped",
     }.get(status, "status_skipped")
-    defaults = {
-        "status_ok": "✓ ok",
-        "status_attention": "! needs attention",
-        "status_skipped": "\u2013 optional/skipped",
-    }
-    return _g(key, defaults[key])
+    return _g(key)
 
 
 def render_doctor_page(
@@ -178,7 +155,7 @@ def render_doctor_page(
     report = _coerce(payload if payload is not None else text)
     from .plain_messages import plain_message
 
-    title = _g("title", "Setup check")
+    title = _g("title")
     if report is None:
         sentence = plain_message(raw, what="read your setup", next_step="Run /doctor.")
         return [f"{title}  {sentence}"]
@@ -196,26 +173,14 @@ def render_doctor_page(
     except (TypeError, ValueError):
         failed = 0
 
-    if failed == 0 and total:
-        template = _g("summary_all_good", "✓ all good · {passed} of {total}")
-        try:
-            summary = template.format(passed=passed, total=total, problems=failed)
-        except (KeyError, ValueError, IndexError):
-            summary = f"✓ all good · {passed} of {total}"
-    else:
-        template = _g(
-            "summary_attention", "{problems} need attention · {passed} of {total}"
-        )
-        try:
-            summary = template.format(passed=passed, total=total, problems=failed)
-        except (KeyError, ValueError, IndexError):
-            summary = f"{failed} need attention · {passed} of {total}"
+    template = _g("summary_all_good" if failed == 0 and total else "summary_attention")
+    summary = template.format(passed=passed, total=total, problems=failed)
 
     # Pad title and summary apart like the mockup.
     gap = max(1, width - len(title) - len(summary))
     lines: list[str] = [title + (" " * gap) + summary]
 
-    fix_prefix = _g("fix_prefix", "fix:").rstrip()
+    fix_prefix = _g("fix_prefix").rstrip()
     fixes = _table("fixes")
 
     rows: list[tuple[str, str, str, str]] = []

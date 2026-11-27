@@ -26,6 +26,7 @@ from textual.widget import Widget
 from textual.widgets import DataTable, Input, Label, Static
 
 from omnimarket.models.model_catalog_entry import ModelCatalogEntry
+from omnimarket.nodes.node_onex_setup_effect.cli_theme import style as _colour
 from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
     ModelTuiModelTable,
     tui_design,
@@ -34,10 +35,6 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
 
 def _table() -> ModelTuiModelTable:
     return tui_design().model_table
-
-
-def _colour(token: str) -> str:
-    return str(getattr(tui_design().theme, token))
 
 
 def _money(value: Decimal) -> str:
