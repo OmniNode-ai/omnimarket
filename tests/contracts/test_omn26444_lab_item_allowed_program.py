@@ -1,8 +1,9 @@
 """The OMN-26444 integration-proof item starts with programs a lab host runs.
 
 A lab host refuses a work unit whose first word is not in its allowlist
-(``DEFAULT_ALLOWED_EXECUTABLES``). The item's command used to start with ``env``,
-and the lab refused it (work unit lw-c7881ca86a554918, 2026-11-25). The command
+(``DEFAULT_ALLOWED_EXECUTABLES``). This ticket's command started with ``env`` at ``d2b838ad`` and was
+fixed; the refusal that prompted the guard was from ticket OMN-26226
+(work unit ``lw-c7881ca86a554918``, 2026-11-25). The command
 the caller runs and the command it sends after ``--`` must each start with an
 allowed program.
 """
