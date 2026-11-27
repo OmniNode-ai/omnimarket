@@ -14,7 +14,6 @@
 name: node_lane_work_reducer
 node_type: reducer
 lifecycle: experimental
-runtime_profiles: [main]
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: {major: 1, minor: 0, patch: 0}
 
@@ -29,6 +28,7 @@ handler:
   module: omnimarket.nodes.node_lane_work_reducer.handlers.handler_lane_work_reducer
   class: HandlerLaneWorkReducer
   input_model: omnimarket.nodes.node_lane_work_reducer.models.model_lane_work_reduce_request.ModelLaneWorkReduceRequest
+  output_model: omnimarket.nodes.node_lane_work_reducer.models.model_lane_work_reduce_result.ModelLaneWorkReduceResult
 
 input_model:
   name: ModelLaneWorkReduceRequest
@@ -52,14 +52,19 @@ handler_routing:
 descriptor:
   node_archetype: reducer
   purity: pure
+  runtime_profiles: []
   idempotent: true
   timeout_ms: 5000
 
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+metadata:
+  transport_type: local
+
 runtime_dispatch:
-  # The lane work orchestrator and a replay driver call the reducer with one request; nothing on the bus starts it.
-  on_demand:
-    command: uv run onex node node_lane_work_reducer --input <request.json>
-    owner: OmniNode Platform Team
+  external_trigger: Direct Python invocation by the lane work orchestrator and a replay driver with one request; nothing on the bus starts it.
 
 state_machine:
   version: {major: 1, minor: 0, patch: 0}
