@@ -46,6 +46,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation
     CAUSE_LAB_MODEL,
     CAUSE_PRODUCT,
     EnumCheckVerdict,
+    ModelChainSource,
     ModelCheckPrecondition,
     ModelDelegationCheckReading,
     ModelDelegationCheckRequest,
@@ -88,6 +89,7 @@ class HandlerDelegationCheckProbe:
         run_id_factory: Callable[[str, datetime], str] = _new_run_id,
         gateway: ProtocolGatewayClient | None = None,
         gateway_settings: GatewayRunSettings | None = None,
+        chain_source: ModelChainSource | None = None,
         sleep: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -100,6 +102,7 @@ class HandlerDelegationCheckProbe:
         self._run_id = run_id_factory
         self._gateway = gateway
         self._gateway_settings = gateway_settings or GatewayRunSettings()
+        self._chain_source = chain_source
         self._sleep = sleep
         self._monotonic = monotonic
 
@@ -361,6 +364,7 @@ class HandlerDelegationCheckProbe:
             versions=reading.versions,
             gateway_url=reading.endpoint,
             tenant_slug=reading.tenant_slug,
+            chain_source=self._chain_source,
             error=error
             or (
                 reading.not_measured

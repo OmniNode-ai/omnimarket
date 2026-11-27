@@ -18,6 +18,7 @@ not measure the check (NOT_MEASURED, PRECONDITION-ABSENT or ERROR), which reads 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import contextlib
 import faulthandler
 import json
@@ -39,6 +40,10 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     NodeOverlayNotFoundError,
     load_structured_overlay,
+)
+from omnimarket.handlers.overlay_store.reader_store import (
+    OverlayAbsentFromStoreError,
+    StoreOverlayReader,
 )
 from omnimarket.models.overlay_documents.model_delegation_check_responders_overlay import (
     ModelDelegationCheckRespondersOverlay,
@@ -75,6 +80,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.handler_regres
 from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe import (
     CheckId,
     EnumCheckVerdict,
+    ModelChainSource,
     ModelDelegationCheckProbeOverlay,
     ModelDelegationCheckRequest,
     ModelDelegationCheckResult,
@@ -165,7 +171,42 @@ def evidence_for(result: ModelDelegationCheckResult) -> dict[str, Any]:
         "runner": result.runner,
         "gateway_url": result.gateway_url,
         "tenant_slug": result.tenant_slug,
+        "chain_source": (
+            result.chain_source.model_dump(mode="json")
+            if result.chain_source is not None
+            else None
+        ),
     }
+
+
+def _read_store_row(
+    reader: StoreOverlayReader,
+) -> tuple[ModelDelegationCheckRespondersOverlay, ModelChainSource]:
+    """The responders row through the injected store reader, with the record's own source_ref and loaded_at."""
+    record = asyncio.run(reader.read_record(RESPONDERS_OVERLAY_ID))
+    document = record.get("document")
+    row = ModelDelegationCheckRespondersOverlay.model_validate(document)
+    loaded = record.get("loaded_at")
+    return row, ModelChainSource(
+        source="store",
+        source_ref=str(record.get("source_ref") or RESPONDERS_OVERLAY_ID),
+        loaded_at=datetime.fromisoformat(str(loaded)) if loaded else None,
+        rows=row.responders,
+    )
+
+
+def _document_reader(record_reader: StoreOverlayReader) -> ProtocolStoreDocumentReader:
+    """The record reader as a document reader: the record's document, or None for an overlay the store does not keep."""
+
+    def read(overlay_id: str) -> dict[str, Any] | None:
+        try:
+            record = asyncio.run(record_reader.read_record(overlay_id))
+        except OverlayAbsentFromStoreError:
+            return None
+        document = record["document"]
+        return dict(document) if isinstance(document, dict) else None
+
+    return read
 
 
 def _write_atomically(path: Path, text: str) -> None:
@@ -221,7 +262,7 @@ def main(
     publisher: ProtocolCheckResultPublisher | None = None,
     now: datetime | None = None,
     gateway: ProtocolGatewayClient | None = None,
-    store_reader: ProtocolStoreDocumentReader | None = None,
+    store_reader: ProtocolStoreDocumentReader | StoreOverlayReader | None = None,
     ticket_writer: ProtocolTicketWriter | None = None,
 ) -> int:
     parser = argparse.ArgumentParser(prog=f"{NODE}.tick", description=__doc__)
@@ -232,7 +273,11 @@ def main(
     args = parser.parse_args(argv)
     faulthandler.dump_traceback_later(tick_deadline_s(), exit=True)
     stamp = now or datetime.now(UTC)
-    reader = store_reader or read_store_document
+    reader: ProtocolStoreDocumentReader
+    if isinstance(store_reader, StoreOverlayReader):
+        reader = _document_reader(store_reader)
+    else:
+        reader = store_reader or read_store_document
     evidence_path = args.state_dir / EVIDENCE_FILE
     try:
         overlay = _settings(
@@ -245,15 +290,34 @@ def main(
         # The responder chain is the settings store's row. With none served the two checks that send a task through the
         # chain read PRECONDITION-ABSENT and C17, which reads no responder, still grades; a row that is served but broken
         # ends the tick like any other unreadable overlay.
-        try:
-            row: ModelDelegationCheckRespondersOverlay | None = _settings(
-                RESPONDERS_OVERLAY_ID,
-                ModelDelegationCheckRespondersOverlay,
-                reader,
-                file_env=RESPONDERS_FILE_ENV,
-            )
-        except NodeOverlayNotFoundError:
-            row = None
+        row: ModelDelegationCheckRespondersOverlay | None = None
+        chain_source: ModelChainSource | None = None
+        if isinstance(store_reader, StoreOverlayReader):
+            # The record reader is the source: no file is consulted for the chain.
+            try:
+                row, chain_source = _read_store_row(store_reader)
+            except OverlayAbsentFromStoreError:
+                row = None
+        else:
+            try:
+                document = reader(RESPONDERS_OVERLAY_ID)
+                row = load_structured_overlay(
+                    RESPONDERS_OVERLAY_ID,
+                    ModelDelegationCheckRespondersOverlay,
+                    explicit=document,
+                    file_env=RESPONDERS_FILE_ENV,
+                )
+                chain_source = ModelChainSource(
+                    source="store" if document is not None else "overlay",
+                    source_ref=(
+                        f"store:{RESPONDERS_OVERLAY_ID}"
+                        if document is not None
+                        else f"overlay:{RESPONDERS_OVERLAY_ID}"
+                    ),
+                    rows=row.responders,
+                )
+            except NodeOverlayNotFoundError:
+                row = None
     except (NodeOverlayError, ModelOnexError, ValueError, OSError) as exc:
         faulthandler.cancel_dump_traceback_later()
         reading = {
@@ -299,6 +363,7 @@ def main(
         publisher=publisher or DeclaredBrokerPublisher(NODE, flat=True),
         topic=overlay.result_topic,
         gateway=gateway,
+        chain_source=chain_source,
     )
     results: list[ModelDelegationCheckResult] = []
     try:

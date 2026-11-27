@@ -78,6 +78,12 @@ http_routes:
     handler:
       name: HandlerWorkflowStatusRead
       module: omnimarket.nodes.node_workflow_gateway_effect.handlers.handler_workflow_status_read
+  - operation: tenant_key_register
+    method: POST
+    path: "/v1/workflows/tenant-keys"
+    handler:
+      name: HandlerTenantKeyRegister
+      module: omnimarket.nodes.node_workflow_gateway_effect.handlers.handler_tenant_key_register
   - operation: receipt
     method: GET
     path: "/v1/workflows/{workflow_id}/receipt"
@@ -103,6 +109,8 @@ capabilities:
     description: "Serve POST /v1/workflows."
   - name: "workflow_gateway_status_read"
     description: "Serve GET /v1/workflows/{workflow_id}/status."
+  - name: "workflow_gateway_tenant_key_register"
+    description: "Serve POST /v1/workflows/tenant-keys: register the signed-in tenant's own provider key under the tenant UUID and refuse another tenant."
   - name: "workflow_gateway_receipt_read"
     description: "Serve GET /v1/workflows/{workflow_id}/receipt."
 metadata:
