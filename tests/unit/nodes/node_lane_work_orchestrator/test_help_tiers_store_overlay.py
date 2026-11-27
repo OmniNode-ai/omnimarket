@@ -18,7 +18,7 @@ from omnimarket.nodes.node_lane_work_orchestrator.handlers.overlay_help_tiers im
     load_help_tiers,
 )
 
-from .conftest import build_request, driver_in_help
+from .conftest import EXAMPLE, build_request, driver_in_help
 
 pytestmark = pytest.mark.unit
 
@@ -35,10 +35,18 @@ def _tier(name: str, backend: str) -> dict[str, str]:
     }
 
 
+def _full(document: dict[str, object]) -> dict[str, object]:
+    """The orchestrator's one overlay document: the shipped example with this test's keys on top."""
+    base = yaml.safe_load(EXAMPLE.read_text(encoding="utf-8"))
+    return {**base, **document}
+
+
 def _write(root: Path, document: dict[str, object]) -> None:
     folder = root / NODE_NAME
     folder.mkdir(parents=True)
-    (folder / "overlay.yaml").write_text(yaml.safe_dump(document), encoding="utf-8")
+    (folder / "overlay.yaml").write_text(
+        yaml.safe_dump(_full(document)), encoding="utf-8"
+    )
 
 
 def _environ(tmp_path: Path, declared: Path) -> dict[str, str]:
@@ -81,14 +89,16 @@ def test_no_chain_anywhere_is_a_refusal_naming_both_places(tmp_path: Path) -> No
 
 def test_a_document_without_a_chain_is_a_refusal_not_a_default(tmp_path: Path) -> None:
     declared = tmp_path / "declared"
-    _write(declared, {"schema_version": 1})
+    folder = declared / NODE_NAME
+    folder.mkdir(parents=True)
+    document = _full({})
+    del document["help_tiers"]
+    (folder / "overlay.yaml").write_text(yaml.safe_dump(document), encoding="utf-8")
     with pytest.raises(HelpTiersError):
         load_help_tiers(_environ(tmp_path, declared))
 
 
 def test_the_shipped_example_file_loads_as_the_bootstrap_chain(tmp_path: Path) -> None:
-    from .conftest import EXAMPLE
-
     declared = tmp_path / "declared"
     folder = declared / NODE_NAME
     folder.mkdir(parents=True)
@@ -118,13 +128,15 @@ def test_a_workflow_keeps_the_chain_it_started_with(tmp_path: Path) -> None:
     # the store's chain changes after the workflow started: its first two responders swap
     (store / NODE_NAME / "overlay.yaml").write_text(
         yaml.safe_dump(
-            {
-                "help_tiers": [
-                    _tier("t0", "worker-b"),
-                    _tier("t2", "swapped-b"),
-                    _tier("t1", "swapped-c"),
-                ]
-            }
+            _full(
+                {
+                    "help_tiers": [
+                        _tier("t0", "worker-b"),
+                        _tier("t2", "swapped-b"),
+                        _tier("t1", "swapped-c"),
+                    ]
+                }
+            )
         )
     )
     assert load_help_tiers(environ)[1].backend_id == "swapped-b"

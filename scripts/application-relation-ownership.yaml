@@ -169,6 +169,15 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_lab_lane_health/migrations/0000_create_lab_lane_health.sql
       access: read_write
       role: lab_lane_health_projection_table
+    # OMN-26708 (task 8 of the lane work orchestrator plan): one row per lane
+    # work workflow, folded from the orchestrator's transition receipts by
+    # node_projection_lane_work's own node-owned migration.
+    - name: lane_work_workflow
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_lane_work/migrations/0000_create_lane_work_workflow.sql
+      access: read_write
+      role: lane_work_workflow_projection_table
     # OMN-19937 (A3): one durable row per board probe execution. The producer
     # is omnibase_infra; this projection owns the materialized result and the
     # latest-per-subject view over reruns.
