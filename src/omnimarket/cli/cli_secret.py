@@ -82,6 +82,7 @@ from omnimarket.handlers.routing.gateway_tenant_key_client import (
     register_signed_in,
     signed_in_gateway,
 )
+from omnimarket.handlers.routing.lab_host_rows import lab_host_rows
 from omnimarket.handlers.routing.local_byok_route import house_provider_slug
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
@@ -262,7 +263,7 @@ def _registering_host() -> str | None:
     if table is None:
         return None
     try:
-        rows = _lab_host_rows(table)
+        rows = lab_host_rows(table)
     except click.ClickException:
         return None
     declared = [os.environ.get(env, "").strip() for env in _LANE_HOST_ENVS]
@@ -338,24 +339,6 @@ def _lab_host_table() -> Path | None:
     return Path(configured) if configured else None
 
 
-def _lab_host_rows(table: Path) -> list[tuple[str, str]]:
-    """Each row's ``(name, target)``, or a refusal naming the table."""
-    try:
-        document = yaml.safe_load(table.read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError) as exc:
-        raise click.ClickException(
-            f"the lab host table {table} could not be read ({exc}); nothing was stored."
-        ) from exc
-    rows = document.get("hosts") if isinstance(document, dict) else None
-    if not isinstance(rows, list) or not all(
-        isinstance(row, dict) and row.get("name") for row in rows
-    ):
-        raise click.ClickException(
-            f"the lab host table {table} has no hosts with a name; nothing was stored."
-        )
-    return [(str(row["name"]), str(row.get("target") or "")) for row in rows]
-
-
 def _resolve_bound_host(declared: str | None) -> str | None:
     """The lab host a registered key is bound to (OMN-21012), or ``None``.
 
@@ -373,7 +356,7 @@ def _resolve_bound_host(declared: str | None) -> str | None:
                 f"--host {declared!r} cannot be checked: there is no lab host table "
                 f"on this machine (set {_LAB_HOSTS_ENV}); nothing was stored."
             )
-        names = [name for name, _target in _lab_host_rows(table)]
+        names = [name for name, _target in lab_host_rows(table)]
         if host not in names:
             raise click.ClickException(
                 f"--host {declared!r} is not a host in the lab host table "
