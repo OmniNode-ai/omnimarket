@@ -6,6 +6,7 @@ when it does not (OMN-15920)."""
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -40,8 +41,8 @@ TOOL = {
 }
 
 
-def _call(projections: object) -> ModelMcpToolsListResult:
-    reader = HandlerMcpRegistryProjectionRows(lambda: projections)  # type: ignore[arg-type, return-value]
+def _call(projections: Sequence[object]) -> ModelMcpToolsListResult:
+    reader = HandlerMcpRegistryProjectionRows(lambda: projections)
     return HandlerMcpToolsList(reader).handle(
         ModelMcpToolsListRequest(overlay=ModelMcpOverlay(allowed_tools={"alpha"}))
     )
