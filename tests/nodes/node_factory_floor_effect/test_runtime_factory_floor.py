@@ -534,6 +534,15 @@ def test_machine_bays_and_lanes_are_read_from_the_declared_sources_end_to_end(
         yaml.safe_dump(
             {
                 "plan_path_contains": ["wave-plan"],
+                # The cloud read runs the real placement node, called through the canonical core CLI of this
+                # interpreter: the packaged `onex` entry point refuses to dispatch from a runner whose
+                # omnimarket is a path install, which left the cloud source unread on every runner.
+                "cloud_accounts_node_command": [
+                    sys.executable,
+                    "-m",
+                    "omnibase_core.cli.cli_commands",
+                    "node",
+                ],
                 "processes": [],
                 "roles": [],
                 "release_required_repos": [],
@@ -550,6 +559,10 @@ def test_machine_bays_and_lanes_are_read_from_the_declared_sources_end_to_end(
         ),
     )
     monkeypatch.setenv("ONEX_FACTORY_FLOOR_OVERLAY", str(overlay))
+    # The drift guard compares the interpreter's omnimarket with a canonical clone on the host and refuses a
+    # path install; the omnimarket under test is the checkout itself, so that comparison is not this test's
+    # subject, and the real placement node still runs.
+    monkeypatch.setenv("ONEX_ALLOW_OMNIMARKET_DRIFT", "1")
     # The board's host list reads the one host table reader, pinned here by the file the overlay store's projection writes.
     monkeypatch.setenv(
         "ONEX_LAB_RUN_HOSTS", str(world["home"] / "tables" / "hosts.yaml")

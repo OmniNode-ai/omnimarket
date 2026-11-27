@@ -1,0 +1,66 @@
+---
+name: node_local_done_gate_receipt_store_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+input_model: omnimarket.models.model_dod_verify_completed_event.ModelDodVerifyCompletedEvent
+
+description: >
+  Keeps the receipt a local_done_gate run published on its verdict, so a hosted
+  node_dod_verify run can count a skipped local_done_gate item as verified only
+  when a receipt for that ticket, exact item id and contract revision reads
+  VERIFIED. It subscribes to the dod-verify completed topic and appends each
+  verdict's receipt to the store under the evidence home. A verdict without a
+  receipt (a hosted run, or a run that resolved no contract revision) stores
+  nothing.
+
+handler:
+  module: omnimarket.nodes.node_local_done_gate_receipt_store_effect.handlers.handler_local_done_gate_receipt_store
+  class: HandlerLocalDoneGateReceiptStore
+  input_model: omnimarket.models.model_dod_verify_completed_event.ModelDodVerifyCompletedEvent
+  output_model: omnimarket.models.model_local_done_gate_receipt_stored.ModelLocalDoneGateReceiptStored
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: local_done_gate_receipt_store
+      handler:
+        name: HandlerLocalDoneGateReceiptStore
+        module: omnimarket.nodes.node_local_done_gate_receipt_store_effect.handlers.handler_local_done_gate_receipt_store
+      event_model:
+        name: ModelDodVerifyCompletedEvent
+        module: omnimarket.models.model_dod_verify_completed_event
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+
+terminal_event: onex.evt.omnimarket.local-done-gate-receipt-stored.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.dod-verify-completed.v1
+  publish_topics:
+    - onex.evt.omnimarket.local-done-gate-receipt-stored.v1
+
+# Leaves the node graph here; the store file is the product.
+externally_consumed_topics:
+  - onex.evt.omnimarket.local-done-gate-receipt-stored.v1
+
+metadata:
+  transport_type: kafka
+
+# The broker grants the node's two topics need (OMN-24005 coverage gate): the runtime login reads the verdict and writes the
+# stored answer.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dod-verify-completed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.dod-verify-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.local-done-gate-receipt-stored.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.local-done-gate-receipt-stored.v1, operation: DESCRIBE}
