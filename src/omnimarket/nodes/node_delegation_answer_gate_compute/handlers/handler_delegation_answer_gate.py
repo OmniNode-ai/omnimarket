@@ -41,6 +41,10 @@ from omnimarket.models.delegation.wire.model_quality_gate import (
     ModelQualityGateResult,
     ModelQualityRuleEvaluation,
 )
+from omnimarket.models.delegation.wire.model_tests_outcome import (
+    NAMED_TESTS_RULE,
+    TESTS_FAILED_PREFIX,
+)
 from omnimarket.nodes.node_delegation_answer_gate_compute.handlers.judge_selection import (
     answer_gate_contract,
     model_family,
@@ -52,10 +56,8 @@ from omnimarket.nodes.node_delegation_answer_gate_compute.models.model_answer_ga
 JUDGE_REJECTED_PREFIX = "JUDGE_FAIL"
 JUDGE_UNAVAILABLE_PREFIX = "JUDGE_UNAVAILABLE"
 JUDGE_NOT_INDEPENDENT_PREFIX = "JUDGE_NOT_INDEPENDENT"
-TESTS_FAILED_PREFIX = "TESTS_FAILED"
 #: The rule names the gate's verdicts are recorded under in ``rule_evaluations``.
 INDEPENDENT_JUDGE_RULE = "independent_judge"
-NAMED_TESTS_RULE = "named_tests_passed"
 
 
 def resolve_answer_gate_kind(task_type: str) -> EnumAnswerGateKind:

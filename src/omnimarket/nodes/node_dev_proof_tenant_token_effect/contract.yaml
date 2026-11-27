@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # ONEX Node Contract - Dev Proof Tenant Token Effect
 #
-# Signs the two dev-only proof tenant tokens with the lab test key and writes each into the dev secret store through
+# Signs the dev-only proof tenant token (cli-run-a, the one proof tenant that has a tenant row) with the lab test key and writes each into the dev secret store through
 # node_secret_seed_effect. The result names secret names and a status only: never a token or a key value. A lane, an
 # overlay lane or a tenant the dev_only block does not declare is refused before the key is read or a secret written.
 name: node_dev_proof_tenant_token_effect
@@ -47,6 +47,12 @@ output_model:
   module: omnimarket.nodes.node_dev_proof_tenant_token_effect.models.model_dev_proof_tenant_token
   description: The outcome, the lane, the signing key name and each token's secret name and status; never a token or a key value.
 
+runtime_dispatch:
+  external_trigger: An operator or a lab lane runs the node once from a command file; nothing on the bus starts it.
+  on_demand:
+    command: uv run onex node node_dev_proof_tenant_token_effect --input <command.json> --output receipt
+    owner: OmniNode Platform Team
+
 # No topics and no terminal event, by design (the seed node's own rule): a node that writes secrets is an
 # operator-invoked action, never a bus-triggered reaction, so it declares nothing a bus message could call.
 event_bus:
@@ -65,7 +71,6 @@ dev_only:
   expiry_seconds: 3600
   tenants:
     - cli-run-a
-    - cli-run-b
 
 metadata:
   ticket: OMN-26090

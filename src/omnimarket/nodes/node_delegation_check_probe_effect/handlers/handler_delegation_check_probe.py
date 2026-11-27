@@ -33,10 +33,14 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.gateway_checks
     GatewayRunSettings,
     run_gateway_check,
 )
+from omnimarket.nodes.node_delegation_check_probe_effect.handlers.grade_dashboard_session import (
+    grade_c30_dashboard,
+)
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.grade_delegation_checks import (
     grade_c13,
     grade_c14,
     grade_c17,
+    grade_chain_tier_order,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe import (
     CAUSE_LAB_MODEL,
@@ -51,6 +55,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.protocols.protocol_dele
     CollectorAbsentError,
     ProtocolCheckResultPublisher,
     ProtocolCustomerMachine,
+    ProtocolDashboardMachine,
     ProtocolGatewayClient,
     ProtocolResponderReader,
 )
@@ -204,6 +209,69 @@ class HandlerDelegationCheckProbe:
             clauses=grade_c17(observation), preconditions=(precondition,)
         )
 
+    def _chain_order_leg(
+        self, reading: ModelDelegationCheckReading
+    ) -> ModelDelegationCheckReading:
+        """C15: the chain it was handed is asserted in tier order beside the gateway run."""
+        if self._responders is None:
+            absent = ModelCheckPrecondition(
+                name="responders_row",
+                present=False,
+                detail="the settings store serves no delegation_check_responders row, so the chain's tier order is unread",
+            )
+            return reading.model_copy(
+                update={"preconditions": (*reading.preconditions, absent)}
+            )
+        return reading.model_copy(
+            update={
+                "clauses": (
+                    *reading.clauses,
+                    grade_chain_tier_order(self._responders),
+                )
+            }
+        )
+
+    def _dashboard_leg(
+        self, reading: ModelDelegationCheckReading
+    ) -> ModelDelegationCheckReading:
+        """C30 on a machine with a dashboard collector: the customer path's clauses join the gateway reading's."""
+        if not isinstance(self._machine, ProtocolDashboardMachine):
+            return reading
+        if self._responders is None:
+            absent: tuple[ModelCheckPrecondition, ...] = (
+                ModelCheckPrecondition(
+                    name="responders_row",
+                    present=False,
+                    detail="the settings store serves no delegation_check_responders row, so the dashboard run has no model to delegate to",
+                ),
+            )
+            return reading.model_copy(
+                update={"preconditions": (*reading.preconditions, *absent)}
+            )
+        resolution = resolve_chain(self._responders, self._reader.read)
+        if not resolution.is_local or not resolution.base_url:
+            return reading.model_copy(
+                update={
+                    "not_measured": reading.not_measured
+                    or f"no local responder served a model with a window; the dashboard run was not made ({resolution.tier})"
+                }
+            )
+        try:
+            clauses, preconditions = grade_c30_dashboard(
+                self._machine.collect_dashboard(resolution)
+            )
+        except CollectorAbsentError as exc:
+            clauses = ()
+            preconditions = (
+                ModelCheckPrecondition(name=exc.name, present=False, detail=exc.detail),
+            )
+        return reading.model_copy(
+            update={
+                "clauses": (*reading.clauses, *clauses),
+                "preconditions": (*reading.preconditions, *preconditions),
+            }
+        )
+
     def _with_gateway_leg(
         self, reading: ModelDelegationCheckReading, request: ModelDelegationCheckRequest
     ) -> ModelDelegationCheckReading:
@@ -225,6 +293,10 @@ class HandlerDelegationCheckProbe:
     ) -> ModelDelegationCheckReading:
         if request.check_id in GATEWAY_ONLY_CHECKS:
             reading = self._gateway_check(request)
+            if request.check_id == "C15":
+                reading = self._chain_order_leg(reading)
+            if request.check_id == "C30":
+                reading = self._dashboard_leg(reading)
         else:
             try:
                 reading = (

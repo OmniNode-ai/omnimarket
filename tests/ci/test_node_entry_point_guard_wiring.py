@@ -25,6 +25,7 @@ import pytest
 import yaml
 
 from scripts.ci.ci_summary_gate import STRICT_GATE_JOBS
+from tests.ci.lint_jobs import lint_job_with_step, lint_jobs, lint_steps
 
 pytestmark = pytest.mark.unit
 
@@ -50,12 +51,16 @@ def guard_violations(workflow: dict[str, Any]) -> list[str]:
     jobs: dict[str, Any] = workflow.get("jobs", {})
     if "lint" not in jobs:
         return ["the lint job is missing from the workflow"]
-    lint: dict[str, Any] = jobs["lint"]
+    lint: dict[str, Any] = lint_job_with_step(workflow, STEP_NAME) or jobs["lint"]
+    if jobs["lint"].get("continue-on-error") is True:
+        violations.append(
+            "the lint aggregate is continue-on-error, so it cannot fail a PR"
+        )
     if lint.get("continue-on-error") is True:
         violations.append("the lint job is continue-on-error, so it cannot fail a PR")
     if lint.get("if") not in (None, "always()"):
         violations.append(f"the lint job can be skipped by {lint.get('if')!r}")
-    steps: list[dict[str, Any]] = lint.get("steps", [])
+    steps: list[dict[str, Any]] = lint_steps(workflow)
     step = next((s for s in steps if s.get("name") == STEP_NAME), None)
     if step is None:
         violations.append(f"no step named {STEP_NAME!r} in the lint job")
@@ -69,7 +74,7 @@ def guard_violations(workflow: dict[str, Any]) -> list[str]:
         violations.append(f"the guard step does not run {TARGET_TEST!r}")
     if SELECTOR not in run:
         violations.append(f"the guard step does not select {SELECTOR!r}")
-    lint_name = str(lint.get("name", "lint"))
+    lint_name = str(jobs["lint"].get("name", "lint"))
     if lint_name not in STRICT_GATE_JOBS:
         violations.append(
             f"{lint_name!r} is not in STRICT_GATE_JOBS, so a skipped or failed "
@@ -84,14 +89,14 @@ def test_real_workflow_is_clean() -> None:
 
 def _remove_step(workflow: dict[str, Any]) -> dict[str, Any]:
     wf = copy.deepcopy(workflow)
-    steps = wf["jobs"]["lint"]["steps"]
-    wf["jobs"]["lint"]["steps"] = [s for s in steps if s.get("name") != STEP_NAME]
+    for job in lint_jobs(wf):
+        job["steps"] = [s for s in job["steps"] if s.get("name") != STEP_NAME]
     return wf
 
 
 def _step_if_merge_group(workflow: dict[str, Any]) -> dict[str, Any]:
     wf = copy.deepcopy(workflow)
-    for step in wf["jobs"]["lint"]["steps"]:
+    for step in lint_steps(wf):
         if step.get("name") == STEP_NAME:
             step["if"] = "github.event_name == 'merge_group'"
     return wf
@@ -99,7 +104,7 @@ def _step_if_merge_group(workflow: dict[str, Any]) -> dict[str, Any]:
 
 def _step_continue_on_error(workflow: dict[str, Any]) -> dict[str, Any]:
     wf = copy.deepcopy(workflow)
-    for step in wf["jobs"]["lint"]["steps"]:
+    for step in lint_steps(wf):
         if step.get("name") == STEP_NAME:
             step["continue-on-error"] = True
     return wf
@@ -107,7 +112,7 @@ def _step_continue_on_error(workflow: dict[str, Any]) -> dict[str, Any]:
 
 def _step_run_no_match(workflow: dict[str, Any]) -> dict[str, Any]:
     wf = copy.deepcopy(workflow)
-    for step in wf["jobs"]["lint"]["steps"]:
+    for step in lint_steps(wf):
         if step.get("name") == STEP_NAME:
             step["run"] = str(step["run"]).replace(SELECTOR, "nothing_matches")
     return wf
@@ -115,7 +120,9 @@ def _step_run_no_match(workflow: dict[str, Any]) -> dict[str, Any]:
 
 def _lint_continue_on_error(workflow: dict[str, Any]) -> dict[str, Any]:
     wf = copy.deepcopy(workflow)
-    wf["jobs"]["lint"]["continue-on-error"] = True
+    carrier = lint_job_with_step(wf, STEP_NAME)
+    assert carrier is not None
+    carrier["continue-on-error"] = True
     return wf
 
 

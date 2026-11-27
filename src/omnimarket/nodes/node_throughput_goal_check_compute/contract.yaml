@@ -18,6 +18,11 @@ description: >-
   rolling ledger text and returns one MISSING goal-scope-stale line when the overlay's ruling_date is older than
   the newest RULING row carrying kind=goal; an unreadable ruling_date or ledger prints UNKNOWN goal-scope-stale
   and a ledger with no goal RULING row prints a NOTE, never a silent pass.
+
+  OMN-26316. Nothing published the request topic and nothing scheduled the node, so the merged node never
+  ran on dev. The trigger is a schedule on the runtime tick (config.throughput_goal_check.schedule), the
+  schedule shape the throughput tick uses: the tick that opens a window returns that window's fire on the
+  terminal topic and every other tick returns nothing.
 input_model:
   name: ModelThroughputGoalCheckRequest
   module: omnimarket.nodes.node_throughput_goal_check_compute.models.model_throughput_goal_check
@@ -39,11 +44,22 @@ handler_routing:
         name: HandlerThroughputGoalCheck
         module: omnimarket.nodes.node_throughput_goal_check_compute.handlers.handler_throughput_goal_check
     - operation: check_goal_scope_stale
+      topic: onex.cmd.omnimarket.throughput-goal-check-requested.v1
       handler:
         name: HandlerGoalScopeStale
         module: omnimarket.nodes.node_throughput_goal_check_compute.handlers.handler_goal_scope_stale
       input_model: omnimarket.nodes.node_throughput_goal_check_compute.models.model_goal_scope_stale.ModelGoalScopeStaleRequest
       output_model: omnimarket.nodes.node_throughput_goal_check_compute.models.model_goal_scope_stale.ModelGoalScopeStaleResult
+    # OMN-26316: the schedule's entry, scoped to the tick topic so no entry spans the command and
+    # intent categories.
+    - operation: throughput_goal_check.scheduled_fire
+      topic: onex.intent.platform.runtime-tick.v1
+      handler:
+        name: HandlerGoalCheckScheduledFire
+        module: omnimarket.nodes.node_throughput_goal_check_compute.handlers.handler_goal_check_scheduled_fire
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+      output_model: omnimarket.models.model_runtime_tick_schedule.ModelScheduledFire
 descriptor:
   node_archetype: compute
   purity: pure
@@ -69,9 +85,22 @@ outputs:
 terminal_event: onex.evt.omnimarket.throughput-goal-check-completed.v1
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.throughput-goal-check-requested.v1
+# OMN-26316: the runtime tick is the only schedule the runtime dispatches. The throughput tick's
+# cadence is 600 s at offset 0; this window is the same interval at offset 60 s, after the tick
+# has read the facts this check folds.
+config:
+  throughput_goal_check:
+    schedule:
+      workflow: throughput-goal-check
+      interval_seconds: 600
+      offset_seconds: 60
+input_subscriptions:
+  - topic: onex.intent.platform.runtime-tick.v1
+    operation: throughput_goal_check.scheduled_fire
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.throughput-goal-check-requested.v1
+    - onex.intent.platform.runtime-tick.v1
   publish_topics:
     - onex.evt.omnimarket.throughput-goal-check-completed.v1
 externally_consumed_topics:

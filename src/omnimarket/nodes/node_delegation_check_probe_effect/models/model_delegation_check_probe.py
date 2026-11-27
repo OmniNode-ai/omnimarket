@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -46,6 +46,24 @@ class ModelCheckClause(_Frozen):
     name: str = Field(min_length=1)
     ok: bool
     detail: str
+
+
+#: The clause-name prefix of every gateway leg clause (``gateway_delegation_completes``, ``gateway_routed_run_completes`` ...).
+GATEWAY_LEG_PREFIX: Final = "gateway_"
+
+
+def gateway_leg_verdict(
+    clauses: tuple[ModelCheckClause, ...],
+) -> Literal["pass", "fail", "unmeasured"]:
+    """The verdict of a customer-local check's gateway leg alone, from its clauses (the beta board reads it, OMN-26043).
+
+    ``pass`` when every gateway clause held, ``fail`` when one did not, ``unmeasured`` when no gateway clause was graded (the
+    gateway did not answer or its credential was absent): a leg nobody graded is never a pass. Machine clauses do not count.
+    """
+    leg = [c for c in clauses if c.name.startswith(GATEWAY_LEG_PREFIX)]
+    if not leg:
+        return "unmeasured"
+    return "pass" if all(c.ok for c in leg) else "fail"
 
 
 class ModelCheckPrecondition(_Frozen):
@@ -122,6 +140,26 @@ class ModelSurfaceObservation(_Frozen):
     broken_before_rc: int | None = None
     broken_after_rc: int | None = None
     broken_cases: tuple[ModelBrokenCommandCase, ...] = ()
+
+
+class ModelDashboardObservation(_Frozen):
+    """What the customer path to the local dashboard showed on a clean profile (C30). Never carries a token value."""
+
+    install_rc: int | None = 0
+    setup_rc: int | None = None
+    # ``onex dashboard start``; None when the dashboard was never started that way (a bare ``onex dashboard``).
+    start_rc: int | None = None
+    # The local credential store holds the dashboard's session token: a bare dashboard's one-time token is never stored.
+    token_in_store: bool = False
+    # The store file is readable by its owner alone.
+    store_owner_only: bool = False
+    delegation_rc: int | None = None
+    delegation_correlation_id: str | None = None
+    # The loopback ``/projections`` read with the store token as Bearer, with a wrong token and with none.
+    projections_status: int | None = None
+    run_visible: bool = False
+    wrong_token_status: int | None = None
+    no_token_status: int | None = None
 
 
 class ModelDelegationCheckRequest(_Frozen):

@@ -12,10 +12,16 @@ from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import 
     EnumRepoContractReadStatus,
     ModelRepoContractRead,
 )
+from omnimarket.nodes.node_dod_verify.services.contract_parse_cache import (
+    ContractParseCache,
+)
 
 
 def repo_contract_from_gateway(
     read: ModelRepoFileResult | str,
+    *,
+    cache: ContractParseCache | None = None,
+    path: str = "",
 ) -> ModelRepoContractRead:
     """An unreadable file (a string saying why) is an error, a missing one is absent."""
     if isinstance(read, str):
@@ -24,7 +30,7 @@ def repo_contract_from_gateway(
         )
     if read.text is None:
         return ModelRepoContractRead(status=EnumRepoContractReadStatus.ABSENT)
-    return parse_repo_contract(read.text)
+    return parse_repo_contract(read.text, cache=cache, path=path)
 
 
 __all__: list[str] = ["repo_contract_from_gateway"]

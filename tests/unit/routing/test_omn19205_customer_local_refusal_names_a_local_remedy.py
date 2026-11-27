@@ -100,9 +100,11 @@ def test_for_missing_key_on_customer_local_carries_the_local_remedy() -> None:
     assert _CLOUD_ENDPOINT not in str(exc)
 
 
-@pytest.mark.parametrize("reason", list(EnumCustomerKeyRefusalReason))
+@pytest.mark.parametrize(
+    "reason", [EnumCustomerKeyRefusalReason.NO_PROVIDER_KEY_REGISTERED]
+)
 def test_the_cloud_surface_is_unchanged(reason: EnumCustomerKeyRefusalReason) -> None:
-    """M4.5 owns cloud wording; this change must not move it."""
+    """M4.5 owns cloud wording for a missing key; the other reasons name themselves."""
     refusal = _refusal(EnumDelegationSurface.CLOUD, reason)
 
     assert refusal.remediation == CUSTOMER_KEY_REMEDIATION

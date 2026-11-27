@@ -1,0 +1,53 @@
+schema_version: 1.0.0
+ticket_id: OMN-26662
+title: 'The factory floor page works: why it stopped is measured, and it serves the live floor record again with its own freshness shown'
+summary: "The factory_floor record step spent its time in the compute node, which scanned every ledger row once per line twice (the stop scan and the task map). On a lab host with the live ledger, 1,139 lines took 240 s in the stop scan and 66 s in the task map; the same run took 18.7 s once the ledger is indexed once per request. The step limit is unchanged. The page freshness line and the stopped-publisher alarm (AC2, AC3) are not in this change."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26662-record-step-ledger-read-once
+  statement: The record step's compute reads the ledger once per request, so the step's time does not grow with the number of lines times the number of ledger rows.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: what the page shows, what it should show, and each cause down to the process that let it stop unseen, read live with times -- falsifier: a cause with no reading'
+- id: req-omn26662-observability-overlay-launchd-model
+  statement: The host observability installer's overlay document model takes a launchd exporter value, a launchd_exporter section and an optional per target textfile directory, so the overlay document can be pinned to a merged revision that holds them ahead of the node.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: ModelObservabilityOverlay accepts a launchd target with its launchd_exporter section and an optional absolute per target textfile_directory, and refuses a launchd target with no section -- falsifier: tests/unit/models/test_observability_overlay_launchd_omn26662.py fails or any of its tests fails'
+evidence_requirements:
+- kind: tests
+  description: 'The ledger-reads-per-line test and the factory floor compute tests at the pushed head.'
+  command: uv run --frozen pytest tests/nodes/node_factory_floor_compute -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26662-ac1-ledger-read-once-per-request
+  description: 'tests/nodes/node_factory_floor_compute/test_ledger_reads_per_line.py fails on the code before the change (33,292 row-cell reads for 4 lines, 169,400 for 32) and passes at the pushed head with the same test code and no skip. This covers one measured cause of AC1, the per-line ledger scan in the compute step; the publisher-side readings of AC1 were unreadable from the lab host.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_ledger_reads_per_line.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26662-ac1-integration-proof
+  description: 'The pushed head ran tests/nodes/node_factory_floor_compute/test_ledger_reads_per_line.py on a lab host through the lab work runner and exited 0: the compute reads each ledger row a bounded number of times however many lines are drawn. This proves the compute change on a real checkout at the pushed sha; it does not prove the publisher cycle on the Mac. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26662 --kind test --timeout 3000 -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_factory_floor_compute/test_ledger_reads_per_line.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26662-obs-overlay-launchd-tests
+  description: 'The overlay document model accepts the launchd exporter value with its section and the per target textfile directory and refuses a launchd target with no section; 3 of the 6 tests fail at origin/dev 05500b974b (no textfile_directory field, launchd value refused) and all 6 pass with the model file taken unchanged from the omnimarket#6802 branch. The node is not part of this change.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/models/test_observability_overlay_launchd_omn26662.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

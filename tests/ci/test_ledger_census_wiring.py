@@ -11,6 +11,7 @@ from pathlib import Path
 import yaml
 
 from scripts.ci import ci_summary_gate as gate
+from tests.ci.lint_jobs import job_with_lint_steps
 
 ROOT = Path(__file__).resolve().parents[2]
 RATCHET = "src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml"
@@ -38,7 +39,9 @@ def hook_entry() -> str:
 def strict_job_commands(job_id: str) -> list[str]:
     workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
     return [
-        str(step["run"]) for step in workflow["jobs"][job_id]["steps"] if "run" in step
+        str(step["run"])
+        for step in job_with_lint_steps(workflow, job_id)["steps"]
+        if "run" in step
     ]
 
 

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import socket
 from pathlib import Path
 from typing import Any
 
@@ -85,7 +86,7 @@ def lab_table(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         encoding="utf-8",
     )
     monkeypatch.setenv("ONEX_LAB_RUN_HOSTS", str(table))
-    monkeypatch.setattr(cli_secret.socket, "gethostname", lambda: "unlisted.local")
+    monkeypatch.setattr(socket, "gethostname", lambda: "unlisted.local")
     return table
 
 
@@ -152,32 +153,44 @@ def test_register_tenant_key_host_refuses_a_named_host_off_the_lab(
     assert asyncio.run(store.list_keys()) == []
 
 
-def test_register_tenant_key_host_default_is_the_declared_lane_host(
+def test_register_tenant_key_default_is_unbound_with_a_declared_lane_host(
+    intake: tuple[LocalByokCredentialStore, FakeBus],
+    lab_table: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The routing pool skips host-bound keys, so a customer's key stays unbound."""
+    _store, bus = intake
+    monkeypatch.setenv("ONEX_LANE_HOST", "h101")
+    result = _register()
+    assert result.exit_code == 0, result.output
+    assert "bound_host" not in json.loads(result.output)
+    assert _event_payload(bus)["bound_host"] is None
+
+
+def test_register_tenant_key_default_is_unbound_on_a_machine_that_is_a_table_row(
+    intake: tuple[LocalByokCredentialStore, FakeBus],
+    lab_table: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _store, bus = intake
+    monkeypatch.setattr(socket, "gethostname", lambda: "studio-host.example.lan")
+    result = _register()
+    assert result.exit_code == 0, result.output
+    assert "bound_host" not in json.loads(result.output)
+    assert _event_payload(bus)["bound_host"] is None
+
+
+def test_register_tenant_key_explicit_host_still_binds_with_a_declared_lane_host(
     intake: tuple[LocalByokCredentialStore, FakeBus],
     lab_table: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _store, bus = intake
     monkeypatch.setenv("ONEX_LANE_HOST", "h101")
-    result = _register()
+    result = _register("--host", "h201")
     assert result.exit_code == 0, result.output
-    assert json.loads(result.output)["bound_host"] == "h101"
-    assert _event_payload(bus)["bound_host"] == "h101"
-
-
-def test_register_tenant_key_host_default_matches_the_hostname_to_a_row(
-    intake: tuple[LocalByokCredentialStore, FakeBus],
-    lab_table: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _store, bus = intake
-    monkeypatch.setattr(
-        cli_secret.socket, "gethostname", lambda: "studio-host.example.lan"
-    )
-    result = _register()
-    assert result.exit_code == 0, result.output
-    assert json.loads(result.output)["bound_host"] == "h200"
-    assert _event_payload(bus)["bound_host"] == "h200"
+    assert json.loads(result.output)["bound_host"] == "h201"
+    assert _event_payload(bus)["bound_host"] == "h201"
 
 
 def test_register_tenant_key_host_default_is_unbound_off_the_lab(
@@ -198,20 +211,6 @@ def test_register_tenant_key_host_default_is_unbound_on_an_unlisted_machine(
     assert result.exit_code == 0, result.output
     assert "bound_host" not in json.loads(result.output)
     assert _event_payload(bus)["bound_host"] is None
-
-
-def test_register_tenant_key_host_default_refuses_an_undeclared_lane_host(
-    intake: tuple[LocalByokCredentialStore, FakeBus],
-    lab_table: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    store, bus = intake
-    monkeypatch.setenv("ONEX_LANE_HOST", "h999")
-    result = _register()
-    assert result.exit_code != 0
-    assert "ONEX_LANE_HOST" in result.output
-    assert bus.events == []
-    assert asyncio.run(store.list_keys()) == []
 
 
 @pytest.mark.parametrize("bad", ["H201", "h201.local", "h_201", " h201", "-h201"])

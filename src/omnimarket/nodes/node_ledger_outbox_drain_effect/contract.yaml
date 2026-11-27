@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_ledger_outbox_drain_effect
+node_type: EFFECT_GENERIC
+version: 1.0.0
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >-
+  Drain a host's bus outbox (moved from the private ledger bus writer). Each queued request is sent under its own
+  request id, the stored bytes first: the serve answers a request id it already holds as duplicate before its clock
+  guard runs. Only a refusal naming the clock guard restamps the stale rows (replay time as the stamp, the original in
+  late-replay-of=, the cells that cite a restamped row by its old stamp rewritten: closes-CLAIM=, closes=, id=, re=) and
+  resends under the same request id, the restamped bytes kept in the request file. Accepted or duplicate removes the
+  file, another refusal moves it to refused/ with the serve's message, any other answer stops the drain. With refused
+  the drain retries the files of refused/, the file not tried for longest first, and reports remaining= as the refused
+  files left. The send is injected, so the node holds no bus client.
+input_model:
+  name: ModelOutboxDrainRequest
+  module: omnimarket.nodes.node_ledger_outbox_drain_effect.models.model_outbox_drain
+output_model:
+  name: ModelOutboxDrainResult
+  module: omnimarket.nodes.node_ledger_outbox_drain_effect.models.model_outbox_drain
+handler:
+  class: HandlerOutboxDrain
+  name: HandlerOutboxDrain
+  module: omnimarket.nodes.node_ledger_outbox_drain_effect.handlers.handler_outbox_drain
+entrypoint:
+  name: NodeLedgerOutboxDrainEffect
+  module: omnimarket.nodes.node_ledger_outbox_drain_effect.node
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+    - event_model:
+        name: ModelOutboxDrainRequest
+        module: omnimarket.nodes.node_ledger_outbox_drain_effect.models.model_outbox_drain
+      handler:
+        name: HandlerOutboxDrain
+        module: omnimarket.nodes.node_ledger_outbox_drain_effect.handlers.handler_outbox_drain
+terminal_event: onex.evt.omnimarket.ledger-outbox-drain-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.ledger-outbox-drain-requested.v1
+event_bus:
+  subscribe_topics: [onex.cmd.omnimarket.ledger-outbox-drain-requested.v1]
+  publish_topics: [onex.evt.omnimarket.ledger-outbox-drain-completed.v1]
+externally_consumed_topics: [onex.evt.omnimarket.ledger-outbox-drain-completed.v1]
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: true
+  timeout_ms: 600000
+  runtime_profiles: [effects]
+metadata:
+  transport_type: inmemory
+execution:
+  deterministic: false
+  side_effects: true
+# The broker grants the node's two topics need (coverage gate): the runtime login reads the command and writes the answer.
+broker_acl_grants:
+- principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+  grants:
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.ledger-outbox-drain-requested.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.ledger-outbox-drain-requested.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ledger-outbox-drain-completed.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.ledger-outbox-drain-completed.v1, operation: DESCRIBE}
