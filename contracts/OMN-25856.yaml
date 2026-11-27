@@ -27,10 +27,10 @@ requirements:
   - id: AC2
     statement: 'AC2: local Inkling-2-Mini has a zero marginal api cost row in cost_pricing.yaml and an unlisted local model still raises MissingCostPricingError -- falsifier: pricing Inkling-2-Mini raises, or an unlisted local model prices without error'
 - id: req-omn25856-tenant-provision-answers
-  statement: A tenant provision request whose overlay is missing is answered with a typed outcome, and every unpublished tenant-created outbox row is published once and stamped, so a signed-in customer gets a tenant on dev.
+  statement: A tenant provision or read request whose overlay is missing is answered with a typed outcome on its completed topic, so a signed-in customer reads an answer, not a runtime_unreachable silence, on dev.
   acceptance:
   - id: AC16
-    statement: 'AC16: a missing overlay answers failed_store_unavailable and the outbox flush publishes each unpublished tenant-created row once and stamps it -- falsifier: a missing overlay raises instead of answering, or a refused send marks its row published'
+    statement: 'AC16: a missing overlay answers failed_store_unavailable on the provision and read completed topics -- falsifier: a provision or read command on a runtime with no overlay raises instead of answering'
 - id: req-omn25856-byok-writer-identity
   statement: The BYOK intake writes a customer key with its own writer machine identity, so a runtime whose process identity is read-only on the tenant-credential folder no longer answers 503 on register.
   acceptance:
@@ -185,14 +185,14 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/cost/test_inkling_local_priced_omn25856.py -q --no-cov -n 0 -p no:randomly
     cwd: .
-- id: dod-omn25856-tenant-provision-answers-and-flush
-  description: 'node_tenant_provision_effect answers a typed outcome when its overlay is missing (the measured dev cause of runtime_unreachable) and its outbox flush publishes each unpublished TENANT_CREATED row once and stamps it; a refused send keeps the row.'
+- id: dod-omn25856-tenant-answers-missing-overlay
+  description: 'node_tenant_provision_effect answers a typed outcome when its overlay is missing (the measured dev cause of runtime_unreachable); the outbox flush stays with node_tenant_outbox_flush_effect, which owns the flush command and completed topics.'
   source: manual
   binds_ac:
   - AC16
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/nodes/node_tenant_provision_effect/test_overlay_missing_answers.py tests/nodes/node_tenant_provision_effect/test_outbox_flush.py tests/nodes/node_tenant_provision_effect/test_contract_shape.py -q --no-cov -n 0 -p no:randomly
+    check_value: uv run pytest tests/nodes/node_tenant_provision_effect/test_overlay_missing_answers.py tests/nodes/node_tenant_provision_effect/test_contract_shape.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn25856-gateway-named-tests-not-run-outcome
   description: A delegation-inference submission carries named_tests through the gateway to the command topic (an undeclared key is still refused), and a receipt whose named tests never ran reads not_run, not an absent outcome.

@@ -19,7 +19,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from omnimarket.models.tenant_provision_command import ModelTenantProvisionCommand
 
@@ -124,45 +124,12 @@ class ModelTenantReadResult(BaseModel):
     emitted_at: datetime
 
 
-class EnumTenantOutboxFlushOutcome(StrEnum):
-    """What one flush did: every outcome is an answer on the flush completed topic."""
-
-    FLUSHED = "flushed"
-    NOTHING_PENDING = "nothing_pending"
-    PARTIAL = "partial"
-    FAILED_STORE_UNAVAILABLE = "failed_store_unavailable"
-
-
-class ModelTenantOutboxFlushCommand(BaseModel):
-    """Flush the unpublished outbox rows. Extra keys are ignored on purpose: the provision completed event is a trigger too."""
-
-    model_config = ConfigDict(frozen=True, extra="ignore")
-
-    command_id: UUID | None = None
-    limit: int = Field(default=50, ge=1, le=500)
-
-
-class ModelTenantOutboxFlushResult(BaseModel):
-    """The answer to a flush: how many rows were published and how many were refused by the bus."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    outcome: EnumTenantOutboxFlushOutcome
-    detail: str
-    published: int = 0
-    failed: int = 0
-    emitted_at: datetime
-
-
 __all__ = [
     "RESERVED_SLUGS",
     "SLUG_MAX_LENGTH",
     "SLUG_MIN_LENGTH",
-    "EnumTenantOutboxFlushOutcome",
     "EnumTenantProvisionOutcome",
     "EnumTenantReadOutcome",
-    "ModelTenantOutboxFlushCommand",
-    "ModelTenantOutboxFlushResult",
     "ModelTenantProvisionCommand",
     "ModelTenantProvisionResult",
     "ModelTenantReadCommand",

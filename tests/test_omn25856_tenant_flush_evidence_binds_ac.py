@@ -22,7 +22,7 @@ from omnimarket.nodes.node_dod_verify.services.occ_replay import (
 pytestmark = pytest.mark.unit
 
 CONTRACT = Path(__file__).resolve().parents[1] / "contracts" / "OMN-25856.yaml"
-ITEM_ID = "dod-omn25856-tenant-provision-answers-and-flush"
+ITEM_ID = "dod-omn25856-tenant-answers-missing-overlay"
 
 
 def _document() -> dict[str, Any]:
@@ -80,9 +80,3 @@ def test_control_accepts_the_item_as_own_evidence() -> None:
         result, result, carried_ids=carried, test_only=False, at_merge_base=False
     )
     assert line.startswith("passed"), line
-
-
-def test_flush_handler_is_imported_by_the_node_package() -> None:
-    import omnimarket.nodes.node_tenant_provision_effect as node
-
-    assert "HandlerTenantOutboxFlush" in node.__all__

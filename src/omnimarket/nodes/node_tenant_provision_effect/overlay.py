@@ -10,16 +10,11 @@ name the secret store resolves (``tenant_identity.database.dsn``), and no value 
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Mapping
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.handlers.bus_binding.node_broker import resolve_dialable_broker
-from omnimarket.handlers.node_overlay_reader import (
-    NodeOverlayError,
-    load_structured_overlay,
-)
-from omnimarket.models.bus_binding.model_node_event_bus import ModelNodeEventBus
+from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.nodes.node_tenant_provision_effect.handlers.tenant_identity_postgres import (
     TenantIdentityPostgres,
     TenantStoreUnavailableError,
@@ -47,8 +42,6 @@ class ModelTenantProvisionOverlay(BaseModel):
     lane: str = Field(min_length=1)
     realms: tuple[str, ...]
     database: ModelTenantIdentityDatabaseOverlay
-    # The bus the outbox flush publishes to: the lane only, the broker address stays in the lane declaration table.
-    event_bus: ModelNodeEventBus | None = None
 
 
 def load_overlay(
@@ -80,47 +73,10 @@ def build_store(overlay: ModelTenantProvisionOverlay) -> TenantIdentityPostgres:
     )
 
 
-def build_publisher(
-    overlay: ModelTenantProvisionOverlay,
-) -> Callable[[str, bytes], Awaitable[None]]:
-    """The publisher the flush sends each outbox envelope with: one produce on the lane the overlay's ``event_bus`` names."""
-    if overlay.event_bus is None:
-        raise NodeOverlayError(
-            f"{NODE_NAME}: the overlay declares no event_bus, so the outbox flush has no bus to publish to"
-        )
-
-    async def publish(topic: str, payload: bytes) -> None:
-        from aiokafka import AIOKafkaProducer
-
-        from omnimarket.topic_namespace import apply_topic_namespace
-
-        broker = resolve_dialable_broker(NODE_NAME)
-        kwargs: dict[str, str] = {}
-        if broker.sasl_mechanism is not None:
-            kwargs["sasl_mechanism"] = broker.sasl_mechanism
-        if broker.sasl_username is not None:
-            kwargs["sasl_plain_username"] = broker.sasl_username
-        if broker.sasl_password is not None:
-            kwargs["sasl_plain_password"] = broker.sasl_password.get_secret_value()
-        producer = AIOKafkaProducer(
-            bootstrap_servers=broker.bootstrap_servers,
-            security_protocol=broker.security_protocol or "PLAINTEXT",
-            **kwargs,
-        )
-        await producer.start()
-        try:
-            await producer.send_and_wait(apply_topic_namespace(topic), payload)
-        finally:
-            await producer.stop()
-
-    return publish
-
-
 __all__ = [
     "NODE_NAME",
     "ModelTenantIdentityDatabaseOverlay",
     "ModelTenantProvisionOverlay",
-    "build_publisher",
     "build_store",
     "load_overlay",
 ]
