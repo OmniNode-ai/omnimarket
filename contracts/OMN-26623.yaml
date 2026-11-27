@@ -11,10 +11,18 @@ requirements:
     acceptance:
       - id: AC5
         statement: 'AC5: scripts/application-relation-ownership.yaml in omnimarket declares the owner of projection_delegation_quality_weekly, so omnibase_infra can vendor the view; falsifier: uv run pytest -q tests/contracts/test_omn26623_quality_weekly_ownership_declared.py fails on omnimarket dev, where the entry is absent'
+  - id: req-omn26623-delegation-daily-opt-out
+    statement: The delegation daily exposure carries no consumers opt-out once omnidash declares a reader for the topic.
+    acceptance:
+      - id: AC6
+        statement: 'AC6: the delegation daily projection_api exposure has no consumers: none opt-out, because omnidash local-page:overview.page.yaml now reads onex.snapshot.projection.delegation.daily.v1; falsifier: test_delegation_daily_exposure_declares_no_opt_out_over_its_live_reader fails on omnimarket dev, where the opt-out still stands'
 evidence_requirements:
   - kind: tests
     description: AC5 ownership declaration test.
     command: uv run pytest -q --no-cov tests/contracts/test_omn26623_quality_weekly_ownership_declared.py
+  - kind: tests
+    description: AC6 delegation daily opt-out removal test.
+    command: uv run pytest -q --no-cov tests/test_omn23159_local_alerts_exposure_reader_declared.py::test_delegation_daily_exposure_declares_no_opt_out_over_its_live_reader
 emergency_bypass:
   enabled: false
   justification: ''
@@ -27,4 +35,12 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run pytest -q tests/contracts/test_omn26623_quality_weekly_ownership_declared.py
+        cwd: .
+  - id: dod-omn26623-delegation-daily-opt-out
+    description: The delegation daily exposure has no consumers opt-out; fails on dev where the stale opt-out still stands over the live omnidash reader.
+    source: manual
+    binds_ac: [AC6]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/test_omn23159_local_alerts_exposure_reader_declared.py::test_delegation_daily_exposure_declares_no_opt_out_over_its_live_reader
         cwd: .
