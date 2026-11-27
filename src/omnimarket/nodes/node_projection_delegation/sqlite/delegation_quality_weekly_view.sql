@@ -5,7 +5,8 @@
 -- A week with no runs for a task type and model is served with runs 0 and NULL rates, never 0.
 -- The ISO week is computed from the week's Thursday because SQLite before 3.46 has no %G/%V.
 -- Applied once per local store by SqliteDatabaseAdapter as the store step omn26623_delegation_quality_weekly_view, and a revision is a new step, never an edit here.
--- The view serves one row per tenant whose cells list holds every week, task type and model, newest week first.
+-- The view serves one row per tenant with any delegation_events row; its cells list holds every week, task type and model, newest week first.
+-- A tenant whose rows carry no attempt history is served a row with empty cells and total_runs 0.
 -- A NULL rate stays JSON null inside cells.
 
 CREATE VIEW projection_delegation_quality_weekly AS
@@ -60,6 +61,12 @@ bounds AS (
     FROM eligible
     GROUP BY tenant_id
 ),
+tenants AS (
+    SELECT tenant_id, MAX(created_at) AS latest_projection_updated_at
+    FROM delegation_events
+    WHERE tenant_id IS NOT NULL
+    GROUP BY tenant_id
+),
 weeks AS (
     SELECT tenant_id, first_week AS week_start
     FROM bounds
@@ -104,9 +111,11 @@ cell_rows AS (
     JOIN bounds ON bounds.tenant_id = cells.tenant_id
 )
 SELECT
-    tenant_id,
-    json_group_array(json_object('iso_week', iso_week, 'week_start', week_start, 'task_type', task_type, 'model_id', model_id, 'runs', runs, 'first_try_passes', first_try_passes, 'moved_down_chain', moved_down_chain, 'first_try_pass_rate', first_try_pass_rate, 'moved_down_chain_rate', moved_down_chain_rate)) AS cells,
-    SUM(runs) AS total_runs,
-    MAX(latest_projection_updated_at) AS latest_projection_updated_at
-FROM (SELECT * FROM cell_rows ORDER BY tenant_id, week_start DESC, task_type, model_id)
-GROUP BY tenant_id;
+    tenants.tenant_id AS tenant_id,
+    json_group_array(json_object('iso_week', cell_rows.iso_week, 'week_start', cell_rows.week_start, 'task_type', cell_rows.task_type, 'model_id', cell_rows.model_id, 'runs', cell_rows.runs, 'first_try_passes', cell_rows.first_try_passes, 'moved_down_chain', cell_rows.moved_down_chain, 'first_try_pass_rate', cell_rows.first_try_pass_rate, 'moved_down_chain_rate', cell_rows.moved_down_chain_rate)) FILTER (WHERE cell_rows.iso_week IS NOT NULL) AS cells,
+    COALESCE(SUM(cell_rows.runs), 0) AS total_runs,
+    COALESCE(MAX(cell_rows.latest_projection_updated_at), tenants.latest_projection_updated_at) AS latest_projection_updated_at
+FROM tenants
+LEFT JOIN (SELECT * FROM cell_rows ORDER BY tenant_id, week_start DESC, task_type, model_id) AS cell_rows
+  ON cell_rows.tenant_id = tenants.tenant_id
+GROUP BY tenants.tenant_id;

@@ -8,6 +8,8 @@
 -- Same rules as the SQLite counterpart
 -- node_projection_delegation/sqlite/delegation_quality_weekly_view.sql.
 -- NULLS FIRST and COLLATE "C" keep the cells in the SQLite order.
+-- A tenant with any delegation_events row is served a row; one whose rows carry no attempt history
+-- is served empty cells and total_runs 0.
 -- Vendored into omnibase_infra byte for byte.
 
 BEGIN;
@@ -63,6 +65,12 @@ bounds AS (
     FROM eligible
     GROUP BY tenant_id
 ),
+tenants AS (
+    SELECT tenant_id, MAX(created_at) AS latest_projection_updated_at
+    FROM public.delegation_events
+    WHERE tenant_id IS NOT NULL
+    GROUP BY tenant_id
+),
 weeks AS (
     SELECT tenant_id, generate_series(first_week, last_week, interval '7 days')::date AS week_start
     FROM bounds
@@ -103,25 +111,29 @@ cell_rows AS (
     JOIN bounds ON bounds.tenant_id = cells.tenant_id
 )
 SELECT
-    tenant_id,
-    jsonb_agg(
-        jsonb_build_object(
-            'iso_week', iso_week,
-            'week_start', week_start_text,
-            'task_type', task_type,
-            'model_id', model_id,
-            'runs', runs,
-            'first_try_passes', first_try_passes,
-            'moved_down_chain', moved_down_chain,
-            'first_try_pass_rate', first_try_pass_rate,
-            'moved_down_chain_rate', moved_down_chain_rate
-        )
-        ORDER BY week_start DESC, task_type COLLATE "C" NULLS FIRST, model_id COLLATE "C" NULLS FIRST
+    tenants.tenant_id AS tenant_id,
+    COALESCE(
+        jsonb_agg(
+            jsonb_build_object(
+                'iso_week', cell_rows.iso_week,
+                'week_start', cell_rows.week_start_text,
+                'task_type', cell_rows.task_type,
+                'model_id', cell_rows.model_id,
+                'runs', cell_rows.runs,
+                'first_try_passes', cell_rows.first_try_passes,
+                'moved_down_chain', cell_rows.moved_down_chain,
+                'first_try_pass_rate', cell_rows.first_try_pass_rate,
+                'moved_down_chain_rate', cell_rows.moved_down_chain_rate
+            )
+            ORDER BY cell_rows.week_start DESC, cell_rows.task_type COLLATE "C" NULLS FIRST, cell_rows.model_id COLLATE "C" NULLS FIRST
+        ) FILTER (WHERE cell_rows.iso_week IS NOT NULL),
+        '[]'::jsonb
     ) AS cells,
-    SUM(runs)::int AS total_runs,
-    MAX(latest_projection_updated_at) AS latest_projection_updated_at
-FROM cell_rows
-GROUP BY tenant_id;
+    COALESCE(SUM(cell_rows.runs), 0)::int AS total_runs,
+    COALESCE(MAX(cell_rows.latest_projection_updated_at), tenants.latest_projection_updated_at) AS latest_projection_updated_at
+FROM tenants
+LEFT JOIN cell_rows ON cell_rows.tenant_id = tenants.tenant_id
+GROUP BY tenants.tenant_id;
 
 ALTER VIEW public.projection_delegation_quality_weekly SET (security_invoker = true);
 
