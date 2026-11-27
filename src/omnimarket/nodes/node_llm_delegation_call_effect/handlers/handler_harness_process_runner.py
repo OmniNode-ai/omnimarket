@@ -42,25 +42,28 @@ from omnimarket.nodes.node_llm_delegation_call_effect.models.model_harness_backe
     HarnessExitCause,
     ModelHarnessRunReceipt,
 )
+from omnimarket.protocols.protocol_overlay_document import ProtocolOverlayDocument
 from omnimarket.protocols.protocol_process_environment import (
     ProtocolProcessEnvironment,
 )
 
 _CREDENTIAL_SUFFIXES = ("_KEY", "_TOKEN", "_PASSWORD")
-# The Claude subscription login is the only credential the ``claude`` harness runs on: an API key or an
-# auth token in the child's environment would bill a key instead (OMN-26043), so each is refused by name.
-_SUBSCRIPTION_REFUSED = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
-# The effort each Claude tier runs at, by model family. Kept out of the backend wire model on purpose: a
-# new key there is refused by the deployed consumers' extra=forbid decode (wire compatibility gate).
-_CLAUDE_TIER_EFFORT = (("haiku", "low"), ("sonnet", "medium"), ("opus", "high"))
-
-
-def _claude_effort(model_name: str | None) -> str | None:
-    """The ``--effort`` for a Claude model name, or ``None`` for a family with no declared tier effort."""
-    name = (model_name or "").lower()
-    return next(
-        (effort for family, effort in _CLAUDE_TIER_EFFORT if family in name), None
-    )
+# The settings store overlay that holds each Claude tier's credential order and effort (OMN-26219). No mode and no
+# effort is chosen in code: a tier with no row is refused by the row's name.
+_TIER_SETTINGS_DOCUMENT = "claude_harness_tiers"
+# A key or token the child would inherit is dropped from a login launch, so a login never bills a key.
+_INHERITED_PREFIX = "ANTHROPIC_"
+# A result record whose text says the subscription login is limited or absent: the next declared credential
+# is tried, or the call is refused by name.
+_LOGIN_UNUSABLE_MARKERS = (
+    "not logged in",
+    "please run /login",
+    "usage limit",
+    "limit reached",
+    "rate limit",
+    "session limit",
+    "credit balance",
+)
 
 
 def _answering_model(record: dict[str, Any]) -> str | None:
@@ -114,6 +117,15 @@ def _claude_receipt(
             if cost < 0 or not cost.is_finite():
                 cost = None
     answer = str(record.get("result", ""))
+    if record.get("is_error") and any(
+        marker in answer.lower() for marker in _LOGIN_UNUSABLE_MARKERS
+    ):
+        return ModelHarnessRunReceipt(
+            wall_seconds=wall,
+            exit_cause="not_logged_in",
+            exit_code=code,
+            detail="the login is limited or absent",
+        )
     cause: HarnessExitCause = "completed"
     if code:
         cause = "process_failed"
@@ -142,7 +154,9 @@ class HandlerHarnessProcessRunner:
         environment: ProtocolProcessEnvironment,
         agents: Mapping[str, Mapping[str, Any]],
         codex: HandlerCodexHarnessAttempt | None = None,
+        settings: ProtocolOverlayDocument | None = None,
     ) -> None:
+        self._settings = settings
         self._environment = environment
         self._agents = agents
         self._codex = codex
@@ -190,39 +204,54 @@ class HandlerHarnessProcessRunner:
             exit_code=attempt.exit_code,
         )
 
-    def _subscription_violation(self, harness: EnumDelegationHarness) -> str | None:
-        """The name of a variable that would put an API key behind the subscription harness, or ``None``."""
-        config = self._agents.get(harness.value, {})
-        declared = {
-            *self._environment.environment(),
-            *config.get("env", {}),
-            *config.get("secret_env", {}),
-        }
-        return next((name for name in _SUBSCRIPTION_REFUSED if name in declared), None)
+    def _tier_setting(self, backend_id: str) -> tuple[dict[str, Any] | None, str]:
+        """The settings store row of one Claude tier, or ``None`` and the name of the row that is absent."""
+        name = f"{_TIER_SETTINGS_DOCUMENT}.tiers.{backend_id}"
+        document = (
+            self._settings.read(_TIER_SETTINGS_DOCUMENT)
+            if self._settings is not None
+            else None
+        )
+        tiers = document.get("tiers") if isinstance(document, dict) else None
+        row = tiers.get(backend_id) if isinstance(tiers, dict) else None
+        if not isinstance(row, dict) or not row.get("credential_order"):
+            return None, name
+        return row, name
 
     async def _claude_environment(
-        self, harness: EnumDelegationHarness
-    ) -> dict[str, str] | None:
-        """The child environment, or ``None`` when the declared route or credential is unusable."""
+        self, harness: EnumDelegationHarness, mode: str = "subscription"
+    ) -> tuple[dict[str, str] | None, str]:
+        """The child environment, or ``None`` and the named reason the route or credential is unusable.
+
+        ``mode`` is ``api_key`` (the agent entry's declared ``secret_env`` is resolved from the secret store by its
+        declared name into the child environment alone) or ``subscription`` (the login: no key is inherited).
+        """
         env = _agent_environment(self._environment)
         config = self._agents.get(harness.value, {})
         glm = harness is EnumDelegationHarness.CLAUDE_GLM
         declared = dict(config.get("env", {}))
         secrets = dict(config.get("secret_env", {}))
         if any(key.endswith(_CREDENTIAL_SUFFIXES) for key in declared):
-            return None
-        if glm:
-            if not secrets or not declared.get("ANTHROPIC_BASE_URL"):
-                return None
-            env.pop("ANTHROPIC_API_KEY", None)
-            env.pop("ANTHROPIC_AUTH_TOKEN", None)
+            return (
+                None,
+                "a credential is declared as a plain value in env, not secret_env",
+            )
+        if glm and (not secrets or not declared.get("ANTHROPIC_BASE_URL")):
+            return None, "the route or its secret reference is not declared"
+        for key in [k for k in env if k.startswith(_INHERITED_PREFIX)]:
+            if key.endswith(_CREDENTIAL_SUFFIXES):
+                env.pop(key)
+        if mode == "subscription":
+            secrets = {}
+        elif not secrets:
+            return None, "the agent entry declares no secret_env for an API key"
         for key, ref in secrets.items():
             secret = await resolve_api_key_async(ref, required=True)
             if secret is None:
-                return None
+                return None, f"{key} did not resolve from the secret store entry {ref}"
             env[key] = secret.get_secret_value()
         env.update(declared)
-        return env
+        return env, ""
 
     async def _run_claude(
         self, backend: ModelDelegationBackendConfig, prompt: str, timeout_seconds: float
@@ -232,34 +261,54 @@ class HandlerHarnessProcessRunner:
         assert harness is not None
         glm = harness is EnumDelegationHarness.CLAUDE_GLM
         adapter = HandlerClaudeGlmArguments() if glm else HandlerClaudeCodeArguments()
-        if not glm:
-            present = self._subscription_violation(harness)
-            if present is not None:
-                return ModelHarnessRunReceipt(
-                    wall_seconds=time.monotonic() - started,
-                    exit_cause="credential_refused",
-                    detail=(
-                        f"{present} is set: the claude harness runs on the "
-                        "subscription login and never an API key"
-                    ),
-                )
-        try:
-            env = await self._claude_environment(harness)
-        except (OSError, ValueError):
-            env = None
-        if env is None:
-            # The declared route or credential is unusable: refuse by name, never fall back to a key.
-            return ModelHarnessRunReceipt(
-                wall_seconds=time.monotonic() - started, exit_cause="not_logged_in"
-            )
         if not backend.model_name:
             return ModelHarnessRunReceipt(
                 wall_seconds=time.monotonic() - started, exit_cause="launch_failed"
             )
         argv = adapter.argv(None, model=backend.model_name)
-        effort = None if glm else _claude_effort(backend.model_name)
-        if effort is not None:
-            argv += ["--effort", effort]
+        if glm:
+            modes = [
+                "api_key"
+            ]  # the GLM route's one declared credential, resolved from its secret_env
+        else:
+            row, name = self._tier_setting(backend.backend_id)
+            if row is None:
+                return ModelHarnessRunReceipt(
+                    wall_seconds=time.monotonic() - started,
+                    exit_cause="credential_refused",
+                    detail=f"the setting {name} is absent: no credential mode is chosen in code",
+                )
+            modes = [str(item) for item in row["credential_order"]]
+            if row.get("effort"):
+                argv += ["--effort", str(row["effort"])]
+        reasons: list[str] = []
+        for mode in modes:
+            try:
+                env, reason = await self._claude_environment(harness, mode)
+            except (OSError, ValueError):
+                env, reason = None, f"the {mode} credential could not be resolved"
+            if env is None:
+                # The declared route or credential is unusable: refuse by name.
+                reasons.append(reason)
+                continue
+            receipt = await self._launch_claude(env, argv, prompt, timeout_seconds)
+            if receipt.exit_cause != "not_logged_in":
+                return receipt
+            reasons.append(f"{mode}: {receipt.detail or 'login unusable'}")
+        return ModelHarnessRunReceipt(
+            wall_seconds=time.monotonic() - started,
+            exit_cause="not_logged_in",
+            detail="no usable Claude credential: " + "; ".join(reasons),
+        )
+
+    async def _launch_claude(
+        self,
+        env: dict[str, str],
+        argv: list[str],
+        prompt: str,
+        timeout_seconds: float,
+    ) -> ModelHarnessRunReceipt:
+        started = time.monotonic()
         with tempfile.TemporaryDirectory(prefix="harness-call-") as cwd:
             try:
                 process = await asyncio.create_subprocess_exec(
