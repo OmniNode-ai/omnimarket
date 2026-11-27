@@ -221,3 +221,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/delegation/test_verifiable_path_rule_enforcement_omn25856.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn25856-closer-lab-work-checks-bus-lane
+  description: The integration-proof checks of eight launch tickets name a bus lane and run a servable inner command, so the local Done gate reaches the lab host instead of refusing before it publishes. The test fails on a check without the lane flag and on an env inner command.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_omn25856_lab_work_checks_bus_lane.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
