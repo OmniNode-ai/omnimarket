@@ -39,14 +39,25 @@ from tests.unit.nodes.node_overlay_store.support import (
     TABLE,
     record,
 )
+from tests.unit.nodes.node_projection_overlay_store.support import (
+    AUDIT_TOPIC,
+    REPLY_TOPIC,
+    default_load,
+    set_write,
+)
 
 pytestmark = pytest.mark.integration
 
-MIGRATIONS = tuple(
+MIGRATIONS = (
     Path(__file__).resolve().parents[1]
     / "src/omnimarket/nodes/node_projection_overlay_store/migrations"
-    / name
-    for name in ("0000_create_overlay_store.sql", "0002_add_operator_paths.sql")
+)
+MIGRATION = MIGRATIONS / "0000_create_overlay_store.sql"
+# The grant files need the runtime role, which a throwaway database does not have.
+MIGRATION_FILES = (
+    "0000_create_overlay_store.sql",
+    "0002_add_operator_paths.sql",
+    "0003_overlay_store_revision_provenance_audit.sql",
 )
 META = MessageMeta(topic="t", partition=0, offset=1, fallback_id="f")
 
@@ -120,8 +131,8 @@ async def _migrated() -> AsyncIterator[
     connection = await asyncpg.connect(_dsn(database))
     try:
         await connection.execute("CREATE SCHEMA IF NOT EXISTS omninode_internal")
-        for migration in MIGRATIONS:
-            await connection.execute(migration.read_text(encoding="utf-8"))
+        for name in MIGRATION_FILES:
+            await connection.execute((MIGRATIONS / name).read_text(encoding="utf-8"))
         published: list[tuple[str, bytes | None, bytes]] = []
 
         async def publish(topic: str, key: bytes | None, value: bytes) -> None:
@@ -161,7 +172,10 @@ async def test_a_load_is_stored_equal_with_its_key_order_and_published_as_stored
         topic, key, value = published[-1]
         assert topic == SNAPSHOT_TOPIC
         assert key == loaded.overlay_id.encode("utf-8")
-        assert ModelOverlayStoreRecord.model_validate_json(value) == loaded
+        # The snapshot carries the revision the store numbered the load with.
+        assert ModelOverlayStoreRecord.model_validate_json(value) == loaded.model_copy(
+            update={"revision": 1}
+        )
 
 
 @pytest.mark.integration
@@ -175,7 +189,9 @@ async def test_an_older_load_changes_nothing_and_the_newer_is_republished() -> N
         await runner.project_event("t", newer.model_dump(mode="json"), META)
         await runner.project_event("t", older.model_dump(mode="json"), META)
         assert (await _stored(connection))["bus_lane"] == TABLE["bus_lane"]
-        assert ModelOverlayStoreRecord.model_validate_json(published[-1][2]) == newer
+        assert ModelOverlayStoreRecord.model_validate_json(
+            published[-1][2]
+        ) == newer.model_copy(update={"revision": 1})
 
 
 @pytest.mark.integration
@@ -215,6 +231,30 @@ async def test_a_malformed_load_raises_for_the_dead_letter_and_stores_nothing() 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_a_set_is_answered_and_its_audit_row_is_published_from_the_table_once() -> (
+    None
+):
+    """OMN-26635: through the real runner, a set and its redelivery leave one audit row, two replies and one audit publish."""
+    async with _migrated() as (runner, connection, published):
+        await runner.project_event("t", default_load(), META)
+        write = set_write(based_on_revision=1)
+        await runner.project_event("t", write, META)
+        await runner.project_event("t", write, META)
+        topics = [topic for topic, _, _ in published]
+        assert topics.count(AUDIT_TOPIC) == 1
+        assert topics.count(REPLY_TOPIC) == 2
+        assert topics.count(SNAPSHOT_TOPIC) == 3
+        row = await connection.fetchrow(
+            "SELECT count(*) AS rows, count(published_at) AS published "
+            "FROM omninode_internal.overlay_store_audit WHERE write_id = $1",
+            write["write_id"],
+        )
+        assert row is not None
+        assert (row["rows"], row["published"]) == (1, 1)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_the_settings_an_operator_set_are_stored_and_published_with_the_record() -> (
     None
 ):
@@ -241,9 +281,8 @@ async def test_a_setting_record_with_operator_paths_is_stored_and_published_with
 ):
     """The record a setting set publishes carries ``operator_paths``; the real write binds them, and the snapshot carries them back so the next loader run keeps those settings (OMN-26495)."""
     async with _migrated() as (runner, connection, published):
-        loaded = record()
         payload = {
-            **loaded.model_dump(mode="json"),
+            **record().model_dump(mode="json"),
             "operator_paths": ["floor_fill_live/pool_engine"],
         }
         assert await runner.project_event("t", payload, META)
@@ -251,6 +290,6 @@ async def test_a_setting_record_with_operator_paths_is_stored_and_published_with
         assert compared.equal, compared.differing
         assert ModelOverlayStoreRecord.model_validate_json(
             published[-1][2]
-        ) == loaded.model_copy(
-            update={"operator_paths": ("floor_fill_live/pool_engine",)}
+        ) == record().model_copy(
+            update={"operator_paths": ("floor_fill_live/pool_engine",), "revision": 1}
         )

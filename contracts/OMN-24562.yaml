@@ -81,6 +81,11 @@ requirements:
   acceptance:
   - id: AC11
     statement: 'AC11: ModelEtcdLabMembersOverlay accepts the current five voters, renders their members.tsv rows, and refuses a sixth voter, a repeated name, a second learner and a second laptop voter -- falsifier: tests/unit/models/test_etcd_lab_members_overlay_document_omn24562.py fails collection or any of its tests fails'
+- id: req-omn24562-alarm-router-runtime-interpreter
+  statement: The failure alarm router runs a command that names an absent host venv interpreter under the running environment's interpreter, never refusing the fire on a host path.
+  acceptance:
+  - id: AC13
+    statement: 'AC13: a router command whose first token is an absent .venv/bin/python path runs under the runtime interpreter, and a present one is left as named -- falsifier: uv run pytest tests/nodes/node_failure_alarm_router_effect/test_interpreter_setting.py -q fails when the absent-venv resolution is removed'
 evidence_requirements:
 - kind: tests
   description: The inode alarm tests pass at the pushed head.
@@ -312,4 +317,24 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_tenant_outbox_flush_effect/test_overlay_and_entry.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+
+- id: dod-omn24562-flush-schedule-overlay-model
+  description: 'AC12: the schedule overlay document model for the tenant outbox flush scheduled node accepts its job_id, run_interval_seconds and grace_seconds document and refuses a missing key, an extra key and a malformed value; the test file fails at collection with ModuleNotFoundError before the model module exists and passes after.'
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_tenant_outbox_flush_schedule_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+
+- id: dod-omn24562-alarm-router-runtime-interpreter
+  description: 'AC13: the failure alarm router resolves an absent host .venv/bin/python first token to the runtime interpreter and leaves a present one alone (failing control: at the merge base the absent-venv test fails with InterpreterMissingError naming the host path).'
+  source: manual
+  binds_ac:
+  - AC13
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_failure_alarm_router_effect/test_interpreter_setting.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
