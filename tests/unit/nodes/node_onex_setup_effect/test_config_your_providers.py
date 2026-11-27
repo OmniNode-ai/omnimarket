@@ -141,7 +141,7 @@ async def test_your_provider_shows_its_status_models_and_actions() -> None:
             )
         )
         assert "OpenRouter" in said, said
-        assert "ready" in said, said
+        assert "all tests passed" in said, said
         assert "qwen/qwen3.8-27b" in said, said
         labels = [str(b.label) for b in detail.query(Button) if b.display]
         assert labels == ["Change key", "Add models", "Test", "Remove"]

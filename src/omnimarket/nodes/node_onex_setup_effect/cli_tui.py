@@ -169,14 +169,14 @@ def help_renderable(entries: Iterable[ModelTuiCommand]) -> Text:
     # The pairs are packed into short lines, so a line never breaks inside
     # one (H2: Rich breaks even at a no-break space).
     rows: list[Text] = [Text()]
-    for pair in design.words["help_keys"].split(" · "):
+    for pair in design.words["help_keys"].split(_say("hint_separator")):
         key, _, word = pair.partition(" ")
         row = rows[-1]
         if row and row.cell_len + len(pair) + 3 > _HELP_KEYS_WIDTH:
             row = Text()
             rows.append(row)
         if row:
-            row.append(" · ", style=_style("muted"))
+            row.append(_say("hint_separator"), style=_style("muted"))
         row.append(key, style=_style("foreground", "bold"))
         row.append(f" {word}", style=_style("muted"))
     lines += [Text(), *rows]
@@ -1701,7 +1701,9 @@ class SetupScreen(_TabbedScreen[None]):
         return _say(
             "basket_counted",
             count=f"{total} model{'' if total == 1 else 's'}",
-            providers=" · ".join(f"{_label(p)} {n}" for p, n in per_provider.items()),
+            providers=_say("hint_separator").join(
+                f"{_label(p)} {n}" for p, n in per_provider.items()
+            ),
         )
 
     def _as_stored(self, entry: ModelCatalogEntry, url: str) -> ModelCatalogEntry:
@@ -2510,8 +2512,8 @@ class ModelPickScreen(_TabbedScreen[None]):
     """
     BINDINGS = [
         Binding("escape", "cancel", _say("button_cancel")),
-        Binding("a", "auto", "Auto", show=False),
-        Binding("r,delete", "remove", "Remove", show=False),
+        Binding("a", "auto", _say("header_auto"), show=False),
+        Binding("r,delete", "remove", _say("button_remove"), show=False),
         Binding("d", "details", "Details", show=False),
     ]
 
@@ -3322,7 +3324,7 @@ class TaskCard:
         parts = [self.model, f"{tokens} tokens", f"{self._recorded.get('seconds')} s"]
         if self.state != "fallback" and cost is not None:
             parts.append(f"${cost}")
-        return " · ".join(parts)
+        return _say("hint_separator").join(parts)
 
     def render(self) -> object:
         from rich.text import Text
@@ -3675,7 +3677,12 @@ def _draw_diagram(design: Any, tick: int = 0) -> Text:
         put(x_bracket, y, "│", line)
     put(x_bracket, 1, "┌", line)
     put(x_bracket, 9, "└", line)
-    put(x_bracket, middle, "┼" if words.pulse else "●", line if words.pulse else accent)
+    put(
+        x_bracket,
+        middle,
+        "┼" if words.pulse else tui_design().glyphs.dot_on,
+        line if words.pulse else accent,
+    )
     rest_text = (
         accent.replace("bold", "").strip(),
         _style("foreground"),
@@ -3695,15 +3702,20 @@ def _draw_diagram(design: Any, tick: int = 0) -> Text:
             text_at(x_out + 2, mid, label, rest_text[index])
     if words.pulse:
         if local < left_gap:
-            put(x_task + task_w + local, middle, "●", accent)
+            put(x_task + task_w + local, middle, tui_design().glyphs.dot_on, accent)
         elif local < left_gap + mid_gap:
-            put(x_hub + hub_w + (local - left_gap), middle, "●", accent)
+            put(
+                x_hub + hub_w + (local - left_gap),
+                middle,
+                tui_design().glyphs.dot_on,
+                accent,
+            )
         elif local < left_gap + mid_gap + branch_steps:
             cells = branch_cells(target)
             x, y = cells[min(local - left_gap - mid_gap, len(cells) - 1)]
-            put(x, y, "●", accent)
+            put(x, y, tui_design().glyphs.dot_on, accent)
     else:
-        put(x_task + task_w + left_gap // 2, middle, "●", accent)
+        put(x_task + task_w + left_gap // 2, middle, tui_design().glyphs.dot_on, accent)
     text = Text(no_wrap=True)
     for row in grid:
         for char, style in row:
@@ -3779,7 +3791,7 @@ def flow_renderable(tick: int, stops: Sequence[str]) -> Text:
         text.append(" ")
         for position in range(gap - 1):
             if index == leg and position == step:
-                text.append("●", _style("accent", "bold"))
+                text.append(tui_design().glyphs.dot_on, _style("accent", "bold"))
             else:
                 text.append("─", _style("muted"))
         text.append("▶ ", _style("muted"))
@@ -5580,7 +5592,9 @@ class OnexTui(App[int]):
             else _say("last_run_unmeasured", model=model)
         )
         self._last_run = self._last_run_short + (
-            f" · {_say('run_id', run=run_id[:8])}" if run_id else ""
+            f"{_say('hint_separator')}{_say('run_id', run=run_id[:8])}"
+            if run_id
+            else ""
         )
         self._render_status()
 
