@@ -51,11 +51,7 @@ from omnibase_infra.runtime.boundary_failure_terminal import (
 )
 from pydantic import ValidationError
 
-from omnimarket.models.model_local_done_gate_receipt import ModelLocalDoneGateReceipt
 from omnimarket.models.model_projection_request import ModelProjectionRequest
-from omnimarket.nodes.node_projection_dod_verdict.handlers.handler_local_done_gate_receipt_store import (
-    HandlerLocalDoneGateReceiptStore,
-)
 from omnimarket.nodes.node_projection_dod_verdict.handlers.handler_projection_dod_verdict import (
     HandlerProjectionDodVerdict,
 )
@@ -174,7 +170,6 @@ class DodVerdictProjectionWriter(BaseProjectionRunner):
         with open(_path) as handle:
             self._contract: dict[str, Any] = yaml.safe_load(handle)
         self._fold = HandlerProjectionDodVerdict()
-        self._receipts = HandlerLocalDoneGateReceiptStore()
 
     @property
     def subscribe_topics(self) -> list[str]:
@@ -235,13 +230,6 @@ class DodVerdictProjectionWriter(BaseProjectionRunner):
             }
         row = result.row
         declined = row is None
-        # OMN-26725: a local_done_gate run's receipt rides its verdict; keep it
-        # for the hosted verifier. A rehearsal is not stored.
-        if row is not None:
-            raw = data.get("local_done_gate_receipt")
-            self._receipts.store_receipt(
-                None if raw is None else ModelLocalDoneGateReceipt.model_validate(raw)
-            )
         await self.db.connect()
         try:
             written = None if row is None else await self._persist(row)

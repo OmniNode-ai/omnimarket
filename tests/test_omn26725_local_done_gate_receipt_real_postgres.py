@@ -15,10 +15,10 @@ from pathlib import Path
 
 import pytest
 
-from omnimarket.models.model_message_meta import MessageMeta
-from omnimarket.projection.local_done_gate_receipts import (
+from omnimarket.models.model_local_done_gate_receipt_store import (
     FilesystemLocalDoneGateReceiptStore,
 )
+from omnimarket.models.model_message_meta import MessageMeta
 from tests.test_omn18900_real_postgres_dod_verdict_write_path import (
     _event,
     _migrated_writer,

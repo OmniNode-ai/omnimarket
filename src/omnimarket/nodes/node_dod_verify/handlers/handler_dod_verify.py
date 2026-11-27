@@ -28,6 +28,9 @@ from omnimarket.enums.enum_dod_verify_unresolved_cause import (
 from omnimarket.models.model_criteria_drift import (
     ModelCriteriaCheck,
 )
+from omnimarket.models.model_local_done_gate_receipt_store import (
+    receipt_from_results,
+)
 from omnimarket.nodes.node_dod_verify.models.model_dod_acceptance_summary import (
     ModelDodAcceptanceSummary,
 )
@@ -61,9 +64,6 @@ from omnimarket.nodes.node_dod_verify.services.dispatch_budget import (
     budget_is_open,
     dispatch_budget,
     start_budget_s,
-)
-from omnimarket.projection.local_done_gate_receipts import (
-    receipt_from_results,
 )
 
 if TYPE_CHECKING:
