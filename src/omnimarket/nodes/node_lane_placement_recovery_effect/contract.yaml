@@ -33,6 +33,9 @@ handler:
   output_model: omnimarket.nodes.node_lane_placement_recovery_effect.models.model_claude_account_limit.ModelClaudeAccountLimitResult
 runtime_dispatch:
   external_trigger: Direct Python invocation by the host placement caller with supplied runtime ports.
+  on_demand:
+    command: uv run onex node node_lane_placement_recovery_effect --input <request.json>
+    owner: OmniNode Platform Team
 descriptor:
   node_archetype: effect
   purity: effectful

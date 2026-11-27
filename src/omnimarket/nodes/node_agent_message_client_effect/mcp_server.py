@@ -23,6 +23,7 @@ from omnimarket.nodes.node_agent_message_client_effect.models.refusal import (
 )
 from omnimarket.nodes.node_agent_message_client_effect.render import (
     message_json,
+    read_json,
     render_refusal,
 )
 from omnimarket.nodes.node_agent_message_client_effect.runtime import (
@@ -107,6 +108,6 @@ def build_server(runtime: AgentMessageRuntime) -> MCPServer:
             )
         except AgentMessageRefusalError as refusal:
             raise ToolError(render_refusal(refusal, as_json=False)) from None
-        return {"messages": [message_json(m) for m in result.messages]}
+        return read_json(result)
 
     return server

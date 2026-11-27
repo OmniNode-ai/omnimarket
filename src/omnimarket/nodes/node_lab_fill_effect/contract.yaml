@@ -180,10 +180,8 @@ runtime_dispatch:
   terminal_events:
     success: "onex.evt.omnimarket.lab-fill-effect-completed.v1"
     failure: "onex.evt.omnimarket.lab-fill-effect-failed.v1"
-  # The lab host's timer runs the tick module; the bus never starts this node.
-  on_demand:
-    command: uv run python -m omnimarket.nodes.node_lab_fill_effect.runtime_lab_fill_tick
-    owner: OmniNode Platform Team
+  host_unit:
+    unit: lab-fill-tick-systemd
 published_events:
   - event_type: ModelLabFillStatusWriteResult
     topic: onex.evt.omnimarket.lab-fill-effect-completed.v1

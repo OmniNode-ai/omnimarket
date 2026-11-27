@@ -106,6 +106,10 @@ class _Index:
     running: frozenset[str] | None
     # When each pull request merged, where the watcher's merge record says.
     merged_at: dict[str, datetime]
+    # The task-to-ticket map STATUS rows, oldest first, and the ids of the rows an answer kind names: both are read once per
+    # request, because a scan of the whole ledger per line made the step's time the lines times the rows.
+    task_map_rows: tuple[ModelFloorLedgerRow, ...]
+    answered: frozenset[str]
 
 
 @dataclass(frozen=True)
@@ -130,22 +134,14 @@ def _tip(
 
 
 def _task_map(
-    plan: ModelFloorPlanInput, request: ModelFactoryFloorRequest
+    plan: ModelFloorPlanInput, request: ModelFactoryFloorRequest, index: _Index
 ) -> dict[str, tuple[tuple[str, ...], tuple[str, ...], bool]]:
     """The task-to-ticket map STATUS rows for this plan: per task, its mapped tickets, pull requests and merged flag."""
     found: dict[str, tuple[tuple[str, ...], tuple[str, ...], bool]] = {}
-    # Only the map rows are sorted: one sort of the whole ledger per plan was 2.8 s of the compute step (OMN-24116).
-    for row in sorted(
-        (
-            row
-            for row in request.ledger
-            if row.kind == "STATUS"
-            and row.state == request.config.task_map_state
-            and row.task
-            and not (row.subject and row.subject not in plan.plan_path)
-        ),
-        key=_row_key,
-    ):
+    # The map rows were found and sorted once for the whole ledger (the index); a line only drops the ones another plan owns.
+    for row in index.task_map_rows:
+        if row.subject and row.subject not in plan.plan_path:
+            continue
         tickets, prs, merged = found.get(row.task, ((), (), False))
         found[row.task] = (
             tuple(dict.fromkeys(tickets + row.tickets)),
@@ -156,11 +152,11 @@ def _task_map(
 
 
 def _with_task_map(
-    plan: ModelFloorPlanInput, request: ModelFactoryFloorRequest
+    plan: ModelFloorPlanInput, request: ModelFactoryFloorRequest, index: _Index
 ) -> tuple[ModelFloorPlanInput, frozenset[str]]:
     """The plan with each manifest task's mapped ticket and pull request joined to its own, and the tasks mapped merged."""
     manifest = plan.manifest
-    mapping = _task_map(plan, request)
+    mapping = _task_map(plan, request, index)
     if manifest is None or not mapping:
         return plan, frozenset()
     tasks = tuple(
@@ -262,6 +258,23 @@ def _index(request: ModelFactoryFloorRequest) -> _Index:
         merged_at={
             pr_key(merge.key): merge.merged_at for merge in request.watcher.merges
         },
+        task_map_rows=tuple(
+            sorted(
+                (
+                    row
+                    for row in request.ledger
+                    if row.kind == "STATUS"
+                    and row.state == request.config.task_map_state
+                    and row.task
+                ),
+                key=_row_key,
+            )
+        ),
+        answered=frozenset(
+            row.re
+            for row in request.ledger
+            if row.kind in request.config.ask_answer_kinds and row.re
+        ),
     )
 
 
@@ -908,22 +921,17 @@ def _ledger_stops(
     """
     config = request.config
     scope = _scope(plan)
-    answered = {
-        row.re
-        for row in request.ledger
-        if row.kind in config.ask_answer_kinds and row.re
-    }
+    answered = index.answered
     merged = {pr_key(pr.key) for pr in request.watcher.prs if pr.state == "MERGED"}
     merged.update(pr_key(merge.key) for merge in request.watcher.merges)
     done_tickets = {
         ticket for item in items if item.state == "done" for ticket in item.tickets
     }
     stops: tuple[_Cause, ...] = ()
-    # Only the rows on the plan's tickets are sorted: one sort of the whole ledger per plan was 3.7 s of the compute step.
-    for row in sorted(
-        (row for row in request.ledger if _intersects(row.tickets, scope)),
-        key=_row_key,
-    ):
+    # Only the rows on the plan's tickets are sorted, and they are found by the ticket index, never by a scan of the whole
+    # ledger per plan (one sort of the whole ledger per plan was 3.7 s of the compute step; the scan was 240 s over 1,139 lines).
+    on_scope = sorted({p for ticket in scope for p in index.by_ticket.get(ticket, ())})
+    for row in sorted((request.ledger[p] for p in on_scope), key=_row_key):
         if _resumed(row, index):
             continue
         if row.prs and all(pr_key(pr) in merged for pr in row.prs):
@@ -1502,10 +1510,10 @@ def _running(
 def compute_factory_floor(request: ModelFactoryFloorRequest) -> ModelFactoryFloorResult:
     """Compute the floor without reading or mutating anything outside the request."""
     picks = pick_plans(request)
-    mapped = tuple(_with_task_map(pick.plan, request) for pick in picks)
+    index = _index(request)
+    mapped = tuple(_with_task_map(pick.plan, request, index) for pick in picks)
     selected = tuple(plan for plan, _merged in mapped)
     holds = _holds(request)
-    index = _index(request)
     plan_lines = tuple(
         _line(plan, holds, request, index, merged).model_copy(
             update={"line_class": pick.line_class}

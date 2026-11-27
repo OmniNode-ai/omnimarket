@@ -145,7 +145,7 @@ def test_bare_python_check_does_not_inherit_an_ambient_venv_or_import_path(
         seen["env"] = kwargs.get("env")
         return type("P", (), {"returncode": 0, "stdout": "", "stderr": ""})()
 
-    monkeypatch.setattr(ec_mod.subprocess, "run", _fake_run)
+    monkeypatch.setattr(ec_mod, "_run_in_process_group", _fake_run)
     repo = tmp_path / "omnidash"
     repo.mkdir()
     collector = EvidenceCollector()

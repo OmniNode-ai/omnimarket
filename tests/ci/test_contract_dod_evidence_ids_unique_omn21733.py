@@ -18,6 +18,12 @@ import yaml
 
 pytestmark = pytest.mark.unit
 
+#: libyaml's loader reads the same documents about ten times faster than the pure-Python one. This
+#: file reads every ticket contract, and it is selected for a data-only pull request (OMN-26270).
+_CONTRACT_LOADER: type[yaml.SafeLoader] | type[yaml.CSafeLoader] = getattr(
+    yaml, "CSafeLoader", yaml.SafeLoader
+)
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -26,7 +32,9 @@ def test_every_repo_contract_names_each_dod_evidence_item_once() -> None:
     assert contracts, "expected at least one repo-owned contracts/OMN-*.yaml"
     offenders: list[str] = []
     for path in contracts:
-        contract: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8"))
+        contract: dict[str, Any] = yaml.load(
+            path.read_text(encoding="utf-8"), Loader=_CONTRACT_LOADER
+        )
         counts = Counter(item["id"] for item in contract.get("dod_evidence", []))
         offenders.extend(
             f"{path.name}:{item_id} appears {count} times"

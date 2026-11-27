@@ -25,7 +25,7 @@ class ScheduledOverlayRefusalLatch:
         self._latched: ModelScheduledOverlayRefusal | None = None
 
     def refuse(
-        self, error: NodeOverlayNotFoundError
+        self, error: NodeOverlayNotFoundError | RuntimeError
     ) -> ModelScheduledOverlayRefusal | None:
         """Build the typed refusal; log one ERROR line only when the cause is new."""
         refusal = ModelScheduledOverlayRefusal(

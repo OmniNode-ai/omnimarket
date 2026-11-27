@@ -266,6 +266,12 @@ def test_hosted_audience_does_not_execute_local_done_gate(
         raise AssertionError("hosted audience must not start a local subprocess")
 
     monkeypatch.setattr(subprocess, "run", _unexpected_subprocess)
+    # Check commands start through the process-group runner (OMN-25856); the
+    # same tripwire guards it.
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_dod_verify.services.evidence_collector._run_in_process_group",
+        _unexpected_subprocess,
+    )
 
     state = HandlerDodVerify().handle(
         ModelDodVerifyStartCommand(
@@ -346,6 +352,10 @@ def test_local_done_gate_wrong_private_identifier_remains_a_real_failure(
         )
 
     monkeypatch.setattr(subprocess, "run", _not_found)
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_dod_verify.services.evidence_collector._run_in_process_group",
+        _not_found,
+    )
     correlation_id = uuid4()
     command = ModelDodVerifyStartCommand(
         ticket_id="OMN-15443",

@@ -169,6 +169,12 @@ class ModelLlmDelegationCallResult(BaseModel):
     # should be preferred for event/receipt attribution.
     served_model_id: str | None = None
 
+    # OMN-18079: the provider's own id for this generation (an OpenRouter
+    # ``gen-...`` id, the chat completion ``id``), so the answering model can be
+    # looked up at the provider. ``None`` when the provider returned none; it is
+    # never filled from the requested model.
+    provider_generation_id: str | None = None
+
     # OMN-19205: earlier calls of this same customer route that the provider
     # could not serve (a throttle, or an upstream outage inside a 200), in the
     # order they were tried. The model of THIS result is the one that answered

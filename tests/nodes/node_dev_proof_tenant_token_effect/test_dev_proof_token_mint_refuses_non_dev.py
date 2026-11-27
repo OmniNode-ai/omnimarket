@@ -105,7 +105,7 @@ def test_dev_proof_token_mint_refuses_non_dev_positive_control_mints_on_dev() ->
     )
     assert result.outcome is EnumDevProofTokenOutcome.MINTED
     assert len(reader.calls) == 1
-    assert len(seeder.seed_calls) == 2
+    assert len(seeder.seed_calls) == 1
 
 
 def test_dev_proof_token_mint_refuses_non_dev_reads_the_contract_not_code(

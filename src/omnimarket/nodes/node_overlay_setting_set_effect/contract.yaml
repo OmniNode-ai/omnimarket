@@ -61,12 +61,80 @@ settable_settings:
     key: lanes.{lane}.lazy_start
     path: lanes/{lane}/lazy_start
     document_model: "omnimarket.models.overlay_documents.model_contract_hotload_lane_overlay:ModelContractHotloadLaneOverlay"
+  # OMN-26043: the delegation responder chain every delegation check sends its task through, one list-valued row (local
+  # responders, then openrouter, then claude_api). The row holds no secret: a local responder is a private http://<ipv4>:<port> base.
+  - overlay_id: delegation_check_responders
+    key: responders
+    path: responders
+    document_model: "omnimarket.models.overlay_documents.model_delegation_check_responders_overlay:ModelDelegationCheckRespondersOverlay"
+    # The store may hold no record of this overlay yet: the first set creates it from this document, validated by the model above.
+    first_document: {schema_version: 1}
+  # OMN-26642: the dev gateway address and the test tenant the gateway-graded delegation checks act as. The row holds no secret: the
+  # tenant's token is the dev tenant node's, found by the secret name its overlay declares.
+  - overlay_id: delegation_check_gateway
+    key: gateway
+    path: gateway
+    document_model: "omnimarket.models.overlay_documents.model_delegation_check_gateway_overlay:ModelDelegationCheckGatewayOverlay"
+    # The gateway document has required keys with no default, so the value is the whole document; the first set creates the record.
+    first_document: {}
+    whole_document: true
   # OMN-26484: the age past which a held dev deploy command raises its alarm. The dev roll window gate reads its policy from this
   # overlay on every tick, so a value set here moves the alarm on the next tick; an unset value (null) switches the alarm off.
   - overlay_id: node_dev_roll_window_gate_effect
     key: held_age_alarm_after_seconds
     path: held_age_alarm_after_seconds
     document_model: "omnimarket.nodes.node_dev_roll_window_gate_effect.models.model_dev_roll_window_gate_policy:ModelDevRollWindowGatePolicy"
+  # OMN-26621: the owner and thresholds of the per-build delegation checks. The owner has no default: with none set the node
+  # refuses to raise an alarm. A declared setting holds no secret.
+  - overlay_id: node_build_delegation_checks
+    key: owner
+    path: owner
+    document_model: "omnimarket.models.overlay_documents.model_build_delegation_checks_overlay:ModelBuildDelegationChecksOverlay"
+  - overlay_id: node_build_delegation_checks
+    key: alarm_lane
+    path: alarm_lane
+    document_model: "omnimarket.models.overlay_documents.model_build_delegation_checks_overlay:ModelBuildDelegationChecksOverlay"
+  - overlay_id: node_build_delegation_checks
+    key: check_timeout_seconds
+    path: check_timeout_seconds
+    document_model: "omnimarket.models.overlay_documents.model_build_delegation_checks_overlay:ModelBuildDelegationChecksOverlay"
+  - overlay_id: node_build_delegation_checks
+    key: max_alarm_latency_seconds
+    path: max_alarm_latency_seconds
+    document_model: "omnimarket.models.overlay_documents.model_build_delegation_checks_overlay:ModelBuildDelegationChecksOverlay"
+  # OMN-26521: the floor fill's live seam keys (the pool snapshot file and its read-at record, the ticket deadline, the andon stop queue
+  # directory). Each is optional in the overlay: a seam whose key is absent answers UNKNOWN naming it. A declared setting holds no secret.
+  - overlay_id: node_floor_fill_orchestrator
+    key: floor_fill_live.pool_snapshot_path
+    path: floor_fill_live/pool_snapshot_path
+    document_model: "omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_overlay_document:ModelFloorFillOverlayDocument"
+  - overlay_id: node_floor_fill_orchestrator
+    key: floor_fill_live.pool_record_suffix
+    path: floor_fill_live/pool_record_suffix
+    document_model: "omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_overlay_document:ModelFloorFillOverlayDocument"
+  - overlay_id: node_floor_fill_orchestrator
+    key: floor_fill_live.pool_snapshot_max_age_seconds
+    path: floor_fill_live/pool_snapshot_max_age_seconds
+    document_model: "omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_overlay_document:ModelFloorFillOverlayDocument"
+  - overlay_id: node_floor_fill_orchestrator
+    key: floor_fill_live.pool_engine
+    path: floor_fill_live/pool_engine
+    document_model: "omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_overlay_document:ModelFloorFillOverlayDocument"
+  - overlay_id: node_floor_fill_orchestrator
+    key: floor_fill_live.mint_timeout_seconds
+    path: floor_fill_live/mint_timeout_seconds
+    document_model: "omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_overlay_document:ModelFloorFillOverlayDocument"
+  - overlay_id: node_floor_fill_orchestrator
+    key: floor_fill_live.andon_state_dir
+    path: floor_fill_live/andon_state_dir
+    document_model: "omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_overlay_document:ModelFloorFillOverlayDocument"
+  # OMN-26461: the goal's ticket rule roots, the tickets and epics whose pull requests the landing goal admits. A set of the list is
+  # validated against the whole overlay document, so a non-ticket string or a wrong type is refused with nothing written. The row holds no
+  # secret: the list is OMN-<n> ticket ids.
+  - overlay_id: goal_scope_ticket_rule
+    key: ticket_roots
+    path: ticket_roots
+    document_model: "omnimarket.models.overlay_documents.model_goal_scope_ticket_rule_overlay:ModelGoalScopeTicketRuleOverlay"
 config:
   # The live record the set builds on must have been loaded within this many seconds: the loader asserts every overlay
   # each cycle, so an older record means the read did not reach the newest one, and a set built on it would replace newer settings.

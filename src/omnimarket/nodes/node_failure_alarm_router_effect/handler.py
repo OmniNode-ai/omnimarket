@@ -22,16 +22,30 @@ sinks and refuses if one alarm does not reach both destinations.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
+import os
 import shlex
 import socket
 import subprocess
+import sys
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 
+from omnibase_infra.runtime.models.model_runtime_tick import ModelRuntimeTick
+
 from omnimarket.handlers.ledger_row_grammar import Row, parse_row
+from omnimarket.handlers.node_overlay_reader import (
+    NodeOverlayNotFoundError,
+    load_structured_overlay,
+)
+from omnimarket.handlers.scheduled_overlay_refusal import ScheduledOverlayRefusalLatch
+from omnimarket.models.model_runtime_tick_schedule import (
+    ModelRuntimeTickScheduleConfig,
+    scheduled_fire,
+)
 from omnimarket.nodes.node_failure_alarm_router_effect.causes import (
     ALARM_CELL,
     HELD_ROLL,
@@ -50,6 +64,12 @@ from omnimarket.nodes.node_failure_alarm_router_effect.causes import (
     row_causes,
     stamp_of,
 )
+from omnimarket.nodes.node_failure_alarm_router_effect.detectors import (
+    extra_causes,
+)
+from omnimarket.nodes.node_failure_alarm_router_effect.detectors import (
+    resolution as extra_resolution,
+)
 from omnimarket.nodes.node_failure_alarm_router_effect.models import (
     ModelAlarmGap,
     ModelCauseAlarm,
@@ -57,8 +77,13 @@ from omnimarket.nodes.node_failure_alarm_router_effect.models import (
     ModelFailureAlarmRequest,
     ModelFailureAlarmResult,
 )
+from omnimarket.nodes.node_failure_alarm_router_effect.rules import (
+    ModelFailureAlarmRules,
+    load_rules,
+)
 
 TICKET = "OMN-26483"
+NODE_NAME = "node_failure_alarm_router_effect"
 ACTOR = "node:node_failure_alarm_router_effect"
 COMMAND_TIMEOUT_S = 60
 _SELF_CHECK_NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
@@ -72,6 +97,20 @@ class PositiveControlFailedError(RuntimeError):
 
 class SelfCheckFailedError(RuntimeError):
     """A synthetic failure row did not reach both destinations."""
+
+
+class InterpreterMissingError(RuntimeError):
+    """A command's executable (the interpreter) is not on this host; the fire refuses naming it."""
+
+
+PYTHON_TOKEN = "{python}"
+
+
+def _check_executable(path: str) -> None:
+    if not (os.path.isfile(path) and os.access(path, os.X_OK)):
+        raise InterpreterMissingError(
+            f"interpreter not found or not executable: {path}"
+        )
 
 
 class FailureAlarmPorts(Protocol):
@@ -93,6 +132,40 @@ class CommandPorts:
             )
         self._request = request
         self._host = request.host or socket.gethostname()
+        self.interpreter = request.python_interpreter.strip() or sys.executable
+        if any(
+            PYTHON_TOKEN in command
+            for command in (
+                request.ledger_rows_command,
+                request.ledger_append_command,
+                request.alert_command,
+            )
+        ):
+            _check_executable(self.interpreter)
+
+    def _argv(self, command: str) -> list[str]:
+        argv = shlex.split(command)
+        if argv and argv[0] == PYTHON_TOKEN:
+            argv[0] = self.interpreter
+        return argv
+
+    def _run(
+        self, argv: list[str], *, input_text: str | None = None
+    ) -> subprocess.CompletedProcess[str]:
+        try:
+            return subprocess.run(
+                argv,
+                input=input_text,
+                capture_output=True,
+                text=True,
+                timeout=COMMAND_TIMEOUT_S,
+                check=False,
+            )
+        except (FileNotFoundError, PermissionError) as exc:
+            raise InterpreterMissingError(
+                f"command executable not found or not executable: {argv[0] if argv else ''}"
+                f" ({type(exc).__name__})"
+            ) from exc
 
     def read_rows(self) -> list[str]:
         request = self._request
@@ -101,13 +174,7 @@ class CommandPorts:
                 Path(request.ledger_rows_file).read_text(encoding="utf-8").splitlines()
             )
         if request.ledger_rows_command.strip():
-            done = subprocess.run(
-                shlex.split(request.ledger_rows_command),
-                capture_output=True,
-                text=True,
-                timeout=COMMAND_TIMEOUT_S,
-                check=False,
-            )
+            done = self._run(self._argv(request.ledger_rows_command))
             if done.returncode:
                 raise RuntimeError(
                     f"ledger rows command exited {done.returncode}: {cell(done.stderr, 160)}"
@@ -130,9 +197,9 @@ class CommandPorts:
         command = self._request.ledger_append_command
         if not command.strip():
             raise ValueError("no ledger writer: ledger_append_command is empty")
-        done = subprocess.run(
+        done = self._run(
             [
-                *shlex.split(command),
+                *self._argv(command),
                 "--lane",
                 ROUTER_LANE,
                 "--host",
@@ -142,11 +209,7 @@ class CommandPorts:
                 "--rows-file",
                 "-",
             ],
-            input="\n".join(rows) + "\n",
-            capture_output=True,
-            text=True,
-            timeout=COMMAND_TIMEOUT_S,
-            check=False,
+            input_text="\n".join(rows) + "\n",
         )
         if done.returncode:
             raise RuntimeError(
@@ -154,13 +217,7 @@ class CommandPorts:
             )
 
     def push(self, text: str) -> None:
-        done = subprocess.run(
-            [*shlex.split(self._request.alert_command), text],
-            capture_output=True,
-            text=True,
-            timeout=COMMAND_TIMEOUT_S,
-            check=False,
-        )
+        done = self._run([*self._argv(self._request.alert_command), text])
         if done.returncode:
             raise RuntimeError(
                 f"push command exited {done.returncode}: {cell(done.stderr or done.stdout, 160)}"
@@ -268,8 +325,14 @@ def _parse_rows(lines: list[str]) -> list[Row]:
 class HandlerFailureAlarmRouter:
     """Read the failure classes and deliver one alarm per cause to the orchestrator inbox and the push channel."""
 
-    def __init__(self, *, ports: FailureAlarmPorts | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        ports: FailureAlarmPorts | None = None,
+        rules: ModelFailureAlarmRules | None = None,
+    ) -> None:
         self._ports = ports
+        self._rules = rules or load_rules()
         self._refusals_pushed: set[str] = set()
 
     def self_check(self) -> None:
@@ -341,7 +404,10 @@ class HandlerFailureAlarmRouter:
 
         open_causes, resolved_at = open_and_resolved(rows)
         since = now - timedelta(hours=request.lookback_hours)
-        active = row_causes(rows, since)
+        active = [
+            *row_causes(rows, since),
+            *extra_causes(rows, since, now, self._rules),
+        ]
         controller = controller_cause(
             ticks, request.controller_subject, request.consecutive_refusals
         )
@@ -403,7 +469,9 @@ class HandlerFailureAlarmRouter:
 
         resolved: list[ModelCauseResolved] = []
         for key, opened in open_causes.items():
-            ended_at = resolution(opened, rows, ticks)
+            ended_at = resolution(opened, rows, ticks) or extra_resolution(
+                opened, rows, self._rules
+            )
             if ended_at is None:
                 continue
             row = _resolved_row(
@@ -445,3 +513,50 @@ class HandlerFailureAlarmRouter:
             rows_parsed=len(rows),
             ticks_parsed=len(ticks),
         )
+
+
+class HandlerFailureAlarmRouterScheduled:
+    """The runtime tick opens one fire per schedule window (``config.failure_alarm_router.schedule``); other ticks answer nothing.
+
+    The sources and destinations of a fire are the deployment overlay's: the ledger rows command, the push command and the
+    ledger writer command, none of them in a bus request.
+    """
+
+    def __init__(
+        self,
+        router: HandlerFailureAlarmRouter | None = None,
+        request: ModelFailureAlarmRequest | None = None,
+        config: ModelRuntimeTickScheduleConfig | None = None,
+    ) -> None:
+        self._router = router or HandlerFailureAlarmRouter()
+        self._request = request
+        self._config = config or load_rules().schedule
+        self._refusals = ScheduledOverlayRefusalLatch(NODE_NAME)
+
+    async def handle(self, request: ModelRuntimeTick) -> ModelFailureAlarmResult | None:
+        fire = scheduled_fire(
+            self._config,
+            now=request.now,
+            scheduled_at=request.scheduled_at,
+            tick_interval_ms=request.tick_interval_ms,
+            tick_id=request.tick_id,
+            scheduler_id=request.scheduler_id,
+        )
+        if fire is None:
+            return None
+        try:
+            settings = self._request or load_structured_overlay(
+                NODE_NAME, ModelFailureAlarmRequest
+            )
+        except NodeOverlayNotFoundError as exc:
+            self._refusals.refuse(exc)
+            return None
+        try:
+            result = await asyncio.to_thread(
+                self._router.handle, settings.model_copy(update={"now": request.now})
+            )
+        except InterpreterMissingError as exc:
+            self._refusals.refuse(exc)
+            return None
+        self._refusals.recovered()
+        return result

@@ -1,9 +1,11 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The nine group 0 files that moved their ledger reads to the bus stay cleared.
+"""The group 0 files that moved off the ledger file name stay cleared.
 
-Each file listed here used to hold an executable reader of the work ledger file or its path
-variable. The census run over this tree must print no hit for any of them, and the per-file
+Nine src files moved their ledger reads to the bus, and seven row grammar tests stopped
+spelling the ledger file name (they take the governed name from the grammar and build any path
+under the temp dir). Each file listed here used to hold an executable reader of the work ledger
+file or its path variable. The census run over this tree must print no hit for any of them, and the per-file
 ratchet table must hold no row for any of them, so a change that puts a reader back in one of
 these files fails here as well as in the census gate. The positive control proves the census run
 does see the hits of a file that still holds one.
@@ -34,6 +36,13 @@ _CLEARED = (
     "src/omnimarket/nodes/node_dev_runtime_mutation_guard_effect/contract.yaml",
     "src/omnimarket/nodes/node_entrypoint_lib_compute/handlers/handler_entrypoint_lib.py",
     "src/omnimarket/nodes/node_exception_queue_effect/container/container_exception_queue_effect.py",
+    "tests/handlers/ledger_row_grammar/test_ledger_claim_contract_omn20029.py",
+    "tests/handlers/ledger_row_grammar/test_ledger_grammar_prompt_link_omn18531.py",
+    "tests/handlers/ledger_row_grammar/test_ledger_hold_grammar.py",
+    "tests/handlers/ledger_row_grammar/test_ledger_ruling_link_omn17427.py",
+    "tests/handlers/ledger_row_grammar/test_ledger_scoped_release.py",
+    "tests/handlers/ledger_row_grammar/test_ledger_terminal_delegation_cell_omn17427.py",
+    "tests/handlers/ledger_row_grammar/test_ledger_worktree_cell.py",
 )
 # A file the census still lists today, so the run below is proven able to print a hit.
 _STILL_LISTED = "src/omnimarket/handlers/ledger_row_grammar.py"

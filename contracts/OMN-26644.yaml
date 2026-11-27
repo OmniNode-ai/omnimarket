@@ -1,0 +1,100 @@
+schema_version: 1.0.0
+ticket_id: OMN-26644
+title: A typed agent message contract carries a verified sender, so a message whose declared sender differs from its authenticated producer is refused by every reader
+summary: The agent message topic node's contract declares one frozen typed message (message id stable across retries, thread, sender bound to a registered principal, recipient, kind, size-limited body, sent_at, schema version, sender proof). Readers verify the sender against the settings store registry and the signature with the sender's registered key, and refuse a mismatch, an unknown sender and a malformed message with a typed reason; the legacy wire shape stays readable until the cutover flag is turned off.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26644-verified-sender
+  statement: A reader of the agent message topic reads only messages whose declared sender is the registered sender that signed them.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a message whose declared sender differs from its authenticated producer is refused by every reader with a typed sender_mismatch reason -- falsifier: uv run pytest -m unit on the spoofed-sender test fails when any reader accepts the message'
+  - id: AC2
+    statement: 'AC2: a message missing a typed field, or with an unknown sender or an oversize body, fails validation with a typed reason -- falsifier: uv run pytest -m unit on the malformed and unknown-sender tests fails when validation passes'
+  - id: AC3
+    statement: 'AC3: a good message passes from the CLI through the MCP server and back on dev, and a legacy-shape message is still read until the cutover -- falsifier: uv run pytest -m integration through lab-run exits non-zero when either direction receives nothing'
+  - id: AC4
+    statement: 'AC4: integrated: on the running dev lane a spoofed-sender message published by one lab host login is refused by the reader node with sender_mismatch while the same message from the registered login is read back -- falsifier: onex agent-message send from two dev logins on a lab host, then onex agent-message read on the dev lane, and the read-back shows only the registered sender'
+evidence_requirements:
+- kind: tests
+  description: The sender-proof tests, each failing before the verifier and signer existed and passing on them.
+  command: uv run pytest tests/unit/nodes/node_agent_message_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26644-spoofed-sender
+  description: A spoofed sender (another registered agent's key, a forged signature under the real key id, an edited body, a transport principal that differs from the registered one) is refused with sender_mismatch; the test fails on a reader that accepts one.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_agent_message_effect/test_agent_message_sender_proof.py -q --no-cov -n 0 -p no:randomly -k "spoofed or edited_after_signing or producer_principal"
+    cwd: .
+- id: dod-omn26644-malformed-unknown
+  description: A missing typed field is malformed_message, an unknown sender is unknown_sender, an oversize body is oversize_body; the test fails when validation passes.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_agent_message_effect/test_agent_message_sender_proof.py -q --no-cov -n 0 -p no:randomly -k "unknown_sender or missing_a_typed_field or oversize"
+    cwd: .
+- id: dod-omn26644-roundtrip-legacy
+  description: A signed message is sent and read back through the node, the spoofing login's message is not, and a legacy-shape message is read while the cutover flag allows it and refused with missing_proof when it does not.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_agent_message_effect/test_agent_message_sender_proof.py tests/integration/test_agent_message_sender_proof_roundtrip.py -q --no-cov -n 0 -p no:randomly -k "legacy or signs_with or registered_login"
+    cwd: .
+- id: dod-omn26644-two-logins-hosted
+  description: The hosted reading of AC4. Two logins publish on one shared bus, one registered sender and one login that declares another's name; the reader node refuses the second with sender_mismatch and returns only the registered sender's message. The lab-bus reading is the unbound local_done_gate item below.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/integration/test_agent_message_sender_proof_roundtrip.py -q --no-cov -n 0 -p no:randomly -k registered_login
+    cwd: .
+- id: dod-omn26644-login-binding-forged
+  description: A forged --from on the command line and a forged sender on the MCP tool are refused with sender_mismatch when the declared sender's registered principal differs from the broker login that is sending, and nothing is published; the test fails on a client or node that signs for the forged sender.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/cli/test_agent_message_login_binding.py -q --no-cov -n 0 -p no:randomly -k "forged"
+    cwd: .
+- id: dod-omn26644-login-binding-honest-and-forged
+  description: The honest sender is accepted and the forged sender is refused, on both the command line and the MCP tool, and a login that declares no principal is not compared. The whole login-binding test file, so the test fails when either direction is wrong.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/cli/test_agent_message_login_binding.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26644-contract-declared
+  description: The topic node's contract.yaml declares the typed message, its fields and its refusal reasons, equal to the model and the enum. This binds no criterion by itself.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: grep -q 'message_contract:' src/omnimarket/nodes/node_agent_message_effect/contract.yaml
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_agent_message_effect/test_agent_message_sender_proof.py -q --no-cov -n 0 -p no:randomly -k contract_declares
+    cwd: .
+- id: dod-omn26644-integration-proof
+  description: On a lab host with two dev logins, onex agent-message send from each and then read on the dev lane shows only the registered sender's message. Hosted CI holds no lab bus, so only the local Done gate runs this unbound check; it needs the client binding of omnimarket#6749 and a seeded registry, so it is reported as not yet run in the PR.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26644 --kind test -- uv run --frozen pytest tests/integration/test_agent_message_sender_proof_roundtrip.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

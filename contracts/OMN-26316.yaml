@@ -31,6 +31,18 @@ requirements:
     statement: 'AC4: a completion of a command outside the released batch, of a command still held, or of an abandoned roll''s batch changes no gate state -- falsifier: the same test file, the cases named test_roll_gate_batch_completion_outside_the_batch_changes_nothing, test_roll_gate_batch_completion_of_a_command_still_held_changes_nothing and test_roll_gate_batch_completion_after_an_abandon_is_not_the_next_rolls, fail at this head'
   - id: AC5
     statement: 'AC5: the completion deadline abandon and the held-age alarm keep their behaviour -- falsifier: uv run --frozen pytest tests/unit/nodes/node_dev_roll_window_gate_effect -q --no-cov -p no:randomly fails at this head'
+- id: req-omn26316-hygiene-tick-publishes
+  statement: The host hygiene orchestrator's runtime-tick route publishes each due lab work unit on the lab work command topic and returns, and the unit receipts settle the run, so the tick no longer holds a runtime dispatch for the sum of the units' timeouts.
+  acceptance:
+  - id: AC6
+    statement: 'AC6: a tick whose hosts never answer returns at once with one command per due unit and no run event, and the run event appears only when the last receipt arrives -- falsifier: uv run --frozen pytest tests/unit/nodes/node_host_hygiene_orchestrator/test_tick_publishes_units_and_returns.py tests/chains/host_hygiene/test_tick_receipt_chain_host_hygiene_orchestrator.py -q --no-cov -p no:randomly fails at origin/dev and passes at this head'
+  - id: AC7
+    statement: 'AC7: the in_memory backend, the on-demand route and the existing scheduled-route cases keep their behaviour -- falsifier: uv run --frozen pytest tests/unit/nodes/node_host_hygiene_orchestrator tests/chains/host_hygiene -q --no-cov -p no:randomly fails at this head'
+- id: req-omn26316-goal-check-trigger
+  statement: The merged throughput goal check node declares a schedule on the runtime tick routed to a real handler, so a merged node nothing triggered now has a trigger; a contract test fails when it declares none.
+  acceptance:
+  - id: AC8
+    statement: 'AC8: node_throughput_goal_check_compute declares config.throughput_goal_check.schedule, subscribes to the runtime tick and routes it to a scheduled-fire handler, and a runtime-boot test reads one fire per window -- falsifier: uv run --frozen pytest tests/nodes/node_throughput_goal_check_compute/test_goal_check_trigger.py -q --no-cov -p no:randomly fails at origin/dev (the handler module does not exist) and passes at this head'
 evidence_requirements:
 - kind: tests
   description: The deploy agent unit tests and the existing dev tag heartbeat tests pass at the pushed head.
@@ -68,3 +80,22 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26316 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lab_alarm/test_lab_alarm_deploy_agent_unit.py tests/nodes/node_lab_alarm/test_lab_alarm_dev_tag_heartbeat.py -q --no-cov
+- id: dod-omn26316-hygiene-tick-publishes
+  description: 'The host hygiene tick publishes its units and returns, the receipts settle the run, and the in_memory, on-demand and existing scheduled cases are unchanged.'
+  source: manual
+  binds_ac:
+  - AC6
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_host_hygiene_orchestrator tests/chains/host_hygiene -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn26316-goal-check-trigger
+  description: 'The goal check trigger: the contract declares a runtime-tick schedule routed to a real handler, one fire per interval window, the command route and the two existing operations keep their routes; the control contracts with no schedule or no tick route name no trigger.'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_throughput_goal_check_compute -q --no-cov -p no:randomly
+    cwd: .

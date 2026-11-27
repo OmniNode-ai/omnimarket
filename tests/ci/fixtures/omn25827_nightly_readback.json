@@ -1,0 +1,14 @@
+{
+  "source": {
+    "read_by": "orchestrator-31d9-swarm",
+    "read_from": "GitHub",
+    "read_at": "2026-11-26T08:05Z",
+    "workflow": "Delegation Regression (nightly)",
+    "workflow_file": "delegation-regression-nightly.yml",
+    "repository": "OmniNode-ai/omnimarket"
+  },
+  "runs": [
+    {"run_id": 45776287508, "lane": "dev", "created_at": "2026-11-26T07:34:07Z", "conclusion": "success"},
+    {"run_id": 45569166018, "lane": "dev", "created_at": "2026-11-25T07:34:14Z", "conclusion": "success"}
+  ]
+}

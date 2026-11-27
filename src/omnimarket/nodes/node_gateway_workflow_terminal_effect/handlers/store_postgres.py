@@ -33,6 +33,13 @@ SQL_LOOKUP = (
     "WHERE tenant_id = $1 AND correlation_id = $2 FOR UPDATE"
 )
 
+# A terminal that names no tenant (a publisher-malformed command, OMN-26566) joins on the
+# correlation id alone; the update then writes with the tenant the one row carries.
+SQL_LOOKUP_BY_CORRELATION = (
+    "SELECT workflow_id, tenant_id, status FROM public.gateway_workflows "
+    "WHERE correlation_id = $1 FOR UPDATE"
+)
+
 # First terminal wins: the status guard makes a replay or an opposite outcome change nothing.
 SQL_APPLY = (
     "UPDATE public.gateway_workflows SET "
@@ -107,22 +114,34 @@ class PostgresGatewayTerminalStore:
     ) -> tuple[EnumGatewayTerminalStoreOutcome, UUID | None]:
         try:
             async with self._pool.transaction() as connection:
-                rows: list[Any] = list(
-                    await connection.fetch(
-                        SQL_LOOKUP, update.tenant_id, update.correlation_id
+                if update.tenant_id is None:
+                    rows: list[Any] = list(
+                        await connection.fetch(
+                            SQL_LOOKUP_BY_CORRELATION, update.correlation_id
+                        )
                     )
-                )
+                else:
+                    rows = list(
+                        await connection.fetch(
+                            SQL_LOOKUP, update.tenant_id, update.correlation_id
+                        )
+                    )
                 if not rows:
                     return EnumGatewayTerminalStoreOutcome.NO_ROW, None
                 if len(rows) > 1:
                     return EnumGatewayTerminalStoreOutcome.AMBIGUOUS, None
                 workflow_id: UUID = rows[0]["workflow_id"]
+                tenant_id: UUID = (
+                    rows[0]["tenant_id"]
+                    if update.tenant_id is None
+                    else update.tenant_id
+                )
                 if rows[0]["status"] in _TERMINAL:
                     return EnumGatewayTerminalStoreOutcome.ALREADY_TERMINAL, workflow_id
                 changed = await connection.fetch(
                     SQL_APPLY,
                     workflow_id,
-                    update.tenant_id,
+                    tenant_id,
                     update.status,
                     update.model_used,
                     update.total_tokens,
@@ -152,6 +171,7 @@ class PostgresGatewayTerminalStore:
 __all__: list[str] = [
     "SQL_APPLY",
     "SQL_LOOKUP",
+    "SQL_LOOKUP_BY_CORRELATION",
     "GatewayTerminalPostgresPool",
     "PostgresGatewayTerminalStore",
 ]

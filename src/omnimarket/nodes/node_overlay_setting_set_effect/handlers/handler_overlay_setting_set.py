@@ -22,12 +22,13 @@ from typing import Any, Protocol
 from pydantic import BaseModel, JsonValue, ValidationError
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
-from omnimarket.models.overlay_store import document_digest
-from omnimarket.nodes.node_overlay_setting_set_effect.models.model_overlay_setting_audit import (
-    ModelOverlaySettingAudit,
-)
-from omnimarket.nodes.node_overlay_setting_set_effect.models.model_overlay_setting_record import (
+from omnimarket.handlers.overlay_store.setting_paths import escape_key
+from omnimarket.models.overlay_store import (
     ModelOverlaySettingRecord,
+    document_digest,
+)
+from omnimarket.models.overlay_store.model_overlay_setting_audit import (
+    ModelOverlaySettingAudit,
 )
 from omnimarket.nodes.node_overlay_setting_set_effect.models.model_overlay_setting_set_request import (
     ModelOverlaySettingSetRequest,
@@ -156,32 +157,56 @@ class HandlerOverlaySettingSet:
     ) -> ModelOverlaySettingSetResult:
         spec, path = self._declared(request)
         live = await self._reader.read_current(request.overlay_id)
-        if live is None:
-            raise OverlayNotInStoreError(
-                f"{request.overlay_id}: the store holds no record of this overlay; nothing was written"
-            )
         now = self._clock()
-        live_loaded_at = datetime.fromisoformat(str(live["loaded_at"]))
-        age = (now - live_loaded_at).total_seconds()
-        if age > self._max_live_age_s:
-            raise LiveRecordStaleError(
-                f"{request.overlay_id}: the live record read was loaded {age:.0f}s ago, over the bound "
-                f"{self._max_live_age_s:.0f}s: the read did not reach the newest record; nothing was written"
+        if live is None:
+            if spec.first_document is None:
+                raise OverlayNotInStoreError(
+                    f"{request.overlay_id}: the store holds no record of this overlay and the contract declares "
+                    "no first document for it; nothing was written"
+                )
+            live_loaded_at = now - timedelta(milliseconds=1)
+            live_document: Mapping[str, Any] = spec.first_document
+            live_operator_paths: tuple[str, ...] = ()
+            source_ref = f"{request.overlay_id}@store-first-record"
+        else:
+            live_loaded_at = datetime.fromisoformat(str(live["loaded_at"]))
+            age = (now - live_loaded_at).total_seconds()
+            if age > self._max_live_age_s:
+                raise LiveRecordStaleError(
+                    f"{request.overlay_id}: the live record read was loaded {age:.0f}s ago, over the bound "
+                    f"{self._max_live_age_s:.0f}s: the read did not reach the newest record; nothing was written"
+                )
+            live_document = live["document"]
+            live_operator_paths = tuple(
+                str(p) for p in live.get("operator_paths") or ()
             )
-        live_document = live["document"]
+            source_ref = str(live["source_ref"])
         document: dict[str, JsonValue] = copy.deepcopy(dict(live_document))
-        *parents, last = [_unescape(part) for part in path.split("/")]
-        parent: Any = document
-        for segment in parents:
-            parent = parent.get(segment) if isinstance(parent, dict) else None
-        if not isinstance(parent, dict):
-            raise SettingParentMissingError(
-                f"{request.overlay_id}: the live document has no mapping at {'/'.join(parents)!r}, "
-                f"the parent of {request.key}; nothing was written"
+        if spec.whole_document:
+            if not isinstance(request.value, dict):
+                raise SettingValueInvalidError(
+                    f"{request.overlay_id}: {request.key} is the whole document and takes a mapping; nothing was written"
+                )
+            previous_present = live is not None
+            previous_value: JsonValue = (
+                copy.deepcopy(document) if live is not None else None
             )
-        previous_present = last in parent
-        previous_value: JsonValue = copy.deepcopy(parent.get(last))
-        parent[last] = copy.deepcopy(request.value)
+            document = copy.deepcopy(request.value)
+            set_paths = tuple(escape_key(k) for k in document)
+        else:
+            *parents, last = [_unescape(part) for part in path.split("/")]
+            parent: Any = document
+            for segment in parents:
+                parent = parent.get(segment) if isinstance(parent, dict) else None
+            if not isinstance(parent, dict):
+                raise SettingParentMissingError(
+                    f"{request.overlay_id}: the live document has no mapping at {'/'.join(parents)!r}, "
+                    f"the parent of {request.key}; nothing was written"
+                )
+            previous_present = last in parent
+            previous_value = copy.deepcopy(parent.get(last))
+            parent[last] = copy.deepcopy(request.value)
+            set_paths = (path,)
         model = _document_model(spec)
         try:
             model.model_validate(document)
@@ -194,14 +219,12 @@ class HandlerOverlaySettingSet:
                 f"fields {fields}; nothing was written"
             ) from None
         set_at = max(now, live_loaded_at + timedelta(milliseconds=1))
-        operator_paths = tuple(
-            sorted({*(str(p) for p in live.get("operator_paths") or ()), path})
-        )
+        operator_paths = tuple(sorted({*live_operator_paths, *set_paths}))
         record = ModelOverlaySettingRecord(
             overlay_id=request.overlay_id,
             digest=document_digest(document),
             document=document,
-            source_ref=str(live["source_ref"]),
+            source_ref=source_ref,
             loaded_by=request.actor,
             loaded_at=set_at,
             operator_paths=operator_paths,

@@ -5,7 +5,6 @@
 # census (new code opening the ledger file). `--lower` drops a cleared file and never adds one.
 files:
   knowledge_base: {}
-  omnibase_compat: {}
   omnibase_core:
     contracts/OMN-21147.yaml: 1
     tests/conftest.py: 1
@@ -101,16 +100,11 @@ files:
     contracts/OMN-22777.yaml: 1
     contracts/OMN-25723.yaml: 1
     src/omnimarket/handlers/ledger_row_grammar.py: 1
-    src/omnimarket/nodes/node_branch_claim_check_effect/contract.yaml: 1
     src/omnimarket/nodes/node_compaction_cost_compute/data/recovery_call_patterns.yaml: 2
     src/omnimarket/nodes/node_friction_rollup_compute/tests/fixtures/recorded_day_unit_output.json: 3
     src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml: 5
     src/omnimarket/nodes/node_host_installer_registry_units/handlers/handler_registry_units.py: 2
     src/omnimarket/nodes/node_host_reading_effect/overlay.example.yaml: 4
-    src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_launch.py: 1
-    src/omnimarket/nodes/node_lab_fill_plan_compute/handlers/handler_lab_fill_lane_render.py: 1
-    src/omnimarket/nodes/node_lab_history_archive_effect/handlers/handler_lab_history_archive.py: 1
-    src/omnimarket/nodes/node_ledger_reconcile_effect/protocols/local_ledger_reconcile_adapters.py: 2
     src/omnimarket/nodes/node_process_health_effect/contract.yaml: 2
     src/omnimarket/nodes/node_process_health_effect/tests/test_runtime_process_health.py: 4
     src/omnimarket/nodes/node_retention_cleanup/contract.yaml: 1
@@ -129,13 +123,6 @@ files:
     tests/fixtures/skill_exec_parity.json: 4
     tests/handlers/bus_binding/fixtures/outbox_refused_guard_rows.json: 7
     tests/handlers/claim_index/test_claim_index.py: 8
-    tests/handlers/ledger_row_grammar/test_ledger_claim_contract_omn20029.py: 2
-    tests/handlers/ledger_row_grammar/test_ledger_grammar_prompt_link_omn18531.py: 1
-    tests/handlers/ledger_row_grammar/test_ledger_hold_grammar.py: 1
-    tests/handlers/ledger_row_grammar/test_ledger_ruling_link_omn17427.py: 1
-    tests/handlers/ledger_row_grammar/test_ledger_scoped_release.py: 1
-    tests/handlers/ledger_row_grammar/test_ledger_terminal_delegation_cell_omn17427.py: 4
-    tests/handlers/ledger_row_grammar/test_ledger_worktree_cell.py: 1
     tests/integration/test_retired_repository_reconcile_redpanda.py: 1
     tests/nodes/node_compaction_cost_compute/fixtures/deploy_probe_request.json: 1
     tests/nodes/node_compaction_cost_compute/test_golden_chain_compaction_cost.py: 2
@@ -160,23 +147,17 @@ files:
     tests/nodes/node_idle_slot_fill_effect/test_idle_slot_fill_node.py: 1
     tests/nodes/node_lab_fill_effect/test_golden_chain_lab_fill_effect.py: 1
     tests/nodes/node_lab_fill_effect/test_local_adapters_lab_fill_effect.py: 2
-    tests/nodes/node_lab_fill_plan_compute/fixtures/parity_cases_outcomes.json: 39
     tests/nodes/node_lab_history_archive_effect/conftest.py: 1
     tests/nodes/node_lab_history_archive_effect/test_golden_chain_lab_history_archive_effect.py: 2
     tests/nodes/node_ledger_reconcile_compute/test_ledger_rules.py: 1
-    tests/nodes/node_ledger_reconcile_effect/test_error_chain_ledger_reconcile_effect.py: 2
-    tests/nodes/node_ledger_reconcile_effect/test_local_adapters_ledger_reconcile_effect.py: 7
-    tests/nodes/node_ledger_reconcile_orchestrator/test_bus_cycle.py: 4
-    tests/nodes/node_ledger_reconcile_orchestrator/test_flows.py: 3
+    tests/nodes/node_ledger_reconcile_effect/test_local_adapters_ledger_reconcile_effect.py: 2
+    tests/nodes/node_ledger_reconcile_orchestrator/test_bus_cycle.py: 1
+    tests/nodes/node_ledger_reconcile_orchestrator/test_flows.py: 1
     tests/nodes/node_merge_sweep_reading_compute/sweep_scenarios.py: 1
     tests/nodes/node_morning_friction_sweep_orchestrator/test_overlay.py: 1
-    tests/nodes/node_operator_access_mode_effect/test_foreground_wait_guard.py: 2
-    tests/nodes/node_operator_access_mode_effect/test_operator_access_mode.py: 2
-    tests/nodes/node_operator_access_mode_effect/test_operator_hooks_refusal_row_omn21020.py: 1
     tests/nodes/node_plans_today_effect/test_plans_today_operator.py: 1
     tests/nodes/node_remote_lane_stop_effect/conftest.py: 1
     tests/nodes/node_session_checkpoint_compute/test_golden_chain_session_checkpoint_compute.py: 1
-    tests/nodes/node_session_context_sources_effect/test_session_context_sources.py: 1
     tests/nodes/node_session_front_door_compute/test_front_door_entry_stops_and_operator.py: 1
     tests/nodes/node_session_front_door_compute/test_member_host_mode_receipt.py: 1
     tests/nodes/node_session_resume_compute/test_golden_chain_session_resume_compute.py: 1
@@ -185,22 +166,14 @@ files:
     tests/nodes/test_omn17427_file_retention.py: 3
     tests/session_front_door_machine.py: 4
     tests/test_golden_chain_board_truth_reconcile_effect.py: 1
-    tests/test_golden_chain_relay_effect.py: 2
+    tests/test_golden_chain_relay_effect.py: 1
     tests/test_golden_chain_work_ledger_query.py: 1
     tests/test_host_reconcile_effect.py: 1
-    tests/test_omn20708_branch_claim_check_handler.py: 1
     tests/test_omn22468_session_files_port.py: 1
     tests/unit/clone_dirty_converge/test_canonical_clone_dirty_converge.py: 2
     tests/unit/handlers/test_work_ledger_roll_boundary.py: 4
     tests/unit/nodes/node_context_source_ledger_effect/test_context_source_ledger.py: 2
     tests/unit/nodes/node_context_source_ledger_effect/test_ledger_fold_memo_omn21099.py: 1
-    tests/unit/nodes/node_context_source_work_state_effect/test_context_source_work_state.py: 1
-    tests/unit/nodes/node_dropped_work_audit_scheduled_effect/test_dropped_work_audit_scheduled.py: 1
-    tests/unit/nodes/node_operator_capture_compute/test_golden_chain_operator_capture.py: 1
-    tests/unit/nodes/node_operator_capture_effect/test_capture_accepted_append.py: 1
-    tests/unit/nodes/node_operator_capture_effect/test_operator_capture_effect.py: 1
-    tests/unit/nodes/node_operator_capture_effect/test_operator_capture_serve.py: 3
-    tests/unit/nodes/node_operator_capture_effect/test_words_promotion_effect.py: 1
     tests/unit/nodes/node_projection_work_ledger/test_parity_by_kind.py: 1
     tests/unit/nodes/node_projection_work_ledger/test_parity_verb_diff.py: 2
     tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity.py: 2
@@ -216,12 +189,11 @@ files:
     contracts/OMN-25400.yaml: 1
 ratchet:
   knowledge_base: 0
-  omnibase_compat: 0
   omnibase_core: 8
   omnibase_infra: 21
   omnibase_spi: 0
   omniclaude: 45
   omnidash: 0
   omniintelligence: 0
-  omnimarket: 125
+  omnimarket: 99
   omnimemory: 1

@@ -22,7 +22,7 @@ acceptance:
     - '{answer}'
     environment:
       path: uv.lock
-      sha256: f4ef900eecb9715a4341eb92ed072ea5c1ce03c4870d82db341501c62863d454
+      sha256: ee25a5d527798c38fa96693a93eca81b37b5d1a3752f326de2da78dc4bb3bd73
     expected_exit: 0
 budgets:
   max_output_tokens: 8192
