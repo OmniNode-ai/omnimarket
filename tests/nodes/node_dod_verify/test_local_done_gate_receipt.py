@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 
@@ -36,6 +36,9 @@ ITEM = "dod-local-integration-proof"
 _NOW = datetime(2026, 11, 26, tzinfo=UTC)
 
 
+_Verdict = Literal["VERIFIED", "FAILED", "SKIPPED", "NON_PROBATIVE"]
+
+
 class _Source:
     def __init__(self, receipts: list[ModelLocalDoneGateReceipt]) -> None:
         self._receipts = receipts
@@ -45,12 +48,16 @@ class _Source:
 
 
 def _receipt(
-    *, sha: str = SHA, item: str = ITEM, verdict: str = "VERIFIED", run_id: str = "r1"
+    *,
+    sha: str = SHA,
+    item: str = ITEM,
+    verdict: _Verdict = "VERIFIED",
+    run_id: str = "r1",
 ) -> ModelLocalDoneGateReceipt:
     return ModelLocalDoneGateReceipt(
         ticket_id=TICKET,
         contract_sha=sha,
-        items=(ModelLocalDoneGateItemVerdict(item_id=item, verdict=verdict),),  # type: ignore[arg-type]
+        items=(ModelLocalDoneGateItemVerdict(item_id=item, verdict=verdict),),
         host="h053",
         run_id=run_id,
     )
