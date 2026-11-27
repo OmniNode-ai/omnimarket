@@ -104,7 +104,7 @@ def test_gateway_row_comes_from_the_store_reader(
     monkeypatch.setattr(
         tick,
         "HttpGatewayCaller",
-        lambda row, *_: built.append(row) or FakeGateway(),
+        lambda row, *_, **__: built.append(row) or FakeGateway(),
     )
     tick.main(
         ["--omni-home", str(tmp_path), "--state-dir", str(tmp_path / "state")],

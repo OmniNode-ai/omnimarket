@@ -43,9 +43,9 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.grade_delegati
     grade_chain_tier_order,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe import (
-    CAUSE_LAB_MODEL,
     CAUSE_PRODUCT,
     EnumCheckVerdict,
+    ModelChainSource,
     ModelCheckPrecondition,
     ModelDelegationCheckReading,
     ModelDelegationCheckRequest,
@@ -88,6 +88,7 @@ class HandlerDelegationCheckProbe:
         run_id_factory: Callable[[str, datetime], str] = _new_run_id,
         gateway: ProtocolGatewayClient | None = None,
         gateway_settings: GatewayRunSettings | None = None,
+        chain_source: ModelChainSource | None = None,
         sleep: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -100,6 +101,7 @@ class HandlerDelegationCheckProbe:
         self._run_id = run_id_factory
         self._gateway = gateway
         self._gateway_settings = gateway_settings or GatewayRunSettings()
+        self._chain_source = chain_source
         self._sleep = sleep
         self._monotonic = monotonic
 
@@ -283,6 +285,10 @@ class HandlerDelegationCheckProbe:
                 "clauses": (*reading.clauses, *leg.clauses),
                 "preconditions": (*reading.preconditions, *leg.preconditions),
                 "not_measured": reading.not_measured or leg.not_measured,
+                # A machine reading that was not measured keeps its own cause; else the gateway leg's.
+                "not_measured_cause": reading.not_measured_cause
+                if reading.not_measured
+                else leg.not_measured_cause,
                 "endpoint": leg.endpoint,
                 "tenant_slug": leg.tenant_slug,
             }
@@ -338,7 +344,7 @@ class HandlerDelegationCheckProbe:
             error = "no clause was graded and nothing was absent"
         cause = {
             EnumCheckVerdict.FAIL: CAUSE_PRODUCT,
-            EnumCheckVerdict.NOT_MEASURED: CAUSE_LAB_MODEL,
+            EnumCheckVerdict.NOT_MEASURED: reading.not_measured_cause,
         }.get(verdict)
         result = ModelDelegationCheckResult(
             correlation_id=request.correlation_id,
@@ -361,6 +367,7 @@ class HandlerDelegationCheckProbe:
             versions=reading.versions,
             gateway_url=reading.endpoint,
             tenant_slug=reading.tenant_slug,
+            chain_source=self._chain_source,
             error=error
             or (
                 reading.not_measured
