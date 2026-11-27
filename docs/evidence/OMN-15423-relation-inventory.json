@@ -11028,6 +11028,7 @@
         "node_projection_local_identity",
         "node_projection_run_trace",
         "node_projection_savings",
+        "node_projection_tenant_credentials",
         "node_projection_tenant_registry",
         "service:omnimarket_projection_migration_runner"
       ],
@@ -11045,6 +11046,7 @@
         "src/omnimarket/nodes/node_projection_local_identity/contract.yaml",
         "src/omnimarket/nodes/node_projection_run_trace/contract.yaml",
         "src/omnimarket/nodes/node_projection_savings/contract.yaml",
+        "src/omnimarket/nodes/node_projection_tenant_credentials/contract.yaml",
         "src/omnimarket/nodes/node_projection_tenant_registry/contract.yaml"
       ],
       "current_schema": [
@@ -11090,6 +11092,7 @@
         "node_projection_read_effect",
         "node_projection_run_trace",
         "node_projection_savings",
+        "node_projection_tenant_credentials",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",

@@ -101,7 +101,14 @@ TOPIC_REVOKED = "onex.evt.omnimarket.credential-revoked.v1"
 
 # A non-house tenant: HOUSE_TENANT_SLUG short-circuits overlay RESOLUTION, so
 # proving the overlay half against "omninode" would prove a row nothing reads.
-BYOK_TENANT = "omn17372-byok-tenant"
+#
+# OMN-26594: the projection resolves a slug to the tenant UUID through
+# ``tenant_registry_mirror`` before it writes, and this disposable schema holds
+# no mirror, so these tests carry the UUID form the router reads by; a UUID is
+# written as given.
+BYOK_TENANT = "5d1f6c1e-0b4a-4c53-8f0e-3b8f1b9a7c01"
+HOUSE_TENANT = "9c2e7d3f-1a5b-4d64-9a1f-4c9a2c0b8d12"
+LOCAL_INSTALL_TENANT = "b3a8e4d0-2c6d-4e75-8b20-5dab3d1c9e23"
 
 
 def _base_dsn() -> str:
@@ -352,7 +359,7 @@ class TestRealPostgresWritePath:
             ok = await runner.project_event(
                 TOPIC_REGISTERED,
                 {
-                    "tenant_id": "omninode",
+                    "tenant_id": HOUSE_TENANT,
                     "provider": "openrouter",
                     "name": "real-pg-proof",
                     "api_key_ref": ref,
@@ -370,7 +377,7 @@ class TestRealPostgresWritePath:
             )
             assert row is not None
             assert row["api_key_ref"] == ref
-            assert row["tenant_id"] == "omninode"
+            assert row["tenant_id"] == HOUSE_TENANT
             assert row["name"] == "real-pg-proof"
             assert row["provider"] == "openrouter"
             assert row["created_at"] is not None
@@ -382,7 +389,7 @@ class TestRealPostgresWritePath:
             await runner.project_event(
                 TOPIC_REGISTERED,
                 {
-                    "tenant_id": "omninode",
+                    "tenant_id": HOUSE_TENANT,
                     "provider": "openai",
                     "name": "real-pg-revoke-proof",
                     "api_key_ref": ref,
@@ -394,7 +401,7 @@ class TestRealPostgresWritePath:
 
             ok = await runner.project_event(
                 TOPIC_REVOKED,
-                {"tenant_id": "omninode", "api_key_ref": ref},
+                {"tenant_id": HOUSE_TENANT, "api_key_ref": ref},
                 MessageMeta(
                     partition=0, offset=1, fallback_id=ref, topic=TOPIC_REVOKED
                 ),
@@ -419,7 +426,7 @@ class TestRealPostgresWritePath:
             ref = "cred_never_registered"
             ok = await runner.project_event(
                 TOPIC_REVOKED,
-                {"tenant_id": "omninode", "api_key_ref": ref},
+                {"tenant_id": HOUSE_TENANT, "api_key_ref": ref},
                 MessageMeta(
                     partition=0,
                     offset=0,
@@ -435,7 +442,7 @@ class TestRealPostgresWritePath:
                 ref,
             )
             assert row is not None, "revoke-before-register must persist a tombstone"
-            assert row["tenant_id"] == "omninode"
+            assert row["tenant_id"] == HOUSE_TENANT
             assert row["name"] is None
             assert row["provider"] is None
             assert row["revoked_at"] is not None
@@ -456,7 +463,7 @@ class TestRealPostgresWritePath:
 
             revoke_ok = await runner.project_event(
                 TOPIC_REVOKED,
-                {"tenant_id": "omninode", "api_key_ref": ref},
+                {"tenant_id": HOUSE_TENANT, "api_key_ref": ref},
                 MessageMeta(
                     partition=1, offset=0, fallback_id=ref, topic=TOPIC_REVOKED
                 ),
@@ -466,7 +473,7 @@ class TestRealPostgresWritePath:
             register_ok = await runner.project_event(
                 TOPIC_REGISTERED,
                 {
-                    "tenant_id": "omninode",
+                    "tenant_id": HOUSE_TENANT,
                     "provider": "openrouter",
                     "name": "raced-registration",
                     "api_key_ref": ref,
@@ -483,7 +490,7 @@ class TestRealPostgresWritePath:
                 ref,
             )
             assert row is not None
-            assert row["tenant_id"] == "omninode"
+            assert row["tenant_id"] == HOUSE_TENANT
             # The register event fills in name/provider onto the tombstone...
             assert row["name"] == "raced-registration"
             assert row["provider"] == "openrouter"
@@ -503,7 +510,7 @@ class TestRealPostgresWritePath:
             await runner.project_event(
                 TOPIC_REGISTERED,
                 {
-                    "tenant_id": "omninode",
+                    "tenant_id": HOUSE_TENANT,
                     "provider": "openai",
                     "name": "double-revoke-proof",
                     "api_key_ref": ref,
@@ -514,7 +521,7 @@ class TestRealPostgresWritePath:
             )
             await runner.project_event(
                 TOPIC_REVOKED,
-                {"tenant_id": "omninode", "api_key_ref": ref},
+                {"tenant_id": HOUSE_TENANT, "api_key_ref": ref},
                 MessageMeta(
                     partition=0, offset=1, fallback_id=ref, topic=TOPIC_REVOKED
                 ),
@@ -528,7 +535,7 @@ class TestRealPostgresWritePath:
 
             await runner.project_event(
                 TOPIC_REVOKED,
-                {"tenant_id": "omninode", "api_key_ref": ref},
+                {"tenant_id": HOUSE_TENANT, "api_key_ref": ref},
                 MessageMeta(
                     partition=0, offset=2, fallback_id=ref, topic=TOPIC_REVOKED
                 ),
@@ -984,7 +991,7 @@ _SET_AT_TEXT = "2026-10-07T07:00:00+00:00"
 
 def _local_registered(ref: str, **extra: Any) -> dict[str, Any]:
     return {
-        "tenant_id": "localinstall",
+        "tenant_id": LOCAL_INSTALL_TENANT,
         "provider": "openrouter",
         "name": "llm.openrouter.api_key",
         "api_key_ref": ref,
@@ -1050,7 +1057,7 @@ class TestRealPostgresFingerprintAndSetAt:
             )
             await runner.project_event(
                 TOPIC_REVOKED,
-                {"tenant_id": "localinstall", "api_key_ref": ref},
+                {"tenant_id": LOCAL_INSTALL_TENANT, "api_key_ref": ref},
                 _meta(ref, TOPIC_REVOKED),
             )
             row = await admin_conn.fetchrow(
@@ -1186,3 +1193,69 @@ class TestRealPostgresKeyPoolSelection:
             # The overlay row names the LAST registration (the lapsed key);
             # selection must route around it to the live pool.
             assert chosen == set(live)
+
+
+_MIRROR_MIGRATION = (
+    Path(__file__).resolve().parents[1]
+    / "src"
+    / "omnimarket"
+    / "nodes"
+    / "node_projection_tenant_registry"
+    / "migrations"
+    / "0000_create_tenant_registry_mirror.sql"
+)
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_slug_registration_is_stored_and_read_under_the_tenant_uuid() -> None:
+    """OMN-26594: a registration by slug lands on the UUID row the router reads.
+
+    The mirror maps the slug to the UUID; the catalog and overlay rows are
+    written under the UUID, a second registration replaces the first on that
+    one row, and no row exists under the slug.
+    """
+    slug = "omn26594-slug-tenant"
+    async with _provisioned_runner() as (runner, conn, _schema):
+        await conn.execute(
+            for_isolated_schema(_MIRROR_MIGRATION.read_text(encoding="utf-8"))
+        )
+        await conn.execute(
+            "INSERT INTO tenant_registry_mirror (tenant_slug, tenant_uuid, status) "
+            "VALUES ($1, $2::uuid, 'active')",
+            slug,
+            BYOK_TENANT,
+        )
+        for offset, model in enumerate(["vendor/first", "vendor/second"]):
+            ref = f"cred_{slug}_openrouter_{offset}"
+            assert await runner.project_event(
+                TOPIC_REGISTERED,
+                {
+                    "tenant_id": slug,
+                    "provider": "openrouter",
+                    "name": "slug-key",
+                    "api_key_ref": ref,
+                    "metadata": {"model": model},
+                },
+                MessageMeta(
+                    partition=0,
+                    offset=offset,
+                    fallback_id=f"slug-{offset}",
+                    topic=TOPIC_REGISTERED,
+                ),
+            )
+        overlay = await conn.fetch(
+            "SELECT tenant_id, model_name, secret_ref "
+            "FROM delegation_routing_tenant_overlay"
+        )
+        assert [dict(row) for row in overlay] == [
+            {
+                "tenant_id": BYOK_TENANT,
+                "model_name": "vendor/second",
+                "secret_ref": f"cred_{slug}_openrouter_1",
+            }
+        ]
+        catalog = await conn.fetch(
+            "SELECT DISTINCT tenant_id FROM tenant_inference_credentials"
+        )
+        assert [row["tenant_id"] for row in catalog] == [BYOK_TENANT]
