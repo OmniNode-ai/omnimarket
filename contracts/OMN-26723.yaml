@@ -52,3 +52,12 @@ dod_evidence:
           uv run --frozen pytest tests/nodes/node_beta_board_effect/test_scheduled_run_reading.py
           -q --no-cov
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26723-probe-check-lines"
+    description: >-
+      The probe tick prints one line per check with the check id, the verdict and the correlation id the run went on the bus under,
+      and writes a NOT PUBLISHED line to stderr for a check the bus refused. The test file is new on this pull request.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_delegation_check_probe_effect/test_tick_check_lines.py -q --no-cov -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
