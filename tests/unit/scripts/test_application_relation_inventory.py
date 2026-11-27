@@ -470,6 +470,21 @@ def test_projection_freshness_alert_effect_tables_list_it_as_reader() -> None:
         ), name
 
 
+def test_c30_probe_effect_is_listed_as_delegation_events_reader() -> None:
+    node = "node_c30_claude_code_plugin_probe_effect"
+    checked_in = json.loads(
+        (
+            REPO_ROOT / "docs" / "evidence" / "OMN-15423-relation-inventory.json"
+        ).read_text()
+    )
+    events = next(
+        row
+        for row in checked_in["relations"]
+        if row["kind"] == "table" and row["name"] == "delegation_events"
+    )
+    assert node in events["readers"]
+
+
 def test_runtime_activity_is_not_inferred_from_checked_in_dsn_keys() -> None:
     payload = _load_generator().build_inventory()
     runtime = payload["runtime_evidence"]
