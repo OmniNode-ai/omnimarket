@@ -1,0 +1,5 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+job_id: tenant_outbox_flush
+run_interval_seconds: 60
+grace_seconds: 30
