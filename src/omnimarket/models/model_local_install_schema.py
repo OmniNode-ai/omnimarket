@@ -6,11 +6,15 @@ These are data only. The SQLite adapter applies them through its recorded store
 steps, so readers of an initialized store do not acquire a write transaction.
 """
 
+import contextlib
+import contextvars
 import functools
 import hashlib
 import logging
+import os
 import sqlite3
-from collections.abc import Callable
+import time
+from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING
 
 import yaml
@@ -299,6 +303,65 @@ def clear_failed_zero_durations(conn: sqlite3.Connection) -> None:
     )
 
 
+STORE_STEP_BOUND_ENV = "ONEX_STORE_STEP_BOUND_SECONDS"
+DEFAULT_STORE_STEP_BOUND_SECONDS = 120.0
+
+
+class StoreStepBoundExceededError(RuntimeError):
+    """OMN-26739: a one-time store step ran past its declared bound; its write was rolled back."""
+
+    def __init__(self, step: str, bound_seconds: float) -> None:
+        self.step = step
+        self.bound_seconds = bound_seconds
+        super().__init__(
+            f"store step {step} did not finish within its bound of {bound_seconds:g} s; "
+            f"its write was rolled back and it is not recorded"
+        )
+
+
+def store_step_bound_seconds() -> float:
+    """The bound each store step runs under: the overlay value, else the declared default."""
+    raw = os.environ.get(STORE_STEP_BOUND_ENV, "").strip()
+    if not raw:
+        return DEFAULT_STORE_STEP_BOUND_SECONDS
+    try:
+        bound = float(raw)
+    except ValueError:
+        return DEFAULT_STORE_STEP_BOUND_SECONDS
+    return bound if bound > 0 else DEFAULT_STORE_STEP_BOUND_SECONDS
+
+
+_step_deadline: contextvars.ContextVar[tuple[str, float, float] | None] = (
+    contextvars.ContextVar("store_step_deadline", default=None)
+)
+
+
+def check_store_step_deadline() -> None:
+    """Raise StoreStepBoundExceededError when the running step is past its bound; a no-op outside a step."""
+    running = _step_deadline.get()
+    if running is not None and time.monotonic() > running[2]:
+        raise StoreStepBoundExceededError(running[0], running[1])
+
+
+@contextlib.contextmanager
+def bounded_store_step(
+    conn: sqlite3.Connection, step: str, bound_seconds: float
+) -> Iterator[None]:
+    """Run one step under its bound: a long statement is interrupted, a loop calls check_store_step_deadline."""
+    deadline = time.monotonic() + bound_seconds
+    token = _step_deadline.set((step, bound_seconds, deadline))
+    conn.set_progress_handler(lambda: int(time.monotonic() > deadline), 1000)
+    try:
+        yield
+    except sqlite3.OperationalError as exc:
+        if time.monotonic() > deadline and "interrupted" in str(exc):
+            raise StoreStepBoundExceededError(step, bound_seconds) from exc
+        raise
+    finally:
+        conn.set_progress_handler(None, 0)
+        _step_deadline.reset(token)
+
+
 RUN_SAVINGS_RECOMPUTE_STEP = "omn24615_delegation_events_run_savings_recompute"
 
 
@@ -317,6 +380,9 @@ def recompute_run_savings(conn: sqlite3.Connection) -> None:
         RUN_SAVINGS_INPUT_COLUMNS,
         modelled_run_savings_columns,
     )
+    from omnimarket.nodes.node_projection_metering_summary.baseline import (
+        baseline_resolution_cache,
+    )
 
     have = {
         str(info[1]) for info in conn.execute("PRAGMA table_info(delegation_events)")
@@ -328,12 +394,16 @@ def recompute_run_savings(conn: sqlite3.Connection) -> None:
     rows = conn.execute(
         f"SELECT rowid, {', '.join(read)} FROM delegation_events"
     ).fetchall()
-    for rowid, *values in rows:
-        derived = modelled_run_savings_columns(dict(zip(read, values, strict=True)))
-        conn.execute(
-            f"UPDATE delegation_events SET {assignments} WHERE rowid = ?",
-            (*(derived[column] for column in RUN_SAVINGS_DERIVED_COLUMNS), rowid),
-        )
+    # OMN-26739: resolving the baseline parses the pricing manifest; once for the pass, not once per run.
+    with baseline_resolution_cache():
+        for index, (rowid, *values) in enumerate(rows):
+            if index % 256 == 0:
+                check_store_step_deadline()
+            derived = modelled_run_savings_columns(dict(zip(read, values, strict=True)))
+            conn.execute(
+                f"UPDATE delegation_events SET {assignments} WHERE rowid = ?",
+                (*(derived[column] for column in RUN_SAVINGS_DERIVED_COLUMNS), rowid),
+            )
 
 
 def refresh_local_priced_models(conn: sqlite3.Connection, db_path: object) -> None:
