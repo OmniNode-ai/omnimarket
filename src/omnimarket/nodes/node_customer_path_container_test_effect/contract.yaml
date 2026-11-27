@@ -57,6 +57,7 @@ event_bus:
 
 # The declared runner. kind: exec runs argv in the container; net_block, lab_probe and copy_source are computed by the handler.
 # The ranges to blackhole come from ONEX_CUSTOMER_PATH_BLOCKED_RANGES (a comma list of CIDRs; no default).
+# kind: own_key runs only when ONEX_CUSTOMER_PATH_PROVIDER_KEY_FILE names an owner-only file; the value goes on stdin.
 # Placeholders: {uv_install_url} {tenant_slug} {base_url} {key_path} {user} {home} {target} {smoke_input}. as: root | customer. expect: success | failure.
 customer_path:
   dns_resolver: "1.1.1.1"
@@ -110,9 +111,13 @@ customer_path:
       argv: ["sh", "-c", "export PATH=\"$HOME/.local/bin:$PATH\" && onex local init"]
       timeout_s: 180
     - id: s10_register_provider_key
-      guide_ref: "Step 3, option B"
-      kind: not_run
-      reason: "A credential lifecycle change needs a durable consent row naming the credential; none exists for this lane, and the dev test tenant already holds a registered route key."
+      guide_ref: "Step 2, register a provider key"
+      kind: own_key
+      as: customer
+      stdin: provider_key
+      argv: ["sh", "-c", "export PATH=\"$HOME/.local/bin:$PATH\" && onex secret register-tenant-key openrouter --tenant {tenant_slug}"]
+      timeout_s: 300
+      reason: "ONEX_CUSTOMER_PATH_PROVIDER_KEY_FILE is not set; a provider key is a credential, so it is registered only when the run names an owner-only file holding it (and a durable consent row covers that tenant)."
     - id: s11_copy_unreleased_node
       guide_ref: "Step 1 (deviation)"
       kind: copy_source
