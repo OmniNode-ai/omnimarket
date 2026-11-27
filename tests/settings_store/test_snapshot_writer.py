@@ -119,3 +119,14 @@ def test_the_contract_reads_the_compacted_snapshot_topic_without_subscribing() -
     contract = yaml.safe_load((NODE / "contract.yaml").read_text())
     assert SNAPSHOT_TOPIC in contract["snapshot_reads"]
     assert SNAPSHOT_TOPIC not in contract["event_bus"]["subscribe_topics"]
+
+
+def test_snapshot_writer_has_wiring_evidence() -> None:
+    """The unimported-handler gate finds the writer imported outside its own file (lint-group-6 red)."""
+    from omnimarket.handlers.unimported_handler_baseline import find_dead_handlers
+
+    dead = find_dead_handlers(
+        Path("src/omnimarket"),
+        Path("scripts/validation/unimported_handler_baseline.txt"),
+    )
+    assert not [d for d in dead if "HandlerOverlaySnapshotWrite" in d], dead
