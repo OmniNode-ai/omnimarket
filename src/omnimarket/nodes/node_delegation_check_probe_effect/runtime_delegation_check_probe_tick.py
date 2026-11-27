@@ -23,11 +23,13 @@ import faulthandler
 import json
 import sys
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, get_args
 
 import yaml
+from pydantic import BaseModel
 
 from omnimarket.handlers.bus_binding.declared_broker_publisher import (
     DeclaredBrokerPublisher,
@@ -48,6 +50,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_delega
     HttpResponderReader,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_gateway import (
+    GATEWAY_OVERLAY_ID,
     DevTenantCredential,
     HttpGatewayCaller,
     load_gateway_row,
@@ -74,6 +77,14 @@ from omnimarket.nodes.node_delegation_check_probe_effect.protocols.protocol_dele
     ProtocolCustomerMachine,
     ProtocolGatewayClient,
 )
+from omnimarket.nodes.node_overlay_store_read_effect.handlers.handler_overlay_store_read import (
+    OverlayStaleError,
+)
+from omnimarket.nodes.node_overlay_store_read_effect.runtime_overlay_store_read import (
+    read_overlay,
+)
+
+ProtocolStoreDocumentReader = Callable[[str], dict[str, Any] | None]
 
 EVIDENCE_FILE = "last-run.json"
 OVERLAY_FILE_ENV = "ONEX_DELEGATION_CHECK_PROBE_OVERLAY"
@@ -83,6 +94,35 @@ EXIT_FAILED = 1
 EXIT_OVERLAY = 2
 EXIT_NOT_PUBLISHED = 3
 EXIT_NOT_MEASURED = 4
+
+
+def read_store_document(overlay_id: str) -> dict[str, Any] | None:
+    """The settings store reader's document for ``overlay_id``, or None when the store serves none on this host.
+
+    The reader is the store's own (node_overlay_store_read_effect): the tick never names a snapshot directory, so a unit that
+    does not carry the snapshot root on its overlay roots still reads the store (OMN-26642, measured on h051).
+    """
+    try:
+        return dict(read_overlay(overlay_id).document)
+    except OverlayStaleError:
+        raise
+    except NodeOverlayError:
+        # No usable snapshot, or an overlay this host's store does not keep (the probe's own overlay is a file overlay on h051).
+        return None
+
+
+def _settings[ModelT: BaseModel](
+    overlay_id: str,
+    model: type[ModelT],
+    reader: ProtocolStoreDocumentReader,
+    *,
+    file_env: str,
+) -> ModelT:
+    """The store reader's document first; the overlay file chain answers only when the store serves no document."""
+    document = reader(overlay_id)
+    return load_structured_overlay(
+        overlay_id, model, explicit=document, file_env=file_env
+    )
 
 
 def tick_deadline_s() -> float:
@@ -159,6 +199,7 @@ def main(
     publisher: ProtocolCheckResultPublisher | None = None,
     now: datetime | None = None,
     gateway: ProtocolGatewayClient | None = None,
+    store_reader: ProtocolStoreDocumentReader | None = None,
 ) -> int:
     parser = argparse.ArgumentParser(prog=f"{NODE}.tick", description=__doc__)
     parser.add_argument("--omni-home", dest="registry_root", required=True, type=Path)
@@ -168,10 +209,11 @@ def main(
     args = parser.parse_args(argv)
     faulthandler.dump_traceback_later(tick_deadline_s(), exit=True)
     stamp = now or datetime.now(UTC)
+    reader = store_reader or read_store_document
     evidence_path = args.state_dir / EVIDENCE_FILE
     try:
-        overlay = load_structured_overlay(
-            NODE, ModelDelegationCheckProbeOverlay, file_env=OVERLAY_FILE_ENV
+        overlay = _settings(
+            NODE, ModelDelegationCheckProbeOverlay, reader, file_env=OVERLAY_FILE_ENV
         )
         if overlay.result_topic not in contract_topics():
             raise ValueError(
@@ -181,9 +223,10 @@ def main(
         # chain read PRECONDITION-ABSENT and C17, which reads no responder, still grades; a row that is served but broken
         # ends the tick like any other unreadable overlay.
         try:
-            row: ModelDelegationCheckRespondersOverlay | None = load_structured_overlay(
+            row: ModelDelegationCheckRespondersOverlay | None = _settings(
                 RESPONDERS_OVERLAY_ID,
                 ModelDelegationCheckRespondersOverlay,
+                reader,
                 file_env=RESPONDERS_FILE_ENV,
             )
         except NodeOverlayNotFoundError:
@@ -204,7 +247,7 @@ def main(
         # The gateway address and the test tenant are the settings store's row; with none served the gateway checks read
         # PRECONDITION-ABSENT. A row that is served but broken ends the tick like any other unreadable overlay.
         try:
-            gateway_row = load_gateway_row()
+            gateway_row = load_gateway_row(explicit=reader(GATEWAY_OVERLAY_ID))
             gateway = HttpGatewayCaller(
                 gateway_row,
                 DevTenantCredential(secret_name=gateway_row.secret_name),
