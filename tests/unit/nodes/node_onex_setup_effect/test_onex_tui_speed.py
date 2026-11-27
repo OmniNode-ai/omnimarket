@@ -142,9 +142,16 @@ async def test_a_tab_runs_its_commands_in_the_running_tui(
 
 
 @pytest.mark.parametrize("name", _TABS)
-async def test_a_tab_opens_in_under_one_second(name: str) -> None:
-    """AC1 / S2: shown and filled, from Enter, over 2 s on dev."""
+async def test_a_tab_opens_in_under_one_second(
+    name: str, record_property: Callable[[str, object], None]
+) -> None:
+    """AC1 / S2: shown and filled, from Enter, over 2 s on dev. The times are
+    the AC5 measurement: run with ``-s`` (or ``--junitxml``) on a clean install
+    to read them."""
     shown, settled = await _open(name, _Counting())
+    record_property(f"{name}_shown_seconds", round(shown, 2))
+    record_property(f"{name}_settled_seconds", round(settled, 2))
+    print(f"/{name:<10} shown {shown:5.2f}s  settled {settled:5.2f}s")
     assert shown < 1.0, f"/{name} showed after {shown:.2f}s"
     assert settled < 1.0, f"/{name} held its data after {settled:.2f}s"
 
