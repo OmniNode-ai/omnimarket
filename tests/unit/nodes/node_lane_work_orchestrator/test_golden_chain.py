@@ -24,7 +24,7 @@ def test_golden_chain_stuck_sonnet_worker_climbs_then_is_answered() -> None:
     handler = HandlerLaneWorkHelp()
     driver = driver_in_help("glm-large")
 
-    first = handler.handle(build_request(driver))
+    first = handler.build(build_request(driver))
     assert first.delegate_request is not None
     assert first.delegate_request.backend_id == "harness-codex-cheapest"
     tier = driver.state.help_tiers[driver.state.help_tier_index]
@@ -40,7 +40,7 @@ def test_golden_chain_stuck_sonnet_worker_climbs_then_is_answered() -> None:
     assert failed.fold_event is not None
     driver.send("help_failed", action_id=failed.fold_event.action_id)
 
-    second = handler.handle(build_request(driver))
+    second = handler.build(build_request(driver))
     assert second.delegate_request is not None
     assert second.delegate_request.backend_id == "harness-claude-code-small"
     tier = driver.state.help_tiers[driver.state.help_tier_index]

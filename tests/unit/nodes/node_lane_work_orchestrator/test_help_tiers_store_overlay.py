@@ -124,7 +124,7 @@ def test_a_workflow_keeps_the_chain_it_started_with(tmp_path: Path) -> None:
     started_with = load_help_tiers(environ)
     driver = driver_in_help("t0", started_with)
     handler = HandlerLaneWorkHelp()
-    first = handler.handle(build_request(driver)).delegate_request
+    first = handler.build(build_request(driver)).delegate_request
     # the store's chain changes after the workflow started: its first two responders swap
     (store / NODE_NAME / "overlay.yaml").write_text(
         yaml.safe_dump(
@@ -141,7 +141,7 @@ def test_a_workflow_keeps_the_chain_it_started_with(tmp_path: Path) -> None:
     )
     assert load_help_tiers(environ)[1].backend_id == "swapped-b"
     driver.send("help_failed", action_id=build_request(driver).intent.action_id)
-    second = handler.handle(build_request(driver)).delegate_request
+    second = handler.build(build_request(driver)).delegate_request
     assert first is not None
     assert second is not None
     assert (first.backend_id, second.backend_id) == ("first-b", "second-b")

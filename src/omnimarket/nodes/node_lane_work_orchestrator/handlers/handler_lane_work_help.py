@@ -12,7 +12,10 @@ from __future__ import annotations
 
 import json
 import re
-from uuid import UUID, uuid5
+from collections.abc import Callable
+from datetime import datetime
+from typing import Protocol
+from uuid import UUID
 
 from omnibase_core.enums.enum_lane_work_state import EnumLaneWorkState
 from omnibase_core.models.lane_work import ModelLaneHelpAnswer, ModelLaneHelpRequest
@@ -22,14 +25,27 @@ from pydantic import ValidationError
 from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
+from omnimarket.models.work_ledger_append.model_work_ledger_append import (
+    ModelWorkLedgerAppendRequest,
+)
+from omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_orchestrator import (
+    correlation_of_action,
+)
 from omnimarket.nodes.node_lane_work_orchestrator.models.model_lane_help_receipt import (
     ModelLaneHelpReceipt,
+)
+from omnimarket.nodes.node_lane_work_orchestrator.models.model_lane_help_requested import (
+    ModelLaneHelpDispatched,
+    ModelLaneHelpRequested,
 )
 from omnimarket.nodes.node_lane_work_orchestrator.models.model_lane_work_help_io import (
     ModelLaneWorkHelpAnswerInput,
     ModelLaneWorkHelpAnswerResult,
     ModelLaneWorkHelpBuildRequest,
     ModelLaneWorkHelpDispatch,
+)
+from omnimarket.nodes.node_lane_work_orchestrator.models.model_lane_work_ingress import (
+    ModelLaneWorkIngress,
 )
 from omnimarket.nodes.node_lane_work_reducer.models.model_lane_work_fold_input import (
     ModelLaneWorkFoldInput,
@@ -40,13 +56,13 @@ from omnimarket.nodes.node_lane_work_reducer.models.model_lane_work_reducer_stat
 
 # The key the correlation id is derived under: the same help action always carries the same id, so a replay re-sends
 # the same request and only the run this request started can answer it.
-_CORRELATION_NAMESPACE = UUID("6f5f2a4e-5d0e-4a46-9b64-1d0a2c1c7a10")
 _FENCE = re.compile(r"^```[a-zA-Z]*\s*|\s*```$")
 
 
 def correlation_for(action_id: str) -> UUID:
-    """The correlation id of the delegation run a help action starts."""
-    return uuid5(_CORRELATION_NAMESPACE, action_id)
+    """The correlation id of the delegation run a help action starts: the orchestrator's own
+    derivation, so the intake handler finds the action a harness result answers."""
+    return correlation_of_action(action_id)
 
 
 def first_responder_index(
@@ -85,10 +101,118 @@ def _prompt(request: ModelLaneHelpRequest) -> str:
     )
 
 
-class HandlerLaneWorkHelp:
-    """Builds the pinned help request and validates its answer."""
+class ProtocolLaneHelpPorts(Protocol):
+    """The handler's two writes and the readback that makes a redelivery safe (plan 3.6)."""
 
-    def handle(
+    def append_ledger(self, request: ModelWorkLedgerAppendRequest) -> None: ...
+
+    def send_delegation(self, request: ModelDelegateSkillRequest) -> None: ...
+
+    def delegations_sent(self) -> frozenset[str]:
+        """Action ids already on the delegate-skill topic, read back to its high-water mark."""
+        ...
+
+
+class HandlerLaneWorkHelp:
+    """Handles the help topic's message, builds the pinned help request and validates its answer.
+
+    ``handle(request: ModelLaneHelpRequested) -> ModelLaneHelpDispatched`` makes two writes for one
+    ``ask_help`` message, in a fixed order: the ledger MSG row, then the pinned delegation request,
+    then it answers. Both are keyed by the action id (the ledger append deduplicates by request id,
+    the delegation carries the action id as its correlation id), and before the second write it reads
+    the delegate-skill topic back, so a redelivery after a crash between the writes leaves one row and
+    one delegation, and one after both leaves one of each.
+    """
+
+    def __init__(
+        self,
+        ports: ProtocolLaneHelpPorts | None = None,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self._ports = ports
+        self._clock = clock
+
+    def handle(self, request: ModelLaneHelpRequested) -> ModelLaneHelpDispatched:
+        ports = self._ports
+        if ports is None:
+            raise RuntimeError("the help handler has no ports wired")
+        tier = request.tier
+        origin = EnumLaneWorkState(request.help_origin)
+        correlation = correlation_for(request.action_id)
+        row = (
+            f"{request.requested_at.strftime('%Y-%m-%dT%H:%M:%SZ')} | MSG | lane={request.requesting_lane}"
+            f" | to={tier.name} | workflow={request.workflow_id} | action={request.action_id}"
+            f" | origin={origin.value} | {request.question}"
+        )
+        # Write 1: the ledger row, keyed by the action id; a redelivery's second append is a duplicate.
+        ports.append_ledger(
+            ModelWorkLedgerAppendRequest(
+                request_id=correlation,
+                rows=row,
+                requested_by_lane=request.requesting_lane,
+                requesting_host=request.requesting_host,
+                requested_at=request.requested_at,
+            )
+        )
+        if request.no_responder:
+            return ModelLaneHelpDispatched(
+                workflow_id=request.workflow_id,
+                action_id=request.action_id,
+                tier_name=tier.name,
+                ledger_written=True,
+                delegation_sent=False,
+                ingress=ModelLaneWorkIngress(
+                    correlation_id=correlation,
+                    workflow_id=request.workflow_id,
+                    result_kind="delegation_harness_result",
+                    payload={
+                        "action_id": request.action_id,
+                        "request_id": str(correlation),
+                        "status": "refused",
+                        "ok": False,
+                        "detail": "no tier above the worker",
+                    },
+                    input_id=f"{request.action_id}-no-responder",
+                ),
+            )
+        help_request = ModelLaneHelpRequest(
+            workflow_id=request.workflow_id,
+            state=EnumLaneWorkState.HELP_REQUESTED,
+            help_origin=origin,
+            question=request.question,
+            tier=tier,
+        )
+        # Write 2: the pinned delegation, unless its action id is already on the topic.
+        already = request.action_id in ports.delegations_sent()
+        if not already:
+            ports.send_delegation(
+                ModelDelegateSkillRequest(
+                    prompt=_prompt(help_request),
+                    task_type="reasoning",
+                    source="claude-code",
+                    wait=False,
+                    backend_id=tier.backend_id,
+                    correlation_id=correlation,
+                    metadata={
+                        "help_tier": tier.name,
+                        "harness": tier.harness,
+                        "model": tier.model,
+                        "effort": tier.effort,
+                        "workflow_id": request.workflow_id,
+                        "action_id": request.action_id,
+                    },
+                )
+            )
+        return ModelLaneHelpDispatched(
+            workflow_id=request.workflow_id,
+            action_id=request.action_id,
+            tier_name=tier.name,
+            backend_id=tier.backend_id,
+            ledger_written=True,
+            delegation_sent=not already,
+        )
+
+    def build(
         self, request: ModelLaneWorkHelpBuildRequest
     ) -> ModelLaneWorkHelpDispatch:
         state, intent = request.state, request.intent

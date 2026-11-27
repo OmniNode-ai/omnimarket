@@ -37,7 +37,7 @@ HANDLER = HandlerLaneWorkHelp()
 def _answer(driver: Any, body: str, **fields: Any) -> Any:
     request = build_request(driver)
     tier = driver.state.help_tiers[driver.state.help_tier_index]
-    dispatch = HANDLER.handle(request)
+    dispatch = HANDLER.build(request)
     assert dispatch.delegate_request is not None
     values = {
         "state": driver.state,
@@ -63,7 +63,7 @@ def test_example_files_name_no_gemini_tier() -> None:
 def test_first_responder_is_the_tier_above_the_worker(index: int) -> None:
     worker = TIER_NAMES[index]
     driver = driver_in_help(worker)
-    dispatch = HANDLER.handle(build_request(driver))
+    dispatch = HANDLER.build(build_request(driver))
     if worker == "claude-large":
         assert dispatch.delegate_request is None
         assert dispatch.fold_event is not None
@@ -89,7 +89,7 @@ def test_first_responder_is_the_tier_above_the_worker(index: int) -> None:
 
 def test_sonnet_worker_asks_claude_large_and_its_failure_ends_blocked() -> None:
     driver = driver_in_help("claude-medium")
-    dispatch = HANDLER.handle(build_request(driver))
+    dispatch = HANDLER.build(build_request(driver))
     assert dispatch.delegate_request is not None
     assert dispatch.delegate_request.backend_id == "harness-claude-code-large"
     driver.send("help_failed", action_id=build_request(driver).intent.action_id)
@@ -99,7 +99,7 @@ def test_sonnet_worker_asks_claude_large_and_its_failure_ends_blocked() -> None:
 def test_every_request_is_pinned_and_waits_for_nothing() -> None:
     for worker in TIER_NAMES[:-1]:
         driver = driver_in_help(worker)
-        request = HANDLER.handle(build_request(driver)).delegate_request
+        request = HANDLER.build(build_request(driver)).delegate_request
         assert request is not None
         assert (
             request.backend_id
@@ -124,10 +124,10 @@ def test_tier_entries_name_harness_model_and_effort() -> None:
 
 def test_the_climb_takes_the_next_tier_on_help_failed() -> None:
     driver = driver_in_help("local")
-    first = HANDLER.handle(build_request(driver))
+    first = HANDLER.build(build_request(driver))
     driver.send("help_failed", action_id=build_request(driver).intent.action_id)
     assert driver.name == "help_requested"
-    second = HANDLER.handle(build_request(driver))
+    second = HANDLER.build(build_request(driver))
     assert first.delegate_request is not None
     assert second.delegate_request is not None
     assert first.help_request.tier.name == "glm-small"
@@ -136,7 +136,7 @@ def test_the_climb_takes_the_next_tier_on_help_failed() -> None:
 
 
 def test_help_request_is_recorded_as_a_ledger_message() -> None:
-    dispatch = HANDLER.handle(build_request(driver_in_help("claude-small")))
+    dispatch = HANDLER.build(build_request(driver_in_help("claude-small")))
     assert "claude-small asks claude-medium" in dispatch.ledger_message
 
 
