@@ -23,6 +23,9 @@ from omnimarket.models.overlay_documents.model_delegation_check_probe_overlay im
     CheckId,
     ModelDelegationCheckProbeOverlay,
 )
+from omnimarket.models.overlay_documents.model_delegation_check_responders_overlay import (
+    ModelDelegationCheckResponder,
+)
 
 __all__ = ["CheckId", "ModelDelegationCheckProbeOverlay"]
 
@@ -40,6 +43,18 @@ class EnumCheckVerdict(StrEnum):
     NOT_MEASURED = "NOT_MEASURED"
     PRECONDITION_ABSENT = "PRECONDITION-ABSENT"
     ERROR = "ERROR"
+
+
+class ModelChainSource(_Frozen):
+    """Where the responder chain a check resolved came from: the settings store or an overlay, with the declared rows.
+
+    ``source_ref`` and ``loaded_at`` are the store record's own; an overlay carries a ref naming the overlay and no stamp.
+    """
+
+    source: Literal["store", "overlay"]
+    source_ref: str = Field(min_length=1)
+    loaded_at: datetime | None = None
+    rows: tuple[ModelDelegationCheckResponder, ...]
 
 
 class ModelCheckClause(_Frozen):
@@ -227,6 +242,8 @@ class ModelDelegationCheckResult(_Frozen):
     gateway_url: str | None = None
     tenant_slug: str | None = None
     runner: str = "omnimarket-node"
+    # Where the chain this check resolved was declared; None when no responders row was served at all.
+    chain_source: ModelChainSource | None = None
 
     @model_validator(mode="after")
     def _aware_and_consistent(self) -> ModelDelegationCheckResult:
