@@ -93,9 +93,25 @@ def test_the_handler_reaches_its_store_only_through_the_constructor() -> None:
         if isinstance(n, ast.ImportFrom)
     ]
     assert not any("store_valkey" in m or "backend_" in m for m in imported)
+
+
+def test_the_runtime_auto_wiring_can_build_the_handler_bare() -> None:
+    """The runtime builds a handler with no arguments; a required store crash-looped the effects runtime."""
     handler_cls: Any = HandlerOverlaySnapshotWrite
-    with pytest.raises(TypeError):
-        handler_cls()
+    handler_cls()
+
+
+@pytest.mark.asyncio
+async def test_a_bare_handler_refuses_at_the_first_record_naming_the_missing_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from omnimarket.handlers.overlay_store.store_backend_registry import (
+        StoreWiringRefusedError,
+    )
+
+    monkeypatch.delenv("ONEX_SETTINGS_STORE_KIND", raising=False)
+    with pytest.raises(StoreWiringRefusedError, match="ONEX_SETTINGS_STORE_KIND"):
+        await HandlerOverlaySnapshotWrite().handle(_record("lab_hosts", 1))
 
 
 def test_the_contract_reads_the_compacted_snapshot_topic_without_subscribing() -> None:
