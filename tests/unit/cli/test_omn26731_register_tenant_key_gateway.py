@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -33,9 +33,7 @@ from omnimarket.nodes.node_workflow_gateway_effect.handlers.handler_tenant_key_r
     HandlerTenantKeyRegister,
 )
 from omnimarket.nodes.node_workflow_gateway_effect.handlers.http_app import create_app
-from omnimarket.nodes.node_workflow_gateway_effect.handlers.http_dependencies import (
-    WorkflowGatewayDependencies,
-)
+from tests.nodes.node_workflow_gateway_effect.fakes import build_gateway
 
 pytestmark = pytest.mark.unit
 
@@ -127,14 +125,10 @@ def _fake_gateway() -> Iterator[Gateway]:
     handler = HandlerTenantKeyRegister(
         secret_store=store, event_bus=bus, model_discoverer=_listed
     )
-    deps = WorkflowGatewayDependencies(
+    deps = replace(
+        build_gateway().deps,
         identity=_FakeIdentity(),
         api_key_header="x-api-key",
-        submit=None,  # type: ignore[arg-type]
-        status=None,  # type: ignore[arg-type]
-        receipt=None,  # type: ignore[arg-type]
-        contracts=None,  # type: ignore[arg-type]
-        max_body_bytes=65536,
         tenant_keys=handler,
     )
     with TestClient(create_app(dependencies=deps), base_url="http://gateway") as client:

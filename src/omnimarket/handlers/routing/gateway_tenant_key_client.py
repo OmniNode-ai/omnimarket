@@ -13,10 +13,12 @@ same command.
 
 from __future__ import annotations
 
-from datetime import datetime
+import json
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
+import click
 import httpx
 from omnibase_core.errors.model_onex_error import ModelOnexError
 from omnibase_infra.gateway.client.store_gateway_credential import (
@@ -48,6 +50,69 @@ def load_signed_in_gateway(
     if not isinstance(credential, ModelGatewayApiKeyCredential):
         return None
     return credential.base_url, credential.api_key
+
+
+def signed_in_gateway() -> tuple[str, SecretStr, Any] | None:
+    """The gateway this CLI is signed in to (origin, key, transport), else ``None``.
+
+    The transport is ``None`` in production (the client opens its own); tests
+    inject one so a fake gateway and the dev gateway run the same command.
+    """
+    signed = load_signed_in_gateway()
+    return None if signed is None else (signed[0], signed[1], None)
+
+
+def parse_expires(expires: str | None) -> datetime | None:
+    """``--expires YYYY-MM-DD`` as midnight UTC that day, or a refusal.
+
+    Read before the key, so a typo costs nothing: the value is never read from
+    stdin and nothing is stored.
+    """
+    if expires is None:
+        return None
+    try:
+        day = date.fromisoformat(expires.strip())
+    except ValueError as exc:
+        raise click.ClickException(
+            f"--expires {expires!r} is not a date in the form YYYY-MM-DD; "
+            "nothing was stored."
+        ) from exc
+    return datetime(day.year, day.month, day.day, tzinfo=UTC)
+
+
+def register_signed_in(
+    signed_in: tuple[str, SecretStr, Any],
+    value: str,
+    *,
+    provider: str,
+    name: str | None,
+    model_option: tuple[str, ...],
+    tenant: str | None,
+    plan: str | None,
+    expected_version: int | None,
+    expires_at: datetime | None,
+    workspace_id: str | None,
+    base_url: str | None,
+    connection_id: str | None,
+) -> str:
+    """Register through the signed-in gateway; the non-secret view as JSON text."""
+    view = register_through_gateway(
+        base_url=signed_in[0],
+        api_key=signed_in[1],
+        http_client=signed_in[2],
+        value=value,
+        provider=provider,
+        name=name if name is not None else provider,
+        models=list(model_option) if model_option else None,
+        tenant=tenant,
+        plan=plan,
+        expected_version=expected_version,
+        expires_at=expires_at,
+        workspace_id=workspace_id,
+        base_url_override=base_url,
+        connection_id=connection_id,
+    )
+    return json.dumps(view)
 
 
 def register_through_gateway(
@@ -127,5 +192,8 @@ __all__: list[str] = [
     "TENANT_KEYS_PATH",
     "GatewayKeyRegistrationError",
     "load_signed_in_gateway",
+    "parse_expires",
+    "register_signed_in",
     "register_through_gateway",
+    "signed_in_gateway",
 ]
