@@ -648,6 +648,9 @@ units:
       requires: clean git checkout that carries entry_file
     environment:
       ONEX_LEDGER_CENSUS_ROOT: "{registry_root}"
+      # OMN-26318: the daily record is published through the declared broker, which the node resolves from the workspace
+      # config root; without it every run ended exit 3 (publish refused) on h053.
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/ledger-file-census/last-run.json
     state_directory: .onex_state/ledger-file-census
   # The capture silence watch (node_capture_silence_watch_effect): the host ran this node from a /tmp copy of the source
