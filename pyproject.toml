@@ -1798,6 +1798,7 @@ lab-story-log = "Write one ISO week of the work ledger as a sanitized lab story 
 setup = "Set up this machine for ONEX: the first command for a new developer."
 delegation = "Claude Code delegation, for every folder you run claude in."
 plugins = "Manage ONEX capability plugins; Claude bundles keep their host's format."
+settings = "Set, read and list the settings the central store holds."
 lab = "Lab host operations."
 trajectory-eval = "Publish trajectory evaluation commands by hand."
 
