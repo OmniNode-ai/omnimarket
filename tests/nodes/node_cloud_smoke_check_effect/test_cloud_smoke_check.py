@@ -251,3 +251,40 @@ def test_no_host_or_key_literal_in_the_node_source() -> None:
         if pattern.search(line)
     ]
     assert offenders == []
+
+
+def test_no_freestanding_module_of_the_node_makes_a_raw_http_call() -> None:
+    """The imperative contract guard refuses a raw HTTP call outside the effect handler module.
+
+    Runs the guard's own scanner over every node module that is not under ``handlers/``; the transport therefore lives
+    in the handler module, as the Slack publish effect keeps its transport.
+    """
+    from omnibase_core.models.nodes.imperative_contract_guard.model_freestanding_scan_input import (
+        ModelFreestandingScanInput,
+    )
+    from omnibase_core.models.nodes.imperative_contract_guard.model_guard_module_source import (
+        ModelGuardModuleSource,
+    )
+    from omnibase_core.nodes.node_imperative_contract_guard_check_effect.handler_freestanding_imperative_io import (
+        scan_freestanding_imperative_io,
+    )
+
+    offenders = []
+    for path in sorted(NODE.rglob("*.py")):
+        if "handlers" in path.relative_to(NODE).parts:
+            continue
+        result = scan_freestanding_imperative_io(
+            ModelFreestandingScanInput(
+                module=ModelGuardModuleSource(
+                    path=path.relative_to(NODE).as_posix(),
+                    source=path.read_text(encoding="utf-8"),
+                ),
+                repo="omnimarket",
+            )
+        )
+        offenders += [
+            f"{result.module_path}:{f.line} {f.detail}"
+            for f in result.findings
+            if not f.suppressed
+        ]
+    assert offenders == []
