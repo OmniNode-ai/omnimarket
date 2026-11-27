@@ -1,0 +1,97 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-26688"
+title: "A user can add a key for any OpenAI-compatible provider in the models.dev catalog, each under its own name, and delegation routes to it"
+summary: "Every OpenAI-compatible models.dev provider with a fixed https base URL is set up, routed, named and priced under its own id and key, from the shipped byok_catalog_providers.yaml list."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26688-catalog-providers
+  statement: "Each catalog provider is added, routed, metered and listed under its own id and key, and a coding or token plan is offered only with a ruling row."
+  acceptance:
+  - id: AC1
+    statement: 'AC1: onex models add <id> accepts every catalog provider marked OpenAI-compatible with a base URL, and each provider keeps its own key and catalog base URL; Falsifier: tests/unit/routing/test_omn26688_catalog_providers.py::test_onex_models_add_takes_a_catalogue_provider'
+  - id: AC2
+    statement: 'AC2: delegation routes to an added catalog provider at its catalog base URL with its own key, and an id not in the catalog resolves to None; Falsifier: tests/unit/routing/test_omn26688_catalog_providers.py::test_a_catalogue_provider_routes_to_its_listed_url'
+  - id: AC3
+    statement: 'AC3: metering and the TUI name the provider as the catalog does and price its calls; Falsifier: tests/unit/routing/test_omn26688_catalog_providers.py::test_metering_names_and_prices_a_catalogue_provider'
+  - id: AC4
+    statement: 'AC4: a coding or token plan is offered only with a ruling row, and the rulings file ships empty; Falsifier: tests/unit/routing/test_omn26688_catalog_providers.py::test_a_coding_or_token_plan_has_no_route_and_is_not_offered'
+  - id: AC5
+    statement: 'AC5: the OMN-17353 parity check (the customer catalogue equals the handler-backed set) still holds with catalog providers counted; Falsifier: tests/test_omn17353_provider_catalogue.py'
+  - id: AC6
+    statement: 'AC6: the Config tab lists the added providers after the declared ones; Falsifier: tests/unit/routing/test_omn26688_catalog_providers.py::test_the_config_picker_lists_catalogue_providers_after_the_declared_ones'
+evidence_requirements:
+- kind: tests
+  description: "The OMN-26688 catalog provider tests and the OMN-17353 parity suite pass."
+  command: uv run pytest tests/unit/routing/test_omn26688_catalog_providers.py tests/test_omn17353_provider_catalogue.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26688-ac1
+  description: 'AC1: onex models add <id> accepts every catalog provider marked OpenAI-compatible with a base URL, and each provider keeps its own key and catalog base URL.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/routing/test_omn26688_catalog_providers.py::test_onex_models_add_takes_a_catalogue_provider tests/unit/routing/test_omn26688_catalog_providers.py::test_two_catalogue_providers_keep_their_own_keys -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26688-ac2
+  description: 'AC2: delegation routes to an added catalog provider at its catalog base URL with its own key, and an id not in the catalog resolves to None.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/routing/test_omn26688_catalog_providers.py::test_a_catalogue_provider_routes_to_its_listed_url tests/unit/routing/test_omn26688_catalog_providers.py::test_each_key_goes_only_to_its_own_listed_url tests/unit/routing/test_omn26688_catalog_providers.py::test_an_id_not_on_the_list_still_has_no_route -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26688-ac3
+  description: 'AC3: metering and the TUI name the provider as the catalog does and price its calls.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/routing/test_omn26688_catalog_providers.py::test_metering_names_and_prices_a_catalogue_provider -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26688-ac4
+  description: 'AC4: a coding or token plan is offered only with a ruling row, and the rulings file ships empty.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/routing/test_omn26688_catalog_providers.py::test_a_coding_or_token_plan_has_no_route_and_is_not_offered tests/unit/routing/test_omn26688_catalog_providers.py::test_a_plan_is_kept_only_with_a_ruling_row tests/unit/routing/test_omn26688_catalog_providers.py::test_the_rulings_file_ships_empty -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26688-ac5
+  description: 'AC5: the OMN-17353 parity check (the customer catalogue equals the handler-backed set) still holds with catalog providers counted.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn17353_provider_catalogue.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26688-ac6
+  description: 'AC6: the Config tab lists the added providers after the declared ones.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/routing/test_omn26688_catalog_providers.py::test_the_config_picker_lists_catalogue_providers_after_the_declared_ones -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26688-live-provider-run
+  description: "One catalog provider is set up end to end in a manual live run with a key the operator supplies; the onex delegate receipt names the provider and its model. Not yet run: it waits for the operator's key."
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex delegate "Say hello in five words" --json
+    cwd: .
