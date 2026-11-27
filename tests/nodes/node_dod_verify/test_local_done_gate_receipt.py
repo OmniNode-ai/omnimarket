@@ -19,14 +19,14 @@ from omnimarket.models.model_local_done_gate_receipt import (
     ModelLocalDoneGateItemVerdict,
     ModelLocalDoneGateReceipt,
 )
+from omnimarket.models.model_local_done_gate_receipt_store import (
+    FilesystemLocalDoneGateReceiptStore,
+)
 from omnimarket.nodes.node_dod_verify.models.model_dod_contract_subject import (
     ModelDodContractSubject,
 )
 from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
     EvidenceCollector,
-)
-from omnimarket.projection.local_done_gate_receipts import (
-    FilesystemLocalDoneGateReceiptStore,
 )
 
 TICKET = "OMN-26725"
@@ -139,7 +139,7 @@ def test_handler_stores_a_receipt_carried_on_the_verdict(tmp_path: Path) -> None
     from uuid import uuid4
 
     from omnimarket.models.model_dod_verify_state import ModelDodVerifyState
-    from omnimarket.nodes.node_projection_dod_verdict.handlers.handler_local_done_gate_receipt_store import (
+    from omnimarket.nodes.node_local_done_gate_receipt_store_effect.handlers.handler_local_done_gate_receipt_store import (
         HandlerLocalDoneGateReceiptStore,
     )
 
@@ -211,3 +211,19 @@ def test_local_done_gate_run_publishes_receipt_and_hosted_run_does_not() -> None
     assert (receipt.ticket_id, receipt.contract_sha) == (TICKET, SHA)
     assert [(i.item_id, i.verdict) for i in receipt.items] == [(ITEM, "VERIFIED")]
     assert run(EnumDodVerifyExecutionAudience.HOSTED).local_done_gate_receipt is None
+
+
+def test_receipt_store_node_contract_binds_the_handler_to_the_completed_topic() -> None:
+    import yaml
+
+    import omnimarket.nodes.node_local_done_gate_receipt_store_effect as node
+
+    contract = yaml.safe_load(
+        (Path(node.__file__).parent / "contract.yaml").read_text(encoding="utf-8")
+    )
+    assert contract["event_bus"]["subscribe_topics"] == [
+        "onex.evt.omnimarket.dod-verify-completed.v1"
+    ]
+    routed = contract["handler_routing"]["handlers"][0]
+    assert routed["handler"]["name"] == "HandlerLocalDoneGateReceiptStore"
+    assert routed["event_model"]["name"] == "ModelDodVerifyCompletedEvent"

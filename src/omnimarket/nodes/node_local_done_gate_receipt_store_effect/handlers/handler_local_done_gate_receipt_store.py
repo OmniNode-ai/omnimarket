@@ -3,8 +3,8 @@
 """Keep the receipt a local Done gate run published, for the hosted verifier (OMN-26725).
 
 A local_done_gate run's verdict carries its receipt on the node's terminal
-topic. The verdict projection hands each verdict to this handler, which appends the receipt, when there
-is one, to the store a hosted run reads. A verdict without a receipt (a hosted
+topic. This node subscribes to that topic and its handler appends the receipt,
+when there is one, to the store a hosted run reads. A verdict without a receipt (a hosted
 run, or a run that resolved no contract revision) stores nothing.
 """
 
@@ -15,7 +15,7 @@ from omnimarket.models.model_dod_verify_completed_event import (
 )
 from omnimarket.models.model_dod_verify_state import ModelDodVerifyState
 from omnimarket.models.model_local_done_gate_receipt import ModelLocalDoneGateReceipt
-from omnimarket.projection.local_done_gate_receipts import (
+from omnimarket.models.model_local_done_gate_receipt_store import (
     FilesystemLocalDoneGateReceiptStore,
     default_receipt_store,
 )

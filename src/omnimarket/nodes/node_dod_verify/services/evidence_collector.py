@@ -85,6 +85,11 @@ from omnimarket.models.model_criteria_pins import (
 from omnimarket.models.model_local_done_gate_receipt import (
     ModelLocalDoneGateReceipt,
 )
+from omnimarket.models.model_local_done_gate_receipt_store import (
+    ProtocolLocalDoneGateReceiptSource,
+    default_receipt_store,
+    receipt_reads_verified,
+)
 from omnimarket.nodes.node_dod_verify.handlers.dod_evidence_local_source import (
     SCM_CACHE_DIR_ENV,
 )
@@ -187,11 +192,6 @@ from omnimarket.occ_evidence_probative_class import (
     EnumEvidenceProbativeClass,
     classify_check_value,
     surrogate_refusal_reason,
-)
-from omnimarket.projection.local_done_gate_receipts import (
-    ProtocolLocalDoneGateReceiptSource,
-    default_receipt_store,
-    receipt_reads_verified,
 )
 
 logger = logging.getLogger(__name__)
