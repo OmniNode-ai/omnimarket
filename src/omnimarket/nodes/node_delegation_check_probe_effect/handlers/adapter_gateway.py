@@ -175,17 +175,21 @@ def _parse(raw: bytes) -> Any:
 
 def load_gateway_row(
     environ: Mapping[str, str] | None = None,
+    *,
+    explicit: object | None = None,
 ) -> ModelDelegationCheckGatewayOverlay:
     """The settings store's gateway row; with none served the node loads no gateway and its checks read PRECONDITION-ABSENT."""
     return load_structured_overlay(
         GATEWAY_OVERLAY_ID,
         ModelDelegationCheckGatewayOverlay,
         environ,
+        explicit=explicit,
         file_env=GATEWAY_FILE_ENV,
     )
 
 
 __all__ = [
+    "GATEWAY_OVERLAY_ID",
     "DevTenantCredential",
     "HttpGatewayCaller",
     "ProtocolSecretReader",
