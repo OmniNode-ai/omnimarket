@@ -36,6 +36,11 @@ requirements:
   acceptance:
   - id: AC3
     statement: 'AC3: a start command whose checks exceed the declared budget returns inside the budget with an UNRESOLVED verdict that names how many checks ran and how many did not, and counts none of the unrun checks as passed -- falsifier: the command runs past the budget, the verdict is VERIFIED, or an unrun check is counted verified'
+- id: req-omn25856-gateway-marker-rules
+  statement: The delegation quality gate refuses a code_generation or refactor answer on its tests and its compile and artifact checks, not on whether the answer text contains tooling words.
+  acceptance:
+  - id: AC14
+    statement: 'AC14: a correct trivial code_generation or refactor answer passes with no TASK_MISMATCH for lacking pytest, ruff, typing, regression or compatibility words, while an answer that breaks a named interface or deletes the tests is refused -- falsifier: a correct short answer fails TASK_MISMATCH on follows_codebase_conventions or no_obvious_regressions, or a test-deleting answer passes'
 - id: req-omn25856-budget-ends-dispatch
   statement: A hosted dod-verify-start command whose budget is spent ends its dispatch with its typed result before the 600 s deadline, because every subprocess the dispatch starts (live-PR gh reads, the must-fail control, the durable-gate git reads, the Linear read) is clamped to the budget and a check finished at the budget's edge starts no follow-up step.
   acceptance:
@@ -81,6 +86,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_25856_start_command_budget.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-ac12-marker-rules-waived
+  description: The two marker rules apply only when the prompt asks for tests, typing, lint, compatibility or no regression. A correct trivial answer passes with no marker rule evaluated, an answer that breaks a named interface or empties the test file is refused by passes_existing_tests, and a prompt that asks for the rule keeps it. The test fails on a contract that keeps the rules unconditional.
+  source: manual
+  binds_ac:
+  - AC14
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_code_class_markers_waived_unless_asked_omn25856.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn25856-ac13-budget-ends-dispatch
   description: A gh read that would run 8 s returns inside a 1.5 s budget; the gate git ceiling is clamped to the budget and unchanged with no budget open; a spent budget starts no live-PR or must-fail follow-up and turns the VERIFIED head into SKIPPED / check_budget_exceeded, while with no budget both follow-ups still run.
