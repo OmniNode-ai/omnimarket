@@ -98,6 +98,10 @@ from omnimarket.projection.tenant_isolation import (
     TenantRequiredError,
     resolve_write_tenant,
 )
+from omnimarket.projection.tenant_registry_resolution import (
+    async_resolve_write_tenant_uuid,
+    parse_tenant_uuid,
+)
 from omnimarket.routing.tenant_overlay_resolver import BYOK_ALL_TASK_TYPES
 from omnimarket.tenant_credential_ref import is_tenant_credential_ref
 
@@ -109,7 +113,11 @@ from .handler_tenant_credentials_store import (
 logger = logging.getLogger(__name__)
 
 KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
-    {"tenant_inference_credentials", "delegation_routing_tenant_overlay"}
+    {
+        "tenant_inference_credentials",
+        "delegation_routing_tenant_overlay",
+        "tenant_registry_mirror",
+    }
 )
 
 
@@ -240,7 +248,11 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
                     "in KNOWN_PROJECTION_TABLES"
                 )
 
-        for required_role in ("credentials", "routing_overlay"):
+        for required_role in (
+            "credentials",
+            "routing_overlay",
+            "tenant_registry_mirror",
+        ):
             if required_role not in _by_role:
                 raise ValueError(
                     f"Contract missing required table role {required_role!r}"
@@ -615,6 +627,26 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
         )
         return True
 
+    async def _registry_tenant_uuid(self, tenant_identity: str) -> str:
+        """The tenant UUID a registration or revoke is stored under (OMN-26594).
+
+        ``onex secret register-tenant-key --tenant <slug>`` publishes the slug,
+        while the router reads the overlay and the catalog by the caller's
+        tenant UUID. A slug is resolved here through ``tenant_registry_mirror``
+        so both tables carry the one id form; a UUID is already that form and is
+        used as given. A slug the registry does not know raises
+        ``TenantRegistryResolutionError`` (the runner's POISON path) and writes
+        nothing, never a row under the slug.
+        """
+        if parse_tenant_uuid(tenant_identity) is not None:
+            return tenant_identity.strip()
+        resolved = await async_resolve_write_tenant_uuid(
+            self.db_for("tenant_registry_mirror", operation="read"), tenant_identity
+        )
+        if resolved is None:
+            raise ValueError("a credential event must name its tenant")
+        return resolved
+
     async def _project_registered(
         self, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
@@ -628,6 +660,7 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
                 "-- skipping"
             )
             return True
+        tenant_id = await self._registry_tenant_uuid(str(tenant_id))
 
         # Defense in depth: the publisher's event model is extra="forbid" with
         # no value-shaped field, so this can never legitimately be present --
@@ -931,6 +964,7 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
                 "credential-revoked missing api_key_ref/tenant_id -- skipping"
             )
             return True
+        tenant_id = await self._registry_tenant_uuid(str(tenant_id))
 
         # OMN-16324: credential-registered and credential-revoked are
         # published to two separate Kafka topics with no cross-topic
