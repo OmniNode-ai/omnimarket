@@ -174,11 +174,6 @@ from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
     default_contract_path,
     resolve_repo_contracts,
 )
-from omnimarket.nodes.node_dod_verify.services.local_done_gate_receipts import (
-    ProtocolLocalDoneGateReceiptSource,
-    default_receipt_store,
-    receipt_reads_verified,
-)
 from omnimarket.nodes.node_dod_verify.services.local_gh_reads import (
     REAL_GH_ENV,
     install_gh_shim,
@@ -192,6 +187,11 @@ from omnimarket.occ_evidence_probative_class import (
     EnumEvidenceProbativeClass,
     classify_check_value,
     surrogate_refusal_reason,
+)
+from omnimarket.projection.local_done_gate_receipts import (
+    ProtocolLocalDoneGateReceiptSource,
+    default_receipt_store,
+    receipt_reads_verified,
 )
 
 logger = logging.getLogger(__name__)

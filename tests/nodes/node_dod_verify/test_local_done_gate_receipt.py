@@ -25,7 +25,7 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_contract_subject import (
 from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
     EvidenceCollector,
 )
-from omnimarket.nodes.node_dod_verify.services.local_done_gate_receipts import (
+from omnimarket.projection.local_done_gate_receipts import (
     FilesystemLocalDoneGateReceiptStore,
 )
 
@@ -139,7 +139,7 @@ def test_handler_stores_a_receipt_carried_on_the_verdict(tmp_path: Path) -> None
     from uuid import uuid4
 
     from omnimarket.models.model_dod_verify_state import ModelDodVerifyState
-    from omnimarket.nodes.node_dod_verify.handlers.handler_local_done_gate_receipt_store import (
+    from omnimarket.nodes.node_projection_dod_verdict.handlers.handler_local_done_gate_receipt_store import (
         HandlerLocalDoneGateReceiptStore,
     )
 

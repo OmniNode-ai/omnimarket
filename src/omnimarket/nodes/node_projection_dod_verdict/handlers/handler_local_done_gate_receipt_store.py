@@ -3,15 +3,19 @@
 """Keep the receipt a local Done gate run published, for the hosted verifier (OMN-26725).
 
 A local_done_gate run's verdict carries its receipt on the node's terminal
-topic. This handler subscribes to that topic and appends the receipt, when there
+topic. The verdict projection hands each verdict to this handler, which appends the receipt, when there
 is one, to the store a hosted run reads. A verdict without a receipt (a hosted
 run, or a run that resolved no contract revision) stores nothing.
 """
 
 from __future__ import annotations
 
+from omnimarket.models.model_dod_verify_completed_event import (
+    ModelDodVerifyCompletedEvent,
+)
 from omnimarket.models.model_dod_verify_state import ModelDodVerifyState
-from omnimarket.nodes.node_dod_verify.services.local_done_gate_receipts import (
+from omnimarket.models.model_local_done_gate_receipt import ModelLocalDoneGateReceipt
+from omnimarket.projection.local_done_gate_receipts import (
     FilesystemLocalDoneGateReceiptStore,
     default_receipt_store,
 )
@@ -25,9 +29,14 @@ class HandlerLocalDoneGateReceiptStore:
     ) -> None:
         self._store = store
 
-    def handle(self, verdict: ModelDodVerifyState) -> bool:
+    def handle(
+        self, verdict: ModelDodVerifyCompletedEvent | ModelDodVerifyState
+    ) -> bool:
         """Return True when a receipt was stored."""
-        receipt = verdict.local_done_gate_receipt
+        return self.store_receipt(verdict.local_done_gate_receipt)
+
+    def store_receipt(self, receipt: ModelLocalDoneGateReceipt | None) -> bool:
+        """Return True when the receipt was stored."""
         if receipt is None:
             return False
         store = self._store if self._store is not None else default_receipt_store()
