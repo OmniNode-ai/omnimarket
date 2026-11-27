@@ -1007,10 +1007,9 @@ def _session_env(tmp_path: Path, ledger: Path | None = None) -> dict[str, str]:
 def test_default_sources_read_the_session_s_files_and_can_be_turned_off(tmp_path: Path):
     env = _session_env(tmp_path)
     src = handler.default_sources(FILL_NOW, env)
-    assert (
-        src.linear_snapshot
-        == tmp_path / ".claude_scratch" / "plans-today" / "linear-2026-10-19.json"
-    )
+    # OMN-26762: open launch work comes from the ticket service the overlay names, never a snapshot file.
+    assert src.linear_snapshot is None
+    assert src.tickets is not None
     assert (
         src.m4_carriers
         == tmp_path / ".local" / "state" / "omni" / "landing" / "m4-carriers.json"
@@ -1845,10 +1844,8 @@ def test_retired_plugin_registry_environment_keeps_snapshot_sources(tmp_path):
     }
     source = handler.default_sources(FILL_NOW, env)
     assert source is not None
-    assert (
-        source.linear_snapshot
-        == root / ".claude_scratch/plans-today" / f"linear-{FILL_NOW[:10]}.json"
-    )
+    assert source.linear_snapshot is None
+    assert source.tickets is not None
     canonical = handler.default_sources(
         FILL_NOW, {**env, "ONEX_REGISTRY_ROOT": str(root)}
     )

@@ -103,6 +103,7 @@ from omnimarket.handlers.handler_lab_fill_live_tickets import (
     Post,
     linear_post,
 )
+from omnimarket.handlers.lab_fill_ticket_source import read_open_launch_issues
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.rules_lab_fill_tickets import plan_ticket_backlog
 from omnimarket.handlers.rules_lane_requirements import claude_required, declarations
@@ -1824,9 +1825,23 @@ def read_generated(
             unread.append(f"{name} unread: {detail}")
             return default
 
+    snapshot: Any = {}
     snapshot_path = sources.linear_snapshot
+    if sources.tickets is not None:
+        # OMN-26762: the ticket service the overlay names is the source; no snapshot file is read.
+        snapshot_path = None
+        try:
+            service_operator, service_issues = sources.tickets()
+            snapshot = {"operator": service_operator, "issues": service_issues}
+        except (Exception, SystemExit) as exc:
+            unread.append(
+                f"ticket_source unread: {' '.join(str(exc).splitlines())[:160]}"
+            )
+            snapshot = {}
     compact = snapshot_path.with_suffix(".txt") if snapshot_path is not None else None
-    if (
+    if sources.tickets is not None:
+        pass
+    elif (
         snapshot_path is not None
         and compact is not None
         and not snapshot_path.is_file()
@@ -1836,7 +1851,7 @@ def read_generated(
             f"linear_snapshot unread: only {compact.name}, the compact form with no assignee, labels or "
             f"title, so no ticket is generated; write {snapshot_path.name} with them"
         )
-        snapshot: Any = {}
+        snapshot = {}
     else:
         snapshot = read("linear_snapshot", sources.linear_snapshot, default={})
     operator = snapshot.get("operator") if isinstance(snapshot, dict) else None
@@ -2119,11 +2134,7 @@ def default_sources(now: str, env: Mapping[str, str]) -> ModelBacklogSources | N
         return ledger_tickets(drain_map, registry_root, now)
 
     return ModelBacklogSources(
-        linear_snapshot=registry_root
-        / ".claude_scratch/plans-today"
-        / f"linear-{now[:10]}.json"
-        if registry_root
-        else None,
+        tickets=lambda: read_open_launch_issues(env),
         m4_carriers=Path(env.get("HOME") or Path.home())
         / ".local/state/omni/landing/m4-carriers.json",
         scope=skill_file("merge-sweep/sweep_scope.json"),

@@ -47,6 +47,10 @@ class ModelLabFillCandidateInput:
     # OMN-19998: the newest change of the ticket's start criterion, supplied by the caller; empty is
     # unknown, so it never releases a hold.
     criterion_changed_at: str = ""
+    # OMN-26762: when a worker was last placed on the ticket (from the fill receipt) and how the done
+    # gate reads it ("proven" or anything else); empty is unread, so neither rule holds the ticket.
+    last_placed_at: str = ""
+    done_gate: str = ""
 
 
 @dataclass(frozen=True, slots=True)

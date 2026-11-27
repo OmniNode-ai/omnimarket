@@ -15,6 +15,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
 from omnimarket.models.lab_fill.model_lab_fill_deployment import ModelLabFillDeployment
+from omnimarket.models.lab_fill.model_lab_fill_selection_rules import (
+    ModelLabFillSelectionRules,
+)
+from omnimarket.models.lab_fill.model_lab_fill_ticket_source import (
+    ModelLabFillTicketSource,
+)
 
 OVERLAY_ID = "node_lab_fill_selection_compute"
 
@@ -33,6 +39,9 @@ class ModelLabFillSelectionOverlay(BaseModel):
     # the hold lasts; both optional, left out they hold nothing off.
     terminal_hold_outcomes: list[str] = []
     terminal_hold_window_hours: int = Field(default=0, ge=0)
+    # OMN-26762: the per-ticket selection rules and the ticket source adapter, both optional here.
+    selection_rules: ModelLabFillSelectionRules | None = None
+    ticket_source: ModelLabFillTicketSource | None = None
 
     @classmethod
     def load_deployment(
@@ -43,7 +52,10 @@ class ModelLabFillSelectionOverlay(BaseModel):
 
     def deployment(self) -> ModelLabFillDeployment:
         """The deployment this document declares; owners left out mean every assignee owns."""
-        return ModelLabFillDeployment.from_overlay(self.model_dump())
+        raw = self.model_dump(exclude={"selection_rules", "ticket_source"})
+        if self.selection_rules is not None:
+            raw["selection_rules"] = self.selection_rules.model_dump()
+        return ModelLabFillDeployment.from_overlay(raw)
 
 
 __all__ = ["OVERLAY_ID", "ModelLabFillSelectionOverlay"]

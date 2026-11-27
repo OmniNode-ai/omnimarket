@@ -36,6 +36,8 @@ class ModelBacklogSources:
     ticket_rule delegates ticket admission to omnimarket. All None generates nothing."""
 
     linear_snapshot: Path | None = None
+    # OMN-26762: open launch work through ProtocolTicketService (operator, issues); replaces the snapshot file.
+    tickets: Callable[[], tuple[str, list[dict[str, Any]]]] | None = None
     m4_carriers: Path | None = None
     scope: Path | None = None
     experiments: Callable[[], list[dict[str, Any]]] | None = None

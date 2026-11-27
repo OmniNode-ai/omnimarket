@@ -482,6 +482,17 @@ class HandlerLabFillSelection:
         self, request: ModelLabFillSelectionRequest
     ) -> ModelLabFillSelectionResult:
         deployment = request.deployment
+        rules = deployment.selection_rules
+        if rules is not None:
+            # OMN-26762: the overlay's rules replace the request's own windows; nothing here holds a value.
+            request = request.model_copy(
+                update={
+                    "cooldown_hours": rules.cooldown_hours,
+                    "attempt_limit": rules.attempt_limit,
+                    "attempt_window_hours": rules.attempt_window_hours,
+                    "repeat_limit": rules.repeat_limit,
+                }
+            )
         now = _stamp(request.now)
         if now is None:
             raise ValueError("now must be an ISO timestamp with a timezone")
@@ -508,7 +519,7 @@ class HandlerLabFillSelection:
                 baselines.append(
                     replace(baseline, pr_heads=_heads(baseline.pr_heads, deployment))
                 )
-        decisions = []
+        decisions: list[ModelLabFillDecision] = []
         # Decisions follow candidate order, delegation-first tickets leading; the sort is stable, so
         # every other candidate keeps its place (OMN-23312).
         for candidate in sorted(
@@ -518,6 +529,21 @@ class HandlerLabFillSelection:
             decision, new_baseline = self._select(
                 candidate, request, history, held, escalated, now, deployment
             )
+            if (
+                rules is not None
+                and rules.one_worker_per_ticket
+                and decision.reason is None
+                and any(
+                    d.reason is None and d.ticket == decision.ticket for d in decisions
+                )
+            ):
+                decision = replace(
+                    decision,
+                    reason=EnumLabFillSkipReason.ONE_WORKER_PER_TICKET,
+                    caller_reason="one-worker-per-ticket",
+                    detail=decision.ticket,
+                )
+                new_baseline = None
             decisions.append(decision)
             if new_baseline is not None:
                 baselines = [b for b in baselines if b.ticket != new_baseline.ticket]
@@ -535,8 +561,16 @@ class HandlerLabFillSelection:
             - sum(d.reason is None for d in decisions)
             - (len(pr_land.dispatch) if pr_land is not None else 0)
         )
+        hosts: list[tuple[str, str]] = []
+        if rules is not None and rules.host_rotation:
+            eligible = [d.ticket for d in decisions if d.reason is None]
+            hosts = [
+                (ticket, rules.host_rotation[i % len(rules.host_rotation)])
+                for i, ticket in enumerate(eligible)
+            ]
         return ModelLabFillSelectionResult(
             decisions=tuple(decisions),
+            hosts=tuple(hosts),
             baselines=tuple(sorted(baselines, key=lambda b: (b.ticket, b.lane))),
             pr_land=pr_land,
             dod_verify=dod_verify_fallback(
@@ -632,6 +666,27 @@ class HandlerLabFillSelection:
                 "other-owner:delegation",
                 candidate.assignee or "unassigned",
             ), None
+        rules = deployment.selection_rules
+        if (
+            rules is not None
+            and rules.skip_done_gate_proven
+            and candidate.done_gate.strip().lower() == "proven"
+        ):
+            return decision(
+                EnumLabFillSkipReason.DONE_GATE_PROVEN,
+                "done-gate-proven",
+                candidate.ticket,
+            ), None
+        if rules is not None and candidate.last_placed_at:
+            placed = _stamp(candidate.last_placed_at)
+            if placed is not None and now - placed < timedelta(
+                hours=rules.cooldown_hours
+            ):
+                return decision(
+                    EnumLabFillSkipReason.PLACED_WITHIN_COOLDOWN,
+                    "placed-within-cooldown",
+                    candidate.last_placed_at,
+                ), None
         if candidate.kind == "defect" and request.scope_repos:
             # A defect is read team-wide by its pillar label or title term, so a side project's
             # ticket can match a different repository. Exclude it

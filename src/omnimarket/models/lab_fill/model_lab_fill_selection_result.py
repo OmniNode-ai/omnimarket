@@ -48,3 +48,5 @@ class ModelLabFillSelectionResult(BaseModel):
     # OMN-19998: the decisions held as readback (a lane ended skipped-already-built with falsifiers
     # not pass), one per ticket in candidate order, for the readback path instead of a fill lane.
     readback: tuple[ModelLabFillDecision, ...] = ()
+    # OMN-26762: ticket -> host for each eligible decision, rotating the overlay's declared hosts.
+    hosts: tuple[tuple[str, str], ...] = ()
