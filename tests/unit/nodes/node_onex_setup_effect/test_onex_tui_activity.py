@@ -147,8 +147,7 @@ async def test_the_answer_clears_the_line_and_shows_tokens_in_and_out() -> None:
             await pilot.pause(0.05)
         assert not _activity(app).display
         log = _log(app)
-        assert "↓249 in" in log  # operator 2026-11-13: in is ↓, out is ↑
-        assert "↑166 out" in log
+        assert "415 tokens" in log  # the card's one tokens figure (AC3)
         assert "delegating…" not in log
 
 
