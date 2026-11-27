@@ -65,9 +65,9 @@ def test_known_good_accepted_run_records_no_blocking_failure() -> None:
     conv = [
         e for e in result.rule_evaluations if e.rule == "follows_codebase_conventions"
     ]
-    assert conv
-    assert conv[0].passed is False
-    assert conv[0].enforcement == "scored"
+    # The prompt does not ask for conventions, so the rule is waived (not evaluated)
+    # rather than recorded as a failure.
+    assert conv == []
 
 
 def test_known_bad_blocking_failure_still_fails_the_run() -> None:
