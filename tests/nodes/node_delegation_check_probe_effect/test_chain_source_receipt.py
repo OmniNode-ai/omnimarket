@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 import yaml
 from _gateway_fake import FakeGateway
-from omnibase_core.types import JsonType
+from pydantic import JsonValue
 
 from omnimarket.handlers.overlay_store.reader_store import StoreOverlayReader
 from omnimarket.handlers.overlay_store.store_in_memory import InMemoryOverlayStore
@@ -37,7 +37,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.handler_delega
 
 LOADED_AT = datetime(2026, 11, 26, 21, 37, 29, tzinfo=UTC)
 SOURCE_REF = "settings-repo@abc123"
-DOCUMENT: dict[str, JsonType] = {
+DOCUMENT: dict[str, JsonValue] = {
     "schema_version": 1,
     "responders": [{"tier": "openrouter"}],
 }
@@ -63,8 +63,8 @@ def _store_with_row() -> InMemoryOverlayStore:
     store = InMemoryOverlayStore()
     record = ModelOverlayStoreRecord(
         overlay_id="delegation_check_responders",
-        digest=document_digest(DOCUMENT),  # type: ignore[arg-type]
-        document=DOCUMENT,  # type: ignore[arg-type]
+        digest=document_digest(DOCUMENT),
+        document=DOCUMENT,
         source_ref=SOURCE_REF,
         loaded_by="test",
         loaded_at=LOADED_AT,
@@ -73,13 +73,17 @@ def _store_with_row() -> InMemoryOverlayStore:
     return store
 
 
-def _run(tmp: Path, monkeypatch: pytest.MonkeyPatch, **kwargs: object) -> list[dict]:
+def _run(
+    tmp: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    store_reader: StoreOverlayReader | None = None,
+) -> list[dict]:
     monkeypatch.setenv(tick.OVERLAY_FILE_ENV, _probe_overlay(tmp))
     tick.main(
         ["--omni-home", str(tmp), "--state-dir", str(tmp / "state")],
         publisher=InMemoryCheckPublisher(),
         gateway=FakeGateway(),
-        **kwargs,  # type: ignore[arg-type]
+        store_reader=store_reader,
     )
     return json.loads((tmp / "state" / tick.EVIDENCE_FILE).read_text())["runs"]
 
