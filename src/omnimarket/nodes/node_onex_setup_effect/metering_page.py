@@ -59,6 +59,7 @@ def _coerce(payload: Any) -> Mapping[str, Any] | None:
             if isinstance(value, Mapping):
                 return value
         except (ValueError, TypeError):
+            # Non-JSON text falls through to the line-by-line loop below.
             pass
         for line in reversed(text.splitlines()):
             line = line.strip()
@@ -79,11 +80,7 @@ def _compact_tokens(value: Any) -> str:
     except (TypeError, ValueError):
         return "0"
     if n >= 1_000_000:
-        return (
-            f"{n / 1_000_000:.1f}M".rstrip("0").rstrip(".") + "M"
-            if False
-            else f"{n / 1_000_000:.1f}M"
-        )
+        return f"{n / 1_000_000:.1f}M"
     if n >= 1_000:
         return f"{n / 1_000:.1f}k"
     return str(n)
@@ -222,11 +219,6 @@ def render_metering_page(
     unmeasured = _g("unmeasured", "not measured")
     title = _g("title", "Usage and cost")
     period = _period(report, summary)
-    period_text = (
-        _g("period", "{period}").format(period=period)
-        if "{" in _g("period", "{period}")
-        else period
-    )
     # Fall back if format fails.
     try:
         period_text = _g("period", "{period}").format(period=period)
