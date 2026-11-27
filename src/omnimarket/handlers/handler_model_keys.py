@@ -701,11 +701,10 @@ def add_key(
 ) -> ModelModelTestResult:
     """Store ``provider``'s key with its chosen models, then run its one pinned test.
 
-    A stored key for the provider is replaced, with models as its ordered list.
-    Each model is checked against the provider list for this key before storing.
-    Without a model, a terminal is asked (ask_model); other callers are refused.
-    The test is recorded and returned whether it passed or failed.
-    The key stays stored either way, as onex models add has always left it.
+    A stored key is replaced, with ``models`` as its ordered list.
+    Each model is checked against this key's provider list first.
+    Without a model, a terminal is asked (``ask_model``); others refused.
+    The test is recorded and returned, passed or failed; the key stays.
     """
     catalog.refuse_turned_off(provider, ModelKeyRefusedError)  # OMN-26688
     # Credentials-page updates an earlier change could not apply go first, in order.
