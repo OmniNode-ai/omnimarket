@@ -12,6 +12,9 @@ from click.testing import CliRunner
 
 from omnimarket.nodes.node_agent_message_client_effect.cli import agent_message_group
 from tests.cli.agent_message_fakes import FIXED_NOW, FakeAgentMessageNode, make_runtime
+from tests.nodes.node_architecture_discovery_orchestrator.broker_overlay_support import (
+    install_broker_overlays,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -176,12 +179,16 @@ def test_a_node_with_no_declared_broker_is_a_typed_refusal(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     # The node dials the broker its own overlay declares; with none declared the client answers undeclared_broker, never a trace.
-    # The test declares the empty workspace itself, so a host that carries a real overlay under OMNI_HOME cannot answer for it.
-    monkeypatch.delenv("ONEX_EMIT_EFFECT_SPOOL_ONLY", raising=False)
-    monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
-    monkeypatch.delenv("ONEX_WORKSPACE_CONFIG_ROOT", raising=False)
-    monkeypatch.delenv("OMNI_HOME", raising=False)
-    monkeypatch.setenv("OMNIBASE_PATH", str(tmp_path))
+    # The test injects its own overlay root (an overlay with no event_bus) and never reads the host's.
+    for name in (
+        "ONEX_EMIT_EFFECT_SPOOL_ONLY",
+        "KAFKA_BOOTSTRAP_SERVERS",
+        "ONEX_SKILL_OVERLAY_ROOTS",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    install_broker_overlays(
+        tmp_path, monkeypatch, None, nodes=("node_agent_message_effect",)
+    )
     result = CliRunner().invoke(agent_message_group, [*_SEND, "--bus", "inmemory"])
     assert result.exit_code == 3, result.output
     assert "refused: undeclared_broker:" in result.output
