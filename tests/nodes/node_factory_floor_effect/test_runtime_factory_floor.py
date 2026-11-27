@@ -534,6 +534,15 @@ def test_machine_bays_and_lanes_are_read_from_the_declared_sources_end_to_end(
         yaml.safe_dump(
             {
                 "plan_path_contains": ["wave-plan"],
+                # The cloud read runs the real placement node, called through the canonical core CLI of this
+                # interpreter: the packaged `onex` entry point refuses to dispatch from a runner whose
+                # omnimarket is a path install, which left the cloud source unread on every runner.
+                "cloud_accounts_node_command": [
+                    sys.executable,
+                    "-m",
+                    "omnibase_core.cli.cli_commands",
+                    "node",
+                ],
                 "processes": [],
                 "roles": [],
                 "release_required_repos": [],
