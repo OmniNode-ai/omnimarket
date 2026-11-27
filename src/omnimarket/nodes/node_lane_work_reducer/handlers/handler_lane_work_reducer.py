@@ -10,8 +10,8 @@ worker-owned, which deadlines a state arms and where help starts are all read
 from the contract's state types and entry actions.
 
 It applies the repeat rule, the help budget and the armed deadlines, and builds
-intents with plain action ids. It performs no I/O beyond parsing its own contract
-at import, and reads no clock: ``now`` is an input. The repeat bound, deadlines,
+intents with plain action ids. It performs no I/O (the contract is loaded by
+``omnimarket.handlers.rules_lane_work_reducer``) and reads no clock: ``now`` is an input. The repeat bound, deadlines,
 wait budget, help budget and help chain arrive in ``ModelLaneWorkReducerConfig``.
 """
 
@@ -20,10 +20,8 @@ from __future__ import annotations
 import re
 from datetime import datetime, timedelta
 from functools import lru_cache
-from pathlib import Path
 from typing import Any, Literal
 
-import yaml
 from omnibase_core.models.contracts.subcontracts.model_fsm_state_definition import (
     ModelFSMStateDefinition,
 )
@@ -35,6 +33,7 @@ from omnibase_core.models.contracts.subcontracts.model_fsm_subcontract import (
 )
 from omnibase_core.models.lane_work import ModelLaneWorkChange, build_action_id
 
+from omnimarket.handlers.rules_lane_work_reducer import load_lane_work_fsm
 from omnimarket.nodes.node_lane_work_reducer.models.model_lane_work_fold_input import (
     ModelLaneWorkFoldInput,
 )
@@ -56,8 +55,6 @@ from omnimarket.nodes.node_lane_work_reducer.models.model_lane_work_reducer_stat
 
 HandlerType = Literal["NODE_HANDLER"]
 HandlerCategory = Literal["COMPUTE"]
-
-_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
 
 # Event kinds (not states). A refused answer in a help state counts as help_failed.
 _HELP_ANSWER_KINDS = frozenset({"help_cause_found", "help_retry", "help_stop"})
@@ -110,9 +107,7 @@ class _Machine:
 
 @lru_cache(maxsize=1)
 def _load_machine() -> _Machine:
-    text = _CONTRACT_PATH.read_text(encoding="utf-8")  # node-purity-ok: own contract
-    document = yaml.safe_load(text)
-    return _Machine(ModelFSMSubcontract.model_validate(document["state_machine"]))
+    return _Machine(load_lane_work_fsm())
 
 
 def deadline_event(

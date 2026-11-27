@@ -55,6 +55,12 @@ descriptor:
   idempotent: true
   timeout_ms: 5000
 
+runtime_dispatch:
+  # The lane work orchestrator and a replay driver call the reducer with one request; nothing on the bus starts it.
+  on_demand:
+    command: uv run onex node node_lane_work_reducer --input <request.json>
+    owner: OmniNode Platform Team
+
 state_machine:
   version: {major: 1, minor: 0, patch: 0}
   state_machine_name: lane_work_loop
@@ -188,8 +194,7 @@ state_machine:
     trigger: start
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: arm_worker_deadline
+    - action_name: arm_worker_deadline
       action_type: node
   - version: {major: 1, minor: 0, patch: 0}
     transition_name: awaiting_worker_to_confirming_claim_on_worker_started
@@ -198,8 +203,7 @@ state_machine:
     trigger: worker_started
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: ledger_query_claims
+    - action_name: ledger_query_claims
       action_type: node
       action_config:
       - - awaits
@@ -215,8 +219,7 @@ state_machine:
       condition_type: expression
       expression: deadline == worker
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -230,8 +233,7 @@ state_machine:
     trigger: claim_confirmed
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: arm_observation_deadline
+    - action_name: arm_observation_deadline
       action_type: node
   - version: {major: 1, minor: 0, patch: 0}
     transition_name: confirming_claim_to_blocked_on_claim_missing
@@ -240,8 +242,7 @@ state_machine:
     trigger: claim_missing
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -262,8 +263,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -283,8 +283,7 @@ state_machine:
       condition_type: expression
       expression: deadline == claim_read
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -305,8 +304,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -326,8 +324,7 @@ state_machine:
       condition_type: expression
       expression: deadline == observation
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -341,8 +338,7 @@ state_machine:
     trigger: check_red
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: read_failing_log
+    - action_name: read_failing_log
       action_type: agent
       action_config:
       - - do
@@ -354,8 +350,7 @@ state_machine:
     trigger: check_green
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: lab_proof
+    - action_name: lab_proof
       action_type: node
       action_config:
       - - awaits
@@ -367,8 +362,7 @@ state_machine:
     trigger: check_pending
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: lab_proof
+    - action_name: lab_proof
       action_type: node
       action_config:
       - - awaits
@@ -380,8 +374,7 @@ state_machine:
     trigger: head_moved
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: arm_observation_deadline
+    - action_name: arm_observation_deadline
       action_type: node
       action_config:
       - - do
@@ -397,8 +390,7 @@ state_machine:
       condition_type: expression
       expression: red_kind == base_inherited
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: merge_base_and_commit
+    - action_name: merge_base_and_commit
       action_type: agent
       action_config:
       - - do
@@ -412,8 +404,7 @@ state_machine:
     trigger: log_read
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: five_whys_on_log
+    - action_name: five_whys_on_log
       action_type: agent
       action_config:
       - - do
@@ -425,8 +416,7 @@ state_machine:
     trigger: cause_found
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: fix_named_cause
+    - action_name: fix_named_cause
       action_type: agent
       action_config:
       - - do
@@ -442,8 +432,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -459,8 +448,7 @@ state_machine:
     trigger: cause_unknown
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -474,8 +462,7 @@ state_machine:
     trigger: fix_committed
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: push_through_guard
+    - action_name: push_through_guard
       action_type: agent
       action_config:
       - - do
@@ -491,8 +478,7 @@ state_machine:
       condition_type: expression
       expression: event_class == release_identity
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: arm_poll_deadline
+    - action_name: arm_poll_deadline
       action_type: node
   - version: {major: 1, minor: 0, patch: 0}
     transition_name: fixing_to_fixing_on_commit_refused_hook
@@ -505,8 +491,7 @@ state_machine:
       condition_type: expression
       expression: event_class == hook
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: fix_hook_finding
+    - action_name: fix_hook_finding
       action_type: agent
       action_config:
       - - do
@@ -525,8 +510,7 @@ state_machine:
       condition_type: expression
       expression: budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: commit_again
+    - action_name: commit_again
       action_type: agent
       action_config:
       - - do
@@ -545,8 +529,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -566,8 +549,7 @@ state_machine:
       condition_type: expression
       expression: deadline == wait_budget
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -581,8 +563,7 @@ state_machine:
     trigger: pushed
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: lab_proof
+    - action_name: lab_proof
       action_type: node
       action_config:
       - - awaits
@@ -598,8 +579,7 @@ state_machine:
       condition_type: expression
       expression: event_class == check_failed
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: fix_refused_check
+    - action_name: fix_refused_check
       action_type: agent
       action_config:
       - - do
@@ -618,8 +598,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -639,8 +618,7 @@ state_machine:
       condition_type: expression
       expression: event_class in guard_ledger_cell|missing_remote|protected_branch|push_rejected
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -654,8 +632,7 @@ state_machine:
     trigger: head_moved
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: merge_moved_head
+    - action_name: merge_moved_head
       action_type: agent
       action_config:
       - - do
@@ -667,8 +644,7 @@ state_machine:
     trigger: head_moved
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: merge_moved_head
+    - action_name: merge_moved_head
       action_type: agent
       action_config:
       - - do
@@ -684,8 +660,7 @@ state_machine:
       condition_type: expression
       expression: head_matches == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: post_lab_comment
+    - action_name: post_lab_comment
       action_type: node
       action_config:
       - - awaits
@@ -701,8 +676,7 @@ state_machine:
       condition_type: expression
       expression: event_class == tests
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: read_proof_log
+    - action_name: read_proof_log
       action_type: agent
       action_config:
       - - do
@@ -718,8 +692,7 @@ state_machine:
       condition_type: expression
       expression: event_class == infra
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: lab_proof
+    - action_name: lab_proof
       action_type: node
       action_config:
       - - awaits
@@ -731,8 +704,7 @@ state_machine:
     trigger: head_moved
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: lab_proof
+    - action_name: lab_proof
       action_type: node
       action_config:
       - - awaits
@@ -744,8 +716,7 @@ state_machine:
     trigger: head_moved
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: lab_proof
+    - action_name: lab_proof
       action_type: node
       action_config:
       - - awaits
@@ -764,8 +735,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -785,8 +755,7 @@ state_machine:
       condition_type: expression
       expression: deadline == proof
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -807,8 +776,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -828,8 +796,7 @@ state_machine:
       condition_type: expression
       expression: deadline == post
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -843,8 +810,7 @@ state_machine:
     trigger: proof_posted
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: handoff_request
+    - action_name: handoff_request
       action_type: node
       action_config:
       - - awaits
@@ -856,8 +822,7 @@ state_machine:
     trigger: proof_post_failed
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: post_lab_comment
+    - action_name: post_lab_comment
       action_type: node
       action_config:
       - - awaits
@@ -876,8 +841,7 @@ state_machine:
       condition_type: expression
       expression: head_matches == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: arm_confirmation_deadline
+    - action_name: arm_confirmation_deadline
       action_type: node
   - version: {major: 1, minor: 0, patch: 0}
     transition_name: confirming_handoff_to_handed_off_on_check_green_head_matches_observed_after_answer
@@ -893,8 +857,7 @@ state_machine:
       condition_type: expression
       expression: observed_after_answer == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - outcome
@@ -913,8 +876,7 @@ state_machine:
       condition_type: expression
       expression: observed_after_answer == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - outcome
@@ -933,8 +895,7 @@ state_machine:
       condition_type: expression
       expression: observed_after_answer == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - outcome
@@ -946,8 +907,7 @@ state_machine:
     trigger: head_moved
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: lab_proof
+    - action_name: lab_proof
       action_type: node
       action_config:
       - - awaits
@@ -966,8 +926,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -987,8 +946,7 @@ state_machine:
       condition_type: expression
       expression: deadline == confirmation
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -1009,8 +967,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -1030,8 +987,7 @@ state_machine:
       condition_type: expression
       expression: request_matches == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -1045,8 +1001,7 @@ state_machine:
     trigger: head_moved
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: lab_proof
+    - action_name: lab_proof
       action_type: node
       action_config:
       - - awaits
@@ -1065,8 +1020,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -1086,8 +1040,7 @@ state_machine:
       condition_type: expression
       expression: deadline == handoff
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -1101,8 +1054,7 @@ state_machine:
     trigger: help_cause_found
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: fix_help_cause
+    - action_name: fix_help_cause
       action_type: agent
       action_config:
       - - do
@@ -1118,8 +1070,7 @@ state_machine:
       condition_type: expression
       expression: help_origin == pushing
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: push_through_guard
+    - action_name: push_through_guard
       action_type: agent
       action_config:
       - - do
@@ -1135,8 +1086,7 @@ state_machine:
       condition_type: expression
       expression: help_origin == waiting_release
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: commit_again
+    - action_name: commit_again
       action_type: agent
       action_config:
       - - do
@@ -1152,8 +1102,7 @@ state_machine:
       condition_type: expression
       expression: help_origin == proving
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: lab_proof
+    - action_name: lab_proof
       action_type: node
       action_config:
       - - awaits
@@ -1171,8 +1120,7 @@ state_machine:
       condition_type: expression
       expression: help_origin == proven
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: post_lab_comment
+    - action_name: post_lab_comment
       action_type: node
       action_config:
       - - awaits
@@ -1190,8 +1138,7 @@ state_machine:
       condition_type: expression
       expression: help_origin == handing_off
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: handoff_request
+    - action_name: handoff_request
       action_type: node
       action_config:
       - - awaits
@@ -1205,8 +1152,7 @@ state_machine:
     trigger: help_stop
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
   - version: {major: 1, minor: 0, patch: 0}
     transition_name: help_requested_to_help_requested_on_help_failed_false_climb
@@ -1219,8 +1165,7 @@ state_machine:
       condition_type: expression
       expression: tier_is_top == false
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -1240,8 +1185,7 @@ state_machine:
       condition_type: expression
       expression: tier_is_top == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -1262,8 +1206,7 @@ state_machine:
       condition_type: expression
       expression: tier_is_top == false
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -1286,8 +1229,7 @@ state_machine:
       condition_type: expression
       expression: tier_is_top == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -1305,8 +1247,7 @@ state_machine:
       condition_type: expression
       expression: deadline == worker
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -1324,8 +1265,7 @@ state_machine:
       condition_type: expression
       expression: deadline == worker
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -1343,8 +1283,7 @@ state_machine:
       condition_type: expression
       expression: deadline == worker
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -1362,8 +1301,7 @@ state_machine:
       condition_type: expression
       expression: deadline == worker
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -1381,8 +1319,7 @@ state_machine:
       condition_type: expression
       expression: deadline == worker
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -1396,8 +1333,7 @@ state_machine:
     trigger: unclassified
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: five_whys_on_raw_result
+    - action_name: five_whys_on_raw_result
       action_type: agent
       action_config:
       - - do
@@ -1409,8 +1345,7 @@ state_machine:
     trigger: unclassified
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: five_whys_on_raw_result
+    - action_name: five_whys_on_raw_result
       action_type: agent
       action_config:
       - - do
@@ -1422,8 +1357,7 @@ state_machine:
     trigger: unclassified
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: five_whys_on_raw_result
+    - action_name: five_whys_on_raw_result
       action_type: agent
       action_config:
       - - do
@@ -1439,8 +1373,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -1456,8 +1389,7 @@ state_machine:
     trigger: unclassified
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -1475,8 +1407,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -1492,8 +1423,7 @@ state_machine:
     trigger: unclassified
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -1511,8 +1441,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -1528,8 +1457,7 @@ state_machine:
     trigger: unclassified
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -1547,8 +1475,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -1564,8 +1491,7 @@ state_machine:
     trigger: unclassified
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -1583,8 +1509,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -1600,8 +1525,7 @@ state_machine:
     trigger: unclassified
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -1619,8 +1543,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -1636,8 +1559,7 @@ state_machine:
     trigger: unclassified
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -1655,8 +1577,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -1672,8 +1593,7 @@ state_machine:
     trigger: unclassified
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -1691,8 +1611,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -1708,8 +1627,7 @@ state_machine:
     trigger: repeat_bound_reached
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -1727,8 +1645,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -1744,8 +1661,7 @@ state_machine:
     trigger: repeat_bound_reached
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -1763,8 +1679,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -1780,8 +1695,7 @@ state_machine:
     trigger: repeat_bound_reached
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -1799,8 +1713,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -1816,8 +1729,7 @@ state_machine:
     trigger: repeat_bound_reached
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -1835,8 +1747,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -1852,8 +1763,7 @@ state_machine:
     trigger: repeat_bound_reached
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -1871,8 +1781,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -1888,8 +1797,7 @@ state_machine:
     trigger: repeat_bound_reached
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -1907,8 +1815,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -1924,8 +1831,7 @@ state_machine:
     trigger: repeat_bound_reached
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -1943,8 +1849,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -1960,8 +1865,7 @@ state_machine:
     trigger: repeat_bound_reached
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -1979,8 +1883,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -1996,8 +1899,7 @@ state_machine:
     trigger: repeat_bound_reached
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision
@@ -2015,8 +1917,7 @@ state_machine:
       condition_type: expression
       expression: help_budget_left == true
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: help_request
+    - action_name: help_request
       action_type: node
       action_config:
       - - awaits
@@ -2032,8 +1933,7 @@ state_machine:
     trigger: repeat_bound_reached
     priority: 1
     actions:
-    - version: {major: 1, minor: 0, patch: 0}
-      action_name: terminal
+    - action_name: terminal
       action_type: terminal
       action_config:
       - - decision

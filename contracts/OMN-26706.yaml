@@ -119,6 +119,14 @@ dod_evidence:
       - check_type: "command"
         check_value: "grep -q formal/lane_work_loop src/omnimarket/nodes/node_lane_work_reducer/contract.yaml"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26706-contract-gates"
+    description: >-
+      The reducer contract declares its trigger, its typed machine has no unknown keys, the handler carries no suppression comment, and the work-contract pins match uv.lock.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/contracts/test_walkable_state_machines.py tests/nodes/test_work_contract_pins_current.py -q -p no:randomly -k 'lane_work or pins'"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn26706-integration-proof"
     description: >-
       The node's unit tests pass on a lab host at the pushed head.
