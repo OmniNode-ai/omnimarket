@@ -113,6 +113,8 @@ dod_evidence:
 - id: dod-omn24052-operator-surface
   description: 'the runtime image turns the omnibase_core operator switch on, so the installed onex CLI lists and resolves settings (set, get, list) and scm on lab and dev hosts; the customer surface list is unchanged.'
   source: manual
+  binds_ac:
+  - AC7
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/cli/test_omn24052_operator_surface_in_runtime_image.py -q -n 0 --no-cov -p no:cacheprovider
