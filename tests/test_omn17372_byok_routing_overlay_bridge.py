@@ -43,6 +43,7 @@ from omnimarket.routing.tenant_overlay_resolver import (
     TENANT_OVERLAY_TABLE,
     resolve_tenant_overlay,
 )
+from tests.helpers.tenant_slug_mirror import mirror_fetchval, slug_uuid
 
 TOPIC_REGISTERED = "onex.evt.omnimarket.credential-registered.v1"
 TOPIC_REVOKED = "onex.evt.omnimarket.credential-revoked.v1"
@@ -70,7 +71,7 @@ def mock_db() -> AsyncMock:
     db.execute = AsyncMock(return_value=[])
     db.execute_many = AsyncMock()
     db.execute_in_transaction = AsyncMock()
-    db.fetchval = AsyncMock(return_value=None)
+    db.fetchval = AsyncMock(side_effect=mirror_fetchval)
     db.connect = AsyncMock()
     db.close = AsyncMock()
     return db
@@ -268,7 +269,7 @@ class TestOverlayWrite:
         backend = resolve_byok_provider_backend(PROVIDER)
         assert backend is not None
         assert params == [
-            TENANT,
+            slug_uuid(TENANT),
             BYOK_ALL_TASK_TYPES,
             backend.backend_id,
             backend.provider,
@@ -306,7 +307,7 @@ class TestOverlayWrite:
     ) -> None:
         await runner.project_event(TOPIC_REGISTERED, _registered_event(), _make_meta())
         params = list(_overlay_calls(mock_db)[0].args[1:])
-        assert params[0] == TENANT
+        assert params[0] == slug_uuid(TENANT)
         # The ref itself is tenant-namespaced by mint_api_key_ref, so a row can
         # never point at another tenant's secret.
         assert params[6].startswith(f"cred_{TENANT}_")
@@ -374,7 +375,7 @@ class TestRevocation:
         assert "UPDATE" in str(sql)
         assert "SET secret_ref = NULL" in " ".join(str(sql).split())
         assert "DELETE" not in str(sql).upper()
-        assert params == [TENANT, API_KEY_REF]
+        assert params == [slug_uuid(TENANT), API_KEY_REF]
 
     @pytest.mark.asyncio
     async def test_revocation_is_scoped_to_the_revoked_ref_of_that_tenant(

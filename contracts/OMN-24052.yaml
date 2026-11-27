@@ -26,6 +26,11 @@ requirements:
   acceptance:
   - id: AC6
     statement: 'AC6: the three store units carry the workspace root in their environment -- falsifier: uv run pytest tests/nodes/node_host_installer_registry_units/test_overlay_store_load_unit.py -q -n 0 --no-cov -k workspace_root fails when the contract change is removed'
+- id: req-omn24052-settings-command
+  statement: The operator command onex settings set, get, list and bootstrap-file reads and writes the central settings store, and a set persists the value and its provenance to the overlay local file.
+  acceptance:
+  - id: AC7
+    statement: 'AC7: onex settings set rewrites the overlay local file with the value and its provenance, a failed set leaves the file alone, and an undeclared key or a non-JSON value is refused before the setter runs -- falsifier: uv run pytest tests/settings_store/test_settings_cli.py -q -n 0 --no-cov fails when the command is removed'
 evidence_requirements:
 - kind: tests
   description: The overlay store tests pass at the pushed head.
@@ -96,3 +101,12 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24052 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_overlay_store -q -n 0 --no-cov -p no:cacheprovider
+- id: dod-omn24052-settings-command
+  description: 'the operator ease-of-change command: onex settings set|get|list|bootstrap-file over the central store; a set rewrites the overlay local file with value and provenance, a failed set leaves it alone, an undeclared key or a non-JSON value is refused before the setter runs, and the bootstrap file refuses by name when an input is missing.'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/settings_store/test_settings_cli.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
