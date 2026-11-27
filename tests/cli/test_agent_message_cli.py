@@ -173,11 +173,15 @@ def test_undeclared_broker_is_a_typed_refusal(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_a_node_with_no_declared_broker_is_a_typed_refusal(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     # The node dials the broker its own overlay declares; with none declared the client answers undeclared_broker, never a trace.
+    # The test declares the empty workspace itself, so a host that carries a real overlay under OMNI_HOME cannot answer for it.
     monkeypatch.delenv("ONEX_EMIT_EFFECT_SPOOL_ONLY", raising=False)
     monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
+    monkeypatch.delenv("ONEX_WORKSPACE_CONFIG_ROOT", raising=False)
+    monkeypatch.delenv("OMNI_HOME", raising=False)
+    monkeypatch.setenv("OMNIBASE_PATH", str(tmp_path))
     result = CliRunner().invoke(agent_message_group, [*_SEND, "--bus", "inmemory"])
     assert result.exit_code == 3, result.output
     assert "refused: undeclared_broker:" in result.output
