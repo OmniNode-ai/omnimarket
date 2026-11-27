@@ -133,6 +133,8 @@ externally_produced_topics:
   - topic: onex.cmd.omnimarket.lane-work-event.v1
     producer: "onex run-node node_lane_work_orchestrator, from the orchestrator's session and from a worker lane"
 externally_consumed_topics:
+  # The help handler (task 7) is a node that has not landed; its subscription is declared in its own contract.
+  - onex.cmd.omnimarket.lane-work-help-requested.v1
   - onex.evt.omnimarket.lane-work-step-completed.v1
   - onex.evt.omnimarket.lane-work-terminal.v1
 # The broker grants the node's topics need (OMN-24005 coverage gate): the runtime login reads the topics it

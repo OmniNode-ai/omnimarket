@@ -14,9 +14,6 @@ from omnibase_core.models.lane_work import ModelLaneWorkChange, ModelLaneWorkEve
 from omnimarket.models.overlay_documents.model_lane_work_orchestrator_overlay import (
     load_orchestrator_overlay,
 )
-from omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_orchestrator import (
-    HandlerLaneWorkOrchestrator,
-)
 from omnimarket.nodes.node_lane_work_orchestrator.journal import (
     InMemoryLaneWorkJournal,
     ProtocolLaneWorkJournal,
@@ -26,6 +23,9 @@ from omnimarket.nodes.node_lane_work_orchestrator.models.model_lane_work_fold_re
 )
 from omnimarket.nodes.node_lane_work_orchestrator.models.model_lane_work_ingress import (
     ModelLaneWorkIngress,
+)
+from omnimarket.nodes.node_lane_work_orchestrator.orchestration.lane_work_orchestrator import (
+    LaneWorkOrchestrator,
 )
 
 NODES = Path(__file__).resolve().parents[4] / "src" / "omnimarket" / "nodes"
@@ -49,14 +49,14 @@ ANSWERS = {
 
 def make_orchestrator(
     journal: ProtocolLaneWorkJournal | None = None,
-) -> HandlerLaneWorkOrchestrator:
+) -> LaneWorkOrchestrator:
     clock = [T0]
 
     def tick() -> datetime:
         clock[0] = clock[0] + timedelta(seconds=1)
         return clock[0]
 
-    return HandlerLaneWorkOrchestrator(
+    return LaneWorkOrchestrator(
         journal=journal if journal is not None else InMemoryLaneWorkJournal(),
         overlay=load_orchestrator_overlay(),
         clock=tick,
@@ -68,7 +68,7 @@ class Rig:
 
     def __init__(
         self,
-        orchestrator: HandlerLaneWorkOrchestrator | None = None,
+        orchestrator: LaneWorkOrchestrator | None = None,
         change: ModelLaneWorkChange = CHANGE,
     ) -> None:
         self.orchestrator = orchestrator or make_orchestrator()

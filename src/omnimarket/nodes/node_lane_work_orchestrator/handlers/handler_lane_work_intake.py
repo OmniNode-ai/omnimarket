@@ -19,11 +19,11 @@ from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutpu
 from omnibase_core.models.lane_work import ModelLaneWorkEvent
 from pydantic import BaseModel
 
-from omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_orchestrator import (
-    HandlerLaneWorkOrchestrator,
-)
 from omnimarket.nodes.node_lane_work_orchestrator.models.model_lane_work_ingress import (
     ModelLaneWorkIngress,
+)
+from omnimarket.nodes.node_lane_work_orchestrator.orchestration.lane_work_orchestrator import (
+    LaneWorkOrchestrator,
 )
 from omnimarket.nodes.node_lane_work_orchestrator.process_state import (
     process_orchestrator,
@@ -39,7 +39,7 @@ def _moment(value: str | datetime) -> datetime:
 class HandlerLaneWorkIntake:
     """``handle(message) -> [ModelLaneWorkIngress]``: zero or more typed inputs for the fold."""
 
-    def __init__(self, orchestrator: HandlerLaneWorkOrchestrator | None = None) -> None:
+    def __init__(self, orchestrator: LaneWorkOrchestrator | None = None) -> None:
         self._orchestrator = orchestrator
 
     @property
@@ -51,7 +51,7 @@ class HandlerLaneWorkIntake:
         return "ORCHESTRATOR"
 
     @property
-    def orchestrator(self) -> HandlerLaneWorkOrchestrator:
+    def orchestrator(self) -> LaneWorkOrchestrator:
         return self._orchestrator or process_orchestrator()
 
     def handle(self, request: BaseModel) -> list[ModelLaneWorkIngress]:

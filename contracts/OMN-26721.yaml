@@ -91,3 +91,12 @@ dod_evidence:
       - check_type: "command"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-26721 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_lane_work_orchestrator tests/integration/nodes/node_lane_work_orchestrator -q --no-cov -n 0 -p no:randomly"
         cwd: "."
+  - id: "dod-omn26721-handler-binding-and-gates"
+    description: >-
+      Every handler_*.py of the node is bound by its contract (the fold engine lives under orchestration/), the help topic is declared as consumed outside the node, and the reducer's state machine declares only keys the typed FSM models know.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_orchestrator/test_handlers_are_bound.py tests/unit/contracts/test_walkable_state_machines.py -q --no-cov -n 0 -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"

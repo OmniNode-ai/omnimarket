@@ -58,7 +58,7 @@ def test_the_reducer_declares_who_calls_it() -> None:
     reducer = _contract("node_lane_work_reducer")
     callers = [c["path"] for c in reducer["runtime_dispatch"]["callers"]]  # type: ignore[index]
     assert (
-        "src/omnimarket/nodes/node_lane_work_orchestrator/handlers/handler_lane_work_orchestrator.py"
+        "src/omnimarket/nodes/node_lane_work_orchestrator/orchestration/lane_work_orchestrator.py"
         in callers
     )
 

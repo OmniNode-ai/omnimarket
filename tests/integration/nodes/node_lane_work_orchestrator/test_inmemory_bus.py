@@ -18,12 +18,12 @@ import pytest
 from omnibase_core.models.lane_work import ModelLaneWorkEvent
 
 from omnimarket.nodes.node_lane_work_orchestrator.event_topics import topic_for
-from omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_orchestrator import (
-    HandlerLaneWorkOrchestrator,
-)
 from omnimarket.nodes.node_lane_work_orchestrator.journal import InMemoryLaneWorkJournal
 from omnimarket.nodes.node_lane_work_orchestrator.models.model_lane_work_ingress import (
     ModelLaneWorkIngress,
+)
+from omnimarket.nodes.node_lane_work_orchestrator.orchestration.lane_work_orchestrator import (
+    LaneWorkOrchestrator,
 )
 from tests.unit.nodes.node_lane_work_orchestrator.rig_lane_work import (
     T0,
@@ -195,7 +195,7 @@ def test_a_command_already_on_the_broker_is_not_sent_again_on_recovery() -> None
     journal = rig.orchestrator.journal
     queries = journal.read("ledger_query")
     assert len(queries) == 1
-    restarted = HandlerLaneWorkOrchestrator(journal=journal, clock=lambda: T0)
+    restarted = LaneWorkOrchestrator(journal=journal, clock=lambda: T0)
     restarted.recover()
     assert journal.read("ledger_query") == queries
 

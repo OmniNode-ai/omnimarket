@@ -20,11 +20,11 @@ from omnimarket.nodes.node_lane_work_orchestrator.event_topics import (
 from omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_intake import (
     HandlerLaneWorkIntake,
 )
-from omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_orchestrator import (
-    correlation_of_action,
-)
 from omnimarket.nodes.node_lane_work_orchestrator.models.model_lane_work_help_message import (
     ModelLaneWorkHelpMessage,
+)
+from omnimarket.nodes.node_lane_work_orchestrator.orchestration.lane_work_orchestrator import (
+    correlation_of_action,
 )
 
 from .rig_lane_work import NODES, T0, Rig, make_orchestrator

@@ -10,21 +10,21 @@ handoff orchestrator's row store is process-wide. A test installs its own with
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_orchestrator import (
-    HandlerLaneWorkOrchestrator,
+from omnimarket.nodes.node_lane_work_orchestrator.orchestration.lane_work_orchestrator import (
+    LaneWorkOrchestrator,
 )
 
-_ORCHESTRATOR: list[HandlerLaneWorkOrchestrator] = []
+_ORCHESTRATOR: list[LaneWorkOrchestrator] = []
 
 
-def process_orchestrator() -> HandlerLaneWorkOrchestrator:
+def process_orchestrator() -> LaneWorkOrchestrator:
     """The process's orchestrator, built on first use."""
     if not _ORCHESTRATOR:
-        _ORCHESTRATOR.append(HandlerLaneWorkOrchestrator())
+        _ORCHESTRATOR.append(LaneWorkOrchestrator())
     return _ORCHESTRATOR[0]
 
 
-def install_orchestrator(orchestrator: HandlerLaneWorkOrchestrator) -> None:
+def install_orchestrator(orchestrator: LaneWorkOrchestrator) -> None:
     _ORCHESTRATOR.clear()
     _ORCHESTRATOR.append(orchestrator)
 

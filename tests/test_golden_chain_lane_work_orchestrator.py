@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_orchestrator import (
-    HandlerLaneWorkOrchestrator,
+from omnimarket.nodes.node_lane_work_orchestrator.orchestration.lane_work_orchestrator import (
+    LaneWorkOrchestrator,
 )
 from tests.unit.nodes.node_lane_work_orchestrator.rig_lane_work import Rig
 
@@ -23,7 +23,7 @@ pytestmark = pytest.mark.unit
 def test_golden_chain_lane_work_orchestrator_handed_off() -> None:
     rig = Rig()
     rig.to_handed_off()
-    assert isinstance(rig.orchestrator, HandlerLaneWorkOrchestrator)
+    assert isinstance(rig.orchestrator, LaneWorkOrchestrator)
     assert rig.name == "handed_off"
     assert len(rig.orchestrator.journal.read("transition")) == len(rig.sent)
     assert [p["kind"] for _, p in rig.orchestrator.journal.read("terminal")] == [
