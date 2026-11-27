@@ -632,7 +632,9 @@ async def test_store_neutral_rows_equal_on_sqlite_and_postgres(
 # migrations, and the SQLite leg drives the store functions. Timestamps are wall
 # clock on both stores, so they are compared by presence, not value.
 
-_CRED_TENANT = "omn19968-byok-tenant"
+# OMN-26594: the projection resolves a slug through tenant_registry_mirror, which
+# this schema lacks; a UUID is written as given.
+_CRED_TENANT = "6e2a9f40-7b1c-4d58-9c3e-1f0a5b7d8e34"
 _CRED_TABLES = (CREDENTIALS_TABLE, OVERLAY_TABLE)
 _CRED_CLOCK_COLUMNS = frozenset({"created_at", "updated_at", "revoked_at"})
 
