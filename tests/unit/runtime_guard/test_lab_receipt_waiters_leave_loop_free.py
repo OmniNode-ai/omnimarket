@@ -14,11 +14,13 @@ the receipt arrives: the dev runtime answered nothing for 2100 s after each rest
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import importlib
 import importlib.util
 import inspect
 import re
+import threading
 import time
 from collections.abc import Awaitable
 from pathlib import Path
@@ -131,6 +133,10 @@ async def _as_the_runtime_calls(handler: Any, request: Any) -> Any:
     return result
 
 
+async def _as_a_coroutine(value: Any) -> Any:
+    return value
+
+
 def _hold(overlay: ModelLoopGuardOverlay) -> None:
     time.sleep(overlay.block_seconds)
 
@@ -154,6 +160,32 @@ class _HoldingCapsSender:
         self.calls.append(request)
         _hold(self._guard)
         return receipt(EnumLabWorkUnitStatus.COMPLETED, tail=ok_line())
+
+
+class _GatedCapsSender:
+    """A sender that blocks until the loop releases it, so the proof needs no wall-clock bound.
+
+    ``send`` waits on a gate that only a coroutine on the event loop opens. Run off the loop, the loop stays free to open it and the
+    wait returns at once; run on the loop, nothing can open it and the wait times out. The thread of the call is recorded too.
+    """
+
+    def __init__(self, gate: threading.Event, wait_seconds: float) -> None:
+        self._gate = gate
+        self._wait_seconds = wait_seconds
+        self.calls: list[ModelLabWorkUnitRequest] = []
+        self.thread_id: int | None = None
+        self.released = False
+
+    def send(self, request: ModelLabWorkUnitRequest) -> ModelLabWorkUnitReceipt:
+        self.calls.append(request)
+        self.thread_id = threading.get_ident()
+        self.released = self._gate.wait(self._wait_seconds)
+        return receipt(EnumLabWorkUnitStatus.COMPLETED, tail=ok_line())
+
+
+async def _open_the_gate_from_the_loop(gate: threading.Event) -> None:
+    await asyncio.sleep(0)
+    gate.set()
 
 
 class _SynchronousStandIn:
@@ -197,18 +229,31 @@ async def test_the_hygiene_tick_holds_the_loop_for_less_than_the_bound() -> None
 async def test_the_gpu_power_caps_request_holds_the_loop_for_less_than_the_bound() -> (
     None
 ):
-    guard = load_loop_guard_overlay()
-    sender = _HoldingCapsSender(guard)
+    # Not a wall-clock gap: a shared runner's load stretches any gap (1.19 s against 0.25 s in CI) whether or not the handler holds
+    # the loop. The send runs off the loop thread and the loop is free to open the gate it waits on; both are deterministic.
+    gate = threading.Event()
+    sender = _GatedCapsSender(gate, wait_seconds=30.0)
     handler = HandlerGpuPowerCaps(overlay=lab_work_overlay(), sender=sender)
-    result, gap = await longest_loop_gap(
+    result, _ = await asyncio.gather(
         _as_the_runtime_calls(
             handler, ModelGpuPowerCapsRequest(host=SIM_A, requested_by="lane-a")
         ),
-        guard,
+        _open_the_gate_from_the_loop(gate),
     )
     assert result.outcome is EnumGpuPowerCapsOutcome.OK
     assert len(sender.calls) == 1
-    assert gap < guard.max_loop_block_seconds
+    assert sender.thread_id != threading.get_ident()
+    assert sender.released
+
+
+async def test_control_a_gated_send_on_the_loop_thread_is_never_released() -> None:
+    gate = threading.Event()
+    sender = _GatedCapsSender(gate, wait_seconds=0.05)
+    await asyncio.gather(
+        _as_a_coroutine(sender.send(_unit())), _open_the_gate_from_the_loop(gate)
+    )
+    assert sender.thread_id == threading.get_ident()
+    assert not sender.released
 
 
 async def test_control_a_send_on_the_loop_thread_holds_the_loop_past_the_bound() -> (
