@@ -227,3 +227,10 @@ def test_receipt_store_node_contract_binds_the_handler_to_the_completed_topic() 
     routed = contract["handler_routing"]["handlers"][0]
     assert routed["handler"]["name"] == "HandlerLocalDoneGateReceiptStore"
     assert routed["event_model"]["name"] == "ModelDodVerifyCompletedEvent"
+    assert contract["event_bus"]["publish_topics"] == [
+        "onex.evt.omnimarket.local-done-gate-receipt-stored.v1"
+    ]
+    assert (
+        contract["terminal_event"]
+        == "onex.evt.omnimarket.local-done-gate-receipt-stored.v1"
+    )
