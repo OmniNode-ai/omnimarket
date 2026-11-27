@@ -1710,7 +1710,7 @@ def generate_backlog(
             continue
         valid.append(
             {
-                **{k: v for k, v in i.items() if k != "statusType"},
+                **{k: v for k, v in i.items() if k not in ("statusType", "blocked_by")},
                 "status_type": i["statusType"],
             }
         )
