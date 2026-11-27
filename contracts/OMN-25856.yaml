@@ -56,6 +56,11 @@ requirements:
   acceptance:
   - id: AC12
     statement: 'AC12: an accepted code_generation run with passed executed tests records its failed marker rule as scored -- falsifier: the same run records that rule as blocking beside an accepted verdict, or a run without executed tests loses its blocking rule'
+- id: req-omn25856-lab-work-bus-lane
+  statement: The lab-work integration-proof items of OMN-26726 and OMN-25827 name the dev bus lane, so the local Done gate reaches the lab host instead of refusing for a missing broker.
+  acceptance:
+  - id: AC17
+    statement: 'AC17: the integration-proof items of OMN-26726 and OMN-25827 each carry --bus-lane dev after lab-work run -- falsifier: either item runs lab-work run with no --bus-lane flag'
 evidence_requirements:
 - kind: tests
   description: The focused regression, failing first with the surviving child process, then passing.
@@ -224,6 +229,8 @@ dod_evidence:
 - id: dod-omn25856-lab-item-bus-lane
   description: The lab-work integration-proof items of OMN-26726 and OMN-25827 each name --bus-lane dev, so the local Done gate no longer reads the missing-broker refusal as a failed item; the test fails on the contracts at dev before this change.
   source: manual
+  binds_ac:
+  - AC17
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/contracts/test_omn25856_lab_item_bus_lane.py -q --no-cov -n 0 -p no:randomly

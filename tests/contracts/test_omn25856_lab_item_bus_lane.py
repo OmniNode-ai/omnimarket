@@ -40,3 +40,21 @@ def test_the_lab_work_call_names_the_dev_bus_lane(ticket: str) -> None:
     assert before_sent[1] == "run"
     assert "--bus-lane" in before_sent, before_sent
     assert before_sent[before_sent.index("--bus-lane") + 1] == "dev"
+
+
+def test_the_evidence_item_binds_a_criterion_the_contract_declares() -> None:
+    document = yaml.safe_load((_CONTRACTS / "OMN-25856.yaml").read_text("utf-8"))
+    declared = {
+        a["id"] for r in document["requirements"] for a in r.get("acceptance", [])
+    }
+    entries = [
+        e
+        for e in document["dod_evidence"]
+        if e["id"] == "dod-omn25856-lab-item-bus-lane"
+    ]
+    assert len(entries) == 1
+    bound = entries[0].get("binds_ac", [])
+    assert bound, (
+        "the item binds no criterion, so the hosted control has nothing to fail"
+    )
+    assert set(bound) <= declared, sorted(set(bound) - declared)
