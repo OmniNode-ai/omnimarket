@@ -8,6 +8,10 @@ file named by ONEX_TEST_INSTALL_SCRIPT when a workflow rendered it already.
 Every case pipes the script into bash, as `curl -fsSL .../install.sh | bash`
 does, so nothing may depend on the script having a file path.
 
+The silent steps (`onex --version`, `onex --help` and the uv download) show a
+spinner and a plain step name once they run longer than one second (OMN-26611,
+AC4); a terminal gets a spinner line, a pipe or a log gets one plain line.
+
 Failure modes each test catches: a syntax construct the macOS Bash 3.2 cannot
 parse; the script pinning a package version the package does not have, or a
 uv target without a checksum; a platform mapped to the wrong uv build, or an
@@ -20,10 +24,13 @@ upgrade that leaves anything but onex and omni-agent on PATH.
 from __future__ import annotations
 
 import os
+import pty
 import re
+import select
 import shutil
 import subprocess
 import tarfile
+import time
 import tomllib
 from pathlib import Path
 
@@ -61,7 +68,7 @@ TARGETS = (
 BASE_TOOLS = (
     "bash", "curl", "tar", "mktemp", "awk", "sed", "grep", "uname", "basename",
     "cat", "cp", "mv", "mkdir", "rm", "chmod", "dirname", "env", "gzip",
-    "sha256sum", "shasum", "perl", "ldd", "sysctl",
+    "sha256sum", "shasum", "perl", "ldd", "sysctl", "sleep",
 )  # fmt: skip
 
 
@@ -413,3 +420,128 @@ def test_the_last_line_sends_the_customer_to_the_tui() -> None:
     assert len(last) == 1, last
     assert "Run 'onex' to open ONEX" in last[0]
     assert "/config" in last[0]
+
+
+# OMN-26611 AC4: progress during the silent steps ------------------------------
+
+_SLOW = 2.5  # seconds an `onex` stub takes, well over the one second threshold
+_VERSION_STEP = "Checking that onex starts"
+_HELP_STEP = "Checking that every onex command loads"
+
+
+def _install_with_stubbed_onex(tmp_path: Path, seconds: float) -> dict[str, str]:
+    """An environment where `uv tool install` drops launchers whose `onex`
+    takes ``seconds`` to answer --version and --help; no network is used."""
+    if _native_target() == "x86_64-apple-darwin":
+        pytest.skip("Intel Macs are not supported yet; the installer refuses first")
+    home, bin_dir, stubs = tmp_path / "home", tmp_path / "bin", tmp_path / "stubs"
+    home.mkdir()
+    bin_dir.mkdir()
+    kit = tmp_path / "kit"
+    _stub(
+        kit,
+        "onex",
+        f'sleep {seconds}\ncase "$1" in --version) echo "onex 9.9.9";; '
+        '--help) echo "Usage: onex";; esac',
+    )
+    _stub(kit, "omni-agent", "exit 0")
+    _stub(
+        stubs,
+        "uv",
+        'case "$1" in\n'
+        "  --version) echo 'uv 9.9.9';;\n"
+        f"  tool) case \"$2\" in dir) echo '{bin_dir}';; list) ;; "
+        f'install) cp "{kit}/onex" "{kit}/omni-agent" "{bin_dir}/";; esac;;\n'
+        "esac",
+    )
+    tools = _toolbox(tmp_path / "tools")
+    return {
+        "HOME": str(home),
+        "PATH": f"{stubs}:{tools}",
+        "SHELL": "/bin/bash",
+    }
+
+
+@pytest.mark.unit
+def test_a_slow_silent_step_shows_its_name_when_output_is_not_a_terminal(
+    tmp_path: Path,
+) -> None:
+    """AC4: stderr is a pipe, so plain lines, never spinner control codes."""
+    env = _install_with_stubbed_onex(tmp_path, _SLOW)
+    result = _run(env)
+    assert result.returncode == 0, result.stderr
+    for step in (_VERSION_STEP, _HELP_STEP):
+        assert f"==> {step}" in result.stderr, result.stderr
+    assert "\r" not in result.stderr
+    assert "\x1b" not in result.stderr
+    assert "Installed: onex 9.9.9" in result.stderr
+
+
+@pytest.mark.unit
+def test_quick_steps_print_no_progress_line(tmp_path: Path) -> None:
+    """AC4 control: a step under one second stays quiet."""
+    env = _install_with_stubbed_onex(tmp_path, 0)
+    result = _run(env)
+    assert result.returncode == 0, result.stderr
+    assert _VERSION_STEP not in result.stderr
+    assert _HELP_STEP not in result.stderr
+
+
+@pytest.mark.unit
+def test_a_slow_silent_step_shows_a_spinner_on_a_terminal(tmp_path: Path) -> None:
+    """AC4: stderr is a terminal, so a spinner frame and the step name."""
+    env = _install_with_stubbed_onex(tmp_path, _SLOW)
+    master, slave = pty.openpty()
+    process = subprocess.Popen(
+        ["/bin/bash", "-c", SCRIPT_TEXT],
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=slave,
+        start_new_session=True,
+    )
+    os.close(slave)
+    received = bytearray()
+    deadline = time.monotonic() + 60
+    try:
+        while time.monotonic() < deadline:
+            ready, _, _ = select.select([master], [], [], 0.2)
+            if ready:
+                try:
+                    chunk = os.read(master, 65536)
+                except OSError:
+                    break
+                if not chunk:
+                    break
+                received.extend(chunk)
+            elif process.poll() is not None:
+                break
+    finally:
+        process.wait(timeout=30)
+        os.close(master)
+    text = received.decode(errors="replace")
+    assert process.returncode == 0, text
+    assert _VERSION_STEP in text, text
+    assert _HELP_STEP in text, text
+    # A frame redrawn in place (carriage return), cleared when the step ends.
+    assert re.search(r"\r[|/\\-] " + re.escape(_VERSION_STEP), text), repr(text)
+
+
+@pytest.mark.unit
+def test_a_slow_uv_download_shows_its_name(tmp_path: Path) -> None:
+    """AC4: the uv download is silent too; a slow curl names the step."""
+    if _native_target() == "x86_64-apple-darwin":
+        pytest.skip("Intel Macs are not supported yet; the installer refuses first")
+    stubs, home = tmp_path / "stubs", tmp_path / "home"
+    home.mkdir()
+    _stub(stubs, "curl", f'sleep {_SLOW}; : > "$3"')
+    tools = _toolbox(tmp_path / "tools", exclude=("curl",))
+    result = _run(
+        {
+            "HOME": str(home),
+            "PATH": f"{stubs}:{tools}",
+            "ONEX_INSTALL_UV_BASE_URL": (tmp_path / "release").as_uri(),
+        }
+    )
+    uv_step = f"Downloading uv {_script_value('UV_VERSION')}"
+    assert result.stderr.count(f"==> {uv_step} (still running)") == 1, result.stderr

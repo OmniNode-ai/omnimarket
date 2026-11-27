@@ -46,7 +46,7 @@ def _app_main() -> None:
 
     app = OnexTui(
         root=_root,
-        runner=Runner(["terminal still accepts commands"]),
+        runner=Runner(["Not a TUI command"]),
         load_status=_status,
         load_index=_index,
     )
@@ -110,7 +110,7 @@ def test_ctrl_c_at_guided_setup_keeps_the_tui_usable(tmp_path: Path) -> None:
         for key in b"/doctor\r":
             os.write(master, bytes([key]))
             time.sleep(0.02)
-        _expect(master, b"terminal still accepts commands")
+        _expect(master, b"Not a TUI command")
     finally:
         if app.poll() is None:
             os.killpg(app.pid, signal.SIGTERM)

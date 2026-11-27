@@ -722,6 +722,14 @@ def _default_index() -> ModelsDevIndex:
     )
 
 
+def _default_saved_index() -> ModelsDevIndex:
+    """The models.dev copy already on disk; never contacts models.dev (OMN-26611)."""
+    return cast(
+        "ModelsDevIndex",
+        _lazy(_CATALOG).kept_models_dev_index(user_config_path().parent),
+    )
+
+
 #: Asks the server at a base URL about its models; tests pass a fixture.
 ReadServer = Callable[[str, tuple[str, ...]], dict[str, ModelLocalServerDetails]]
 
@@ -913,6 +921,7 @@ class _TabbedScreen(ModalScreen[_ResultT]):
         # Runs after the tab's own on_mount (Textual calls each class's).
         if self.reading and self.BODY:
             self.query_one(self.BODY).loading = True
+            self._spin_reading()
         self.mount(Static("", id="too-small"))
         self._fit_window()
 
@@ -937,11 +946,14 @@ class _TabbedScreen(ModalScreen[_ResultT]):
             )
 
     def selection_read(self, selection: ModelTuiSelection) -> None:
-        """The first setup read landed after this tab opened: show it."""
+        """The first setup read landed after this tab opened: show it. A tab
+        opened from the saved setup hears this again when the full read lands
+        (OMN-26611, AC3); what was ticked meanwhile stays ticked."""
         self.reading = False
         self._selection = selection
         if not self.BODY:
             return
+        self._stop_reading()
         with contextlib.suppress(NoMatches):
             self.query_one(self.BODY).loading = False
             self._first_read_shown()
@@ -997,7 +1009,8 @@ class _TabbedScreen(ModalScreen[_ResultT]):
         if not isinstance(app, OnexTui):
             return
         if self._busy:  # the running action's outcome shows here first
-            self._note(_say("still_working"), "warning")
+            self._hint = _say("still_working")
+            self._note(self._hint, "warning")
             return
         label = next(
             (t.label.strip() for t in tui_design().tabs if t.id == target), target
@@ -1007,11 +1020,88 @@ class _TabbedScreen(ModalScreen[_ResultT]):
         app.run_worker(app.switch_tab(target), exclusive=True, group="tabs")
 
     def _close(self) -> None:
-        """Esc or Cancel closes the tab, except while its action is running."""
+        """Esc or Cancel closes the tab; while its action runs, Esc cancels it."""
         if self._busy:
-            self._note(_say("still_working"), "warning")
+            self.workers.cancel_group(self, "tab-action")
+            return
+        if self._finding_cancelled():
             return
         self.dismiss(cast(_ResultT, None))
+
+    def _finding_cancelled(self) -> bool:
+        """Hook for a tab with a second wait of its own; true if Esc ended it."""
+        return False
+
+    _spinner: Timer | None = None
+    #: The step the note line's spinner names; an action's progress updates it.
+    _spin_step: str = ""
+    #: A refusal shown beside the spinner while an action runs (a tab switch).
+    _hint: str = ""
+    #: The spinner on the summary line while the first setup read is out.
+    _read_spinner: Timer | None = None
+
+    def _spinning(self, started: float, step: str) -> Text:
+        """One frame of the live line's spinner, naming ``step`` (OMN-26611, AC2)."""
+        frames = _spinner_frames()
+        elapsed = time.monotonic() - started
+        frame = frames[int(elapsed / tui_design().activity.frame_seconds) % len(frames)]
+        line = activity_renderable(frame, step, int(elapsed))
+        if self._hint:
+            line.append(f"  ·  {self._hint}", style=_style("warning"))
+        return line
+
+    def _spin(self, step: str) -> None:
+        """Show the step with a spinner and seconds in this tab's note line, as the
+        live line does on the main screen (OMN-26611, AC2)."""
+        self._stop_spin()
+        self._spin_step = step
+        self._spin_started = time.monotonic()
+        self._spin_tick()
+        self._spinner = self.set_interval(
+            tui_design().activity.frame_seconds, self._spin_tick
+        )
+
+    _spin_started = 0.0
+
+    def _spin_tick(self) -> None:
+        self._note(self._spinning(self._spin_started, self._spin_step))
+
+    def _progress(self, text: str) -> None:
+        """What a running action says it is at: the spinner names it at once,
+        so the spinner never hides it."""
+        if self._spinner is None:
+            self._note(text)
+        else:
+            self._spin_step = text.rstrip("…")
+            self._spin_tick()
+
+    def _stop_spin(self) -> None:
+        self._hint = ""
+        if self._spinner is not None:
+            self._spinner.stop()
+            self._spinner = None
+
+    def _spin_reading(self) -> None:
+        """The summary line says the setup is being read, with a spinner, until
+        the first read lands: the tab opened before it (OMN-26611, AC2)."""
+        started = time.monotonic()
+        step = _say("step_read_setup")
+
+        def tick() -> None:
+            with contextlib.suppress(NoMatches):
+                self.query_one("#summary", Static).update(self._spinning(started, step))
+
+        tick()
+        self._read_spinner = self.set_interval(
+            tui_design().activity.frame_seconds, tick
+        )
+
+    def _stop_reading(self) -> None:
+        if self._read_spinner is not None:
+            self._read_spinner.stop()
+            self._read_spinner = None
+        with contextlib.suppress(NoMatches):
+            self.query_one("#summary", Static).update(_summary_text(self._selection))
 
     #: The words key of this tab's plain problem sentence (tui_design.yaml).
     PROBLEM: ClassVar[str] = "problem_config"
@@ -1034,27 +1124,42 @@ class _TabbedScreen(ModalScreen[_ResultT]):
     def _note(self, text: Text | str, style: str = "muted") -> None:
         text = self._calm(text)
         line = text if isinstance(text, Text) else Text(text, style=_style(style))
-        self.query_one(self.NOTE, Static).update(line)
+        with contextlib.suppress(NoMatches):  # the tab was closed meanwhile
+            self.query_one(self.NOTE, Static).update(line)
 
-    def _run(self, action: Callable[[OnexTui], Awaitable[Text | str | None]]) -> None:
-        """Run an action while the tab stays open, then show how it went and
-        what is set up now (OMN-23413: only Esc closes a tab)."""
+    def _run(
+        self,
+        action: Callable[[OnexTui], Awaitable[Text | str | None]],
+        step: str = "",
+    ) -> None:
+        """Run an action while the tab stays open, showing a spinner with its
+        ``step`` and Esc to cancel, then how it went and what is set up now
+        (OMN-23413: Esc closes a tab only when no action is running)."""
         app = self.app
         if self._busy or not isinstance(app, OnexTui):
             return
         self._busy = True
-        self._note(_say("working"))
+        started = time.monotonic()
+        self._spin(step or _say("working"))
 
         async def go() -> None:
             try:
                 outcome = await action(app)
+                self._stop_spin()
                 self._selection = await app.load_selection()
                 self._show_selection()
                 if outcome is not None:
                     self._note(outcome)
+            except asyncio.CancelledError:
+                self._stop_spin()
+                self._note(
+                    _say("task_cancelled", seconds=int(time.monotonic() - started))
+                )
+                raise
             except Exception as error:
                 self._problem(error)
             finally:
+                self._stop_spin()
                 self._busy = False
 
         self.run_worker(go(), exclusive=True, group="tab-action")
@@ -1562,7 +1667,10 @@ class SetupScreen(_TabbedScreen[None]):
             provider=provider, url=None, models=models, key=SecretStr(key)
         )
         self.query_one("#d-key", Button).focus()
-        self._run(lambda app: app.apply_setup((choice,), progress=self._note))
+        self._run(
+            lambda app: app.apply_setup((choice,), progress=self._progress),
+            _say("step_save_key", provider=_label(provider)),
+        )
 
     def _add_models_to(self, provider: str) -> None:
         """Back to the add pane, on this provider, so more of its models can be
@@ -1584,7 +1692,10 @@ class SetupScreen(_TabbedScreen[None]):
 
         def answered(remove: bool | None) -> None:
             if remove:
-                self._run(lambda app: app.remove_provider(provider, url))
+                self._run(
+                    lambda app: app.remove_provider(provider, url),
+                    _say("step_remove_provider", provider=_label(provider)),
+                )
             else:
                 self.query_one("#d-remove", Button).focus()
 
@@ -1785,7 +1896,8 @@ class SetupScreen(_TabbedScreen[None]):
         note = self.query_one("#note", Static)
         provider = self._provider()
         wanted = self._source()
-        note.update(_say("loading", provider=_label(provider)))
+        self._spin(_say("step_find_models", provider=_label(provider)))
+        self._find_started = time.monotonic()
         self._loading = True
         try:
             await self._fetch(note, provider, wanted)
@@ -1796,6 +1908,7 @@ class SetupScreen(_TabbedScreen[None]):
             self._mark_key(None)
         finally:
             self._loading = False
+            self._stop_spin()
 
     async def _fetch(
         self, note: Static, provider: str, wanted: tuple[str, str]
@@ -1931,8 +2044,10 @@ class SetupScreen(_TabbedScreen[None]):
             elif event.button.id == "d-add":
                 self._add_models_to(mine)
             elif event.button.id == "d-test":
-                self._note(_say("testing_provider", provider=_label(mine)))
-                self._run(lambda app: app.test_provider(mine))
+                self._run(
+                    lambda app: app.test_provider(mine),
+                    _say("testing_provider", provider=_label(mine)),
+                )
             else:
                 self._ask_remove(mine)
         elif event.button.id == "cancel":
@@ -1958,7 +2073,7 @@ class SetupScreen(_TabbedScreen[None]):
         if self._basket or self.query_one("#found", ModelTable).ticked:
             self._note(_say("guided_setup_pending"), "warning")
             return
-        self._run(OnexTui.guided_setup)
+        self._run(OnexTui.guided_setup, _say("step_guided_setup"))
 
     def action_save(self) -> None:
         """Set up what is ticked or added, here, and stay; refuse with nothing chosen."""
@@ -1980,12 +2095,12 @@ class SetupScreen(_TabbedScreen[None]):
         choices = tuple(self._basket.values())
 
         async def save(app: OnexTui) -> Text | str | None:
-            line = await app.apply_setup(choices, progress=self._note)
+            line = await app.apply_setup(choices, progress=self._progress)
             if app.setup_ok:  # a failed save keeps the choices for a retry
                 self._basket = {}
             return line
 
-        self._run(save)
+        self._run(save, _say("step_save_models"))
 
     def _first_read_shown(self) -> None:
         # What was ticked while the setup was read stays ticked.
@@ -2000,6 +2115,20 @@ class SetupScreen(_TabbedScreen[None]):
 
     def action_cancel(self) -> None:
         self._close()
+
+    _find_started = 0.0
+
+    def _finding_cancelled(self) -> bool:
+        """Esc while the model list loads stops the load, not the tab."""
+        if not self._loading:
+            return False
+        self.workers.cancel_group(self, "find")
+        self._stop_spin()
+        self._note(
+            _say("task_cancelled", seconds=int(time.monotonic() - self._find_started))
+        )
+        self._loading = False
+        return True
 
 
 def _json_rows(text: str) -> list[dict[str, object]]:
@@ -2433,7 +2562,7 @@ class DelegationScreen(_TabbedScreen[None]):
         if self.any_on() and not self._selection.entries:
             self._note(tui_design().delegation.no_models, "warning")
             return
-        self._run(self._save)
+        self._run(self._save, _say("step_save_delegation"))
 
     async def _save(self, app: OnexTui) -> Text | str | None:
         """Check Claude Code again, then run the switch's commands, or say why
@@ -2608,14 +2737,14 @@ class ModelPickScreen(_TabbedScreen[None]):
             )
             return
         picked = (entry.provider, entry.model_id, entry.server_url or "")
-        self._run(lambda app: app.apply_model(picked))
+        self._run(lambda app: app.apply_model(picked), _say("step_model_first"))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "auto":
             self.action_auto()
 
     def action_auto(self) -> None:
-        self._run(lambda app: app.apply_model(("", "", "")))
+        self._run(lambda app: app.apply_model(("", "", "")), _say("step_model_first"))
 
     def action_details(self) -> None:
         self.query_one("#models", ModelTable).action_details()
@@ -2646,7 +2775,7 @@ class ModelPickScreen(_TabbedScreen[None]):
             )
             return
         self._removing = None
-        self._run(lambda app: app.remove_model(entry))
+        self._run(lambda app: app.remove_model(entry), _say("step_model_remove"))
 
     def action_cancel(self) -> None:
         self._close()
@@ -2841,14 +2970,23 @@ class DashboardScreen(_TabbedScreen[None]):
             self.action_start()
 
     def action_start(self) -> None:
-        self._run(lambda app: self._act(app, "start"))
+        self._run(
+            lambda app: self._act(app, "start"),
+            _say("step_dashboard", action="start"),
+        )
 
     def action_open(self) -> None:
         if self._dash_running:
-            self._run(lambda app: self._act(app, "open"))
+            self._run(
+                lambda app: self._act(app, "open"),
+                _say("step_dashboard", action="open"),
+            )
 
     def action_stop(self) -> None:
-        self._run(lambda app: self._act(app, "stop"))
+        self._run(
+            lambda app: self._act(app, "stop"),
+            _say("step_dashboard", action="stop"),
+        )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         pressed = {
@@ -4187,9 +4325,12 @@ class OnexTui(App[int]):
         list_models: ListModels | None = None,
         load_index: LoadIndex | None = None,
         read_server: ReadServer | None = None,
+        load_saved_index: LoadIndex | None = None,
     ) -> None:
         super().__init__(ansi_color=tui_design().theme.paint().ansi)
         self._load_index: LoadIndex = load_index or _default_index
+        #: The models.dev copy kept on disk, read when a tab must open at once.
+        self._load_saved_index: LoadIndex = load_saved_index or _default_saved_index
         self._read_server: ReadServer = read_server or _default_read_server
         design = tui_design()
         themes_to_register = [design.theme, *design.themes.values()]
@@ -4250,6 +4391,8 @@ class OnexTui(App[int]):
         self._replays: list[events.Key] = []
         self._hold_timer: Timer | None = None
         self._spinner: Timer | None = None
+        #: The step the live line names; None cycles the design file's verbs.
+        self._task_verb: str | None = None
         self._history: list[str] = []
         self._recall = 0
         #: Whether the last /config save set up every choice.
@@ -4263,6 +4406,8 @@ class OnexTui(App[int]):
         #: the start-up read can be one no tab has shown.
         self._read_at = 0.0
         self._shown = False
+        #: Whether ``_selection`` came from a full read, not the saved copy.
+        self._complete = False
         #: The dashboard state read started with the app (the real CLI takes
         #: about 2.8 s to answer, measured 2026-11-25), and the last one read.
         self._dashboard_warm: asyncio.Task[dict[str, object]] | None = None
@@ -4604,8 +4749,9 @@ class OnexTui(App[int]):
         else:
             self.exit(0)
 
-    def _start_task(self, work: Awaitable[None]) -> None:
+    def _start_task(self, work: Awaitable[None], verb: str | None = None) -> None:
         self._task_started = time.monotonic()
+        self._task_verb = verb
         self._ticker = self.set_interval(1, self._render_status)
         activity = tui_design().activity
         self._spinner = self.set_interval(activity.frame_seconds, self._render_activity)
@@ -4632,6 +4778,7 @@ class OnexTui(App[int]):
             raise
         finally:
             self._active_task = None
+            self._task_verb = None
             if self._ticker is not None:
                 self._ticker.stop()
             if self._spinner is not None:
@@ -4749,11 +4896,15 @@ class OnexTui(App[int]):
         frames = _spinner_frames()
         elapsed = time.monotonic() - self._task_started
         frame = frames[int(elapsed / activity.frame_seconds) % len(frames)]
-        verb = activity.verbs[
-            int(elapsed / activity.verb_seconds) % len(activity.verbs)
-        ]
+        verb = (
+            self._task_verb
+            or activity.verbs[
+                int(elapsed / activity.verb_seconds) % len(activity.verbs)
+            ]
+        )
         line = activity_renderable(frame, verb, int(elapsed))
-        if activity.flow:
+        # The path to a model belongs to a delegation, not to a named step.
+        if activity.flow and self._task_verb is None:
             read = self._status.model if self._status_read else None
             model = read or activity.flow_auto
             stops = [stop.format(model=model) for stop in activity.flow]
@@ -4916,7 +5067,27 @@ class OnexTui(App[int]):
             self._write(_say("not_a_tui_command", command=" ".join(words)))
             return
         self._finish_welcome()  # /doctor and the like print a page: it needs the room
-        await self._run(entry, tuple(words))
+        if entry.needs_terminal:
+            await self._run(entry, tuple(words))
+        else:
+            self._start_command(entry, tuple(words))
+
+    def _task_is_running(self) -> bool:
+        """One live task at a time: say so instead of replacing the running one."""
+        if self._active_task is None:
+            return False
+        self._write(Text(_say("task_running"), style=_style("warning")))
+        return True
+
+    def _start_command(self, entry: ModelTuiCommand, argv: tuple[str, ...]) -> None:
+        """Run a command with the live line naming it, so a wait is never silent
+        and Esc cancels it (OMN-26611)."""
+        if self._task_is_running():
+            return
+        self._start_task(
+            self._run(entry, argv),
+            _say("step_run", command=shlex.join(argv)),
+        )
 
     def _in_terminal(self, argv: tuple[str, ...]) -> int:
         # Ctrl+C goes to both foreground processes. A caught signal resets on
@@ -5043,28 +5214,36 @@ class OnexTui(App[int]):
             return opening
         screen = self._build_tab(name, cached)
         fresh = time.monotonic() - self._read_at < tui_design().fresh_seconds
-        if cached is not None and (self._shown or not fresh):
+        if self._shown or not fresh or not self._complete:
             self.call_after_refresh(self._refresh_tab, screen)
         self._shown = True
         return screen
 
     async def _fill_when_read(self, screen: Screen[object]) -> None:
-        selection = await self._first_selection()
-        if isinstance(screen, _TabbedScreen) and screen in self.screen_stack:
-            screen.selection_read(selection)
+        """Fill a tab that opened before any read: from what is saved at once,
+        then from the full read when it lands (OMN-26611, AC3). The saved read
+        is the setup as the CLI states it and the models.dev copy on disk, with
+        no network wait; a tab that neither read reaches shows nothing set up."""
 
-    async def _first_selection(self) -> ModelTuiSelection:
-        """The start-up read if it worked, else a read now, else nothing yet:
-        a tab always opens, and refreshes its setup when it can be read.
-        Tabs opened while it runs all wait on the same read."""
+        def show(selection: ModelTuiSelection) -> None:
+            if isinstance(screen, _TabbedScreen) and screen in self.screen_stack:
+                screen.selection_read(selection)
+
         warming = self._warming
-        if warming is not None:
-            with contextlib.suppress(Exception):
-                return await warming
+        if warming is not None and warming.done():
+            if not warming.cancelled() and warming.exception() is None:
+                show(warming.result())
+                return
+            warming = None
+        saved: ModelTuiSelection | None = None
+        with contextlib.suppress(Exception):
+            saved = await self.load_selection(saved=True)
+            show(saved)
         try:
-            return await self.load_selection()
-        except Exception:  # an unreadable setup must not keep the tab shut
-            return ModelTuiSelection()
+            show(await (warming if warming is not None else self.load_selection()))
+        except Exception:  # an unreadable setup must not keep the tab loading
+            if saved is None:
+                show(ModelTuiSelection())
 
     def _refresh_tab(self, screen: Screen[object]) -> None:
         if isinstance(screen, _TabbedScreen):
@@ -5291,8 +5470,12 @@ class OnexTui(App[int]):
         self._toast(outcome, ok=code == 0)
         return outcome
 
-    async def load_selection(self) -> ModelTuiSelection:
-        """The selected models, read through the CLI's own JSON (no second engine)."""
+    async def load_selection(self, *, saved: bool = False) -> ModelTuiSelection:
+        """The selected models, read through the CLI's own JSON (no second engine).
+
+        With ``saved`` the read never waits on a network: prices come from the
+        models.dev copy on disk and a local server's details from what it said
+        last time, so a tab can open at once and refresh behind it."""
         (_, listed, _), (_, connected, _) = await asyncio.gather(
             self._runner.capture(("models", "list", "--json")),
             self._runner.capture(("models", "connections", "--json")),
@@ -5301,20 +5484,27 @@ class OnexTui(App[int]):
         connections = documents[-1].get("connections") if documents else None
         rows = _json_rows(listed)
         by_server = server_models(rows)
-        index, *answers = await asyncio.gather(
-            asyncio.to_thread(_safe_index, self._load_index),
-            *(
-                self._server_said(base, tuple(model for _, model in pairs))
+        if saved:
+            index = await asyncio.to_thread(_safe_index, self._load_saved_index)
+            answers = [
+                self._said.get((base, tuple(model for _, model in pairs)), (0.0, {}))[1]
                 for base, pairs in by_server.items()
-            ),
-        )
+            ]
+        else:
+            index, *answers = await asyncio.gather(
+                asyncio.to_thread(_safe_index, self._load_index),
+                *(
+                    self._server_said(base, tuple(model for _, model in pairs))
+                    for base, pairs in by_server.items()
+                ),
+            )
         servers = {
             (provider, model, base): said[model]
             for (base, pairs), said in zip(by_server.items(), answers, strict=True)
             for provider, model in pairs
             if model in said
         }
-        self._selection = selected_models(
+        chosen = selected_models(
             rows,
             [c for c in connections if isinstance(c, dict)]
             if isinstance(connections, list)
@@ -5322,8 +5512,15 @@ class OnexTui(App[int]):
             index,
             servers,
         )
+        if saved:
+            # A full read that landed first is better than this one.
+            if not self._complete:
+                self._selection = chosen
+            return chosen
+        self._selection = chosen
+        self._complete = True
         self._read_at = time.monotonic()
-        return self._selection
+        return chosen
 
     async def _server_said(
         self, base: str, models: tuple[str, ...]

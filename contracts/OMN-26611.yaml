@@ -1,0 +1,96 @@
+schema_version: 1.0.0
+ticket_id: OMN-26611
+title: The onex TUI answers every action in under 1 second and always shows that it is working
+summary: TUI actions run read and setup commands inside the running TUI instead of starting a new onex program; every wait shows a spinner with its step name and Esc cancels; the model list opens from saved data and refreshes in the background; the installer shows progress during its silent steps. AC5 (before and after timings on a clean Mac install, recorded on the ticket) is a disposition at the local Done gate.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26611-ac1
+  statement: TUI actions run the command inside the already-running TUI instead of starting a new onex program, so /config, /model, /delegation and /dashboard each open in under 1 second (over 2 seconds on dev).
+  acceptance:
+  - id: AC1
+    statement: 'AC1: TUI actions run the command inside the already-running TUI instead of starting a new onex program, so /config, /model, /delegation and /dashboard each open in under 1 second (over 2 seconds on dev). falsifier: uv run pytest -q tests/unit/nodes/node_onex_setup_effect/test_onex_tui_speed.py -k ''runs_its_commands_in_the_running_tui or opens_in_under_one_second'''
+- id: req-omn26611-ac2
+  statement: Any action that waits on the network or a model shows a spinner and what it is doing within 0.2 seconds, with Esc to cancel.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: Any action that waits on the network or a model shows a spinner and what it is doing within 0.2 seconds, with Esc to cancel. falsifier: uv run pytest -q tests/unit/nodes/node_onex_setup_effect/test_onex_tui_speed.py -k ''spinner'''
+- id: req-omn26611-ac3
+  statement: The model list opens from saved data at once and refreshes in the background.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: The model list opens from saved data at once and refreshes in the background. falsifier: uv run pytest -q tests/unit/nodes/node_onex_setup_effect/test_onex_tui_speed.py -k saved_data'
+- id: req-omn26611-ac4
+  statement: The installer shows a spinner with a plain step name during every silent step longer than 1 second.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: The installer shows a spinner with a plain step name during every silent step longer than 1 second. falsifier: uv run pytest -q tests/ci/test_omninode_onex_install_sh_omn25070.py -k ''silent_step or uv_download or quick_steps'''
+- id: req-omn26611-ac5
+  statement: Before and after timings measured on a clean Mac install are recorded on the ticket.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: before and after timings measured on a clean Mac install are recorded on the ticket -- falsifier: the readback of contracts/evidence/OMN-26611/clean-mac-timings.json fails when it is absent or any tab''s after time is 1 second or more.'
+evidence_requirements:
+- kind: tests
+  description: AC1-AC4 tests.
+  command: uv run --frozen pytest -q --no-cov tests/unit/nodes/node_onex_setup_effect/test_onex_tui_speed.py tests/ci/test_omninode_onex_install_sh_omn25070.py
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26611-ac1
+  description: TUI actions run the command inside the already-running TUI instead of starting a new onex program, so /config, /model, /delegation and /dashboard each open in under 1 second (over 2 seconds on dev).
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -q tests/unit/nodes/node_onex_setup_effect/test_onex_tui_speed.py -k 'runs_its_commands_in_the_running_tui or opens_in_under_one_second'
+    cwd: .
+- id: dod-omn26611-ac2
+  description: Any action that waits on the network or a model shows a spinner and what it is doing within 0.2 seconds, with Esc to cancel.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -q tests/unit/nodes/node_onex_setup_effect/test_onex_tui_speed.py -k 'spinner'
+    cwd: .
+- id: dod-omn26611-ac3
+  description: The model list opens from saved data at once and refreshes in the background.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -q tests/unit/nodes/node_onex_setup_effect/test_onex_tui_speed.py -k saved_data
+    cwd: .
+- id: dod-omn26611-ac4
+  description: The installer shows a spinner with a plain step name during every silent step longer than 1 second.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest -q tests/ci/test_omninode_onex_install_sh_omn25070.py -k 'silent_step or uv_download or quick_steps'
+    cwd: .
+- id: dod-omn26611-ac5
+  description: 'AC5: before and after open times for /config, /model, /delegation and /dashboard on a clean Mac install, measured with `uv run pytest -s -n 0 tests/unit/nodes/node_onex_setup_effect/test_onex_tui_speed.py -k opens_in_under_one_second` (it prints each tab''s shown and settled seconds), are recorded beside this contract (contracts/evidence/OMN-26611/clean-mac-timings.json, the same figures as the ticket comment). Read back at the local Done gate; it fails until the Mac run is recorded.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: "env PYTHONDONTWRITEBYTECODE=1 uv run --frozen python - <<'READBACK'\nimport json\nimport platform\nfrom pathlib import Path\n\n# The before and after open times from a clean Mac install, read back from the\n# record committed beside this contract. Absent until that run is recorded, so\n# the local Done gate fails without it.\nrecord = json.loads(Path('contracts/evidence/OMN-26611/clean-mac-timings.json').read_text())\nassert record['platform'] == 'Darwin', record['platform']\nfor tab in ('config', 'model', 'delegation', 'dashboard'):\n    before, after = record['before'][tab], record['after'][tab]\n    assert before > 2.0, (tab, before)\n    assert after < 1.0, (tab, after)\nprint('OMN-26611 AC5: clean Mac before and after open times recorded for four tabs')\nREADBACK"
+    cwd: .
+  binds_ac:
+  - AC5
+- id: dod-omn26611-integration-proof
+  description: Run the OMN-26611 test files and the changed TUI tests on a lab host at the pushed revision. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26611 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_speed.py tests/ci/test_omninode_onex_install_sh_omn25070.py tests/unit/nodes/node_onex_setup_effect/test_onex_tui_local_servers.py tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py tests/unit/nodes/node_onex_setup_effect/test_onex_command_cancel.py -m 'not e2e' -q -n 0 --no-cov --refuse-skips
+    cwd: .

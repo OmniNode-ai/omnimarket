@@ -114,6 +114,22 @@ replaced_commands:
   # /dashboard is a tab: it starts, opens and stops the dashboard.
   - [dashboard]
 
+# CLI commands the TUI runs inside itself instead of starting a new onex program
+# (OMN-26611; each start cost 2.3 to 3.2 s). Short reads and setup changes only:
+# a command that waits on a model or the network, serves, prompts or is fed text
+# on stdin stays a separate process, so Esc still ends it and everything it started.
+in_process:
+  - [models, list]
+  - [models, connections]
+  - [models, first]
+  - [models, remove]
+  - [delegation, status]
+  - [delegation, "on"]
+  - [delegation, "off"]
+  - [dashboard, status]
+  - [doctor]
+  - [metering]
+
 # Marks used in the output pane.
 glyphs:
   task: "›"
@@ -430,6 +446,19 @@ words:
   toast_added: Added
   still_working: "still working… the tab closes or changes once this finishes"
   tab_loading: "opening {tab}…"
+  # The step the live line names while a wait lasts (OMN-26611): a spinner, this
+  # name and the seconds, within 0.2 s of the action starting.
+  step_read_setup: "Reading your setup"
+  step_run: "Running onex {command}"
+  step_guided_setup: "Running guided setup"
+  step_save_models: "Saving your models"
+  step_save_delegation: "Saving delegation"
+  step_model_first: "Setting the first model"
+  step_model_remove: "Removing the model"
+  step_dashboard: "Dashboard {action}"
+  step_find_models: "Loading {provider} models"
+  step_save_key: "Saving the new {provider} key"
+  step_remove_provider: "Removing {provider}"
   # The heavy rule under the open tab, and the footer line of each tab: the
   # first word of each part is its key, drawn bold (mockups pages 4 to 7).
   tab_rule: "━"
@@ -491,7 +520,8 @@ words:
   button_remove: Remove
   new_key_placeholder: "New API key, then Enter"
   new_key_hint: "Paste the new {provider} key and press Enter. Your models stay, and each is tested with it."
-  testing_provider: "testing {provider}: one real delegation per model, which can take a minute…"
+  # The step a Test button's spinner names; the spinner adds the dots.
+  testing_provider: "Testing {provider}: one real delegation per model, which can take a minute"
   test_failed: "{provider} could not be tested: {reason}"
   remove_title: Remove provider
   remove_question: "Remove {provider}? onex stops using its {models} and deletes its key or server from this machine. You can add it again any time."
@@ -592,6 +622,7 @@ words:
   exit_code: "exit {code}"
   not_a_tui_command: "Not a TUI command: run onex {command} in a terminal"
   no_match: "no onex command matches '/{command}'; type / to list them"
+  # A real onex command the TUI does not list (OMN-26610).
   setup_ready: "Ready: {provider} · {models}. Type a task to try it, or /model to choose which goes first."
   # One delegated task's facts, and the status bar's note of the last one.
   run_unknown_model: "unknown model"

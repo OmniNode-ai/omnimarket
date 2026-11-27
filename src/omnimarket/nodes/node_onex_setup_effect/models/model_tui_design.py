@@ -642,6 +642,9 @@ class ModelTuiDesign(BaseModel):
     aliases: dict[str, str]
     #: CLI command paths a shortcut replaces: the TUI neither lists nor runs them.
     replaced_commands: tuple[tuple[str, ...], ...] = ()
+    #: CLI command paths the TUI runs inside itself instead of starting a new
+    #: onex program (OMN-26611); a path covers every command under it.
+    in_process: tuple[tuple[str, ...], ...] = ()
     #: The only commands `/` lists and the TUI runs, in this order; every other
     #: CLI command stays in the CLI; the TUI has no list-everything switch.
     customer_commands: tuple[tuple[str, ...], ...] = Field(min_length=1)
