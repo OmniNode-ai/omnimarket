@@ -58,7 +58,7 @@ def load_signed_in_gateway(
     """The stored gateway origin and API key, or ``None`` when not signed in."""
     store = StoreGatewayCredential(onex_home=onex_home or Path.home() / ".onex")
     try:
-        credential = store.load()
+        credential = store.load_read_credential()
     except ModelOnexError:
         return None
     if not isinstance(credential, ModelGatewayApiKeyCredential):
