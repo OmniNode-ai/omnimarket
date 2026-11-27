@@ -214,7 +214,7 @@ class TestAdd:
         result = _run(["add", "ollama"])
 
         assert result.exit_code != 0
-        assert "'ollama' is not one of" in result.output
+        assert "'ollama' is not a provider onex offers" in result.output
         assert "ollama" not in _run(["add", "--help"]).output.lower()
         assert fake.pins == []
 

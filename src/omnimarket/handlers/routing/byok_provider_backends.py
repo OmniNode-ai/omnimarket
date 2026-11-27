@@ -89,6 +89,7 @@ meters per model, the model.
 
 from __future__ import annotations
 
+import copy
 import logging
 import re
 from collections.abc import Callable, Iterable, Mapping
@@ -712,6 +713,14 @@ def _catalog_list_rows(
     names = {provider for provider, _ in declared}
     backend_ids = {row.backend_id for row in declared.values()}
     rows: dict[tuple[str, str], ModelByokProviderBackend] = {}
+    generic = declared.get(("openai_compatible", "by_url"))
+    if generic is None:
+        raise ByokCatalogError(
+            "the generic openai_compatible by_url row is missing, "
+            "so the models.dev list has no shape to copy"
+        )
+    base = generic.model_dump(mode="json", exclude_unset=True)
+    base.pop("endpoint_from_registration", None)
     for listed in load_byok_catalog_providers().values():
         if listed.id in names:
             continue
@@ -720,7 +729,8 @@ def _catalog_list_rows(
                 f"the models.dev list's {listed.id!r} would reuse backend_id "
                 f"{listed.backend_id!r}, which a declared row already has"
             )
-        rows[(listed.id, CATALOG_LIST_PLAN)] = ModelByokProviderBackend.model_validate(
+        row_dict = copy.deepcopy(base)
+        row_dict.update(
             {
                 "provider": listed.id,
                 "plan": CATALOG_LIST_PLAN,
@@ -728,28 +738,16 @@ def _catalog_list_rows(
                 "backend_id": listed.backend_id,
                 "endpoint_url": listed.endpoint_url,
                 "models_url": listed.models_url,
-                "customer_chooses_model": True,
-                "model_preference": [{"pattern": ".+", "tags": ["developer_named"]}],
-                "max_retries": 2,
-                "timeout_ms": 300000,
-                "max_tokens": 8192,
                 "key_page": listed.doc,
-                "limit_model": {
-                    "billing": "pay_as_you_go",
-                    "counter_scope": "model",
-                    "windows": [
-                        {
-                            "window_hours": 24,
-                            "unit": "requests",
-                            "limit": None,
-                            "source": (
-                                f"{listed.name}'s own limits; the models.dev list "
-                                "states none."
-                            ),
-                        }
-                    ],
-                },
             }
+        )
+        windows = row_dict.get("limit_model", {}).get("windows", [])
+        for window in windows:
+            window["source"] = (
+                f"{listed.name}'s own limits; the models.dev list states none."
+            )
+        rows[(listed.id, CATALOG_LIST_PLAN)] = ModelByokProviderBackend.model_validate(
+            row_dict
         )
     return rows
 

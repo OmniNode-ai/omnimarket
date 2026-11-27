@@ -57,7 +57,7 @@ def _app(
     async def status() -> ModelTuiStatus:
         return ModelTuiStatus(
             models=2,
-            delegation=delegation,  # type: ignore[arg-type]
+            delegation=delegation,
             hooks=hooks,
         )
 

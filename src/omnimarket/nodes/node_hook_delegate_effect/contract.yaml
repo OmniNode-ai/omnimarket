@@ -53,6 +53,8 @@ event_bus:
   publish_topics: []
 runtime_dispatch:
   external_trigger: Direct Python invocation by omniclaude's UserPromptSubmit and PreToolUse delegation hook runner.
+  callers:
+    - path: src/omnimarket/nodes/node_onex_setup_effect/cli_delegation.py
 dependency_ownership:
 - cli
 protocol_dependencies:

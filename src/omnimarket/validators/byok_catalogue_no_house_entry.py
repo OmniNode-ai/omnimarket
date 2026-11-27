@@ -181,37 +181,22 @@ def _load_mapping(path: Path) -> dict[str, Any]:
 def read_catalogue_rows(path: Path = CATALOGUE_PATH) -> list[dict[str, Any]]:
     """The RAW ``providers:`` rows, unvalidated.
 
-    Raw on purpose: the loaded :class:`ModelByokProviderBackend` cannot express
-    a house ``secret_ref`` at all, so reading through it would make conjunct 1
-    unfalsifiable — the check would pass because the shape refused the row
-    earlier, not because the row was clean.
+    Rows are read raw on purpose: the loaded ModelByokProviderBackend cannot
+    express a house secret_ref, so reading through it would make conjunct 1
+    unfalsifiable: the check would pass because the shape refused the row.
     """
     rows = _load_mapping(path).get("providers")
     if not isinstance(rows, list) or not rows:
         raise HouseCatalogueError(f"catalogue at {path} declares no providers list")
-    out: list[dict[str, Any]] = []
-    for row in rows:
-        if not isinstance(row, Mapping):
-            raise HouseCatalogueError(f"catalogue at {path} has a non-mapping row")
-        out.append(dict(row))
+    if not all(isinstance(row, Mapping) for row in rows):
+        raise HouseCatalogueError(f"catalogue at {path} has a non-mapping row")
+    out: list[dict[str, Any]] = [dict(row) for row in rows]
     if path == CATALOGUE_PATH:
         # OMN-26688: the customer is offered the shipped models.dev list too, so
         # the gate judges its rows, as the routing catalogue builds them.
-        from omnimarket.handlers.routing.byok_catalog_providers import (
-            load_byok_catalog_providers,
-        )
+        from omnimarket.handlers.routing import byok_catalog_providers
 
-        out.extend(
-            {
-                "provider": listed.id,
-                "plan": "api",
-                "mirrors_house_rung": False,
-                "backend_id": listed.backend_id,
-                "endpoint_url": listed.endpoint_url,
-                "models_url": listed.models_url,
-            }
-            for listed in load_byok_catalog_providers().values()
-        )
+        out.extend(byok_catalog_providers.listed_catalogue_rows())
     return out
 
 

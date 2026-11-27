@@ -79,7 +79,6 @@ from omnimarket.handlers.routing.customer_key_revoke import (
     revoke_tenant_key as revoke_tenant_key_handler,
 )
 from omnimarket.handlers.routing.local_byok_route import house_provider_slug
-from omnimarket.handlers.routing.provider_feature_flags import provider_turned_off
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
     local_credential_registered_at,
@@ -920,9 +919,9 @@ def add_model(
 ) -> None:
     """Store PROVIDER's key, then test it with one delegation pinned to it.
 
-    PROVIDER is gemini, openai, openrouter, reflection, anthropic, zai, local
-    or openai_compatible, or the id of a provider on the models.dev list, such
-    as deepseek.
+    PROVIDER is gemini, openai, openrouter, reflection, anthropic, zai, local,
+    openai_compatible or the id of an OpenAI-API provider on the models.dev
+    list, such as deepseek, added with its own key, sent only to onex's base URL for it.
 
     The key is read from stdin when piped, or asked for at a hidden prompt. A key
     already stored for PROVIDER is replaced, with the models named here as its ordered
@@ -931,10 +930,6 @@ def add_model(
 
     ``openai_compatible`` is any endpoint that speaks the OpenAI API and needs a key:
     ``--url`` names its base URL, and each ``--model`` is checked against /v1/models.
-
-    Any provider on the models.dev list that speaks the OpenAI API is added by its
-    own id, such as ``deepseek``, with its own key; the key is sent only to the base
-    URL onex ships for it.
 
     ``local`` is a Local Model: any model server you run, with no key unless
     ``--key`` says it needs one. ``--url`` names a server that speaks the
@@ -1014,8 +1009,6 @@ def test_models(provider: str | None, as_json: bool) -> None:
 def list_models(as_json: bool) -> None:
     """Each provider: set up or not, and its last test result."""
     rows = listed(as_json)  # OMN-21267: the rule in force first
-    # OMN-26688: a provider whose feature flag is unset is not shown.
-    rows = tuple(r for r in rows if provider_turned_off(r.provider) is None)
     if not as_json:
         # OMN-23413: the TUI's /config order; the one tried first still leads.
         order = {p: i for i, p in enumerate(provider_labels.LISTED_PROVIDERS)}

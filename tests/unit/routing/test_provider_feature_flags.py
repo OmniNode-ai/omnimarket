@@ -120,15 +120,28 @@ def test_a_saved_key_is_hidden_from_the_models_list(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """F4."""
+    import types
+
     from omnimarket.cli import cli_secret
+    from omnimarket.handlers import models_only_command
 
     monkeypatch.delenv(FLAG, raising=False)
+
+    def _handle(_request: object) -> types.SimpleNamespace:
+        return types.SimpleNamespace(
+            only=None,
+            providers=(_Row("openai"), _Row("hopscotch")),
+        )
+
     monkeypatch.setattr(
-        cli_secret, "listed", lambda _as_json: (_Row("openai"), _Row("hopscotch"))
+        models_only_command,
+        "model_handler",
+        lambda: types.SimpleNamespace(handle=_handle),
     )
+
     result = CliRunner().invoke(cli_secret.list_models, ["--json"])
     assert result.exit_code == 0, result.output
-    assert '"openai"' in result.output  # the control: the list still prints
+    assert '"openai"' in result.output
     assert "hopscotch" not in result.output
 
 

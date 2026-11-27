@@ -19,6 +19,7 @@ from omnimarket.handlers.delegation_model_scope import (
 )
 from omnimarket.handlers.handler_model_keys import model_handler
 from omnimarket.handlers.models_first_command import first_model, models_text
+from omnimarket.handlers.routing.provider_feature_flags import provider_turned_off
 from omnimarket.nodes.node_model_overlay_write_effect.handlers.handler_models_overlay_command import (
     write_model_overlay,
 )
@@ -73,12 +74,13 @@ def only_models(rule: str | None, clear: bool) -> None:
 def listed(as_json: bool) -> tuple[ModelModelStatus, ...]:
     """The ``onex models list`` rows; in text, the rule in force is said first.
 
-    The JSON rows keep their shape, one provider per line.
+    The JSON rows keep their shape, one provider per line. A provider whose
+    feature flag is unset is not shown (OMN-26688).
     """
     result = model_handler().handle(ModelModelSetupRequest(operation="status"))
     if result.only is not None and not as_json:
         click.echo(f"Rule in force: {model_scope_text(result.only)} ({_CLEAR_HOW})")
-    return result.providers
+    return tuple(r for r in result.providers if provider_turned_off(r.provider) is None)
 
 
 #: The commands ``onex models`` adds beside its own.

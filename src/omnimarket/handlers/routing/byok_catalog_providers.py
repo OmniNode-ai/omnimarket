@@ -365,3 +365,49 @@ __all__ = [
     "render_catalog_providers",
     "select_catalog_providers",
 ]
+
+
+def is_keyed(provider: str, declared: Iterable[str]) -> bool:
+    """Return True if provider is declared or in the BYOK catalogue."""
+    return provider in declared or provider in load_byok_catalog_providers()
+
+
+def keyed_providers(declared: Iterable[str], db_path: Path) -> tuple[str, ...]:
+    """Return declared providers plus registered local BYOK providers."""
+    from omnimarket.inference.local_byok_credential_adapter import (
+        registered_local_byok_providers,
+    )
+
+    catalogue = load_byok_catalog_providers()
+    result: list[str] = list(declared)
+    for provider_id in registered_local_byok_providers(db_path=db_path):
+        if provider_id in catalogue and provider_id not in result:
+            result.append(provider_id)
+    return tuple(result)
+
+
+def refuse_turned_off(provider: str, error: type[Exception]) -> None:
+    """Raise error if the provider is turned off, else return None."""
+    from omnimarket.handlers.model_provider_labels import MODEL_LABELS
+
+    if provider_turned_off(provider) is not None:
+        label = MODEL_LABELS.get(provider, provider)
+        raise error(f"{label} is not available in onex yet. Nothing was stored.")
+    return
+
+
+def listed_catalogue_rows() -> list[dict[str, Any]]:
+    """Return raw dicts for each BYOK catalogue provider."""
+    rows: list[dict[str, Any]] = []
+    for provider in load_byok_catalog_providers().values():
+        rows.append(
+            {
+                "provider": provider.id,
+                "plan": "api",
+                "mirrors_house_rung": False,
+                "backend_id": provider.backend_id,
+                "endpoint_url": provider.endpoint_url,
+                "models_url": provider.models_url,
+            }
+        )
+    return rows
