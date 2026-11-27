@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: OMN-26733
+title: "The omnimarket post-release dev bump lands after each release, so commits that touch src pass the release identity hook"
+summary: The post-release bump to 0.4.330 is red on one base failure, the onex.cli.help table lacking the settings entry; the entry is added so the drift test passes on dev and on the bump.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26733-bump-red-fixed-at-source
+    statement: Each red check on the post-release bump is fixed at its source or named as a base red with its commit and job.
+    acceptance:
+      - id: AC2
+        statement: "AC2: each red check on the bump is fixed at its source or named as a base red with its commit and job -- falsifier: a red check on the bump with no fix and no named cause"
+evidence_requirements:
+  - kind: tests
+    description: The help-table drift test, which fails on dev at 0f3ee51bc4 for the settings command and passes with the entry.
+    command: uv run pytest tests/unit/cli/test_onex_cli_help_table_omn26615.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26733-settings-help-entry
+    description: "Tests (Split 16/20) on omnimarket#6997 failed with: visible command 'settings' has no onex.cli.help entry. The same test fails on dev at 0f3ee51bc4 because the settings command (cee288483f) was registered without a help line. The entry now equals the command's own help and the drift test passes."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/cli/test_onex_cli_help_table_omn26615.py -q --no-cov
+        cwd: .
