@@ -71,7 +71,9 @@ class MemoryPorts:
         return frozenset(str(r.metadata["action_id"]) for r in self.delegations)
 
 
-def _answer_for(request: ModelDelegateSkillRequest, content: str, *, ok: bool = True):  # type: ignore[no-untyped-def]
+def _answer_for(
+    request: ModelDelegateSkillRequest, content: str, *, ok: bool = True
+) -> ModelHarnessBackendCallResult:
     meta = request.metadata
     return ModelHarnessBackendCallResult.model_validate(
         {
