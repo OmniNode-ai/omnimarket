@@ -42,6 +42,10 @@ event_bus:
   publish_topics: []
 runtime_dispatch:
   external_trigger: The release workflow pipes packages/omninode-onex/installer.json into runtime_onex_installer_render.
+  # The workflows that render the installer: the release, and the installer test on every change here.
+  callers:
+    - path: .github/workflows/release-omninode-onex.yml
+    - path: .github/workflows/onex-installer.yml
 
 descriptor:
   node_archetype: compute
