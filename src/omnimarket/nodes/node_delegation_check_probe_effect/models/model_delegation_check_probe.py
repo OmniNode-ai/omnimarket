@@ -31,6 +31,7 @@ __all__ = ["CheckId", "ModelDelegationCheckProbeOverlay"]
 
 CAUSE_PRODUCT = "product"
 CAUSE_LAB_MODEL = "lab-model"
+CAUSE_GATEWAY = "gateway"
 
 
 class _Frozen(BaseModel):
@@ -196,6 +197,8 @@ class ModelDelegationCheckReading(_Frozen):
     window: int | None = None
     # NOT_MEASURED: the task never reached a local responder that answered.
     not_measured: str | None = None
+    # NOT_MEASURED by the gateway (a timeout or refusal on a request to it) names ``gateway``; absent, a lab model.
+    not_measured_cause: Literal["lab-model", "gateway"] = "lab-model"
     versions: dict[str, str] = Field(default_factory=dict)
     # A gateway-graded check names the gateway address it talked to and the tenant it acted as (OMN-26642).
     endpoint: str | None = None
@@ -227,7 +230,7 @@ class ModelDelegationCheckResult(_Frozen):
     status: Literal["completed", "errored"]
     conclusion: Literal["success", "failure"]
     verdict: EnumCheckVerdict
-    cause_class: Literal["product", "lab-model"] | None = None
+    cause_class: Literal["product", "lab-model", "gateway"] | None = None
     clauses: tuple[ModelCheckClause, ...] = ()
     preconditions: tuple[ModelCheckPrecondition, ...] = ()
     chain: tuple[ModelResponderAttempt, ...] = ()

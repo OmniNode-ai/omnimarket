@@ -339,6 +339,7 @@ def main(
                 gateway_row,
                 DevTenantCredential(secret_name=gateway_row.secret_name),
                 overlay.responder_timeout_s,
+                submit_timeout_s=overlay.submit_timeout_s,
             )
         except NodeOverlayNotFoundError:
             gateway = None
