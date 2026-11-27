@@ -24,7 +24,7 @@ def _design() -> Any:
         from .models.model_tui_design import tui_design
 
         return tui_design()
-    except Exception:  # pragma: no cover
+    except Exception:
         return None
 
 
@@ -164,7 +164,7 @@ def _mark_for(status: str) -> str:
     defaults = {
         "status_ok": "✓ ok",
         "status_attention": "! needs attention",
-        "status_skipped": "– optional/skipped",  # noqa: RUF001
+        "status_skipped": "\u2013 optional/skipped",
     }
     return _g(key, defaults[key])
 

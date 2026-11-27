@@ -40,7 +40,7 @@ def _line(text: str, needle: str) -> str:
 
 
 async def _text(size: tuple[int, int], running: bool, **kwargs: object) -> str:
-    app = sup.app(_Dashboard(running=running, **kwargs))  # type: ignore[arg-type]
+    app = sup.app(_Dashboard(running=running, **kwargs))
     async with app.run_test(size=size) as pilot:
         await sup.open_tab(pilot, app, "dashboard")
         return sup.screen_text(app)

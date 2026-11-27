@@ -100,7 +100,7 @@ async def test_a_shorter_terminal_has_the_diagram_but_no_guide() -> None:
 
 
 async def test_clicking_a_box_opens_its_tab() -> None:
-    app = OnexTui(load_status=_ready, runner=_Quiet())  # type: ignore[arg-type]
+    app = OnexTui(load_status=_ready, runner=_Quiet())
     async with app.run_test(size=(140, 46)) as pilot:
         for _ in range(4):
             await pilot.pause()
@@ -126,14 +126,14 @@ async def test_a_number_on_an_empty_prompt_opens_the_step_and_in_a_task_it_is_te
         for _ in range(4):
             await pilot.pause()
         await pilot.press("a", "3")
-        assert typed.query_one("#prompt").value == "a3"  # type: ignore[attr-defined]
+        assert typed.query_one("#prompt").value == "a3"
         assert type(typed.screen).__name__ == "Screen"
 
 
 async def test_the_guide_and_the_diagram_go_away_once_you_start() -> None:
     welcome = tui_design().welcome
     text = await _screen(
-        OnexTui(load_status=_ready, runner=_Quiet()),  # type: ignore[arg-type]
+        OnexTui(load_status=_ready, runner=_Quiet()),
         (140, 46),
         (*"hello", "enter"),
     )

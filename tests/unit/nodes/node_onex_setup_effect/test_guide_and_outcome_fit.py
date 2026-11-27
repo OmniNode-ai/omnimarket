@@ -46,7 +46,7 @@ async def test_every_guide_box_shows_its_whole_text(size: tuple[int, int]) -> No
 def test_outcome_labels_start_at_the_same_column() -> None:
     words = tui_design().welcome.diagram
     for tick in (0, 7, 30):
-        plain = _draw_diagram(tui_design(), tick).plain  # type: ignore[attr-defined]
+        plain = _draw_diagram(tui_design(), tick).plain
         rows = plain.split("\n")
         columns = set()
         for outcome in words.outcomes:

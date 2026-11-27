@@ -30,7 +30,7 @@ async def test_the_delegation_tab_never_shows_the_cli_fix_sentence() -> None:
     async def claude_code() -> tuple[str, str]:
         return ("installed", _RAW_FIX)
 
-    app.claude_code = claude_code  # type: ignore[method-assign]
+    app.claude_code = claude_code
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.pause()
         await pilot.press(*"/delegation", "enter")
@@ -68,5 +68,5 @@ def test_the_metering_table_keeps_its_columns() -> None:
     # only the model rows, not the totals or the closing line
     data = [row for row in data if re.search(r"\s\d+\s+\S+\s+(\$|not)", row)]
     assert len(data) == 3, rows
-    edges = {re.match(r"^  .{30} +(\d+) ", row).end(1) for row in data}  # type: ignore[union-attr]
+    edges = {re.match(r"^  .{30} +(\d+) ", row).end(1) for row in data}
     assert len(edges) == 1, f"the task counts are not in one column: {data}"

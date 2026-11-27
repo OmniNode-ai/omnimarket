@@ -53,6 +53,7 @@ from textual.css.query import NoMatches
 from textual.screen import ModalScreen, Screen
 from textual.theme import Theme
 from textual.timer import Timer
+from textual.visual import VisualType
 from textual.widgets import (
     Button,
     DataTable,
@@ -2799,9 +2800,7 @@ class DashboardScreen(_TabbedScreen[None]):
         cause goes to the log (OMN-26620 AC9)."""
         words = tui_design().dashboard
         argv = {"start": words.start, "open": words.open, "stop": words.stop}[name]
-        code, out, err = await app._runner.capture(  # noqa: SLF001 - the screen and the app are one module
-            tuple(argv)
-        )
+        code, out, err = await app.capture_command(tuple(argv))
         document = _last_json_object(out) or {}
         if code or document.get("status") != "success":
             _LOG.warning(
@@ -3187,10 +3186,10 @@ class TaskCard:
         raw = getattr(task_card, "glyphs", None) if task_card is not None else None
         if isinstance(raw, dict):
             return raw
-        if hasattr(raw, "model_dump"):
+        if isinstance(raw, BaseModel):
             try:
-                return dict(raw.model_dump())  # type: ignore[union-attr]
-            except Exception:  # pragma: no cover
+                return dict(raw.model_dump())
+            except Exception:
                 pass
         card = getattr(design, "task_card", None)
         result: dict[str, str] = {}
@@ -3214,10 +3213,10 @@ class TaskCard:
         raw = getattr(task_card, "bar_colours", None) if task_card is not None else None
         if isinstance(raw, dict):
             return raw
-        if hasattr(raw, "model_dump"):
+        if isinstance(raw, BaseModel):
             try:
-                return dict(raw.model_dump())  # type: ignore[union-attr]
-            except Exception:  # pragma: no cover
+                return dict(raw.model_dump())
+            except Exception:
                 pass
         return {}
 
@@ -3257,7 +3256,7 @@ class TaskCard:
     @staticmethod
     def _format_tokens(value: object) -> str:
         try:
-            number = int(float(value))  # type: ignore[arg-type]
+            number = int(float(str(value)))
         except (TypeError, ValueError):
             return str(value)
         if abs(number) >= 1000:
@@ -3491,8 +3490,8 @@ def _plain_words(content: object) -> str:
 class OutputBlock(Static):
     """One written item of the output; its plain words are kept for copying."""
 
-    def __init__(self, content: object, plain: str, classes: str = "") -> None:
-        super().__init__(content, markup=False, classes=classes)  # type: ignore[arg-type]
+    def __init__(self, content: VisualType, plain: str, classes: str = "") -> None:
+        super().__init__(content, markup=False, classes=classes)
         self.plain = plain
 
 
@@ -3524,7 +3523,7 @@ class OutputPane(VerticalScroll):
         ]
 
     def write(
-        self, content: object, *, kind: str = "", plain: str | None = None
+        self, content: VisualType, *, kind: str = "", plain: str | None = None
     ) -> None:
         """Add a block. ``kind`` (user, answer, facts) sets how it is spaced and shaded;
         ``plain`` is what copying gives when the block is drawn with a layout."""

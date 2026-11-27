@@ -65,7 +65,7 @@ async def _ready() -> ModelTuiStatus:
 async def _open(
     command: str, runner: object, size: tuple[int, int] = (140, 40)
 ) -> tuple[str, str]:
-    app = OnexTui(load_status=_ready, runner=runner)  # type: ignore[arg-type]
+    app = OnexTui(load_status=_ready, runner=runner)
     async with app.run_test(size=size) as pilot:
         for _ in range(3):
             await pilot.pause()
@@ -139,7 +139,7 @@ async def test_theme_opens_a_full_screen_that_lists_every_theme_with_swatches() 
 async def test_highlighting_a_theme_previews_it_and_escape_puts_the_old_one_back() -> (
     None
 ):
-    app = OnexTui(load_status=_ready, runner=_Meter(_REPORT))  # type: ignore[arg-type]
+    app = OnexTui(load_status=_ready, runner=_Meter(_REPORT))
     async with app.run_test(size=(140, 40)) as pilot:
         for _ in range(3):
             await pilot.pause()

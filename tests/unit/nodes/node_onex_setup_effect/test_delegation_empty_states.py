@@ -48,7 +48,7 @@ def _verify_signed_out() -> str:
     )
 
 
-async def _delegation(rows: dict[tuple[str, ...], str]):  # type: ignore[no-untyped-def]
+async def _delegation(rows: dict[tuple[str, ...], str]):
     app = _app(_Runner([], by_command=rows))
     async with app.run_test(size=(120, 36)) as pilot:
         await _type(pilot, "/delegation")

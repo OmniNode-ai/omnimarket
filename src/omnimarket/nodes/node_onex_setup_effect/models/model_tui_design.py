@@ -517,7 +517,7 @@ class ModelTuiDoctorPage(BaseModel):
     )
     status_ok: str = Field(default="✓ ok", min_length=1)
     status_attention: str = Field(default="! needs attention", min_length=1)
-    status_skipped: str = Field(default="– optional/skipped", min_length=1)  # noqa: RUF001
+    status_skipped: str = Field(default="\u2013 optional/skipped", min_length=1)
     fix_prefix: str = Field(default="fix:", min_length=1)
     fixes: dict[str, str] = Field(default_factory=dict)
     codes: dict[str, str] = Field(default_factory=dict)

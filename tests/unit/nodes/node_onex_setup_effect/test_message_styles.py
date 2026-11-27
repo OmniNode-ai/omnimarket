@@ -20,7 +20,7 @@ from .test_setup_guide import _Quiet
 
 
 def _style_at(text: object, index: int) -> str:
-    for span in text.spans:  # type: ignore[attr-defined]
+    for span in text.spans:
         if span.start <= index < span.end:
             return str(span.style).lower()
     return ""
@@ -93,7 +93,7 @@ async def test_the_diagram_goes_away_once_you_start() -> None:
     assert "Smart Routing" in before
     # a task ends the welcome; a /command keeps it (test_welcome_stays_for_commands)
     after = await _screen(
-        OnexTui(load_status=_ready, runner=_Quiet()),  # type: ignore[arg-type]
+        OnexTui(load_status=_ready, runner=_Quiet()),
         (140, 52),
         (*"hello", "enter"),
     )

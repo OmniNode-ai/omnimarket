@@ -53,15 +53,15 @@ def _gated_app(gate: asyncio.Event) -> OnexTui:
     )
     original = app.load_selection
 
-    async def slow():  # type: ignore[no-untyped-def]
+    async def slow():
         await gate.wait()
         return await original()
 
-    app.load_selection = slow  # type: ignore[method-assign]
+    app.load_selection = slow
     return app
 
 
-async def _settle(pilot, times: int = 4) -> None:  # type: ignore[no-untyped-def]
+async def _settle(pilot, times: int = 4) -> None:
     for _ in range(times):
         await pilot.pause()
 
@@ -148,7 +148,7 @@ def test_the_model_tab_points_to_the_config_tab() -> None:
     assert "Config tab" in words, words
 
 
-def test_the_cli_refusal_on_a_new_install_reads_as_never_used(tmp_path) -> None:  # type: ignore[no-untyped-def]
+def test_the_cli_refusal_on_a_new_install_reads_as_never_used(tmp_path) -> None:
     """F5: the real CLI's answer when nothing was ever delegated."""
     result = CliRunner().invoke(
         metering_command, ["--db", str(tmp_path / "absent.sqlite")]
@@ -158,7 +158,7 @@ def test_the_cli_refusal_on_a_new_install_reads_as_never_used(tmp_path) -> None:
     assert not cli_tui.metering_never_used("database is locked")
 
 
-async def test_metering_on_a_new_install_says_no_usage_yet(tmp_path) -> None:  # type: ignore[no-untyped-def]
+async def test_metering_on_a_new_install_says_no_usage_yet(tmp_path) -> None:
     """F5."""
     refusal = (
         CliRunner()

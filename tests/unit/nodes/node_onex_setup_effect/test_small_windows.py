@@ -44,7 +44,7 @@ def _text(app: OnexTui) -> str:
     return " ".join(" ".join(rows).split())
 
 
-async def _until_open(pilot, app: OnexTui) -> None:  # type: ignore[no-untyped-def]
+async def _until_open(pilot, app: OnexTui) -> None:
     """Until the tab is mounted (its size check ran), however loaded the host."""
     for _ in range(200):
         await pilot.pause()

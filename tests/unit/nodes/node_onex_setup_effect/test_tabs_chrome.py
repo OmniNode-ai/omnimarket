@@ -36,7 +36,7 @@ _FOOTER = {
 
 
 def _lines(app: object) -> list[str]:
-    return sup.screen_text(app).splitlines()  # type: ignore[arg-type]
+    return sup.screen_text(app).splitlines()
 
 
 def _bar_row(lines: list[str]) -> int:

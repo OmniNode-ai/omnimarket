@@ -44,7 +44,7 @@ def entry(
         input_usd_per_million=Decimal(price_in),
         output_usd_per_million=Decimal(price_out),
         capabilities=dict.fromkeys(caps, "yes"),
-        status=status,  # type: ignore[arg-type]
+        status=status,
     )
 
 
@@ -81,7 +81,7 @@ def app(
     async def status() -> ModelTuiStatus:
         return ModelTuiStatus(
             models=3,
-            delegation=delegation,  # type: ignore[arg-type]
+            delegation=delegation,
             hooks=hooks or {"prompt_hook": "installed"},
         )
 
@@ -96,7 +96,7 @@ async def settle(pilot: Pilot[int], times: int = 10) -> None:
 async def open_tab(pilot: Pilot[int], the_app: OnexTui, name: str) -> None:
     """Open one tab straight on the fixed selection."""
     await settle(pilot, 4)
-    await the_app.push_screen(the_app._build_tab(name, selection()))  # type: ignore[arg-type]
+    await the_app.push_screen(the_app._build_tab(name, selection()))
     await settle(pilot)
 
 

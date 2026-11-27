@@ -13,7 +13,7 @@ from .test_metering_theme_screens import _REPORT, _Meter, _ready
 
 
 async def test_enter_keeps_the_highlighted_theme_and_says_so() -> None:
-    app = OnexTui(load_status=_ready, runner=_Meter(_REPORT))  # type: ignore[arg-type]
+    app = OnexTui(load_status=_ready, runner=_Meter(_REPORT))
     async with app.run_test(size=(140, 40)) as pilot:
         for _ in range(3):
             await pilot.pause()
