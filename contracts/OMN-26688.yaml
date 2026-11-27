@@ -95,3 +95,11 @@ dod_evidence:
   - check_type: command
     check_value: onex delegate "Say hello in five words" --json
     cwd: .
+- id: dod-omn26688-integration-proof
+  description: The headless run of the OMN-26688 catalog provider tests and the OMN-17353 parity suite on a lab host at the pushed head, against the real onex command tree. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26688 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/routing/test_omn26688_catalog_providers.py tests/test_omn17353_provider_catalogue.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
