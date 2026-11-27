@@ -87,6 +87,7 @@ event_bus:
     - onex.intent.platform.runtime-tick.v1
     - onex.evt.omnimarket.delegation-harness-completed.v1
     - onex.evt.omnimarket.delegate-skill-failed.v1
+    - onex.cmd.omnimarket.lane-work-help-requested.v1
   publish_topics:
     - onex.cmd.omnimarket.lane-work-event.v1
     - onex.evt.omnimarket.lane-work-step-completed.v1
@@ -184,6 +185,7 @@ broker_acl_grants:
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.github-repo-write-requested.v1, operation: DESCRIBE}
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.pr-handoff-requested.v1, operation: WRITE}
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.pr-handoff-requested.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lane-work-help-requested.v1, operation: READ}
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lane-work-help-requested.v1, operation: WRITE}
   - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lane-work-help-requested.v1, operation: DESCRIBE}
 handler_routing:
@@ -319,6 +321,16 @@ handler_routing:
         module: "omnimarket.models.delegation.wire.model_delegate_skill_response"
       topic: onex.evt.omnimarket.delegate-skill-failed.v1
       description: "A pinned help delegation that failed; re-published so the classifier names help_failed."
+    - operation: "lane_work.help.ask_help"
+      message_category: "command"
+      handler:
+        name: "HandlerLaneWorkHelp"
+        module: "omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_help"
+      event_model:
+        name: "ModelLaneHelpRequested"
+        module: "omnimarket.nodes.node_lane_work_orchestrator.models.model_lane_help_requested"
+      topic: onex.cmd.omnimarket.lane-work-help-requested.v1
+      description: "The ask_help node action: writes the ledger MSG row, then sends the one pinned delegate-skill request, both keyed by the action id."
 metadata:
   description: "Lane work orchestrator: folds inputs one at a time and hands off through the PR handoff nodes."
   author: "OmniNode Team"
