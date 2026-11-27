@@ -41,6 +41,14 @@ producer, sends one message and closes it, inside the single event loop
 across ``asyncio.run`` boundaries belongs to a loop that no longer exists and
 raises ``RuntimeError: Event loop is closed`` on first reuse (34 of those on the
 .201 dev lane, zero rows written, DLQ climbing).
+
+OMN-25912 amends that rule, and the paragraph above is the history it replaces:
+the one-client-per-call shape authenticated every broker connection over SCRAM
+for every delta (1215 ``aiokafka.conn: Authenticated`` lines in 9 minutes on the
+shared dev runtime at 2026-11-26T11:17Z to 11:26Z). The publisher now owns one
+background event loop and one started transport for its lifetime, and every
+``publish`` runs on that loop, so the producer never meets a loop other than the
+one that started it.
 """
 
 from __future__ import annotations
@@ -54,6 +62,7 @@ from aiokafka.record.default_records import DefaultRecordBatchBuilder
 from pydantic import BaseModel, ConfigDict
 
 from omnimarket.config.settings import Settings
+from omnimarket.handlers.owned_loop_transport import OwnedLoopTransport
 from omnimarket.projection.models import (
     ModelProjectionSnapshotDelta,
     ProjectionTableConfig,
@@ -371,13 +380,17 @@ def encode_snapshot_delta(
 
 
 class KafkaSnapshotDeltaPublisher:
-    """Publish one encoded delta over a bus transport that lives for that call.
+    """Publish encoded deltas over one bus transport that lives as long as it.
 
     Used by the SYNC projection-handler path. The runtime dispatches those
-    handlers on a worker thread with no running event loop, so ``asyncio.run``
-    here opens the only loop involved -- and everything loop-bound is opened and
-    closed inside it. The runner path keeps its own long-lived producer; it does
-    not come through this class.
+    handlers on a worker thread with no running event loop. The transport is
+    opened on first use, on a background event loop this publisher owns, and
+    every later ``publish`` runs on that same loop (OMN-25912): a loop-bound
+    producer never meets a loop other than the one that started it, and a
+    delta no longer costs a fresh SCRAM authentication per broker connection.
+    A failed send or start drops the transport, so the next ``publish`` builds
+    a new one. ``close`` stops the transport and the loop. The runner path
+    keeps its own long-lived producer; it does not come through this class.
 
     The transport is ``KafkaTransport``, the canonical bus surface, and NOT a
     directly-constructed ``AIOKafkaProducer``. That is a correctness choice as
@@ -391,6 +404,11 @@ class KafkaSnapshotDeltaPublisher:
 
     def __init__(self, *, bootstrap_servers: str) -> None:
         self._bootstrap_servers = bootstrap_servers.strip()
+        self._owned = OwnedLoopTransport(bootstrap_servers=self._bootstrap_servers)
+
+    def close(self) -> None:
+        """Stop the transport and the loop; a later ``publish`` starts anew."""
+        self._owned.close()
 
     def publish(self, message: ModelSnapshotDeltaMessage) -> bool:
         if message.value is None:
@@ -432,7 +450,7 @@ class KafkaSnapshotDeltaPublisher:
                 "runtime dispatches on a worker thread with no loop. A caller "
                 "inside a loop must inject its own publisher"
             )
-        published = asyncio.run(self._publish(message))
+        published = self._owned.run(self._publish(message))
         if published:
             # OMN-19733: the session-replay and work-events writers publish
             # through this sync seam, on the worker thread asyncio.to_thread
@@ -441,44 +459,9 @@ class KafkaSnapshotDeltaPublisher:
         return published
 
     async def _publish(self, message: ModelSnapshotDeltaMessage) -> bool:
-        # Lazy import (OMN-15800 AC6): the projection-api process imports names
-        # from the projection package but must never load asyncpg, which
-        # ``omnibase_infra``'s top-level __init__ chain pulls in transitively.
-        from omnibase_infra.event_bus.kafka_transport import KafkaTransport
-
-        # topics=() keeps this producer-only: start() then skips the consumer
-        # leg entirely, so no consumer group is created and nothing joins a
-        # rebalance just to send one record.
-        transport = KafkaTransport.from_bootstrap(self._bootstrap_servers, topics=())
-        try:
-            await transport.start()
-        except Exception as exc:
-            logger.warning(
-                "snapshot delta for %s not published: transport failed to start: %s",
-                message.topic,
-                exc,
-            )
-            return False
-        try:
-            if message.value is None:
-                logger.warning(
-                    "snapshot delta for %s not published: message value is missing",
-                    message.topic,
-                )
-                return False
-            await transport.send(
-                message.topic,
-                key=message.key,
-                value=message.value,
-                headers=dict(message.headers),
-            )
-        except Exception as exc:
-            logger.warning(
-                "snapshot delta for %s not published: send failed: %s",
-                message.topic,
-                exc,
-            )
-            return False
-        finally:
-            await transport.close()
-        return True
+        return await self._owned.send(
+            message.topic,
+            key=message.key,
+            value=message.value,
+            headers=dict(message.headers),
+        )

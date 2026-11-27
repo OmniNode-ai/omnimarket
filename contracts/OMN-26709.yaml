@@ -1,0 +1,31 @@
+schema_version: 1.0.0
+ticket_id: OMN-26709
+title: The agent message CLI undeclared-broker test injects its overlay root and never reads the host environment
+summary: tests/cli/test_agent_message_cli.py::test_a_node_with_no_declared_broker_is_a_typed_refusal builds its own overlay root with a node overlay that declares no event_bus, so it answers undeclared_broker on a host that sets OMNI_HOME and ONEX_WORKSPACE_CONFIG_ROOT as it does on a clean one.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26709-overlay-injected
+  statement: The undeclared-broker CLI test supplies its overlay root and broker declaration itself and does not depend on the host overlay environment.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: the test passes with OMNI_HOME and ONEX_WORKSPACE_CONFIG_ROOT set to the host values and with both unset -- falsifier: the test fails in either environment'
+evidence_requirements:
+- kind: tests
+  description: The agent message CLI tests.
+  command: uv run pytest tests/cli/test_agent_message_cli.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26709-undeclared-broker-injected-overlay
+  description: The undeclared-broker test writes its own overlay root under tmp_path and passes in the host-like and the clean environment.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/cli/test_agent_message_cli.py -q --no-cov -n 0 -p no:randomly -k no_declared_broker
+    cwd: .

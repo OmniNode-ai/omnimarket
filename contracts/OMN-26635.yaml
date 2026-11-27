@@ -1,0 +1,105 @@
+schema_version: 1.0.0
+ticket_id: OMN-26635
+title: The settings store accepts a set with its provenance, a revision check and one audit row written together
+summary: node_projection_overlay_store accepts the record a set sends (operator_paths, a write id, the revision it was built on and its audit row), applies it only when that revision is current, and writes the record, its provenance per path, the new revision and the audit row in one transaction; it answers each write with a committed or conflict reply carrying the write id, applies a repeated write id once and publishes the audit topic from the table row. node_overlay_setting_set_effect waits for the reply and retries a conflict by reading the store again.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+- topics
+- public_api
+requirements:
+- id: req-omn26635-store-write
+  statement: A set reaches the settings store with its provenance, a revision check and one audit row written together.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a test fails first on the current code and passes after, showing the projection accepts a record with operator_paths and stores provenance per path with a revision, and refuses a write built on a stale revision with a conflict reply carrying the write id -- falsifier: uv run pytest tests/unit/nodes/node_projection_overlay_store -q'
+  - id: AC2
+    statement: 'AC2: a test that fails the audit write leaves the record unchanged, and a write delivered twice is applied once -- falsifier: uv run pytest tests/unit/nodes/node_projection_overlay_store -q -k "audit_atomic or idempotent_write"'
+  - id: AC3
+    statement: 'AC3: a test of two concurrent sets of different keys of one dev-only test overlay that declares two settable keys keeps both values -- falsifier: uv run pytest tests/unit/nodes/node_projection_overlay_store -q -k concurrent_sets'
+  - id: AC4
+    statement: 'AC4: integrated: done only when a real set on dev appears in the table with its provenance and exactly one audit row (counts and digests only, no values; needs Task 2 for the live read) -- falsifier: select count(*) from the audit table for the set''s write id returns 1 and the record row carries provenance operator for the path, read back on the running dev lane'
+evidence_requirements:
+- kind: tests
+  description: The projection's and the set command's focused tests, written first and failing on the code before the change.
+  command: uv run pytest tests/unit/nodes/node_projection_overlay_store tests/unit/nodes/node_overlay_setting_set -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26635-provenance-revision
+  description: The projection accepts a set record with operator_paths, stores provenance per path with a revision, and refuses a write built on a stale revision with a conflict reply carrying the write id.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_projection_overlay_store -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26635-audit-atomic-idempotent
+  description: A failed audit write leaves the record, its provenance and its revision unchanged, and a write delivered twice is applied once with one audit row.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_projection_overlay_store -q --no-cov -n 0 -p no:randomly -k "audit_atomic or idempotent_write"
+    cwd: .
+- id: dod-omn26635-concurrent-sets
+  description: Two concurrent sets of different keys of one overlay that declares two settable keys both survive; a control with one attempt each shows the check sees a refused loser.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_projection_overlay_store -q --no-cov -n 0 -p no:randomly -k concurrent_sets
+    cwd: .
+- id: dod-omn26635-hosted-deploy-check
+  description: 'Deploy check the hosted runner can run: the projection contract declares the audit and reply topics and the three new tables with their migration, and the migration files exist. This binds no criterion by itself.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: grep -q 'overlay-store-write-reply.v1' src/omnimarket/nodes/node_projection_overlay_store/contract.yaml
+    cwd: .
+  - check_type: command
+    check_value: test -f src/omnimarket/nodes/node_projection_overlay_store/migrations/0003_overlay_store_revision_provenance_audit.sql
+    cwd: .
+- id: dod-omn26635-hosted-reading-of-ac4
+  description: 'The hosted reading of AC4, over the in-memory store that keeps the Postgres store''s rules: a set is stored with provenance operator for its path and exactly one audit row for its write id, and the same write delivered twice leaves one. The dev read (counts and digests only) is the live-read item below and the PR''s Lab line.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_projection_overlay_store -q --no-cov -n 0 -p no:randomly -k "provenance_per_path or idempotent_write"
+    cwd: .
+- id: dod-omn26635-integration-proof-live-read
+  description: The store's real-Postgres write path (revision check, provenance, one audit row per write id, rollback of a failed audit insert) is run on a lab host at the pushed head. The read of one real set on the running dev lane (provenance operator for its path and exactly one audit row for its write id, counts and digests only) needs the launch settings in the dev store (Task 2) and is not part of this check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26635 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/test_overlay_store_write_real_postgres.py tests/test_overlay_store_real_postgres.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26635-work-contract-pins-current
+  description: 'After the merge of dev and the infra dev-tag pin move, every work contract environment pin carries the sha256 of the committed uv.lock, so the corpus loads and the test collection that the typecheck and shard jobs run finishes. This binds no criterion by itself.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/test_work_contract_pins_current.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26635-migration-vendor-parity
+  description: 'The overlay store migrations 0003 and 0004 are byte-identical (git blob ids spelled in the test) to the copies omnibase_infra v0.38.84 vendors, so the Sibling Release Compatibility Gate finds them in the pinned release. This binds no criterion by itself.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn26635_overlay_store_migration_vendor_parity.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26635-infra-pin-records-current
+  description: 'The infra pin move to dev-20261125090037-c2bc2ccf8f10 is recorded in the pin tests (the lock names the build, INFRA_CORE_TAGS carries its core tag) and the checked-in relation inventory is regenerated from the migrations that pin vendors. This binds no criterion by itself.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_infra_pin_aa87c2dd6abe_work_contracts_omn23865.py tests/ci/test_sibling_core_pin_pair_omn17427.py tests/unit/scripts/test_application_relation_inventory.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
