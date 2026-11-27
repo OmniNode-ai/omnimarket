@@ -97,11 +97,11 @@ def test_the_handler_reaches_its_store_only_through_the_constructor() -> None:
         HandlerOverlaySnapshotWrite()  # type: ignore[call-arg]
 
 
-def test_the_contract_routes_the_compacted_snapshot_topic_to_the_writer() -> None:
+def test_the_contract_declares_the_compacted_snapshot_topic_as_a_direct_read() -> None:
+    # A snapshot topic name carries no message category, so the dispatcher can route nothing on it:
+    # it is declared as a direct read, never as a subscription or a route.
     contract = yaml.safe_load((NODE / "contract.yaml").read_text())
-    assert SNAPSHOT_TOPIC in contract["event_bus"]["subscribe_topics"]
-    routes = {
-        h["handler"]["name"]: h["topic"]
-        for h in contract["handler_routing"]["handlers"]
-    }
-    assert routes["HandlerOverlaySnapshotWrite"] == SNAPSHOT_TOPIC
+    assert contract["snapshot_read"]["topic"] == SNAPSHOT_TOPIC
+    assert SNAPSHOT_TOPIC not in contract["event_bus"]["subscribe_topics"]
+    routed = {h.get("topic") for h in contract["handler_routing"]["handlers"]}
+    assert SNAPSHOT_TOPIC not in routed

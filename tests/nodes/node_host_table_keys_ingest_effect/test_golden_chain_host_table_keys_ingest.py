@@ -47,8 +47,7 @@ def test_contract_golden_chain() -> None:
     )
     assert contract["name"] == "node_host_table_keys_ingest_effect"
     assert contract["event_bus"]["subscribe_topics"] == [
-        "onex.evt.omnimarket.overlay-store-loaded.v1",
-        "onex.snapshot.projection.overlay-store.v1",
+        "onex.evt.omnimarket.overlay-store-loaded.v1"
     ]
     assert contract["overlay"]["node"] == "node_host_table_keys_ingest_effect"
     binding = contract["handler"]

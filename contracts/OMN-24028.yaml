@@ -122,3 +122,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/settings_store/test_host_table_from_store.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
+- id: dod-omn24028-snapshot-topic-direct-read
+  description: 'Task 20 follow-up: the snapshot topic is declared on the host table keys ingest node as a direct read (snapshot_read), never as a dispatched subscription or route, because its name carries no message category; the ingest handler is bound by an operation route with no topic, the read node declares an on_demand trigger and omnibase-spi, and the subscriber-dispatcher resolution and topic category checks read zero unresolved'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/settings_store/test_snapshot_writer.py tests/nodes/node_host_table_keys_ingest_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
