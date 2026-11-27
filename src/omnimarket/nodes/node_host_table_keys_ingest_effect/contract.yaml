@@ -32,19 +32,23 @@ handler_routing:
       name: ModelOverlayStoreRecord
       module: omnimarket.models.overlay_store.model_overlay_store
     topic: onex.evt.omnimarket.overlay-store-loaded.v1
-  - operation: handle
+  # Driven by the node's own read of the snapshot topic (snapshot_read below), never by a dispatched topic.
+  - operation: apply_snapshot
     handler:
       name: HandlerOverlaySnapshotWrite
       module: omnimarket.nodes.node_host_table_keys_ingest_effect.handlers.handler_overlay_snapshot_write
     event_model:
       name: ModelOverlaySettingsRecord
       module: omnimarket.models.overlay_store.model_overlay_settings_record
-    topic: onex.snapshot.projection.overlay-store.v1
 event_bus:
   subscribe_topics:
   - onex.evt.omnimarket.overlay-store-loaded.v1
-  - onex.snapshot.projection.overlay-store.v1
   publish_topics: []
+# Read directly by this node's bus client and applied by HandlerOverlaySnapshotWrite, never dispatched by a runtime,
+# so it is no subscription of this node: a snapshot topic name carries no message category the dispatcher can route.
+snapshot_read:
+  # onex-topic-allow: a projection snapshot topic has the projection's own name form.
+  topic: onex.snapshot.projection.overlay-store.v1
 broker_acl_grants:
   - principal: "${ONEX_ACL_DEV_RUNTIME_EFFECTS_PRINCIPAL}"
     grants:
