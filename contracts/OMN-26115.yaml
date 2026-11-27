@@ -117,3 +117,6 @@ dod_evidence:
   - check_type: command
     check_value: sh -c '! grep -rIn --include="*.py" run_node_in_process src'
     cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_omn26115_bus_lane_contract.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
