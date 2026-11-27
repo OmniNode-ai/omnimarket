@@ -28,13 +28,18 @@ class HandlerMcpRegistryProjectionRows:
     empty list.
     """
 
-    def __init__(self, projections: Callable[[], Sequence[Any]]) -> None:
+    def __init__(self, projections: Callable[[], Sequence[Any]] | None = None) -> None:
         self._projections = projections
 
     def handle(self, request: ModelMcpRegistryReadRequest) -> ModelMcpRegistryRows:
         return ModelMcpRegistryRows(rows=tuple(self.read_registrations()))
 
     def read_registrations(self) -> Sequence[ModelMcpRegistryRow]:
+        if self._projections is None:
+            raise McpServerRefusalError(
+                EnumMcpServerRefusal.REGISTRY_UNREADABLE,
+                "no projections source was given to the registry reader",
+            )
         return tuple(self._row(proj) for proj in self._projections())
 
     @staticmethod

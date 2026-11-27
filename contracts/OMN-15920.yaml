@@ -51,6 +51,13 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/test_handler_routing_boot_resolvable.py -q -p no:cacheprovider"
+  - id: "dod-omn15920-reader-boots-and-is-bound"
+    description: "The registry reader constructs with no argument and refuses by name (registry_unreadable) when read without a projections source, so the contract binds it (canonical file shape) and the boot resolver can build it"
+    source: "manual"
+    binds_ac: [AC2]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_mcp_server_effect/test_handler_mcp_registry_projection_rows.py tests/test_handler_routing_boot_resolvable.py -q -p no:cacheprovider"
   - id: "dod-omn15920-tools-list-integration-proof"
     description: "Local Done gate only, so it binds no criterion here: the tools/list handler tests run on a lab host at the pushed sha (host, sha and exit code in the pull request body)"
     source: "manual"

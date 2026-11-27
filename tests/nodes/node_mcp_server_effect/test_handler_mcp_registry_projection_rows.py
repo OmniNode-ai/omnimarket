@@ -125,3 +125,12 @@ def test_handle_returns_the_registry_rows_the_reader_reads() -> None:
     rows = reader.handle(ModelMcpRegistryReadRequest()).rows
     assert [r.node_name for r in rows] == [str(ENTITY)]
     assert [t.tool_name for t in rows[0].tools] == ["alpha"]
+
+
+def test_reader_built_with_no_projections_source_refuses_by_name() -> None:
+    """The boot resolver builds a routed handler from injectable params alone, so the
+    reader must construct with none and refuse by name when asked to read (OMN-15920)."""
+    reader = HandlerMcpRegistryProjectionRows()
+    with pytest.raises(McpServerRefusalError) as err:
+        reader.read_registrations()
+    assert err.value.refusal is EnumMcpServerRefusal.REGISTRY_UNREADABLE
