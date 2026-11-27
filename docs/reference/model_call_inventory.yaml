@@ -1,0 +1,234 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+title: 'Model call inventory: every source file that names the chat route'
+scope: Python files under src/ whose text contains chat/completions
+classes:
+  real_direct_call: The file posts to a model address, imports a model SDK or runs a model CLI itself.
+    Each one carries a scope (customer or internal) and the callers that prove it; customer rows name
+    the customer path.
+  declared_route: The file builds, resolves, serves or compares a model route and sends through a named
+    sender, or reads only.
+  mention: The route text appears as documentation, a message, test data, a validator sample or a log
+    pattern.
+customer_paths:
+- delegation
+- gateway
+- onboarding_setup
+- dashboard
+- metering
+baseline: .onex_ratchets/direct_model_call_baseline.yaml
+counts:
+  files: 42
+  real_direct_call: 9
+  declared_route: 21
+  mention: 12
+rows:
+- path: src/omnimarket/cli/cli_ab_compare_suite.py
+  class: real_direct_call
+  scope: internal
+  callers:
+  - pyproject.toml::ab-compare-suite = "omnimarket.cli.cli_ab_compare_suite:main"
+  note: The ab-compare-suite command posts to each registry model with its own HTTP client; a model comparison
+    tool, not a product surface.
+- path: src/omnimarket/cli/cli_secret.py
+  class: mention
+  kind: message_text
+  note: The review gateway's startup line names its serve route.
+- path: src/omnimarket/delegation/rung_eval/runner.py
+  class: real_direct_call
+  scope: internal
+  callers:
+  - scripts/ci/run_delegation_rung_eval.py::omnimarket.delegation.rung_eval
+  note: The nightly rung evaluation posts each case to a rung with urllib; run from CI only.
+- path: src/omnimarket/handlers/delegation_first_choice.py
+  class: declared_route
+  sends_via: 'none: compares route strings only'
+  note: Checks that a named route equals the connection's chat route.
+- path: src/omnimarket/handlers/delegation_readiness_probe.py
+  class: mention
+  kind: test_stub
+  note: A local stub server publishes stub rung URLs ending in the chat route; it answers requests and
+    sends none.
+- path: src/omnimarket/handlers/handler_model_call_reconcile.py
+  class: mention
+  kind: log_parse
+  note: Recognises a served request's POST path in a model server access log.
+- path: src/omnimarket/handlers/openai_compatible_endpoint.py
+  class: declared_route
+  sends_via: src/omnimarket/nodes/node_llm_delegation_call_effect
+  note: Builds the backend entry whose endpoint_url is the chat route; the call effect posts it.
+- path: src/omnimarket/handlers/routing/delegation_backend_resolution.py
+  class: declared_route
+  sends_via: src/omnimarket/nodes/node_llm_delegation_call_effect
+  note: Resolves the complete endpoint_ref verbatim for the call effect; the file's matches are docstrings
+    and an example message.
+- path: src/omnimarket/handlers/routing/local_byok_route.py
+  class: declared_route
+  sends_via: 'none: compares route strings only'
+  note: Matches a backend's endpoint_ref against the connection's chat route.
+- path: src/omnimarket/handlers/routing/registered_endpoint_backend.py
+  class: declared_route
+  sends_via: src/omnimarket/nodes/node_llm_delegation_call_effect
+  note: Builds a registered endpoint's backend entry with the chat route; the call effect posts it.
+- path: src/omnimarket/handlers/routing/vllm_input_token_meter.py
+  class: declared_route
+  sends_via: src/omnimarket/nodes/node_llm_delegation_call_effect
+  note: Derives the server's tokenize address from the chat route; the POST goes through the call effect's
+    post_chat_completion.
+- path: src/omnimarket/inference/adapter_inference_bridge.py
+  class: real_direct_call
+  scope: internal
+  callers:
+  - src/omnimarket/nodes/node_hostile_reviewer_orchestrator/handlers/handler_hostile_reviewer_orchestrator.py::AdapterInferenceBridge(
+  - src/omnimarket/nodes/node_pr_review_orchestrator/handlers/handler_pr_review_orchestrator.py::AdapterInferenceBridge(
+  - src/omnimarket/nodes/node_design_to_plan/handlers/handler_design_to_plan.py::AdapterInferenceBridge(
+  - src/omnimarket/nodes/node_llm_codegen_effect/handlers/handler_llm_codegen.py::AdapterInferenceBridge(
+  note: The shared bridge posts with httpx. Its callers are review, planning and code generation nodes,
+    none a delegation, gateway, setup, dashboard or metering path; the delegation judge posts through
+    the call effect transport instead.
+- path: src/omnimarket/models/delegation/wire/model_bifrost_delegation_config.py
+  class: mention
+  kind: field_description
+  note: Field descriptions say the endpoint URL carries the full chat path.
+- path: src/omnimarket/nodes/node_ab_compare_orchestrator/handlers/handler_ab_compare_orchestrator.py
+  class: declared_route
+  sends_via: src/omnimarket/nodes/node_ab_inference_effect/handlers/handler_ab_inference_effect.py
+  note: Builds the chat URL for the A/B inference effect and makes no HTTP call itself.
+- path: src/omnimarket/nodes/node_ab_inference_effect/handlers/handler_ab_inference_effect.py
+  class: real_direct_call
+  scope: internal
+  callers:
+  - pyproject.toml::node_ab_inference_effect = "omnimarket.nodes.node_ab_inference_effect"
+  - src/omnimarket/nodes/node_ab_inference_effect/contract.yaml::HandlerAbInferenceEffect
+  note: Posts an openai-compatible request with httpx and calls the anthropic SDK; the inference leg of
+    the A/B compare nodes.
+- path: src/omnimarket/nodes/node_build_loop_orchestrator/assemble_live.py
+  class: real_direct_call
+  scope: internal
+  callers:
+  - src/omnimarket/nodes/node_build_loop_orchestrator/consumer.py::LiveBuildDispatchHandler(dry_run_global
+  - src/omnimarket/nodes/node_build_loop_orchestrator/consumer.py::LiveTicketClassifyHandler()
+  note: The live build loop classifies tickets and generates implementations with its own HTTP posts to
+    the fast and OpenAI endpoints; an internal build workflow.
+- path: src/omnimarket/nodes/node_build_loop_orchestrator/handlers/adapter_delegation_router.py
+  class: mention
+  kind: docstring
+  note: A module docstring says the endpoints speak the chat API.
+- path: src/omnimarket/nodes/node_claude_review_gateway_effect/handlers/handler_claude_review_gateway.py
+  class: declared_route
+  sends_via: src/omnimarket/nodes/node_llm_delegation_call_effect
+  note: Serves the chat route and hands each review to the delegation call effect, the one sanctioned
+    model caller.
+- path: src/omnimarket/nodes/node_code_enrichment_effect/handlers/handler_code_enrichment_effect.py
+  class: real_direct_call
+  scope: internal
+  callers:
+  - pyproject.toml::node_code_enrichment_effect = "omnimarket.nodes.node_code_enrichment_effect"
+  - src/omnimarket/nodes/node_code_enrichment_effect/contract.yaml::onex.evt.omnimarket.code-entities-extracted.v1
+  note: Posts a classification request per extracted code entity; code intelligence indexing, not a customer
+    path.
+- path: src/omnimarket/nodes/node_code_enrichment_effect/tests/test_handler_code_enrichment_effect.py
+  class: real_direct_call
+  scope: internal
+  callers:
+  - src/omnimarket/nodes/node_code_enrichment_effect/tests/test_handler_code_enrichment_effect.py::test_integration_real_llm_probe
+  note: An integration test that posts to a real endpoint when one is configured; it is its own caller.
+- path: src/omnimarket/nodes/node_delegation_ab_runner/handlers/handler_delegation_ab_runner.py
+  class: real_direct_call
+  scope: internal
+  callers:
+  - pyproject.toml::node_delegation_ab_runner = "omnimarket.nodes.node_delegation_ab_runner"
+  - src/omnimarket/nodes/node_delegation_ab_runner/contract.yaml::onex.cmd.omnimarket.delegation-ab-run-requested.v1
+  note: The A/B harness posts both its baseline and its delegated leg with httpx, outside the delegation
+    call effect; a measurement harness, not the delegation path.
+- path: src/omnimarket/nodes/node_delegation_check_probe_effect/handlers/clean_dashboard_driver.py
+  class: declared_route
+  sends_via: 'none: writes the endpoint into the local override file and sends no request to it'
+  note: Declares the model server's chat route for both local rungs; its only HTTP request is a loopback
+    read of the dashboard.
+- path: src/omnimarket/nodes/node_delegation_escalation_decision_compute/tests/test_handler_escalation_decision.py
+  class: mention
+  kind: test_fixture
+  note: Two endpoint constants used as test data.
+- path: src/omnimarket/nodes/node_demo_fanout_orchestrator/handlers/handler_fanout.py
+  class: real_direct_call
+  scope: internal
+  callers:
+  - pyproject.toml::node_demo_fanout_orchestrator = "omnimarket.nodes.node_demo_fanout_orchestrator"
+  - src/omnimarket/nodes/node_demo_fanout_orchestrator/contract.yaml::HandlerDemoFanoutOrchestrator
+  note: A demo fan-out that posts to openai-compatible endpoints and runs the claude CLI in print mode.
+- path: src/omnimarket/nodes/node_factory_floor_publish_effect/models/model_delegation_report.py
+  class: declared_route
+  sends_via: 'none: validates a recorded endpoint URL'
+  note: A report field pattern that requires the chat route.
+- path: src/omnimarket/nodes/node_generation_consumer/handlers/handler_generation_consumer.py
+  class: mention
+  kind: docstring
+  note: A parameter docstring gives chat URL examples; the handler delegates all LLM I/O to its injected
+    effect.
+- path: src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_hardcoded_ip.py
+  class: mention
+  kind: validator_corpus
+  note: Sample source the hardcoded-IP validator must refuse.
+- path: src/omnimarket/nodes/node_generation_consumer/validator_corpora/corpus_hardcoded_localhost_url.py
+  class: mention
+  kind: validator_corpus
+  note: Sample source the hardcoded-localhost validator must refuse.
+- path: src/omnimarket/nodes/node_hostile_reviewer_orchestrator/model_config_loader.py
+  class: declared_route
+  sends_via: src/omnimarket/inference/adapter_inference_bridge.py
+  note: Strips the chat suffix into the base_url the shared bridge appends it to.
+- path: src/omnimarket/nodes/node_house_routing_overlay_effect/models/model_house_routing_overlay.py
+  class: mention
+  kind: message_text
+  note: An endpoint_url validation message gives a chat URL example.
+- path: src/omnimarket/nodes/node_idle_slot_fill_effect/handlers/ruling_live_checks.py
+  class: declared_route
+  sends_via: 'none: GET of the served models list, posts nothing'
+  note: Derives the models URL from a voter's chat endpoint and reads the served model id.
+- path: src/omnimarket/nodes/node_llm_codegen_effect/handlers/handler_llm_codegen.py
+  class: declared_route
+  sends_via: src/omnimarket/inference/adapter_inference_bridge.py
+  note: Takes the routing contract's local-coder endpoint and gives the shared bridge its base URL.
+- path: src/omnimarket/nodes/node_media_capability_resolve_compute/models/model_media_capability.py
+  class: declared_route
+  sends_via: 'none: a capability to path table'
+  note: Names the chat route as the DECIDE capability's path.
+- path: src/omnimarket/nodes/node_memory_pilot_effect/handlers/lab_answerer.py
+  class: declared_route
+  sends_via: src/omnimarket/nodes/node_memory_pilot_effect/adapters/adapter_lab_chat_post.py
+  note: Builds the lab chat payload; the adapter posts it through the call effect transport.
+- path: src/omnimarket/nodes/node_model_eval_orchestrator/tests/test_handler_model_eval_orchestrator.py
+  class: mention
+  kind: test_fixture
+  note: One endpoint string used as test data.
+- path: src/omnimarket/nodes/node_model_overlay_write_effect/handlers/handler_model_overlay_write.py
+  class: declared_route
+  sends_via: 'none: writes the overlay entry only'
+  note: Normalises a model endpoint URL to end in the chat route before it is stored.
+- path: src/omnimarket/nodes/node_model_setup_effect/handlers/handler_endpoint_connections.py
+  class: declared_route
+  sends_via: src/omnimarket/nodes/node_model_setup_effect/handlers/handler_model_setup.py
+  note: Builds each connection's backend rows and tests them through the model setup handler's pinned
+    delegation.
+- path: src/omnimarket/nodes/node_model_setup_effect/handlers/handler_endpoint_probe.py
+  class: declared_route
+  sends_via: src/omnimarket/nodes/node_llm_delegation_call_effect/handlers/transport.py
+  note: Probes each listed model with one token through post_chat_completion, the transport every delegation
+    call uses.
+- path: src/omnimarket/nodes/node_model_setup_effect/handlers/handler_model_setup.py
+  class: declared_route
+  sends_via: src/omnimarket/nodes/node_llm_delegation_call_effect (through the onex delegate subprocess)
+  note: Stores local URL backends and tests each with one pinned onex delegate run.
+- path: src/omnimarket/nodes/node_model_setup_effect/models/model_model_setup_result.py
+  class: mention
+  kind: field_description
+  note: A comment says the base URL excludes the chat path.
+- path: src/omnimarket/nodes/node_onex_setup_effect/handlers/handler_setup_environment.py
+  class: declared_route
+  sends_via: 'none: compares route strings only'
+  note: Checks that the stored routes equal the expected chat route.
+- path: src/omnimarket/nodes/node_typed_decision_effect/handlers/local_decision_engine.py
+  class: declared_route
+  sends_via: src/omnimarket/nodes/node_typed_decision_effect/handlers/handler_typed_decision.py
+  note: A pure mapping of a decision to a chat body; the typed decision handler posts it.

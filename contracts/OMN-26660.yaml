@@ -1,0 +1,63 @@
+schema_version: 1.0.0
+ticket_id: OMN-26660
+title: "Product paths call a model only through the one injected provider client: each direct call on a customer path is moved, the rest is listed for later"
+summary: "Every omnimarket source file that names the chat route is classified as a real direct call, a declared route or a mention, and each real call carries its scope and the callers that prove it. This change delivers the listing (docs/reference/model_call_inventory.yaml) and the test that keeps it whole; no customer path is moved here."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26660-model-call-inventory
+  statement: Each of the 40 source files that name the chat route has one classified row, and each real direct call names its scope and the callers that prove it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: each of the 40 files is classified as a real direct call, a declared route or a mention, and each real call as on a customer path (delegation, gateway, onboarding and setup, dashboard, metering) or internal, with the caller that proves it -- falsifier: a file with no row or a class with no caller named'
+evidence_requirements:
+- kind: tests
+  description: The inventory test fails on a file with no row and on a real call with no caller named, and passes on the committed inventory.
+  command: uv run pytest tests/unit/contracts/test_model_call_inventory.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26660-every-file-has-a-row
+  description: The 40 source files that name the chat route each have one row with a class, and every real direct call is on the direct-model-call baseline. The test fails on a file with no row.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/contracts/test_model_call_inventory.py -q --no-cov -n 0 -p no:randomly -k every_file_naming_the_chat_route
+    cwd: .
+- id: dod-omn26660-caller-named
+  description: Every real direct call names its scope and callers that exist and contain the named text; the test reads the committed inventory, so it fails where the inventory is absent; the synthetic controls beside it fail on a real call with no caller and on a caller that does not name the file.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/contracts/test_model_call_inventory.py -q --no-cov -n 0 -p no:randomly -k every_real_direct_call_names_scope_and_callers
+    cwd: .
+- id: dod-omn26660-hosted-deploy-check
+  description: 'Deploy check the hosted runner can run: the inventory file is committed with its three class counts. This binds no criterion by itself.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: grep -q 'real_direct_call:' docs/reference/model_call_inventory.yaml
+    cwd: .
+- id: dod-omn26660-files-added-by-dev-have-rows
+  description: The two files dev added that name the chat route (the vLLM input token meter and the clean dashboard driver) each have a declared-route row, so the inventory holds 42 files; the test fails on a file with no row.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: command
+    check_value: grep -q 'clean_dashboard_driver.py' docs/reference/model_call_inventory.yaml && grep -q 'vllm_input_token_meter.py' docs/reference/model_call_inventory.yaml
+    cwd: .
+- id: dod-omn26660-agent-message-test-hermetic
+  description: 'The agent message CLI test for a node with no declared broker names no workspace root, so a host that sets OMNI_HOME no longer reaches a declared broker and the shard that holds it passes there. This binds no criterion by itself.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/cli/test_agent_message_cli.py -q --no-cov -n 0 -p no:randomly -k a_node_with_no_declared_broker
+    cwd: .

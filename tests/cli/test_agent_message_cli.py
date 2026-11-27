@@ -178,6 +178,10 @@ def test_a_node_with_no_declared_broker_is_a_typed_refusal(
     # The node dials the broker its own overlay declares; with none declared the client answers undeclared_broker, never a trace.
     monkeypatch.delenv("ONEX_EMIT_EFFECT_SPOOL_ONLY", raising=False)
     monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
+    # The node finds its overlay under the workspace root; a host that sets either root (a lab host does)
+    # declares a broker, so the test names no workspace.
+    for name in ("OMNIBASE_PATH", "OMNI_HOME"):
+        monkeypatch.delenv(name, raising=False)
     result = CliRunner().invoke(agent_message_group, [*_SEND, "--bus", "inmemory"])
     assert result.exit_code == 3, result.output
     assert "refused: undeclared_broker:" in result.output
