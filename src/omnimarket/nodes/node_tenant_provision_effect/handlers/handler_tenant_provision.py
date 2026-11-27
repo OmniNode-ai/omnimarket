@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_tenant_provision_effect.handlers.tenant_identity_postgres import (
     EnumProvisionKind,
     TenantIdentityPostgres,
@@ -117,6 +118,14 @@ class HandlerTenantProvision:
                 request,
                 EnumTenantProvisionOutcome.FAILED_STORE_UNAVAILABLE,
                 f"identity store unavailable: {exc}",
+                now,
+            )
+        except NodeOverlayError as exc:
+            # No overlay on this runtime: answer on the completed topic, so a caller reads a typed outcome, not silence.
+            return _refusal(
+                request,
+                EnumTenantProvisionOutcome.FAILED_STORE_UNAVAILABLE,
+                f"identity store unavailable: overlay not loaded: {exc}",
                 now,
             )
         match record.kind:
