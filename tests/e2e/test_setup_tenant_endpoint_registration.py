@@ -29,6 +29,7 @@ from omnimarket.projection.credential_publisher import (
     register_inference_credential,
 )
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
+from tests.helpers.tenant_slug_mirror import mirror_fetchval, slug_uuid
 
 pytestmark = pytest.mark.e2e
 
@@ -201,6 +202,7 @@ async def test_deployed_projection_uses_registered_url_and_connection() -> None:
     runner = HandlerTenantCredentialsProjectionRunner()
     db = AsyncMock()
     db.execute.return_value = []
+    db.fetchval = AsyncMock(side_effect=mirror_fetchval)
     runner._db = db
     event = {
         "api_key_ref": "cred_tenant_custom",
@@ -226,7 +228,7 @@ async def test_deployed_projection_uses_registered_url_and_connection() -> None:
     assert len(calls) == 1
     assert "https://model.example.test/v1/chat/completions" in calls[0].args
     assert "byok-openai-compatible-custom" in calls[0].args
-    assert calls[0].kwargs["tenant"] == "tenant-custom"
+    assert calls[0].kwargs["tenant"] == slug_uuid("tenant-custom")
 
 
 def test_custom_endpoint_never_pools_a_different_servers_key(tmp_path: Path) -> None:
