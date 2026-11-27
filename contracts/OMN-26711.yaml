@@ -115,3 +115,15 @@ dod_evidence:
         check_value: >-
           bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_cloud_smoke_check_effect/handlers/handler_cloud_smoke_check.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "ONEX_API_BASE_URL" > /dev/null'
         cwd: "."
+  - id: "dod-omn26711-ctest6-own-key-and-tests-reading"
+    description: >-
+      AC2: the clean-container customer-path test registers the tenant's own provider key as a step (the key on stdin, only when
+      an owner-only key file is named, never on an argv or in the result; a file open to the group is refused before any container
+      starts; a refused registration fails the run at that step with the client's words and a guide gap), and reads the receipt's
+      named-tests outcome from its tests_outcome field or from the outcome its rule evaluations record.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_customer_path_container_test_effect/test_customer_path_container_test.py -q --no-cov -n 0 -p no:randomly -k 'own_key or provider_key or untested or tests_outcome or tests_field or refused_registration'"
+        cwd: "."
