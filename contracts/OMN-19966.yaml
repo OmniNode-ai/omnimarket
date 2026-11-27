@@ -1,0 +1,92 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+schema_version: 1.0.0
+ticket_id: OMN-19966
+title: The C30 Claude Code plugin probe and the C31 dashboard parity probe run daily on the lab as omnimarket nodes and read the dashboard with its bearer token
+summary: node_c30_claude_code_plugin_probe_effect and node_c31_local_dashboard_parity_probe_effect port the two probes out of the cloud repository, run each once a day from a systemd timer unit on a lab host and emit each run, shaped as the launch block's run record, on its result topic. Both start the dashboard with `onex dashboard start --json` and send Authorization Bearer, with the token read from the credential store under the credential_ref `onex dashboard status --json` returns, on the readiness poll and on every exposure read.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn19966-c30-c31-move
+  statement: The C30 and C31 probes run on a daily schedule as omnimarket nodes on the lab (operator ruling 2026-11-26, the probe does not belong in the cloud repository), conclude success only when every clause held, read the served dashboard with the bearer token and emit each run on the node's result topic where the MVP launch block (M1) reads it.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: the C31 node reads the dashboard with Authorization Bearer from the credential store (401 without the token, 200 with it) and a graded run reads PASS in M1 -- falsifier: tests/nodes/node_c31_local_dashboard_parity_probe_effect fails'
+  - id: AC4
+    statement: 'AC4: the C30 node reads the dashboard with Authorization Bearer from the credential store (401 without the token, 200 with it) and a graded run reads PASS in M1 -- falsifier: tests/nodes/node_c30_claude_code_plugin_probe_effect fails'
+evidence_requirements:
+- kind: tests
+  description: The two nodes' focused tests pass
+  command: uv run --frozen pytest tests/nodes/node_c30_claude_code_plugin_probe_effect tests/nodes/node_c31_local_dashboard_parity_probe_effect -q --no-cov -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn19966-c31-bearer-and-chain
+  description: Runs the C31 node's bearer test (a loopback server that refuses a read with no Authorization Bearer 401 and serves the one that carries the token read from the store under the credential_ref the status command returns) and its golden and error chains.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_c31_local_dashboard_parity_probe_effect/test_dashboard_bearer.py tests/nodes/node_c31_local_dashboard_parity_probe_effect/test_c31_probe_node.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn19966-c30-bearer-and-chain
+  description: Runs the C30 node's bearer test and its golden and error chains.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_c30_claude_code_plugin_probe_effect/test_dashboard_bearer.py tests/nodes/node_c30_claude_code_plugin_probe_effect/test_c30_probe_node.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn19966-probe-cases
+  description: Runs the ported probe case tests of both nodes (the grading rules ported from the cloud repository's tests, with the dashboard process runner guarded).
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_c30_claude_code_plugin_probe_effect/test_probe_cases.py tests/nodes/node_c31_local_dashboard_parity_probe_effect/test_probe_cases.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn19966-url-authority
+  description: Runs the URL authority gate over the repository at the core revision the CI gate pins; it exits non-zero while the C30 probe's loopback model server URL carries no annotation, so it goes red on the head before the fix.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: 'uv run --with "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core.git@d720f33cf02aca1886d43811337d80aa1a47720e" python -m omnibase_core.validation.validator_url_authority --all --repo omnimarket --repo-root .'
+    cwd: .
+- id: dod-omn19966-unit-declaration
+  description: Reads the two unit declarations from the branch's installer contract; the exit status depends on the contract holding the onex-c30-claude-code-plugin-probe and onex-c31-local-dashboard-parity-probe labels, so it goes red on a branch without them. Runs on a hosted runner.
+  source: manual
+  checks:
+  - check_type: command
+    check_value: 'grep -q "label: onex-c30-claude-code-plugin-probe" src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml && grep -q "label: onex-c31-local-dashboard-parity-probe" src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml'
+    cwd: .
+- id: dod-omn19966-compliance-and-suppression-clean
+  description: Runs the C30 and C31 handlers through the handler compliance sweep's hardcoded-topic and transport checks, and asserts the C30 probe carries no suppression comment; both go red on the head before the fix (the topics sat in the handler modules and the loopback URL carried an annotation).
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_c30_claude_code_plugin_probe_effect/test_compliance_clean.py tests/nodes/node_c30_claude_code_plugin_probe_effect/test_probe_source_annotation_free.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn19966-relation-inventory-current
+  description: Runs the application-relation inventory test, which fails while the checked-in inventory lacks the C30 node as a reader of delegation_events (3 failed on the head before the regeneration) and passes once the inventory is regenerated from source.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/scripts/test_application_relation_inventory.py -q --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn19966-integration-proof
+  description: On the lab host where the units are installed from the branch, the focused tests of both nodes run at the pushed head through the lab work runner, and the C31 timer's tick has run the real probe and written last-run.json with a verdict. Hosted CI cannot reach the lab host and cannot control a local_done_gate item at the merge base, so it binds no criterion here and only the local Done gate runs it.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-19966 --kind test -- uv run --frozen pytest tests/nodes/node_c30_claude_code_plugin_probe_effect tests/nodes/node_c31_local_dashboard_parity_probe_effect -q --no-cov -p no:randomly'
+    cwd: .
+  - check_type: command
+    check_value: "test -s $HOME/.local/state/omni/c31-local-dashboard-parity-probe/last-run.json && grep -Eq 'verdict.: .(PASS|FAIL|PRECONDITION-ABSENT)' $HOME/.local/state/omni/c31-local-dashboard-parity-probe/last-run.json"
+    cwd: .

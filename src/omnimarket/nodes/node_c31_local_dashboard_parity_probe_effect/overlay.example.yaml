@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_c31_local_dashboard_parity_probe_effect/overlay.yaml
+# under a root named in ONEX_SKILL_OVERLAY_ROOTS, or the file ONEX_C31_PROBE_OVERLAY names. No key has a default.
+default_profile: inmemory
+history_file: c31-runs.jsonl
+history_keep: 60
+result_topic: onex.evt.omnimarket.local-dashboard-parity-probe-completed.v1
+profiles:
+  inmemory:
+    kind: inmemory
+  local:
+    kind: local
+    onex_bin_dir: /example/venv/bin
+    graded_packages: [example-core, example-market]
+  tick:
+    kind: tick
+    graded_packages: [example-core, example-market]
+# The bus the tick delivers its run record on: the lane id only, the broker address stays in the lane declaration table.
+event_bus:
+  type: kafka
+  lane: dev
