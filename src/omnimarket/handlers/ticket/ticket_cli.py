@@ -71,6 +71,12 @@ def _bus_unavailable_answer(
     return answer
 
 
+# A Done transition runs the done gate's verifier on the consumer, bounded at 300 s
+# (done_write_verify_seconds); its terminal, a completion or a refusal, comes after
+# that run. The wait outlasts it, or the caller reads no_terminal for a refusal.
+_DEFAULT_WAIT_S = {"create": 60.0, "read": 60.0, "comment": 60.0, "transition": 330.0}
+
+
 @click.group("ticket")
 @click.pass_context
 def ticket_group(ctx: click.Context) -> None:
@@ -83,9 +89,11 @@ def _command(operation: str) -> click.Command:
         lane: str,
         run: str | None,
         idempotency_key: str | None,
-        timeout_s: float,
+        timeout_s: float | None,
         **fields: object,
     ) -> None:
+        if timeout_s is None:
+            timeout_s = _DEFAULT_WAIT_S[operation]
         bus_opts = {
             name: fields.pop(name)
             for name in ("omnibase_path", "bus", "bus_lane", "kafka_bootstrap")
@@ -173,7 +181,7 @@ def _command(operation: str) -> click.Command:
         click.option("--lane", required=True, envvar="ONEX_LANE"),
         click.option("--run", default=None, envvar="ONEX_RUN_ID"),
         click.option("--idempotency-key", default=None),
-        click.option("--timeout-s", default=60.0, type=click.FloatRange(min=0.1)),
+        click.option("--timeout-s", default=None, type=click.FloatRange(min=0.1)),
         click.option("--dry-run", is_flag=True),
     ):
         decorated = option(decorated)

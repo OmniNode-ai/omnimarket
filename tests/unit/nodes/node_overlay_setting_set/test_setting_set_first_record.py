@@ -54,13 +54,8 @@ async def test_responders_first_record_is_created_with_provenance() -> None:
 
 
 async def test_second_set_builds_on_the_first_record() -> None:
-    handler, bus, reader = build(live={})
-    first = await handler.handle(
-        req("delegation_check_responders", "responders", RESPONDERS)
-    )
-    ((_, raw),) = bus.on(first.loaded_topic)
-    record = json.loads(raw)
-    reader._records["delegation_check_responders"] = record
+    handler, _, _ = build(live={})
+    await handler.handle(req("delegation_check_responders", "responders", RESPONDERS))
     second = await handler.handle(
         req("delegation_check_responders", "responders", [{"tier": "claude"}])
     )

@@ -294,3 +294,32 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_tenant_outbox_flush_effect/test_composed_wiring_strict_omn24562.py -q -n 0 --no-cov -p no:randomly
     cwd: .
+- id: dod-omn24562-dupguard-lane-token
+  description: 'AC11: the duplicate guard''s claims read names only lane tokens in its lane-scoped read. A one hour row whose lane cell is wt:<repo>/<worktree> (a hook FRICTION row, 2026-11-26T21:20Z) no longer makes the work-ledger query refuse the request (lanes.N String should match pattern) and every pr-create refuse unchecked; the real lanes are still asked for. The new test fails against the previous handler (named both lanes) and passes after; an unreadable read still refuses unchecked.'
+  source: manual
+  binds_ac:
+  - AC11
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/scm/test_scm_duplicate_guard_reader_timeout.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+
+- id: dod-omn24562-outbox-flush-overlay-and-entry
+  description: 'AC12: the flush node overlay document validates its shipped example and refuses a malformed one, and the node is registered in the onex.nodes entry points; the overlay home now carries the document for the node, which the Overlay Main Load check found missing at the previous head'
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_tenant_outbox_flush_effect/test_overlay_and_entry.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+
+- id: dod-omn24562-flush-schedule-overlay-model
+  description: 'AC12: the schedule overlay document model for the tenant outbox flush scheduled node accepts its job_id, run_interval_seconds and grace_seconds document and refuses a missing key, an extra key and a malformed value; the test file fails at collection with ModuleNotFoundError before the model module exists and passes after.'
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_tenant_outbox_flush_schedule_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

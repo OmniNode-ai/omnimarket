@@ -683,3 +683,61 @@ def test_the_http_client_reports_an_unreachable_gateway_as_no_answer() -> None:
     answered = client.call("GET", "/health", auth="none")
     assert answered.status is None
     assert answered.error
+
+
+@pytest.mark.unit
+def test_a_timeout_on_the_gateway_workflow_submit_reads_gateway_never_lab_model() -> (
+    None
+):
+    """The 15:13Z C28 run: the dev gateway's POST /v1/workflows timed out and the run read cause lab-model."""
+    gateway = FakeGateway()
+    gateway.override = lambda m, p, _a, _b: (
+        ModelGatewayObservation(status=None, error="TimeoutError")
+        if (m, p) == ("POST", "/v1/workflows")
+        else None
+    )
+    reading = _run("C28", gateway)
+    assert reading.verdict() is EnumCheckVerdict.NOT_MEASURED
+    assert reading.not_measured_cause == "gateway"
+
+
+@pytest.mark.unit
+def test_a_responder_timeout_stays_lab_model() -> None:
+    from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe import (
+        ModelDelegationCheckReading,
+    )
+
+    reading = ModelDelegationCheckReading(not_measured="no local responder answered")
+    assert reading.not_measured_cause == "lab-model"
+
+
+@pytest.mark.unit
+def test_the_submit_has_its_own_cap_and_every_other_call_keeps_the_responder_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import urllib.request
+
+    seen: list[tuple[str, float]] = []
+
+    def fake_urlopen(request: urllib.request.Request, timeout: float) -> None:
+        seen.append((request.full_url.rsplit("/", 1)[-1] + request.method, timeout))
+        raise TimeoutError
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    row = ModelDelegationCheckGatewayOverlay.model_construct(
+        schema_version=1,
+        gateway_url="http://gateway.test.example:4100",
+        tenant_slug=TENANT,
+        credential_kind="api_key",
+    )
+    client = HttpGatewayCaller(
+        row,
+        DevTenantCredential(_dev_tenant_source(), _Reader("t")),
+        10.0,
+        submit_timeout_s=42.0,
+    )
+    submit = client.call("POST", "/v1/workflows", auth="tenant", body={})
+    status = client.call("GET", "/v1/workflows/x/status", auth="tenant")
+    assert submit.error == "TimeoutError"
+    assert status.error == "TimeoutError"
+    assert seen == [("workflowsPOST", 42.0), ("statusGET", 10.0)]

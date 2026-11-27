@@ -22,11 +22,12 @@ from omnimarket.models.host_table import (
 )
 from omnimarket.models.host_table_keys import (
     ModelHostTableKeysDocument,
-    ModelHostTableKeysIngestResult,
     ModelHostTableKeysOverlay,
 )
 from omnimarket.models.overlay_keys import ModelLabHostsTable
-from omnimarket.models.overlay_store.model_overlay_store import ModelOverlayStoreRecord
+from omnimarket.models.overlay_store.model_overlay_store_write import (
+    ModelOverlayStoreWrite,
+)
 from omnimarket.nodes.node_host_table_compute.handlers.handler_host_table import (
     HandlerHostTable,
     HostTableRefusedError,
@@ -70,20 +71,17 @@ class HandlerHostTableKeysIngest:
             )
         return self._store, self._overlay
 
-    def handle(
-        self, request: ModelOverlayStoreRecord
-    ) -> ModelHostTableKeysIngestResult:
-        """Write the host table document to the one key and return the outcome.
+    def handle(self, request: ModelOverlayStoreWrite) -> None:
+        """Write the host table document to the one key; return nothing.
 
-        The contract declares the result topic as published, so the runtime wires a result applier for the
-        returned model. A record of another overlay is ignored and writes nothing.
+        The node declares no publish topic and nothing consumes a result, so it returns no model: a returned
+        model would reach the runtime with no applier wired and be dropped as undeliverable output. A record
+        of another overlay is ignored and writes nothing.
         """
         store, overlay = self._resolve()
         key = f"{overlay.key_prefix}:table"
         if request.overlay_id != overlay.overlay_id:
-            return ModelHostTableKeysIngestResult(
-                outcome="ignored", key=key, digest="", hosts=0, admitted=0
-            )
+            return
         try:
             table = ModelLabHostsTable.model_validate(request.document)
             result = HandlerHostTable().handle(ModelHostTableRequest(table=table))
@@ -108,11 +106,4 @@ class HandlerHostTableKeysIngest:
             request.digest,
             len(result.rows),
             len(result.admitted),
-        )
-        return ModelHostTableKeysIngestResult(
-            outcome="written",
-            key=key,
-            digest=request.digest,
-            hosts=len(result.rows),
-            admitted=len(result.admitted),
         )

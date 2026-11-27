@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+schema_version: "1.0.0"
+ticket_id: "OMN-26715"
+title: "A runtime integration branch carries every open launch change, builds one image, and runs on the stability lane for testing"
+summary: >-
+  The omnimarket integration branch takes dev merged in (AC1): the merge conflicts are resolved and the merged tree
+  passes the whole-tree hooks, the runtime image copies config/onex/, and the delegation check probe's ticket writer
+  reads the draft route's answer pair. The image build (AC2) and the stability run (AC3) are not part of this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn26715-integration-dev-merge"
+    statement: "The omnimarket integration branch holds dev and its runtime image copies config/onex/."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: the omnimarket integration branch merges dev, its Dockerfile.runtime copies config/onex/, and the probe's bus ticket writer reads a draft write's answer pair -- falsifier: the two focused tests"
+evidence_requirements:
+  - kind: tests
+    description: The bus ticket writer reads the completion from the draft route's pair and sends a request that carries its own correlation id.
+    command: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_bus_ticket_writer_tuple_answer.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26715-ac1-bus-ticket-writer-pair
+    description: "AC1: the bus ticket writer returns the completion out of the draft route's answer pair, still reads a lone completion, refuses a pair with none, and sends a request that carries its own correlation id (before the change the last one raised a duplicate keyword error)."
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_bus_ticket_writer_tuple_answer.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn26715-ac1-dockerfile-config-onex
+    description: "AC1: Dockerfile.runtime copies config/onex/ ahead of the package install."
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/ci/test_runtime_dockerfile_copies_config_onex_omn26715.py -q --no-cov -n 0 -p no:randomly
+        cwd: .

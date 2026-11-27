@@ -753,7 +753,9 @@ def run_gateway_check(
         clauses = _GRADERS[cast("str", check_id)](session)
     except GatewayUnreachableError as exc:
         return ModelDelegationCheckReading(
-            **head, not_measured=f"the gateway did not answer: {exc}"
+            **head,
+            not_measured=f"the gateway did not answer: {exc}",
+            not_measured_cause="gateway",
         )
     return ModelDelegationCheckReading(
         **head, clauses=clauses, preconditions=tuple(session.preconditions)
