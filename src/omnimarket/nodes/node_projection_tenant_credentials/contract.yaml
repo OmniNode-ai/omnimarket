@@ -166,6 +166,15 @@ db_io:
       migration: "../node_delegation_routing_reducer/migrations/0001_create_delegation_routing_tenant_overlay.sql"
       access: read_write
       role: routing_overlay
+    # OMN-26594: READ ONLY resolution of a registration's tenant slug to the
+    # UUID both tables above are keyed by. node_projection_tenant_registry owns
+    # and writes this relation; same declaration as node_projection_run_trace.
+    - name: tenant_registry_mirror
+      database_ref: application
+      schema: omninode_internal
+      migration: "../node_projection_tenant_registry/migrations/0000_create_tenant_registry_mirror.sql"
+      access: read
+      role: tenant_registry_mirror
 
 event_bus:
   subscribe_topics:
