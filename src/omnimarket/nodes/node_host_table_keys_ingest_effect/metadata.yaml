@@ -21,6 +21,7 @@ capabilities:
 dependencies:
   - "omnibase_core>=0.39.0"
   - "redis>=5.0.0"
+  - "omnibase-spi>=0.20.0"
 authors:
 - OmniNode Platform Team
 license: MIT

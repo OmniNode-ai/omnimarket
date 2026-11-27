@@ -22,7 +22,7 @@ handler:
   class: HandlerHostTableKeysIngest
   input_model: omnimarket.models.overlay_store.model_overlay_store_write.ModelOverlayStoreWrite
 handler_routing:
-  routing_strategy: payload_type_match
+  routing_strategy: topic_match
   handlers:
   - operation: handle
     handler:
@@ -32,6 +32,20 @@ handler_routing:
       name: ModelOverlayStoreWrite
       module: omnimarket.models.overlay_store.model_overlay_store_write
     topic: onex.evt.omnimarket.overlay-store-loaded.v1
+    message_category: event
+  - operation: handle
+    handler:
+      name: HandlerOverlaySnapshotWrite
+      module: omnimarket.nodes.node_host_table_keys_ingest_effect.handlers.handler_overlay_snapshot_write
+    event_model:
+      name: ModelOverlaySettingsRecord
+      module: omnimarket.models.overlay_store.model_overlay_settings_record
+    topic: onex.snapshot.projection.overlay-store.v1
+    message_category: event
+# The compacted snapshot topic is read, not subscribed: its name carries no message category, so a subscribe
+# declaration would resolve to no dispatcher (OMN-18013). Same declaration as node_floor_projection_read_effect.
+snapshot_reads:
+  - onex.snapshot.projection.overlay-store.v1
 event_bus:
   subscribe_topics:
   - onex.evt.omnimarket.overlay-store-loaded.v1
@@ -41,6 +55,8 @@ broker_acl_grants:
     grants:
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-store-loaded.v1, operation: READ}
       - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.overlay-store-loaded.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.overlay-store.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.snapshot.projection.overlay-store.v1, operation: DESCRIBE}
 runtime_dispatch:
   command_topic: onex.evt.omnimarket.overlay-store-loaded.v1
   terminal_events:

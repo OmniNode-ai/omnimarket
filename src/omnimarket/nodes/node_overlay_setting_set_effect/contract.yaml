@@ -69,6 +69,13 @@ settable_settings:
     key: lanes.{lane}.lazy_start
     path: lanes/{lane}/lazy_start
     document_model: "omnimarket.models.overlay_documents.model_contract_hotload_lane_overlay:ModelContractHotloadLaneOverlay"
+  # OMN-26219: what each Claude harness tier runs on (subscription, api_key, or subscription then api_key) and its effort.
+  # No tier has a default: a tier with no row is refused by the harness by the row's name. A row holds no secret.
+  - overlay_id: claude_harness_tiers
+    key: tiers.{backend}
+    path: tiers/{backend}
+    document_model: "omnimarket.models.overlay_documents.model_claude_harness_tiers_overlay:ModelClaudeHarnessTiersOverlay"
+    first_document: {schema_version: 1}
   # OMN-26043: the delegation responder chain every delegation check sends its task through, one list-valued row (local
   # responders, then openrouter, then claude_api). The row holds no secret: a local responder is a private http://<ipv4>:<port> base.
   - overlay_id: delegation_check_responders
