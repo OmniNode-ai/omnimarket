@@ -5,6 +5,13 @@ summary: docs/reference/lane-result-classifier-discovery-read.json lists every b
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn22966-ac2-accepted-20261127t1745z:
+      - label: AC2
+        criterion_hash: 7bf674319b91f2aaa0f55164d49b76e971048b50df78bf8be24e00662ef700f1
+        proposed_by: lane=dod-closeout-bind-2026-11-27T1745Z-c3
+        accepted_by: lane=dod-closeout-accept-2026-11-27T1745Z-c3
 requirements:
 - id: req-omn22966-discovery-read
   statement: Every equivalent in the read carries a wire or build verdict backed by a code path and a run read, and an equivalent with no runtime caller is not reported as working.
@@ -29,7 +36,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/test_classifier_discovery_read.py -q --no-cov -k verdicts_cited
+    check_value: uv run pytest tests/unit/test_classifier_discovery_read.py -q --no-cov -k verdicts_cited
     cwd: .
 - id: dod-omn22966-unwired-not-working
   description: The wiring state is recomputed from pyproject, the node contracts and the callers' files; an entry point or a bus subscription alone leaves a node unwired, and an unwired equivalent reported working is refused.
@@ -38,5 +45,14 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run --frozen pytest tests/unit/test_classifier_discovery_read.py -q --no-cov -k unwired_not_working
+    check_value: uv run pytest tests/unit/test_classifier_discovery_read.py -q --no-cov -k unwired_not_working
+    cwd: .
+- id: dod-omn22966-ac2-accepted-20261127t1745z
+  description: 'AC2: the wiring state of every equivalent in the read is recomputed from pyproject, the node contracts and the callers'' files; an entry point or a bus subscription alone leaves a node unwired, and an unwired equivalent reported working is refused. The selection fails with the read added by omnimarket#5598 reverted.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/test_classifier_discovery_read.py -q --no-cov -k unwired_not_working
     cwd: .
