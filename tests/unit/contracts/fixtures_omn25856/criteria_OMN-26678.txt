@@ -1,0 +1,5 @@
+## Acceptance criteria
+
+- [ ] AC1: the node takes its state root from its injected config or declared overlay -- falsifier: a literal /app path decides where it writes
+- [ ] AC2: with an unwritable root it refuses with a named reason and no crash -- falsifier: a PermissionError traceback in the runtime log
+- [ ] AC3: on a dev build one result row per check is written and read back -- falsifier: no row after a build

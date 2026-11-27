@@ -11,9 +11,7 @@ interfaces_touched: []
 requirements:
   - id: req-omn25912-snapshot-publisher-one-client
     statement: The sync snapshot delta publisher builds and starts one Kafka transport and reuses it for every delta, rebuilding it only after a failed start or send.
-    acceptance:
-      - id: AC6
-        statement: "AC6 (added by this change in omnimarket; the ticket's AC1 to AC5 are bound in omnibase_infra): publishing several deltas, from one thread or from several worker threads, builds and starts the transport once -- falsifier: `uv run --frozen pytest tests/unit/projection/test_snapshot_publisher_one_client_omn25912.py -q --no-cov -n 0` passes at the unfixed base or fails at the fixed head"
+    acceptance: []
 evidence_requirements:
   - kind: tests
     description: Publisher one-client tests and the existing sync snapshot seam tests.
@@ -38,8 +36,22 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: >-
-          onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
+          onex lab-work run --bus-lane dev --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)"
           --lane dod-integration-proof-25912 --kind test --
-          env -u PYTHONPATH uv run --frozen pytest tests/unit/projection/test_snapshot_publisher_one_client_omn25912.py
+          uv run --frozen pytest tests/unit/projection/test_snapshot_publisher_one_client_omn25912.py
           -q -n 0 --no-cov
         cwd: .
+  - id: dod-omn25912-retire-dropped-criterion
+    description: "Retires the binding of AC6, which the ticket's acceptance criteria no longer carry; no criterion text is changed."
+    source: manual
+    checks:
+      - check_type: command
+        check_value: "true"
+        cwd: .
+    supersedes_ac_binding:
+      - item: dod-omn25912-publisher-one-client
+        label: AC6
+        reason_kind: no_longer_applicable
+        reason: "The ticket's acceptance criteria no longer carry AC6; this evidence settles no criterion now."
+        retired_by: q-reaccept-014500
+        retired_at: "2026-11-27T16:00:00Z"
