@@ -1,0 +1,5 @@
+## Acceptance criteria
+
+- [ ] AC1: the cause of the red is named from the probe's newest failure text, with the run id and the failure lines read -- falsifier: the lane report names a cause with no run id or no quoted failure line
+- [ ] AC2: the probe's next run reads green against what exists now, with no retired thing restored and no clause removed unless a ruling retired the fact it graded -- falsifier: the newest chain-canary run reads red, or the clause table in the report lists a removed assertion that no ruling retires
+- [ ] AC3: the lane writes one STATUS row `crit=C15 probe=chain-canary verdict=<green|red> read_at=<UTC>` -- falsifier: a ledger grep for `crit=C15 probe=chain-canary` finds no STATUS row after this ticket's creation

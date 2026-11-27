@@ -221,3 +221,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/delegation/test_verifiable_path_rule_enforcement_omn25856.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn25856-reaccept-criteria-bindings
+  description: The contracts of OMN-26121, OMN-26678 and OMN-25912 read current against their tickets' acceptance criteria under dod_verify's own criteria comparison; the dropped labels are retired by typed supersedes_ac_binding entries and no criterion text changes. The test fails on the contracts before the change (deleted:AC15, AC16, AC17 and deleted:AC6) and passes after.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/contracts/test_omn25856_criteria_bindings_current.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
