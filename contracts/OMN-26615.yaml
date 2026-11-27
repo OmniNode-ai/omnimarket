@@ -43,3 +43,12 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest tests/unit/cli/test_onex_cli_help_table_omn26615.py::test_a_help_table_exists_when_there_are_commands tests/unit/cli/test_onex_cli_help_table_omn26615.py::test_every_help_entry_names_a_command_of_this_package -q -n 0 --no-cov -p no:cacheprovider
         cwd: .
+  - id: dod-omn26615-market-settings-help
+    description: "AC1: the onex settings command now has a declared help line that prints exactly what the command prints, so the help table test passes on dev, where it failed because settings had no entry."
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: "uv run pytest tests/unit/cli/test_onex_cli_help_table_omn26615.py::test_declared_help_prints_exactly_what_the_command_prints[settings] -q -n 0 --no-cov -p no:cacheprovider"
+        cwd: .
