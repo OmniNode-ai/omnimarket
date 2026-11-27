@@ -30,6 +30,11 @@ requirements:
   acceptance:
   - id: AC7
     statement: 'AC7: no file in src, tests or scripts imports a module the newest omnibase-core removed (cli_work_ledger_render), so the latest-core smoke job imports every node module -- falsifier: uv run --frozen pytest tests/ci/test_no_removed_core_ledger_render_import.py -q -n 0 --no-cov -p no:cacheprovider fails when a file imports the removed module'
+- id: req-omn24028-snapshot-writer
+  statement: The host table keys ingest node writes every overlay record of the compacted snapshot topic to the injected settings store, and an older replayed record never moves a value back.
+  acceptance:
+  - id: AC8
+    statement: 'AC8: the host table keys ingest node applies each overlay snapshot record to the injected settings store through its handler, an older replayed record never moves a value back, and a record with no revision is skipped and counted -- falsifier: uv run --frozen pytest tests/settings_store/test_snapshot_writer.py -q -n 0 --no-cov -p no:cacheprovider fails when the handler module is absent or applies an older record over a newer one'
 evidence_requirements:
 - kind: tests
   description: The projection key tests and the overlay store golden and error chain tests pass at the pushed head.
@@ -107,4 +112,13 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/ci/test_no_removed_core_ledger_render_import.py tests/nodes/node_create_ticket/test_core_ticket_guard.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24028-snapshot-writer
+  description: 'Task 20: the host table keys ingest node declares the compacted snapshot topic as a snapshot read (its name carries no message category, so it is never a subscribe) and its writer handler applies every overlay record to the injected settings store through its constructor; an older replayed record never moves a value back and a record with no revision is skipped and counted'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/settings_store/test_snapshot_writer.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
