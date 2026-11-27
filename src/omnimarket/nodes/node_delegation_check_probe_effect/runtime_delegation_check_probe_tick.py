@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any, get_args
 
 import yaml
+from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import BaseModel
 
 from omnimarket.handlers.bus_binding.declared_broker_publisher import (
@@ -252,7 +253,7 @@ def main(
             )
         except NodeOverlayNotFoundError:
             row = None
-    except (NodeOverlayError, ValueError, OSError) as exc:
+    except (NodeOverlayError, ModelOnexError, ValueError, OSError) as exc:
         faulthandler.cancel_dump_traceback_later()
         reading = {
             "node": NODE,
@@ -276,7 +277,7 @@ def main(
             )
         except NodeOverlayNotFoundError:
             gateway = None
-        except (NodeOverlayError, ValueError, OSError) as exc:
+        except (NodeOverlayError, ModelOnexError, ValueError, OSError) as exc:
             faulthandler.cancel_dump_traceback_later()
             reading = {
                 "node": NODE,
