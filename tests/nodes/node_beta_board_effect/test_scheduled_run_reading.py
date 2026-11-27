@@ -15,6 +15,9 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.models.overlay_documents.model_delegation_check_probe_overlay import (
+    CheckId,
+)
 from omnimarket.nodes.node_beta_board_effect.handlers.adapter_beta_board_sources import (
     refresh_probes,
 )
@@ -47,13 +50,13 @@ CLOUD_RED = run_list_answer([("completed", "failure", ago(minutes=5))])
 
 
 def _result(
-    check: str, verdict: EnumCheckVerdict, minutes: int
+    check: CheckId, verdict: EnumCheckVerdict, minutes: int
 ) -> ModelDelegationCheckResult:
     ok = verdict is EnumCheckVerdict.PASS
     at = NOW - timedelta(minutes=minutes)
     return ModelDelegationCheckResult(
         correlation_id="c",
-        check_id=check,  # type: ignore[arg-type]
+        check_id=check,
         run_id=f"run-{check}-{minutes}",
         created_at=at,
         finished_at=at,
@@ -109,13 +112,15 @@ def _board_state(tmp_path: Path, check: str, results: list[ModelDelegationCheckR
 
 
 @pytest.mark.parametrize("check", ["C16", "C30"])
-def test_scheduled_pass_beats_a_stale_cloud_fail(tmp_path: Path, check: str) -> None:
+def test_scheduled_pass_beats_a_stale_cloud_fail(
+    tmp_path: Path, check: CheckId
+) -> None:
     got = _board_state(tmp_path, check, [_result(check, EnumCheckVerdict.PASS, 10)])
     assert got.state == "pass"
 
 
 @pytest.mark.parametrize("check", ["C16", "C30"])
-def test_scheduled_fail_reads_fail(tmp_path: Path, check: str) -> None:
+def test_scheduled_fail_reads_fail(tmp_path: Path, check: CheckId) -> None:
     got = _board_state(tmp_path, check, [_result(check, EnumCheckVerdict.FAIL, 10)])
     assert got.state == "fail"
 
