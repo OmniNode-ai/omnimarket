@@ -1788,6 +1788,7 @@ work-ledger = "Append exact lab-host rows to the ledger host over the declared b
 job-log-fill = "Fill the job-log cache from the merge-relevant runs of open pull requests."
 bus-binding = "The bus binding a command used, and the outbox it holds while degraded."
 secret = "Manage the provider credentials this machine resolves references to."
+settings = "Set, read and list the settings the central store holds."
 models = "Set up the models delegation can use: Google Gemini, OpenRouter, OpenAI, Reflection AI, Anthropic, GLM (z.ai), or a Local Model: any model server you run, by its endpoint URL."
 seed = "Seed labelled fixture delegations through the real projection."
 scm = "GitHub work through the source-control nodes: one verb, one typed answer."
