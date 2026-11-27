@@ -86,3 +86,17 @@ class ModelMcpToolsListResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     tools: tuple[ModelMcpToolListing, ...] = ()
+
+
+class ModelMcpRegistryReadRequest(BaseModel):
+    """Ask the registry reader for every registration row."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+
+class ModelMcpRegistryRows(BaseModel):
+    """Every registration row the registry reader returned."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    rows: tuple[ModelMcpRegistryRow, ...] = ()

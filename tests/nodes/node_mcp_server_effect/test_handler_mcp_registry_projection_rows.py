@@ -20,6 +20,7 @@ from omnimarket.nodes.node_mcp_server_effect.handlers.handler_mcp_tools_list imp
 )
 from omnimarket.nodes.node_mcp_server_effect.models.model_mcp_tools_list import (
     ModelMcpOverlay,
+    ModelMcpRegistryReadRequest,
     ModelMcpToolsListRequest,
     ModelMcpToolsListResult,
 )
@@ -115,3 +116,12 @@ def test_real_infra_projection_lists_or_refuses_by_name() -> None:
         with pytest.raises(McpServerRefusalError) as exc:
             _call([projection])
         assert exc.value.refusal is EnumMcpServerRefusal.INFRA_TOOLS_LIST_ABSENT
+
+
+@pytest.mark.unit
+def test_handle_returns_the_registry_rows_the_reader_reads() -> None:
+    mcp = SimpleNamespace(expose=True, tools=[SimpleNamespace(**TOOL)])
+    reader = HandlerMcpRegistryProjectionRows(lambda: [_fake(mcp)])
+    rows = reader.handle(ModelMcpRegistryReadRequest()).rows
+    assert [r.node_name for r in rows] == [str(ENTITY)]
+    assert [t.tool_name for t in rows[0].tools] == ["alpha"]

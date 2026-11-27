@@ -9,7 +9,9 @@ from typing import Any
 
 from omnimarket.nodes.node_mcp_server_effect.models.model_mcp_tools_list import (
     EnumMcpRegistrationState,
+    ModelMcpRegistryReadRequest,
     ModelMcpRegistryRow,
+    ModelMcpRegistryRows,
     ModelMcpToolEntry,
 )
 from omnimarket.nodes.node_mcp_server_effect.models.refusal import (
@@ -28,6 +30,9 @@ class HandlerMcpRegistryProjectionRows:
 
     def __init__(self, projections: Callable[[], Sequence[Any]]) -> None:
         self._projections = projections
+
+    def handle(self, request: ModelMcpRegistryReadRequest) -> ModelMcpRegistryRows:
+        return ModelMcpRegistryRows(rows=tuple(self.read_registrations()))
 
     def read_registrations(self) -> Sequence[ModelMcpRegistryRow]:
         return tuple(self._row(proj) for proj in self._projections())
