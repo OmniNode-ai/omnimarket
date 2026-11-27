@@ -40,13 +40,17 @@ dod_evidence:
     description: >-
       AC1: the commands the runbook documents (onex cloud login, status, delegate, receipt, logout) exist in the installed
       client; the runbook itself is in a sibling documents repository and each command's lab output is recorded in this
-      pull request's body.
+      pull request's body. The second check runs the smoke check's 503 test, the outcome the runbook's 503 section sends the
+      reader to; it fails at the merge base, where the node does not exist.
     source: "manual"
     binds_ac: ["AC1"]
     checks:
       - check_type: "command"
         check_value: >-
           uv run onex cloud receipt --help
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_cloud_smoke_check_effect/test_cloud_smoke_check.py -q --no-cov -n 0 -p no:randomly -k gateway_503_is_named_unavailable"
         cwd: "."
   - id: "dod-omn26711-ac2-smoke-check"
     description: >-
@@ -66,7 +70,7 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: >-
-          sh -c '! grep -rEn "https?://[A-Za-z0-9]|[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}|onxk_" src/omnimarket/nodes/node_cloud_smoke_check_effect --include=*.py'
+          sh -c 'test -d src/omnimarket/nodes/node_cloud_smoke_check_effect && ! grep -rEn "https?://[A-Za-z0-9]|[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}|onxk_" src/omnimarket/nodes/node_cloud_smoke_check_effect --include=*.py'
         cwd: "."
   - id: "dod-omn26711-ctest-container-path"
     description: >-
@@ -88,7 +92,7 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: >-
-          sh -c '! grep -rEn "https?://[A-Za-z0-9]|[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}|onxk_" src/omnimarket/nodes/node_customer_path_container_test_effect --include=*.py'
+          sh -c 'test -d src/omnimarket/nodes/node_customer_path_container_test_effect && ! grep -rEn "https?://[A-Za-z0-9]|[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}|onxk_" src/omnimarket/nodes/node_customer_path_container_test_effect --include=*.py'
         cwd: "."
   - id: "dod-omn26711-integration-proof"
     description: >-
