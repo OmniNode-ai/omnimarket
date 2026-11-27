@@ -65,6 +65,9 @@ metadata:
 
 runtime_dispatch:
   external_trigger: Direct Python invocation by the lane work orchestrator and a replay driver with one request; nothing on the bus starts it.
+  on_demand:
+    command: uv run onex node node_lane_work_reducer --input <request.json>
+    owner: OmniNode Platform Team
 
 state_machine:
   version: {major: 1, minor: 0, patch: 0}
