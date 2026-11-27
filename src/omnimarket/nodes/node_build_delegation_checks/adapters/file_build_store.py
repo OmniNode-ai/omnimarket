@@ -24,10 +24,20 @@ class FileBuildStore:
         self._keep = keep
 
     def _load(self) -> list[ModelBuildRecord]:
-        if not self._path.exists():
-            return []
-        raw = json.loads(self._path.read_text(encoding="utf-8"))
-        return [ModelBuildRecord.model_validate(item) for item in raw]
+        try:
+            if not self._path.exists():
+                return []
+            raw = json.loads(self._path.read_text(encoding="utf-8"))
+            return [ModelBuildRecord.model_validate(item) for item in raw]
+        except (OSError, ValueError) as exc:
+            # An unreadable or corrupt history is named for the operator like an unwritable one, not left as a bare traceback.
+            cause = (exc.strerror if isinstance(exc, OSError) else None) or type(
+                exc
+            ).__name__
+            raise BuildStoreUnwritableError(
+                f"the build history cannot be read at {self._path}: {cause}; "
+                "the state root comes from ONEX_STATE_DIR (then ONEX_STATE_ROOT) and must name a readable directory"
+            ) from exc
 
     def _save(self, builds: list[ModelBuildRecord]) -> None:
         tmp = self._path.with_suffix(".tmp")

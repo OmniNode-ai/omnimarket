@@ -38,6 +38,16 @@ requirements:
     acceptance:
       - id: AC10
         statement: "AC10: the work ledger query node's unpaged window reads (rows, holds, inbox, open claims, rulings), which rebuilt and re-parsed every row of the window on each query, are held in a bounded cache validated by the store's newest row and projection timestamps, one pull request for that cause, with tests -- falsifier: `uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_unpaged_window_held.py -q --no-cov` passes at the unfixed base or fails at the fixed head"
+  - id: req-omn26152-merge-override-sweep
+    statement: A merge override alarm sweep reads the verdict keys once, so its cost in database reads does not grow with the number of pending rows.
+    acceptance:
+      - id: AC11
+        statement: "AC11: the merge override alarm sweep, 20.5 percent of the active samples in a 30 s py-spy sample of the shared dev runtime (one verdict query and one database connect per pending row, pending rows never deleted), reads the verdict table once per sweep -- falsifier: `uv run pytest tests/unit/nodes/node_merge_override_alarm_effect/test_pending_sweep_reads_verdicts_once_omn26152.py -q -n 0 --no-cov -p no:cacheprovider` passes at the unfixed base or fails at the fixed head"
+  - id: req-omn26152-loop-free-test-deterministic
+    statement: The gpu power caps loop-free test does not depend on elapsed wall time, so a loaded runner cannot fail it while the handler sends off the loop.
+    acceptance:
+      - id: AC12
+        statement: "AC12: the gpu power caps loop-free test passes with the handler's send off the loop thread and fails with the send on the loop thread, whatever the runner load -- falsifier: `uv run pytest tests/unit/runtime_guard/test_lab_receipt_waiters_leave_loop_free.py -q --no-cov` passes with the send on the loop thread or fails with the send off it"
 evidence_requirements:
   - kind: tests
     description: Writer golden chain including the narrow-path regression tests.
@@ -48,11 +58,22 @@ evidence_requirements:
   - kind: tests
     description: Eval-results tick pool-churn regression tests and the node's suite.
     command: uv run pytest tests/nodes/node_projection_eval_results -q --no-cov
+  - kind: tests
+    description: The merge override alarm node's unit tests including the sweep read-count regression test.
+    command: uv run pytest tests/unit/nodes/node_merge_override_alarm_effect -q -n 0 --no-cov -p no:cacheprovider
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: dod-omn26152-ac11
+    description: "The sweep reads the verdict table once for 200 pending rows; the test file is absent at the merge base so the check fails there (must-fail control)."
+    source: manual
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/unit/nodes/node_merge_override_alarm_effect/test_pending_sweep_reads_verdicts_once_omn26152.py -q -n 0 --no-cov -p no:cacheprovider
   - id: dod-omn26152-ac2
     description: "The writer golden chain passes at the fixed head, with the narrow path and the full fold."
     source: manual
@@ -121,3 +142,11 @@ dod_evidence:
           env -u PYTHONPATH uv run --frozen pytest tests/test_projection_goal_trace_real_postgres.py
           -q -n 0 --no-cov -k goal_free_session
         cwd: .
+  - id: dod-omn26152-loop-free-deterministic
+    description: "The loop-free test file passes at the head; its control sends on the loop thread and fails."
+    source: manual
+    binds_ac: [AC12]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/unit/runtime_guard/test_lab_receipt_waiters_leave_loop_free.py -q --no-cov

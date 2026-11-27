@@ -132,7 +132,15 @@ class _BuildChecksRun:
             )
 
         now = self._clock()
-        previous = self._store.previous_build(request.runtime_lane, build_id)
+        try:
+            previous = self._store.previous_build(request.runtime_lane, build_id)
+        except BuildStoreUnwritableError as exc:
+            # The history cannot be read: nothing is claimed and no probe runs, so the build is refused by name.
+            return ModelBuildChecksResult(
+                build_id=build_id,
+                status=EnumBuildChecksStatus.REFUSED,
+                reason=str(exc),
+            )
         previous_id = previous.build_id if previous else ""
         added, unknown = self._between(previous_id, build_id)
         begun = ModelBuildRecord(

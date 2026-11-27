@@ -1,0 +1,71 @@
+schema_version: 1.0.0
+ticket_id: OMN-26726
+title: A delegation check that turns red after green opens one top-priority ticket by itself
+summary: A scheduled delegation check run that reads a check red after it read green opens one top-priority ticket through the declared ticket node naming the check, the run id, the failing step and the last green run; a second red run comments on the open ticket, and a green run after red comments the recovery and closes nothing.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26726-red-ticket
+  statement: A scheduled check run that turns red opens one ticket, comments later red runs on it, and comments the recovery without closing it.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a scheduled check run that reads a check red after its previous run read green opens one top-priority ticket through the declared ticket node naming the check, the run id, the failing step and the last green run -- falsifier: a unit test feeding green then red finds no ticket request, or a ticket request missing one of the four facts'
+  - id: AC2
+    statement: 'AC2: a second red run while that ticket is open opens no new ticket and comments the new run on the open one -- falsifier: a unit test feeding green, red, red finds two ticket requests'
+  - id: AC3
+    statement: 'AC3: a green run after red comments the recovery and closes nothing by itself -- falsifier: a unit test feeding red then green finds a close request'
+evidence_requirements:
+- kind: tests
+  description: The red-ticket handler tests, including the scheduled tick end to end.
+  command: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_regression_ticket.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26726-green-then-red-opens-one
+  description: Green then red sends one create naming the check, the run id, the failing step and the last green run, with a Priority line and the parent.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_regression_ticket.py -q --no-cov -n 0 -p no:randomly -k 'green_then_red_opens_one'
+    cwd: .
+- id: dod-omn26726-red-red-comments
+  description: Green, red, red sends one create and one comment naming the second run; a red after a recovery, a failed create and two checks each keep to one open ticket per check.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_regression_ticket.py -q --no-cov -n 0 -p no:randomly -k 'red_red or after_recovery or failed_create or separate_state or closed'
+    cwd: .
+- id: dod-omn26726-recovery-closes-nothing
+  description: Red then green sends one recovery comment and no transition; a second green comments nothing; unmeasured runs write nothing.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_regression_ticket.py -q --no-cov -n 0 -p no:randomly -k 'recovery_and_closes or unmeasured'
+    cwd: .
+- id: dod-omn26726-tick-wiring
+  description: The scheduled tick files the ticket for a red check from its overlay's regression_ticket settings, and a manual run files none.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_regression_ticket.py -q --no-cov -n 0 -p no:randomly -k scheduled_tick
+    cwd: .
+- id: dod-omn26726-tick-integration-proof
+  description: 'The pushed head ran tests/nodes/node_delegation_check_probe_effect/test_regression_ticket.py on a lab host through the lab work runner and exited 0: the scheduled probe tick, run as the timer unit runs it, files one ticket for a red check and comments the next red run; a manual run files none. The ticket writer is a recording fake, so this proves the tick and handler at the pushed sha and not a Linear write; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26726 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_check_probe_effect/test_regression_ticket.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
