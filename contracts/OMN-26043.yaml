@@ -312,3 +312,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/delegation/test_harness_process_runner_omn26219.py -q --no-cov -n 0 -p no:randomly -k glm_without_declared_route
     cwd: .
+- id: dod-omn26043-named-test-runner-bounded
+  description: A workflow whose named-test runner never returns still reaches its gate intent. The inference-response step bounds the runner at its tests' own timeouts plus a grace, a runner past the bound reads as no run (named tests requested, none ran), and the gate refuses it as INSUFFICIENT so the receipt reads not_run instead of the workflow staying published. The focused test hangs the injected runner and fails on the code before the change, where the step waited forever.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_deployed_named_tests_omn17427.py -q --no-cov -n 0 -p no:randomly -k never_returns
+    cwd: .

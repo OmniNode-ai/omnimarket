@@ -28,12 +28,49 @@ requirements:
       - id: "AC4"
         statement: >-
           AC4: the integration-proof item's command, and the command it sends to the lab after --, each start with a program a lab host runs, so the lab does not refuse it -- falsifier: uv run pytest -q tests/contracts/test_omn26691_lab_item_allowed_program.py fails on omnimarket dev, where the item starts with env
+  - id: "req-omn26691-ac2-tag-check-item"
+    statement: >-
+      The AC2 tag-check item runs only at the local Done gate, checks the signed tag v1.1.16 by default, and starts with an allowed program.
+    acceptance:
+      - id: "AC5"
+        statement: >-
+          AC5: the contract's AC2 tag-check item (dod-omn26691-ac2-tag-check) runs only at the local Done gate, checks the signed tag v1.1.16 by default, and starts with a program our host and a lab host allow -- falsifier: uv run pytest -q tests/contracts/test_omn26691_ac2_tag_check_item.py fails on omnimarket dev, where the item does not exist
 evidence_requirements: []
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: "dod-omn26691-ac2-tag-check"
+    description: >-
+      AC2, the signed tag v1.1.16 verifies; a74c18dc (omnidash#531) and
+      bb23d514 (omnidash#532) are ancestors of it; its commit is an ancestor
+      of origin/main; the v1.1.16 release lists the bundle and its .sha256.
+      TAG defaults to v1.1.16, so TAG=v1.1.15 fails. Needs signer key, omnidash tags, and gh auth; hosted CI lacks them, so only local Done gate runs it; a local_done_gate item may not bind a criterion (OMN-22403), so it carries no binds_ac.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: |-
+          python3 -c '
+          import os, subprocess, sys
+          tag = os.environ.get("TAG", "v1.1.16")
+          def run(*argv):
+              return subprocess.run(argv, capture_output=True, text=True)
+          steps = [("signed tag", ["git", "verify-tag", tag])]
+          steps += [("contains " + c, ["git", "merge-base", "--is-ancestor", c, tag]) for c in ("a74c18dc", "bb23d514")]
+          steps.append(("on origin/main", ["git", "merge-base", "--is-ancestor", tag + "^{commit}", "origin/main"]))
+          for name, argv in steps:
+              if run(*argv).returncode != 0:
+                  sys.exit("FAIL " + name + ": " + " ".join(argv))
+          listed = run("gh", "release", "view", tag, "-R", "OmniNode-ai/omnidash", "--json", "assets", "-q", ".assets[].name")
+          assets = listed.stdout.split()
+          want = ["omnidash-bundle-" + tag + ".tar.gz", "omnidash-bundle-" + tag + ".tar.gz.sha256"]
+          if listed.returncode != 0 or any(w not in assets for w in want):
+              sys.exit("FAIL release assets: " + repr(assets))
+          print("OK " + tag)
+          '
+        cwd: "${OMNI_HOME}/omnidash"
   - id: "dod-omn26691-ac3-bundle-pin-1116"
     description: >-
       AC3: the pin test reads v1.1.16, its sha256 and asset from the pin and verifies the packaged parts;
@@ -43,6 +80,16 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/projection/test_dashboard_bundle_pin_omn23212.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26691-ac5-ac2-tag-check-item"
+    description: >-
+      AC5: the AC2 tag-check item exists once, runs only at the local Done gate, binds no criterion, defaults
+      its tag to v1.1.16 and starts with a program in DEFAULT_ALLOWED_EXECUTABLES.
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest -q tests/contracts/test_omn26691_ac2_tag_check_item.py"
         cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn26691-lab-item-allowed-program"
     description: >-
