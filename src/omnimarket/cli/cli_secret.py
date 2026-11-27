@@ -78,6 +78,11 @@ from omnimarket.handlers.routing.customer_key_revoke import (
 from omnimarket.handlers.routing.customer_key_revoke import (
     revoke_tenant_key as revoke_tenant_key_handler,
 )
+from omnimarket.handlers.routing.gateway_tenant_key_client import (
+    GatewayKeyRegistrationError,
+    load_signed_in_gateway,
+    register_through_gateway,
+)
 from omnimarket.handlers.routing.local_byok_route import house_provider_slug
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
@@ -235,6 +240,16 @@ def _central_secret_handler() -> HandlerSecretStore:
     return HandlerSecretStore()
 
 
+def _signed_in_gateway() -> tuple[str, SecretStr, Any] | None:
+    """The gateway this CLI is signed in to (origin, key, transport), else ``None``.
+
+    The transport is ``None`` in production (the client opens its own); tests
+    inject one so a fake gateway and the dev gateway run the same command.
+    """
+    signed = load_signed_in_gateway()
+    return None if signed is None else (signed[0], signed[1], None)
+
+
 def _tenant_key_event_bus() -> ProtocolCredentialEventBus | None:
     """Let the publisher construct and own this runtime's Settings-backed bus.
 
@@ -380,7 +395,15 @@ def _resolve_bound_host(declared: str | None) -> str | None:
 
 @secret_group.command("register-tenant-key")
 @click.argument("provider")
-@click.option("--tenant", required=True, help="Tenant that owns this provider key.")
+@click.option(
+    "--tenant",
+    default=None,
+    help=(
+        "Tenant that owns this provider key. Signed in to a gateway the key is "
+        "always the signed-in tenant's; naming another tenant is refused. "
+        "Required for operator registration on the bus."
+    ),
+)
 @click.option("--name", default=None, help="Credential label; defaults to PROVIDER.")
 @click.option("--plan", default=None, help="Provider product; omit to detect the plan.")
 @click.option(
@@ -444,7 +467,7 @@ def _resolve_bound_host(declared: str | None) -> str | None:
 )
 def register_tenant_key(
     provider: str,
-    tenant: str,
+    tenant: str | None,
     name: str | None,
     plan: str | None,
     model_option: tuple[str, ...],
@@ -456,15 +479,55 @@ def register_tenant_key(
     base_url: str | None,
     connection_id: str | None,
 ) -> None:
-    """Register a tenant's provider key from stdin and publish its reference."""
-    if not tenant.strip():
+    """Register a provider key from stdin: through the gateway when signed in.
+
+    Signed in (``onex cloud login``) the key and chosen models go to the gateway
+    over HTTPS and no message service settings are needed. ``--host`` and
+    ``--store central`` are operator tooling on lab hosts and keep the bus path.
+    """
+    if tenant is not None and not tenant.strip():
         raise click.ClickException("--tenant must not be empty; nothing was stored.")
     expires_at = _parse_expires(expires)
+    signed_in = (
+        _signed_in_gateway() if host is None and store_choice == "local" else None
+    )
+    if signed_in is None and tenant is None:
+        raise click.ClickException(
+            "--tenant is required unless this machine is signed in to a gateway "
+            "(run 'onex cloud login'); nothing was stored."
+        )
     bound_host = _resolve_bound_host(host)
     central = store_choice == "central"
     value = _read_value(f"llm.{provider}.api_key")
     if not value:
         raise click.ClickException("no value was read from stdin; nothing was stored.")
+    if signed_in is not None:
+        try:
+            click.echo(
+                json.dumps(
+                    register_through_gateway(
+                        base_url=signed_in[0],
+                        api_key=signed_in[1],
+                        http_client=signed_in[2],
+                        value=value,
+                        provider=provider,
+                        name=name if name is not None else provider,
+                        models=list(model_option) if model_option else None,
+                        tenant=tenant,
+                        plan=plan,
+                        expected_version=expected_version,
+                        expires_at=expires_at,
+                        workspace_id=workspace_id,
+                        base_url_override=base_url,
+                        connection_id=connection_id,
+                    )
+                )
+            )
+        except GatewayKeyRegistrationError as exc:
+            raise click.ClickException(str(exc)) from exc
+        return
+    if tenant is None:  # unreachable: refused above when not signed in
+        raise click.ClickException("--tenant is required; nothing was stored.")
     try:
         request = ModelInferenceCredentialCreateRequest(
             name=name if name is not None else provider,
