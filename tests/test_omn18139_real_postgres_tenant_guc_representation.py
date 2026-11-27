@@ -482,14 +482,15 @@ class TestTheFixtureIsFaithful:
 
 
 async def _seed_terminal_row(admin: asyncpg.Connection, correlation_id: str) -> None:
-    """OMN-19448 rule 1: a verdict only fills a row its terminal wrote."""
+    """OMN-19448 rule 1: a verdict only fills a row its terminal wrote. The row carries one first-rung attempt, as a terminal row does, so the weekly view has a row to count."""
     await admin.execute(
         "INSERT INTO delegation_events "
-        "(correlation_id, timestamp, task_type, delegated_to, tenant_id) "
-        "VALUES ($1, $2, 'code-review', 'glm-5.2', $3::uuid)",
+        "(correlation_id, timestamp, task_type, delegated_to, tenant_id, attempt_history) "
+        "VALUES ($1, $2, 'code-review', 'glm-5.2', $3::uuid, $4::jsonb)",
         correlation_id,
         datetime(2026, 9, 9, tzinfo=UTC),
         _TENANT_UUID,
+        '[{"attempt_kind": "first_try", "model_id": "glm-5.2", "quality_gate_passed": true, "failure_class": null}]',
     )
 
 

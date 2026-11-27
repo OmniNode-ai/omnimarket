@@ -1158,14 +1158,15 @@ class TestOmn17773AggregateSnapshotRepublish:
             await admin_conn.execute(
                 "INSERT INTO delegation_events "
                 "(correlation_id, tenant_id, task_type, delegated_to, "
-                " model_name, quality_gate_passed, timestamp, created_at) "
-                "VALUES ($1, $2, $3, $4, $5, $6, now(), now())",
+                " model_name, quality_gate_passed, timestamp, created_at, attempt_history) "
+                "VALUES ($1, $2, $3, $4, $5, $6, now(), now(), $7::jsonb)",
                 f"omn18159-{uuid4().hex[:12]}",
                 "11111111-1111-4111-8111-111111111111",
                 "code_review",
                 "local",
                 "qwen",
                 True,
+                '[{"attempt_kind": "first_try", "model_id": "qwen", "quality_gate_passed": true, "failure_class": null}]',
             )
             assert runner._aggregate_exposures, (
                 "the contract must declare at least one singleton aggregate"
