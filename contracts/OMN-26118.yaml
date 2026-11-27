@@ -56,3 +56,29 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/unit/contracts/test_c12_readback_omn26118.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26118-c12-readback-run1343
+  description: >-
+    The committed readback of the newer reading is the file whose hash is pinned here, and the test over it passes: the
+    newest run 45905096364 (run 1343) and runs 1339 to 1343 read success, the clause table lists no removed assertion, the
+    STATUS row is the green C12 row written at 2026-11-26T22:51:06Z, and the test refuses a record with a failing run, a
+    removed assertion, a red verdict or no failure text. The record is read from the work ledger row, not from a fresh job
+    log, because the lane's host has no GitHub read path.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  checks:
+  - check_type: command
+    check_value: |-
+      env PYTHONDONTWRITEBYTECODE=1 uv run --frozen python - <<'READBACK'
+      import hashlib
+      from pathlib import Path
+
+      raw = Path('contracts/evidence/OMN-26118/c12-readback-run1343.json').read_bytes()
+      assert hashlib.sha256(raw).hexdigest() == 'c6af941b3573c73d7b3086e4612d09eef2622341ccc32695518a34780aa11be4'
+      READBACK
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/contracts/test_c12_readback_run1343_omn26118.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
