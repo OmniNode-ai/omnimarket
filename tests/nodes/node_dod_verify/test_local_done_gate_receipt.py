@@ -148,7 +148,7 @@ def test_handler_stores_a_receipt_carried_on_the_verdict(tmp_path: Path) -> None
     bare = ModelDodVerifyState(
         correlation_id=uuid4(), ticket_id=TICKET, started_at=_NOW, completed_at=_NOW
     )
-    assert handler.handle(bare) is False
+    assert handler.handle(bare).stored is False
     carrying = ModelDodVerifyState(
         correlation_id=uuid4(),
         ticket_id=TICKET,
@@ -156,7 +156,7 @@ def test_handler_stores_a_receipt_carried_on_the_verdict(tmp_path: Path) -> None
         completed_at=_NOW,
         local_done_gate_receipt=_receipt(),
     )
-    assert handler.handle(carrying) is True
+    assert handler.handle(carrying).stored is True
     assert store.receipts_for(TICKET) == [_receipt()]
 
 
