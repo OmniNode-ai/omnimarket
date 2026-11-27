@@ -556,12 +556,42 @@ quality_rules:
     rationale: A declared coverage floor for the classes that require it.
   follows_codebase_conventions:
     enforcement: blocking
+    # OMN-25856: the rule looks for pytest/ruff/typing/typed/contract in the answer.
+    # Clean code that does what a plain prompt asked contains none of them, so a
+    # correct short answer was refused TASK_MISMATCH. As with covers_edge_cases
+    # (OMN-19401) the rule judges what the PROMPT asked for: a prompt that names
+    # none of these is waived, and a prompt that asks for tests, types, lint or
+    # the repo's conventions keeps the rule. The real checks (named tests run
+    # against the answer, compiles, final artifact only) are not waived.
+    waived_unless_prompt_matches:
+      - '\bpytest\b'
+      - '\bruff\b'
+      - '\btyp(?:ed|ing|e[- ]hints?|e[- ]annotations?)\b'
+      - '\bannotat(?:e|ed|ions?)\b'
+      - '\bmypy\b'
+      - '\bconventions?\b'
+      - '\bcontracts?\b'
+      - '\blint(?:ed|ing|er)?\b'
     rationale: A declared marker floor; reject-only, never promoting (OMN-13370).
   follows_google_style:
     enforcement: blocking
     rationale: A declared marker floor; reject-only, never promoting (OMN-13370).
   no_obvious_regressions:
     enforcement: blocking
+    # OMN-25856: as follows_codebase_conventions. The rule looks for regression,
+    # backward, compatib, existing tests or no break in the answer, which clean
+    # code does not contain. It applies when the prompt asks for compatibility or
+    # no regression; an answer that breaks a named interface or deletes tests is
+    # refused by passes_existing_tests whatever the prompt says.
+    waived_unless_prompt_matches:
+      - '\bregress(?:ion|ions|ed|es)?\b'
+      - '\bbackwards?\b'
+      - '\bcompatib(?:le|ility)\b'
+      - '\bexisting (?:tests?|behaviou?r|api|interfaces?)\b'
+      - '\bno[- ]?break\b'
+      - '\b(?:do not|don.t|never) break\b'
+      - '\bnot break\b'
+      - '\bunchanged\b'
     rationale: A declared marker floor; reject-only, never promoting (OMN-13370).
   # OMN-19400: the directive was missing, and complex_reasoning had never
   # completed. Dev-lane run d2893ea5 (2026-09-24): three local answers
