@@ -19,6 +19,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from string import Template
 
+from omnimarket.handlers.adapter_work_ledger_rows_reader import (
+    SubprocessLedgerRowsReader,
+)
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.rules_wip_admission import (
     build_wip_read,
@@ -37,8 +40,13 @@ from omnimarket.models.wip_admission import (
     ModelWipFix,
     ModelWipRead,
 )
+from omnimarket.protocols.protocol_ledger_rows_reader import (
+    LedgerReadError,
+    ProtocolLedgerRowsReader,
+)
 
-LEDGER_ENV = "ONEX_LEDGER_PATH"
+# The name the operator lists in the deployed reader overlay's moved_readers.
+CLAIMS_READER = "wip-admission-claims"
 _PR_REF = re.compile(r"(?:[\w.-]+/)?(?P<repo>[\w.-]+)#(?P<n>\d+)$")
 
 
@@ -55,8 +63,13 @@ def dispatch_wip_refusal(
     prs: Sequence[str],
     environ: Mapping[str, str],
     now: datetime | None = None,
+    ledger_reader: ProtocolLedgerRowsReader | None = None,
 ) -> str | None:
-    """Why this dispatch must not start now, or ``None`` to go on. ``now`` is the caller's clock read."""
+    """Why this dispatch must not start now, or ``None`` to go on. ``now`` is the caller's clock read.
+
+    The live CLAIMs come from the bus-fed ledger rows reader (``ledger_reader``, else the
+    subprocess adapter built from ``environ``); no ledger file is opened.
+    """
     try:
         policy = load_wip_admission_policy(environ)
     except NodeOverlayError:
@@ -75,10 +88,11 @@ def dispatch_wip_refusal(
         problems.append(f"watcher state unread: {type(exc).__name__}")
     claims = []
     try:
-        claims = claims_from_ledger(
-            Path(environ.get(LEDGER_ENV, "")).read_text(encoding="utf-8"), stamp, config
+        rows = (ledger_reader or SubprocessLedgerRowsReader(environ)).rows(
+            reader=CLAIMS_READER, window_hours=config.claim_window_hours
         )
-    except OSError as exc:
+        claims = claims_from_ledger("\n".join(rows), stamp, config)
+    except LedgerReadError as exc:
         problems.append(f"ledger unread: {type(exc).__name__}")
     read = (
         ModelWipRead(readable=False, unreadable_reason="; ".join(problems))

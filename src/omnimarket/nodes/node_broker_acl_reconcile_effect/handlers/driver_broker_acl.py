@@ -162,6 +162,47 @@ def _remote_path(path: object) -> str:
     return shlex.quote(path)
 
 
+@dataclass(frozen=True)
+class RemovalScope:
+    """The resource types and name prefixes inside which a reconcile may remove a row."""
+
+    resource_types: frozenset[str]
+    name_prefixes: tuple[str, ...]
+
+    @classmethod
+    def from_mapping(cls, raw: object) -> RemovalScope:
+        """Read the contract's removal scope, refusing one that cannot gate a removal."""
+        if not isinstance(raw, Mapping):
+            raise DeclarationError("reconcile_scope must be a mapping")
+        resource_types = raw.get("resource_types")
+        name_prefixes = raw.get("name_prefixes")
+        if not isinstance(resource_types, list) or not resource_types:
+            raise DeclarationError(
+                "reconcile_scope resource_types must be a non-empty list"
+            )
+        if not isinstance(name_prefixes, list) or not name_prefixes:
+            raise DeclarationError(
+                "reconcile_scope name_prefixes must be a non-empty list"
+            )
+        for resource_type in resource_types:
+            if (
+                not isinstance(resource_type, str)
+                or resource_type not in RESOURCE_TYPES
+            ):
+                raise DeclarationError(f"invalid resource_type: {resource_type!r}")
+        for prefix in name_prefixes:
+            if not isinstance(prefix, str) or not prefix:
+                raise DeclarationError(
+                    "reconcile_scope name_prefixes entries must be non-empty strings"
+                )
+        return cls(frozenset(resource_types), tuple(name_prefixes))
+
+    def covers(self, grant: AclGrant) -> bool:
+        return grant.resource_type in self.resource_types and any(
+            grant.name.startswith(prefix) for prefix in self.name_prefixes
+        )
+
+
 def _required_string(mapping: Mapping[str, Any], key: str) -> str:
     value = mapping.get(key)
     if not isinstance(value, str) or not value:
@@ -260,6 +301,31 @@ def diff(
     return missing, undeclared
 
 
+def split_undeclared(
+    undeclared: Iterable[AclGrant],
+    scope: RemovalScope,
+    managed_principals: frozenset[str],
+    only_names: frozenset[str] = frozenset(),
+) -> tuple[tuple[AclGrant, ...], tuple[AclGrant, ...], tuple[AclGrant, ...]]:
+    """Split undeclared rows into removable, out-of-scope, and held (a name kept by request).
+
+    A row of a login outside managed_principals is out of scope like a row outside the scope's
+    resource types and name prefixes: reported, never removed. With no managed logins at all
+    nothing is removable.
+    """
+    removable: list[AclGrant] = []
+    out_of_scope: list[AclGrant] = []
+    held: list[AclGrant] = []
+    for grant in sorted(undeclared):
+        if grant.principal not in managed_principals or not scope.covers(grant):
+            out_of_scope.append(grant)
+        elif only_names and grant.name not in only_names:
+            held.append(grant)
+        else:
+            removable.append(grant)
+    return tuple(removable), tuple(out_of_scope), tuple(held)
+
+
 def rpk_create_args(grant: AclGrant) -> list[str]:
     """Build rpk ACL-create arguments after the ``rpk`` executable."""
     grant.__post_init__()
@@ -277,6 +343,29 @@ def rpk_create_args(grant: AclGrant) -> list[str]:
         *resource,
         "--resource-pattern-type",
         grant.pattern.lower(),
+    ]
+
+
+def rpk_delete_args(grant: AclGrant) -> list[str]:
+    """Build rpk ACL-delete arguments naming every field, so exactly one row is removed."""
+    grant.__post_init__()
+    resource = [RESOURCE_FLAGS[grant.resource_type]]
+    if grant.resource_type != "CLUSTER":
+        resource.append(grant.name)
+    return [
+        "security",
+        "acl",
+        "delete",
+        "--allow-principal",
+        grant.principal,
+        "--allow-host",
+        "*",
+        "--operation",
+        grant.operation.lower(),
+        *resource,
+        "--resource-pattern-type",
+        grant.pattern.lower(),
+        "--no-confirm",
     ]
 
 
@@ -465,4 +554,86 @@ def apply(
             ),
         )
         read()
+    return "\n".join(reports) + "\n"
+
+
+def reconcile(
+    grants: Iterable[AclGrant],
+    connection: AclConnection,
+    mode: Literal["dry_run", "reconcile"],
+    runner: RemoteRunner = run_remote,
+    scope: RemovalScope | None = None,
+    only_names: frozenset[str] = frozenset(),
+    expected_removals: int | None = None,
+    known: frozenset[AclGrant] = frozenset(),
+    managed_principals: frozenset[str] = frozenset(),
+) -> str:
+    """Report the diff and every planned removal; reconcile mode adds the missing rows, removes
+    the removable ones after matching the expected count, and reports the broker readback.
+    A row a scoped overlay holds (known) is never created, never counted as declared, never
+    removed; the listing covers its logins too. Only a managed login's row is removable, and
+    without a scope no row is: every undeclared row is reported out of scope."""
+    if mode not in {"dry_run", "reconcile"}:
+        raise DeclarationError(f"invalid mode: {mode!r}")
+    declared = frozenset(grants)
+    for grant in declared | known:
+        grant.__post_init__()
+    principals = (
+        frozenset(grant.principal for grant in declared | known) | managed_principals
+    )
+    listing = [
+        ["security", "acl", "list", "--allow-principal", principal]
+        for principal in sorted(principals)
+    ]
+    removals = scope if scope is not None else RemovalScope(frozenset(), ())
+    reports: list[str] = []
+
+    def read() -> tuple[
+        frozenset[AclGrant], tuple[AclGrant, ...], tuple[AclGrant, ...]
+    ]:
+        live = parse_rpk_acl_list(
+            runner(connection.ssh_target, build_remote_script(connection, listing))
+        )
+        missing, undeclared = diff(declared, live, principals)
+        # A row a scoped overlay holds is never undeclared: never created, never removed.
+        undeclared = tuple(grant for grant in undeclared if grant not in known)
+        reports.append(
+            f"lane={connection.lane} declared={len(declared)} live={len(live)} missing={len(missing)} undeclared={len(undeclared)} known={len(known)}"
+        )
+        reports.extend(_grant_line("MISSING", grant) for grant in missing)
+        reports.extend(_grant_line("UNDECLARED", grant) for grant in undeclared)
+        return live, missing, undeclared
+
+    _, missing, undeclared = read()
+    removable, out_of_scope, held = split_undeclared(
+        undeclared, removals, managed_principals, only_names
+    )
+    reports.extend(_grant_line("REMOVE", grant) for grant in removable)
+    reports.extend(_grant_line("OUT_OF_SCOPE", grant) for grant in out_of_scope)
+    reports.extend(_grant_line("HELD", grant) for grant in held)
+    if mode == "dry_run":
+        reports.extend(_grant_line("CREATE", grant) for grant in missing)
+        return "\n".join(reports) + "\n"
+    if expected_removals != len(removable):
+        raise DeclarationError(
+            f"expected {expected_removals} removals, found {len(removable)}; nothing changed"
+        )
+    if missing:
+        runner(
+            connection.ssh_target,
+            build_remote_script(
+                connection, [rpk_create_args(grant) for grant in missing]
+            ),
+        )
+    if removable:
+        runner(
+            connection.ssh_target,
+            build_remote_script(
+                connection, [rpk_delete_args(grant) for grant in removable]
+            ),
+        )
+    live, _, _ = read()
+    reports.extend(
+        _grant_line("REMOVED", grant) for grant in removable if grant not in live
+    )
     return "\n".join(reports) + "\n"

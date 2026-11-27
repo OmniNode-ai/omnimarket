@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: node_pr_create_refusal_alert_compute
+version: 1.0.0
+description: Names the pr-create refusals in the lane rows of one window by stated cause and raises one alert for each new cause.
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+pack: core
+node_role: compute
+display_name: PR Create Refusal Alert Compute
+entry_points:
+  onex.nodes:
+    node_pr_create_refusal_alert_compute: omnimarket.nodes.node_pr_create_refusal_alert_compute
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: pure
+dependencies:
+- omnibase_core>=0.39.0
+license: MIT
+tags:
+- compute
+- pr-create
+- refusal
+- alert

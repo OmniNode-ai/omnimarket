@@ -6,8 +6,10 @@
 holding an executable reader or writer of the ledger file's name or its path variable, and compares
 each count with the shrink-only ratchet. A count above its ratchet row is red (``ratchet-grew``); a
 count below it passes and is returned lowered in ``lowered_ratchet`` for the caller to write. An
-absent repository, an unreadable one, a repository with no ratchet row and an unreadable ratchet
-file are typed failures, never a pass. Each run is one chain under the emission contract.
+unreadable repository, a repository with no ratchet row and an unreadable ratchet file are typed failures, never a
+pass. A registered repository with no clone is not a failure of the run (operator ruling 2026-11-24T16:19:26Z): the run
+counts every present repository, passes or fails on those rows, and names each absent repository in
+``absent_repositories``; only a run in which no repository is present fails (``repo-absent``). Each run is one chain under the emission contract.
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ from datetime import UTC, datetime
 from omnimarket.handlers.emission_sink import ChainEmitter, ProtocolEmissionSink
 from omnimarket.nodes.node_work_ledger_file_census_effect.handlers.classify import (
     executable_hits,
+    is_runtime,
 )
 from omnimarket.nodes.node_work_ledger_file_census_effect.models.model_file_census import (
     EnumCensusKind,
@@ -28,6 +31,7 @@ from omnimarket.nodes.node_work_ledger_file_census_effect.models.model_file_cens
     ModelRepositoryCount,
 )
 from omnimarket.nodes.node_work_ledger_file_census_effect.protocols import (
+    ProtocolFileBaselineStore,
     ProtocolRatchetStore,
     ProtocolRepositorySource,
 )
@@ -39,7 +43,9 @@ _ORDER = (
     "repo-absent",
     "repo-unreadable",
     "ratchet-missing-row",
+    "baseline-missing-row",
     "ratchet-grew",
+    "new-file-reader",
 )
 
 
@@ -52,6 +58,7 @@ class HandlerFileCensus:
         sink: ProtocolEmissionSink,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         backend: str = "real",
+        baseline: ProtocolFileBaselineStore | None = None,
     ) -> None:
         self._overlay = overlay
         self._source = source
@@ -59,6 +66,7 @@ class HandlerFileCensus:
         self._sink = sink
         self._clock = clock
         self._backend = backend
+        self._baseline = baseline
 
     def handle(self, request: ModelCensusRequest) -> ModelCensusResult:
         chain = ChainEmitter(
@@ -84,40 +92,87 @@ class HandlerFileCensus:
             return self._fail(
                 chain, request, (), "ratchet-unreadable", type(exc).__name__
             )
+        files_allowed: dict[str, dict[str, int]] | None = None
+        if self._baseline is not None:
+            try:
+                files_allowed = self._baseline.read()
+            except (OSError, ValueError) as exc:
+                return self._fail(
+                    chain, request, (), "baseline-unreadable", type(exc).__name__
+                )
         counts = tuple(
-            self._count(registered[name].name, registered[name].own_line, ratchet)
+            self._count(
+                registered[name].name,
+                registered[name].own_line,
+                ratchet,
+                files_allowed,
+            )
             for name in wanted
         )
         total = sum(c.files for c in counts if not c.own_line)
+        runtime_total = sum(c.runtime_files for c in counts if not c.own_line)
         lowered = dict(ratchet)
         for count in counts:
             if count.state == "lowerable":
                 lowered[count.repository] = count.files
+        lowered_baseline: dict[str, dict[str, int]] = {}
+        if files_allowed is not None:
+            for count in counts:
+                if (
+                    count.state in ("ok", "lowerable")
+                    and count.repository in files_allowed
+                ):
+                    held: dict[str, int] = {}
+                    for hit in count.hits:
+                        held[hit.path] = held.get(hit.path, 0) + 1
+                    lowered_baseline[count.repository] = held
+        absent = tuple(c.repository for c in counts if c.state == "absent")
         codes = {
-            "absent": "repo-absent",
             "unreadable": "repo-unreadable",
             "unratcheted": "ratchet-missing-row",
+            "unbaselined": "baseline-missing-row",
             "grew": "ratchet-grew",
+            "new-reader": "new-file-reader",
         }
         failing = [c for c in counts if c.state in codes]
+        if len(absent) == len(counts):
+            # nothing was counted, so there is no count to pass: the run fails and still names every absent repository
+            return self._fail(
+                chain,
+                request,
+                counts,
+                "repo-absent",
+                ",".join(absent),
+                total,
+                lowered,
+                runtime_total,
+                absent,
+            )
         if not failing:
-            chain.success({"files": total, "repositories": len(counts)})
+            chain.success({"files": total, "repositories": len(counts) - len(absent)})
             return ModelCensusResult(
                 correlation_id=request.correlation_id,
                 passed=True,
                 total_files=total,
+                runtime_files=runtime_total,
                 counts=counts,
+                absent_repositories=absent,
                 lowered_ratchet=lowered,
+                lowered_baseline=lowered_baseline,
             )
         code = min((codes[c.state] for c in failing), key=_ORDER.index)
         detail = ",".join(
             f"{c.repository}={c.files}>{c.ratchet}"
             if c.state == "grew"
+            else f"{c.repository}:{';'.join(c.new_readers)}"
+            if c.state == "new-reader"
             else c.repository
             for c in failing
             if codes[c.state] == code
         )
-        return self._fail(chain, request, counts, code, detail, total, lowered)
+        return self._fail(
+            chain, request, counts, code, detail, total, lowered, runtime_total, absent
+        )
 
     def _fail(
         self,
@@ -128,23 +183,33 @@ class HandlerFileCensus:
         detail: str,
         total: int = 0,
         lowered: dict[str, int] | None = None,
+        runtime_total: int = 0,
+        absent: tuple[str, ...] = (),
     ) -> ModelCensusResult:
         chain.failure(code, detail)
         return ModelCensusResult(
             correlation_id=request.correlation_id,
             passed=False,
             total_files=total,
+            runtime_files=runtime_total,
             counts=counts,
+            absent_repositories=absent,
             failure_code=code,
             failure_detail=detail[:300],
             lowered_ratchet=lowered or {},
         )
 
     def _count(
-        self, name: str, own_line: bool, ratchet: dict[str, int]
+        self,
+        name: str,
+        own_line: bool,
+        ratchet: dict[str, int],
+        files_allowed: dict[str, dict[str, int]] | None = None,
     ) -> ModelRepositoryCount:
         def result(
-            state: str, hits: tuple[ModelCensusHit, ...] = ()
+            state: str,
+            hits: tuple[ModelCensusHit, ...] = (),
+            new_readers: tuple[str, ...] = (),
         ) -> ModelRepositoryCount:
             files = len({h.path for h in hits})
             return ModelRepositoryCount(
@@ -152,11 +217,15 @@ class HandlerFileCensus:
                 own_line=own_line,
                 present=state != "absent",
                 files=files,
+                runtime_files=len(
+                    {h.path for h in hits if is_runtime(h.path, self._overlay)}
+                ),
                 readers=sum(h.kind is EnumCensusKind.READER for h in hits),
                 writers=sum(h.kind is EnumCensusKind.WRITER for h in hits),
                 hits=hits,
                 ratchet=ratchet.get(name),
                 state=state,
+                new_readers=new_readers,
             )
 
         try:
@@ -175,6 +244,20 @@ class HandlerFileCensus:
         bound = ratchet.get(name)
         if bound is None:
             return result("unratcheted", found)
+        if files_allowed is not None:
+            allowed = files_allowed.get(name)
+            if allowed is None:
+                return result("unbaselined", found)
+            held: dict[str, int] = {}
+            for hit in found:
+                held[hit.path] = held.get(hit.path, 0) + 1
+            new = tuple(
+                f"{path} ({n}>{allowed.get(path, 0)})"
+                for path, n in sorted(held.items())
+                if n > allowed.get(path, 0)
+            )
+            if new:
+                return result("new-reader", found, new)
         if files > bound:
             return result("grew", found)
         return result("lowerable" if files < bound else "ok", found)

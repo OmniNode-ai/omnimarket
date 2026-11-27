@@ -12,8 +12,9 @@
 ``broker-listener``        dial the dev broker's external listener and deliver an alarm when every address refuses.
 ``broker-listener-probe``  the same dial, delivering nothing.
 
-``dev-tag-heartbeat``        read the deploy agent's heartbeat; a repository alarms once its streak of breaching
-                            runs reaches the persistence bound, and the alarms are delivered.
+``dev-tag-heartbeat``        read the deploy agent's heartbeat, and its systemd USER unit first when the overlay declares
+                            it; a breach alarms once its streak of breaching runs reaches the persistence bound,
+                            and the alarms are delivered.
 ``dev-tag-heartbeat-probe``  the same read, keeping no streak and delivering nothing.
 
 ``delegation-chain-canary``        read the canary workflow's newest completed run; a breach alarms once its streak of
@@ -74,6 +75,7 @@ from omnimarket.nodes.node_lab_alarm.adapters.inmemory_adapters import (
     InMemoryProjectionNewest,
     InMemoryRunRecords,
     InMemorySamples,
+    InMemoryUnitStateSource,
 )
 from omnimarket.nodes.node_lab_alarm.adapters.routed_delivery_adapters import (
     build_routed_delivery,
@@ -91,6 +93,7 @@ from omnimarket.nodes.node_lab_alarm.adapters.runtime_adapters import (
     HttpManifest,
     KafkaEffectsGroups,
     KafkaLag,
+    SshUserUnitStateSource,
     TcpApiVersionsProbe,
 )
 from omnimarket.nodes.node_lab_alarm.handlers.alarm_route import (
@@ -570,6 +573,11 @@ def _inmemory_dev_tag_heartbeat_handler(
         streaks=InMemoryGrowthStreaks(),
         delivery=_delivery_for(overlay),
         clock=clock,
+        unit_source=(
+            InMemoryUnitStateSource(load_state="loaded", active_state="active")
+            if settings.unit is not None
+            else None
+        ),
     )
 
 
@@ -587,6 +595,15 @@ def _runtime_dev_tag_heartbeat_handler(
         streaks=FileGrowthStreaks(Path(settings.persistence.streak_path)),
         delivery=_delivery_for(overlay),
         clock=clock,
+        unit_source=(
+            SshUserUnitStateSource(
+                settings.unit.host_command,
+                settings.unit.name,
+                settings.unit.timeout_seconds,
+            )
+            if settings.unit is not None
+            else None
+        ),
     )
 
 

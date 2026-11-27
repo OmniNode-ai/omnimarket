@@ -1,0 +1,100 @@
+schema_version: 1.0.0
+ticket_id: OMN-26618
+title: A model host or routing setting change and a delegation-path pull request each run the affected delegation checks, and any that turn red alarm within 15 minutes
+summary: A new effect node, node_delegation_check_regression_effect, selects the delegation checks that read what a settings-store version, a host model-serving change or a release changed, runs them after the change applied, compares each reading with the check's previous reading and raises one lab alarm, to a named owner, for each check that turned red, through the lab alarm delivery. Selection rules, owners, thresholds and the alarm deadline are settings with tested defaults; a prod target is refused in the handler. The pull-request mechanism (selection from changed files) is not part of this change.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26618-change-runs-checks-and-alarms
+  statement: A change to a model host or routing key selects the delegation checks that read it, runs them after the change applied and alarms once, to a named owner, for each that turned red; a green check raises none and a prod target is refused.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a settings-store change to a model host or model routing key selects the delegation checks that read that key and runs them after the change applies -- falsifier: pytest of the selection node with the recorded 2026-11-23 Qwen removal change, failing when C14 and C29 are not selected'
+  - id: AC2
+    statement: 'AC2: a selected check that reads red after a change raises one lab alarm with a named owner within 15 minutes, and a check that stays green raises none -- falsifier: pytest of the alarm handler against the recorded 13:30Z to 14:45Z probe results, failing when no alarm is raised for C14 and C29 or when one is raised for a green check'
+  - id: AC3
+    statement: 'AC3: integrated: replaying the recorded 2026-11-23 13:30Z to 14:45Z probe results through the running node on dev or a lab host produces the alarm rows for C14 and C29 -- falsifier: the replay command run on the dev lane, with the alarm rows read back, lists no alarm row for C14 or for C29'
+  - id: AC5
+    statement: 'AC5: thresholds and owners are read from the settings store and the overlay defaults are tested, and no alarm goes to prod -- falsifier: pytest that loads the overlay defaults and fails when a threshold or owner key is missing or when a prod target is accepted'
+  - id: AC6
+    statement: 'AC6: a regression test built from the incident''s recorded data (fixture path) fails on the broken code and passes on the fix -- falsifier: uv run pytest tests/ -k delegation_check_regression -q'
+- id: req-omn26618-regression-overlay-model
+  statement: The delegation check regression node's overlay document has a typed model in omnimarket that the overlay home can pin ahead of the node.
+  acceptance:
+  - id: AC7
+    statement: 'AC7: ModelRegressionSettings validates the overlay document of the delegation check regression node and refuses a malformed one -- falsifier: tests/unit/models/test_delegation_check_regression_overlay_document_omn24562.py fails collection or any of its tests fails'
+evidence_requirements:
+- kind: tests
+  description: The delegation check regression tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_delegation_check_regression_effect -k delegation_check_regression -q
+- kind: tests
+  description: The overlay document model tests pass at the pushed head.
+  command: uv run pytest tests/unit/models/test_delegation_check_regression_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26618-ac1
+  description: 'AC1: the recorded host model change (h201 port 8000, ledger RULING 2026-11-23T13:46:25Z), the recorded release (omnimarket v0.4.325) and the recorded settings-store version change (delegation_routing 5a9718e8 to e1bafab4, fixture tests/fixtures/delegation_check_regression/incident_2026_11_23.json) each select C14 and C29'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_regression_effect -k "selection_picks" -q
+    cwd: .
+- id: dod-omn26618-ac2
+  description: 'AC2: the recorded readings raise one alarm each for C14 and C29 with the owner the settings name, none for C13 (green), and none when every reading is green or already red'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_regression_effect -k "red_check_raises_one_alarm or all_green or already_red or past_the_deadline" -q
+    cwd: .
+- id: dod-omn26618-ac3
+  description: 'AC3: the replay command of the node, run on the recorded incident with the delivery overlay the lab alarm node ships, lists the alarm rows for C14 and C29 and none for C13'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_regression_effect -k "replay_command" -q
+    cwd: .
+- id: dod-omn26618-ac3-integration-proof
+  description: 'AC3: the replay of the recorded transition through the node on a lab host lists the alarm rows for C14 and C29 (command, host and read-back in the pull request body)'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26618 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen python -m omnimarket.nodes.node_delegation_check_regression_effect --replay-fixture tests/fixtures/delegation_check_regression/incident_2026_11_23.json --change host_model
+    cwd: .
+- id: dod-omn26618-ac5
+  description: 'AC5: the shipped overlay defaults declare every threshold and owner, a missing one fails the load, and a prod target is refused before any check runs or alarm is raised'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_regression_effect -k "overlay_defaults or missing_threshold or prod_target or accept_prod" -q
+    cwd: .
+- id: dod-omn26618-ac6
+  description: 'AC6: the regression test of the incident, built from tests/fixtures/delegation_check_regression/incident_2026_11_23.json, fails on the base (the node does not exist) and passes on the fix'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_regression_effect -k delegation_check_regression -q
+    cwd: .
+- id: dod-omn26618-regression-overlay-model-tests
+  description: The overlay document model for the delegation check regression node accepts a valid document and refuses malformed ones; the test file fails at collection with ModuleNotFoundError before the model module exists and passes after.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_delegation_check_regression_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

@@ -26,6 +26,12 @@ lag:
   state_path: .onex_state/lab-alarm/broker-lag-sample.json
   record_path: .onex_state/lab-alarm/broker-lag-runs.jsonl
   record_condition: consumer_group_lag
+  # Optional (OMN-26609); absent, a high lag that does not grow never alarms. Declared, a watched group whose lag is above
+  # max_lag alarms at once, even on the first sample, and the alarm names the owner (tests/nodes/node_lab_alarm/
+  # test_lab_alarm_lag_ceiling_omn26609.py declares this block):
+  # ceiling:
+  #   max_lag: 5000
+  #   owner: example-owner-lane
   # Optional; absent, any growth between two samples alarms at once. Declared, a group alarms only after persist_runs
   # samples in a row that each grew it by min_growth or more (tests/nodes/node_lab_alarm/test_lab_alarm_growth_persistence.py
   # declares this block):
@@ -82,6 +88,17 @@ dev_tag_heartbeat:
   persistence:
     persist_runs: 3
     streak_path: .onex_state/lab-alarm/dev-tag-heartbeat-streaks.json
+  # Optional. Declared, the agent's systemd USER unit is read first (OMN-26316), so a stopped unit
+  # breaches on its own persist_runs streak instead of waiting out the 30 minute beat-age bound.
+  # The scope is NOT a setting: the adapter always runs systemctl --user, because the agent is a
+  # USER unit and a system-scope read of its name prints "inactive" while the unit is running. A
+  # unit that is not found in that scope (a wrong name or host; is-active prints "inactive" for a
+  # missing unit too) reads INDETERMINATE, never an alarm: only a loaded unit's state can alarm.
+  # host_command is the argv prefix that reaches a shell on the host the unit runs on.
+  unit:
+    name: deploy-agent-dev.service
+    host_command: [ssh, -o, BatchMode=yes, example-host]
+    timeout_seconds: 10
 # The delegation chain canary condition (OMN-24400). Needed by the delegation-chain-canary verbs only. The newest completed run of
 # the workflow decides, in both directions; the alarm script's 180 minute bound (one two-hour period plus slack) is held here as data.
 delegation_chain_canary:
@@ -214,6 +231,23 @@ condition_schedules:
   container-unhealthy:
     unit_name: example-lab-alarm-container-unhealthy
     launchd_label: example.lab-alarm-container-unhealthy
+    state_directory: .onex_state/lab-alarm
+    interval_seconds: 900
+    timeout_seconds: 120
+    hosts:
+      - name: example-mac
+        scheduler: launchd
+        venv: examplepkg/.venv
+        environment:
+          EXAMPLE_SETTING: $OMNI_HOME/example
+      - name: example-linux
+        scheduler: systemd-user
+        venv: examplepkg/.venv
+        environment: {}
+  # The container-restarts condition's own schedule (OMN-26024): the verb was a condition with no unit that ran it.
+  container-restarts:
+    unit_name: example-lab-alarm-container-restarts
+    launchd_label: example.lab-alarm-container-restarts
     state_directory: .onex_state/lab-alarm
     interval_seconds: 900
     timeout_seconds: 120

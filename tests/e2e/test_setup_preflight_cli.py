@@ -14,6 +14,7 @@ import platform
 import subprocess
 import sys
 from pathlib import Path
+from textwrap import dedent
 
 import pytest
 
@@ -68,28 +69,94 @@ def test_actual_preflight_is_readonly_and_never_prompts(
         text=True,
         timeout=30,
     )
-    assert result.returncode in (0, 3), result.stdout + result.stderr
+    # Ubuntu is the contract's reviewed distribution: a refusal there is a defect.
+    ubuntu_host = (
+        platform.system() == "Linux"
+        and platform.freedesktop_os_release().get("ID") == "ubuntu"
+    )
+    assert result.returncode in ((0,) if ubuntu_host else (0, 3)), (
+        result.stdout + result.stderr
+    )
     if json_output:
         observation = ModelSetupObservation.model_validate(json.loads(result.stdout))
         assert observation.step == "preflight"
-        assert observation.status in (
-            "success",
-            "unavailable",
-            "action_required",
-            "failure",
-        )
+        # A failed observation carries no evidence; say so instead of a KeyError.
+        assert observation.status != "failure", observation.fix
+        if ubuntu_host:
+            assert observation.status == "success", observation
         assert observation.evidence["platform"] == platform.system()
         assert "Welcome" not in result.stdout
-        assert set(observation.evidence) == {
+        expected_fields = {
             "platform",
             "architecture",
             "macos_version",
             "rosetta",
             "virtual_machine",
         }
+        if platform.system() == "Linux":
+            expected_fields.add("linux_distribution")
+            assert observation.evidence["linux_distribution"] == (
+                platform.freedesktop_os_release().get("ID") or "unknown"
+            )
+        assert set(observation.evidence) == expected_fields
     else:
         assert "Welcome To OmniNode Delegation Onboarding" in result.stdout
         assert "preflight" in result.stdout.lower()
+        if ubuntu_host:
+            assert "[success] preflight" in result.stdout, result.stdout
         for prompt in ("Provider:", "Model:", "Paste your", "Password:"):
             assert prompt not in result.stdout
+    assert _snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize("options", [("--json",), ("--preflight-only",)])
+def test_windows_without_unix_locks_reports_wsl_remedy(
+    tmp_path: Path, options: tuple[str, ...]
+) -> None:
+    home, workspace = tmp_path / "home", tmp_path / "workspace"
+    home.mkdir()
+    workspace.mkdir()
+    before = _snapshot(tmp_path)
+    script = dedent(
+        """\
+        import platform
+        import shutil
+        import sys
+        from importlib.metadata import entry_points
+        from unittest.mock import patch
+
+        def unreadable_disk(path):
+            raise PermissionError(13, "Access is denied", str(path))
+
+        sys.modules["fcntl"] = None
+        with (
+            patch.object(platform, "system", return_value="Windows"),
+            patch.object(shutil, "disk_usage", unreadable_disk),
+        ):
+            entry_points(group="console_scripts", name="onex")["onex"].load()(
+                prog_name="onex"
+            )
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script, "setup", "--no-interactive", *options],
+        cwd=workspace,
+        env={"HOME": str(home), "ONEX_STATE_DIR": str(tmp_path / "state")},
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 3, result.stdout + result.stderr
+    if "--json" in options:
+        observation = ModelSetupObservation.model_validate_json(result.stdout)
+        assert observation.step == "preflight"
+        assert observation.status == "unavailable"
+        assert observation.evidence["platform"] == "Windows"
+        remedy = observation.fix or ""
+    else:
+        assert "[unavailable] preflight" in result.stdout
+        remedy = result.stderr
+    assert "Ubuntu" in remedy
+    assert "WSL 2" in remedy
     assert _snapshot(tmp_path) == before

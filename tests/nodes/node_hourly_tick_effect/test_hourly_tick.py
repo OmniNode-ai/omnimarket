@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.handlers.ledger_rows_unreadable_error import LedgerRowsUnreadableError
+from omnimarket.nodes.node_hourly_tick_effect.handlers import handler_hourly_tick
 from omnimarket.nodes.node_hourly_tick_effect.handlers.handler_hourly_tick import (
     HandlerHourlyTick,
     build_record_request,
@@ -36,6 +38,27 @@ PARITY = json.loads(
 )
 
 
+BUS_READS: list[tuple[str, int]] = []
+BUS_ROWS_FILE: list[Path] = []
+
+
+@pytest.fixture(autouse=True)
+def bus_read(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stand in for the work ledger reader node: the rows a bus read answers with, one per line.
+
+    The stub's rows sit in a scratch file only because a test needs somewhere to put them; the
+    handler under test never opens it and is given the rows the way the real read gives them.
+    """
+    BUS_READS.clear()
+    BUS_ROWS_FILE.clear()
+
+    def read(reader: str, window_hours: int) -> tuple[str, ...]:
+        BUS_READS.append((reader, window_hours))
+        return tuple(BUS_ROWS_FILE[0].read_text().splitlines())
+
+    monkeypatch.setattr(handler_hourly_tick, "read_ledger_rows_via_node", read)
+
+
 @pytest.mark.parametrize("case", PARITY["cases"])
 def test_old_behavior_parity(case: dict[str, object]) -> None:
     state = ModelTickState.model_validate(case["state"])
@@ -57,13 +80,14 @@ def fixture_home(tmp_path: Path) -> Path:
         "- 2026-09-16T21:30:00Z operator mentioned 60m checkpoint later\n"
     )
     (tmp_path / "pointer.txt").write_text("2026-09-16T21:20:00Z\n")
-    (tmp_path / "ledger.md").write_text(
+    (tmp_path / "bus_rows.txt").write_text(
         "2026-09-16T21:27:48Z | CLAIM | lane=excluded | before\n"
         "2026-09-16T21:30:00Z | TERMINAL | lane=codex:whole ticket=x | prose lane=wrong\n"
         "2026-09-16T21:31:00Z | CLAIM | lane=other | body\n"
         "2026-09-16T21:40:57Z | TERMINAL | lane=last | body\n"
         "2026-09-16T21:40:58Z | CLAIM | lane=excluded | after\n"
     )
+    BUS_ROWS_FILE.append(tmp_path / "bus_rows.txt")
     return tmp_path
 
 
@@ -73,7 +97,6 @@ def request(home: Path, **kwargs: object) -> ModelHourlyTickRequest:
             "registry_root": str(home),
             "checkpointFile": "checkpoints.md",
             "sweepStateFile": "pointer.txt",
-            "ledgerFile": "ledger.md",
             "now": "2026-09-16T21:40:57Z",
             "fireId": "fire-123",
             **kwargs,
@@ -171,7 +194,7 @@ def test_invalid_inputs_refused_before_io(
     ("file", "value"),
     [
         ("pointer.txt", "bad"),
-        ("ledger.md", "no timestamps"),
+        ("bus_rows.txt", "no timestamps"),
         ("checkpoints.md", "no checkpoint"),
     ],
 )
@@ -569,3 +592,32 @@ def test_cli_record_without_a_prepare_for_the_fire_is_refused(
         run_cli(
             home, "--record", "--fire-id", "../escape", "--sweep-file", str(sweep_file)
         )
+
+
+def test_window_rows_come_from_the_ledger_reader_node_not_a_file(
+    tmp_path: Path,
+) -> None:
+    """The probe asks the reader node for the hourly-tick reader's window; no ledger file is named."""
+    home = fixture_home(tmp_path)
+    prepared = asyncio.run(HandlerHourlyTick().handle(request(home)))
+    assert prepared.state.rows == 3
+    assert [reader for reader, _ in BUS_READS] == ["hourly-tick"]
+    assert BUS_READS[0][1] >= 1
+    assert "ledgerFile" not in ModelHourlyTickRequest.model_fields
+    with pytest.raises(ValueError, match="validation error"):
+        request(home, ledgerFile="rows.txt")
+
+
+def test_unread_window_refuses_the_tick_and_writes_nothing(tmp_path: Path) -> None:
+    """A reader that does not answer is an unread window: no checkpoint, no pointer move, no file read in its place."""
+    home = fixture_home(tmp_path)
+
+    def unreadable(reader: str, window_hours: int) -> tuple[str, ...]:
+        raise LedgerRowsUnreadableError(f"the rows loader exited 69 for {reader}")
+
+    before = (home / "checkpoints.md").read_text()
+    pointer = (home / "pointer.txt").read_text()
+    with pytest.raises(LedgerRowsUnreadableError, match="exited 69"):
+        asyncio.run(HandlerHourlyTick(read_rows=unreadable).handle(request(home)))
+    assert (home / "checkpoints.md").read_text() == before
+    assert (home / "pointer.txt").read_text() == pointer

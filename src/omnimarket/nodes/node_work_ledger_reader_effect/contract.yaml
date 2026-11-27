@@ -20,7 +20,11 @@ description: >
   node's answer is ok when its watermark is within max_watermark_age_seconds, stale when older,
   and unreadable when the node does not answer. A reader not named there is told not-moved and
   keeps its own read, which is that reader's rollback. A rows read answers every row of a window
-  from the query node, page by page. Every read emits a golden (answered) or error (refused) event.
+  from the query node, page by page. A rows read names either window_hours (the last N hours) or a history
+  range (since, optional until, both inclusive) that reaches past the 30 day window, read from the
+  projection that holds the archive rolls (OMN-26330). A row-at read answers every row stamped at one
+  instant with one kind, so a caller can look one row up by its timestamp and kind; zero rows is absent
+  and more than one is ambiguous, and the caller decides what each means. Every read emits a golden (answered) or error (refused) event.
 
 handler:
   module: omnimarket.nodes.node_work_ledger_reader_effect.handlers.handler_work_ledger_reader
@@ -49,6 +53,11 @@ output_model:
 
 runtime_dispatch:
   external_trigger: true
+  # The reader runs when a caller asks (the pull request duplicate guard, queue-status, the drain map and the other moved readers
+  # named in the overlay); no timer starts it. The command below is the whole trigger.
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_work_ledger_reader_effect --reader <moved reader name> --query <query>
+    owner: OmniNode Platform Team
 
 # The topics by role; the handler reads these and holds no topic string.
 topics:
@@ -62,6 +71,14 @@ event_bus:
 externally_consumed_topics:
   - onex.evt.omnimarket.work-ledger-reader-answered.v1
   - onex.evt.omnimarket.work-ledger-reader-refused.v1
+
+# The entrypoint detail capture bound (handlers/detail_capture_bound.py, called by runtime_work_ledger_reader.main
+# on the lines it prints): a capture past max_bytes
+# ends as its first head_lines, its last tail_lines and one line stating the dropped line count.
+detail_capture:
+  max_bytes: 4194304
+  head_lines: 200
+  tail_lines: 200
 
 overlay:
   node: node_work_ledger_reader_effect

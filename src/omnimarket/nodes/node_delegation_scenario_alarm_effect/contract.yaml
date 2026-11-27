@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# The delegation scenario alarm (OMN-24874). Each scheduled tick reads the last-run record of every watched scenario on this
+# host (the evidence file its own unit writes) and writes one ledger STATUS row with src=alarm and alarm=<scenario alarm name>
+# for a run that did not succeed, whose record is missing or unreadable, or whose last run is older than the scenario's declared
+# max_age_seconds (a unit killed before it wrote its record, a stopped timer), whatever that last run concluded. The row's
+# request id is the scenario, the host, the run's own readable time alone for a failed run still inside max_age_seconds; its
+# row is stamped at that run time. Thus ticks across a bucket boundary submit the identical row and request id. Missing,
+# unreadable and stale readings also name their conclusion and six-hour bucket, allowing another outage reading each
+# bucket. A missing or unreadable record is stamped at the bucket start; a stale record at the later of the bucket start
+# and its ran_at plus max_age_seconds (the moment it went stale); no stamp depends on the tick that writes the row (a run time ahead of the tick, and a fresh record that concludes the literal stale, are bucketed readings stamped at the bucket start). A successful,
+# recent run writes nothing.
+# Ledger dedup (read in node_work_ledger_append_effect, handler_work_ledger_append_effect.py): a request id is found by its
+# req= cell in the live ledger file's text and in the bus ledger store; once a row rolls into the archive the id is no longer
+# found in the live file, so the same id would append again. Missing and stale records recur per bucket. Readers that use a
+# time window filter on the row stamp; a failed run is never stamped before its ran_at. Outage queries must include the
+# bucket start. The pattern is the deploy-job-failed alarm row of omnibase_infra.
+name: node_delegation_scenario_alarm_effect
+contract_name: node_delegation_scenario_alarm_effect
+node_name: node_delegation_scenario_alarm_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+description: >
+  Read the last-run record of each watched delegation scenario (R8, R9) on this host and write one ledger alarm row for a
+  run that failed or left no readable record. The node's systemd user timer (scenario-alarm-systemd in
+  node_host_installer_registry_units) runs it every 900 seconds.
+
+handler:
+  module: omnimarket.nodes.node_delegation_scenario_alarm_effect.handlers.handler_delegation_scenario_alarm
+  class: HandlerDelegationScenarioAlarm
+  input_model: omnimarket.nodes.node_delegation_scenario_alarm_effect.handlers.handler_delegation_scenario_alarm.ModelScenarioAlarmRequest
+
+# Not a runtime-dispatched handler: the handler takes its alarm block, home directory, ledger append route and clock as
+# constructor parameters, so the node runs through its own scheduled tick. It declares no topic: the bus append command owns
+# the ledger's.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [file-read, process-spawn, ledger-append]
+  timeout_ms: 300000
+
+input_model:
+  name: ModelScenarioAlarmRequest
+  module: omnimarket.nodes.node_delegation_scenario_alarm_effect.handlers.handler_delegation_scenario_alarm
+  description: One alarm tick over the watched scenarios.
+output_model:
+  name: ModelScenarioAlarmResult
+  module: omnimarket.nodes.node_delegation_scenario_alarm_effect.handlers.handler_delegation_scenario_alarm
+  description: The alarm row each failed scenario wrote, and the scenarios read as passing.
+
+alarm:
+  lane: delegation-scenario-alarm
+  ticket: OMN-24874
+  actor: node_delegation_scenario_alarm_effect
+  owner: item4 delegation scenario lane
+  home_env: HOME
+  host_env: ONEX_HOST_NAME
+  ledger_append_command_env: ONEX_LEDGER_BUS_APPEND_COMMAND
+  ledger_append_timeout_seconds: 120
+  success_conclusion: success
+  # The alarm time bucket: a missing record or a stale run raises one row per bucket (6 hours), however many ticks read it.
+  alarm_bucket_seconds: 21600
+  # Each watched scenario: its id, the alarm name its row carries, the unit that runs it, the last-run record that unit
+  # writes (relative to the home directory) and the age past which that record reads stale. max_age_seconds is the unit's
+  # start_interval in node_host_installer_registry_units plus a grace of a quarter interval: R8 21600 + 5400, R9 3600 + 900.
+  scenarios:
+    - scenario: R8
+      alarm: delegation-scenario-r8-failed
+      unit: onex-delegation-scenario-r8
+      evidence_file: .local/state/omni/delegation-scenario-r8/last-run.json
+      max_age_seconds: 27000
+    - scenario: R9
+      alarm: delegation-scenario-r9-failed
+      unit: onex-delegation-scenario-r9
+      evidence_file: .local/state/omni/delegation-scenario-r9/last-run.json
+      max_age_seconds: 4500

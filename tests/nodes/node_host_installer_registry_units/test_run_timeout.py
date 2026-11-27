@@ -46,6 +46,11 @@ def brew_python(monkeypatch: pytest.MonkeyPatch) -> None:
         "omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units.interpreter_present",
         lambda path: path == BREW_PYTHON,
     )
+    # These tests render the Mac's launchd job; the host's platform selects it, so a Linux runner pins it (OMN-25138).
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_host_installer_registry_units.handlers.handler_registry_units.host_platform",
+        lambda: "darwin",
+    )
 
 
 def render(tmp_path: Path, unit: str, entry: str | None = None) -> dict[str, Any]:

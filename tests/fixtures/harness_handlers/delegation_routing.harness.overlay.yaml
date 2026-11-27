@@ -1,0 +1,189 @@
+# Scrubbed copy of the harness sections of the house delegation routing overlay as OMN-26219 declares them (the overlay
+# itself lives in the overlays repository, overlays/delegation_routing/overlay.yaml). Fixture only: no endpoint, no key.
+schema_version: delegation_routing_overlay.v1
+harness_backends:
+- backend_id: harness-codex
+  provider: openai
+  kind: harness
+  harness: codex
+  surface: internal
+  tenant_scope: house
+  explicit_pin_only: true
+  tier: harness
+  timeout_ms: 600000
+  max_tokens: 65536
+  capabilities:
+  - code_generation
+  - test
+  - code_review
+  - refactor
+- backend_id: harness-claude-glm-flash
+  provider: glm
+  kind: harness
+  harness: claude-glm
+  surface: internal
+  tenant_scope: house
+  explicit_pin_only: false
+  model_name: glm-5.3-flash
+  tier: harness
+  timeout_ms: 600000
+  max_tokens: 65536
+  capabilities:
+  - document
+  - reasoning
+  - summarization
+  - code_generation
+  - code_review
+  - test
+- backend_id: harness-claude-glm
+  provider: glm
+  kind: harness
+  harness: claude-glm
+  surface: internal
+  tenant_scope: house
+  explicit_pin_only: false
+  model_name: glm-5.3
+  tier: harness
+  timeout_ms: 600000
+  max_tokens: 65536
+  capabilities:
+  - document
+  - reasoning
+  - code_review
+  - code_generation
+  - test
+- backend_id: harness-claude-haiku
+  provider: anthropic
+  kind: harness
+  harness: claude
+  surface: internal
+  tenant_scope: house
+  explicit_pin_only: true
+  model_name: claude-haiku-5-5
+  tier: harness
+  timeout_ms: 600000
+  max_tokens: 65536
+  capabilities:
+  - document
+  - test
+- backend_id: harness-claude-sonnet
+  provider: anthropic
+  kind: harness
+  harness: claude
+  surface: internal
+  tenant_scope: house
+  explicit_pin_only: true
+  model_name: claude-sonnet-5-5
+  tier: harness
+  timeout_ms: 600000
+  max_tokens: 65536
+  capabilities:
+  - summarization
+  - document
+  - code_review
+  - test
+  - code_generation
+  - reasoning
+- backend_id: harness-claude-opus
+  provider: anthropic
+  kind: harness
+  harness: claude
+  surface: internal
+  tenant_scope: house
+  explicit_pin_only: true
+  model_name: claude-opus-5-5
+  tier: harness
+  timeout_ms: 600000
+  max_tokens: 65536
+  capabilities:
+  - summarization
+  - document
+  - code_review
+  - test
+  - code_generation
+  - reasoning
+harness_tiers:
+- name: harness_codex
+  backend_id: harness-codex
+  use_for:
+  - code_review
+- name: harness_glm_flash
+  backend_id: harness-claude-glm-flash
+  use_for:
+  - document
+  - summarization
+  - code_generation
+  - code_review
+  - test
+  - reasoning
+- name: harness_glm
+  backend_id: harness-claude-glm
+  use_for:
+  - document
+  - code_review
+  - reasoning
+  - code_generation
+  - test
+- name: harness_haiku
+  backend_id: harness-claude-haiku
+  use_for:
+  - document
+  - test
+- name: harness_sonnet
+  backend_id: harness-claude-sonnet
+  use_for:
+  - summarization
+  - document
+  - code_review
+  - test
+  - code_generation
+  - reasoning
+- name: harness_opus
+  backend_id: harness-claude-opus
+  use_for:
+  - reasoning
+  - code_generation
+  - code_review
+escalation_chains:
+- task_class: code_generation
+  escalate_on: acceptance_check
+  rungs:
+  - local
+  - harness_glm_flash
+  - harness_glm
+  - harness_sonnet
+- task_class: document
+  escalate_on: acceptance_check
+  rungs:
+  - local
+  - harness_glm_flash
+  - harness_glm
+  - harness_haiku
+  - harness_sonnet
+- task_class: test
+  escalate_on: acceptance_check
+  rungs:
+  - harness_glm_flash
+  - harness_glm
+  - harness_haiku
+  - harness_sonnet
+- task_class: reasoning
+  escalate_on: acceptance_check
+  rungs:
+  - local
+  - harness_glm_flash
+  - harness_glm
+  - harness_sonnet
+- task_class: code_review
+  escalate_on: acceptance_check
+  rungs:
+  - harness_codex
+  - harness_glm_flash
+  - harness_glm
+  - harness_sonnet
+- task_class: summarization
+  escalate_on: acceptance_check
+  rungs:
+  - local
+  - harness_glm_flash
+  - harness_sonnet

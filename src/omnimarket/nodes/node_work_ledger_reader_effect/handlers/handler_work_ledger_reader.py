@@ -85,7 +85,7 @@ def merge_pages(
             f"newest={max(dated) if dated else 'none'}"
         )
         lines = [summary, *(line for line in lines if not _INBOX_SUMMARY.match(line))]
-    if query is EnumReaderQuery.ROWS:
+    if query in (EnumReaderQuery.ROWS, EnumReaderQuery.ROW_AT):
         # A rows window: the lines are every page's lines in page order, and the query node
         # reports the window total on every page, so the matched count is the first page's,
         # never summed over the pages.
@@ -125,8 +125,13 @@ class HandlerWorkLedgerReader:
         self._clock = clock
 
     def handle(self, request: ModelReaderRequest) -> ModelReaderResult:
+        started = self._clock().astimezone(UTC)
         try:
-            return self._handle(request)
+            result = self._handle(request)
+            if result.status is EnumReaderStatus.NOT_MOVED:
+                return result
+            elapsed = (self._clock().astimezone(UTC) - started).total_seconds()
+            return result.model_copy(update={"elapsed_s": max(0.0, elapsed)})
         finally:
             if isinstance(self._read, ProtocolClosable):
                 self._read.close()
@@ -197,22 +202,27 @@ class HandlerWorkLedgerReader:
         claims_since is now minus window_hours, so only claims opened inside it are sent."""
         pages: list[ModelPointAnswer] = []
         cursor: str | None = None
-        for _ in range(self._overlay.max_pages):
+        is_rows = request.query in (EnumReaderQuery.ROWS, EnumReaderQuery.ROW_AT)
+        since, until = self._range(request, now)
+        max_pages = self._overlay.max_pages
+        if (
+            request.query is EnumReaderQuery.ROWS
+            and request.since is not None
+            and self._overlay.range_max_pages is not None
+        ):
+            max_pages = self._overlay.range_max_pages
+        for _ in range(max_pages):
             page = self._read.read(
                 ModelPointQuery(
-                    query=request.query.value,
+                    query="rows" if is_rows else request.query.value,
                     lanes=(request.lane,)
                     if request.query is EnumReaderQuery.INBOX and request.lane
-                    else (),
+                    else request.lanes,
                     ticket=request.ticket
                     if request.query is EnumReaderQuery.OPEN_RULINGS
                     else None,
-                    since=(
-                        now - timedelta(hours=request.window_hours)
-                        if request.query is EnumReaderQuery.ROWS
-                        and request.window_hours is not None
-                        else None
-                    ),
+                    since=since,
+                    until=until,
                     claims_since=(
                         now - timedelta(hours=request.window_hours)
                         if request.query is EnumReaderQuery.OPEN_CLAIMS
@@ -225,8 +235,7 @@ class HandlerWorkLedgerReader:
                         request.query, self._overlay.page_size
                     ),
                     cursor=cursor,
-                    lines_only=self._overlay.rows_lines_only
-                    and request.query is EnumReaderQuery.ROWS,
+                    lines_only=self._overlay.rows_lines_only and is_rows,
                 )
             )
             if page.error is not None:
@@ -235,9 +244,23 @@ class HandlerWorkLedgerReader:
             cursor = page.next_cursor
             if cursor is None:
                 return merge_pages(request.query, pages)
-        return ModelPointAnswer(
-            error=f"open-set-longer-than-{self._overlay.max_pages}-pages"
-        )
+        return ModelPointAnswer(error=f"open-set-longer-than-{max_pages}-pages")
+
+    @staticmethod
+    def _range(
+        request: ModelReaderRequest, now: datetime
+    ) -> tuple[datetime | None, datetime | None]:
+        """The rows window: the last window_hours from now, a history range, or one instant
+        (a row-at read: the query node's window is inclusive at both ends)."""
+        if request.query is EnumReaderQuery.ROW_AT:
+            return request.at, request.at
+        if request.query is not EnumReaderQuery.ROWS:
+            return None, None
+        if request.since is not None:
+            return request.since, request.until
+        if request.window_hours is None:
+            return None, None
+        return now - timedelta(hours=request.window_hours), None
 
     def _parity(self, now: datetime) -> EnumReaderParity:
         """The window parity the query node computes from the daily parity receipts."""

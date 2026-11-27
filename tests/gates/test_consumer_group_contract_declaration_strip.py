@@ -72,12 +72,19 @@ FORBIDDEN_CONTRACT_PATHS: tuple[str, ...] = (
 )
 
 
+#: libyaml's loader reads the same documents about ten times faster than the pure-Python one. This
+#: file is in the always set, so every data-only pull request runs it (OMN-26270).
+_LOADER: type[yaml.SafeLoader] | type[yaml.CSafeLoader] = getattr(
+    yaml, "CSafeLoader", yaml.SafeLoader
+)
+
+
 def _iter_contracts(root: Path) -> list[Path]:
     return sorted(root.rglob("contract.yaml"))
 
 
 def _load(path: Path) -> dict[str, Any] | None:
-    loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+    loaded = yaml.load(path.read_text(encoding="utf-8"), Loader=_LOADER)
     return loaded if isinstance(loaded, dict) else None
 
 
@@ -113,6 +120,11 @@ def _forbidden_declarations(document: dict[str, Any]) -> list[tuple[str, Any]]:
         found.append(("metadata.consumer_group_id", metadata["consumer_group_id"]))
 
     return found
+
+
+def test_contracts_are_parsed_with_the_libyaml_loader_when_present() -> None:
+    """The pure-Python loader was nearly all of this file's time over every node contract."""
+    assert _LOADER is getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
 
 def test_contract_root_is_populated() -> None:

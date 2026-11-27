@@ -7,6 +7,9 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
+from omnimarket.models.delegation.wire.model_tests_outcome import (
+    tests_outcome_from_rules,
+)
 from omnimarket.nodes.node_workflow_gateway_effect.handlers.workflow_receipt_render import (
     decode_rule_evaluations,
 )
@@ -62,6 +65,7 @@ class HandlerWorkflowStatusRead:
                 },
             )
 
+        rule_evaluations = decode_rule_evaluations(row.terminal_rule_evaluations)
         status = ModelWorkflowStatus(
             workflow_id=row.workflow_id,
             workflow_type=row.workflow_type,
@@ -78,7 +82,8 @@ class HandlerWorkflowStatusRead:
             terminal_failure_code=row.terminal_failure_code,
             terminal_failure_reason=row.terminal_failure_reason,
             terminal_remediation=row.terminal_remediation,
-            rule_evaluations=decode_rule_evaluations(row.terminal_rule_evaluations),
+            rule_evaluations=rule_evaluations,
+            tests_outcome=tests_outcome_from_rules(rule_evaluations),
         )
         return ModelWorkflowHttpResponse(
             status_code=200, body=status.model_dump(mode="json")

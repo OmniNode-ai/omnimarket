@@ -324,7 +324,9 @@ async def test_declared_contract_rejects_empty_response(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """An empty response fails response_contract validation with a specific
-    MALFORMED reason, not a silent pass."""
+    reason, not a silent pass. The stub bills 22 output tokens, so since
+    OMN-26588 the reason is WEAK_OUTPUT (a spent budget, which climbs); an empty
+    answer that billed none still reads MALFORMED."""
     handler, _effect = _make_handler(tmp_path, monkeypatch, content="   ")
     request = ModelDelegateSkillRequest(
         prompt="Decide the next tactical action",
@@ -339,7 +341,7 @@ async def test_declared_contract_rejects_empty_response(
     assert response.status == "failed"
     assert response.quality_gate_passed is False
     assert any(
-        "MALFORMED" in reason and "empty" in reason
+        "WEAK_OUTPUT" in reason and "empty" in reason
         for reason in response.quality_gates_failed
     )
 

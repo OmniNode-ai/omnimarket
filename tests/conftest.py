@@ -232,17 +232,59 @@ def _ensure_omni_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _no_real_models_dev_price_reads(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No unit test reads models.dev to price a call (OMN-23413 AC35).
+def _declared_dod_verify_start_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Declare the overlay's dod-verify start budget for every test (OMN-25856).
 
-    A delegation call on a customer key falls back to models.dev's price; every
-    test sees an empty index unless it serves its own.
+    A hosted dod-verify-start command refuses to start without the budget the
+    overlay declares, so a test of the verifier declares the overlay's 540 s the
+    way the runtime does. A test of the refusal removes it in its own body.
     """
-    from omnimarket.handlers import model_catalog
+    monkeypatch.setenv("DOD_VERIFY_START_BUDGET_S", "540")
+
+
+@pytest.fixture(autouse=True)
+def _no_real_models_dev_price_reads(
+    monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+) -> None:
+    """No unit test reads models.dev, to price a call or to refresh the price list.
+
+    A delegation call on a customer key falls back to the kept models.dev copy or
+    the shipped price list, and the projection read prices a stored run from
+    models.dev read live; every test sees an empty index unless it serves its own,
+    and the setup and refresh reads of models.dev return the empty index. A test that asks for
+    the ``models_dev_home`` fixture reads its own copy under that home.
+    """
+    from omnimarket.handlers import model_catalog, models_dev_historical_read
 
     monkeypatch.setattr(
         model_catalog, "pricing_models_dev_index", lambda: model_catalog.EMPTY_INDEX
     )
+    monkeypatch.setattr(
+        model_catalog,
+        "refresh_models_dev",
+        lambda _onex_home=None: model_catalog.EMPTY_INDEX,
+    )
+    if "models_dev_home" not in request.fixturenames:
+        monkeypatch.setattr(
+            models_dev_historical_read,
+            "historical_models_dev_index",
+            lambda: model_catalog.EMPTY_INDEX,
+        )
+
+
+@pytest.fixture(autouse=True)
+def _no_real_onex_home_model_copies(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """No unit test reads the developer's own kept model copies (OMN-23413 AC35).
+
+    Route resolution reads the models.dev copy and the provider lists kept under
+    the ONEX home. Point that home at an empty per-test folder; a test that
+    serves its own copies sets ``_onex_home`` in its body.
+    """
+    from omnimarket.handlers import model_catalog
+
+    monkeypatch.setattr(model_catalog, "_onex_home", lambda: tmp_path / "onex-home")
 
 
 @pytest.fixture(autouse=True)

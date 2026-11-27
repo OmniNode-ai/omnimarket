@@ -1,0 +1,78 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+name: pr_create_refusal_alert_compute
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_type: compute
+# Invoked in process by the caller that reads the lane rows; it has no topic of its own.
+lifecycle: experimental
+node_version:
+  major: 1
+  minor: 0
+  patch: 0
+description: Names the pr-create refusals in the STATUS and TERMINAL rows of one window by the cause each row states (the duplicate guard's
+  ledger reader exiting 69 or timing out, a missing reader overlay, a pr-create that ran until the lane's wait ended) and raises one alert
+  for each cause not already alerted, naming the first lane that hit it.
+input_model: omnimarket.nodes.node_pr_create_refusal_alert_compute.models.ModelPrCreateRefusalAlertRequest
+output_model: omnimarket.nodes.node_pr_create_refusal_alert_compute.models.ModelPrCreateRefusalAlertResult
+handler:
+  module: omnimarket.nodes.node_pr_create_refusal_alert_compute.handlers.handler_pr_create_refusal_alert
+  class: HandlerPrCreateRefusalAlertCompute
+  input_model: omnimarket.nodes.node_pr_create_refusal_alert_compute.models.ModelPrCreateRefusalAlertRequest
+  output_model: omnimarket.nodes.node_pr_create_refusal_alert_compute.models.ModelPrCreateRefusalAlertResult
+handler_routing:
+  routing_strategy: payload_type_match
+  handlers:
+  - handler:
+      name: HandlerPrCreateRefusalAlertCompute
+      module: omnimarket.nodes.node_pr_create_refusal_alert_compute.handlers.handler_pr_create_refusal_alert
+    event_model:
+      name: ModelPrCreateRefusalAlertRequest
+      module: omnimarket.nodes.node_pr_create_refusal_alert_compute.models
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 1000
+  runtime_profiles: []
+# Invoked in process by the caller that reads the lane rows (as node_local_alert_compute is); it declares no topic of its own.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the caller that reads the lane rows of one window.
+  on_demand:
+    command: uv run onex node node_pr_create_refusal_alert_compute --input <request.json>
+    owner: OmniNode Platform Team
+metadata:
+  transport_type: local
+inputs:
+  window_start:
+    type: string
+    required: true
+    description: UTC start of the window.
+  window_end:
+    type: string
+    required: true
+    description: UTC end of the window.
+  rows:
+    type: array
+    required: true
+    description: Ledger rows of the window, as the ledger reader node answers them.
+  already_alerted:
+    type: array
+    required: false
+    description: Causes an alert was already raised for.
+outputs:
+  classes:
+    type: array
+    description: Causes with at least one row, with count, lanes and the first lane.
+  alerts:
+    type: array
+    description: One alert for each cause not already alerted, naming the first lane that hit it.
+  suppressed:
+    type: array
+    description: Causes with rows that raised no alert because one was already raised.

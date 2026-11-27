@@ -7,6 +7,10 @@ refresh keeps it. A refresh that cannot reach the store, or finds nothing or som
 the snapshot as it is. Past an overlay's bound the snapshot reads per that overlay's policy: ``read``
 answers and every reading says stale, so a stale table is never silently refused and never silently
 trusted; ``refuse`` raises. No usable snapshot reads as unreadable, with its reason.
+
+A host that knows where overlays main stands (``source_head``) does not take "fresh" for an answer while its snapshot's
+source is behind it: the refresh asks the store to read through to the record of that revision, and a reading taken
+while the snapshot is still behind says which revision it holds and which main has reached (OMN-26432).
 """
 
 from __future__ import annotations
@@ -19,6 +23,7 @@ from typing import TYPE_CHECKING, Protocol
 from pydantic import JsonValue, ValidationError
 
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
+from omnimarket.handlers.overlay_store.kept_set import require_no_cut_over_overlay
 from omnimarket.handlers.overlay_store.snapshot_root import (
     FileOverlaySnapshot,
     OverlaySnapshotError,
@@ -32,6 +37,9 @@ from omnimarket.models.overlay_store import (
     ModelOverlaySnapshotStamp,
     ModelOverlayStoreReading,
     ModelOverlayStoreRecord,
+)
+from omnimarket.nodes.node_overlay_store_read_effect.handlers.source_head import (
+    revision_of,
 )
 
 if TYPE_CHECKING:
@@ -68,20 +76,55 @@ class HandlerOverlayStoreRead:
         host: str,
         policies: Mapping[str, ModelOverlayReadPolicy],
         clock: Callable[[], datetime] = _utc_now,
+        source_head: Callable[[], str | None] | None = None,
     ) -> None:
+        require_no_cut_over_overlay(policies)
         self._store = store
         self._snapshot = snapshot
         self._reporter = reporter
         self._host = host
         self._policies = policies
         self._clock = clock
+        self._source_head = source_head
 
     async def handle(self, overlay_id: str) -> ModelOverlayStoreReading:
         """One refresh of one overlay: the store's version into the snapshot, or why it stayed."""
+        require_no_cut_over_overlay([overlay_id])
+        main = self._source_head() if self._source_head is not None else None
+        reading = await self._refresh(overlay_id, main)
+        behind = self._behind(overlay_id, main)
+        if behind is not None and not reading.detail:
+            reading = reading.model_copy(
+                update={
+                    "detail": f"snapshot holds {behind[0]}, overlays main is at {behind[1]}: "
+                    "the store has no record of main yet"
+                }
+            )
+        await self._report(reading)
+        return reading
+
+    def _behind(self, overlay_id: str, main: str | None) -> tuple[str, str] | None:
+        """``(held, main)`` when overlays main is at a revision the snapshot's source is not; ``None`` otherwise."""
+        if main is None:
+            return None
+        try:
+            held = revision_of(self._snapshot.read_stamp(overlay_id).source_ref)
+        except OverlaySnapshotError:
+            return None
+        return None if held == main else (held, main)
+
+    async def _refresh(
+        self, overlay_id: str, main: str | None
+    ) -> ModelOverlayStoreReading:
         now = self._clock()
         store_error: str | None = None
         try:
-            record = await self._store.read_current(overlay_id)
+            through = getattr(self._store, "read_through", None)
+            if main is not None and through is not None:
+                # Main may be ahead of the snapshot: take the record of main in this tick, not one window per tick.
+                record = await through(overlay_id, main)
+            else:
+                record = await self._store.read_current(overlay_id)
             if record is None:
                 # A store that resumes where its last window stopped answers nothing when nothing new was published.
                 if not getattr(self._store, "resumes", False):
@@ -94,24 +137,18 @@ class HandlerOverlayStoreRead:
                     )
                 if self._snapshot_is_newer(overlay_id, loaded):
                     # A window that is still catching up delivers old versions first; they never replace a newer snapshot.
-                    reading = self.read(overlay_id)
-                    await self._report(reading)
-                    return reading
+                    return self.read(overlay_id)
                 stamp = self._snapshot.write(loaded, written_at=now)
-                reading = self._reading(
+                return self._reading(
                     overlay_id, stamp, EnumOverlayReadSource.STORE, None, now=now
                 )
-                await self._report(reading)
-                return reading
         except ValidationError as exc:
             store_error = f"the store's overlay is invalid: {exc.errors()[0]['msg']}"
         except (
             Exception
         ) as exc:  # any backend failure is one fact: the store did not answer
             store_error = f"{type(exc).__name__}: {exc}"
-        reading = self.read(overlay_id, store_error=store_error)
-        await self._report(reading)
-        return reading
+        return self.read(overlay_id, store_error=store_error)
 
     def _snapshot_is_newer(
         self, overlay_id: str, loaded: ModelOverlayStoreRecord

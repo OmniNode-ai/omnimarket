@@ -5,6 +5,13 @@ summary: "Remote-lane placement takes the routes a brief reads over as route:<ta
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn22887-ac1-accepted-20261127t0745z:
+      - label: AC1
+        criterion_hash: 4f6ace473ecf66d608998107e85807cdc77c74c5e93b0c54944c1dfa7dd55950
+        proposed_by: lane=dod-closeout-bind-2026-11-27T0745Z-c1
+        accepted_by: lane=dod-closeout-accept-2026-11-27T0745Z-c1
 requirements:
   - id: "req-host-reach"
     statement: "Placement does not send a brief to a host with no route to what the brief reads."
@@ -35,4 +42,12 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-22887 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_remote_lane_compute/test_host_reach_placement.py -q --no-cov'
+        cwd: .
+  - id: dod-omn22887-ac1-accepted-20261127t0745z
+    description: 'AC1: the recorded 2026-11-07 h106 case replayed through placement; a brief reading route:h201 or route:broker-admin:dev is not placed on a host whose reading lacks that route. Five of the seven tests fail with the product change of omnimarket#5433 reverted.'
+    source: manual
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_remote_lane_compute/test_host_reach_placement.py -q --no-cov -p no:randomly
         cwd: .

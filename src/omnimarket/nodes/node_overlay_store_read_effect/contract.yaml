@@ -26,6 +26,9 @@ descriptor:
   runtime_profiles: [effects]
 runtime_dispatch:
   external_trigger: true
+  # The host timer that runs this node's tick module, in node_host_installer_registry_units (OMN-26638).
+  host_unit:
+    unit: overlay-store-refresh
 event_bus:
   subscribe_topics: []
   publish_topics:

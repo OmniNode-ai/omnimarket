@@ -34,6 +34,8 @@ from uuid import uuid4
 import pytest
 import yaml
 
+from tests.ci.lint_jobs import lint_steps
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src" / "omnimarket"
 FIXTURES = REPO_ROOT / "tests" / "fixtures" / "routing_sources"
@@ -195,11 +197,7 @@ def test_routing_sources_inventory_is_enforced_by_the_gate() -> None:
     """The named lint step and the hook run the inventory cases, on every path a new source can arrive by."""
     module = "tests/test_routing_sources_omn20601.py"
     ci = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text("utf-8"))
-    steps = [
-        step["run"]
-        for step in ci["jobs"]["lint"]["steps"]
-        if module in step.get("run", "")
-    ]
+    steps = [step["run"] for step in lint_steps(ci) if module in step.get("run", "")]
     hooks = [
         hook
         for repo in yaml.safe_load(
@@ -650,7 +648,7 @@ def test_overlay_precedence_proofs_are_wired_in_the_gate() -> None:
     ci = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text("utf-8"))
     steps = [
         step
-        for step in ci["jobs"]["lint"]["steps"]
+        for step in lint_steps(ci)
         if "tests/test_routing_sources_omn20601.py" in step.get("run", "")
     ]
     assert len(steps) == 1, "the lint job runs this module in exactly one named step"

@@ -16,6 +16,7 @@ import contextlib
 import json
 import re
 import shlex
+import signal
 import time
 from collections import Counter
 from collections.abc import Awaitable, Callable, Mapping
@@ -33,6 +34,7 @@ from textual import on
 from textual.app import App, ComposeResult, SuspendNotSupported
 from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.css.query import NoMatches
 from textual.screen import ModalScreen, Screen
 from textual.theme import Theme
 from textual.timer import Timer
@@ -442,7 +444,7 @@ def claude_code_state(document: dict[str, object] | None) -> tuple[str, str]:
         return ("unknown", "")
     named = document.get("claude_code")
     if named in ("not_installed", "signed_out", "ready", "installed"):
-        return (str(named), "" if named == "ready" else str(document.get("fix") or ""))
+        return (str(named), str(document.get("fix") or ""))
     steps = document.get("observations")
     step = next(
         (
@@ -470,7 +472,11 @@ def _stopped_by(out: str, err: str) -> str:
     for document in reversed(_json_rows(out)):
         steps = document.get("observations")
         for step in steps if isinstance(steps, list) else ():
-            if isinstance(step, dict) and step.get("status") not in ("success", None):
+            if isinstance(step, dict) and step.get("status") not in (
+                "success",
+                "skipped",
+                None,
+            ):
                 fix = str(step.get("fix") or "").split(". The ")[0]
                 return f"{step.get('step')} — {fix or step.get('status')}"
     return _last_line(out, err)
@@ -795,6 +801,7 @@ class SetupScreen(_TabbedScreen[None]):
     BINDINGS = [
         Binding("escape", "cancel", "Back"),
         Binding("ctrl+s", "save", _say("button_save"), priority=True),
+        Binding("ctrl+g", "guided_setup", _say("button_guided_setup"), priority=True),
     ]
 
     def __init__(
@@ -840,6 +847,7 @@ class SetupScreen(_TabbedScreen[None]):
             yield Static(self._current_line(), id="basket")
             yield Static(keycaps(tui_design().model_table.help["config"]), id="keys")
             with Horizontal(id="buttons"):
+                yield Button(_say("button_guided_setup"), id="guided-setup")
                 yield Button(_say("button_add"), id="add")
                 yield Button(_say("button_save"), variant="primary", id="save")
                 yield Button(_say("button_cancel"), id="cancel")
@@ -916,6 +924,8 @@ class SetupScreen(_TabbedScreen[None]):
         self.query_one("#url").display = not hosted
 
     def on_radio_set_changed(self, event: RadioSet.Changed) -> None:
+        # A key belongs to the provider it was typed for: never offer it to the next.
+        self.query_one("#key", Input).value = ""
         self._show_fields()
         self.query_one("#key" if _hosted(self._provider()) else "#url", Input).focus()
         self.query_one("#note", Static).update(_hint(self._provider()))
@@ -951,6 +961,8 @@ class SetupScreen(_TabbedScreen[None]):
         self._loading = True
         try:
             await self._fetch(note, provider, wanted)
+        except NoMatches:  # the user left this tab while the list was loading
+            return
         finally:
             self._loading = False
 
@@ -1068,6 +1080,14 @@ class SetupScreen(_TabbedScreen[None]):
                 note.update(_say("tick_first"))
         elif event.button.id == "save":
             self.action_save()
+        elif event.button.id == "guided-setup":
+            self.action_guided_setup()
+
+    def action_guided_setup(self) -> None:
+        if self._basket or self.query_one("#found", ModelTable).ticked:
+            self._note(_say("guided_setup_pending"), "warning")
+            return
+        self._run(OnexTui.guided_setup)
 
     def action_save(self) -> None:
         """Set up what is ticked or added, here, and stay; refuse with nothing chosen."""
@@ -1076,6 +1096,11 @@ class SetupScreen(_TabbedScreen[None]):
         self._add_current()
         if not self._basket:
             warning = tui_design().delegation.nothing_ticked
+            # The refusal is the latest word: a find that is pending or still
+            # running must not replace it with its own note a moment later.
+            if self._find_timer is not None:
+                self._find_timer.stop()
+            self.workers.cancel_group(self, "find")
             self.query_one("#note", Static).update(
                 Text(warning, style=_style("warning"))
             )
@@ -1301,6 +1326,7 @@ class DelegationScreen(_TabbedScreen[None]):
         self._hooks = dict(hooks or {})
         #: Claude Code's state once the check answers; "checking" until then.
         self._claude_state = "checking"
+        self._claude_fix = ""
 
     def compose(self) -> ComposeResult:
         words = tui_design().delegation
@@ -1365,15 +1391,17 @@ class DelegationScreen(_TabbedScreen[None]):
 
     async def _check_claude(self) -> None:
         """Fill the Claude Code line: ready, installed, signed out or missing."""
-        state, _fix = await cast("OnexTui", self.app).claude_code()
+        state, fix = await cast("OnexTui", self.app).claude_code()
         self._claude_state = state
+        self._claude_fix = fix
         line, colour = {
             "ready": (_say("claude_ready"), "success"),
             "installed": (_say("claude_installed"), "info"),
             "signed_out": (_say("claude_signed_out"), "warning"),
             "not_installed": (_say("claude_missing"), "error"),
         }.get(state, (_say("claude_unknown"), "muted"))
-        self.query_one("#claude", Static).update(Text(line, style=_style(colour)))
+        rendered = line if not fix else f"{line}\n{fix}"
+        self.query_one("#claude", Static).update(Text(rendered, style=_style(colour)))
 
     def action_flip(self) -> None:
         """Space switches both: on when any is off, otherwise off."""
@@ -2048,6 +2076,8 @@ class OnexTui(App[int]):
         ]
 
     def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id != "prompt":  # #key and #url bubble up from a tab
+            return
         palette = self.query_one("#palette", OptionList)
         if not event.value.startswith("/"):
             palette.display = False
@@ -2218,6 +2248,8 @@ class OnexTui(App[int]):
         return None
 
     async def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id != "prompt":  # #key and #url bubble up from a tab
+            return
         text = self._palette_choice(event.value.strip())
         prompt = self.query_one("#prompt", Input)
         prompt.value = ""
@@ -2252,14 +2284,34 @@ class OnexTui(App[int]):
             return
         await self._run(entry, tuple(words))
 
+    def _in_terminal(self, argv: tuple[str, ...]) -> int:
+        # Ctrl+C goes to both foreground processes. A caught signal resets on
+        # exec, so the child keeps its normal interrupt and the TUI stays open.
+        previous = signal.signal(signal.SIGINT, lambda _signum, _frame: None)
+        try:
+            try:
+                with self.suspend():
+                    return self._runner.in_terminal(argv)
+            except SuspendNotSupported:
+                return self._runner.in_terminal(argv)
+        finally:
+            signal.signal(signal.SIGINT, previous)
+
+    async def guided_setup(self) -> Text:
+        """Let the installed CLI collect choices, request consent and own the journal."""
+        code = self._in_terminal(("setup",))
+        outcome = Text(
+            _say("guided_setup_exit", code=code) if code else _say("guided_setup_done"),
+            style=_style("error" if code else "success"),
+        )
+        self._toast(outcome, ok=not code)
+        await self._refresh_status()
+        return outcome
+
     async def _run(self, entry: ModelTuiCommand, argv: tuple[str, ...]) -> None:
         self._write(Text(f"$ onex {shlex.join(argv)}", style=_style("muted")))
         if entry.needs_terminal:
-            try:
-                with self.suspend():
-                    code = self._runner.in_terminal(argv)
-            except SuspendNotSupported:  # headless or a terminal that cannot hand over
-                code = self._runner.in_terminal(argv)
+            code = self._in_terminal(argv)
         else:
             code = await self._runner.stream(argv, self._emit)
         if code:
@@ -2328,7 +2380,12 @@ class OnexTui(App[int]):
         """Swap the open tab for another: the next one is read first, so the
         main screen never shows between them (OMN-23413)."""
         screen = await self.tab_screen(name)
-        await self.switch_screen(screen)
+        if len(self.screen_stack) < 2:
+            # Esc closed the tab while the next was read: the main screen is on
+            # top, and switch_screen would pop it (OMN-26613). Open, not swap.
+            await self.push_screen(screen)
+        else:
+            await self.switch_screen(screen)
 
     async def _shortcut(self, action: str) -> None:
         if action == "quit":
@@ -2687,10 +2744,12 @@ class OnexTui(App[int]):
             if cost is not None
             else _say("run_cost_unmeasured")
         )
-        if metrics.get("cost_savings_usd"):
+        if cost is not None and metrics.get("cost_savings_usd"):
             facts.append(
                 _say("run_saved", saved=f"{float(metrics['cost_savings_usd']):.4f}")
             )
+        elif cost is None:
+            facts.append(_say("run_saved_unmeasured"))
         run_id = str(document.get("run_id") or "") if document else ""
         self._main().query_one("#output", RichLog).write(
             Markdown(str(result["response"]).strip())

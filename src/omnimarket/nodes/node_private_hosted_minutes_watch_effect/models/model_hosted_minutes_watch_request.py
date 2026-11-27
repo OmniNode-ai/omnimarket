@@ -18,4 +18,3 @@ class ModelHostedMinutesWatchRequest(BaseModel):
     org: str = "OmniNode-ai"
     day: date
     state_dir: Path
-    ledger: Path | None = None
