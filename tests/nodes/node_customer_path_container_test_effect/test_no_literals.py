@@ -7,13 +7,9 @@ from pathlib import Path
 
 import pytest
 
-_ROOT = (
-    Path(__file__).resolve().parents[3]
-    / "src"
-    / "omnimarket"
-    / "nodes"
-    / "node_customer_path_container_test_effect"
-)
+from omnimarket.nodes import node_customer_path_container_test_effect
+
+_ROOT = Path(node_customer_path_container_test_effect.__file__).resolve().parent
 _LITERAL = re.compile(
     r"https?://[A-Za-z0-9]|[0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}[.][0-9]{1,3}|onxk_"
 )
