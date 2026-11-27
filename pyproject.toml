@@ -694,6 +694,7 @@ node_dod_criteria_check_effect = "omnimarket.nodes.node_dod_criteria_check_effec
 node_dod_sweep_orchestrator = "omnimarket.nodes.node_dod_sweep_orchestrator"
 node_dod_verify = "omnimarket.nodes.node_dod_verify"
 node_done_items_compute = "omnimarket.nodes.node_done_items_compute"
+node_dreamsheets_structure_effect = "omnimarket.nodes.node_dreamsheets_structure_effect"
 node_dropped_work_audit_compute = "omnimarket.nodes.node_dropped_work_audit_compute"
 node_dropped_work_audit_scheduled_effect = "omnimarket.nodes.node_dropped_work_audit_scheduled_effect"
 node_duplication_sweep = "omnimarket.nodes.node_duplication_sweep"
