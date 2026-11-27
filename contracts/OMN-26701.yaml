@@ -90,3 +90,14 @@ dod_evidence:
       - check_type: "command"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-26701 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_lane_work_reducer/test_catalogue_replay.py -q --no-cov -n 0 -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26701-ac3-ledger-roll-paths"
+    description: >-
+      AC3: every ledger source names the day's roll, not the live file that rolls daily, so each quoted
+      row still resolves with grep -F after the ledger rolls; all 22 ledger quotes were found in the
+      2026-11-26 roll with a matching sha256.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_reducer/test_catalogue_replay.py -k test_ac3 -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"

@@ -114,6 +114,17 @@ def test_ac1_every_source_is_complete(case: str) -> None:
 
 
 @pytest.mark.parametrize("case", CASES)
+def test_ac3_ledger_sources_name_a_roll_not_the_live_file(case: str) -> None:
+    """The live ledger file rolls daily, so a pinned 2026-11-26 quote that names
+    ``live`` stops resolving once the day rolls. Every ledger source names its roll."""
+    for s in load(case)["sources"]:
+        if s["root"] == "ledger":
+            assert s["path"] == f"roll:{FIXTURES.name}-split", (
+                f"{case}:{s['id']}: ledger path {s['path']!r} must be the day's roll"
+            )
+
+
+@pytest.mark.parametrize("case", CASES)
 def test_ac1_quotes_the_w_rows_the_plan_names(case: str) -> None:
     fx = load(case)
     quoted = {s["w_row"] for s in fx["sources"] if s["root"] == "open-work"}

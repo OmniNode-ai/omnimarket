@@ -31,7 +31,7 @@ sources:
   - id: "s2"
     role: "evidence"
     root: "ledger"
-    path: "live"
+    path: "roll:2026-11-26-split"
     row_timestamp: "2026-11-26T09:28:06Z"
     lane: "landing-L49434"
     row_kind: "CLAIM"

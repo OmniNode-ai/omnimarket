@@ -17,7 +17,7 @@ sources:
   - id: "s1"
     role: "raw_result"
     root: "ledger"
-    path: "live"
+    path: "roll:2026-11-26-split"
     row_timestamp: "2026-11-26T09:43:36Z"
     lane: "orchestrator-31d9-swarm"
     row_kind: "MSG"
