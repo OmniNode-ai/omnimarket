@@ -65,11 +65,9 @@ from omnimarket.handlers.routing.byok_model_discovery import (
     model_not_chosen_message,
 )
 from omnimarket.handlers.routing.byok_provider_backends import (
-    ByokPlanNotPermittedError,
     resolve_byok_provider_backend,
 )
 from omnimarket.handlers.routing.central_tenant_key_store import (
-    CentralStoreRefusedError,
     CentralTenantKeyStore,
 )
 from omnimarket.handlers.routing.customer_key_revoke import (
@@ -79,8 +77,8 @@ from omnimarket.handlers.routing.customer_key_revoke import (
     revoke_tenant_key as revoke_tenant_key_handler,
 )
 from omnimarket.handlers.routing.gateway_tenant_key_client import (
-    GatewayKeyRegistrationError,
     parse_expires,
+    refusals_as_click_messages,
     register_signed_in,
     signed_in_gateway,
 )
@@ -133,8 +131,6 @@ from omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_store imp
     HandlerSecretStore,
 )
 from omnimarket.projection.credential_publisher import (
-    CredentialKeyRefusedError,
-    CredentialPlanUndeterminedError,
     CredentialStoreError,
     ModelInferenceCredentialCreateRequest,
     ProtocolCredentialEventBus,
@@ -496,7 +492,7 @@ def register_tenant_key(
     if not value:
         raise click.ClickException("no value was read from stdin; nothing was stored.")
     if signed_in is not None:
-        try:
+        with refusals_as_click_messages():
             click.echo(
                 register_signed_in(
                     signed_in,
@@ -513,12 +509,10 @@ def register_tenant_key(
                     connection_id=connection_id,
                 )
             )
-        except GatewayKeyRegistrationError as exc:
-            raise click.ClickException(str(exc)) from exc
         return
     if tenant is None:  # unreachable: refused above when not signed in
         raise click.ClickException("--tenant is required; nothing was stored.")
-    try:
+    with refusals_as_click_messages():
         request = ModelInferenceCredentialCreateRequest(
             name=name if name is not None else provider,
             provider=provider,
@@ -549,26 +543,6 @@ def register_tenant_key(
                 lane=_lab_host_bus_lane(bound_host),
             )
         )
-    except ValidationError as exc:
-        # Pydantic input dumps can contain caller data. Surface only the
-        # catalogue/field refusal messages, with no request representation.
-        message = "; ".join(
-            error["msg"] for error in exc.errors(include_input=False, include_url=False)
-        )
-        raise click.ClickException(message) from exc
-    except (
-        CredentialStoreError,
-        CredentialPlanUndeterminedError,
-        # OMN-20991: a key the provider refuses is a typed refusal, not a
-        # traceback. Its message names the provider's own words, never the key.
-        CredentialKeyRefusedError,
-        ByokPlanNotPermittedError,
-    ) as exc:
-        raise click.ClickException(str(exc)) from exc
-    except CentralStoreRefusedError as exc:
-        raise click.ClickException(
-            f"{exc}. Nothing was stored and nothing was published."
-        ) from exc
     shown = registered_credential_view(response, tenant)
     if not central:
         _fold_registered_tenant_key(response, tenant)

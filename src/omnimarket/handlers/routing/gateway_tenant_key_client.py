@@ -14,6 +14,8 @@ same command.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
@@ -27,7 +29,19 @@ from omnibase_infra.gateway.client.store_gateway_credential import (
 from omnibase_infra.gateway.models.model_gateway_api_key import (
     ModelGatewayApiKeyCredential,
 )
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
+
+from omnimarket.handlers.routing.byok_provider_backends import (
+    ByokPlanNotPermittedError,
+)
+from omnimarket.handlers.routing.central_tenant_key_store import (
+    CentralStoreRefusedError,
+)
+from omnimarket.projection.credential_publisher import (
+    CredentialKeyRefusedError,
+    CredentialPlanUndeterminedError,
+    CredentialStoreError,
+)
 
 TENANT_KEYS_PATH = "/v1/workflows/tenant-keys"
 _API_KEY_HEADER = "x-api-key"
@@ -50,6 +64,34 @@ def load_signed_in_gateway(
     if not isinstance(credential, ModelGatewayApiKeyCredential):
         return None
     return credential.base_url, credential.api_key
+
+
+@contextmanager
+def refusals_as_click_messages() -> Iterator[None]:
+    """Show a key registration's typed refusals as one-line CLI errors."""
+    try:
+        yield
+    except ValidationError as exc:
+        # Pydantic input dumps can contain caller data. Surface only the
+        # catalogue/field refusal messages, with no request representation.
+        message = "; ".join(
+            error["msg"] for error in exc.errors(include_input=False, include_url=False)
+        )
+        raise click.ClickException(message) from exc
+    except (
+        CredentialStoreError,
+        CredentialPlanUndeterminedError,
+        # OMN-20991: a key the provider refuses is a typed refusal, not a
+        # traceback. Its message names the provider's own words, never the key.
+        CredentialKeyRefusedError,
+        ByokPlanNotPermittedError,
+        GatewayKeyRegistrationError,
+    ) as exc:
+        raise click.ClickException(str(exc)) from exc
+    except CentralStoreRefusedError as exc:
+        raise click.ClickException(
+            f"{exc}. Nothing was stored and nothing was published."
+        ) from exc
 
 
 def signed_in_gateway() -> tuple[str, SecretStr, Any] | None:
@@ -193,6 +235,7 @@ __all__: list[str] = [
     "GatewayKeyRegistrationError",
     "load_signed_in_gateway",
     "parse_expires",
+    "refusals_as_click_messages",
     "register_signed_in",
     "register_through_gateway",
     "signed_in_gateway",
