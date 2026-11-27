@@ -11,12 +11,9 @@ logged instead.
 from __future__ import annotations
 
 import json
-import logging
 import textwrap
 from collections.abc import Mapping
 from typing import Any
-
-_LOG = logging.getLogger(__name__)
 
 
 def _design() -> Any:
@@ -59,6 +56,7 @@ def _coerce(payload: Any) -> Mapping[str, Any] | None:
             if isinstance(value, Mapping):
                 return value
         except (ValueError, TypeError):
+            # Non-JSON text falls through to the line-by-line loop below.
             pass
         # Last JSON object in mixed output.
         for line in reversed(text.splitlines()):
