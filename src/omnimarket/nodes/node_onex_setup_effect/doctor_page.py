@@ -116,7 +116,8 @@ def _missing(message: Any) -> str | None:
     ]
     if not names:
         return None
-    return _g("missing").format(names=", ".join(names))
+    template = _g("missing")
+    return template.format(names=", ".join(names))
 
 
 def _sentence(message: Any, status: str, *, has_fix: bool = False) -> str:

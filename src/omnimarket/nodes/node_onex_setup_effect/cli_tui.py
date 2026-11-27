@@ -612,7 +612,9 @@ def _stopped_by(out: str, err: str) -> str:
             ):
                 fix = str(step.get("fix") or "").split(". The ")[0]
                 return _say(
-                    "step_fix", step=step.get("step"), fix=fix or step.get("status")
+                    "step_fix",
+                    step=step.get("step"),
+                    fix=fix or step.get("status"),
                 )
     return _last_line(out, err)
 
@@ -1249,7 +1251,7 @@ class SetupScreen(_TabbedScreen[None]):
         self._basket: dict[str, ModelTuiSetupChoice] = {}
         self._find_timer: Timer | None = None
         self._loading = False
-        #: The provider and key or URL the shown model list was read for.
+        # The provider and key or URL the shown model list was read for.
         self._listed: tuple[str, str] | None = None
 
     def compose(self) -> ComposeResult:
@@ -1864,7 +1866,8 @@ class SetupScreen(_TabbedScreen[None]):
 
     def _show_rows(self, entries: list[ModelCatalogEntry]) -> None:
         """New results: forget earlier ticks; the table shows only a read list."""
-        self._listed = None  # the caller that read the list says what it was for
+        # the caller that read the list says what it was for
+        self._listed = None
         table = self.query_one("#found", ModelTable)
         table.set_ticked(())
         table.set_entries(entries)
@@ -1896,7 +1899,8 @@ class SetupScreen(_TabbedScreen[None]):
             return
         if event.input.id not in ("key", "url"):
             return
-        if self._find_timer is not None:  # Enter replaces the search typing scheduled
+        # Enter replaces the search typing scheduled
+        if self._find_timer is not None:
             self._find_timer.stop()
         table = self.query_one("#found", ModelTable)
         if table.entries and self._listed == self._source():
@@ -2998,29 +3002,47 @@ def icon(name: str) -> str:
 
 
 #: Calls that put their first argument on the screen as it is written (AC8).
-_DISPLAY_CALLS = frozenset(
-    ("Text", "append", "update", "Static", "assemble", "_write", "_note")
+_DISPLAY_CALLS: frozenset[str] = frozenset(
+    {
+        "Text",
+        "append",
+        "update",
+        "Static",
+        "assemble",
+        "_write",
+        "_note",
+    }
 )
 
 
 def _shown_words(call: ast.Call) -> list[str]:
     """The written parts of what a display call puts on screen that hold a word."""
-    name = call.func.attr if isinstance(call.func, ast.Attribute) else ""
-    name = call.func.id if isinstance(call.func, ast.Name) else name
+    name = ""
+    if isinstance(call.func, ast.Attribute):
+        name = call.func.attr
+    elif isinstance(call.func, ast.Name):
+        name = call.func.id
     if name not in _DISPLAY_CALLS:
         return []
     args = call.args if name == "assemble" else call.args[:1]
     parts: list[ast.expr] = []
     for arg in args:
-        arg = arg.elts[0] if isinstance(arg, ast.Tuple) and arg.elts else arg
-        parts += arg.values if isinstance(arg, ast.JoinedStr) else [arg]
-    return [
-        part.value
-        for part in parts
-        if isinstance(part, ast.Constant)
-        and isinstance(part.value, str)
-        and re.search(r"[a-z]{2,}", part.value)
-    ]
+        if isinstance(arg, ast.Tuple) and arg.elts:
+            parts.append(arg.elts[0])
+        else:
+            if isinstance(arg, ast.JoinedStr):
+                parts.extend(arg.values)
+            else:
+                parts.append(arg)
+    words: list[str] = []
+    for part in parts:
+        if (
+            isinstance(part, ast.Constant)
+            and isinstance(part.value, str)
+            and re.search(r"[a-z]{2,}", part.value)
+        ):
+            words.append(part.value)
+    return words
 
 
 def literal_scan(source: str) -> list[str]:
@@ -3030,15 +3052,16 @@ def literal_scan(source: str) -> list[str]:
     found = re.findall(r"#[0-9a-fA-F]{6}", source)
     found += re.findall(r"""['\"]([A-Z][A-Z0-9]{5,})['\"]""", source)
     tree = ast.parse(source)
-    docstrings = {
-        id(node.body[0].value)
-        for node in ast.walk(tree)
-        if isinstance(
-            node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
-        )
-        and node.body
-        and isinstance(node.body[0], ast.Expr)
-    }
+    docstrings: set[int] = set()
+    for node in ast.walk(tree):
+        if (
+            isinstance(
+                node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+            )
+            and node.body
+            and isinstance(node.body[0], ast.Expr)
+        ):
+            docstrings.add(id(node.body[0].value))
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
             found += _shown_words(node)
@@ -3145,6 +3168,7 @@ def _braille_supported() -> bool:
     import sys
 
     frames = "".join(tui_design().spinner.frames)
+
     for stream in (sys.stdout, sys.stderr):
         encoding = getattr(stream, "encoding", None)
         if not encoding:
@@ -4237,7 +4261,7 @@ class OnexTui(App[int]):
                 )
             )
         saved_theme = ThemeStore.load()
-        if saved_theme and saved_theme not in self.available_themes:
+        if saved_theme is not None and saved_theme not in self.available_themes:
             _LOG.warning(
                 "the kept theme %r is not available; using the default", saved_theme
             )
@@ -4358,8 +4382,8 @@ class OnexTui(App[int]):
 
     def _restyle(self, _theme: Theme) -> None:
         """The theme changed: the text on screen is drawn again in its colours (AC5)."""
-        if not self.screen_stack:  # the app is closing
-            return
+        if not self.screen_stack:
+            return  # the app is closing
         main = self._main()
         main.query_one("#bigmark", Static).update(welcome_renderable(diagram=False))
         main.query_one("#diagram", Static).update(

@@ -1,14 +1,13 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""AC5 and AC3 (OMN-26620 review, 2026-11-27): the text is drawn in the theme on
-screen, not in onex dark.
+"""
+Criterion: AC5 and AC3 (OMN-26620 review, 2026-11-27): the text is drawn in the theme on screen, not in onex dark.
 
 Failure modes:
-  TC1  after /theme picks onex light, the status bar's words keep the onex dark
-       colours (light grey on the cream background).
-  TC2  a task card's bar keeps the onex dark colour after the theme changes.
-  TC3  a Textual built-in theme leaves the text in onex dark colours.
-  TC4  text drawn outside a running TUI stops using the default theme.
+- TC1: after /theme picks onex light, the status bar's words keep the onex dark colours (light grey on the cream background).
+- TC2: a task card's bar keeps the onex dark colour after the theme changes.
+- TC3: a Textual built-in theme leaves the text in onex dark colours.
+- TC4: text drawn outside a running TUI stops using the default theme.
 """
 
 from __future__ import annotations
@@ -33,6 +32,7 @@ pytestmark = pytest.mark.unit
 
 
 async def _ready() -> ModelTuiStatus:
+    """Return a ready status for the headless TUI."""
     return ModelTuiStatus(model="Last-Model", models=3, delegation="hook")
 
 
@@ -40,21 +40,23 @@ def _colours(widget: Static) -> set[str]:
     """Every colour the widget's text is drawn in, as #rrggbb."""
     content = widget.content
     assert isinstance(content, Text), type(content)
-    found: set[str] = set()
+    colours: set[str] = set()
     for span in content.spans:
         style = Style.parse(span.style) if isinstance(span.style, str) else span.style
         if style.color is not None and style.color.triplet is not None:
-            found.add(style.color.triplet.hex.lower())
-    return found
+            colours.add(style.color.triplet.hex.lower())
+    return colours
 
 
 def _hex(token: str, theme: str) -> str:
+    """Return the hex colour for a design token in the given theme."""
     design = tui_design()
     tokens = design.theme if theme == design.theme.name else design.themes[theme]
     return str(getattr(tokens, token)).lower()
 
 
 async def _settle(pilot: Pilot[int]) -> None:
+    """Let the TUI process pending messages."""
     for _ in range(4):
         await pilot.pause()
 
@@ -65,7 +67,7 @@ async def test_the_status_bar_and_a_card_follow_onex_light() -> None:
     async with app.run_test(size=(140, 40)) as pilot:
         await _settle(pilot)
         status = app.query_one("#status", Static)
-        assert _hex("success", "onex-dark") in _colours(status)  # the control
+        assert _hex("success", "onex-dark") in _colours(status), "the control"
         await apply_theme(app, "onex-light")
         await _settle(pilot)
         shown = _colours(status)
@@ -90,7 +92,8 @@ async def test_a_built_in_theme_colours_the_text() -> None:
         success = Color.parse(str(theme.success)).hex.lower()
         assert _style("success").lower() == success
         assert _style("foreground").lower() != _hex("foreground", "onex-dark")
-        assert success in _colours(app.query_one("#status", Static))
+        status = app.query_one("#status", Static)
+        assert success in _colours(status)
 
 
 def test_text_outside_the_tui_keeps_the_default_theme() -> None:

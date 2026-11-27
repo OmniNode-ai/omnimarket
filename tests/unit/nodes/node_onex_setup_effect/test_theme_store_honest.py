@@ -1,17 +1,12 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""AC5 (OMN-26620 review, 2026-11-27): the kept theme is read from the file, a
-theme that could not be kept is said plainly, and a saved theme that is gone
-opens the default.
+"""AC5 (OMN-26620 review, 2026-11-27): the kept theme is read from the file, a theme that could not be kept is said plainly, and a saved theme that is gone opens the default.
 
 Failure modes:
-  TS1  a saved theme name that is no longer registered stops the TUI from
-       starting (InvalidThemeError).
-  TS2  save() reports success when the file was never written, so the next
-       start is promised a theme it will not get.
-  TS3  the next start reads a copy held in memory, not the file, so a restore
-       test passes with nothing on disk.
-  TS4  /theme says "<theme> kept." when the choice could not be written.
+- TS1: a saved theme name that is no longer registered stops the TUI from starting (InvalidThemeError)
+- TS2: save() reports success when the file was never written, so the next start is promised a theme it will not get
+- TS3: the next start reads a copy held in memory, not the file, so a restore test passes with nothing on disk
+- TS4: /theme says "<theme> kept." when the choice could not be written
 """
 
 from __future__ import annotations
@@ -38,6 +33,11 @@ def _blocked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ThemeStore, "_path", blocker / "theme")
 
 
+async def _settle(pilot: Pilot[int], times: int = 4) -> None:
+    for _ in range(times):
+        await pilot.pause(0.1)
+
+
 async def test_a_saved_theme_that_is_gone_opens_the_default(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -45,14 +45,15 @@ async def test_a_saved_theme_that_is_gone_opens_the_default(
     ThemeStore._path.write_text("a-theme-nobody-registers")
     with caplog.at_level(logging.WARNING):
         app = OnexTui(load_status=_ready)
-    async with app.run_test(size=(140, 40)) as pilot:
-        await pilot.pause()
-        assert str(app.theme) == tui_design().theme.name
+        async with app.run_test(size=(140, 40)) as pilot:
+            await pilot.pause()
+            assert str(app.theme) == tui_design().theme.name
     assert "a-theme-nobody-registers" in caplog.text
 
 
 def test_a_failed_write_is_reported_and_nothing_is_kept(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """TS2, TS3."""
     _blocked(tmp_path, monkeypatch)
@@ -61,7 +62,8 @@ def test_a_failed_write_is_reported_and_nothing_is_kept(
 
 
 async def test_the_next_start_reads_the_file(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """TS3: a theme that was not written is not restored."""
     _blocked(tmp_path, monkeypatch)
@@ -72,13 +74,9 @@ async def test_the_next_start_reads_the_file(
         assert str(app.theme) == tui_design().theme.name
 
 
-async def _settle(pilot: Pilot[int], times: int = 4) -> None:
-    for _ in range(times):
-        await pilot.pause(0.1)
-
-
 async def test_theme_says_plainly_when_the_choice_was_not_kept(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """TS4."""
     _blocked(tmp_path, monkeypatch)

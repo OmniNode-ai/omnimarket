@@ -1,11 +1,10 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The colours the TUI's text is drawn in: the theme on screen (OMN-26620 AC5).
+"""OMN-26620 AC5: resolve TUI text colours from the active theme.
 
-Rich text carries its colours from the moment it is built, so each colour is
-looked up in the theme of the TUI drawing it: an onex theme's own tokens from
-tui_design.yaml, or a Textual built-in theme's colours under the same names.
-Text built with no TUI running is drawn in the default theme.
+Colours for TUI text are drawn from the theme on screen: an onex theme's own
+tokens from tui_design.yaml, or a Textual built-in theme's colours under the
+same names. Text built with no TUI running uses the default theme.
 """
 
 from __future__ import annotations
@@ -22,8 +21,7 @@ from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
     tui_design,
 )
 
-#: The design tokens a Textual theme defines, by the CSS variable holding each.
-#: ``info`` and ``boost`` have none: a built-in theme keeps the default's.
+#: info and boost have no Textual variable so a built-in theme keeps the default's.
 _BUILT_IN: dict[str, str] = {
     "primary": "primary",
     "secondary": "secondary",
@@ -40,9 +38,9 @@ _BUILT_IN: dict[str, str] = {
     "route_cheap": "route-cheap",
     "route_fallback": "route-fallback",
 }
-#: How much of the foreground muted text keeps over the background: Textual's
-#: own $foreground-muted is the foreground at this alpha.
-_MUTED = 0.6
+
+#: Textual's own $foreground-muted is the foreground at this alpha, i.e. how much of the foreground muted text keeps over the background.
+_MUTED: float = 0.6
 
 _BUILT: dict[tuple[int, str], ModelTuiTheme] = {}
 
@@ -52,15 +50,18 @@ def _plain(value: str | None) -> Color | None:
     if value is None:
         return None
     try:
-        colour = Color.parse(value)
+        color = Color.parse(value)
     except ColorParseError:
         return None
-    return None if colour.ansi is not None else colour
+    if color.ansi is not None:
+        return None
+    return color
 
 
 def _from_built_in(theme: Theme, default: ModelTuiTheme) -> ModelTuiTheme:
     """The default tokens, each one the Textual theme defines replaced by its colour."""
-    variables = {**theme.to_color_system().generate(), **theme.variables}
+    variables: dict[str, str] = theme.to_color_system().generate()
+    variables.update(theme.variables)
     updates: dict[str, str] = {}
     for token, variable in _BUILT_IN.items():
         colour = _plain(variables.get(variable))
@@ -95,10 +96,14 @@ def colours_for(app: App[Any]) -> ModelTuiTheme:
 def active_colours() -> ModelTuiTheme:
     """The colour tokens of the TUI drawing now, or the default with none running."""
     app = active_app.get(None)
-    return tui_design().theme if app is None else colours_for(app)
+    if app is None:
+        return tui_design().theme
+    return colours_for(app)
 
 
 def style(token: str, *extra: str) -> str:
-    """A Rich style from a design colour token in the theme on screen, e.g.
-    ``style("error", "bold")``."""
+    """
+    A Rich style from a design colour token in the theme on screen, e.g.
+    ``style("error", "bold")``.
+    """
     return " ".join((*extra, str(getattr(active_colours(), token))))

@@ -1,10 +1,9 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""AC6 (OMN-26620 review, 2026-11-27): one setting picks the icons, ``mode``.
+"""AC6: one setting picks the icons, ``mode``.
 
-Failure mode:
-  IC1  the design file carries a second switch (``icons.enabled``) that nothing
-       reads, so setting it to false still shows Nerd Font glyphs with mode nerd.
+Failure modes:
+- IC1: the design file carries a second switch (``icons.enabled``) that nothing reads, so setting it to false still shows Nerd Font glyphs with mode nerd.
 """
 
 from __future__ import annotations
