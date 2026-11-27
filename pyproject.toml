@@ -1782,6 +1782,7 @@ agent-message = "Send and read messages between agents on any platform, over the
 dashboard = "Serve this install's projection exposures to the local dashboard (OMN-19976)."
 code-edit = "Run the delegated code edit loop over a git worktree."
 lab-work = "Place heavy work on the pool host with the most free capacity, over the bus."
+settings = "Set, read and list the settings the central store holds."
 repo-state = "Answer repository state from this host's mirror, pulling first only when it is behind."
 repo-state-refresh = "Refresh this host's PR watcher state; print the result; exit 0 when it moved forward."
 work-ledger = "Append exact lab-host rows to the ledger host over the declared bus."
