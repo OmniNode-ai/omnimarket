@@ -138,7 +138,7 @@ class LinearTicketService:
     environment there); a write is refused, as a read-only role would be.
     """
 
-    def __init__(self, page_size: int = 100, max_pages: int = 60) -> None:
+    def __init__(self, page_size: int = 250, max_pages: int = 60) -> None:
         self._page_size = page_size
         self._max_pages = max_pages
         self.operator = ""
@@ -156,8 +156,12 @@ class LinearTicketService:
     async def list_tickets(
         self, filters: dict[str, Any] | None = None, limit: int = 50
     ) -> list[dict[str, Any]]:
-        rows = _filtered(await asyncio.to_thread(self._read), filters)
-        return rows[:limit]
+        read = await asyncio.to_thread(self._read)
+        # "me" names the signed-in user the read was made as, whose open issues these are
+        wanted = {**(filters or {})}
+        if wanted.get("assignee") == "me":
+            wanted["assignee"] = self.operator
+        return _filtered(read, wanted)[:limit]
 
     async def get_ticket(self, ticket_id: str) -> dict[str, Any]:
         for row in await asyncio.to_thread(self._read):
@@ -264,7 +268,8 @@ def read_open_launch_issues(
         issues = [
             {**i, "blocked_by": list(blocked.get(str(i["id"]), []))} for i in issues
         ]
-    return cfg.assignee, list(issues)
+    # an adapter that knows who it read as names that user; the overlay's own value is the fallback
+    return str(getattr(service, "operator", "") or cfg.assignee), list(issues)
 
 
 __all__ = [

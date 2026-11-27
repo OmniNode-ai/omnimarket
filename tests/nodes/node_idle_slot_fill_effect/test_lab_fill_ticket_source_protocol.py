@@ -119,3 +119,68 @@ def test_lab_fill_ticket_source_protocol_default_sources_reads_no_snapshot_file(
     assert sources is not None
     assert sources.linear_snapshot is None
     assert sources.tickets is not None
+
+
+def _page_fake(total: int):
+    """A Linear answer that serves ``total`` open issues of one viewer, ``first`` at a time."""
+
+    def post(query: str, variables: dict[str, Any]) -> dict[str, Any]:
+        start = int(variables["after"] or 0)
+        end = min(start + int(variables["first"]), total)
+        nodes = [
+            {
+                "identifier": f"OMN-{n + 1}",
+                "title": f"t{n}",
+                "state": {"name": "Todo", "type": "unstarted"},
+                "assignee": {"id": "viewer-1"},
+                "labels": {"nodes": [{"name": "launch"}]},
+                "updatedAt": "2026-11-27T00:00:00Z",
+            }
+            for n in range(start, end)
+        ]
+        return {
+            "viewer": {"id": "viewer-1"},
+            "issues": {
+                "pageInfo": {
+                    "hasNextPage": end < total,
+                    "endCursor": str(end),
+                },
+                "nodes": nodes,
+            },
+        }
+
+    return post
+
+
+async def test_lab_fill_ticket_source_protocol_linear_reads_an_operator_with_7040_open_issues(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from omnimarket.handlers.lab_fill_ticket_source import LinearTicketService
+    from omnimarket.nodes.node_linear_snapshot_effect.handlers import (
+        handler_linear_snapshot as snapshot,
+    )
+
+    monkeypatch.setattr(snapshot, "http_post", _page_fake(7040))
+    service = LinearTicketService()
+    # "me" is the signed-in user, who owns every row the read returns
+    rows = await service.list_tickets(
+        {"assignee": "me", "labels": ["launch"], "status_types": ["unstarted"]}, 8000
+    )
+    assert len(rows) == 7040
+
+
+def test_lab_fill_ticket_source_protocol_me_resolves_to_the_signed_in_user_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from omnimarket.nodes.node_linear_snapshot_effect.handlers import (
+        handler_linear_snapshot as snapshot,
+    )
+
+    monkeypatch.setattr(snapshot, "http_post", _page_fake(3))
+    env = _env(tmp_path, "linear")
+    path = tmp_path / "ovl/node_lab_fill_selection_compute/overlay.yaml"
+    path.write_text(path.read_text(encoding="utf-8").replace("u1", "me"))
+    operator, issues = read_open_launch_issues(env)
+    # the ticket plan's owner test compares each issue's assignee with this id, so "me" must not leak out
+    assert operator == "viewer-1"
+    assert {i["assignee"] for i in issues} == {"viewer-1"}
