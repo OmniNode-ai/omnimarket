@@ -1879,3 +1879,66 @@ def test_glm_queue_entries_preserve_the_existing_claude_reservation_accounting()
         pin_of=lambda _entry: None,
     )
     assert reserved == {"claude": 1, "codex": 0}
+
+
+def _claimed_fill(tmp: Path, claim):
+    (tmp / "backlog.json").write_text(json.dumps({"standing_tickets": STANDING}))
+    src = sources(
+        tmp,
+        [issue("OMN-102", "route GLM first for text", labels=("delegation",))],
+    )
+    found = (
+        handler.HandlerLabFill()
+        .handle(
+            models.ModelLabFillRequest(
+                FILL_NOW,
+                POOL3,
+                [FREE3],
+                None,
+                tmp / "state",
+                str(tmp / "backlog.json"),
+                stub_runner(tmp),
+                "orch-1",
+                sources=src,
+                claim=claim,
+            )
+        )
+        .found
+    )
+    path = tmp / "calls.jsonl"
+    return found, path.read_text().splitlines() if path.is_file() else []
+
+
+def test_lab_fill_coordination_a_refused_claim_sends_nothing_and_says_so(
+    tmp_path: Path,
+):
+    asked: list[str] = []
+
+    def refuse(key: str, holder: str, now: str) -> bool:
+        asked.append(key)
+        return False
+
+    found, calls = _claimed_fill(tmp_path, refuse)
+    assert asked
+    assert calls == []
+    assert any(f[1] == "lab-fill-claim" for f in found)
+
+
+def test_lab_fill_coordination_a_granted_claim_sends(tmp_path: Path):
+    _found, calls = _claimed_fill(tmp_path, lambda *_args: True)
+    assert calls
+
+
+def test_lab_fill_coordination_a_ticket_with_an_open_blocker_is_not_sent(
+    tmp_path: Path,
+):
+    free = issue("OMN-102", "route GLM first for text", labels=("delegation",))
+    held = {
+        **issue("OMN-103", "route GLM second for text", labels=("delegation",)),
+        "blocked_by": ["OMN-9"],
+    }
+    src = sources(tmp_path, [free, held])
+    found, lanes, _ = lab_fill(tmp_path, src)
+    assert any("OMN-102" in lane for lane in lanes)
+    assert not any("OMN-103" in lane for lane in lanes)
+    assert any("blocked-by-open-dependency" in f[2] for f in found), found

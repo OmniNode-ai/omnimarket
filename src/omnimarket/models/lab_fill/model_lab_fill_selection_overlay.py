@@ -14,6 +14,9 @@ from collections.abc import Mapping
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.models.lab_fill.model_lab_fill_coordination import (
+    ModelLabFillCoordination,
+)
 from omnimarket.models.lab_fill.model_lab_fill_deployment import ModelLabFillDeployment
 from omnimarket.models.lab_fill.model_lab_fill_selection_rules import (
     ModelLabFillSelectionRules,
@@ -42,6 +45,8 @@ class ModelLabFillSelectionOverlay(BaseModel):
     # OMN-26762: the per-ticket selection rules and the ticket source adapter, both optional here.
     selection_rules: ModelLabFillSelectionRules | None = None
     ticket_source: ModelLabFillTicketSource | None = None
+    # OMN-26762: dependencies read from Linear, the shared claim lock and the done gate; optional.
+    coordination: ModelLabFillCoordination | None = None
 
     @classmethod
     def load_deployment(
@@ -52,7 +57,9 @@ class ModelLabFillSelectionOverlay(BaseModel):
 
     def deployment(self) -> ModelLabFillDeployment:
         """The deployment this document declares; owners left out mean every assignee owns."""
-        raw = self.model_dump(exclude={"selection_rules", "ticket_source"})
+        raw = self.model_dump(
+            exclude={"selection_rules", "ticket_source", "coordination"}
+        )
         if self.selection_rules is not None:
             raw["selection_rules"] = self.selection_rules.model_dump()
         return ModelLabFillDeployment.from_overlay(raw)

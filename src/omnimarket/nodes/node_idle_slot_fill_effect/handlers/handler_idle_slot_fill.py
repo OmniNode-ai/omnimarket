@@ -103,6 +103,7 @@ from omnimarket.handlers.handler_lab_fill_live_tickets import (
     Post,
     linear_post,
 )
+from omnimarket.handlers.lab_fill_coordination import resolve_claim
 from omnimarket.handlers.lab_fill_ticket_source import read_open_launch_issues
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.rules_lab_fill_tickets import plan_ticket_backlog
@@ -1631,6 +1632,7 @@ def _issue(issue: dict[str, Any]) -> dict[str, Any]:
         "project": project.get("name", "") if isinstance(project, dict) else project,
         "repo": issue.get("repo") or "",
         "pillar": issue.get("pillar"),
+        "blocked_by": [str(b) for b in issue.get("blocked_by") or []],
         "description": _snapshot_description(issue),
     }
 
@@ -1701,6 +1703,10 @@ def generate_backlog(
     for i in normalized:
         if not isinstance(i["id"], str) or not TICKET_ID.fullmatch(i["id"]):
             skip("bad-id")
+            continue
+        if i["blocked_by"]:
+            # OMN-26762: an open blocker in Linear holds the ticket; the next read frees it once the blocker closes
+            skip("blocked-by-open-dependency")
             continue
         valid.append(
             {
@@ -2296,6 +2302,9 @@ class HandlerLabFill:
     def handle(self, request: ModelLabFillRequest) -> ModelLabFillResult:
         if request.read_only:
             return self._fill(request)
+        if self._claim_of(request) is not None:
+            # OMN-26762: the shared claim lock serializes placements; no host file lock stands beside it
+            return self._fill(request)
         with fill_lock(request.state_dir) as held:
             if held:
                 return self._fill(request)
@@ -2312,8 +2321,16 @@ class HandlerLabFill:
             ]
         )
 
+    def _claim_of(
+        self, request: ModelLabFillRequest
+    ) -> Callable[[str, str, str], bool] | None:
+        if request.claim is not None:
+            return request.claim
+        return resolve_claim(os.environ)
+
     def _fill(self, request: ModelLabFillRequest) -> ModelLabFillResult:
         state = request.state_dir
+        claim = self._claim_of(request)
         backlog_path = (
             Path(request.backlog).expanduser()
             if request.backlog
@@ -2520,6 +2537,16 @@ class HandlerLabFill:
             if request.read_only:
                 names.append(
                     f"{send['lane']} would be sent ({send['kind']} {send['key']}, {send['model']})"
+                )
+                continue
+            if claim is not None and not claim(send["key"], send["lane"], request.now):
+                found.append(
+                    (
+                        "note",
+                        "lab-fill-claim",
+                        f"{send['key']} is claimed by another placement; {send['lane']} was not sent",
+                        "",
+                    )
                 )
                 continue
             brief_path = state / "lab-fill-briefs" / f"{send['lane']}.brief.md"

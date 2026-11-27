@@ -18,6 +18,13 @@ from omnibase_spi.protocols.services.protocol_ticket_service import (
     ProtocolTicketService,
 )
 
+from omnimarket.handlers.lab_fill_coordination import (
+    CLOSED_STATUS_TYPES,
+    CLOSED_STATUSES,
+    blockers_from_linear,
+    coordination,
+    read_open_blockers,
+)
 from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     load_structured_overlay,
@@ -79,11 +86,31 @@ class InMemoryTicketService:
     async def get_ticket_status(self, ticket_id: str) -> str:
         return str(self._tickets[ticket_id].get("status", ""))
 
+    async def open_blockers(self, ticket_ids: list[str]) -> dict[str, list[str]]:
+        """Each ticket's blockers that are not closed now; a closed blocker drops out on the next read."""
+        out: dict[str, list[str]] = {}
+        for tid in ticket_ids:
+            open_ids = [
+                b
+                for b in self._tickets.get(tid, {}).get("blocked_by", [])
+                if not _closed_row(self._tickets.get(b, {}))
+            ]
+            if open_ids:
+                out[tid] = open_ids
+        return out
+
     async def health_check(self) -> bool:
         return True
 
     async def close(self, timeout_seconds: float | None = None) -> None:
         return None
+
+
+def _closed_row(row: dict[str, Any]) -> bool:
+    return (
+        row.get("statusType") in CLOSED_STATUS_TYPES
+        or str(row.get("status", "")).lower() in CLOSED_STATUSES
+    )
 
 
 def _filtered(
@@ -141,6 +168,16 @@ class LinearTicketService:
     async def get_ticket_status(self, ticket_id: str) -> str:
         return str((await self.get_ticket(ticket_id)).get("status", ""))
 
+    async def open_blockers(self, ticket_ids: list[str]) -> dict[str, list[str]]:
+        from omnimarket.nodes.node_linear_snapshot_effect.handlers.handler_linear_snapshot import (
+            http_post,
+        )
+
+        every = await asyncio.to_thread(
+            blockers_from_linear, http_post, self._page_size, self._max_pages
+        )
+        return {t: every[t] for t in ticket_ids if t in every}
+
     async def create_ticket(
         self,
         title: str,
@@ -195,9 +232,7 @@ def resolve_ticket_service(
     return factory(cfg)
 
 
-def _run(
-    coro_factory: Callable[[], Coroutine[Any, Any, list[dict[str, Any]]]],
-) -> list[dict[str, Any]]:
+def _run[T](coro_factory: Callable[[], Coroutine[Any, Any, T]]) -> T:
     try:
         asyncio.get_running_loop()
     except RuntimeError:
@@ -221,6 +256,14 @@ def read_open_launch_issues(
     issues: list[dict[str, Any]] = _run(
         lambda: service.list_tickets(filters, cfg.limit)
     )
+    rule = coordination(environ).dependencies
+    if rule is not None and rule.skip_blocked:
+        # OMN-26762: read the blockers now, so a ticket whose blocker closed is free on this read
+        ids = [str(i["id"]) for i in issues]
+        blocked = _run(lambda: read_open_blockers(service, ids))
+        issues = [
+            {**i, "blocked_by": list(blocked.get(str(i["id"]), []))} for i in issues
+        ]
     return cfg.assignee, list(issues)
 
 
