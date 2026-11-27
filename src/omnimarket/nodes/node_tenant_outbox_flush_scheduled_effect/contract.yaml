@@ -1,0 +1,98 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+# ONEX Node Contract - Tenant Outbox Flush Scheduled Effect (OMN-24562)
+#
+# Runs the tenant outbox flush pass on the runtime tick so tenant_event_outbox rows are published without an operator command.
+# Shape of node_overlay_drift_compute_scheduled_effect: it subscribes to the runtime scheduler's tick, gates on its own overlay
+# (run_interval_seconds, grace_seconds) and returns its terminal event for the runtime to publish.
+name: node_tenant_outbox_flush_scheduled_effect
+contract_name: node_tenant_outbox_flush_scheduled_effect
+node_name: node_tenant_outbox_flush_scheduled_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Runs the tenant outbox flush pass on the runtime's tick in place of an operator command, and returns a typed run event. A flush pass that ends in any outcome but flushed or nothing_to_flush, or a flush overlay that cannot be read, is a failed run event that names it.
+
+handler:
+  module: omnimarket.nodes.node_tenant_outbox_flush_scheduled_effect.handlers.handler_tenant_outbox_flush_scheduled
+  class: HandlerTenantOutboxFlushScheduled
+  input_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: tenant_outbox_flush.scheduled_tick
+      handler:
+        name: HandlerTenantOutboxFlushScheduled
+        module: omnimarket.nodes.node_tenant_outbox_flush_scheduled_effect.handlers.handler_tenant_outbox_flush_scheduled
+      handler_module: omnimarket.nodes.node_tenant_outbox_flush_scheduled_effect.handlers.handler_tenant_outbox_flush_scheduled
+      event_model: omnibase_infra.runtime.models.model_runtime_tick.ModelRuntimeTick
+      event_type: platform.runtime-tick
+      description: >
+        Gate on the overlay's run_interval_seconds, then run one tenant outbox flush pass and return the run event.
+
+input_model:
+  name: ModelRuntimeTick
+  module: omnibase_infra.runtime.models.model_runtime_tick
+  description: The runtime scheduler's tick.
+output_model:
+  name: ModelScheduleRunEvent
+  module: omnimarket.models.schedule_trigger.model_schedule_trigger
+  description: "One scheduled job run, with when it was scheduled, when it fired and how it went."
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 30000
+  side_effects:
+    - database-write
+    - bus-publish
+
+input_subscriptions:
+  - topic: "onex.intent.platform.runtime-tick.v1"
+    operation: "tenant_outbox_flush.scheduled_tick"
+
+terminal_event: onex.evt.omnimarket.schedule-run.v1
+
+# The flush node's own topics, declared here too so the profile this node runs under provisions them on the dev bus: the
+# requested topic for the operator command and the completed topic the flush answers on.
+topics:
+  tenant_outbox_flush:
+    requested: onex.cmd.omnimarket.tenant-outbox-flush-requested.v1
+    completed: onex.evt.omnimarket.tenant-outbox-flush-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - "onex.intent.platform.runtime-tick.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.schedule-run.v1"
+
+published_events:
+  - event_type: ModelScheduleRunEvent
+    topic: onex.evt.omnimarket.schedule-run.v1
+    description: "One scheduled tenant outbox flush pass."
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.schedule-run.v1
+
+# Where the schedule reads its settings: the overlay file the node name selects under ONEX_SKILL_OVERLAY_ROOTS.
+runtime:
+  schedule_overlay: {overlay_id: node_tenant_outbox_flush_scheduled_effect, model: omnimarket.nodes.node_tenant_outbox_flush_scheduled_effect.models.model_tenant_outbox_flush_schedule_overlay.ModelTenantOutboxFlushScheduleOverlay}
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.schedule-run.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.schedule-run.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: DESCRIBE}
+
+metadata:
+  ticket: OMN-24562
+  transport_type: kafka

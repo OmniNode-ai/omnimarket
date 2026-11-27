@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_tenant_outbox_flush_scheduled_effect
+version: "0.1.0"
+description: "Runs one tenant outbox flush pass on the runtime tick, so unpublished tenant_event_outbox rows are published without an operator command"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_tenant_outbox_flush_scheduled_effect: "omnimarket.nodes.node_tenant_outbox_flush_scheduled_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.38.3"
+  - "aiokafka"
+  - "asyncpg>=0.30.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "schedule", "tenant", "outbox"]
+pack: "data"
+display_name: "Tenant Outbox Flush Scheduled"
+node_role: "effect"
