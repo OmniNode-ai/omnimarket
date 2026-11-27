@@ -10,6 +10,9 @@ from datetime import datetime
 from pathlib import Path
 
 from omnimarket.models.test_selector_reading import ModelAttributionCandidate
+from omnimarket.nodes.node_build_delegation_checks.protocols.protocol_build_checks import (
+    UnresolvableRangeError,
+)
 
 _PR = re.compile(r"\(#(\d+)\)\s*$")
 
@@ -61,10 +64,13 @@ class GitMergeSource:
             check=False,
         )
         if done.returncode != 0:
-            raise OSError(
+            message = (
                 f"git log {base_sha[:12]}..{head_sha[:12]} failed: rc={done.returncode}"
             )
+            if done.returncode == 128:
+                raise UnresolvableRangeError(message)
+            raise OSError(message)
         return parse_log(done.stdout)
 
 
-__all__ = ["GitMergeSource", "parse_log"]
+__all__ = ["GitMergeSource", "UnresolvableRangeError", "parse_log"]

@@ -64,7 +64,9 @@ def _env() -> dict[str, str]:
     ):
         env.pop(name, None)
     extra = [str(Path(p).expanduser()) for p in _EXTRA_PATH]
-    env["PATH"] = os.pathsep.join([*extra, env.get("PATH", "")])
+    # Fallbacks go after the caller's PATH: they help a non-login shell find
+    # user-level tools and must never shadow a tool the caller placed first.
+    env["PATH"] = os.pathsep.join([env.get("PATH", ""), *extra])
     env["GIT_TERMINAL_PROMPT"] = "0"
     return env
 

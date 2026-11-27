@@ -8976,6 +8976,7 @@
       "producer": "node_projection_overlay_store",
       "readers": [
         "node_claude_token_pool_effect",
+        "node_delegation_check_probe_effect",
         "node_delegation_check_regression_effect",
         "node_dev_identity_provision_effect",
         "node_floor_emissions_publish_effect",
@@ -11079,6 +11080,7 @@
         "node_projection_local_identity",
         "node_projection_run_trace",
         "node_projection_savings",
+        "node_projection_tenant_credentials",
         "node_projection_tenant_registry",
         "service:omnimarket_projection_migration_runner"
       ],
@@ -11096,6 +11098,7 @@
         "src/omnimarket/nodes/node_projection_local_identity/contract.yaml",
         "src/omnimarket/nodes/node_projection_run_trace/contract.yaml",
         "src/omnimarket/nodes/node_projection_savings/contract.yaml",
+        "src/omnimarket/nodes/node_projection_tenant_credentials/contract.yaml",
         "src/omnimarket/nodes/node_projection_tenant_registry/contract.yaml"
       ],
       "current_schema": [
@@ -11141,6 +11144,7 @@
         "node_projection_read_effect",
         "node_projection_run_trace",
         "node_projection_savings",
+        "node_projection_tenant_credentials",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",

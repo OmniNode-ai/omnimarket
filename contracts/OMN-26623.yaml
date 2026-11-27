@@ -1,0 +1,30 @@
+schema_version: 1.0.0
+ticket_id: OMN-26623
+title: The weekly delegation-quality view is owned in the ownership manifest
+summary: Ownership declaration of projection_delegation_quality_weekly in scripts/application-relation-ownership.yaml, landed ahead of omnimarket#6943 because omnibase_infra#6315 needs it on dev first. This change proves AC5 only; AC1 to AC4 are proven by omnimarket#6943 and omnidash.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26623-quality-weekly-ownership
+    statement: The ownership manifest declares the owner of projection_delegation_quality_weekly once, so omnibase_infra can vendor the view.
+    acceptance:
+      - id: AC5
+        statement: 'AC5: scripts/application-relation-ownership.yaml in omnimarket declares the owner of projection_delegation_quality_weekly, so omnibase_infra can vendor the view; falsifier: uv run pytest -q tests/contracts/test_omn26623_quality_weekly_ownership_declared.py fails on omnimarket dev, where the entry is absent'
+evidence_requirements:
+  - kind: tests
+    description: AC5 ownership declaration test.
+    command: uv run pytest -q --no-cov tests/contracts/test_omn26623_quality_weekly_ownership_declared.py
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn26623-quality-weekly-ownership
+    description: The ownership manifest declares projection_delegation_quality_weekly exactly once as a tenant view owned by the migration runner; fails on dev, where the entry is absent.
+    source: manual
+    binds_ac: [AC5]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/contracts/test_omn26623_quality_weekly_ownership_declared.py
+        cwd: .

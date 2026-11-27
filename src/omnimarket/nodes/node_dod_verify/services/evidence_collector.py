@@ -3331,6 +3331,12 @@ class EvidenceCollector:
                         )
                     ]
             results = [self._check_evidence_item(item, ticket_id, path)]
+            # OMN-25856: a check that finished at the budget's edge starts no
+            # follow-up step (live-PR ``gh`` reads, the must-fail control run):
+            # their own ceilings are what outran the dispatch deadline. A green
+            # whose follow-ups did not run is not a green.
+            if budget_exhausted():
+                return [self._budget_spent_result(results[0])]
             if isinstance(item, dict):
                 results.extend(self._live_pr_checks_for_item(item, ticket_id, path))
             results = self._apply_must_fail_control(item, ticket_id, path, results)
@@ -3522,6 +3528,23 @@ class EvidenceCollector:
             reasons.append(surrogate_refusal_reason(probative_class, str(check_value)))
         return " ".join(reasons)
 
+    @staticmethod
+    def _budget_spent_result(
+        head: ModelEvidenceCheckResult,
+    ) -> ModelEvidenceCheckResult:
+        """The item's own result when the budget ended before its follow-ups."""
+        if head.status is not EnumEvidenceCheckStatus.VERIFIED:
+            return head
+        return head.model_copy(
+            update={
+                "status": EnumEvidenceCheckStatus.SKIPPED,
+                "unverifiable_cause": (
+                    EnumEvidenceUnverifiableCause.CHECK_BUDGET_EXCEEDED
+                ),
+                "message": dispatch_budget_exhausted_message(),
+            }
+        )
+
     def _fetch_pr_diff_facts(
         self, repo: str, pr_number: int
     ) -> ModelPrDiffFacts | None:
@@ -3623,7 +3646,7 @@ class EvidenceCollector:
             facts=facts,
             runner=runner,
             repo_dir=repo_dir,
-            timeout_seconds=max(1, int(_check_timeout_s())),
+            timeout_seconds=max(1, int(clamp_to_budget(_check_timeout_s()))),
         )
         return [self._with_control(head, control), *results[1:]]
 

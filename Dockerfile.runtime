@@ -22,6 +22,9 @@ RUN /app/.venv/bin/python -m omnibase_infra.runtime.strip_runtime_entry_points
 COPY --chown=omniinfra:omniinfra src/omnimarket/configs/routing_tiers.yaml /app/config/delegation/routing_tiers.yaml
 COPY --chown=omniinfra:omniinfra src/omnimarket/configs/bifrost_delegation.yaml /app/config/delegation/bifrost_delegation.base.yaml
 ENV BIFROST_BASE_CONTRACT_PATH=/app/config/delegation/bifrost_delegation.base.yaml
+# OMN-24052: this image is the operator runtime on lab and dev hosts. omnibase_core hides the INTERNAL command
+# groups (settings, scm, ...) unless this switch is on; the customer surface list itself is unchanged.
+ENV ONEX_CLI_SHOW_ALL_COMMANDS=1
 
 RUN /app/.venv/bin/python - <<'PY'
 import importlib
