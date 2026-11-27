@@ -129,6 +129,10 @@ _POST_CONVERSION_SUMMARY_EXPERIMENT_VIEW = (
     "0068_delegation_summary_excludes_experiment.sql"
 )
 
+# OMN-26623: 0070 creates projection_delegation_quality_weekly, which groups ON tenant_id,
+# so it depends on the column the conversion alters and is withheld with 0067.
+_POST_CONVERSION_WEEKLY_QUALITY_VIEW = "0070_delegation_quality_weekly_view.sql"
+
 _MIRROR = "0000_create_tenant_registry_mirror.sql"
 
 # Synthetic throughout -- see OMN-17288 finding 2. uuid5 over an RFC 2606
@@ -220,6 +224,7 @@ def _pre_conversion_migrations() -> list[Path]:
             _POST_CONVERSION_DAILY_VIEW,
             _POST_CONVERSION_QUALITY_GATE_VIEW,
             _POST_CONVERSION_SUMMARY_EXPERIMENT_VIEW,
+            _POST_CONVERSION_WEEKLY_QUALITY_VIEW,
         }
     ]
 

@@ -138,6 +138,8 @@ _VIEWS_DEPENDING_ON_TENANT_ID = frozenset(
         "0067_delegation_daily_view.sql",
         "0065_quality_gate_failure_categories_bounded.sql",
         "0068_delegation_summary_excludes_experiment.sql",
+        # OMN-26623: 0070 weekly view groups ON tenant_id too.
+        "0070_delegation_quality_weekly_view.sql",
     }
 )
 
