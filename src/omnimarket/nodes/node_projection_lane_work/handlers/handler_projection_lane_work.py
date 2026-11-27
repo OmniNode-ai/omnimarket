@@ -31,6 +31,9 @@ import yaml
 from omnibase_core.models.lane_work import ModelLaneWorkReceipt
 
 from omnimarket.models.model_projection_request import ModelProjectionRequest
+from omnimarket.nodes.node_projection_lane_work.contract_topics import (
+    TOPIC_EXPOSURE_TERMINAL,
+)
 from omnimarket.nodes.node_projection_lane_work.handlers.lane_work_fold import (
     row_from_receipt,
 )
@@ -104,7 +107,7 @@ class LaneWorkProjectionWriter(BaseProjectionRunner):
             path,
         )
         self._exposures: dict[str, ProjectionTableConfig] = {
-            exposure.table: exposure for exposure in exposures if exposure.bus_backed
+            exposure.topic: exposure for exposure in exposures if exposure.bus_backed
         }
         self._dispatch_lock = threading.Lock()
 
@@ -207,8 +210,8 @@ class LaneWorkProjectionWriter(BaseProjectionRunner):
         record = json.loads(document) if isinstance(document, str) else dict(document)
         stored = row_from_record(record)
         wire = stored.to_exposure_row(now=now)
-        for table, exposure in self._exposures.items():
-            if table == "lane_work_terminal" and stored.terminal_kind is None:
+        for topic, exposure in self._exposures.items():
+            if topic == TOPIC_EXPOSURE_TERMINAL and stored.terminal_kind is None:
                 continue
             await self.publish_snapshot_delta(
                 exposure,

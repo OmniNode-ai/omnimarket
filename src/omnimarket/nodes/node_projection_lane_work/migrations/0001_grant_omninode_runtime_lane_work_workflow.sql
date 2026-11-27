@@ -1,5 +1,4 @@
--- OMN-26708: omninode_runtime grants for omninode_internal.lane_work_workflow
--- and its terminal-rows view.
+-- OMN-26708: omninode_runtime grants for omninode_internal.lane_work_workflow.
 -- Target DB: omnidash_analytics (NODE_POSTGRES_DB)
 -- Node: node_projection_lane_work
 --
@@ -51,5 +50,3 @@ WHERE table_schema = 'omninode_internal'
   AND table_name = 'lane_work_workflow'
   AND grantee = 'omninode_runtime'
   AND privilege_type = 'UPDATE';
-
-GRANT SELECT ON omninode_internal.lane_work_terminal TO omninode_runtime;

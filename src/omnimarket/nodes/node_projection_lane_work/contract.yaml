@@ -114,14 +114,14 @@ projection_api:
         The orchestrator's session reads terminal events and the terminal rows;
         the reader of this exposure is the status query a later ticket adds.
     # Query two: the terminal rows, the orchestrator's view. The writer
-    # republishes to this exposure only a row whose terminal_kind is set, and
-    # the table-backed read is the view of the same name.
+    # republishes to this exposure only a row whose terminal_kind is set. It reads
+    # the same relation as query one: the vendored migration creates no view.
     - topic: "onex.snapshot.projection.lane-work.terminal.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
       topic_config:
         kafka_config:
           "cleanup.policy": "compact"
       key_grain: "mutable"
-      table: "lane_work_terminal"
+      table: "lane_work_workflow"
       schema: "omnidash_analytics"
       columns: *columns
       order_by: "workflow_id ASC"

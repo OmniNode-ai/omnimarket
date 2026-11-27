@@ -10,7 +10,8 @@
 -- was not: the writer supplies each value on insert. The terminal columns are
 -- NULL while the workflow is live, which is a different fact from a value.
 -- The upsert is guarded on seq, so a replay of the transition topic changes
--- nothing. omninode_internal is named explicitly, as the OMN-15361 gate requires.
+-- nothing. The terminal rows (terminal_kind IS NOT NULL) are a contract query, not
+-- a view. omninode_internal is named explicitly, as the OMN-15361 gate requires.
 -- =============================================================================
 
 CREATE TABLE IF NOT EXISTS omninode_internal.lane_work_workflow (
@@ -28,14 +29,6 @@ CREATE TABLE IF NOT EXISTS omninode_internal.lane_work_workflow (
     projected_at        TIMESTAMPTZ      NOT NULL,
     PRIMARY KEY (workflow_id)
 );
-
--- The terminal rows: the orchestrator's view. Only an ended workflow is in it.
-CREATE OR REPLACE VIEW omninode_internal.lane_work_terminal AS
-SELECT workflow_id, state, last_event_kind, seq, started_at, last_receipt_at,
-       transitions_taken, help_request_count, duration_seconds, terminal_kind,
-       ended_at, projected_at
-FROM omninode_internal.lane_work_workflow
-WHERE terminal_kind IS NOT NULL;
 
 -- ---- BEGIN OMN-15376 shape reconciliation: lane_work_workflow ----
 ALTER TABLE omninode_internal.lane_work_workflow ADD COLUMN IF NOT EXISTS workflow_id TEXT;

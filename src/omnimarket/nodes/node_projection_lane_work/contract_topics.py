@@ -43,15 +43,18 @@ TOPIC_PROJECTION_APPLIED = _PUBLISH[0]
 _EXPOSURES = load_projection_exposures_from_contract(
     _CONTRACT, "node_projection_lane_work", CONTRACT_PATH
 )
-_BY_TABLE = {exposure.table: exposure.topic for exposure in _EXPOSURES}
-if set(_BY_TABLE) != {"lane_work_workflow", "lane_work_terminal"}:
+_TOPICS = [exposure.topic for exposure in _EXPOSURES]
+if len(_TOPICS) != 2 or {exposure.table for exposure in _EXPOSURES} != {
+    "lane_work_workflow"
+}:
     raise ValueError(
-        "node_projection_lane_work must expose lane_work_workflow (current state "
-        f"by workflow) and lane_work_terminal (terminal rows); found {sorted(_BY_TABLE)}"
+        "node_projection_lane_work must expose lane_work_workflow twice (current "
+        f"state by workflow, then the terminal rows); found {_TOPICS}"
     )
 
 #: Query one: the current state of every workflow, keyed by workflow id.
-TOPIC_EXPOSURE_WORKFLOW = _BY_TABLE["lane_work_workflow"]
+TOPIC_EXPOSURE_WORKFLOW = _TOPICS[0]
 
-#: Query two: the terminal rows, the orchestrator's view.
-TOPIC_EXPOSURE_TERMINAL = _BY_TABLE["lane_work_terminal"]
+#: Query two: the terminal rows, the orchestrator's view. The writer publishes
+#: to it only a row whose terminal_kind is set.
+TOPIC_EXPOSURE_TERMINAL = _TOPICS[1]

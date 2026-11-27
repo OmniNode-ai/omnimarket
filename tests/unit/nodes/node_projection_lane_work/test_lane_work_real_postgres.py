@@ -160,7 +160,7 @@ async def test_n_workflows_give_n_rows_and_a_replay_changes_nothing() -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_the_terminal_view_holds_only_ended_workflows() -> None:
+async def test_the_terminal_rows_hold_only_ended_workflows() -> None:
     receipts = [
         *live_workflow("a-1-1"),
         *handed_off_workflow("b-2-1"),
@@ -169,6 +169,7 @@ async def test_the_terminal_view_holds_only_ended_workflows() -> None:
     async with _migrated_writer() as (writer, connection, schema):
         await _deliver_all(writer, receipts)
         rows = await connection.fetch(
-            f"SELECT workflow_id FROM {schema}.lane_work_terminal ORDER BY workflow_id"
+            f"SELECT workflow_id FROM {schema}.lane_work_workflow "
+            "WHERE terminal_kind IS NOT NULL ORDER BY workflow_id"
         )
         assert [r["workflow_id"] for r in rows] == ["b-2-1", "c-3-1"]
