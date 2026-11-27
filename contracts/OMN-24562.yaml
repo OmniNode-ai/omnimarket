@@ -244,3 +244,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/models/test_etcd_lab_members_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn24562-dupguard-lane-token
+  description: 'AC11: the duplicate guard''s claims read names only lane tokens in its lane-scoped read. A one hour row whose lane cell is wt:<repo>/<worktree> (a hook FRICTION row, 2026-11-26T21:20Z) no longer makes the work-ledger query refuse the request (lanes.N String should match pattern) and every pr-create refuse unchecked; the real lanes are still asked for. The new test fails against the previous handler (named both lanes) and passes after; an unreadable read still refuses unchecked.'
+  source: manual
+  binds_ac:
+  - AC11
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/scm/test_scm_duplicate_guard_reader_timeout.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
