@@ -6,9 +6,10 @@ from __future__ import annotations
 
 import ast
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -93,8 +94,9 @@ def test_the_handler_reaches_its_store_only_through_the_constructor() -> None:
         if isinstance(n, ast.ImportFrom)
     ]
     assert not any("store_valkey" in m or "backend_" in m for m in imported)
+    construct = cast(Callable[[], object], HandlerOverlaySnapshotWrite)
     with pytest.raises(TypeError):
-        HandlerOverlaySnapshotWrite()  # type: ignore[call-arg]
+        construct()
 
 
 def test_the_contract_declares_the_compacted_snapshot_topic_as_a_direct_read() -> None:
