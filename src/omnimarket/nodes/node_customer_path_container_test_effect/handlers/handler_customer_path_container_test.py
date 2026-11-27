@@ -21,7 +21,14 @@ from typing import Any, Final, Protocol
 from urllib.parse import urlsplit
 
 import yaml
+from omnibase_core.models.delegation.wire.model_quality_gate import (
+    ModelQualityRuleEvaluation,
+)
+from pydantic import ValidationError
 
+from omnimarket.models.delegation.wire.model_tests_outcome import (
+    tests_outcome_from_rules,
+)
 from omnimarket.nodes.node_customer_path_container_test_effect.adapters import (
     DockerContainerRuntime,
 )
@@ -43,6 +50,7 @@ TENANT_SETTING: Final = "ONEX_CUSTOMER_PATH_TENANT_SLUG"
 BLOCKED_SETTING: Final = "ONEX_CUSTOMER_PATH_BLOCKED_RANGES"
 UV_URL_SETTING: Final = "ONEX_CUSTOMER_PATH_UV_INSTALL_URL"
 PROVIDER_KEY_FILE_SETTING: Final = "ONEX_CUSTOMER_PATH_PROVIDER_KEY_FILE"
+PROVIDER_MODEL_SETTING: Final = "ONEX_CUSTOMER_PATH_PROVIDER_MODEL"
 CONTRACT: Final = Path(__file__).resolve().parents[1] / "contract.yaml"
 TAIL: Final = 400
 KEY_PATH_IN_CONTAINER: Final = "gateway.key"
@@ -77,6 +85,27 @@ def _json_object(text: str) -> dict[str, Any] | None:
     except ValueError:
         return None
     return value if isinstance(value, dict) else None
+
+
+def _tests_reading(receipt: Mapping[str, Any]) -> str:
+    """What the receipt says about named tests: its own field, else the outcome its rule evaluations record."""
+    tests = [f"{k}={receipt[k]}" for k in sorted(receipt) if "test" in k.lower()]
+    if tests:
+        return ", ".join(tests)
+    raw = receipt.get("rule_evaluations")
+    if isinstance(raw, list):
+        try:
+            outcome = tests_outcome_from_rules(
+                [ModelQualityRuleEvaluation.model_validate(r) for r in raw]
+            )
+        except ValidationError:
+            outcome = None
+        if outcome is not None:
+            return (
+                f"tests_outcome={outcome} (derived from rule_evaluations; "
+                "the receipt has no tests_outcome field)"
+            )
+    return "the receipt has no tests field"
 
 
 def _text(value: Any) -> str | None:
@@ -168,6 +197,7 @@ class HandlerCustomerPathContainerTest:
         ]
         uv_url = (self._environ.get(UV_URL_SETTING) or "").strip()
         provider_file = (self._environ.get(PROVIDER_KEY_FILE_SETTING) or "").strip()
+        provider_model = (self._environ.get(PROVIDER_MODEL_SETTING) or "").strip()
         missing = [
             n
             for n, v in (
@@ -216,6 +246,7 @@ class HandlerCustomerPathContainerTest:
                 uv_url,
                 blocked,
                 provider_key,
+                provider_model,
             )
         finally:
             self._runtime.remove(container)
@@ -231,6 +262,7 @@ class HandlerCustomerPathContainerTest:
         uv_url: str,
         blocked: list[str],
         provider_key: str | None = None,
+        provider_model: str = "",
     ) -> ModelCustomerPathResult:
         user = request.customer_user
         home = f"/home/{user}"
@@ -243,6 +275,9 @@ class HandlerCustomerPathContainerTest:
             "home": home,
             "task_type": shlex.quote(request.task_type),
             "prompt_arg": shlex.quote(request.prompt),
+            "model_args": f"--model {shlex.quote(provider_model)}"
+            if provider_model
+            else "",
         }
         readings: list[ModelStepReading] = []
         extra: dict[str, str | None] = {}
@@ -282,7 +317,7 @@ class HandlerCustomerPathContainerTest:
                 detail=detail,
                 exit_code=done.exit_code if done else None,
                 output_tail=scrub((done.stdout + done.stderr) if done else ""),
-                guide_gap=step.get("gap"),
+                guide_gap=step.get("gap_if_failed") if not ok else step.get("gap"),
             )
 
         failed = False
@@ -447,14 +482,7 @@ class HandlerCustomerPathContainerTest:
                     extra["receipt_status"] = _text(receipt.get("status"))
                     extra["receipt_model"] = _text(receipt.get("terminal_model_used"))
                     extra["receipt_provider"] = _text(receipt.get("provider"))
-                    tests = [
-                        f"{k}={receipt[k]}"
-                        for k in sorted(receipt)
-                        if "test" in k.lower()
-                    ]
-                    extra["receipt_tests_run"] = (
-                        ", ".join(tests) if tests else "the receipt has no tests field"
-                    )
+                    extra["receipt_tests_run"] = _tests_reading(receipt)
                     ok = extra["receipt_model"] is not None
             readings.append(
                 reading(

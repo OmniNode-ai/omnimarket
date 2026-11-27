@@ -137,7 +137,7 @@ def test_healthy_run_passes_every_step_that_runs_and_reads_the_receipt(
     assert [(c[0], c[1].rsplit("/", 1)[-1]) for c in runtime.copied] == [
         ("/checkout", "omnimarket-src")
     ]
-    assert len(result.guide_gaps) >= 3
+    assert len(result.guide_gaps) == 2
 
 
 def test_lab_ranges_are_blackholed_and_only_the_gateway_is_allowed(
@@ -256,14 +256,14 @@ def test_a_container_that_will_not_start_is_named(tmp_path: Path) -> None:
     assert "no such image" in result.detail
 
 
-def test_no_checkout_fails_the_copy_step_and_names_the_gap(tmp_path: Path) -> None:
+def test_no_checkout_fails_the_copy_step_and_names_why(tmp_path: Path) -> None:
     handler = HandlerCustomerPathContainerTest(
         environ=_env(tmp_path), runtime=FakeRuntime()
     )
     result = asyncio.run(handler.handle(ModelCustomerPathCommand()))
     assert result.outcome is EnumCustomerPathOutcome.STEP_FAILED
     assert result.detail.startswith("s11_copy_unreleased_node")
-    assert any("not yet released" in g for g in result.guide_gaps)
+    assert "no source_checkout named" in result.detail
 
 
 def test_the_declared_steps_follow_the_guide_in_order() -> None:
@@ -364,3 +364,112 @@ def test_the_provider_key_is_scrubbed_from_output_and_a_refusal_names_the_step(
     assert result.outcome is EnumCustomerPathOutcome.STEP_FAILED
     assert result.detail.startswith("s10_register_provider_key")
     assert PROVIDER_VALUE not in result.model_dump_json()
+
+
+UNTESTED_RULES = [
+    {
+        "rule": "passes_existing_tests",
+        "enforcement": "scored",
+        "passed": False,
+        "detail": "UNTESTED: passes_existing_tests: the request named no tests, so the code answer was decided by its contract checks alone and was not run",
+    },
+    {"rule": "no_refusal", "enforcement": "blocking", "passed": True, "detail": None},
+]
+
+
+def test_an_untested_receipt_with_only_rule_evaluations_reads_untested(
+    tmp_path: Path,
+) -> None:
+    runtime = FakeRuntime(
+        {
+            "receipt.json": ModelExecResult(
+                exit_code=0,
+                stdout=json.dumps({**RECEIPT, "rule_evaluations": UNTESTED_RULES}),
+            )
+        }
+    )
+    result = _run(_env(tmp_path), runtime)
+    assert result.receipt_tests_run is not None
+    assert result.receipt_tests_run.startswith("tests_outcome=untested")
+    assert "rule_evaluations" in result.receipt_tests_run
+
+
+def test_a_receipt_tests_outcome_field_is_reported_as_it_stands(
+    tmp_path: Path,
+) -> None:
+    runtime = FakeRuntime(
+        {
+            "receipt.json": ModelExecResult(
+                exit_code=0,
+                stdout=json.dumps(
+                    {
+                        **RECEIPT,
+                        "tests_outcome": "not_run",
+                        "rule_evaluations": UNTESTED_RULES,
+                    }
+                ),
+            )
+        }
+    )
+    result = _run(_env(tmp_path), runtime)
+    assert result.receipt_tests_run == "tests_outcome=not_run"
+
+
+def test_a_receipt_with_no_test_rule_still_says_it_has_no_tests_field(
+    tmp_path: Path,
+) -> None:
+    runtime = FakeRuntime(
+        {
+            "receipt.json": ModelExecResult(
+                exit_code=0,
+                stdout=json.dumps({**RECEIPT, "rule_evaluations": [UNTESTED_RULES[1]]}),
+            )
+        }
+    )
+    result = _run(_env(tmp_path), runtime)
+    assert result.receipt_tests_run == "the receipt has no tests field"
+
+
+def test_own_key_step_adds_the_chosen_model_only_when_a_model_is_named(
+    tmp_path: Path,
+) -> None:
+    def registration(**over: str) -> str:
+        runtime = FakeRuntime()
+        env = _env(
+            tmp_path,
+            ONEX_CUSTOMER_PATH_PROVIDER_KEY_FILE=str(_provider_file(tmp_path)),
+            **over,
+        )
+        _run(env, runtime)
+        return " ".join(
+            " ".join(c[1])
+            for c in runtime.calls
+            if "register-tenant-key" in " ".join(c[1])
+        )
+
+    assert "--model" not in registration()
+    assert "--model model-z" in registration(
+        ONEX_CUSTOMER_PATH_PROVIDER_MODEL="model-z"
+    )
+
+
+def test_a_refused_registration_reports_the_clients_own_words_as_a_gap(
+    tmp_path: Path,
+) -> None:
+    runtime = FakeRuntime(
+        {
+            "register-tenant-key": ModelExecResult(
+                exit_code=1,
+                stderr="Error: BYOK_MODEL_NOT_CHOSEN: name one with --model",
+            )
+        }
+    )
+    env = _env(
+        tmp_path,
+        ONEX_CUSTOMER_PATH_PROVIDER_KEY_FILE=str(_provider_file(tmp_path)),
+    )
+    result = _run(env, runtime)
+    step = {s.step_id: s for s in result.steps}["s10_register_provider_key"]
+    assert step.status is EnumStepStatus.FAILED
+    assert "BYOK_MODEL_NOT_CHOSEN" in step.output_tail
+    assert any("--model" in g for g in result.guide_gaps)
