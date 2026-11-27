@@ -58,7 +58,6 @@ def _tui_state_in_a_throwaway_folder(
     must neither read what an earlier run saved nor leave its own behind."""
     from omnimarket.nodes.node_onex_setup_effect import cli_tui
 
-    monkeypatch.setattr(cli_tui.ThemeStore, "_value", None)
     monkeypatch.setattr(cli_tui.ThemeStore, "_path", tmp_path / "tui-theme")
     monkeypatch.setattr(cli_tui.LaunchStore, "_path", tmp_path / "tui-launches")
     monkeypatch.setattr(cli_tui.StatusStore, "_path", tmp_path / "tui-status.json")

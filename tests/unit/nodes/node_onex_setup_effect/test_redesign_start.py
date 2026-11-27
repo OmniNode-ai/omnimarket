@@ -64,7 +64,6 @@ async def _launch(pilot: object) -> None:
 @pytest.fixture(autouse=True)
 def _fresh_launch_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Every test starts as a first launch with no saved theme."""
-    monkeypatch.setattr(cli_tui.ThemeStore, "_value", None)
     monkeypatch.setattr(cli_tui.ThemeStore, "_path", tmp_path / "theme")
     store = getattr(cli_tui, "LaunchStore", None)
     if store is not None:
@@ -210,11 +209,12 @@ def test_the_design_file_has_no_duplicate_keys() -> None:
 def test_a_theme_that_cannot_be_saved_is_logged_not_swallowed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """A full or read-only disk keeps the theme for this run and says why in the log."""
+    """A full or read-only disk: save says it failed, nothing is kept for the
+    next start, and the log says why."""
     blocker = tmp_path / "blocker"
     blocker.write_text("a file where a folder is needed")
     monkeypatch.setattr(cli_tui.ThemeStore, "_path", blocker / "theme")
     with caplog.at_level("WARNING"):
-        assert cli_tui.ThemeStore.save("onex-light") is True
-    assert cli_tui.ThemeStore.load() == "onex-light"
+        assert cli_tui.ThemeStore.save("onex-light") is False
+    assert cli_tui.ThemeStore.load() is None
     assert "could not remember the theme" in caplog.text

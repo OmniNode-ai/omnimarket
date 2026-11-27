@@ -28,8 +28,8 @@ requirements:
     statement: 'AC8: no new colour, word or glyph is written in code, with a planted-word positive control; Falsifier: tests/unit/nodes/node_onex_setup_effect/test_literal_scan.py::test_literal_scan_positive_control'
 evidence_requirements:
 - kind: tests
-  description: The seven OMN-26620 test files pass.
-  command: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_header.py tests/unit/nodes/node_onex_setup_effect/test_task_card.py tests/unit/nodes/node_onex_setup_effect/test_footer.py tests/unit/nodes/node_onex_setup_effect/test_theme.py tests/unit/nodes/node_onex_setup_effect/test_icons.py tests/unit/nodes/node_onex_setup_effect/test_status_seeded.py tests/unit/nodes/node_onex_setup_effect/test_literal_scan.py -q -n 0 --no-cov -p no:cacheprovider
+  description: The twelve OMN-26620 test files pass.
+  command: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_header.py tests/unit/nodes/node_onex_setup_effect/test_task_card.py tests/unit/nodes/node_onex_setup_effect/test_footer.py tests/unit/nodes/node_onex_setup_effect/test_theme.py tests/unit/nodes/node_onex_setup_effect/test_icons.py tests/unit/nodes/node_onex_setup_effect/test_status_seeded.py tests/unit/nodes/node_onex_setup_effect/test_literal_scan.py tests/unit/nodes/node_onex_setup_effect/test_theme_live_colours.py tests/unit/nodes/node_onex_setup_effect/test_theme_store_honest.py tests/unit/nodes/node_onex_setup_effect/test_icons_mode_only.py tests/unit/nodes/node_onex_setup_effect/test_late_reads.py tests/unit/nodes/node_onex_setup_effect/test_literal_scan_wide.py -q -n 0 --no-cov -p no:cacheprovider
 emergency_bypass:
   enabled: false
   justification: ''
@@ -60,7 +60,7 @@ dod_evidence:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_footer.py::test_footer_all_keys_at_140 tests/unit/nodes/node_onex_setup_effect/test_footer.py::test_footer_no_wrap_at_80 -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_footer.py::test_footer_all_keys_at_140 tests/unit/nodes/node_onex_setup_effect/test_footer.py::test_footer_no_wrap_when_narrow -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26620-ac5
   description: 'AC5: /theme applies the chosen theme and it is restored on restart.'
@@ -69,7 +69,7 @@ dod_evidence:
   - AC5
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_theme.py::test_theme_applies tests/unit/nodes/node_onex_setup_effect/test_theme.py::test_theme_restored_on_restart -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_theme.py::test_theme_applies tests/unit/nodes/node_onex_setup_effect/test_theme.py::test_theme_restored_on_restart tests/unit/nodes/node_onex_setup_effect/test_theme_live_colours.py::test_the_status_bar_and_a_card_follow_onex_light tests/unit/nodes/node_onex_setup_effect/test_theme_live_colours.py::test_a_built_in_theme_colours_the_text tests/unit/nodes/node_onex_setup_effect/test_theme_store_honest.py::test_a_saved_theme_that_is_gone_opens_the_default tests/unit/nodes/node_onex_setup_effect/test_theme_store_honest.py::test_a_failed_write_is_reported_and_nothing_is_kept tests/unit/nodes/node_onex_setup_effect/test_theme_store_honest.py::test_the_next_start_reads_the_file tests/unit/nodes/node_onex_setup_effect/test_theme_store_honest.py::test_theme_says_plainly_when_the_choice_was_not_kept -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26620-ac6
   description: 'AC6: Nerd Font icons appear only when switched on and every icon has a plain fallback.'
@@ -78,7 +78,7 @@ dod_evidence:
   - AC6
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_icons.py::test_every_icon_has_fallback tests/unit/nodes/node_onex_setup_effect/test_icons.py::test_no_nerd_glyph_when_off -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_icons.py::test_every_icon_has_fallback tests/unit/nodes/node_onex_setup_effect/test_icons.py::test_no_nerd_glyph_when_off tests/unit/nodes/node_onex_setup_effect/test_icons_mode_only.py::test_a_second_icon_switch_is_refused -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26620-ac7
   description: 'AC7: the status bar shows the last known state at once while a slow reader runs.'
@@ -87,7 +87,7 @@ dod_evidence:
   - AC7
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_status_seeded.py::test_status_seeded_from_last_known -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_status_seeded.py::test_status_seeded_from_last_known tests/unit/nodes/node_onex_setup_effect/test_late_reads.py::test_a_slow_first_status_read_never_overwrites_a_newer_one tests/unit/nodes/node_onex_setup_effect/test_late_reads.py::test_a_late_identical_list_keeps_the_ticks tests/unit/nodes/node_onex_setup_effect/test_late_reads.py::test_enter_in_the_url_field_replaces_the_pending_search -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26620-ac8
   description: 'AC8: no new colour, word or glyph is written in code, with a planted-word positive control.'
@@ -96,7 +96,7 @@ dod_evidence:
   - AC8
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_literal_scan.py::test_literal_scan_positive_control -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_literal_scan.py::test_literal_scan_positive_control tests/unit/nodes/node_onex_setup_effect/test_literal_scan_wide.py::test_the_scan_catches_a_planted_glyph_or_display_word tests/unit/nodes/node_onex_setup_effect/test_literal_scan_wide.py::test_the_scan_passes_docstrings_logs_and_spaces tests/unit/nodes/node_onex_setup_effect/test_literal_scan_wide.py::test_the_pages_hold_no_literal -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 
 - id: dod-omn26620-integration-proof
@@ -105,5 +105,5 @@ dod_evidence:
   execution_scope: local_done_gate
   checks:
   - check_type: command
-    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26620 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_onex_setup_effect/test_header.py tests/unit/nodes/node_onex_setup_effect/test_task_card.py tests/unit/nodes/node_onex_setup_effect/test_footer.py tests/unit/nodes/node_onex_setup_effect/test_theme.py tests/unit/nodes/node_onex_setup_effect/test_icons.py tests/unit/nodes/node_onex_setup_effect/test_status_seeded.py tests/unit/nodes/node_onex_setup_effect/test_literal_scan.py -q -n 0 --no-cov -p no:cacheprovider
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26620 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_onex_setup_effect/test_header.py tests/unit/nodes/node_onex_setup_effect/test_task_card.py tests/unit/nodes/node_onex_setup_effect/test_footer.py tests/unit/nodes/node_onex_setup_effect/test_theme.py tests/unit/nodes/node_onex_setup_effect/test_icons.py tests/unit/nodes/node_onex_setup_effect/test_status_seeded.py tests/unit/nodes/node_onex_setup_effect/test_literal_scan.py tests/unit/nodes/node_onex_setup_effect/test_theme_live_colours.py tests/unit/nodes/node_onex_setup_effect/test_theme_store_honest.py tests/unit/nodes/node_onex_setup_effect/test_icons_mode_only.py tests/unit/nodes/node_onex_setup_effect/test_late_reads.py tests/unit/nodes/node_onex_setup_effect/test_literal_scan_wide.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .

@@ -126,6 +126,33 @@ glyphs:
   prompt: "❯"
   cancelled: "⊘"
 
+# Lines, boxes and bars the screens draw with (OMN-26620 AC8).
+drawing:
+  # A box's corners (top left, top right, bottom left, bottom right), its
+  # across line and its down line.
+  box_round: "╭╮╰╯─│"
+  box_heavy: "┏┓┗┛━┃"
+  line: "─"
+  arrow: "▶"
+  # The routing diagram's branch to the three outcomes.
+  branch: "│"
+  branch_top: "┌"
+  branch_bottom: "└"
+  junction: "┼"
+  # Between two steps of the Setup Guide.
+  guide_arrow: "─────▶"
+  # A usage bar: whole cells, then an eighth-cell step (a space for none).
+  bar_full: "█"
+  bar_eighths: " ▏▎▍▌▋▊▉"
+  # A theme colour on /theme.
+  swatch: "████████"
+  # Leads both lines of a task card, in the card's colour.
+  card_bar: "┃"
+  # Ends a text that was cut.
+  ellipsis: "…"
+  # Between the parts of the status bar and of the line under an answer.
+  wide_separator: "  ·  "
+
 prompt_placeholder: Ask onex to delegate a task, or type / for commands
 # /help: this sentence, then each command as the / menu shows it, then
 # words.help_keys (each pair is a key and its word).
@@ -490,7 +517,15 @@ words:
   themes_preview_title: "Preview"
   themes_sample_heading: "Build more. Spend less."
   themes_sample_text: "The right intelligence, at the right cost."
+  # A setup step that failed, and what fixes it.
+  step_fix: "{step} — {fix}"
+  # After the delegation switch when it was moved but not saved.
+  state_pending_part: "  · {pending}"
+  # The command a palette entry runs, echoed above its output.
+  command_echo: "$ onex {command}"
   themes_kept: "{theme} kept."
+  # The choice could not be written (a full or read-only disk): on for now only.
+  themes_not_kept: "{theme} is on for now, but could not be saved for the next start."
   # Config tab (mockup page 4).
   add_title: Add models
   add_models_title: "Add {provider} models"
@@ -698,6 +733,8 @@ header:
   lines:
     - "{mark}   {version}"
     - "{mark}   {model} · {folder}"
+  # The model's part of the second line, left out while no model is known.
+  model_slot: "{model} · "
   version: "v{version}"
   packages: [omninode-onex, omnimarket]
   home: "~"
@@ -715,6 +752,12 @@ task_card:
     done: "✓"
     fallback: "◐"
     failed: "✗"
+  # The word after the glyph, by state.
+  labels:
+    running: Running
+    done: Done
+    fallback: Fallback
+    failed: Failed
   bar_colours:
     running: route_cheap
     done: success
@@ -781,7 +824,6 @@ themes:
 # mode is nerd, plain ASCII when mode is ascii. Each icon carries all three.
 icons:
   mode: plain
-  enabled: false
   glyphs:
     ask:
       nerd: "\uf120"
@@ -856,6 +898,9 @@ doctor_page:
   status_attention: "! needs attention"
   status_skipped: "– optional/skipped"
   fix_prefix: "fix:"
+  # A passing check with no words of its own, and an optional one not set up.
+  said_ok: "ok"
+  said_not_set_up: "not set up"
   # The checks /config can fix, by the name onex doctor gives them; no
   # other row offers a fix it cannot make (end-to-end pass 2026-11-26).
   fixes:
@@ -889,6 +934,9 @@ metering_page:
   tasks: "Tasks"
   tokens: "Tokens"
   cost: "Cost"
+  model: "Model"
+  # Ends a model name cut to fit its column.
+  ellipsis: "…"
   saved: "Saved ≈ {amount} (modelled)"
   unmeasured: "not measured"
   savings_line: "Savings are modelled, not billed."

@@ -168,6 +168,30 @@ class ModelTuiGlyphs(BaseModel):
     cancelled: str = "⊘"
 
 
+class ModelTuiDrawing(BaseModel):
+    """The lines, boxes and bars the screens draw with (OMN-26620 AC8)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    #: Corners (top left, top right, bottom left, bottom right), across, down.
+    box_round: str = Field(min_length=6, max_length=6)
+    box_heavy: str = Field(min_length=6, max_length=6)
+    line: str = Field(min_length=1, max_length=1)
+    arrow: str = Field(min_length=1, max_length=1)
+    branch: str = Field(min_length=1, max_length=1)
+    branch_top: str = Field(min_length=1, max_length=1)
+    branch_bottom: str = Field(min_length=1, max_length=1)
+    junction: str = Field(min_length=1, max_length=1)
+    guide_arrow: str = Field(min_length=1)
+    bar_full: str = Field(min_length=1, max_length=1)
+    #: No step, then one to seven eighths of a cell.
+    bar_eighths: str = Field(min_length=8, max_length=8)
+    swatch: str = Field(min_length=1)
+    card_bar: str = Field(min_length=1)
+    ellipsis: str = Field(min_length=1)
+    wide_separator: str = Field(min_length=1)
+
+
 class ModelTuiTableColumn(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -412,6 +436,8 @@ class ModelTuiHeader(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     lines: tuple[str, ...] = Field(min_length=1, max_length=4)
+    #: The model's part of a line, left out while no model is known.
+    model_slot: str = Field(min_length=1)
     version: str = Field(min_length=1)
     packages: tuple[str, ...] = Field(min_length=1)
     home: str = Field(min_length=1)
@@ -426,13 +452,11 @@ class ModelTuiTaskCard(BaseModel):
 
     state_bar_colour: str
     facts_template: str = Field(min_length=1)
-    fallback_facts_template: str = Field(
-        default="{model} · {tokens} tokens · {seconds} s", min_length=1
-    )
-    failure_template: str = Field(
-        default="Could not reach {model}. Check its key with /config.", min_length=1
-    )
+    fallback_facts_template: str = Field(min_length=1)
+    failure_template: str = Field(min_length=1)
     glyphs: dict[str, str] = Field(default_factory=dict)
+    #: The word after the glyph, by state.
+    labels: dict[str, str]
     bar_colours: dict[str, str] = Field(default_factory=dict)
 
     @property
@@ -515,8 +539,8 @@ class ModelTuiIcon(BaseModel):
 class ModelTuiIcons(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    #: The one setting that picks the icons' form (AC6).
     mode: Literal["nerd", "plain", "ascii"] = "plain"
-    enabled: bool = False
     glyphs: dict[str, ModelTuiIcon] = Field(default_factory=dict)
 
 
@@ -542,38 +566,38 @@ class ModelTuiTabSpec(BaseModel):
 class ModelTuiDoctorPage(BaseModel):
     model_config = ConfigDict(frozen=True, extra="allow")
 
-    title: str = Field(default="Setup check", min_length=1)
-    summary_all_good: str = Field(
-        default="✓ all good · {passed} of {total}", min_length=1
-    )
-    summary_attention: str = Field(
-        default="{problems} need attention · {passed} of {total}", min_length=1
-    )
-    status_ok: str = Field(default="✓ ok", min_length=1)
-    status_attention: str = Field(default="! needs attention", min_length=1)
-    status_skipped: str = Field(default="\u2013 optional/skipped", min_length=1)
-    fix_prefix: str = Field(default="fix:", min_length=1)
+    title: str = Field(min_length=1)
+    summary_all_good: str = Field(min_length=1)
+    summary_attention: str = Field(min_length=1)
+    status_ok: str = Field(min_length=1)
+    status_attention: str = Field(min_length=1)
+    status_skipped: str = Field(min_length=1)
+    fix_prefix: str = Field(min_length=1)
+    #: A passing check with no words of its own, and an optional one not set up.
+    said_ok: str = Field(min_length=1)
+    said_not_set_up: str = Field(min_length=1)
     fixes: dict[str, str] = Field(default_factory=dict)
     codes: dict[str, str] = Field(default_factory=dict)
     starts: dict[str, str] = Field(default_factory=dict)
-    missing: str = Field(default="Not set: {names}.", min_length=1)
+    missing: str = Field(min_length=1)
     settings: dict[str, str] = Field(default_factory=dict)
-    fallback: str = Field(
-        default="Run onex doctor in a terminal for the details.", min_length=1
-    )
+    fallback: str = Field(min_length=1)
 
 
 class ModelTuiMeteringPage(BaseModel):
     model_config = ConfigDict(frozen=True, extra="allow")
 
-    title: str = Field(default="Usage and cost", min_length=1)
-    tasks: str = Field(default="Tasks", min_length=1)
-    tokens: str = Field(default="Tokens", min_length=1)
-    cost: str = Field(default="Cost", min_length=1)
-    saved: str = Field(default="Saved ≈ {amount} (modelled)", min_length=1)
-    unmeasured: str = Field(default="not measured", min_length=1)
-    savings_line: str = Field(default="Savings are modelled, not billed.", min_length=1)
-    period: str = Field(default="{period}", min_length=1)
+    title: str = Field(min_length=1)
+    tasks: str = Field(min_length=1)
+    tokens: str = Field(min_length=1)
+    cost: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+    #: Ends a model name cut to fit its column.
+    ellipsis: str = Field(min_length=1)
+    saved: str = Field(min_length=1)
+    unmeasured: str = Field(min_length=1)
+    savings_line: str = Field(min_length=1)
+    period: str = Field(min_length=1)
 
 
 class ModelTuiMessages(BaseModel):
@@ -666,8 +690,8 @@ class ModelTuiDesign(BaseModel):
     welcome: ModelTuiWelcome
     task_card: ModelTuiTaskCard
     footer: ModelTuiFooter
-    doctor_page: ModelTuiDoctorPage = Field(default_factory=ModelTuiDoctorPage)
-    metering_page: ModelTuiMeteringPage = Field(default_factory=ModelTuiMeteringPage)
+    doctor_page: ModelTuiDoctorPage
+    metering_page: ModelTuiMeteringPage
     messages: ModelTuiMessages = Field(default_factory=ModelTuiMessages)
     icons: ModelTuiIcons = Field(default_factory=ModelTuiIcons)
     palette: ModelTuiPalette
@@ -688,6 +712,7 @@ class ModelTuiDesign(BaseModel):
     #: The model screens' sentences, by name; ``{name}`` parts are filled in.
     words: dict[str, str]
     glyphs: ModelTuiGlyphs
+    drawing: ModelTuiDrawing
     prompt_placeholder: str
     help: str
     auto_find_seconds: float = Field(gt=0)

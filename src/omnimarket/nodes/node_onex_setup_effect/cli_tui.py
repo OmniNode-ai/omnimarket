@@ -11,6 +11,7 @@ command the CLI runs; nothing here re-implements setup, routing or settings.
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import contextlib
 import importlib
@@ -75,6 +76,12 @@ from omnimarket.models.model_local_server_details import ModelLocalServerDetails
 from omnimarket.nodes.node_onex_setup_effect.cli_model_table import (
     ModelTable,
     entry_key,
+)
+from omnimarket.nodes.node_onex_setup_effect.cli_theme import (
+    active_colours,
+)
+from omnimarket.nodes.node_onex_setup_effect.cli_theme import (
+    style as _style,
 )
 from omnimarket.nodes.node_onex_setup_effect.cli_toggle import ToggleSwitch
 from omnimarket.nodes.node_onex_setup_effect.doctor_page import (
@@ -211,11 +218,6 @@ def _quits(text: str) -> bool:
 
 
 _LOG = logging.getLogger(__name__)
-
-
-def _style(token: str, *extra: str) -> str:
-    """A Rich style from a design colour token, e.g. ``_style("error", "bold")``."""
-    return " ".join((*extra, getattr(tui_design().theme, token)))
 
 
 def _picker() -> tuple[ModelSetupPickerProvider, ...]:
@@ -654,7 +656,11 @@ def _stopped_by(out: str, err: str) -> str:
                 None,
             ):
                 fix = str(step.get("fix") or "").split(". The ")[0]
-                return f"{step.get('step')} — {fix or step.get('status')}"
+                return _say(
+                    "step_fix",
+                    step=step.get("step"),
+                    fix=fix or step.get("status"),
+                )
     return _last_line(out, err)
 
 
@@ -721,7 +727,7 @@ def plain_reason(raw: str, limit: int) -> str:
         text = text[:-3].rsplit(" ", 1)[0]
     if len(text) > limit:
         text, cut = text[: limit - 1].rsplit(" ", 1)[0], True
-    return text + "…" if cut and text else text
+    return text + tui_design().drawing.ellipsis if cut and text else text
 
 
 def _tested_line(provider: str, result: Mapping[str, object]) -> Text:
@@ -1557,7 +1563,9 @@ class ProvidersScreen(_TabbedScreen[None]):
             return Text(
                 f"{glyphs.done} {_say('detail_ready')}", style=_style("success")
             )
-        return Text(f"· {_say('detail_untested')}", style=_style("warning"))
+        return Text(
+            f"{glyphs.unchanged} {_say('detail_untested')}", style=_style("warning")
+        )
 
     def _views(self, wanted: str) -> dict[str, list[ModelSetupPickerProvider]]:
         """Yours and the rest, each narrowed by the search."""
@@ -1850,6 +1858,8 @@ class SetupScreen(_TabbedScreen[None]):
         self._start = provider
         self._start_url = url
         self._start_key = key
+        # The provider and key or URL the shown model list was read for.
+        self._listed: tuple[str, str] | None = None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="form"):
@@ -2162,11 +2172,15 @@ class SetupScreen(_TabbedScreen[None]):
         if self._source() != wanted:  # the key, URL or provider changed meanwhile
             return
         entries = [self._as_stored(e, wanted[1]) for e in entries]
-        self._show_rows(entries)
-        if entries:
-            self.query_one("#found", ModelTable).focus_rows()
-        else:  # nothing to choose from: the reason belongs on Config
-            self.query_one("#cancel", Button).focus()
+        table = self.query_one("#found", ModelTable)
+        # A late answer for the list already shown keeps the ticks made meanwhile.
+        if self._listed != wanted or table.entries != tuple(entries):
+            self._show_rows(entries)
+            self._listed = wanted
+            if entries:
+                table.focus_rows()
+            else:  # nothing to choose from: the reason belongs on Config
+                self.query_one("#cancel", Button).focus()
         hosted = _hosted(provider)
         if accepted:
             self._mark_key("key_valid" if hosted else "url_valid")
@@ -2186,6 +2200,8 @@ class SetupScreen(_TabbedScreen[None]):
 
     def _show_rows(self, entries: list[ModelCatalogEntry]) -> None:
         """New results: forget earlier ticks; the table shows only a read list."""
+        # the caller that read the list says what it was for
+        self._listed = None
         table = self.query_one("#found", ModelTable)
         table.set_ticked(())
         table.set_entries(entries)
@@ -2782,7 +2798,12 @@ class DelegationScreen(_TabbedScreen[None]):
             )
         ]
         if moved:
-            parts.append((f"  · {words.state_pending}", _style("warning")))
+            parts.append(
+                (
+                    _say("state_pending_part", pending=words.state_pending),
+                    _style("warning"),
+                )
+            )
         return Text.assemble(*parts)
 
     def _saved_boxes(self) -> dict[str, bool]:
@@ -3384,7 +3405,7 @@ def header_renderable(model: str | None, width: int) -> Text:
     detail = model or ""
     first, second = design.header.lines
     if not detail:  # nothing known yet: no slot, no separator before the folder
-        second = second.replace("{model} · ", "")
+        second = second.replace(design.header.model_slot, "")
     template_room = len(second.format(mark=mark.rows[1], model=detail, folder=""))
     folder = _folder(max(width - template_room - 2, 0))
     text = Text(no_wrap=True, overflow="crop")
@@ -3467,36 +3488,97 @@ def icon(name: str) -> str:
     return spec.fallback
 
 
+#: Calls that put their first argument on the screen as it is written (AC8).
+_DISPLAY_CALLS: frozenset[str] = frozenset(
+    {
+        "Text",
+        "append",
+        "update",
+        "Static",
+        "assemble",
+        "_write",
+        "_note",
+    }
+)
+
+
+def _shown_words(call: ast.Call) -> list[str]:
+    """The written parts of what a display call puts on screen that hold a word."""
+    name = ""
+    if isinstance(call.func, ast.Attribute):
+        name = call.func.attr
+    elif isinstance(call.func, ast.Name):
+        name = call.func.id
+    if name not in _DISPLAY_CALLS:
+        return []
+    args = call.args if name == "assemble" else call.args[:1]
+    parts: list[ast.expr] = []
+    for arg in args:
+        if isinstance(arg, ast.Tuple) and arg.elts:
+            arg = arg.elts[0]
+        if isinstance(arg, ast.JoinedStr):
+            parts.extend(arg.values)
+        else:
+            parts.append(arg)
+    words: list[str] = []
+    for part in parts:
+        if (
+            isinstance(part, ast.Constant)
+            and isinstance(part.value, str)
+            and re.search(r"[a-z]{2,}", part.value)
+        ):
+            words.append(part.value)
+    return words
+
+
 def literal_scan(source: str) -> list[str]:
-    """AC27/AC8 scan: literals in code that must live in tui_design.yaml."""
-    found: list[str] = []
-    for match in re.finditer(r"#[0-9a-fA-F]{6}", source):
-        found.append(match.group(0))
-    for match in re.finditer(r"""['\"]([A-Z][A-Z0-9]{5,})['\"]""", source):
-        found.append(match.group(1))
+    """AC27/AC8 scan: literals in code that must live in tui_design.yaml: a
+    #rrggbb colour, an upper-case word, a glyph (any non-ASCII character but a
+    space, outside docstrings) and a word handed straight to the screen."""
+    found = re.findall(r"#[0-9a-fA-F]{6}", source)
+    found += re.findall(r"""['\"]([A-Z][A-Z0-9]{5,})['\"]""", source)
+    tree = ast.parse(source)
+    docstrings: set[int] = set()
+    for node in ast.walk(tree):
+        if (
+            isinstance(
+                node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+            )
+            and node.body
+            and isinstance(node.body[0], ast.Expr)
+        ):
+            docstrings.add(id(node.body[0].value))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            found += _shown_words(node)
+        elif (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and id(node) not in docstrings
+            and any(not c.isascii() and not c.isspace() for c in node.value)
+        ):
+            found.append(node.value)
     return found
 
 
 class ThemeStore:
-    """Persisted theme choice (OMN-26620 AC5)."""
+    """Persisted theme choice (OMN-26620 AC5): the file is the only copy."""
 
-    _value: str | None = None
     _path = Path.home() / ".cache" / "onex-tui-theme"
 
     @classmethod
     def save(cls, theme: str) -> bool:
-        cls._value = theme
+        """Write the choice for the next start; False when it could not be written."""
         try:
             cls._path.parent.mkdir(parents=True, exist_ok=True)
             cls._path.write_text(theme)
         except OSError:
             _LOG.warning("could not remember the theme", exc_info=True)
+            return False
         return True
 
     @classmethod
     def load(cls) -> str | None:
-        if cls._value is not None:
-            return cls._value
         try:
             value = cls._path.read_text().strip()
             return value or None
@@ -3589,27 +3671,30 @@ class LaunchStore:
         return before
 
 
-async def apply_theme(app: App[int], name: str) -> None:
-    """Apply (and persist) a registered theme (OMN-26620 AC5)."""
-    ThemeStore.save(name)
+async def apply_theme(app: App[int], name: str) -> bool:
+    """Apply a registered theme and keep it for the next start (OMN-26620 AC5);
+    False when it is on for this run only (the choice could not be written)."""
     app.theme = name
+    return ThemeStore.save(name)
 
 
 def _braille_supported() -> bool:
     import locale
     import sys
 
+    frames = "".join(tui_design().spinner.frames)
+
     for stream in (sys.stdout, sys.stderr):
         encoding = getattr(stream, "encoding", None)
         if not encoding:
             continue
         try:
-            "⠋".encode(encoding)
+            frames.encode(encoding)
             return True
         except (UnicodeEncodeError, LookupError):
             return False
     try:
-        "⠋".encode(locale.getpreferredencoding(False))
+        frames.encode(locale.getpreferredencoding(False))
         return True
     except (UnicodeEncodeError, LookupError):
         return False
@@ -3771,10 +3856,9 @@ class TaskCard:
         )
 
     def bar_colour(self) -> str:
-        design = self._design()
-        theme = design.theme
+        """The bar's colour in the theme on screen (AC3, AC5)."""
         token = self.bar_colour_token()
-        return str(getattr(theme, token, token))
+        return str(getattr(active_colours(), token, token))
 
     @staticmethod
     def _format_tokens(value: object) -> str:
@@ -3810,38 +3894,21 @@ class TaskCard:
         return self._recorded.get("cost")
 
     def facts_line(self) -> str:
-        design = self._design()
-        task_card = getattr(design, "task_card", None)
-        template = getattr(task_card, "facts_template", "")
-        fallback_template = getattr(task_card, "fallback_facts_template", "")
-        failure_template = getattr(task_card, "failure_template", "")
+        """The card's second line, from the design's templates (AC8)."""
+        card = tui_design().task_card
         if self.state == "failed":
-            if failure_template:
-                try:
-                    return str(failure_template).format(**self._recorded)
-                except (KeyError, ValueError, IndexError):
-                    try:
-                        return str(failure_template).format(model=self.model)
-                    except (KeyError, ValueError, IndexError):
-                        pass
-            return f"Could not reach {self.model}. Check its key with /config."
-        tokens = self._format_tokens(self._tokens())
-        cost = self._cost()
-        chosen_template = fallback_template if self.state == "fallback" else template
-        if chosen_template:
-            try:
-                return str(chosen_template).format(
-                    model=self.model,
-                    tokens=tokens,
-                    seconds=self._recorded.get("seconds"),
-                    cost=cost,
-                )
-            except (KeyError, ValueError, IndexError):
-                pass
-        parts = [self.model, f"{tokens} tokens", f"{self._recorded.get('seconds')} s"]
-        if self.state != "fallback" and cost is not None:
-            parts.append(f"${cost}")
-        return _say("hint_separator").join(parts)
+            return card.failure_template.format(model=self.model)
+        template = (
+            card.fallback_facts_template
+            if self.state == "fallback"
+            else card.facts_template
+        )
+        return template.format(
+            model=self.model,
+            tokens=self._format_tokens(self._tokens()),
+            seconds=self._recorded.get("seconds"),
+            cost=self._cost(),
+        )
 
     def render(self) -> object:
         from rich.text import Text
@@ -3849,10 +3916,12 @@ class TaskCard:
         colour = self.bar_colour()
         state = self.state
         mark = self.mark()
-        label = state.capitalize()
+        card = tui_design().task_card
+        label = card.labels.get(state, state)
+        bar = tui_design().drawing.card_bar
         return Group(
-            Text(f"┃ {mark} {label}   {self.task}", style=colour),
-            Text(f"┃   {self.facts_line()}"),
+            Text(f"{bar} {mark} {label}   {self.task}", style=colour),
+            Text(f"{bar}   {self.facts_line()}"),
         )
 
 
@@ -3886,45 +3955,6 @@ class KeyFooter:
     @staticmethod
     def _plain(keys: list[ModelTuiFooterKey], separator: str) -> str:
         return separator.join(f"{key.label} {key.words}".rstrip() for key in keys)
-
-    def for_screen(self, screen: str, width: int = 140) -> str:
-        design = tui_design()
-        footer = getattr(design, "footer", None)
-        screens = getattr(footer, "screens", {}) if footer is not None else {}
-        key = (
-            screen.strip().lower().lstrip("/").split()[:1] or [screen.strip().lower()]
-        )[0]
-        spec = screens.get(key)
-        if spec is None:
-            spec = screens.get(screen.strip().lower())
-        if spec is None:
-            return ""
-        labels = [k.label for k in getattr(spec, "keys", ())]
-        drop_order = list(getattr(spec, "drop_order", ()) or ())
-
-        def rendered(keys: list[str]) -> str:
-            return "  ".join(keys)
-
-        current = list(labels)
-        if rendered(current) and len(rendered(current)) <= width:
-            # Narrow terminals still drop least-important keys by policy.
-            pass
-        if width < 140 and len(current) > 1:
-            # Drop at least one when the terminal is narrow.
-            for candidate in drop_order:
-                if candidate in current:
-                    current.remove(candidate)
-                    break
-            if len(current) == len(labels) and current:
-                current = current[:-1]
-        for candidate in drop_order:
-            if len(rendered(current)) <= width:
-                break
-            if candidate in current:
-                current.remove(candidate)
-        while len(current) > 1 and len(rendered(current)) > width:
-            current.pop()
-        return rendered(current)
 
 
 class ThemePickScreen(ModalScreen[None]):
@@ -4124,6 +4154,7 @@ def _draw_diagram(design: Any, tick: int = 0) -> Text:
     along the line into one outcome box, which then lights up in the brand colour; the
     next cycle goes to the next outcome."""
     words = design.welcome.diagram
+    draw = design.drawing
     line, edge, accent = _style("muted"), _style("muted"), _style("primary", "bold")
     task_w = len(words.task) + 4
     hub_w = (
@@ -4147,8 +4178,8 @@ def _draw_diagram(design: Any, tick: int = 0) -> Text:
         for offset, char in enumerate(value):
             put(x + offset, y, char, style)
 
-    def box(x: int, y: int, w: int, h: int, style: str, chars: str = "╭╮╰╯─│") -> None:
-        tl, tr, bl, br, across, down = list(chars)
+    def box(x: int, y: int, w: int, h: int, style: str, chars: str = "") -> None:
+        tl, tr, bl, br, across, down = list(chars or draw.box_round)
         put(x, y, tl, style)
         put(x + w - 1, y, tr, style)
         put(x, y + h - 1, bl, style)
@@ -4181,23 +4212,23 @@ def _draw_diagram(design: Any, tick: int = 0) -> Text:
 
     box(x_task, middle - 1, task_w, 3, edge)
     centred(x_task, middle, task_w, words.task, _style("foreground", "bold"))
-    box(x_hub, middle - 2, hub_w, 5, accent, "┏┓┗┛━┃")
+    box(x_hub, middle - 2, hub_w, 5, accent, draw.box_heavy)
     centred(x_hub, middle - 1, hub_w, words.hub_title, accent)
     centred(x_hub, middle, hub_w, words.hub_subtitle, _style("foreground"))
     centred(x_hub, middle + 1, hub_w, words.hub_tagline, _style("muted"))
     for x in range(x_task + task_w, x_hub):
-        put(x, middle, "─", line)
-    put(x_hub - 1, middle, "▶", line)
+        put(x, middle, draw.line, line)
+    put(x_hub - 1, middle, draw.arrow, line)
     for x in range(x_hub + hub_w, x_bracket):
-        put(x, middle, "─", line)
+        put(x, middle, draw.line, line)
     for y in range(1, 10):
-        put(x_bracket, y, "│", line)
-    put(x_bracket, 1, "┌", line)
-    put(x_bracket, 9, "└", line)
+        put(x_bracket, y, draw.branch, line)
+    put(x_bracket, 1, draw.branch_top, line)
+    put(x_bracket, 9, draw.branch_bottom, line)
     put(
         x_bracket,
         middle,
-        "┼" if words.pulse else design.glyphs.dot_on,
+        draw.junction if words.pulse else design.glyphs.dot_on,
         line if words.pulse else accent,
     )
     rest_text = (
@@ -4209,7 +4240,7 @@ def _draw_diagram(design: Any, tick: int = 0) -> Text:
         top = index * 4
         mid = top + 1
         for x in range(x_bracket + 1, x_out):
-            put(x, mid, "▶", line)
+            put(x, mid, draw.arrow, line)
         is_lit = lit == index
         label = f"{words.outcome_icons[index]} {outcome}"
         box(x_out, top, out_w, 3, accent if is_lit else edge)
@@ -4274,7 +4305,7 @@ def welcome_renderable(tick: int = 0, *, diagram: bool = True) -> Text:
 def activity_renderable(frame: str, verb: str, seconds: int) -> Text:
     """The live line: the spinner in the brand colour, the verb bold, the rest muted."""
     line = tui_design().activity.line.format(frame=frame, verb=verb, seconds=seconds)
-    head = f"{frame} {verb}…"
+    head = f"{frame} {verb}{tui_design().drawing.ellipsis}"
     text = Text()
     if line.startswith(head):
         text.append(frame, _style("primary", "bold"))
@@ -4307,8 +4338,8 @@ def flow_renderable(tick: int, stops: Sequence[str]) -> Text:
             if index == leg and position == step:
                 text.append(tui_design().glyphs.dot_on, _style("accent", "bold"))
             else:
-                text.append("─", _style("muted"))
-        text.append("▶ ", _style("muted"))
+                text.append(tui_design().drawing.line, _style("muted"))
+        text.append(tui_design().drawing.arrow + " ", _style("muted"))
     return text
 
 
@@ -4344,7 +4375,7 @@ def facts_renderable(parts: list[tuple[str, str]], run_label: str = "") -> Text:
     """The line under an answer: the model, tokens and time, the cost, and what was saved,
     each in its own colour."""
     text = Text()
-    separator = "  ·  "
+    separator = tui_design().drawing.wide_separator
     for index, (value, kind) in enumerate(parts):
         if index:
             text.append(separator, _style("muted"))
@@ -4356,7 +4387,7 @@ def facts_renderable(parts: list[tuple[str, str]], run_label: str = "") -> Text:
 
 def guide_arrow_text() -> Text:
     """An arrow between two steps: a still line with a head, no moving dot."""
-    return Text("─────▶", style=_style("muted"), no_wrap=True)
+    return Text(tui_design().drawing.guide_arrow, style=_style("muted"), no_wrap=True)
 
 
 def guide_step_text(step: Any) -> Text:
@@ -4380,10 +4411,11 @@ class GuideStep(Static):
 
 def _bar(fraction: float, width: int) -> str:
     """A horizontal bar with eighth-cell steps."""
+    draw = tui_design().drawing
     cells = max(0.0, min(1.0, fraction)) * width
     whole = int(cells)
-    part = " ▏▎▍▌▋▊▉"[int((cells - whole) * 8)] if whole < width else ""
-    return ("█" * whole + part).ljust(width)
+    part = draw.bar_eighths[int((cells - whole) * 8)] if whole < width else ""
+    return (draw.bar_full * whole + part).ljust(width)
 
 
 class MeteringScreen(_TabbedScreen[None]):
@@ -4612,7 +4644,7 @@ class ThemeScreen(_TabbedScreen[None]):
             # A theme names colours the Textual way (ansi_blue): Rich takes
             # them converted, or the preview ends onex (T1).
             swatch = Style(color=Color.parse(str(colour)).rich_color)
-            text.append("████████  ", swatch)
+            text.append(tui_design().drawing.swatch + "  ", swatch)
             text.append(f"{role}\n", _style("foreground"))
         self.query_one("#tpreview", Static).update(text)
 
@@ -4627,13 +4659,20 @@ class ThemeScreen(_TabbedScreen[None]):
         self, event: OptionList.OptionSelected
     ) -> None:
         if event.option.id:
-            await apply_theme(self.app, event.option.id)
-            self._before = event.option.id  # kept: Esc no longer puts the old one back
+            kept = await apply_theme(self.app, event.option.id)
+            # Chosen: Esc no longer puts the old one back.
+            self._before = event.option.id
+            said = "themes_kept" if kept else "themes_not_kept"
             self._note(
                 Text(
-                    _say("themes_kept", theme=event.option.id), style=_style("success")
+                    _say(said, theme=event.option.id),
+                    style=_style("success" if kept else "warning"),
                 )
             )
+
+    def restyle(self) -> None:
+        """The theme changed: the key line is drawn again in its colours."""
+        self.query_one("#tkeys", Static).update(_tab_hint("tab_hint_themes"))
 
     def action_cancel(self) -> None:
         self.app.theme = self._before
@@ -4739,6 +4778,11 @@ class OnexTui(App[int]):
                 )
             )
         saved_theme = ThemeStore.load()
+        if saved_theme is not None and saved_theme not in self.available_themes:
+            _LOG.warning(
+                "the kept theme %r is not available; using the default", saved_theme
+            )
+            saved_theme = None
         self.theme = saved_theme or design.theme.name
         if root is None:
             from omnibase_core.cli.cli_commands import cli
@@ -4794,6 +4838,8 @@ class OnexTui(App[int]):
         #: waits for a read: a state nobody has read is never drawn as OFF
         #: (review 2026-11-15), and an untouched Save never sends off over it.
         self._status_read = False
+        #: How many status reads have started: only the newest one is shown.
+        self._status_reads = 0
         #: What each server said, by (URL, models), with when it was asked.
         self._said: dict[
             tuple[str, tuple[str, ...]],
@@ -4839,6 +4885,7 @@ class OnexTui(App[int]):
         if diagram.pulse:
             self.set_interval(diagram.pulse_seconds, self._pulse_welcome)
         self._render_status()
+        self.theme_changed_signal.subscribe(self, self._restyle)
         self.query_one("#prompt", Input).focus()
         self.run_worker(self._refresh_status(), exclusive=True, group="status")
         # The model catalogue loads in a thread now the screen is up (see _lazy).
@@ -4853,7 +4900,25 @@ class OnexTui(App[int]):
                 lambda t: t.cancelled() or t.exception()
             )
 
+    def _restyle(self, _theme: Theme) -> None:
+        """The theme changed: the text on screen is drawn again in its colours (AC5)."""
+        if not self.screen_stack:
+            return  # the app is closing
+        main = self._main()
+        main.query_one("#bigmark", Static).update(welcome_renderable(diagram=False))
+        main.query_one("#diagram", Static).update(
+            _draw_diagram(tui_design(), self._welcome_tick)
+        )
+        self._render_status()
+        for screen in self.screen_stack:
+            if isinstance(screen, ThemeScreen):
+                screen.restyle()
+
     async def _refresh_status(self) -> None:
+        # Only the newest read is shown: a slow start-up read that lands after
+        # the read an action started never puts the older state back (AC7).
+        self._status_reads += 1
+        read = self._status_reads
         try:
             status = await self._load_status()
         except Exception as error:  # status is a convenience; never crash on it
@@ -4868,8 +4933,11 @@ class OnexTui(App[int]):
         else:
             if status.problem:  # a failed read is said plainly, its cause logged
                 _LOG.warning("the delegation status was unreadable: %s", status.problem)
-            else:
+            elif read == self._status_reads:
                 StatusStore.save(status)
+        if read != self._status_reads:
+            _LOG.info("an older status read landed after a newer one; dropped")
+            return
         self._show_status(status)
 
     def _show_status(self, status: ModelTuiStatus) -> None:
@@ -4891,7 +4959,7 @@ class OnexTui(App[int]):
         )
 
     def _render_status(self) -> None:
-        sep = ("  ·  ", _style("muted"))
+        sep = (tui_design().drawing.wide_separator, _style("muted"))
         status = self._status
         main = self._main()
         main.query_one("#header", Static).update(
@@ -5498,7 +5566,8 @@ class OnexTui(App[int]):
             entry.path in (("doctor",), ("metering",)) and not entry.needs_terminal
         )
         if not is_page:  # a page is the answer; the command echo is noise
-            self._write(Text(f"$ onex {shlex.join(argv)}", style=_style("muted")))
+            echo = _say("command_echo", command=shlex.join(argv))
+            self._write(Text(echo, style=_style("muted")))
         if is_page:
             json_argv = argv if "--json" in argv else (*argv, "--json")
             collected: list[str] = []

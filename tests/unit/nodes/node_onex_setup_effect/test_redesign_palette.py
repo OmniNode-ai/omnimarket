@@ -36,7 +36,6 @@ async def _ready() -> ModelTuiStatus:
 
 @pytest.fixture(autouse=True)
 def _fresh_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(cli_tui.ThemeStore, "_value", None)
     monkeypatch.setattr(cli_tui.ThemeStore, "_path", tmp_path / "theme")
     monkeypatch.setattr(cli_tui.LaunchStore, "_path", tmp_path / "launches")
 

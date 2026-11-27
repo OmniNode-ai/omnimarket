@@ -35,4 +35,4 @@ async def test_enter_keeps_the_highlighted_theme_and_says_so() -> None:
         for _ in range(4):
             await pilot.pause()
         assert str(app.theme) == chosen  # Esc after Enter does not undo it
-        assert ThemeStore.load() == chosen
+        assert ThemeStore._path.read_text() == chosen  # kept on disk, not in memory
