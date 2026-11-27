@@ -50,5 +50,5 @@ dod_evidence:
     execution_scope: local_done_gate
     checks:
       - check_type: command
-        check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26623 --kind test -- uv run --frozen pytest tests/test_omn23159_local_alerts_exposure_reader_declared.py tests/nodes/node_projection_delegation -q --no-cov
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26623 --kind test -- uv run --frozen pytest tests/test_omn23159_local_alerts_exposure_reader_declared.py tests/nodes/node_projection_delegation -q --no-cov
         cwd: "${OMNI_HOME}/omnimarket"
