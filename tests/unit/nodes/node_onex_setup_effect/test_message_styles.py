@@ -16,8 +16,6 @@ from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
 )
 from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import tui_design
 
-from .test_setup_guide import _Quiet
-
 
 def _style_at(text: object, index: int) -> str:
     for span in text.spans:
@@ -86,16 +84,3 @@ async def _screen(app: OnexTui, size: tuple[int, int], keys: tuple[str, ...]) ->
             "".join(segment.text for segment in strip)
             for strip in app.screen._compositor.render_strips()
         )
-
-
-async def test_the_diagram_goes_away_once_you_start() -> None:
-    before = await _screen(OnexTui(load_status=_ready), (140, 52), ())
-    assert "Smart Routing" in before
-    # a task ends the welcome; a /command keeps it (test_welcome_stays_for_commands)
-    after = await _screen(
-        OnexTui(load_status=_ready, runner=_Quiet()),
-        (140, 52),
-        (*"hello", "enter"),
-    )
-    assert "Smart Routing" not in after
-    assert "Build more. Spend less." in after, "the logo and headline stay"

@@ -10,7 +10,6 @@ Each test was red on the previous head (no welcome existed).
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable
 
 from textual.widgets import Input
@@ -65,48 +64,6 @@ async def _shown(width: int, height: int) -> tuple[list[str], dict[str, object]]
         return _rows(app), facts
 
 
-async def test_a_roomy_terminal_shows_the_wordmark_brand_line_and_headline() -> None:
-    rows, _ = await _shown(140, 40)
-    text = "\n".join(rows)
-    assert sum("█" in row for row in rows) >= 5, "the large wordmark is missing"
-    assert "OmniNode Delegation" in text, "the brand line is missing"
-    assert "Build more. Spend less." in text
-    assert "The right intelligence, at the right cost." in text
-
-
-async def test_the_brand_line_carries_the_version_once() -> None:
-    rows, _ = await _shown(140, 40)
-    brand = [row for row in rows if "OmniNode Delegation" in row]
-    assert len(brand) == 1, brand
-    assert re.search(r"v\d+\.\d+\.\d+", brand[0]), (
-        "the version is not on the brand line"
-    )
-    assert len(re.findall(r"v\d+\.\d+\.\d+", "\n".join(rows))) == 1
-
-
-async def test_the_routing_diagram_shows_the_task_the_hub_and_three_outcomes() -> None:
-    rows, _ = await _shown(140, 40)
-    text = "\n".join(rows)
-    for word in (
-        "Your Task",
-        "ONEX",
-        "Smart Routing",
-        "Lower Cost",
-        "Faster Results",
-        "Right Model",
-    ):
-        assert word in text, word
-    where = {
-        word: next(i for i, row in enumerate(rows) if word in row)
-        for word in ("Lower Cost", "Faster Results", "Right Model")
-    }
-    assert where["Lower Cost"] < where["Faster Results"] < where["Right Model"]
-    diagram = rows[where["Lower Cost"] - 1 : where["Right Model"] + 2]
-    assert "\n".join(diagram).count("●") <= 1, "only the travelling dot is drawn"
-    task_row = next(i for i, row in enumerate(rows) if "Your Task" in row)
-    assert task_row == where["Faster Results"], "the task joins the middle outcome row"
-
-
 async def test_the_welcome_has_no_cards() -> None:
     """Operator feedback: the four cards are gone."""
     rows, _ = await _shown(140, 40)
@@ -130,32 +87,9 @@ async def test_the_prompt_stays_on_screen_at_the_roomy_and_the_smallest_size() -
         assert facts["prompt_bottom"] <= height, (width, height, facts)
 
 
-async def test_the_welcome_stays_after_something_is_submitted() -> None:
-    app = OnexTui(load_status=_ready, runner=_Quiet())
-    async with app.run_test(size=(140, 40)) as pilot:
-        await pilot.pause()
-        assert app.query_one("#welcome").display is True
-        await pilot.press(*"/clear", "enter")
-        await pilot.pause()
-        await pilot.pause()
-        assert app.query_one("#welcome").display is True
-        assert app.query_one("#header").display is False
-        assert app.query_one("#summary").display is False
-
-
 def test_the_connector_dots_move_from_one_tick_to_the_next() -> None:
     frames = [welcome_renderable(tick).plain for tick in range(4)]
     assert len(set(frames)) == 4, "the dots do not move"
-
-
-async def test_the_diagram_pulses_on_screen_without_a_keypress() -> None:
-    app = OnexTui(load_status=_ready, runner=_Quiet())
-    async with app.run_test(size=(140, 40)) as pilot:
-        await pilot.pause()
-        before = "\n".join(_rows(app))
-        await pilot.pause(0.8)
-        after = "\n".join(_rows(app))
-    assert before != after, "the screen did not change on its own"
 
 
 def test_the_version_on_the_brand_line_has_no_build_label() -> None:
@@ -222,25 +156,6 @@ async def test_there_is_no_fixed_dot_while_the_dots_travel() -> None:
     for frame in _frames(24):
         plain = frame.plain
         assert plain.count("●") <= 1, plain
-
-
-async def test_the_diagram_has_rounded_boxes_a_heavy_hub_arrowheads_and_a_hub_line() -> (
-    None
-):
-    rows, _ = await _shown(140, 40)
-    text = "\n".join(rows)
-    words = tui_design().welcome.diagram
-    first = next(i for i, row in enumerate(rows) if "Lower Cost" in row)
-    last = next(i for i, row in enumerate(rows) if "Right Model" in row)
-    diagram = "\n".join(rows[first - 1 : last + 2])
-    assert diagram.count("╭") >= 4, (
-        "the task and the three outcomes have rounded corners"
-    )
-    assert "┏" in text, "the ONEX hub has a heavy frame"
-    assert diagram.count("▶") == 4, "an arrowhead into the hub and into each outcome"
-    assert words.hub_tagline in text
-    for icon in words.outcome_icons:
-        assert icon in text, icon
 
 
 async def test_a_pulse_after_the_app_closed_does_nothing() -> None:

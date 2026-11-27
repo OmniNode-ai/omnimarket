@@ -76,19 +76,12 @@ async def test_start_screen_is_a_compact_header_not_the_banner(
 ) -> None:
     """D1, D2: wordmark, version, first model and folder; no banner, no tagline.
 
-    A roomy terminal (the welcome's minimum size) shows the welcome instead, by the
-    operator's later reference image; the compact header holds below that size.
+    The compact header holds at every size (AC2, decided 2026-11-27).
     """
     app = OnexTui(load_status=_ready)
     async with app.run_test(size=(width, height)) as pilot:
         await _launch(pilot)
         text = _screen_text(app)
-        welcome = tui_design().welcome
-        if width >= welcome.min_width and height >= welcome.min_height:
-            assert "Build more. Spend less." in text
-            assert app.query_one("#header").display is False
-            assert app.query_one("#prompt", Input).region.bottom <= height
-            return
         assert "WELCOME" not in text.upper()
         assert "run them where it costs least" not in text
         header = str(app.query_one("#header", Static).render())

@@ -42,7 +42,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_header.py::test_header_no_taller_than_four_lines tests/unit/nodes/node_onex_setup_effect/test_header.py::test_tips_only_on_first_launch -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_header.py::test_header_no_taller_than_four_lines tests/unit/nodes/node_onex_setup_effect/test_header.py::test_tips_only_on_first_launch tests/unit/nodes/node_onex_setup_effect/test_start_screen_compact.py::test_the_start_screen_is_the_compact_header tests/unit/nodes/node_onex_setup_effect/test_start_screen_compact.py::test_the_tips_show_on_the_first_launch_only -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26620-ac3
   description: 'AC3: each delegated task shows as a card with a coloured state bar and one facts line.'

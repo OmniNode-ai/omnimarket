@@ -4765,33 +4765,19 @@ class OnexTui(App[int]):
         self._layout()
 
     def _layout(self) -> None:
-        """A roomy terminal gets the rounded prompt and, until the reader submits
-        something, the welcome; a small one keeps the compact header."""
+        """A roomy terminal gets the rounded prompt; every size gets the compact
+        header and the status block, never the large welcome (OMN-26620 AC2)."""
         welcome = tui_design().welcome
         roomy = (
             self.size.width >= welcome.min_width
             and self.size.height >= welcome.min_height
         )
-        showing = roomy  # the welcome stays; results appear below it
         main = self._main()
         if not main.query("#welcome"):  # a resize while the app closes
             return
         main.set_class(roomy, "-roomy")
-        main.query_one("#welcome").display = showing
-        palette_open = main.query_one("#palette", OptionList).display
-        # The open command menu needs the rows: the diagram gives them up.
-        diagram = showing and not self._started and not palette_open
-        main.query_one("#diagram").display = diagram
-        main.query_one("#diagram-title").display = diagram
-        main.query_one("#guide-wrap").display = (
-            showing
-            and not self._started
-            and not palette_open
-            and self.size.height >= welcome.guide.min_height
-        )
-        self._render_guide()
-        main.query_one("#header").display = not showing
-        main.query_one("#summary").display = not showing
+        main.query_one("#header").display = True
+        main.query_one("#summary").display = True
 
     def on_resize(self) -> None:
         self._layout()
