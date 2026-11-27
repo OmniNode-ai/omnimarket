@@ -164,6 +164,7 @@ def evidence_for(result: ModelDelegationCheckResult) -> dict[str, Any]:
         "served_model": result.served_model,
         "chain": [f"{a.base_url or a.tier}:{a.outcome}" for a in result.chain],
         "failed_clauses": [c.name for c in result.clauses if not c.ok],
+        "failed_clause_details": {c.name: c.detail for c in result.clauses if not c.ok},
         "absent": [p.name for p in result.preconditions if not p.present],
         "emitted": result.emitted,
         "error": result.error,
