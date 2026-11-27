@@ -12,7 +12,7 @@ contract_version:
   patch: 0
 node_version: "1.0.0"
 description: >-
-  Reads the sources named under runtime_io (the rolling ledger and its archive, the landing
+  Reads the sources named under runtime_io (the rolling ledger rows from the bus rows reader, the landing
   controller files, the throughput tick's repo-status log, the landing metrics history, the
   Linear snapshot and each clone's default-branch history), hands them to the pure
   node_process_health_compute, and writes the resulting JSON to the output path declared
@@ -41,6 +41,9 @@ event_bus:
   publish_topics: []
 runtime_dispatch:
   external_trigger: "python -m omnimarket.nodes.node_process_health_effect.runtime_process_health"
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_process_health_effect.runtime_process_health
+    owner: OmniNode Platform Team
 descriptor:
   node_archetype: effect
   purity: effectful
@@ -58,9 +61,17 @@ runtime_io:
     env_var: "ONEX_PROCESS_HEALTH_OUTPUT"
     default: "${ONEX_STATE_DIR}/process-health/process-health.json"
   ledger:
-    live: "${ONEX_LEDGER_PATH}"
-    archive_dir_name: "archive"
-    archive_glob: "ROLLING_WORK_LEDGER_*-split.md"
+    # The bus rows reader (node_ledger_rows_loader_effect, a --since history range), never the ledger file.
+    reader: "process-health"
+    # HOLD and RELEASE rows are read this far back, beside the series window.
+    hold_history_days: 365
+    # The rows loader's floor is its own clock minus its store depth; a HOLD history that would start
+    # before it starts this much inside it instead, so a report generated earlier than the clock
+    # (or a loader that starts a moment later) is never refused range-wider-than-store.
+    hold_floor_margin_seconds: 3600
+    # A history range of the whole series window is some 500000 rows over the bus (202 to 317 seconds
+    # measured on a lab host); the rows loader subprocess is given this long, not the 300 second default.
+    read_timeout_seconds: 1800
   landing:
     dir_env_var: "LANDING_STATE_DIR"
     dir_default: "~/.local/state/omni/landing"

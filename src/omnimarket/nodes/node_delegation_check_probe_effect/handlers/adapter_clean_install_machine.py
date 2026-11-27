@@ -26,6 +26,7 @@ from omnimarket.handlers.routing.delegation_check_responder_chain import (
     ModelChainResolution,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers import (
+    clean_dashboard_driver,
     clean_machine_driver,
     clean_machine_routing_driver,
 )
@@ -43,6 +44,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.observe_clean_
 from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe import (
     CheckId,
     ModelBrokenCommandCase,
+    ModelDashboardObservation,
     ModelDelegateObservation,
     ModelRoutingCollection,
     ModelSurfaceObservation,
@@ -470,3 +472,58 @@ class CleanInstallCustomerMachine:
             guide_text=guide_text,
             registry=registry,
         )
+
+    def collect_dashboard(
+        self, responder: ModelChainResolution
+    ) -> ModelDashboardObservation:
+        """C30: the customer path to the dashboard on a clean profile, measured. No token value leaves the machine."""
+        if not responder.base_url or not responder.served_model:
+            raise CollectorAbsentError(
+                "dashboard_model", "no local responder to set the clean profile up with"
+            )
+        guide_name, guide_text = self._sources.guide()
+        lines = install_lines(guide_text)
+        usable = lines[0] if len(lines) == 1 else None
+        if usable is None or usable.argv is None:
+            raise CollectorAbsentError(
+                "install_line",
+                f"{guide_name} carries no single runnable install line for the dashboard path",
+            )
+        uv = self._find_uv()
+        with tempfile.TemporaryDirectory(prefix="c30-clean-") as tmp:
+            root = Path(tmp)
+            env = self._clean_env(root, uv)
+            if shutil.which("onex", path=env["PATH"]):
+                raise CollectorAbsentError(
+                    "clean_machine", "an onex already resolves on the clean PATH"
+                )
+            install = self._runner.run(
+                usable.argv, env=env, cwd=root, timeout_s=INSTALL_TIMEOUT_S
+            )
+            if install.rc != 0:
+                return ModelDashboardObservation(install_rc=install.rc)
+            python = root / "tool" / (usable.package or "") / "bin" / "python"
+            drove = self._runner.run(
+                [
+                    str(python),
+                    "-",
+                    "--onex",
+                    str(root / "bin" / "onex"),
+                    "--url",
+                    responder.base_url,
+                    "--model",
+                    responder.served_model,
+                ],
+                env=env,
+                cwd=root,
+                timeout_s=DRIVER_TIMEOUT_S,
+                stdin=Path(clean_dashboard_driver.__file__).read_text(encoding="utf-8"),
+            )
+        try:
+            document = json.loads(drove.stdout)
+        except ValueError as exc:
+            raise CollectorAbsentError(
+                "clean_dashboard_driver",
+                f"the in-machine driver produced no record (rc {drove.rc}): {drove.stderr.strip()[-500:]} ({exc})",
+            ) from exc
+        return ModelDashboardObservation(install_rc=install.rc, **document)

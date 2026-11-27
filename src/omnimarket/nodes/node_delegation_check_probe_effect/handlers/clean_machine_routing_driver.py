@@ -122,6 +122,16 @@ def _pipe(client: socket.socket, upstream: socket.socket) -> None:
         upstream.close()
 
 
+_PATH_SAFE_CHARS = "/?&=%:@+,;~!$'()*-._"
+_PATH_CHAR_TABLE: dict[str, str] = {
+    c: c
+    for c in (
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        + _PATH_SAFE_CHARS
+    )
+}
+
+
 class EgressRecorder:
     """A recording forward proxy in the path of the run. A non-private destination is recorded, then refused."""
 
@@ -193,7 +203,12 @@ class EgressRecorder:
                         address, parts.port or 80, timeout=900
                     )
                     headers["Host"] = parts.netloc
-                    safe_path = "/" + quote(path[1:], safe="/?&=%:@+,;~!$'()*-._")
+                    encoded = quote(path[1:], safe=_PATH_SAFE_CHARS)
+                    # Rebuild from the constant allowlist table so only
+                    # allowlisted characters reach the upstream request line.
+                    safe_path = "/" + "".join(
+                        _PATH_CHAR_TABLE[c] for c in encoded if c in _PATH_CHAR_TABLE
+                    )
                     conn.request(self.command, safe_path, body=body, headers=headers)
                     response = conn.getresponse()
                     payload = response.read()

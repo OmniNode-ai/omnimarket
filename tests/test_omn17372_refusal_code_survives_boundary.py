@@ -252,7 +252,11 @@ def test_the_flattened_refusal_still_classifies_to_the_wire_code(
         "the boundary wrapper must not win the attribution over the real cause"
     )
     assert CUSTOMER_PROVIDER_KEY_ABSENT_ERROR_CODE in terminal.failure_reason
-    assert _REMEDIATION_PHRASE in terminal.failure_reason.casefold()
+    if reason is EnumCustomerKeyRefusalReason.NO_PROVIDER_KEY_REGISTERED:
+        assert _REMEDIATION_PHRASE in terminal.failure_reason.casefold()
+    else:
+        # OMN-24562: a route refusal names its own reason, not a key to register.
+        assert "does not clear this" in terminal.failure_reason
 
 
 def test_the_flattened_message_carries_no_secret_material() -> None:
