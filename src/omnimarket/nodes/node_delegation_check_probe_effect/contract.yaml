@@ -35,6 +35,12 @@ handler:
   module: omnimarket.nodes.node_delegation_check_probe_effect.handlers.handler_delegation_check_probe
   class: HandlerDelegationCheckProbe
   input_model: omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe.ModelDelegationCheckRequest
+# The regression-ticket handler (OMN-26726) runs inside the tick after each check run, not as a routed operation, so it is bound
+# here and not under handler_routing (the boot resolver quarantines an operation entry with no event route).
+regression_ticket:
+  handler:
+    name: HandlerRegressionTicket
+    module: omnimarket.nodes.node_delegation_check_probe_effect.handlers.handler_regression_ticket
 descriptor:
   node_archetype: effect
   purity: impure
