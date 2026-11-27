@@ -129,7 +129,11 @@ class HandlerTenantProvision:
                 return ModelTenantProvisionResult(
                     command_id=request.command_id,
                     outcome=EnumTenantProvisionOutcome.ALREADY_EXISTS,
-                    detail="tenant already exists for this owner; nothing written",
+                    detail=(
+                        "tenant already exists for this owner; its missing TENANT_CREATED event is now queued"
+                        if record.event_queued
+                        else "tenant already exists for this owner; nothing written"
+                    ),
                     tenant_id=tenant.tenant_id,
                     tenant_slug=tenant.tenant_slug,
                     name=tenant.name,
