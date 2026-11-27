@@ -49,7 +49,7 @@ async def _ready() -> ModelTuiStatus:
 
 
 async def _doctor_screen(width: int, height: int = 40) -> list[str]:
-    app = OnexTui(load_status=_ready, runner=_DoctorRunner())  # type: ignore[arg-type]
+    app = OnexTui(load_status=_ready, runner=_DoctorRunner())
     async with app.run_test(size=(width, height)) as pilot:
         await pilot.pause()
         await pilot.press(*"/doctor", "enter")

@@ -41,7 +41,7 @@ async def _loaded(pilot: object, app: _Host) -> ModelTable:
         ]
     )
     for _ in range(3):
-        await pilot.pause()  # type: ignore[attr-defined]
+        await pilot.pause()
     return table
 
 

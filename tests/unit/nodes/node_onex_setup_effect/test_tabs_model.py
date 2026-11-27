@@ -60,7 +60,7 @@ async def test_tried_first_line_says_auto_when_no_model_is_chosen(
         await sup.settle(pilot, 4)
         chosen = sup.selection()
         none = ModelTuiSelection(entries=chosen.entries)
-        await app.push_screen(app._build_tab("model", none))  # type: ignore[arg-type]
+        await app.push_screen(app._build_tab("model", none))
         await sup.settle(pilot)
         text = sup.screen_text(app)
     assert "Tried first: ◈ Auto picks per task" in text, text

@@ -27,7 +27,7 @@ async def _ready() -> ModelTuiStatus:
     return ModelTuiStatus(model="Qwen3.8-27B", delegation="off", models=1)
 
 
-async def _started(pilot) -> None:  # type: ignore[no-untyped-def]
+async def _started(pilot) -> None:
     await pilot.pause()
     await pilot.pause()
 
@@ -128,7 +128,7 @@ async def test_alt_arrows_walk_the_blocks_and_return_to_the_prompt() -> None:
 async def test_c_copies_the_selected_block_as_plain_words() -> None:
     app = OnexTui(load_status=_ready)
     copied: list[str] = []
-    app.copy_to_clipboard = copied.append  # type: ignore[method-assign]
+    app.copy_to_clipboard = copied.append
     async with app.run_test(size=(100, 30)) as pilot:
         await _started(pilot)
         pane = app.query_one("#output")

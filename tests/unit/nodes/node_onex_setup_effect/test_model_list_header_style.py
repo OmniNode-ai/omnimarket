@@ -29,7 +29,7 @@ class _Host(App[None]):
         yield ModelTable(selectable=True, layout="found", id="found")
 
 
-async def _header(ansi: bool):  # type: ignore[no-untyped-def]
+async def _header(ansi: bool):
     app = _Host(ansi=ansi)
     async with app.run_test(size=(120, 30)) as pilot:
         table = app.query_one("#found", ModelTable)

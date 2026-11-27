@@ -34,7 +34,7 @@ async def _ready() -> ModelTuiStatus:
 
 async def _settle(pilot: object) -> None:
     for _ in range(4):
-        await pilot.pause()  # type: ignore[attr-defined]
+        await pilot.pause()
 
 
 def _log(app: OnexTui) -> str:

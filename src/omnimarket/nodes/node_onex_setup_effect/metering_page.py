@@ -24,7 +24,7 @@ def _design() -> Any:
         from .models.model_tui_design import tui_design
 
         return tui_design()
-    except Exception:  # pragma: no cover
+    except Exception:
         return None
 
 

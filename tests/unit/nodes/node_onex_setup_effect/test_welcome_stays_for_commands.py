@@ -19,7 +19,7 @@ async def _ready() -> ModelTuiStatus:
 
 
 async def _screen_after(keys: tuple[str, ...]) -> str:
-    app = OnexTui(load_status=_ready, runner=_Quiet())  # type: ignore[arg-type]
+    app = OnexTui(load_status=_ready, runner=_Quiet())
     async with app.run_test(size=(140, 52)) as pilot:
         for _ in range(4):
             await pilot.pause()

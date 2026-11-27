@@ -43,7 +43,7 @@ def _fresh_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 async def _settle(pilot: object) -> None:
     for _ in range(4):
-        await pilot.pause()  # type: ignore[attr-defined]
+        await pilot.pause()
 
 
 def _rows(palette: OptionList) -> list[str]:

@@ -58,7 +58,7 @@ def _screen_text(app: OnexTui) -> str:
 
 async def _launch(pilot: object) -> None:
     for _ in range(4):
-        await pilot.pause()  # type: ignore[attr-defined]
+        await pilot.pause()
 
 
 @pytest.fixture(autouse=True)

@@ -39,7 +39,7 @@ def _line(text: str, needle: str) -> str:
 
 
 async def _text(size: tuple[int, int], **kwargs: object) -> str:
-    app = sup.app(**kwargs)  # type: ignore[arg-type]
+    app = sup.app(**kwargs)
     async with app.run_test(size=size) as pilot:
         await sup.open_tab(pilot, app, "delegation")
         return sup.screen_text(app)

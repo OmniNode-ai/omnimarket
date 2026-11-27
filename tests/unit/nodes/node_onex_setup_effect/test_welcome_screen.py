@@ -54,7 +54,7 @@ def _rows(app: OnexTui) -> list[str]:
 
 async def _shown(width: int, height: int) -> tuple[list[str], dict[str, object]]:
     """The rows on screen and facts read while the app is still running."""
-    app = OnexTui(load_status=_ready, runner=_Quiet())  # type: ignore[arg-type]
+    app = OnexTui(load_status=_ready, runner=_Quiet())
     async with app.run_test(size=(width, height)) as pilot:
         await pilot.pause()
         await pilot.pause()
@@ -127,11 +127,11 @@ async def test_a_small_terminal_keeps_the_compact_header() -> None:
 async def test_the_prompt_stays_on_screen_at_the_roomy_and_the_smallest_size() -> None:
     for width, height in ((100, 30), (140, 40), (80, 24)):
         _, facts = await _shown(width, height)
-        assert facts["prompt_bottom"] <= height, (width, height, facts)  # type: ignore[operator]
+        assert facts["prompt_bottom"] <= height, (width, height, facts)
 
 
 async def test_the_welcome_stays_after_something_is_submitted() -> None:
-    app = OnexTui(load_status=_ready, runner=_Quiet())  # type: ignore[arg-type]
+    app = OnexTui(load_status=_ready, runner=_Quiet())
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.pause()
         assert app.query_one("#welcome").display is True
@@ -149,7 +149,7 @@ def test_the_connector_dots_move_from_one_tick_to_the_next() -> None:
 
 
 async def test_the_diagram_pulses_on_screen_without_a_keypress() -> None:
-    app = OnexTui(load_status=_ready, runner=_Quiet())  # type: ignore[arg-type]
+    app = OnexTui(load_status=_ready, runner=_Quiet())
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.pause()
         before = "\n".join(_rows(app))
@@ -170,14 +170,14 @@ def test_the_version_on_the_brand_line_has_no_build_label() -> None:
 def _gold_chars(text: object, index: int) -> bool:
     """Whether the character at ``index`` of a rich Text carries the brand colour."""
     gold = tui_design().theme.primary.lower()
-    for span in text.spans:  # type: ignore[attr-defined]
+    for span in text.spans:
         if span.start <= index < span.end and gold in str(span.style).lower():
             return True
     return False
 
 
 def _box_is_lit(text: object, word: str) -> bool:
-    plain = text.plain  # type: ignore[attr-defined]
+    plain = text.plain
     return _gold_chars(text, plain.index(word))
 
 
@@ -203,10 +203,10 @@ def test_the_dot_reaches_a_box_before_the_box_lights_up() -> None:
     frames = _frames(24 * 3 + 2)
     for word in words:
         first = next(i for i, f in enumerate(frames) if _box_is_lit(f, word))
-        before = frames[first - 1].plain.splitlines()  # type: ignore[attr-defined]
+        before = frames[first - 1].plain.splitlines()
         word_row = next(
             i for i, row in enumerate(frames[first].plain.splitlines()) if word in row
-        )  # type: ignore[attr-defined]
+        )
         # a dot sits on that box's row, just left of the box, one tick earlier
         assert "●" in before[word_row], (word, before[word_row])
 
@@ -220,7 +220,7 @@ def test_at_rest_no_box_is_lit_while_the_dot_is_still_on_the_first_connector() -
 async def test_there_is_no_fixed_dot_while_the_dots_travel() -> None:
     """Operator feedback: a dot that never moved looked wrong beside the moving one."""
     for frame in _frames(24):
-        plain = frame.plain  # type: ignore[attr-defined]
+        plain = frame.plain
         assert plain.count("●") <= 1, plain
 
 
@@ -246,7 +246,7 @@ async def test_the_diagram_has_rounded_boxes_a_heavy_hub_arrowheads_and_a_hub_li
 async def test_a_pulse_after_the_app_closed_does_nothing() -> None:
     """The pulse timer can fire once every screen is gone, while the app closes
     (seen as an IndexError in a full suite run on 2026-11-26); it must not raise."""
-    app = OnexTui(load_status=_ready, runner=_Quiet())  # type: ignore[arg-type]
+    app = OnexTui(load_status=_ready, runner=_Quiet())
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.pause()
     assert not app.screen_stack
