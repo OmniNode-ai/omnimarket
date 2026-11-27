@@ -24,6 +24,7 @@ from pathlib import Path
 import yaml
 
 from omnimarket.handlers.handler_ledger_claims import claim_lane
+from omnimarket.handlers.ledger_row_grammar import LANE_TOKEN_RE
 from omnimarket.models.model_ledger_claims_read import ModelLedgerClaimsReadConfig
 from omnimarket.protocols.protocol_ledger_rows_reader import (
     LedgerReadError,
@@ -99,7 +100,15 @@ def read_claims_text(
         return rows
 
     heartbeat = bounded(heartbeat_read)
-    lanes = sorted({lane for row in heartbeat if (lane := claim_lane(row))})
+    # Only a lane token can be named: the work-ledger query refuses a request whose `lanes` hold anything else (OMN-24562). A hook's
+    # FRICTION row named `wt:<repo>/<worktree>` on 2026-11-26, which made every claims read exit 69; such a cell holds no CLAIM.
+    lanes = sorted(
+        {
+            lane
+            for row in heartbeat
+            if (lane := claim_lane(row)) and LANE_TOKEN_RE.match(lane)
+        }
+    )
     claims = bounded(
         lambda reader: reader.rows(
             reader=config.reader,
