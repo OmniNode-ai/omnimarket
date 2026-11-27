@@ -338,3 +338,13 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_failure_alarm_router_effect/test_interpreter_setting.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
+
+- id: dod-omn24562-reader-bus-session-lane-resolution
+  description: 'AC13: the work ledger reader resolves its bus-session lane from the route''s declared workspace_config_root and the runtime''s KAFKA_SASL_USERNAME and KAFKA_SASL_PASSWORD, which the dev runtime holds with no exported config root and no client credential store; the failure alarm router''s rows command no longer exits 69 on it (failing control: at the merge base the test file fails at collection with ImportError for resolve_bus_session_config).'
+  source: manual
+  binds_ac:
+  - AC13
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_bus_session_lane_resolution_omn24562.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
