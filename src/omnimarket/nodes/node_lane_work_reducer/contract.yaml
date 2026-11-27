@@ -1,0 +1,1950 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Lane Work Reducer
+#
+# Pure FSM reducer for the lane work loop: delta(state, event) -> (new_state, intents).
+# The state_machine block below IS the program: sixteen states and every edge of
+# the lane work orchestrator plan section 3.4, modelled in formal/lane_work_loop.
+# The handler parses the block once into ModelFSMSubcontract and keeps no second
+# table of states or edges. Entry actions of a state name the deadlines it arms.
+#
+# Related Tickets:
+#   - OMN-26706: the lane work reducer
+name: node_lane_work_reducer
+node_type: reducer
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Pure reducer for the lane work loop. delta(state, event) -> (new_state, intents[]).
+  Looks the edge up by state, trigger, conditions and priority in the contract's
+  state_machine, refuses an input with no edge, and applies the repeat rule, the
+  help budget and the armed deadlines. No I/O, clock, UUID or model call; the repeat
+  bound, deadlines, wait budget, help budget and help chain are inputs.
+
+handler:
+  module: omnimarket.nodes.node_lane_work_reducer.handlers.handler_lane_work_reducer
+  class: HandlerLaneWorkReducer
+  input_model: omnimarket.nodes.node_lane_work_reducer.models.model_lane_work_reduce_request.ModelLaneWorkReduceRequest
+  output_model: omnimarket.nodes.node_lane_work_reducer.models.model_lane_work_reduce_result.ModelLaneWorkReduceResult
+
+input_model:
+  name: ModelLaneWorkReduceRequest
+  module: omnimarket.nodes.node_lane_work_reducer.models.model_lane_work_reduce_request
+  description: "The folded state, one event, the fixed clock and the reducer's configuration."
+
+output_model:
+  name: ModelLaneWorkReduceResult
+  module: omnimarket.nodes.node_lane_work_reducer.models.model_lane_work_reduce_result
+  description: "The new state, the intents, and whether the input made a transition, was refused or was a duplicate."
+
+handler_routing:
+  routing_strategy: operation_match
+  default_handler: omnimarket.nodes.node_lane_work_reducer.handlers.handler_lane_work_reducer:HandlerLaneWorkReducer
+  handlers:
+    - operation: reduce_lane_work
+      handler:
+        name: HandlerLaneWorkReducer
+        module: omnimarket.nodes.node_lane_work_reducer.handlers.handler_lane_work_reducer
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  runtime_profiles: []
+  idempotent: true
+  timeout_ms: 5000
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+metadata:
+  transport_type: local
+
+runtime_dispatch:
+  external_trigger: Direct Python invocation by the lane work orchestrator and a replay driver with one request; nothing on the bus starts it.
+  on_demand:
+    command: uv run onex node node_lane_work_reducer --input <request.json>
+    owner: OmniNode Platform Team
+
+state_machine:
+  version: {major: 1, minor: 0, patch: 0}
+  state_machine_name: lane_work_loop
+  state_machine_version: {major: 1, minor: 0, patch: 0}
+  description: 'The lane work loop (formal/lane_work_loop): sixteen states and every edge of plan section 3.4.'
+  initial_state: queued
+  terminal_states:
+  - handed_off
+  - blocked
+  error_states: []
+  persistence_enabled: false
+  states:
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: queued
+    state_type: initial
+    description: Initial
+    required_data: []
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: awaiting_worker
+    state_type: worker
+    description: start folded; the worker has not called in
+    entry_actions:
+    - arm_deadline:worker
+    required_data: []
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: confirming_claim
+    state_type: node
+    description: worker_started folded; reading the worker's CLAIM back from the ledger
+    entry_actions:
+    - arm_deadline:claim_read
+    required_data: []
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: claimed
+    state_type: node
+    description: The CLAIM names the change or its ticket; waiting for a PR observation at the head
+    entry_actions:
+    - arm_deadline:observation
+    required_data: []
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: red
+    state_type: worker
+    description: A required check is red; the worker reads the failing log
+    entry_actions:
+    - arm_deadline:worker
+    required_data: []
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: diagnosing
+    state_type: worker
+    description: Five whys on the log
+    entry_actions:
+    - arm_deadline:worker
+    required_data: []
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: fixing
+    state_type: worker
+    description: The worker writes and commits the fix
+    entry_actions:
+    - arm_deadline:worker
+    - keep_deadline:wait_budget
+    required_data: []
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: waiting_release
+    state_type: worker
+    description: Commit refused by release identity; the worker retries the commit at each poll deadline until the wait budget is spent
+    entry_actions:
+    - arm_deadline:worker
+    - arm_deadline:poll
+    - arm_deadline_once:wait_budget
+    required_data: []
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: pushing
+    state_type: worker
+    description: The worker pushes through the guard
+    entry_actions:
+    - arm_deadline:worker
+    required_data: []
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: proving
+    state_type: node
+    description: A lab proof at the exact pushed head
+    entry_actions:
+    - arm_deadline:proof
+    required_data: []
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: proven
+    state_type: node
+    description: Proof passed at head H; posting the Lab comment
+    entry_actions:
+    - arm_deadline:post
+    required_data: []
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: handing_off
+    state_type: node
+    description: Handoff request R for H is with the PR handoff orchestrator
+    entry_actions:
+    - arm_deadline:handoff
+    required_data: []
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: confirming_handoff
+    state_type: node
+    description: R was answered handed-off; waiting for a PR observation made after that answer
+    entry_actions:
+    - arm_deadline:confirmation
+    required_data: []
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: help_requested
+    state_type: help
+    description: A pinned help request is with a responder tier
+    entry_actions:
+    - arm_deadline:help
+    required_data: []
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: handed_off
+    state_type: terminal
+    description: Handed off for R at H, and a later observation still shows H
+    is_terminal: true
+    is_recoverable: false
+    required_data: []
+  - version: {major: 1, minor: 0, patch: 0}
+    state_name: blocked
+    state_type: terminal
+    description: Stopped with a reason from the contract's list and the decision needed
+    is_terminal: true
+    is_recoverable: false
+    required_data: []
+  transitions:
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: queued_to_awaiting_worker_on_start
+    from_state: queued
+    to_state: awaiting_worker
+    trigger: start
+    priority: 1
+    actions:
+    - action_name: arm_worker_deadline
+      action_type: node
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: awaiting_worker_to_confirming_claim_on_worker_started
+    from_state: awaiting_worker
+    to_state: confirming_claim
+    trigger: worker_started
+    priority: 1
+    actions:
+    - action_name: ledger_query_claims
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: awaiting_worker_to_blocked_on_deadline_passed_worker
+    from_state: awaiting_worker
+    to_state: blocked
+    trigger: deadline_passed
+    priority: 1
+    conditions:
+    - condition_name: deadline_worker
+      condition_type: expression
+      expression: deadline == worker
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - none
+      - - reason
+        - worker_never_started
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: confirming_claim_to_claimed_on_claim_confirmed
+    from_state: confirming_claim
+    to_state: claimed
+    trigger: claim_confirmed
+    priority: 1
+    actions:
+    - action_name: arm_observation_deadline
+      action_type: node
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: confirming_claim_to_blocked_on_claim_missing
+    from_state: confirming_claim
+    to_state: blocked
+    trigger: claim_missing
+    priority: 1
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the lane and change named
+      - - reason
+        - not_claimed
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: confirming_claim_to_help_requested_on_deadline_passed_claim_read
+    from_state: confirming_claim
+    to_state: help_requested
+    trigger: deadline_passed
+    priority: 2
+    conditions:
+    - condition_name: deadline_claim_read
+      condition_type: expression
+      expression: deadline == claim_read
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the missing claim read
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: confirming_claim_to_blocked_on_deadline_passed_claim_read_help_exhausted
+    from_state: confirming_claim
+    to_state: blocked
+    trigger: deadline_passed
+    priority: 1
+    conditions:
+    - condition_name: deadline_claim_read
+      condition_type: expression
+      expression: deadline == claim_read
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: claimed_to_help_requested_on_deadline_passed_observation
+    from_state: claimed
+    to_state: help_requested
+    trigger: deadline_passed
+    priority: 2
+    conditions:
+    - condition_name: deadline_observation
+      condition_type: expression
+      expression: deadline == observation
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the missing observation
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: claimed_to_blocked_on_deadline_passed_observation_help_exhausted
+    from_state: claimed
+    to_state: blocked
+    trigger: deadline_passed
+    priority: 1
+    conditions:
+    - condition_name: deadline_observation
+      condition_type: expression
+      expression: deadline == observation
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: claimed_to_red_on_check_red
+    from_state: claimed
+    to_state: red
+    trigger: check_red
+    priority: 1
+    actions:
+    - action_name: read_failing_log
+      action_type: agent
+      action_config:
+      - - do
+        - read the failing log at the named check and head
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: claimed_to_proving_on_check_green
+    from_state: claimed
+    to_state: proving
+    trigger: check_green
+    priority: 1
+    actions:
+    - action_name: lab_proof
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: claimed_to_proving_on_check_pending
+    from_state: claimed
+    to_state: proving
+    trigger: check_pending
+    priority: 1
+    actions:
+    - action_name: lab_proof
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: claimed_to_claimed_on_head_moved
+    from_state: claimed
+    to_state: claimed
+    trigger: head_moved
+    priority: 1
+    actions:
+    - action_name: arm_observation_deadline
+      action_type: node
+      action_config:
+      - - do
+        - take the observed head as the expected head
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: red_to_fixing_on_log_read_base_inherited
+    from_state: red
+    to_state: fixing
+    trigger: log_read
+    priority: 2
+    conditions:
+    - condition_name: red_kind_base_inherited
+      condition_type: expression
+      expression: red_kind == base_inherited
+    actions:
+    - action_name: merge_base_and_commit
+      action_type: agent
+      action_config:
+      - - do
+        - merge the base branch, commit
+      - - five_whys_owed
+        - 'false'
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: red_to_diagnosing_on_log_read
+    from_state: red
+    to_state: diagnosing
+    trigger: log_read
+    priority: 1
+    actions:
+    - action_name: five_whys_on_log
+      action_type: agent
+      action_config:
+      - - do
+        - five whys on the log to a named cause
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: diagnosing_to_fixing_on_cause_found
+    from_state: diagnosing
+    to_state: fixing
+    trigger: cause_found
+    priority: 1
+    actions:
+    - action_name: fix_named_cause
+      action_type: agent
+      action_config:
+      - - do
+        - fix the named cause, commit
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: diagnosing_to_help_requested_on_cause_unknown
+    from_state: diagnosing
+    to_state: help_requested
+    trigger: cause_unknown
+    priority: 2
+    conditions:
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the cause is unknown
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: diagnosing_to_blocked_on_cause_unknown_help_exhausted
+    from_state: diagnosing
+    to_state: blocked
+    trigger: cause_unknown
+    priority: 1
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: fixing_to_pushing_on_fix_committed
+    from_state: fixing
+    to_state: pushing
+    trigger: fix_committed
+    priority: 1
+    actions:
+    - action_name: push_through_guard
+      action_type: agent
+      action_config:
+      - - do
+        - push through the guard at the expected remote head, report the output
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: fixing_to_waiting_release_on_commit_refused_release_identity
+    from_state: fixing
+    to_state: waiting_release
+    trigger: commit_refused
+    priority: 2
+    conditions:
+    - condition_name: event_class_release_identity
+      condition_type: expression
+      expression: event_class == release_identity
+    actions:
+    - action_name: arm_poll_deadline
+      action_type: node
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: fixing_to_fixing_on_commit_refused_hook
+    from_state: fixing
+    to_state: fixing
+    trigger: commit_refused
+    priority: 1
+    conditions:
+    - condition_name: event_class_hook
+      condition_type: expression
+      expression: event_class == hook
+    actions:
+    - action_name: fix_hook_finding
+      action_type: agent
+      action_config:
+      - - do
+        - fix the hook finding named in the event
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: waiting_release_to_fixing_on_deadline_passed_poll_budget_left
+    from_state: waiting_release
+    to_state: fixing
+    trigger: deadline_passed
+    priority: 4
+    conditions:
+    - condition_name: deadline_poll
+      condition_type: expression
+      expression: deadline == poll
+    - condition_name: budget_left
+      condition_type: expression
+      expression: budget_left == true
+    actions:
+    - action_name: commit_again
+      action_type: agent
+      action_config:
+      - - do
+        - commit again
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: waiting_release_to_help_requested_on_deadline_passed_wait_budget
+    from_state: waiting_release
+    to_state: help_requested
+    trigger: deadline_passed
+    priority: 3
+    conditions:
+    - condition_name: deadline_wait_budget
+      condition_type: expression
+      expression: deadline == wait_budget
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the release identity wait
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: waiting_release_to_blocked_on_deadline_passed_wait_budget_help_exhausted
+    from_state: waiting_release
+    to_state: blocked
+    trigger: deadline_passed
+    priority: 2
+    conditions:
+    - condition_name: deadline_wait_budget
+      condition_type: expression
+      expression: deadline == wait_budget
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: pushing_to_proving_on_pushed
+    from_state: pushing
+    to_state: proving
+    trigger: pushed
+    priority: 1
+    actions:
+    - action_name: lab_proof
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: pushing_to_fixing_on_push_refused_check_failed
+    from_state: pushing
+    to_state: fixing
+    trigger: push_refused
+    priority: 3
+    conditions:
+    - condition_name: event_class_check_failed
+      condition_type: expression
+      expression: event_class == check_failed
+    actions:
+    - action_name: fix_refused_check
+      action_type: agent
+      action_config:
+      - - do
+        - fix the check named in the refusal
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: pushing_to_help_requested_on_push_refused_guard_ledger_cell_missing_remote_protected_branch_push_rejected
+    from_state: pushing
+    to_state: help_requested
+    trigger: push_refused
+    priority: 2
+    conditions:
+    - condition_name: event_class_guard_ledger_cell_missing_remote_protected_branch_push_rejected
+      condition_type: expression
+      expression: event_class in guard_ledger_cell|missing_remote|protected_branch|push_rejected
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the push refusal
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: pushing_to_blocked_on_push_refused_guard_ledger_cell_missing_remote_protected_branch_push_rejected_help_exhausted
+    from_state: pushing
+    to_state: blocked
+    trigger: push_refused
+    priority: 1
+    conditions:
+    - condition_name: event_class_guard_ledger_cell_missing_remote_protected_branch_push_rejected
+      condition_type: expression
+      expression: event_class in guard_ledger_cell|missing_remote|protected_branch|push_rejected
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: pushing_to_fixing_on_head_moved
+    from_state: pushing
+    to_state: fixing
+    trigger: head_moved
+    priority: 1
+    actions:
+    - action_name: merge_moved_head
+      action_type: agent
+      action_config:
+      - - do
+        - merge the moved remote head, commit
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: fixing_to_fixing_on_head_moved
+    from_state: fixing
+    to_state: fixing
+    trigger: head_moved
+    priority: 1
+    actions:
+    - action_name: merge_moved_head
+      action_type: agent
+      action_config:
+      - - do
+        - merge the moved remote head, commit
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: proving_to_proven_on_proof_passed_head_matches
+    from_state: proving
+    to_state: proven
+    trigger: proof_passed
+    priority: 1
+    conditions:
+    - condition_name: head_matches
+      condition_type: expression
+      expression: head_matches == true
+    actions:
+    - action_name: post_lab_comment
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: proving_to_red_on_proof_failed_tests
+    from_state: proving
+    to_state: red
+    trigger: proof_failed
+    priority: 2
+    conditions:
+    - condition_name: event_class_tests
+      condition_type: expression
+      expression: event_class == tests
+    actions:
+    - action_name: read_proof_log
+      action_type: agent
+      action_config:
+      - - do
+        - read the proof log
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: proving_to_proving_on_proof_failed_infra
+    from_state: proving
+    to_state: proving
+    trigger: proof_failed
+    priority: 1
+    conditions:
+    - condition_name: event_class_infra
+      condition_type: expression
+      expression: event_class == infra
+    actions:
+    - action_name: lab_proof
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: proving_to_proving_on_head_moved
+    from_state: proving
+    to_state: proving
+    trigger: head_moved
+    priority: 1
+    actions:
+    - action_name: lab_proof
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: proven_to_proving_on_head_moved
+    from_state: proven
+    to_state: proving
+    trigger: head_moved
+    priority: 1
+    actions:
+    - action_name: lab_proof
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: proving_to_help_requested_on_deadline_passed_proof
+    from_state: proving
+    to_state: help_requested
+    trigger: deadline_passed
+    priority: 2
+    conditions:
+    - condition_name: deadline_proof
+      condition_type: expression
+      expression: deadline == proof
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the outstanding proof request
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: proving_to_blocked_on_deadline_passed_proof_help_exhausted
+    from_state: proving
+    to_state: blocked
+    trigger: deadline_passed
+    priority: 1
+    conditions:
+    - condition_name: deadline_proof
+      condition_type: expression
+      expression: deadline == proof
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: proven_to_help_requested_on_deadline_passed_post
+    from_state: proven
+    to_state: help_requested
+    trigger: deadline_passed
+    priority: 2
+    conditions:
+    - condition_name: deadline_post
+      condition_type: expression
+      expression: deadline == post
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the outstanding proof post
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: proven_to_blocked_on_deadline_passed_post_help_exhausted
+    from_state: proven
+    to_state: blocked
+    trigger: deadline_passed
+    priority: 1
+    conditions:
+    - condition_name: deadline_post
+      condition_type: expression
+      expression: deadline == post
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: proven_to_handing_off_on_proof_posted
+    from_state: proven
+    to_state: handing_off
+    trigger: proof_posted
+    priority: 1
+    actions:
+    - action_name: handoff_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: proven_to_proven_on_proof_post_failed
+    from_state: proven
+    to_state: proven
+    trigger: proof_post_failed
+    priority: 1
+    actions:
+    - action_name: post_lab_comment
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: handing_off_to_confirming_handoff_on_handoff_written_request_matches_head_matches
+    from_state: handing_off
+    to_state: confirming_handoff
+    trigger: handoff_written
+    priority: 1
+    conditions:
+    - condition_name: request_matches
+      condition_type: expression
+      expression: request_matches == true
+    - condition_name: head_matches
+      condition_type: expression
+      expression: head_matches == true
+    actions:
+    - action_name: arm_confirmation_deadline
+      action_type: node
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: confirming_handoff_to_handed_off_on_check_green_head_matches_observed_after_answer
+    from_state: confirming_handoff
+    to_state: handed_off
+    trigger: check_green
+    priority: 1
+    conditions:
+    - condition_name: head_matches
+      condition_type: expression
+      expression: head_matches == true
+    - condition_name: observed_after_answer
+      condition_type: expression
+      expression: observed_after_answer == true
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - outcome
+        - handed_off
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: confirming_handoff_to_handed_off_on_check_pending_head_matches_observed_after_answer
+    from_state: confirming_handoff
+    to_state: handed_off
+    trigger: check_pending
+    priority: 1
+    conditions:
+    - condition_name: head_matches
+      condition_type: expression
+      expression: head_matches == true
+    - condition_name: observed_after_answer
+      condition_type: expression
+      expression: observed_after_answer == true
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - outcome
+        - handed_off
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: confirming_handoff_to_handed_off_on_check_red_head_matches_observed_after_answer
+    from_state: confirming_handoff
+    to_state: handed_off
+    trigger: check_red
+    priority: 1
+    conditions:
+    - condition_name: head_matches
+      condition_type: expression
+      expression: head_matches == true
+    - condition_name: observed_after_answer
+      condition_type: expression
+      expression: observed_after_answer == true
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - outcome
+        - handed_off
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: confirming_handoff_to_proving_on_head_moved
+    from_state: confirming_handoff
+    to_state: proving
+    trigger: head_moved
+    priority: 1
+    actions:
+    - action_name: lab_proof
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: confirming_handoff_to_help_requested_on_deadline_passed_confirmation
+    from_state: confirming_handoff
+    to_state: help_requested
+    trigger: deadline_passed
+    priority: 2
+    conditions:
+    - condition_name: deadline_confirmation
+      condition_type: expression
+      expression: deadline == confirmation
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the handoff request
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: confirming_handoff_to_blocked_on_deadline_passed_confirmation_help_exhausted
+    from_state: confirming_handoff
+    to_state: blocked
+    trigger: deadline_passed
+    priority: 1
+    conditions:
+    - condition_name: deadline_confirmation
+      condition_type: expression
+      expression: deadline == confirmation
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: handing_off_to_help_requested_on_handoff_failed_request_matches
+    from_state: handing_off
+    to_state: help_requested
+    trigger: handoff_failed
+    priority: 2
+    conditions:
+    - condition_name: request_matches
+      condition_type: expression
+      expression: request_matches == true
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the handoff refusal
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: handing_off_to_blocked_on_handoff_failed_request_matches_help_exhausted
+    from_state: handing_off
+    to_state: blocked
+    trigger: handoff_failed
+    priority: 1
+    conditions:
+    - condition_name: request_matches
+      condition_type: expression
+      expression: request_matches == true
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: handing_off_to_proving_on_head_moved
+    from_state: handing_off
+    to_state: proving
+    trigger: head_moved
+    priority: 1
+    actions:
+    - action_name: lab_proof
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: handing_off_to_help_requested_on_deadline_passed_handoff
+    from_state: handing_off
+    to_state: help_requested
+    trigger: deadline_passed
+    priority: 2
+    conditions:
+    - condition_name: deadline_handoff
+      condition_type: expression
+      expression: deadline == handoff
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the handoff request
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: handing_off_to_blocked_on_deadline_passed_handoff_help_exhausted
+    from_state: handing_off
+    to_state: blocked
+    trigger: deadline_passed
+    priority: 1
+    conditions:
+    - condition_name: deadline_handoff
+      condition_type: expression
+      expression: deadline == handoff
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: help_requested_to_fixing_on_help_cause_found
+    from_state: help_requested
+    to_state: fixing
+    trigger: help_cause_found
+    priority: 1
+    actions:
+    - action_name: fix_help_cause
+      action_type: agent
+      action_config:
+      - - do
+        - fix the cause the answer names
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: help_requested_to_pushing_on_help_retry_pushing
+    from_state: help_requested
+    to_state: pushing
+    trigger: help_retry
+    priority: 5
+    conditions:
+    - condition_name: help_origin_pushing
+      condition_type: expression
+      expression: help_origin == pushing
+    actions:
+    - action_name: push_through_guard
+      action_type: agent
+      action_config:
+      - - do
+        - the refused action again, with the answer's correction
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: help_requested_to_waiting_release_on_help_retry_waiting_release
+    from_state: help_requested
+    to_state: waiting_release
+    trigger: help_retry
+    priority: 4
+    conditions:
+    - condition_name: help_origin_waiting_release
+      condition_type: expression
+      expression: help_origin == waiting_release
+    actions:
+    - action_name: commit_again
+      action_type: agent
+      action_config:
+      - - do
+        - the refused action again, with the answer's correction
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: help_requested_to_proving_on_help_retry_proving
+    from_state: help_requested
+    to_state: proving
+    trigger: help_retry
+    priority: 3
+    conditions:
+    - condition_name: help_origin_proving
+      condition_type: expression
+      expression: help_origin == proving
+    actions:
+    - action_name: lab_proof
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - do
+        - the refused action again, with the answer's correction
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: help_requested_to_proven_on_help_retry_proven
+    from_state: help_requested
+    to_state: proven
+    trigger: help_retry
+    priority: 2
+    conditions:
+    - condition_name: help_origin_proven
+      condition_type: expression
+      expression: help_origin == proven
+    actions:
+    - action_name: post_lab_comment
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - do
+        - the refused action again, with the answer's correction
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: help_requested_to_handing_off_on_help_retry_handing_off
+    from_state: help_requested
+    to_state: handing_off
+    trigger: help_retry
+    priority: 1
+    conditions:
+    - condition_name: help_origin_handing_off
+      condition_type: expression
+      expression: help_origin == handing_off
+    actions:
+    - action_name: handoff_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - do
+        - the refused action again, with the answer's correction
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: help_requested_to_blocked_on_help_stop
+    from_state: help_requested
+    to_state: blocked
+    trigger: help_stop
+    priority: 1
+    actions:
+    - action_name: terminal
+      action_type: terminal
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: help_requested_to_help_requested_on_help_failed_false_climb
+    from_state: help_requested
+    to_state: help_requested
+    trigger: help_failed
+    priority: 2
+    conditions:
+    - condition_name: tier_is_top
+      condition_type: expression
+      expression: tier_is_top == false
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the failed tier
+      - - tier
+        - next
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: help_requested_to_blocked_on_help_failed_true_top
+    from_state: help_requested
+    to_state: blocked
+    trigger: help_failed
+    priority: 1
+    conditions:
+    - condition_name: tier_is_top
+      condition_type: expression
+      expression: tier_is_top == true
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: help_requested_to_help_requested_on_deadline_passed_help_false_climb
+    from_state: help_requested
+    to_state: help_requested
+    trigger: deadline_passed
+    priority: 2
+    conditions:
+    - condition_name: deadline_help
+      condition_type: expression
+      expression: deadline == help
+    - condition_name: tier_is_top
+      condition_type: expression
+      expression: tier_is_top == false
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the help deadline
+      - - tier
+        - next
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: help_requested_to_blocked_on_deadline_passed_help_true_top
+    from_state: help_requested
+    to_state: blocked
+    trigger: deadline_passed
+    priority: 1
+    conditions:
+    - condition_name: deadline_help
+      condition_type: expression
+      expression: deadline == help
+    - condition_name: tier_is_top
+      condition_type: expression
+      expression: tier_is_top == true
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: red_to_blocked_on_deadline_passed_worker
+    from_state: red
+    to_state: blocked
+    trigger: deadline_passed
+    priority: 1
+    conditions:
+    - condition_name: deadline_worker
+      condition_type: expression
+      expression: deadline == worker
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - none
+      - - reason
+        - worker_lost
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: diagnosing_to_blocked_on_deadline_passed_worker
+    from_state: diagnosing
+    to_state: blocked
+    trigger: deadline_passed
+    priority: 1
+    conditions:
+    - condition_name: deadline_worker
+      condition_type: expression
+      expression: deadline == worker
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - none
+      - - reason
+        - worker_lost
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: fixing_to_blocked_on_deadline_passed_worker
+    from_state: fixing
+    to_state: blocked
+    trigger: deadline_passed
+    priority: 1
+    conditions:
+    - condition_name: deadline_worker
+      condition_type: expression
+      expression: deadline == worker
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - none
+      - - reason
+        - worker_lost
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: waiting_release_to_blocked_on_deadline_passed_worker
+    from_state: waiting_release
+    to_state: blocked
+    trigger: deadline_passed
+    priority: 1
+    conditions:
+    - condition_name: deadline_worker
+      condition_type: expression
+      expression: deadline == worker
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - none
+      - - reason
+        - worker_lost
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: pushing_to_blocked_on_deadline_passed_worker
+    from_state: pushing
+    to_state: blocked
+    trigger: deadline_passed
+    priority: 1
+    conditions:
+    - condition_name: deadline_worker
+      condition_type: expression
+      expression: deadline == worker
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - none
+      - - reason
+        - worker_lost
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: red_to_diagnosing_on_unclassified
+    from_state: red
+    to_state: diagnosing
+    trigger: unclassified
+    priority: 1
+    actions:
+    - action_name: five_whys_on_raw_result
+      action_type: agent
+      action_config:
+      - - do
+        - five whys on the raw result
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: fixing_to_diagnosing_on_unclassified
+    from_state: fixing
+    to_state: diagnosing
+    trigger: unclassified
+    priority: 1
+    actions:
+    - action_name: five_whys_on_raw_result
+      action_type: agent
+      action_config:
+      - - do
+        - five whys on the raw result
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: pushing_to_diagnosing_on_unclassified
+    from_state: pushing
+    to_state: diagnosing
+    trigger: unclassified
+    priority: 1
+    actions:
+    - action_name: five_whys_on_raw_result
+      action_type: agent
+      action_config:
+      - - do
+        - five whys on the raw result
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: confirming_claim_to_help_requested_on_unclassified
+    from_state: confirming_claim
+    to_state: help_requested
+    trigger: unclassified
+    priority: 2
+    conditions:
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the raw result
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: confirming_claim_to_blocked_on_unclassified_help_exhausted
+    from_state: confirming_claim
+    to_state: blocked
+    trigger: unclassified
+    priority: 1
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: claimed_to_help_requested_on_unclassified
+    from_state: claimed
+    to_state: help_requested
+    trigger: unclassified
+    priority: 2
+    conditions:
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the raw result
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: claimed_to_blocked_on_unclassified_help_exhausted
+    from_state: claimed
+    to_state: blocked
+    trigger: unclassified
+    priority: 1
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: diagnosing_to_help_requested_on_unclassified
+    from_state: diagnosing
+    to_state: help_requested
+    trigger: unclassified
+    priority: 2
+    conditions:
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the raw result
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: diagnosing_to_blocked_on_unclassified_help_exhausted
+    from_state: diagnosing
+    to_state: blocked
+    trigger: unclassified
+    priority: 1
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: proving_to_help_requested_on_unclassified
+    from_state: proving
+    to_state: help_requested
+    trigger: unclassified
+    priority: 2
+    conditions:
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the raw result
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: proving_to_blocked_on_unclassified_help_exhausted
+    from_state: proving
+    to_state: blocked
+    trigger: unclassified
+    priority: 1
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: proven_to_help_requested_on_unclassified
+    from_state: proven
+    to_state: help_requested
+    trigger: unclassified
+    priority: 2
+    conditions:
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the raw result
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: proven_to_blocked_on_unclassified_help_exhausted
+    from_state: proven
+    to_state: blocked
+    trigger: unclassified
+    priority: 1
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: handing_off_to_help_requested_on_unclassified
+    from_state: handing_off
+    to_state: help_requested
+    trigger: unclassified
+    priority: 2
+    conditions:
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the raw result
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: handing_off_to_blocked_on_unclassified_help_exhausted
+    from_state: handing_off
+    to_state: blocked
+    trigger: unclassified
+    priority: 1
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: confirming_handoff_to_help_requested_on_unclassified
+    from_state: confirming_handoff
+    to_state: help_requested
+    trigger: unclassified
+    priority: 2
+    conditions:
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the raw result
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: confirming_handoff_to_blocked_on_unclassified_help_exhausted
+    from_state: confirming_handoff
+    to_state: blocked
+    trigger: unclassified
+    priority: 1
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: confirming_claim_to_help_requested_on_repeat_bound_reached
+    from_state: confirming_claim
+    to_state: help_requested
+    trigger: repeat_bound_reached
+    priority: 2
+    conditions:
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the repeated event
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: confirming_claim_to_blocked_on_repeat_bound_reached_help_exhausted
+    from_state: confirming_claim
+    to_state: blocked
+    trigger: repeat_bound_reached
+    priority: 1
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: claimed_to_help_requested_on_repeat_bound_reached
+    from_state: claimed
+    to_state: help_requested
+    trigger: repeat_bound_reached
+    priority: 2
+    conditions:
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the repeated event
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: claimed_to_blocked_on_repeat_bound_reached_help_exhausted
+    from_state: claimed
+    to_state: blocked
+    trigger: repeat_bound_reached
+    priority: 1
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: red_to_help_requested_on_repeat_bound_reached
+    from_state: red
+    to_state: help_requested
+    trigger: repeat_bound_reached
+    priority: 2
+    conditions:
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the repeated event
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: red_to_blocked_on_repeat_bound_reached_help_exhausted
+    from_state: red
+    to_state: blocked
+    trigger: repeat_bound_reached
+    priority: 1
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: diagnosing_to_help_requested_on_repeat_bound_reached
+    from_state: diagnosing
+    to_state: help_requested
+    trigger: repeat_bound_reached
+    priority: 2
+    conditions:
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the repeated event
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: diagnosing_to_blocked_on_repeat_bound_reached_help_exhausted
+    from_state: diagnosing
+    to_state: blocked
+    trigger: repeat_bound_reached
+    priority: 1
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: fixing_to_help_requested_on_repeat_bound_reached
+    from_state: fixing
+    to_state: help_requested
+    trigger: repeat_bound_reached
+    priority: 2
+    conditions:
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the repeated event
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: fixing_to_blocked_on_repeat_bound_reached_help_exhausted
+    from_state: fixing
+    to_state: blocked
+    trigger: repeat_bound_reached
+    priority: 1
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: pushing_to_help_requested_on_repeat_bound_reached
+    from_state: pushing
+    to_state: help_requested
+    trigger: repeat_bound_reached
+    priority: 2
+    conditions:
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the repeated event
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: pushing_to_blocked_on_repeat_bound_reached_help_exhausted
+    from_state: pushing
+    to_state: blocked
+    trigger: repeat_bound_reached
+    priority: 1
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: proving_to_help_requested_on_repeat_bound_reached
+    from_state: proving
+    to_state: help_requested
+    trigger: repeat_bound_reached
+    priority: 2
+    conditions:
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the repeated event
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: proving_to_blocked_on_repeat_bound_reached_help_exhausted
+    from_state: proving
+    to_state: blocked
+    trigger: repeat_bound_reached
+    priority: 1
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: proven_to_help_requested_on_repeat_bound_reached
+    from_state: proven
+    to_state: help_requested
+    trigger: repeat_bound_reached
+    priority: 2
+    conditions:
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the repeated event
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: proven_to_blocked_on_repeat_bound_reached_help_exhausted
+    from_state: proven
+    to_state: blocked
+    trigger: repeat_bound_reached
+    priority: 1
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: handing_off_to_help_requested_on_repeat_bound_reached
+    from_state: handing_off
+    to_state: help_requested
+    trigger: repeat_bound_reached
+    priority: 2
+    conditions:
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the repeated event
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: handing_off_to_blocked_on_repeat_bound_reached_help_exhausted
+    from_state: handing_off
+    to_state: blocked
+    trigger: repeat_bound_reached
+    priority: 1
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: confirming_handoff_to_help_requested_on_repeat_bound_reached
+    from_state: confirming_handoff
+    to_state: help_requested
+    trigger: repeat_bound_reached
+    priority: 2
+    conditions:
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - the repeated event
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: confirming_handoff_to_blocked_on_repeat_bound_reached_help_exhausted
+    from_state: confirming_handoff
+    to_state: blocked
+    trigger: repeat_bound_reached
+    priority: 1
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted

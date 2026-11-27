@@ -183,3 +183,40 @@ def test_missing_bus_config_names_its_fix(monkeypatch):
     assert answer["status"] == "bus_unavailable"
     assert answer["detail"] == detail
     assert "ONEX_WORKSPACE_CONFIG_ROOT" in answer["fix"]
+
+
+@pytest.mark.parametrize(
+    ("operation", "args", "expected"),
+    [
+        ("read", ["OMN-20570"], 60.0),
+        ("comment", ["OMN-20570", "--body", "x"], 60.0),
+        ("transition", ["OMN-20570", "--state", "Done"], 330.0),
+    ],
+)
+def test_default_wait_covers_the_done_gate_verifier_run(
+    monkeypatch, operation, args, expected
+):
+    """A Done transition runs a verifier of up to 300 s; the default wait outlasts it."""
+    waits: list[float] = []
+
+    class Caller:
+        def __init__(self, _bus):
+            pass
+
+        async def call_topics(self, *, timeout_s, **_kwargs):
+            waits.append(timeout_s)
+            raise TimeoutError
+
+    install(monkeypatch, Bus())
+    monkeypatch.setattr(ticket_cli, "ScmBusCaller", Caller)
+    result = CliRunner().invoke(
+        ticket_cli.ticket_group, [operation, *args, "--lane", "lane-a"]
+    )
+    assert result.exit_code == 75
+    assert waits == [expected]
+    explicit = CliRunner().invoke(
+        ticket_cli.ticket_group,
+        [operation, *args, "--lane", "lane-a", "--timeout-s", "7"],
+    )
+    assert explicit.exit_code == 75
+    assert waits[-1] == 7.0

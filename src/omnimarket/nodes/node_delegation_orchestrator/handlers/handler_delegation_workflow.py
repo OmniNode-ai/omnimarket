@@ -500,6 +500,12 @@ _DECLARED_TRANSITIONS: dict[
 # FSM handler. ``HandlerDelegationWorkflow.handle`` routes off this table instead
 # of a hand-maintained isinstance ladder — each payload type resolves to exactly
 # one per-step handler, with no catch-all branch (undeclared types fail closed).
+# OMN-26043: the named-test step runs in a worker thread; a runner that never
+# returns would hold the inference-response step open and leave the workflow
+# published forever. The step is bounded by its tests' own timeouts plus this
+# grace; past it the run reads as no run (not_run).
+_NAMED_TEST_GRACE_SECONDS: float = 30.0
+
 _PER_STEP_DISPATCH: dict[type, str] = {
     ModelDelegationRequest: "handle_delegation_request",
     ModelInvocationCommand: "handle_invocation_command",
@@ -2686,7 +2692,10 @@ class HandlerDelegationWorkflow:
         named_test_runner: Callable[[ModelNamedTestRunRequest], ModelNamedTestRunResult]
         | None = None,
         completion_bound_seconds: int | None = None,
+        named_test_bound_seconds: float | None = None,
     ) -> None:
+        # OMN-26043: None derives the bound from the request's own test timeouts.
+        self._named_test_bound_seconds = named_test_bound_seconds
         # OMN-22822: an inference response older than this bound is expired, not
         # an answer. None reads ``completion_bound.max_wall_seconds`` from this
         # node's contract on first use, so construction does no I/O.
@@ -6604,12 +6613,25 @@ class HandlerDelegationWorkflow:
                     ),
                 }
             )
-            outcome = await asyncio.to_thread(
-                self._named_test_runner,
-                ModelNamedTestRunRequest(
-                    spec=spec, answer_content=payload.llm_response_content
-                ),
+            runner_request = ModelNamedTestRunRequest(
+                spec=spec, answer_content=payload.llm_response_content
             )
+            bound = (
+                self._named_test_bound_seconds
+                if self._named_test_bound_seconds is not None
+                else runner_request.timeout_seconds * max(1, len(spec.test_ids))
+                + _NAMED_TEST_GRACE_SECONDS
+            )
+            try:
+                outcome = await asyncio.wait_for(
+                    asyncio.to_thread(self._named_test_runner, runner_request),
+                    timeout=bound,
+                )
+            except TimeoutError:
+                outcome = ModelNamedTestRunResult(
+                    status=EnumNamedTestRunStatus.REFUSED,
+                    detail=f"named test runner gave no result within {bound:g}s",
+                )
             _logger.info(
                 "HandlerDelegationWorkflow: named test run status=%s correlation=%s %s",
                 outcome.status.value,

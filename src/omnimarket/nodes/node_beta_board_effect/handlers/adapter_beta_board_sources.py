@@ -220,6 +220,13 @@ def read_gateway_leg(
             )
         )
     points.sort(key=lambda p: p.at, reverse=True)
+    if (
+        points
+        and (now - points[0].at).total_seconds() > rt.gateway_reading_max_age_seconds
+    ):
+        return unread(
+            f"the newest scheduled run is older than two hours ({rt.gateway_reading_max_age_seconds} s): no current reading"
+        )
     return ModelSourceRead(
         source_id=probe.id,
         kind="gateway_leg",
