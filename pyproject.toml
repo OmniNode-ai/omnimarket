@@ -1800,7 +1800,6 @@ delegation = "Claude Code delegation, for every folder you run claude in."
 plugins = "Manage ONEX capability plugins; Claude bundles keep their host's format."
 lab = "Lab host operations."
 trajectory-eval = "Publish trajectory evaluation commands by hand."
-settings = "Set, read and list the settings the central store holds."
 
 [project.entry-points."onex.config"]
 validate = "omnimarket.nodes.node_onex_setup_effect.cli_configuration:validate_command"
