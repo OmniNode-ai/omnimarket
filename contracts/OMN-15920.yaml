@@ -37,6 +37,13 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/nodes/node_mcp_server_effect/test_handler_mcp_registry_projection_rows.py -q -p no:cacheprovider"
+  - id: "dod-omn15920-node-dir-suite-after-dev-merge"
+    description: "The whole node_mcp_server_effect test directory passes on the branch after dev was merged in (both tools/list and projection reader tests together)"
+    source: "manual"
+    binds_ac: [AC1, AC2]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_mcp_server_effect -q -p no:cacheprovider"
   - id: "dod-omn15920-tools-list-integration-proof"
     description: "Local Done gate only, so it binds no criterion here: the tools/list handler tests run on a lab host at the pushed sha (host, sha and exit code in the pull request body)"
     source: "manual"
