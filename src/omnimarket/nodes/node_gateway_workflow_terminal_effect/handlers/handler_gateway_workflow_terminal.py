@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# unimported-handler-allow: HandlerGatewayWorkflowTerminalCompleted and HandlerGatewayWorkflowTerminalFailed are resolved at boot from handler_routing in contract.yaml, by module path, not by a Python import
+# unimported-handler-allow: HandlerGatewayWorkflowTerminalCompleted, HandlerGatewayWorkflowTerminalFailed and HandlerGatewayWorkflowTerminalRefusal are resolved at boot from handler_routing in contract.yaml, by module path, not by a Python import
 """Terminal-outcome writer for gateway workflows.
 
 Reads one delegation terminal event (delegation-completed or delegation-failed, both the flat
@@ -54,7 +54,11 @@ _ONEX_CODE: Final = re.compile(r"^ONEX_[A-Z0-9_]+$")
 _OPERATION_STATUS: Final[dict[str, Literal["completed", "failed"]]] = {
     "apply_delegation_completed": "completed",
     "apply_delegation_failed": "failed",
+    # OMN-17358: the delegate-skill failure topic carries the orchestrator's own terminals too; this
+    # route applies only the dispatch engine's publisher_malformed refusal and leaves the rest.
+    "apply_delegate_skill_refusal": "failed",
 }
+_REFUSAL_OPERATION: Final = "apply_delegate_skill_refusal"
 # The only field names a dead-letter record may name: the wire model's own, never a value.
 WIRE_FIELDS: Final = frozenset(
     {
@@ -122,6 +126,24 @@ def _count(payload: dict[str, Any], key: str) -> int:
     return value
 
 
+def _refusal_topics(contract_path: Path | None = None) -> frozenset[str]:
+    """The topics the contract binds to the refusal-only operation."""
+    document = yaml.safe_load((contract_path or _CONTRACT_PATH).read_text("utf-8"))
+    return frozenset(
+        str(entry["topic"])
+        for entry in document["handler_routing"]["handlers"]
+        if entry["operation"] == _REFUSAL_OPERATION
+    )
+
+
+def _is_malformed_command(payload: dict[str, Any]) -> bool:
+    return (
+        payload.get("failure_class") == _MALFORMED_COMMAND_CLASS
+        and payload.get("status") == "failed"
+        and "model_used" not in payload
+    )
+
+
 class HandlerGatewayWorkflowTerminal:
     """Write one delegation terminal onto its gateway workflow row.
 
@@ -132,6 +154,8 @@ class HandlerGatewayWorkflowTerminal:
     """
 
     bound_status: Literal["completed", "failed"] | None = None
+    #: A route that applies only the engine's publisher_malformed refusal; any other payload is not this writer's.
+    refusal_only: bool = False
 
     def __init__(
         self,
@@ -145,6 +169,7 @@ class HandlerGatewayWorkflowTerminal:
         self._store = store
         self._dead_letter = dead_letter
         self._routes, self._dlq_topic = load_contract_routes(contract_path)
+        self._refusal_topics = _refusal_topics(contract_path)
         self.counters: dict[str, int] = {}
 
     def _count_event(self, name: str) -> None:
@@ -187,6 +212,13 @@ class HandlerGatewayWorkflowTerminal:
             )
         store, _ = self._ports()
         payload = request.payload
+        if (
+            self.refusal_only or request.topic in self._refusal_topics
+        ) and not _is_malformed_command(payload):
+            self._count_event("terminal_not_a_refusal")
+            return ModelGatewayTerminalApplied(
+                outcome=EnumGatewayTerminalOutcome.NOT_A_GATEWAY_WORKFLOW
+            )
         try:
             update = self._validate(payload, status)
         except _MalformedError as exc:
@@ -228,12 +260,7 @@ class HandlerGatewayWorkflowTerminal:
     def _validate(
         self, payload: dict[str, Any], status: Literal["completed", "failed"]
     ) -> ModelTerminalUpdate | None:
-        if (
-            status == "failed"
-            and payload.get("failure_class") == _MALFORMED_COMMAND_CLASS
-            and payload.get("status") == "failed"
-            and "model_used" not in payload
-        ):
+        if status == "failed" and _is_malformed_command(payload):
             return self._malformed_command_update(payload)
         # Precedence: an unreadable correlation or tenant id, then a missing model name,
         # then bad metrics, a route/provider mismatch or a credential source outside its vocabulary.
@@ -342,9 +369,17 @@ class HandlerGatewayWorkflowTerminalFailed(HandlerGatewayWorkflowTerminal):
     bound_status = "failed"
 
 
+class HandlerGatewayWorkflowTerminalRefusal(HandlerGatewayWorkflowTerminal):
+    """The handler the contract binds to the delegate-skill failure route: the engine's refusal only."""
+
+    bound_status = "failed"
+    refusal_only = True
+
+
 __all__: list[str] = [
     "HandlerGatewayWorkflowTerminal",
     "HandlerGatewayWorkflowTerminalCompleted",
     "HandlerGatewayWorkflowTerminalFailed",
+    "HandlerGatewayWorkflowTerminalRefusal",
     "load_contract_routes",
 ]

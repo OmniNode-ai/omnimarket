@@ -21,6 +21,13 @@ requirements:
           omnimarket dev pins OmniDash v1.1.16, with the packaged bundle parts matching the pinned sha256
           -- falsifier: the omnimarket dashboard bundle pin test fails on the v1.1.15 pin and passes on the
           v1.1.16 pin
+  - id: "req-omn26691-lab-item-allowed-program"
+    statement: >-
+      The integration-proof item starts with programs a lab host runs, so the lab does not refuse it.
+    acceptance:
+      - id: "AC4"
+        statement: >-
+          AC4: the integration-proof item's command, and the command it sends to the lab after --, each start with a program a lab host runs, so the lab does not refuse it -- falsifier: uv run pytest -q tests/contracts/test_omn26691_lab_item_allowed_program.py fails on omnimarket dev, where the item starts with env
 evidence_requirements: []
 emergency_bypass:
   enabled: false
@@ -37,6 +44,17 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/projection/test_dashboard_bundle_pin_omn23212.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26691-lab-item-allowed-program"
+    description: >-
+      AC4: the integration-proof item's command, and the command it sends to the lab after --, each start
+      with a program a lab host runs (DEFAULT_ALLOWED_EXECUTABLES), so a lab host does not refuse the work
+      unit.
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest -q tests/contracts/test_omn26691_lab_item_allowed_program.py"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn26691-integration-proof"
     description: >-
       Run the v1.1.16 pin's integration cases on a lab host at the pushed head: the pinned asset verifies
@@ -48,8 +66,8 @@ dod_evidence:
     checks:
       - check_type: "command"
         check_value: >-
-          env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha
-          "$(git rev-parse HEAD)" --lane dod-integration-proof-26691 --kind test -- env
-          PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/projection/test_dashboard_bundle_pin_omn23212.py
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha
+          "$(git rev-parse HEAD)" --lane dod-integration-proof-26691 --kind test --
+          uv run --frozen pytest tests/projection/test_dashboard_bundle_pin_omn23212.py
           -m integration -q --no-cov
         cwd: "${OMNI_HOME}/omnimarket"
