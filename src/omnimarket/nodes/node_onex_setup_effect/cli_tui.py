@@ -948,10 +948,6 @@ class _TabbedScreen(ModalScreen[_ResultT]):
 
     def _first_read_shown(self) -> None:
         self._show_selection()
-        self._empty_note()
-
-    def _empty_note(self) -> None:  # stub-ok: Config and Dashboard list no models
-        """Say so when no model is set up; a tab with nothing to say is quiet."""
 
     def action_tab(self, step: int) -> None:
         order: list[str] = [spec.id for spec in tui_design().tabs]
@@ -2290,6 +2286,10 @@ class DelegationScreen(_TabbedScreen[None]):
         if not self.reading:
             self._empty_note()
 
+    def _first_read_shown(self) -> None:
+        super()._first_read_shown()
+        self._empty_note()
+
     def _empty_note(self) -> None:
         if not self._selection.entries:
             self.query_one("#dnote", Static).update(
@@ -2556,6 +2556,10 @@ class ModelPickScreen(_TabbedScreen[None]):
         self._fit_auto()
         if not self.reading:
             self._empty_note()
+
+    def _first_read_shown(self) -> None:
+        super()._first_read_shown()
+        self._empty_note()
 
     def _empty_note(self) -> None:
         if not self._selection.entries:
