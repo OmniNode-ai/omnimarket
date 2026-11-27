@@ -71,6 +71,8 @@ def test_cause_unknown_publishes_one_help_message_and_no_ledger_message_row() ->
     assert message.workflow_id == rig.workflow_id
     assert message.help_origin == "diagnosing"
     assert message.tier.name == "claude-large"  # the tier above a claude-medium worker
+    assert message.worker_tier == "claude-medium"
+    assert not message.no_responder
     assert message.action_id == next(
         o.output_id for o in result.published if o.role == ROLE_HELP_REQUESTED
     )
@@ -134,3 +136,17 @@ def test_a_help_answer_is_matched_by_the_action_id_as_its_correlation_id() -> No
     assert answered[0].result_kind == "delegation_harness_result"
     assert answered[0].payload["action_id"] == action_id
     assert intake.handle(theirs) == []  # a run the orchestrator did not start
+
+
+def test_a_top_tier_worker_asking_for_help_is_marked_as_having_no_responder() -> None:
+    rig = Rig()
+    rig.send("start", worker_tier="claude-large")
+    rig.send("worker_started", lane_name="lane-x", body_ticket_ids=("OMN-26721",))
+    rig.send("claim_confirmed")
+    rig.check("check_red", T0 + timedelta(minutes=5))
+    rig.send("log_read", red_kind="other", evidence=("the log names no cause",))
+    result = rig.send("cause_unknown", evidence=("five whys ended",))
+    message = ModelLaneWorkHelpMessage.model_validate(
+        next(o.payload for o in result.published if o.role == ROLE_HELP_REQUESTED)
+    )
+    assert message.no_responder
