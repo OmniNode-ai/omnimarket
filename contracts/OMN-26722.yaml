@@ -68,6 +68,15 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/integration/nodes/node_lane_work_orchestrator/test_help_loop.py -q --no-cov -n 0 -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26722-no-suppression"
+    description: >-
+      The lane work files carry no suppression comment: the orchestrator's contract and overlay reads, the intake claim read, the projection test stubs and the contract topic tests pass typed, with the canonical file shape ratchet reading zero suppression growth.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_projection_lane_work tests/test_golden_chain_projection_lane_work.py tests/unit/nodes/node_lane_work_orchestrator/test_contract_topics.py -q --no-cov -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn26722-integration-proof"
     description: >-
       The node's unit tests pass on a lab host at the pushed head.

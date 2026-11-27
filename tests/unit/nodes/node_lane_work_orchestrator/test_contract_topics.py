@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -16,9 +17,9 @@ pytestmark = pytest.mark.unit
 NODES = Path(__file__).resolve().parents[4] / "src" / "omnimarket" / "nodes"
 
 
-def _contract(node: str) -> dict[str, object]:
+def _contract(node: str) -> dict[str, Any]:
     path = NODES / node / "contract.yaml"
-    return yaml.safe_load(path.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
+    return cast(dict[str, Any], yaml.safe_load(path.read_text(encoding="utf-8")))
 
 
 def test_the_roles_name_exactly_these_topics() -> None:
@@ -38,8 +39,8 @@ def test_the_roles_name_exactly_these_topics() -> None:
 
 def test_every_subscribed_topic_has_a_handler_routing_entry() -> None:
     contract = _contract("node_lane_work_orchestrator")
-    subscribed = set(contract["event_bus"]["subscribe_topics"])  # type: ignore[index]
-    routed = {entry["topic"] for entry in contract["handler_routing"]["handlers"]}  # type: ignore[index]
+    subscribed = set(contract["event_bus"]["subscribe_topics"])
+    routed = {entry["topic"] for entry in contract["handler_routing"]["handlers"]}
     assert subscribed - routed == set()
 
 
@@ -47,7 +48,7 @@ def test_the_lab_proof_failure_is_routed_to_the_intake() -> None:
     contract = _contract("node_lane_work_orchestrator")
     routes = {
         entry["topic"]: entry["handler"]["name"]
-        for entry in contract["handler_routing"]["handlers"]  # type: ignore[index]
+        for entry in contract["handler_routing"]["handlers"]
     }
     assert (
         routes["onex.evt.omnimarket.lab-work-unit-failed.v1"] == "HandlerLaneWorkIntake"
@@ -56,7 +57,7 @@ def test_the_lab_proof_failure_is_routed_to_the_intake() -> None:
 
 def test_the_reducer_declares_who_calls_it() -> None:
     reducer = _contract("node_lane_work_reducer")
-    callers = [c["path"] for c in reducer["runtime_dispatch"]["callers"]]  # type: ignore[index]
+    callers = [c["path"] for c in reducer["runtime_dispatch"]["callers"]]
     assert (
         "src/omnimarket/nodes/node_lane_work_orchestrator/orchestration/lane_work_orchestrator.py"
         in callers
@@ -65,7 +66,7 @@ def test_the_reducer_declares_who_calls_it() -> None:
 
 def test_the_projection_declares_its_applied_event() -> None:
     projection = _contract("node_projection_lane_work")
-    published = projection["event_bus"]["publish_topics"]  # type: ignore[index]
+    published = projection["event_bus"]["publish_topics"]
     assert "onex.evt.omnimarket.projection-lane-work-applied.v1" in published
 
 
@@ -94,7 +95,7 @@ def test_a_lab_proof_failure_becomes_a_lab_result_for_the_workflow_that_asked() 
 
 def test_the_step_reply_and_the_terminal_are_declared_as_read_by_callers() -> None:
     contract = _contract("node_lane_work_orchestrator")
-    assert set(contract["externally_consumed_topics"]) >= {  # type: ignore[call-overload]
+    assert set(contract["externally_consumed_topics"]) >= {
         "onex.evt.omnimarket.lane-work-step-completed.v1",
         "onex.evt.omnimarket.lane-work-terminal.v1",
     }

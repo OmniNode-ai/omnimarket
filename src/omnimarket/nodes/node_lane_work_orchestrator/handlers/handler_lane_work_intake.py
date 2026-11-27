@@ -202,9 +202,11 @@ class HandlerLaneWorkIntake:
         if found is None:
             return []
         workflow_id, action_id = found
+        open_claims = data.get("open_claims")
         claims = [
             {**claim, "open": True}
-            for claim in data.get("open_claims") or []  # type: ignore[attr-defined]
+            for claim in (open_claims if isinstance(open_claims, list) else [])
+            if isinstance(claim, dict)
         ]
         return [
             self._ingress(

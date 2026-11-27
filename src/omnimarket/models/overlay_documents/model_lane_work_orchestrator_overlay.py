@@ -88,7 +88,7 @@ def load_orchestrator_overlay(
     path: Path | None = None,
 ) -> ModelLaneWorkOrchestratorOverlay:
     """Read the overlay file (the bootstrap source) into the model."""
-    text = (path or _EXAMPLE).read_text(encoding="utf-8")  # node-purity-ok: own overlay
+    text = (path or _EXAMPLE).read_text(encoding="utf-8")
     return ModelLaneWorkOrchestratorOverlay.model_validate(yaml.safe_load(text))
 
 

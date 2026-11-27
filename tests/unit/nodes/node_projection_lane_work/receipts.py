@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any, Literal
 
 from omnibase_core.enums.enum_lane_work_event import EnumLaneWorkEvent
 from omnibase_core.enums.enum_lane_work_state import EnumLaneWorkState
@@ -24,14 +25,14 @@ def receipt(
     to_state: EnumLaneWorkState,
     *,
     minutes: int,
-    kind: str = "transition",
+    kind: Literal["transition", "refused", "duplicate"] = "transition",
     refusal: str | None = None,
 ) -> ModelLaneWorkReceipt:
     return ModelLaneWorkReceipt(
         workflow_id=workflow_id,
         seq=seq,
         receipt_id=f"{workflow_id}-r{seq}",
-        kind=kind,  # type: ignore[arg-type]
+        kind=kind,
         input_id=f"{workflow_id}-i{seq}",
         event_kind=event,
         from_state=from_state,
@@ -82,3 +83,9 @@ def blocked_workflow(workflow_id: str) -> list[ModelLaneWorkReceipt]:
             workflow_id, 2, E.DEADLINE_PASSED, S.AWAITING_WORKER, S.BLOCKED, minutes=10
         ),
     ]
+
+
+def install_stubs(writer: object, **stubs: Any) -> None:
+    """Replace the named attributes of a writer with test stubs."""
+    for name, stub in stubs.items():
+        setattr(writer, name, stub)

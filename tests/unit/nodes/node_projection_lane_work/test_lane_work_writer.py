@@ -30,6 +30,7 @@ from omnimarket.nodes.node_projection_lane_work.handlers.handler_projection_lane
 from tests.unit.nodes.node_projection_lane_work.receipts import (
     blocked_workflow,
     handed_off_workflow,
+    install_stubs,
     live_workflow,
 )
 
@@ -89,19 +90,18 @@ def _writer() -> tuple[
 ]:
     writer = LaneWorkProjectionWriter()
     db = _FakeDb()
-    writer._db = db  # type: ignore[assignment]
     published: list[tuple[str, dict[str, Any]]] = []
 
     async def _capture(exposure: Any, **kwargs: Any) -> bool:
         published.append((exposure.topic, kwargs["row"]))
         return True
 
-    writer.publish_snapshot_delta = _capture  # type: ignore[method-assign]
-
     async def _no_producer() -> None:
         return None
 
-    writer._stop_producer = _no_producer  # type: ignore[method-assign]
+    install_stubs(
+        writer, _db=db, publish_snapshot_delta=_capture, _stop_producer=_no_producer
+    )
     return writer, db, published
 
 
