@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.327"
+version = "0.4.329"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -593,6 +593,7 @@ node_delegation_answer_gate_compute = "omnimarket.nodes.node_delegation_answer_g
 node_delegation_arm_compare_compute = "omnimarket.nodes.node_delegation_arm_compare_compute"
 node_delegation_availability_report_compute = "omnimarket.nodes.node_delegation_availability_report_compute"
 node_delegation_check_probe_effect = "omnimarket.nodes.node_delegation_check_probe_effect"
+node_delegation_check_regression_effect = "omnimarket.nodes.node_delegation_check_regression_effect"
 node_delegation_client_verdict_compute = "omnimarket.nodes.node_delegation_client_verdict_compute"
 node_delegation_code_budget_compute = "omnimarket.nodes.node_delegation_code_budget_compute"
 node_delegation_completion_rate_compute = "omnimarket.nodes.node_delegation_completion_rate_compute"
@@ -1022,6 +1023,7 @@ node_ledger_append_effect = "omnimarket.nodes.node_ledger_append_effect"
 node_ledger_hash_compute = "omnimarket.nodes.node_ledger_hash_compute"
 node_ledger_hold_verdict_effect = "omnimarket.nodes.node_ledger_hold_verdict_effect"
 node_ledger_orchestrator = "omnimarket.nodes.node_ledger_orchestrator"
+node_ledger_outbox_drain_effect = "omnimarket.nodes.node_ledger_outbox_drain_effect"
 node_ledger_reconcile_command_compute = "omnimarket.nodes.node_ledger_reconcile_command_compute"
 node_ledger_reconcile_compute = "omnimarket.nodes.node_ledger_reconcile_compute"
 node_ledger_reconcile_effect = "omnimarket.nodes.node_ledger_reconcile_effect"
@@ -1511,6 +1513,7 @@ node_tech_debt_sweep_orchestrator = "omnimarket.nodes.node_tech_debt_sweep_orche
 node_temp_retention_effect = "omnimarket.nodes.node_temp_retention_effect"
 node_temporal_health_alarm_effect = "omnimarket.nodes.node_temporal_health_alarm_effect"
 node_tenant_delegations_read_effect = "omnimarket.nodes.node_tenant_delegations_read_effect"
+node_tenant_outbox_flush_effect = "omnimarket.nodes.node_tenant_outbox_flush_effect"
 node_tenant_provision_effect = "omnimarket.nodes.node_tenant_provision_effect"
 node_tenant_savings_read_effect = "omnimarket.nodes.node_tenant_savings_read_effect"
 node_test_duration_record_check_effect = "omnimarket.nodes.node_test_duration_record_check_effect"
@@ -2170,9 +2173,9 @@ force-include = { "config/ci_bus_lanes.yaml" = "omnimarket/config/ci_bus_lanes.y
 # the pin means replacing those parts too: delete the old ones, then run
 # `split -b 720000 -d <asset> <asset>.part-` in that directory. A test names the
 # pin and the parts that disagree.
-version = "v1.1.15"
-sha256 = "023f70942857c2494f7799557ebe41b437879567af0fad30be3df9c29e0a4b3b"
-asset = "omnidash-bundle-v1.1.15.tar.gz"
+version = "v1.1.16"
+sha256 = "61ff53566dd17948abe3be398d0a995d9414a81f9ca8399b61966e769fc48cef"
+asset = "omnidash-bundle-v1.1.16.tar.gz"
 repository = "OmniNode-ai/omnidash"
 
 [tool.hatch.build]

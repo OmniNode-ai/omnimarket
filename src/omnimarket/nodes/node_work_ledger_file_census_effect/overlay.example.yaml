@@ -5,7 +5,6 @@
 # ONEX_SKILL_OVERLAY_ROOTS, or at the file ONEX_LEDGER_CENSUS_OVERLAY names.
 registry_root_env: ONEX_LEDGER_CENSUS_ROOT
 repositories:
-  - {name: omnibase_compat, own_line: false}
   - {name: omnibase_core, own_line: false}
   - {name: omnibase_infra, own_line: false}
   - {name: omnibase_spi, own_line: false}
@@ -36,4 +35,7 @@ writer_markers:
 runtime_include: ['^(src|plugins|scripts|deploy|k8s|operator-tools|tools)/']
 runtime_exclude: ['(^|/)(tests?|fixtures|docs?|data|benchmarks|reports?|reference|examples?)/', '^contracts/', '\.json$', 'overlay\.example\.yaml$']
 journal_env: ONEX_LEDGER_CENSUS_JOURNAL
+# The daily unit keeps one record per UTC day in this file of its state directory and reads the day-over-day change from it.
+daily_history_file: daily-records.json
+daily_history_days: 35
 ratchet_file: src/omnimarket/nodes/node_work_ledger_file_census_effect/ratchet.yaml

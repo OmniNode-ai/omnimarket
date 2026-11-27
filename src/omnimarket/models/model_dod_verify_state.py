@@ -617,6 +617,15 @@ class ModelDodVerifyState(BaseModel):
     failed_count: int = Field(default=0, ge=0)
     skipped_count: int = Field(default=0, ge=0)
     superseded_count: int = Field(default=0, ge=0)
+    # OMN-25856: set only when the dispatch budget stopped the run. How many
+    # executable checks ran, and how many were left unrun (each carried in
+    # ``checks`` as SKIPPED / CHECK_BUDGET_EXCEEDED, never as a pass).
+    budget_checks_run: int | None = Field(
+        default=None, ge=0, exclude_if=lambda value: value is None
+    )
+    budget_checks_not_run: int | None = Field(
+        default=None, ge=0, exclude_if=lambda value: value is None
+    )
     # OMN-15391: checks that executed and exited 0 but whose exit status cannot
     # depend on the product change. Counted separately and NEVER folded into
     # ``verified_count`` — that field is the completion tally an operator reads

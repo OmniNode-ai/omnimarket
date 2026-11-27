@@ -134,14 +134,27 @@ class HandlerLandingProofGate:
     ) -> str:
         lab = re.compile(self._policy.lab_line)
         sha = re.compile(self._policy.sha)
+
+        lab_lines = [
+            ln for ln in self._all_lines(text) if lab.match(ln) and sha.search(ln)
+        ]
         shas = sorted(
             {
                 x
-                for ln in self._all_lines(text)
-                if lab.match(ln)
+                for ln in lab_lines
+                if not self._line_failed(ln)
                 for x in sha.findall(ln)
             }
         )
+        if lab_lines and not shas:
+            reasons.append(
+                ModelProofReason(
+                    code=EnumProofCode.LAB_RUN_FAILED,
+                    item="a Lab line recording a run that passed",
+                    detail="every Lab line records a refused or failed run",
+                )
+            )
+            return ""
         if not shas:
             reasons.append(
                 ModelProofReason(
@@ -175,6 +188,29 @@ class HandlerLandingProofGate:
             )
         )
         return ""
+
+    def _line_failed(self, line: str) -> bool:
+        """A Lab line records a failed run when any clause of it records a failure for the thing it claims.
+
+        A pass elsewhere on the line (exit 0, N passed) never clears a failed clause. Two kinds of clause are not a
+        failure of the claim: one about the base or the state before the change (the red of a red-first proof), and
+        one naming the known-bad control, which counts only while a known-good clause on the line carries no failure.
+        """
+        p = self._policy
+        failed = re.compile(p.lab_failed)
+        clauses = [c for c in re.split(p.lab_clause_split, line) if c.strip()]
+        good_ok = any(
+            re.search(p.lab_known_good, c) and not failed.search(c) for c in clauses
+        )
+        for c in clauses:
+            if not failed.search(c):
+                continue
+            if re.search(p.lab_baseline, c):
+                continue
+            if re.search(p.lab_known_bad, c) and good_ok:
+                continue
+            return True
+        return False
 
     def _known_answers(
         self, text: ModelProofText, reasons: list[ModelProofReason]

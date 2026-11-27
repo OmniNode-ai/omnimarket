@@ -16,6 +16,7 @@ from omnimarket.nodes.node_handwritten_event_payload_check_effect.models.model_h
     ModelHandwrittenEventPayloadCheckRequest,
 )
 from scripts.ci.ci_summary_gate import STRICT_GATE_JOBS
+from tests.ci.lint_jobs import lint_steps
 
 pytestmark = pytest.mark.unit
 
@@ -193,7 +194,7 @@ class TestAc4TheGateIsWiredToARequiredContext:
 
     def test_the_lint_job_runs_the_node(self):
         workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
-        steps = workflow["jobs"]["lint"]["steps"]
+        steps = lint_steps(workflow)
         runs = [step.get("run", "") for step in steps]
         assert any(
             "python -m omnimarket.nodes.node_handwritten_event_payload_check_effect.runtime_handwritten_event_payload_check"

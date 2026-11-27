@@ -13,6 +13,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models.bus_binding.model_node_event_bus import ModelNodeEventBus
+
 CheckId = Literal["C11", "C12", "C13", "C14", "C15", "C16", "C17", "C28", "C29", "C30"]
 
 
@@ -31,3 +33,6 @@ class ModelDelegationCheckProbeOverlay(BaseModel):
     result_topic: str = Field(min_length=1)
     # How long one responder has to answer ``/v1/models``.
     responder_timeout_s: float = Field(gt=0)
+    # The bus the tick delivers its run record on: the lane id only, read by the declared broker publisher. A lab host's
+    # unit carries no KAFKA_BOOTSTRAP_SERVERS, so without it the tick delivers nothing and exits 3.
+    event_bus: ModelNodeEventBus | None = None

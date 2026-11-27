@@ -79,6 +79,18 @@ class EnumDodVerifyUnresolvedCause(StrEnum):
     #: the work: it is refused rather than guessed as "unchanged", and stays
     #: non-retryable until a retry policy for it is considered.
     TICKET_UNAVAILABLE = "ticket_unavailable"
+    #: OMN-25856. The dispatch's wall-clock budget was spent before every check
+    #: started: the remaining checks were NOT run (never counted as passed), so
+    #: the verdict cannot be reached by this dispatch. The sum of the checks, not
+    #: any one check, outran the budget; the scheduled sweep, which has no
+    #: dispatch deadline, verifies them. Not retry-eligible: the same contract
+    #: spends the same budget.
+    DISPATCH_BUDGET_EXHAUSTED = "dispatch_budget_exhausted"
+    #: OMN-25856. A hosted start command was refused before any check started
+    #: because the overlay declared no usable budget (``DOD_VERIFY_START_BUDGET_S``
+    #: absent, malformed, or not below the dispatch deadline). A configuration
+    #: defect, reproduced exactly by a retry.
+    DISPATCH_BUDGET_NOT_DECLARED = "dispatch_budget_not_declared"
     #: The cause could not be classified. Escalates to a human. It must
     #: never default to "retry" and must never read as healthy — an
     #: unclassified unresolved item is the state this taxonomy exists to

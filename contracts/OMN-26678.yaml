@@ -54,6 +54,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_build_delegation_checks/test_state_root.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26678-ac2-unreadable-history-named-refusal
+  description: With an existing history file the process cannot read, or one that is not valid JSON, the store raises the named build-store error (path, cause and the ONEX_STATE_DIR key) and the handler answers with status refused and runs no check; no bare PermissionError or JSONDecodeError leaves the node. The tests fail on a store that reads the history outside the named-error path.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_build_delegation_checks/test_state_root.py -q --no-cov -n 0 -p no:randomly -k "history"
+    cwd: .
 - id: dod-omn26678-hosted-deploy-check
   description: 'Deploy check the hosted runner can run: the handler resolves the history path through the declared state root helper and answers an unwritable root with the refused status, and the store names the state root keys in its refusal. This binds no criterion by itself.'
   source: manual

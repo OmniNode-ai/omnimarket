@@ -28,7 +28,7 @@ from omnibase_core.enums.enum_delegation_traffic_class import (
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 #: The tool_use rubric's turn budget (delegation_class_rubrics.v1.yaml).
-MAX_TURNS_CEILING = 40
+MAX_TURNS_CEILING = 100
 #: Actions one turn may carry.
 MAX_ACTIONS_PER_TURN = 12
 #: Files one bulk replacement may target.

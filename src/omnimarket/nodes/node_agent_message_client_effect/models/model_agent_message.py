@@ -10,6 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.enums.enum_agent_message_kind import EnumAgentMessageKind
 from omnimarket.enums.enum_agent_message_platform import EnumAgentMessagePlatform
+from omnimarket.models.agent_message.model_agent_message_rejection import (
+    ModelAgentMessageRejection,
+)
 
 
 class ModelAgentMessage(BaseModel):
@@ -38,9 +41,24 @@ class ModelAgentMessageQuery(BaseModel):
     limit: int = Field(default=50, ge=1, le=1000)
 
 
+class ModelAgentMessageReadReport(BaseModel):
+    """What one read of the topic answered: the messages a reader accepted and every record it refused."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    messages: tuple[ModelAgentMessage, ...] = ()
+    unverified: int = Field(
+        default=0,
+        ge=0,
+        description="Legacy-shape messages returned with no sender proof (allowed until the cutover).",
+    )
+    rejections: tuple[ModelAgentMessageRejection, ...] = ()
+
+
 __all__: list[str] = [
     "EnumAgentMessageKind",
     "EnumAgentMessagePlatform",
     "ModelAgentMessage",
     "ModelAgentMessageQuery",
+    "ModelAgentMessageReadReport",
 ]
