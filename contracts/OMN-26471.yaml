@@ -47,3 +47,17 @@ dod_evidence:
   - check_type: command
     check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_cross_owner_ask_check_compute/handlers/handler_cross_owner_ask_check.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerCrossOwnerAskCheck" >/dev/null'
     cwd: .
+- id: dod-omn26471-omnimarket-ac6-pinned-topology
+  description: 'AC6: on the raised omnibase_infra and omnibase_core pins every topology profile resolves omninode_cloud with the tenant_identity_writer binding on TENANT_IDENTITY_DATABASE_DSN; the test fails on the previous pin.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/runtime/test_omninode_cloud_topology_pin_omn26471.py -q
+    cwd: .
+- id: dod-omn26471-omnimarket-ac6-strict-wiring
+  description: 'AC6: the strict-wiring topology test passes on the raised pin.'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/runtime/test_topology_strict_wiring_omn15655.py -q
+    cwd: .
