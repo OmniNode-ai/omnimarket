@@ -58,16 +58,17 @@ event_bus:
 # The declared runner. kind: exec runs argv in the container; net_block, lab_probe and copy_source are computed by the handler.
 # The ranges to blackhole come from ONEX_CUSTOMER_PATH_BLOCKED_RANGES (a comma list of CIDRs; no default).
 # kind: own_key runs only when ONEX_CUSTOMER_PATH_PROVIDER_KEY_FILE names an owner-only file; the value goes on stdin.
+# {model_args} is --model <id> from ONEX_CUSTOMER_PATH_PROVIDER_MODEL, empty when unset (the guide's own command).
 # Placeholders: {uv_install_url} {tenant_slug} {base_url} {key_path} {user} {home} {target} {smoke_input}. as: root | customer. expect: success | failure.
 customer_path:
   dns_resolver: "1.1.1.1"
   steps:
     - id: s01_base_packages
-      guide_ref: "Before you start"
+      guide_ref: "Prerequisites, and the appendix for a clean Ubuntu 24.04 image"
       as: root
       argv: ["sh", "-c", "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq curl ca-certificates iproute2 git"]
       timeout_s: 300
-      gap: "The guide's prerequisites list uv and a terminal but not curl or ca-certificates (and the test needs iproute2 for its routes and git for the checkout install); a clean ubuntu image has none of them, so the uv installer line cannot run until they are added."
+      gap: "The guide's appendix for a clean Ubuntu 24.04 image starts with sudo apt-get, but a clean ubuntu:24.04 image has no sudo, so the first line fails (sudo: not found) for root and for a new user alike; the packages (curl, ca-certificates, git, iproute2) are listed and install without sudo as root."
     - id: s02_block_lab_network
       guide_ref: "test setup (not a guide step)"
       kind: net_block
@@ -86,27 +87,27 @@ customer_path:
       expect: failure
       timeout_s: 20
     - id: s05_gateway_reachable
-      guide_ref: "Connecting to the OmniNode Cloud, section 3"
+      guide_ref: "Step 4, the gateway address"
       as: customer
       argv: ["curl", "-sS", "--max-time", "15", "-o", "/dev/null", "{base_url}/openapi.json"]
       timeout_s: 30
     - id: s06_install_uv
-      guide_ref: "Before you start"
+      guide_ref: "Prerequisites, and the appendix for a clean Ubuntu 24.04 image"
       as: customer
       argv: ["sh", "-c", "curl -LsSf {uv_install_url} | sh"]
       timeout_s: 180
     - id: s07_install_onex
-      guide_ref: "Step 1"
+      guide_ref: "Step 3"
       as: customer
       argv: ["sh", "-c", "export PATH=\"$HOME/.local/bin:$PATH\" && uv tool install --python 3.12 --with 'omnibase-infra>=0.38.67' --with 'omnimarket>=0.4.205' 'omnibase-core>=0.46.8'"]
       timeout_s: 900
     - id: s08_onex_version
-      guide_ref: "Step 1"
+      guide_ref: "Step 3"
       as: customer
       argv: ["sh", "-c", "export PATH=\"$HOME/.local/bin:$PATH\" && onex --version"]
       timeout_s: 180
     - id: s09_local_init
-      guide_ref: "Step 2"
+      guide_ref: "Start local"
       as: customer
       argv: ["sh", "-c", "export PATH=\"$HOME/.local/bin:$PATH\" && onex local init"]
       timeout_s: 180
@@ -115,45 +116,44 @@ customer_path:
       kind: own_key
       as: customer
       stdin: provider_key
-      argv: ["sh", "-c", "export PATH=\"$HOME/.local/bin:$PATH\" && onex secret register-tenant-key openrouter --tenant {tenant_slug}"]
+      argv: ["sh", "-c", "export PATH=\"$HOME/.local/bin:$PATH\" && onex secret register-tenant-key openrouter --tenant {tenant_slug} {model_args}"]
       timeout_s: 300
+      gap_if_failed: "The guide's Step 2 register command names no model, and the client refuses it (BYOK_MODEL_NOT_CHOSEN) until one is chosen with --model <id>; with a model it still stops with no broker configured (KAFKA_BOOTSTRAP_SERVERS required), because the client publishes the registration to a Kafka broker, which the guide says a customer never connects to."
       reason: "ONEX_CUSTOMER_PATH_PROVIDER_KEY_FILE is not set; a provider key is a credential, so it is registered only when the run names an owner-only file holding it (and a durable consent row covers that tenant)."
     - id: s11_copy_unreleased_node
-      guide_ref: "Step 1 (deviation)"
+      guide_ref: "Step 3 (deviation)"
       kind: copy_source
       as: root
       timeout_s: 120
-      gap: "A source install resolves git dependencies, so it needs git, which a clean image lacks and the guide never lists. The published omnimarket release does not carry node_cloud_smoke_check_effect, so the delegation step needs a checkout; the guide has no path for installing a node that is not yet released."
     - id: s12_install_checkout
-      guide_ref: "Step 1 (deviation)"
+      guide_ref: "Step 3 (deviation)"
       as: customer
       argv: ["sh", "-c", "export PATH=\"$HOME/.local/bin:$PATH\" && uv tool install --force --python 3.12 --with 'omnibase-infra>=0.38.67' --with {home}/omnimarket-src 'omnibase-core>=0.46.8'"]
       timeout_s: 900
     - id: s13_cloud_login
-      guide_ref: "Connecting to the OmniNode Cloud, section 3"
+      guide_ref: "Step 4"
       as: customer
       stdin: key
       argv: ["sh", "-c", "export PATH=\"$HOME/.local/bin:$PATH\" && onex cloud login --base-url {base_url} --tenant-slug {tenant_slug} --api-key-stdin"]
       timeout_s: 120
-      gap: "The guide's login line has no --tenant-slug, and the client refuses it (Missing option '--tenant-slug'); the guide never says where the slug comes from."
+      gap: "The guide's login line carries --tenant-slug now, but Step 2 only says the key belongs to a tenant whose slug Step 4 needs; it never says where the dashboard or any command shows that slug."
     - id: s14_cloud_status
-      guide_ref: "Connecting to the OmniNode Cloud, section 3"
+      guide_ref: "Step 4"
       as: customer
       argv: ["sh", "-c", "export PATH=\"$HOME/.local/bin:$PATH\" && onex cloud status"]
       timeout_s: 120
     - id: s15_smoke_delegation
-      guide_ref: "Connecting to the OmniNode Cloud, section 4 (through node_cloud_smoke_check_effect)"
+      guide_ref: "Step 5 (through node_cloud_smoke_check_effect)"
       kind: smoke
       as: customer
       timeout_s: 400
-      gap: "The guide's delegation step is onex cloud delegate; it names no smoke check, so the node's two settings (a gateway URL and an owner-only key file) are not in the guide and the key file must be written separately from the login."
     - id: s16_cloud_delegate
-      guide_ref: "Connecting to the OmniNode Cloud, section 4"
+      guide_ref: "Step 5"
       as: customer
       argv: ["sh", "-c", "export PATH=\"$HOME/.local/bin:$PATH\" && onex cloud delegate {prompt_arg} --task-type {task_type}"]
       timeout_s: 400
     - id: s17_read_receipt
-      guide_ref: "Connecting to the OmniNode Cloud, section 4"
+      guide_ref: "Step 5"
       kind: receipt
       as: customer
       argv: ["sh", "-c", "cat \"$HOME\"/onex-delegations/*/receipt.json"]
