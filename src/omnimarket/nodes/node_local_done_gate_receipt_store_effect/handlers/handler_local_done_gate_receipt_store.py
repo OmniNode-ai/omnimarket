@@ -19,6 +19,9 @@ from omnimarket.models.model_local_done_gate_receipt_store import (
     FilesystemLocalDoneGateReceiptStore,
     default_receipt_store,
 )
+from omnimarket.models.model_local_done_gate_receipt_stored import (
+    ModelLocalDoneGateReceiptStored,
+)
 
 
 class HandlerLocalDoneGateReceiptStore:
@@ -31,9 +34,12 @@ class HandlerLocalDoneGateReceiptStore:
 
     def handle(
         self, verdict: ModelDodVerifyCompletedEvent | ModelDodVerifyState
-    ) -> bool:
-        """Return True when a receipt was stored."""
-        return self.store_receipt(verdict.local_done_gate_receipt)
+    ) -> ModelLocalDoneGateReceiptStored:
+        """Store the verdict's receipt, if any, and report whether it was stored."""
+        return ModelLocalDoneGateReceiptStored(
+            ticket_id=verdict.ticket_id,
+            stored=self.store_receipt(verdict.local_done_gate_receipt),
+        )
 
     def store_receipt(self, receipt: ModelLocalDoneGateReceipt | None) -> bool:
         """Return True when the receipt was stored."""

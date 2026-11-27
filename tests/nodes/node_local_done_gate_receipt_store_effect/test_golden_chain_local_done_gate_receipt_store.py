@@ -54,7 +54,7 @@ def test_a_verdict_with_a_receipt_reaches_the_store_and_one_without_stores_nothi
     bare = ModelDodVerifyState(
         correlation_id=uuid4(), ticket_id=_TICKET, started_at=_NOW, completed_at=_NOW
     )
-    assert handler.handle(bare) is False
+    assert handler.handle(bare).stored is False
     assert (
         receipt_reads_verified(
             store.receipts_for(_TICKET),
@@ -65,7 +65,7 @@ def test_a_verdict_with_a_receipt_reaches_the_store_and_one_without_stores_nothi
         is None
     )
     carrying = bare.model_copy(update={"local_done_gate_receipt": _receipt()})
-    assert handler.handle(carrying) is True
+    assert handler.handle(carrying).stored is True
     assert (
         receipt_reads_verified(
             store.receipts_for(_TICKET),
