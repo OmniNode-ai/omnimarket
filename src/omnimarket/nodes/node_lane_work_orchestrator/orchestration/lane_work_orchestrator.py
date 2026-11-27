@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""HandlerLaneWorkOrchestrator: the one fold path of the lane work loop (OMN-26721).
+"""LaneWorkOrchestrator: the one fold path of the lane work loop (OMN-26721).
 
 For each ingress input: classify (when it is a raw or typed result), fold through the
 lane work reducer, publish the transition receipt (the commit point), publish each
@@ -145,7 +145,7 @@ def _line(text: str, limit: int = 300) -> str:
     return " ".join(text.split())[:limit]
 
 
-class HandlerLaneWorkOrchestrator:
+class LaneWorkOrchestrator:
     """Folds one input at a time; ``handle(ModelLaneWorkIngress) -> ModelLaneWorkFoldResult``."""
 
     def __init__(
@@ -954,4 +954,4 @@ class HandlerLaneWorkOrchestrator:
                 self._ensure_outputs(record)
 
 
-__all__: list[str] = ["HandlerLaneWorkOrchestrator", "correlation_of_action"]
+__all__: list[str] = ["LaneWorkOrchestrator", "correlation_of_action"]
