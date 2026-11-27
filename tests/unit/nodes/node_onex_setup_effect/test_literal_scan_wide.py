@@ -38,6 +38,7 @@ def shown(text, n):
         ("_Y = Text('planted words')\n", "planted words"),
         ("_Z = line.append(f'{count} planted')\n", " planted"),
         ("_W = box.update('planted')\n", "planted"),
+        ("_V = Text((f'{n} planted', 'x'))\n", " planted"),
     ],
 )
 def test_the_scan_catches_a_planted_glyph_or_display_word(

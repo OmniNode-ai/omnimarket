@@ -3028,12 +3028,11 @@ def _shown_words(call: ast.Call) -> list[str]:
     parts: list[ast.expr] = []
     for arg in args:
         if isinstance(arg, ast.Tuple) and arg.elts:
-            parts.append(arg.elts[0])
+            arg = arg.elts[0]
+        if isinstance(arg, ast.JoinedStr):
+            parts.extend(arg.values)
         else:
-            if isinstance(arg, ast.JoinedStr):
-                parts.extend(arg.values)
-            else:
-                parts.append(arg)
+            parts.append(arg)
     words: list[str] = []
     for part in parts:
         if (
