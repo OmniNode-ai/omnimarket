@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+schema_version: "1.0.0"
+ticket_id: "OMN-26722"
+title: "Lane work orchestrator task 7: the help step climbs the eight-tier chain read from the settings store, one pinned request per tier"
+summary: >-
+  Acceptance for OMN-26722 (task 7 of the lane work orchestrator plan). The help step builds one
+  delegate-skill request per help tier, pinned with backend_id and wait=false, from the chain copied into
+  a workflow's state; the chain is read from the settings store's root first and from the overlay file
+  only as bootstrap; the answer is validated at the lane boundary and every help receipt carries the
+  asking tier, answering tier, executed backend and model, configured effort and outcome.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn26722-help-step"
+    statement: >-
+      A stuck workflow asks the tier above its worker, one pinned request per tier, with the chain held in the settings store.
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          the first responder is the tier above the worker, and a Claude large worker goes straight to blocked -- falsifier: a test parametrised over the eight tiers
+      - id: "AC2"
+        statement: >-
+          the chain is read from the settings store and from the overlay file only for bootstrap, and a workflow keeps the chain it started with -- falsifier: test_help_tiers_store_overlay.py asserts a store chain wins over the file, and a test changes the store between two help requests of one workflow
+      - id: "AC3"
+        statement: >-
+          every help request is pinned to a tier's backend and model, and every help receipt carries asking tier, answering tier, executed backend and model, effort and outcome -- falsifier: a request test asserts backend_id on every request, and a receipt model test
+evidence_requirements: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn26722-ac1"
+    description: >-
+      AC1: the first responder is the tier above the worker.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_orchestrator/test_help.py -k test_first_responder -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26722-ac2"
+    description: >-
+      AC2: the chain is read from the store first and a workflow keeps its chain.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_orchestrator/test_help_tiers_store_overlay.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26722-ac3"
+    description: >-
+      AC3: every request is pinned and every receipt carries the measured cells.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_orchestrator/test_help.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26722-help-loop"
+    description: >-
+      Review round 3 of the plan (sections 12.3, 3.5 and 3.6): the orchestrator's help message reaches the help handler, which sends exactly one pinned delegate-skill request and one ledger MSG row for it, a stub answer moves the workflow, a failed top-tier answer ends blocked, a top-tier worker needing help ends blocked with nothing sent, and a crash between the handler's two writes or after both leaves one of each.
+    source: "manual"
+    binds_ac: ["AC2", "AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/integration/nodes/node_lane_work_orchestrator/test_help_loop.py -q --no-cov -n 0 -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26722-integration-proof"
+    description: >-
+      The node's unit tests pass on a lab host at the pushed head.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-26722 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_lane_work_orchestrator tests/integration/nodes/node_lane_work_orchestrator -m \"unit or integration\" -q --no-cov -n 0 -p no:randomly"
+        cwd: "."
