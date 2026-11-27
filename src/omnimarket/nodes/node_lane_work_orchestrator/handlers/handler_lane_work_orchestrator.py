@@ -705,6 +705,8 @@ class HandlerLaneWorkOrchestrator:
                 requesting_lane=self._overlay.requesting_lane,
                 requesting_host=self._overlay.requesting_host,
                 requested_at=now,
+                worker_tier=state.worker_tier,
+                no_responder=str(intent.inputs["tier"]) == state.worker_tier,
             )
         else:
             msg = f"node action {name!r} has no command"
