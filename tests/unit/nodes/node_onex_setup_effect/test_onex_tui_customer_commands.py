@@ -81,7 +81,7 @@ async def test_slash_lists_exactly_the_nine_customer_commands_in_order() -> None
         assert _palette(app) == _CUSTOMER
 
 
-def test_the_customer_list_is_declared_once_in_tui_design_yaml(
+async def test_the_customer_list_is_declared_once_in_tui_design_yaml(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """C1, AC1: the list is data in the design file, not a list in code."""
@@ -97,6 +97,11 @@ def test_the_customer_list_is_declared_once_in_tui_design_yaml(
     assert cli_tui._is_customer_command(("config",))
     assert cli_tui._is_customer_command(("config", "init"))
     assert not cli_tui._is_customer_command(("delegation",))
+
+    app = _app(_Runner([]))
+    async with app.run_test() as pilot:
+        await pilot.press("slash")
+        assert _palette(app) == ["/config", "/quit"]
 
 
 async def test_a_typed_hidden_command_runs_nothing_and_says_so() -> None:

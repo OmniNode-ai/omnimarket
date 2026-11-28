@@ -35,7 +35,7 @@ evidence_requirements:
   command: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_slash_lists_exactly_the_nine_customer_commands_in_order tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_the_customer_list_is_declared_once_in_tui_design_yaml tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_banner_tip_does_not_promise_every_command -q -n 0 --no-cov -p no:cacheprovider
 - kind: tests
   description: AC2 headless TUI test.
-  command: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_a_typed_hidden_command_runs_nothing_and_says_so tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_a_command_that_does_not_exist_is_still_no_match tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_typed_subcommands_of_a_customer_command_still_run -q -n 0 --no-cov -p no:cacheprovider
+  command: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_a_typed_hidden_command_runs_nothing_and_says_so tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_a_command_that_does_not_exist_is_still_no_match -q -n 0 --no-cov -p no:cacheprovider
 - kind: tests
   description: AC3 headless TUI test.
   command: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_no_environment_switch_widens_the_list_or_runs_hidden_commands -q -n 0 --no-cov -p no:cacheprovider
@@ -63,7 +63,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_a_typed_hidden_command_runs_nothing_and_says_so tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_a_command_that_does_not_exist_is_still_no_match tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_typed_subcommands_of_a_customer_command_still_run -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_a_typed_hidden_command_runs_nothing_and_says_so tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_a_command_that_does_not_exist_is_still_no_match -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26610-ac3
   description: 'AC3: the TUI has no list-everything switch and reads no ONEX_CLI_SHOW_ALL_COMMANDS variable: with it set, `/` still lists exactly the nine and a typed hidden command still runs nothing.'
