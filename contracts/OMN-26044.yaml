@@ -66,7 +66,7 @@ dod_evidence:
     execution_scope: local_done_gate
     checks:
       - check_type: command
-        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26044 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_onex_setup_effect/test_customer_surface_no_omni_home_omn26044.py -q --no-cov
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26044 --kind test -- uv run --frozen pytest tests/nodes/node_onex_setup_effect/test_customer_surface_no_omni_home_omn26044.py -q --no-cov
         cwd: .
   - id: dod-omn26044-c17-collector-tests
     description: "AC6: the collector's guide read, install-line parse, parameter audit with its seeded controls, the in-machine driver against an onex that hides an undeclared group unless the switch is on, and the machine over a fake runner (clean install reads PASS, a run without the switch reads FAIL naming it, a failed install reads FAIL, an unreadable guide or a host without uv reads PRECONDITION-ABSENT and installs nothing)."
@@ -82,7 +82,7 @@ dod_evidence:
     execution_scope: local_done_gate
     checks:
       - check_type: command
-        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26044-c17 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_check_probe_effect -q --no-cov
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26044-c17 --kind test -- uv run --frozen pytest tests/nodes/node_delegation_check_probe_effect -q --no-cov
         cwd: .
   - id: dod-omn26044-c30-dashboard-collector-tests
     description: "AC7: the grader (bare dashboard PRECONDITION-ABSENT with its reason, a started one PASS, a wrong or absent token FAIL, a group-readable store FAIL, a failed start or setup FAIL), the in-machine driver record (never carries the token), the collector over a fake runner (clean profile, failed install reads FAIL, no record reads absent) and the handler (a machine with a dashboard collector adds the clauses to C30, one without keeps the gateway reading)."
