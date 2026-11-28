@@ -543,6 +543,21 @@ class _FakeCursor:
     def fetchall(self) -> list[dict[str, Any]]:
         return list(self._conn.rows)
 
+    def fetchone(self) -> dict[str, Any] | None:
+        # OMN-26152: the revision probe answers the row count and the newest
+        # timestamp of what the fake holds, as the real count(*) / max() does.
+        rows = self._conn.rows
+        stamps = [
+            r.get("verdict_completed_at") or r.get("created_at")
+            for r in rows
+            if r.get("verdict_completed_at") or r.get("created_at")
+        ]
+        return {
+            "rev_count": len(rows),
+            "rev_newest": max(stamps) if stamps else None,
+            "rev_decided": len(stamps),
+        }
+
 
 class _FakeConn:
     def __init__(
@@ -668,7 +683,7 @@ def test_reader_reads_verdicts_then_the_tenant_scoped_delegations(
     assert "set_config" in guc_sql
     assert guc_params == ("app.tenant_id", TENANT_ID)
     assert guc_autocommit is False  # inside the transaction, not a lost GUC
-    read_sql, read_params, _ = delegation_conn.statements[1]
+    read_sql, read_params, _ = delegation_conn.statements[2]
     assert "public.delegation_events" in read_sql
     assert "tenant_id = %(tenant_id)s::uuid" in read_sql
     assert read_params == {
@@ -887,3 +902,108 @@ def test_port_selection_without_a_dsn_leaves_the_local_port_static(
 
     assert isinstance(port, LocalDelegationDispatchPort)
     assert port._roi_overlay_reader(TASK_TYPE) is None
+
+
+def _held_fixture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[Any, _FakeConn, _FakeConn]:
+    from omnimarket.routing.dod_overlay import PostgresDodOutcomeReader
+
+    run = str(uuid.uuid4())
+    verdict_conn = _FakeConn(
+        rows=[
+            {
+                "verdict_correlation_id": "v1",
+                "delegation_correlation_id": run,
+                "verdict_status": "verified",
+                "verdict_outcome": "done",
+                "verdict_completed_at": BASE_TIME,
+            }
+        ]
+    )
+    delegation_conn = _FakeConn(
+        rows=[
+            {
+                "task_type": TASK_TYPE,
+                "correlation_id": run,
+                "tier_name": "local",
+                "model_name": "Qwen3.8-27B",
+                "created_at": BASE_TIME,
+            }
+        ]
+    )
+    _patch_connect(
+        monkeypatch, {VERDICT_DSN: verdict_conn, DELEGATION_DSN: delegation_conn}
+    )
+    return (
+        PostgresDodOutcomeReader(DELEGATION_DSN, VERDICT_DSN),
+        verdict_conn,
+        (delegation_conn),
+    )
+
+
+def _full_reads(conn: _FakeConn) -> int:
+    return sum(
+        1
+        for sql, _, _ in conn.statements
+        if "rev_count" not in sql and "set_config" not in sql
+    )
+
+
+@pytest.mark.unit
+def test_unchanged_sources_are_not_re_read_or_re_parsed_omn26152(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reader, verdict_conn, delegation_conn = _held_fixture(monkeypatch)
+
+    first = reader.read_dod_outcomes(task_type=TASK_TYPE, tenant_id=TENANT_ID)
+    second = reader.read_dod_outcomes(task_type=TASK_TYPE, tenant_id=TENANT_ID)
+
+    assert second == first
+    assert len(first) == 1
+    # the full-table verdict read and the delegation read ran once, not twice
+    assert _full_reads(verdict_conn) == 1
+    assert _full_reads(delegation_conn) == 1
+    # a held answer is a copy: mutating it does not poison the next read
+    second[0]["model_name"] = "tampered"
+    third = reader.read_dod_outcomes(task_type=TASK_TYPE, tenant_id=TENANT_ID)
+    assert third == first
+
+
+@pytest.mark.unit
+def test_changed_source_is_read_fresh_and_equals_a_fresh_reader_omn26152(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reader, verdict_conn, delegation_conn = _held_fixture(monkeypatch)
+    reader.read_dod_outcomes(task_type=TASK_TYPE, tenant_id=TENANT_ID)
+
+    run2 = str(uuid.uuid4())
+    later = BASE_TIME + timedelta(minutes=5)
+    verdict_conn.rows.append(
+        {
+            "verdict_correlation_id": "v2",
+            "delegation_correlation_id": run2,
+            "verdict_status": "verified",
+            "verdict_outcome": "done",
+            "verdict_completed_at": later,
+        }
+    )
+    delegation_conn.rows.append(
+        {
+            "task_type": TASK_TYPE,
+            "correlation_id": run2,
+            "tier_name": "local",
+            "model_name": "Qwen3.8-27B",
+            "created_at": later,
+        }
+    )
+    after = reader.read_dod_outcomes(task_type=TASK_TYPE, tenant_id=TENANT_ID)
+
+    from omnimarket.routing.dod_overlay import PostgresDodOutcomeReader
+
+    fresh = PostgresDodOutcomeReader(DELEGATION_DSN, VERDICT_DSN).read_dod_outcomes(
+        task_type=TASK_TYPE, tenant_id=TENANT_ID
+    )
+    assert len(after) == 2
+    assert after == fresh
+    assert _full_reads(verdict_conn) == 3  # first, after, fresh reader
