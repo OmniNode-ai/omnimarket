@@ -52,13 +52,21 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/cli/test_omn26731_register_tenant_key_gateway.py -q -n 0 --no-cov -k api_key_sign_in"
         cwd: "."
-  - id: "dod-omn26731-integration-proof-bound"
-    description: "Run the same test body on a lab host at the pushed head, addressed to the declared dev bus lane; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The delegation receipt of AC3 is read from the clean-container rerun."
+  - id: "dod-omn26731-integration-proof-runnable"
+    description: "Run the same test body on a lab host at the pushed head, addressed to the declared dev bus lane; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The delegation receipt of AC3 is read from the clean-container rerun. The work unit runs uv directly: the lab host refuses env as an executable (refused at d14f038d47), so the earlier env-wrapped form could not run there; the same test file passed on h202 in work unit lw-c318898248e0437d, exit 0."
     source: "manual"
     execution_scope: local_done_gate
     checks:
       - check_type: "command"
-        check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --bus-lane dev --omnibase-path \"${OMNI_HOME:?}\" --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-26731 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/cli/test_omn26731_register_tenant_key_gateway.py -q --no-cov"
+        check_value: "onex lab-work run --bus-lane dev --omnibase-path \"${OMNI_HOME:?}\" --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-26731 --kind test -- uv run --frozen pytest tests/unit/cli/test_omn26731_register_tenant_key_gateway.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn26731-integration-proof-argv-runnable"
+    description: "The lab work unit in the integration-proof item starts with an executable the lab handler's allowlist runs; the test fails on the tree where that argv began with env, which the lab refused."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn26731_integration_proof_runnable.py -q -n 0 --no-cov"
         cwd: "."
   - id: dod-omn26731-own-key-delegation-receipt
     description: >-
