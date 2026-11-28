@@ -60,6 +60,14 @@ dod_evidence:
       - check_type: "command"
         check_value: "onex lab-work run --bus-lane dev --omnibase-path \"${OMNI_HOME:?}\" --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-26731 --kind test -- uv run --frozen pytest tests/unit/cli/test_omn26731_register_tenant_key_gateway.py -q --no-cov"
         cwd: "."
+  - id: "dod-omn26731-integration-proof-argv-runnable"
+    description: "The lab work unit in the integration-proof item starts with an executable the lab handler's allowlist runs; the test fails on the tree where that argv began with env, which the lab refused."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn26731_integration_proof_runnable.py -q -n 0 --no-cov"
+        cwd: "."
   - id: dod-omn26731-own-key-delegation-receipt
     description: >-
       After registering a provider key through the gateway from the clean container on h201 as tenant cli-run-a with
