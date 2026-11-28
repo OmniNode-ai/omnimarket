@@ -25,7 +25,7 @@ from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta
 from functools import cache
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import Literal, Protocol, cast
 
 import yaml
 from pydantic import BaseModel, ConfigDict
@@ -36,7 +36,10 @@ from omnimarket.nodes.node_projection_metering_summary import (
     ModelMeteringSummaryFoldRequest,
     ModelMeteringSummaryRow,
 )
-from omnimarket.nodes.node_projection_metering_summary.baseline import resolve_baseline
+from omnimarket.nodes.node_projection_metering_summary.baseline import (
+    pass_cache,
+    resolve_baseline,
+)
 from omnimarket.nodes.node_projection_metering_summary.handlers.handler_metering_summary_writer import (
     store_rows,
 )
@@ -101,7 +104,13 @@ def resolve_metering_baseline_model() -> BaselineModelSelection:
     rows the delegation refreshes and the row ``onex metering`` selects are
     keyed by one baseline string. Resolved on every call, never at import.
     """
-    return resolve_baseline_model(overlay={}, store={})
+    held = pass_cache()
+    if held is None:
+        return resolve_baseline_model(overlay={}, store={})
+    key = "baseline_model_selection"
+    if key not in held:
+        held[key] = resolve_baseline_model(overlay={}, store={})
+    return cast("BaselineModelSelection", held[key])
 
 
 def current_pricing_manifest_version(baseline_model: str) -> str | None:

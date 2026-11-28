@@ -53,9 +53,11 @@ from omnimarket.models.model_local_install_delegation_summary import (
 )
 from omnimarket.models.model_local_install_schema import (
     _CURSOR_TABLE_STEPS,
+    bounded_store_step,
     pending_local_run_steps,
     refresh_local_priced_models,
     relabel_usage_source,
+    store_step_bound_seconds,
 )
 from omnimarket.models.model_local_install_schema import (
     METERING_SUMMARY_COLUMN_STEPS as _METERING_SUMMARY_COLUMN_STEPS,
@@ -907,7 +909,8 @@ class SqliteDatabaseAdapter(CredentialSqliteStore):
                 # was read; a step such as ADD COLUMN is not safe to run twice.
                 if cls._store_step_recorded(conn, step):
                     continue
-                apply(conn)
+                with bounded_store_step(conn, step, store_step_bound_seconds()):
+                    apply(conn)
                 conn.execute(
                     f"INSERT OR IGNORE INTO {_STORE_STEPS_TABLE} (step, applied_at) "
                     "VALUES (?, ?)",
