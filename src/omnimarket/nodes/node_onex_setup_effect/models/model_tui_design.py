@@ -256,9 +256,16 @@ class ModelTuiDocker(BaseModel):
 
     title: str
     start: tuple[str, ...] = Field(min_length=1)
+    #: The stack's per-service state read, and the stop command (OMN-26689).
+    status: tuple[str, ...] = Field(min_length=1)
+    stop: tuple[str, ...] = Field(min_length=1)
     idle: str
     started: str
+    stopped: str
     failed: str
+    #: One service on the tab: ``{name}`` and ``{state}`` are filled in.
+    service: str
+    none_listed: str
     #: Tried in order against a failed Start's output; the first match is shown
     #: alone and the raw text never is.
     causes: tuple[ModelTuiDockerCause, ...] = Field(min_length=1)

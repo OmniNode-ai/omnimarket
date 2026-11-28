@@ -1708,6 +1708,7 @@ class DockerScreen(_TabbedScreen[None]):
     BINDINGS = [
         Binding("escape", "cancel", _say("button_cancel")),
         Binding("s", "start", _say("button_start"), show=False),
+        Binding("x", "stop", _say("button_stop"), show=False),
     ]
 
     def __init__(self, selection: ModelTuiSelection) -> None:
@@ -1726,6 +1727,7 @@ class DockerScreen(_TabbedScreen[None]):
             with Horizontal(id="xbuttons"):
                 for label, button_id in (
                     ("button_start", "xstart"),
+                    ("button_stop", "xstop"),
                     ("button_cancel", "xcancel"),
                 ):
                     button = Button(
@@ -1736,13 +1738,50 @@ class DockerScreen(_TabbedScreen[None]):
                     button.can_focus = False
                     yield button
 
+    def on_mount(self) -> None:
+        self._read_state()
+
+    def _read_state(self) -> None:
+        app = self.app
+        if not isinstance(app, OnexTui):
+            return
+
+        async def go() -> None:
+            self._show_state(await app.docker_state())
+
+        self.run_worker(go(), exclusive=True, group="docker-state")
+
+    def _show_state(self, rows: tuple[tuple[str, str], ...]) -> None:
+        words = tui_design().docker
+        if not rows:
+            self.query_one("#xstate", Static).update(
+                Text(words.idle, style=_style("muted"))
+            )
+            return
+        shown = Text()
+        for name, state in rows:
+            style = _style("success" if state == "running" else "warning", "bold")
+            shown.append(
+                words.service.format(name=name, state=state) + "\n", style=style
+            )
+        self.query_one("#xstate", Static).update(shown)
+
+    def _show_selection(self) -> None:
+        super()._show_selection()
+        self._read_state()
+
     def action_start(self) -> None:
         self._run(lambda app: app.docker_start())
 
+    def action_stop(self) -> None:
+        self._run(lambda app: app.docker_stop())
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        pressed = {"xstart": self.action_start, "xcancel": self.action_cancel}.get(
-            event.button.id or ""
-        )
+        pressed = {
+            "xstart": self.action_start,
+            "xstop": self.action_stop,
+            "xcancel": self.action_cancel,
+        }.get(event.button.id or "")
         if pressed is not None:
             pressed()
 
@@ -2701,6 +2740,30 @@ class OnexTui(App[int]):
                 words.failed,
             )
             line = Text(f"{glyphs.failed} {reason}", style=_style("error"))
+        self._toast(line, ok=ok)
+        return line
+
+    async def docker_state(self) -> tuple[tuple[str, str], ...]:
+        """`onex stack status --json`: each service's name and state."""
+        _, out, _ = await self._runner.capture(tuple(tui_design().docker.status))
+        found = (_last_json_object(out) or {}).get("stack")
+        return tuple(
+            (str(row["name"]), str(row["state"]))
+            for row in (found if isinstance(found, list) else [])
+            if isinstance(row, dict) and "name" in row and "state" in row
+        )
+
+    async def docker_stop(self) -> Text:
+        """Stop the stack; a failure shows the plain sentence, never raw output."""
+        words = tui_design().docker
+        code, _, _ = await self._runner.capture(tuple(words.stop))
+        glyphs = tui_design().glyphs
+        ok = not code
+        line = Text(
+            f"{glyphs.done if ok else glyphs.failed} "
+            + (words.stopped if ok else words.failed),
+            style=_style("success" if ok else "error"),
+        )
         self._toast(line, ok=ok)
         return line
 

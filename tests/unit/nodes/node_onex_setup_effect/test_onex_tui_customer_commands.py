@@ -43,6 +43,7 @@ _CUSTOMER = [
     "/model",
     "/delegation",
     "/dashboard",
+    "/docker",
     "/doctor",
     "/metering",
     "/clear",
@@ -66,7 +67,7 @@ def _palette(app: OnexTui) -> list[str]:
     return [str(option.prompt).split()[0] for option in options]
 
 
-async def test_slash_lists_exactly_the_nine_customer_commands_in_order() -> None:
+async def test_slash_lists_exactly_the_customer_commands_in_order() -> None:
     """C1, AC1."""
     app = _app(_Runner([]))
     async with app.run_test() as pilot:

@@ -212,7 +212,7 @@ model_table:
     model: "Tab next screen · Enter selects · A auto · R remove · I details · / search · F filter · S sort · Esc back"
     delegation: "Tab next screen · Space switches · I details · Ctrl+S saves · Esc back"
     dashboard: "Tab next screen · S start · Enter opens · X stop · Esc back"
-    docker: "Tab next screen · S start · Esc back"
+    docker: "Tab next screen · S start · X stop · Esc back"
 
 # /delegation: one switch, the prompt hook; subagents always run on Claude (OMN-23413).
 delegation:
@@ -281,6 +281,11 @@ docker:
   title: Full self-hosted stack
   # {compose_file} and {topology_file} are the files shipped in this package.
   start: [setup, --path, docker, --no-interactive, --compose-file, "{compose_file}", --topology-file, "{topology_file}"]
+  status: [stack, status, --json]
+  stop: [stack, stop]
+  service: "{name}  {state}"
+  none_listed: "No services are running."
+  stopped: "The full stack is stopped."
   idle: "Docker is optional. Press S to start the full stack on this machine."
   started: "The full stack is starting."
   failed: "The stack did not start. Run onex setup --path docker in a terminal to see why."

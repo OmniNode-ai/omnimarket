@@ -130,3 +130,48 @@ def test_every_published_port_in_the_shipped_compose_binds_loopback() -> None:
     assert published
     for port in published:
         assert str(port).startswith("127.0.0.1:"), port
+
+
+_ROWS = (
+    '{"stack": [{"name": "postgres", "state": "running"},'
+    ' {"name": "redpanda", "state": "starting"},'
+    ' {"name": "worker", "state": "exited"}]}'
+)
+
+
+async def _open_docker(app, pilot) -> None:  # type: ignore[no-untyped-def]
+    await _type(pilot, "/docker")
+    await pilot.press("enter")
+    for _ in range(8):
+        await pilot.pause()
+
+
+async def test_tab_shows_each_services_state_and_refreshes_after_start_and_stop() -> (
+    None
+):
+    """AC4: fixture status rows for running, starting and exited services."""
+    status = ("stack", "status")
+    runner = _Runner([], code=0, by_command={status: _ROWS})
+    app = _app(runner)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _open_docker(app, pilot)
+        shown = str(app.screen.query_one("#xstate").render())
+        for name, state in (
+            ("postgres", "running"),
+            ("redpanda", "starting"),
+            ("worker", "exited"),
+        ):
+            assert name in shown
+            assert state in shown
+        reads = sum(1 for call in runner.calls if call[:2] == status)
+        assert reads >= 1
+        app.screen.query_one("#xstart").press()
+        for _ in range(8):
+            await pilot.pause()
+        after_start = sum(1 for call in runner.calls if call[:2] == status)
+        assert after_start > reads
+        app.screen.query_one("#xstop").press()
+        for _ in range(8):
+            await pilot.pause()
+        assert ("stack", "stop") in runner.calls
+        assert sum(1 for call in runner.calls if call[:2] == status) > after_start

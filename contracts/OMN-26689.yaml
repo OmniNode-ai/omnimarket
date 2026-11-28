@@ -1,7 +1,7 @@
 schema_version: "1.0.0"
 ticket_id: "OMN-26689"
 title: "A /docker tab in the onex TUI starts, shows and stops the full self-hosted stack for users who want more features"
-summary: "The onex TUI lists /docker and shows a Docker tab, both read from tui_design.yaml. Start runs the setup command the design names, and a missing or stopped Docker is shown as one plain sentence. This change binds AC1, AC2, AC3 and AC5; AC4 and AC6 stay open."
+summary: "The onex TUI lists /docker and shows a Docker tab, both read from tui_design.yaml. Start runs the setup command the design names, and a missing or stopped Docker is shown as one plain sentence. This change binds AC1, AC2, AC3, AC4 and AC5; AC6 stays open."
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
@@ -19,6 +19,9 @@ requirements:
       - id: "AC3"
         statement: |-
           AC3: Start runs `onex setup --path docker` with the shipped compose and topology files and no files typed by the user -- falsifier: pilot test asserts the exact argv the runner received
+      - id: "AC4"
+        statement: |-
+          AC4: the tab shows each service's state from the stack status and refreshes it after Start and Stop -- falsifier: pilot test with fixture status rows for running, starting and exited services
       - id: "AC5"
         statement: |-
           AC5: every published port in the shipped compose file binds 127.0.0.1 -- falsifier: pytest reads the shipped compose file and checks each ports entry
@@ -54,6 +57,14 @@ dod_evidence:
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_docker.py -q -n 0 --no-cov -k shipped_files_and_none_typed"
+        cwd: "."
+  - id: "dod-omn26689-tab-shows-service-states"
+    description: "The tab lists running, starting and exited services from onex stack status and reads the status again after Start and after Stop; onex stack status maps compose ps rows to those three words and onex stack stop runs compose down without removing volumes."
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_docker.py tests/unit/nodes/node_onex_setup_effect/test_cli_stack.py -q -n 0 --no-cov -k \"each_services_state or status or stop\""
         cwd: "."
   - id: "dod-omn26689-shipped-compose-binds-loopback"
     description: "Every ports entry of the shipped compose file starts with 127.0.0.1, and the shipped topology validates against the compose services."
