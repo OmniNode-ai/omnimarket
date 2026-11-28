@@ -685,6 +685,21 @@ def _generated_fleet(rng: random.Random) -> dict[str, Any]:
                 "head_sha": downstream_rng.choice([pr["head_sha"], f"{96:040x}"]),
                 "verdict": downstream_rng.choice(["pass", "pass", "break", "unread"]),
             }
+    # Lab-line gate (OMN-26736): a stream of its own, so the streams above are unchanged.
+    lab_line_rng = random.Random("lab_line" + repr(prs))
+    if lab_line_rng.random() < 0.25:
+        facts["policy"] = {
+            **facts.get("policy", {}),
+            "lab_line_read_expected": lab_line_rng.random() < 0.5,
+        }
+        for pr in prs:
+            if lab_line_rng.random() < 0.3:
+                continue
+            pr["lab_line"] = {
+                "named_head": lab_line_rng.choice(
+                    [pr["head_sha"], pr["head_sha"], f"{97:040x}", None]
+                )
+            }
     return facts
 
 

@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: OMN-26736
+title: "The landing controller merges a pull request only when a Lab line names the exact head it merges"
+summary: The landing decision reads the newest Lab line of a pull request; a Lab line naming an older head, or none, holds the head as lab_line_needs_proof and dispatches one proof worker for that head, including a head made by update-branch; a Lab line on the exact head still merges.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26736-lab-line-exact-head
+    statement: A pull request merges only when its newest Lab line names the exact head; any other reading holds it as needs-proof and dispatches a proof worker for the head.
+    acceptance:
+      - id: AC1
+        statement: "AC1: a pull request whose newest Lab line names an older head is not merged and is marked needs-proof -- falsifier: a decide_landing test with that pull request fails when the decision is merge"
+      - id: AC2
+        statement: "AC2: a head the controller made by updating the branch goes back to needs-proof and a proof lane is dispatched -- falsifier: a test of the update-branch path fails when the next decision is merge without a Lab line at the new head"
+      - id: AC3
+        statement: "AC3: a pull request whose Lab line names the exact head is still merged -- falsifier: the same test with a matching Lab line fails when the decision is not merge"
+evidence_requirements:
+  - kind: tests
+    description: The Lab-line gate tests, which fail on the base source (no lab_line fact exists) and pass with the change.
+    command: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_lab_line_gate.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26736-older-head-needs-proof
+    description: "A decide_landing test with a Lab line naming an older head finds no merge, the named skip lab_line_needs_proof and one proof dispatch for the exact head."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_lab_line_gate.py -k "ac1 or no_lab_line" -q --no-cov
+        cwd: .
+  - id: dod-omn26736-update-branch-needs-proof
+    description: "After an update-branch decision the new head with a Lab line naming the old head is held with a proof dispatch; a Lab line at the new head merges it."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_lab_line_gate.py -k "ac2 or proof_worker" -q --no-cov
+        cwd: .
+  - id: dod-omn26736-exact-head-merges
+    description: "The same facts with a Lab line naming the exact head merge and dispatch no proof worker."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_lab_line_gate.py -k "ac3" -q --no-cov
+        cwd: .
+  - id: dod-omn26736-integration-proof
+    description: "Run the Lab-line gate tests and the landing decision node tests on a lab host at the pushed head; the local Done gate runs this unbound check."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26736 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_lab_line_gate.py -q --no-cov
+        cwd: .
