@@ -928,6 +928,17 @@ events:
     partition_key_field: correlation_id
     required_fields: [tenant_id, correlation_id, step_sequence, step_kind, started_at, outcome]
 
+  # OMN-25630, L12: every row the judge accepted, once, on one partition with unlimited retention (the topic's
+  # broker declaration is in node_projection_work_ledger/contract.yaml). It is published beside the old row topics
+  # until L15, so a rollback to those topics has live publishers.
+  work.ledger.row_accepted:
+    fan_out:
+      - topic: "onex.evt.omnimarket.work-ledger-row-accepted.v1"
+        tier: duty_critical
+        description: "One row the judge accepted, with its ledger_seq"
+    partition_key_field: ledger_id
+    required_fields: [ledger_id, row_id, raw_row, source, ledger_seq]
+
   # OMN-20001: strict core event envelopes; v1 retains its legacy body.
   work.ledger.typed.claim:
     fan_out:

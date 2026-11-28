@@ -53,6 +53,10 @@ from omnimarket.handlers.work_ledger_fold import (
 )
 from omnimarket.handlers.work_ledger_latest_fold import latest_entries_for_row
 from omnimarket.models.model_projection_request import ModelProjectionRequest
+from omnimarket.models.model_work_ledger_accepted_row import (
+    EnumAcceptedRowSource,
+    ModelAcceptedRowEvent,
+)
 from omnimarket.models.model_work_ledger_fold_request import (
     ModelWorkLedgerFoldRequest,
 )
@@ -66,6 +70,7 @@ from omnimarket.models.work_ledger_query.model_work_ledger_latest import (
 from omnimarket.nodes.node_projection_work_ledger.contract_topics import (
     ALL_SUBSCRIBE_TOPICS,
     SUBSCRIBE_TOPICS,
+    TOPIC_ACCEPTED_ROW,
     TYPED_SUBSCRIBE_TOPICS,
 )
 from omnimarket.nodes.node_projection_work_ledger.handlers.handler_work_ledger_write_guard import (
@@ -354,11 +359,48 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
     ) -> int:
         """Fold, then write the log record and each state op. Returns rows written."""
         self._refuse_real_dsn_under_test()
+        if topic == TOPIC_ACCEPTED_ROW:
+            return await self._project_accepted(data)
         if topic in TYPED_SUBSCRIBE_TOPICS:
             return await self._project_typed(topic, data)
         if topic not in SUBSCRIBE_TOPICS:
             raise WorkLedgerFoldError(f"unsubscribed topic {topic!r}")
         request = ModelWorkLedgerFoldRequest.model_validate(data)
+        return await self._project_fold_request(request, data)
+
+    async def _project_accepted(self, data: dict[str, Any]) -> int:
+        """One row off the accepted-row topic (OMN-25630, L12): the only topic the projection subscribes to.
+
+        A row first emitted typed is written through the typed path with its core record; every other row is
+        folded from its raw text, exactly as the old v1 topics were. A live row with no ``ledger_seq`` was never
+        judged and is refused to the poison dead-letter topic; a bootstrap row keeps its sequence null.
+        """
+        event = ModelAcceptedRowEvent.model_validate(strip_runner_injected_keys(data))
+        if event.ledger_id != self._config.ledger_id:
+            raise WorkLedgerFoldError("configured ledger_id mismatch")
+        if event.source is EnumAcceptedRowSource.LIVE and event.ledger_seq is None:
+            raise UnsequencedLiveRowError(
+                f"unsequenced-live-row: a live accepted row requires a ledger_seq; row_id {event.row_id}"
+            )
+        if event.row_id != work_ledger_row_id(event.raw_row):
+            raise WorkLedgerFoldError("accepted row_id is not the hash of its raw_row")
+        if event.typed is not None:
+            if event.typed.row_id != event.row_id:
+                raise WorkLedgerFoldError(
+                    "accepted row_id differs from its typed row_id"
+                )
+            return await self._project_typed_inbound(event.typed)
+        request = ModelWorkLedgerFoldRequest(
+            raw_row=event.raw_row,
+            ledger_id=event.ledger_id,
+            source=event.source.value,
+            ledger_seq=event.ledger_seq,
+        )
+        return await self._project_fold_request(request, {})
+
+    async def _project_fold_request(
+        self, request: ModelWorkLedgerFoldRequest, data: dict[str, Any]
+    ) -> int:
         if request.ledger_id != self._config.ledger_id:
             raise WorkLedgerFoldError("configured ledger_id mismatch")
         result = fold_row(request)
@@ -462,11 +504,17 @@ class WorkLedgerProjectionWriter(BaseProjectionRunner):
         inbound = ModelWorkLedgerProjectionInbound.model_validate(
             strip_runner_injected_keys(data)
         )
-        if inbound.ledger_id != self._config.ledger_id:
-            raise WorkLedgerFoldError("configured ledger_id mismatch")
         row_type = EnumLedgerRowType(ROW_TYPE_BY_KIND[inbound.event.kind])
         if topic != row_type.typed_topic:
             raise WorkLedgerFoldError("typed work-ledger topic/type mismatch")
+        return await self._project_typed_inbound(inbound)
+
+    async def _project_typed_inbound(
+        self, inbound: ModelWorkLedgerProjectionInbound
+    ) -> int:
+        if inbound.ledger_id != self._config.ledger_id:
+            raise WorkLedgerFoldError("configured ledger_id mismatch")
+        row_type = EnumLedgerRowType(ROW_TYPE_BY_KIND[inbound.event.kind])
         async with self._db.pool.acquire() as conn, conn.transaction():
             # All writers for this configured ledger see a serial canonical set.
             await conn.execute(_ADVISORY_LOCK, f"work-ledger:{inbound.ledger_id}")

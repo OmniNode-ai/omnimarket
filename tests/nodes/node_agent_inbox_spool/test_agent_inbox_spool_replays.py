@@ -83,7 +83,8 @@ async def test_agent_inbox_spool_writes_entries_and_unread_marker(
         await bus.close()
     assert result.read_ok, result.error
     assert result.events_read == 8
-    assert result.malformed == 3
+    # the STATUS row is a well-formed row of another type on the accepted-row topic: read, never malformed
+    assert result.malformed == 2
     assert result.unaddressed == 1
     assert result.consumer_group == "test-agent-inbox-host-a"
     texts = {str(e["text"]) for e in entries(tmp_path, "lane-a")}

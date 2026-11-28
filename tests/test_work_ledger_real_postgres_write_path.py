@@ -306,6 +306,55 @@ async def test_ledger_seq_replay_fills_null_and_never_overwrites() -> None:
         )
 
 
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_accepted_row_topic_bootstrap_row_gains_its_sequence_from_the_live_twin() -> (
+    None
+):
+    """OMN-25630: the accepted-row topic's bootstrap row and its sequenced live twin are one log row on a real table."""
+    from omnimarket.events.model_ledger_row_event import work_ledger_row_id
+    from omnimarket.models.model_work_ledger_accepted_row import (
+        EnumAcceptedRowSource,
+        ModelAcceptedRowEvent,
+    )
+    from omnimarket.nodes.node_projection_work_ledger.contract_topics import (
+        TOPIC_ACCEPTED_ROW,
+    )
+
+    def event(source: EnumAcceptedRowSource, seq: int | None) -> dict[str, Any]:
+        return ModelAcceptedRowEvent(
+            ledger_id="rolling-work-ledger",
+            row_id=work_ledger_row_id(CLAIM),
+            raw_row=CLAIM,
+            source=source,
+            ledger_seq=seq,
+            legacy_ordinal=1 if seq is None else None,
+        ).model_dump(mode="json")
+
+    async with _migrated() as (writer, connection, schema):
+        for source, seq, expected in (
+            (EnumAcceptedRowSource.BOOTSTRAP, None, None),
+            (EnumAcceptedRowSource.BOOTSTRAP, None, None),  # a replayed bootstrap row
+            (EnumAcceptedRowSource.LIVE, 7, 7),  # the live twin carries the sequence
+            (EnumAcceptedRowSource.LIVE, 7, 7),  # its redelivery
+        ):
+            await writer.project_event(
+                TOPIC_ACCEPTED_ROW, event(source, seq), _meta(TOPIC_ACCEPTED_ROW)
+            )
+            stored = await connection.fetchval(
+                f"SELECT ledger_seq FROM {schema}.work_ledger_rows"
+            )
+            assert stored == expected
+        assert (
+            await connection.fetchval(f"SELECT count(*) FROM {schema}.work_ledger_rows")
+            == 1
+        )
+        entity = await connection.fetchval(
+            f"SELECT entity_key FROM {schema}.work_ledger_state"
+        )
+        assert entity == "claim:alpha"
+
+
 @pytest.mark.asyncio
 async def test_ledger_seq_window_presence_includes_rows_outside_window(
     monkeypatch: pytest.MonkeyPatch,

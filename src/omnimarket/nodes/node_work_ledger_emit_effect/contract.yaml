@@ -90,6 +90,8 @@ event_bus:
     - onex.evt.omnimarket.work-ledger-operator-consent.v2
     - onex.evt.omnimarket.work-ledger-friction.v2
     - onex.evt.omnimarket.work-ledger-correction.v2
+    # OMN-25630, L12: every judged row is also published, once, on the accepted-row topic until L15.
+    - onex.evt.omnimarket.work-ledger-row-accepted.v1
     - onex.evt.omnimarket.work-ledger-emit-completed.v1
     - onex.evt.omnimarket.work-ledger-emit-failed.v1
 
@@ -180,3 +182,10 @@ chain_scenarios:
         basis: STATED_BY_PERSON
         statement: When the spool is down the typed row is not durable, so the result is not accepted, and the emit is attempted once, not retried in silence.
       breaks: [DROP_TERMINAL_PUBLISH, WRONG_CORRELATION_ID]
+
+# OMN-25630, L12: the broker grant the accepted-row topic needs (OMN-24005 coverage gate): the runtime login writes every judged row on it.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.work-ledger-row-accepted.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.work-ledger-row-accepted.v1, operation: DESCRIBE}

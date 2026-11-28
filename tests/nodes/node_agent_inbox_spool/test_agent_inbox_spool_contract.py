@@ -29,7 +29,7 @@ def test_agent_inbox_spool_contract_bindings() -> None:
     assert contract["descriptor"]["timeout_ms"] > 0
     assert contract["metadata"]["related_tickets"] == ["OMN-21902"]
     assert contract["event_bus"] == {"subscribe_topics": [], "publish_topics": []}
-    assert load_topics() == ("onex.evt.omnimarket.work-ledger-msg.v2",)
+    assert load_topics() == ("onex.evt.omnimarket.work-ledger-row-accepted.v1",)
     assert contract["caller_subscription"]["mode"] == "stable_group_per_host"
     assert contract["caller_subscription"]["group_id_template"] == "{prefix}-{host}"
     assert metadata["capabilities"]["side_effect_class"] == "filesystem_write"
