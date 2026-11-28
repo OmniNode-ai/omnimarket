@@ -135,6 +135,14 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_lane_work_reducer/test_trigger_declaration.py -q -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26706-overlay-optional-and-pin-pair"
+    description: >-
+      The reducer's overlay is declared optional, so Overlay Main Load does not require a document in the overlay repository, and omnibase-infra and omnibase-core move together to a pair that co-resolves.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_reducer/test_overlay_optional.py tests/ci/test_sibling_core_pin_pair_omn17427.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
   - id: "dod-omn26706-integration-proof"
     description: >-
       The node's unit tests pass on a lab host at the pushed head.

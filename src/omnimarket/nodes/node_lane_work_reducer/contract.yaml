@@ -69,6 +69,14 @@ runtime_dispatch:
     command: uv run onex node node_lane_work_reducer --input <request.json>
     owner: OmniNode Platform Team
 
+# The reducer reads no file and no store: its configuration arrives as input from the lane work
+# orchestrator. overlay.example.yaml holds the bootstrap values, so no deployed document need exist for this node and
+# the overlay is optional for it to load (overlay.required false).
+overlay:
+  required: false
+  id: node_lane_work_reducer
+  example: overlay.example.yaml
+
 state_machine:
   version: {major: 1, minor: 0, patch: 0}
   state_machine_name: lane_work_loop

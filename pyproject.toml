@@ -1892,7 +1892,8 @@ omnimarket = "omnimarket.handlers.bus_binding.node_contract_overlay_resolver:Nod
 # OMN-25103: infra moves to dev-20261121195628-0f7f2b730399, which carries omnibase_infra#6129 (the runtime account's grant on floor_integration_pass); the core pin is unchanged.
 # OMN-26495: infra moves to dev-20261124065450-0ecba67c8fee, which carries omnibase_infra#6201 (the vendored overlay store migration 0002_add_operator_paths.sql); the core pin is unchanged.
 # OMN-26635: infra moves to dev-20261125090037-c2bc2ccf8f10, which carries omnibase_infra#6274 (the runtime account's grants on the four overlay store write tables, so the local topology resolves the overlay_store_revision write binding); the core pin is unchanged.
-omnibase-infra ={ git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261125090037-c2bc2ccf8f10" }
+# OMN-26706: infra moves to dev-20261128050503-277c1f2fe0b2, the earliest infra dev tag that locks the core tag below (dev-20261127051535-94ed7507315d, which carries the lane work types, omnibase_core#2381); the two tags move together.
+omnibase-infra ={ git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag = "dev-20261128050503-277c1f2fe0b2" }
 # OMN-21478, RULINGs 2026-10-16T07:34:18Z and 2026-10-16T09:35:49Z: core, spi and
 # memory are read from their dev merge tags too, as infra is, and the
 # Internal Sibling Pins check (internal-sibling-pins.yml) refuses any other form.
@@ -1905,8 +1906,8 @@ omnibase-infra ={ git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag
 # omnibase_core#2335: the onex setup CLI calls ModelRunNodeHosted.run, and the removed run_node_in_process
 # is gone from every later core. Infra moves with it (the two tags move together).
 # OMN-26286: core moves to dev-20261120075721-2a9efbda3548 (core 0.47.76), the tag omnibase_infra dev-20261120235610-e1c7b1f075d2 (omnibase_infra#6116) and omnimemory dev-20261120144838-db14a337f1ab both lock.
-# OMN-26706: core moves to dev-20261126163618-6baa5af6b65d, the dev tag that carries the lane work types (omnibase_core#2381).
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261126163618-6baa5af6b65d" }
+# OMN-26706: core moves to dev-20261127051535-94ed7507315d, which carries the lane work types (omnibase_core#2381) and is the core tag infra dev-20261128050503-277c1f2fe0b2 locks.
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261127051535-94ed7507315d" }
 omnibase-spi = { git = "https://github.com/OmniNode-ai/omnibase_spi.git", tag = "dev-20261108170744-52946639a23a" }
 # OMN-26286: omnimemory moves to dev-20261120144838-db14a337f1ab, which locks the core tag above (omnibase-core dev-20261120075721-2a9efbda3548).
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", tag = "dev-20261120144838-db14a337f1ab" }
