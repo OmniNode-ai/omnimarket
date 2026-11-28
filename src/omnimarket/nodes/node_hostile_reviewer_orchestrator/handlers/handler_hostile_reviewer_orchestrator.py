@@ -30,11 +30,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 
+from omnimarket.events.fable_review_gate import (
+    EnumFableReviewRefusal,
+    ModelFableReviewGateOverlay,
+    ModelFableReviewGateRequest,
+    ModelFableReviewGateVerdict,
+)
+from omnimarket.handlers.node_overlay_reader import NodeOverlayNotFoundError
 from omnimarket.inference.adapter_inference_bridge import (
     AdapterInferenceBridge,
     ModelInferenceAdapter,
@@ -50,6 +57,13 @@ from omnimarket.models.model_review_finding import (
     ModelReviewFinding,
 )
 from omnimarket.models.model_review_target_snapshot import ModelReviewTargetSnapshot
+from omnimarket.nodes.node_fable_review_gate_compute.handlers.handler_fable_review_gate import (
+    HandlerFableReviewGate,
+)
+from omnimarket.nodes.node_fable_review_gate_compute.overlay import (
+    load_overlay as load_fable_gate_overlay,
+)
+from omnimarket.nodes.node_fable_review_gate_compute.overlay import read_origin_host
 from omnimarket.nodes.node_github_diff_effect.handlers.handler_github_diff import (
     HandlerGithubDiffEffect,
 )
@@ -184,14 +198,26 @@ class HandlerHostileReviewerOrchestrator:
             keeps tests deterministic (no network, no env, no global mutation).
         github_diff_effect: Optional EFFECT used to resolve the review target.
             Injectable for deterministic tests.
+        fable_overlay: Optional Fable review gate overlay (OMN-24533). When
+            omitted it is read from the node overlay of
+            ``node_fable_review_gate_compute`` at ``handle()`` time; with no
+            overlay installed the gate is not armed and the completed event's
+            ``fable_gate`` is None.
+        host_environ: Optional environment the gate reads this host's identity
+            from (the variable the overlay names); defaults to the process
+            environment.
     """
 
     def __init__(
         self,
         inference_adapter: ModelInferenceAdapter | None = None,
         github_diff_effect: HandlerGithubDiffEffect | None = None,
+        fable_overlay: ModelFableReviewGateOverlay | None = None,
+        host_environ: Mapping[str, str] | None = None,
     ) -> None:
         self._inference_adapter = inference_adapter
+        self._fable_overlay = fable_overlay
+        self._host_environ = host_environ
         self._github_diff_effect = github_diff_effect or HandlerGithubDiffEffect()
         self._fallback_route: ModelFallbackRoute | None = load_fallback_route()
         self._prompt_builder = HandlerPromptBuilderCompute()
@@ -234,6 +260,29 @@ class HandlerHostileReviewerOrchestrator:
         command: ModelHostileReviewerStartCommand,
         started_at: datetime,
     ) -> ModelHostileReviewerCompletedEvent:
+        gate = self._fable_gate_verdict(command, started_at)
+        if gate is not None and not gate.admitted:
+            # Operator ruling 2026-11-14T23:50:35Z: a Fable review runs only on the
+            # orchestrating Mac. Refused before any diff read or model call.
+            refusal = gate.refusal
+            reason = (
+                "the host identity could not be read"
+                if refusal is EnumFableReviewRefusal.ORIGIN_UNREADABLE
+                else f"origin host {gate.receipt.origin_host!r} is not an orchestrating host"
+            )
+            return ModelHostileReviewerCompletedEvent(
+                correlation_id=command.correlation_id,
+                final_phase=EnumHostileReviewerPhase.FAILED,
+                started_at=started_at,
+                completed_at=datetime.now(tz=UTC),
+                pass_count=0,
+                total_findings=0,
+                error_message=(
+                    f"fable review refused: {refusal.value if refusal else ''}: {reason}"
+                ),
+                models_failed=list(command.models),
+                fable_gate=gate,
+            )
         diff_content, target_snapshot = await self._resolve_diff(command)
         adapter = self._resolve_adapter(command)
 
@@ -284,6 +333,7 @@ class HandlerHostileReviewerOrchestrator:
                 models_failed=fan_out.models_failed,
                 target_snapshot=target_snapshot,
                 route_provenance=fan_out.route_provenance,
+                fable_gate=gate,
             )
 
         total_findings, verdict, findings = await self._aggregate(
@@ -306,6 +356,31 @@ class HandlerHostileReviewerOrchestrator:
             route_provenance=fan_out.route_provenance,
             fallback_engine=fan_out.fallback_engine,
             fallback_for=list(fan_out.fallback_for),
+            fable_gate=gate,
+        )
+
+    def _fable_gate_verdict(
+        self, command: ModelHostileReviewerStartCommand, decided_at: datetime
+    ) -> ModelFableReviewGateVerdict | None:
+        """The Fable review gate's verdict for this command, or None when no overlay arms it."""
+        overlay = self._fable_overlay
+        if overlay is None:
+            try:
+                overlay = load_fable_gate_overlay()
+            except NodeOverlayNotFoundError:
+                _log.warning(
+                    "fable review gate not armed: no node_fable_review_gate_compute overlay "
+                    "installed (correlation_id=%s)",
+                    command.correlation_id,
+                )
+                return None
+        return HandlerFableReviewGate(overlay=overlay).handle(
+            ModelFableReviewGateRequest(
+                correlation_id=command.correlation_id,
+                route_keys=tuple(command.models),
+                origin_host=read_origin_host(overlay, self._host_environ),
+                decided_at=decided_at,
+            )
         )
 
     async def _fall_back_to_codex(
