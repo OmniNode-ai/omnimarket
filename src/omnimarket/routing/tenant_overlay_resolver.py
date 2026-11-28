@@ -69,7 +69,10 @@ from omnimarket.nodes.node_delegation_routing_reducer.tenant_key_selection impor
 from omnimarket.nodes.node_delegation_routing_reducer.tenant_key_selection import (
     _selected_key_model as _selected_key_model,
 )
-from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
+from omnimarket.projection.tenant_isolation import (
+    HOUSE_TENANT_SLUG,
+    HOUSE_TENANT_UUID,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +107,9 @@ TENANT_OVERLAY_TABLE = "delegation_routing_tenant_overlay"
 #: literal, and no real task type can collide with it because task types are
 #: identifiers in ``task_class_contracts.v1.yaml``.
 BYOK_ALL_TASK_TYPES = "*"
+
+#: Both representations of the one house identity (ADR-0027). OMN-26220.
+_HOUSE_TENANT_FORMS = frozenset({HOUSE_TENANT_SLUG, str(HOUSE_TENANT_UUID)})
 
 #: Cost label carried by a decision resolved from a HOUSE overlay row
 #: (OMN-19186).
@@ -224,7 +230,10 @@ def resolve_tenant_overlay(
             TENANT_OVERLAY_TABLE,
             filters={"tenant_id": tenant_id, "task_type": task_type},
         )
-        if not rows:
+        if not rows and tenant_id.strip() not in _HOUSE_TENANT_FORMS:
+            # OMN-26220: the house never takes the sentinel. It is the
+            # customer contract (a registered key means every delegation runs
+            # on it); our own work takes its exact rows or the declared chain.
             # OMN-17372: fall back to the tenant's all-task-types row, which is
             # what the BYOK bridge writes from a credential-registered event.
             # Narrower-wins: this second read only happens when no exact
