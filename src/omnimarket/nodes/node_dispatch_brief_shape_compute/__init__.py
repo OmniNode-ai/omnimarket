@@ -4,6 +4,7 @@
 
 from pathlib import Path
 
+from .handlers.handler_context_pack_check import HandlerContextPackCheck
 from .handlers.handler_dispatch_brief_shape import (
     HandlerBriefDestinations,
     HandlerDispatchBriefShape,
@@ -11,6 +12,8 @@ from .handlers.handler_dispatch_brief_shape import (
 from .models.model_dispatch_brief_shape import (
     ModelBriefDestinationRequest,
     ModelBriefDestinationResult,
+    ModelContextPackCheckRequest,
+    ModelContextPackCheckResult,
     ModelDispatchBriefShapeRequest,
     ModelDispatchBriefShapeResult,
 )
@@ -22,6 +25,7 @@ class NodeDispatchBriefShapeCompute:
     def __init__(self) -> None:
         self.handler = HandlerDispatchBriefShape()
         self.destination_handler = HandlerBriefDestinations()
+        self.context_pack_handler = HandlerContextPackCheck()
 
     def handle(
         self, request: ModelDispatchBriefShapeRequest
@@ -32,3 +36,8 @@ class NodeDispatchBriefShapeCompute:
         self, request: ModelBriefDestinationRequest
     ) -> ModelBriefDestinationResult:
         return self.destination_handler.handle(request)
+
+    def check_context_pack(
+        self, request: ModelContextPackCheckRequest
+    ) -> ModelContextPackCheckResult:
+        return self.context_pack_handler.handle(request)

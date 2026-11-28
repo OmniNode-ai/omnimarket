@@ -1,0 +1,48 @@
+---
+schema_version: "1.0.0"
+ticket_id: "OMN-26089"
+title: "node_dispatch_brief_shape_compute checks a code brief's context pack"
+summary: >
+  node_dispatch_brief_shape_compute gains the check_context_pack operation. A
+  code brief must carry a CONTEXT PACK block whose body hashes to its declared
+  hash and whose approval stamp names an orchestrator row; a brief with no code
+  work (a read-only or document work kind, or an open-ended kind or lane name)
+  is asked for none. The operation is pure and takes the ledger rows as input.
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - "public_api"
+requirements:
+  - id: "req-omn26089-context-pack-check"
+    statement: "The brief shape node refuses a code brief whose context pack is missing, edited or unapproved."
+    acceptance:
+      - id: "AC1"
+        statement: "AC1: node_dispatch_brief_shape_compute exposes check_context_pack, which refuses a code brief with no CONTEXT PACK block, no hash, no approval line, no body, an empty body, a body whose sha256 differs from the declared hash, or an approval stamp no orchestrator ledger row confirms, and asks no pack of a read-only, document or open-ended brief -- falsifier: uv run pytest tests/nodes/node_dispatch_brief_shape_compute/test_context_pack_check.py, red on the base and green on the branch"
+evidence_requirements:
+  - kind: "tests"
+    description: "The context pack check tests pass"
+    command: "uv run pytest tests/nodes/node_dispatch_brief_shape_compute/test_context_pack_check.py -q --no-cov -n 0"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn26089-context-pack-check"
+    description: >
+      Hermetic hosted-runner check: the handler is exercised with typed requests.
+      The test file fails on the base, where the operation does not exist, and
+      passes on the branch.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_dispatch_brief_shape_compute/test_context_pack_check.py -q --no-cov -n 0 --refuse-skips"
+        cwd: "."
+  - id: "dod-omn26089-integration-proof"
+    description: "Run the check's tests on a lab host at the pushed head. Hosted CI cannot reach the lab hosts, so only the local Done gate runs this unbound check."
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26089 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_dispatch_brief_shape_compute/test_context_pack_check.py -q --no-cov -n 0'
+        cwd: "."

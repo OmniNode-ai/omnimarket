@@ -42,18 +42,19 @@ def node_files():
 
 def test_43_moved_files_plus_eleven_metadata_files():
     files = node_files()
-    assert len(files) == 57
+    assert len(files) == 58
     assert sum(path.name == "metadata.yaml" for path in files) == 11
     for name in NODES:
         root = ROOT / "src/omnimarket/nodes" / name
         assert (root / "contract.yaml").is_file()
         assert (root / "__init__.py").is_file()
-        assert len(list((root / "handlers").glob("handler_*.py"))) == 1
+        expected = 2 if name == "node_dispatch_brief_shape_compute" else 1
+        assert len(list((root / "handlers").glob("handler_*.py"))) == expected
 
 
 def test_moved_files_do_not_name_the_old_registry_variable():
     files = node_files()
-    assert len(files) == 57
+    assert len(files) == 58
     legacy_name = "OMNI" + "_HOME"
     assert not [
         str(path.relative_to(ROOT)) for path in files if legacy_name in path.read_text()
