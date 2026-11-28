@@ -1175,6 +1175,40 @@ INFERENCE_INTENT_CREDENTIAL_LOST_ONEX_CODE: Final[
 ] = "ONEX_MARKET_INFERENCE_INTENT_CREDENTIAL_LOST"
 
 
+def _provider_generation_id(llm_call_id: str | None) -> str | None:
+    """The provider's response id out of the effect's ``llm_call_id``, or None.
+
+    OMN-25856: the inference effect reports the provider's response id as
+    ``llm_call_id`` and substitutes its own ``uuid4`` when the provider sent
+    none (and on every failure return). A UUID-shaped value is that
+    substitute, not a provider id, so it is not carried onto the terminal.
+    """
+    if not llm_call_id or not llm_call_id.strip():
+        return None
+    value = llm_call_id.strip()
+    try:
+        UUID(value)
+    except ValueError:
+        return value
+    return None
+
+
+def _provider_generation_id_field(
+    terminal_cls: type[BaseModel], provider_generation_id: str | None
+) -> dict[str, str]:
+    """Terminal kwarg for the id, only where the core terminal declares it.
+
+    Guarded on the field existing, like the other core-gated stamps in this
+    module: a core older than the one carrying ``provider_generation_id`` would
+    raise on ``extra="forbid"`` during a coordinated release window.
+    """
+    if provider_generation_id is None:
+        return {}
+    if "provider_generation_id" not in terminal_cls.model_fields:
+        return {}
+    return {"provider_generation_id": provider_generation_id}
+
+
 def _boundary_failure_credential_source(
     workflow: DelegationWorkflowState,
     terminal: ModelBoundaryFailureTerminal,
@@ -1813,6 +1847,11 @@ class TerminalEmissionInputs:
     quality_gates_failed: list[str]
     llm_call_id: str
     context_pack_hash: str
+    # OMN-25856: the provider's own response id (an OpenRouter ``gen-...``),
+    # carried onto the terminal so a receipt can be matched to the provider's
+    # record. Never the effect's own fallback call id; see
+    # ``_provider_generation_id``. None is "no provider id known".
+    provider_generation_id: str | None = None
     # OMN-13535: metered spend already banked on PRIOR attempted tiers (rejected /
     # failed inference attempts that escalated). The terminal adds this to the
     # final tier's measured cost so cost_usd reflects the TOTAL metered spend
@@ -3555,6 +3594,11 @@ class HandlerDelegationWorkflow:
             llm_call_id=(
                 workflow.inference_llm_call_id if leg.reports_recorded_inference else ""
             ),
+            provider_generation_id=(
+                _provider_generation_id(workflow.inference_llm_call_id)
+                if leg.reports_recorded_inference
+                else None
+            ),
             context_pack_hash=workflow.context_pack_hash,
             provenance=(
                 workflow.request.provenance if workflow.request is not None else None
@@ -4241,6 +4285,7 @@ class HandlerDelegationWorkflow:
             quality_gates_checked=[],
             quality_gates_failed=[],
             llm_call_id=response.llm_call_id,
+            provider_generation_id=_provider_generation_id(response.llm_call_id),
             context_pack_hash=workflow.context_pack_hash,
             provenance=workflow.request.provenance,
             route=response.route or workflow.inference_route,
@@ -4423,6 +4468,9 @@ class HandlerDelegationWorkflow:
             quality_gates_checked=[],
             quality_gates_failed=[],
             llm_call_id=workflow.inference_llm_call_id,
+            provider_generation_id=_provider_generation_id(
+                workflow.inference_llm_call_id
+            ),
             context_pack_hash=workflow.context_pack_hash,
             provenance=workflow.request.provenance,
             route=workflow.inference_route,
@@ -6202,6 +6250,9 @@ class HandlerDelegationWorkflow:
                 route=inputs.route,
                 provider=inputs.provider,
                 credential_source=inputs.credential_source,
+                **_provider_generation_id_field(
+                    _terminal_cls, inputs.provider_generation_id
+                ),
                 response_contract_evidence=inputs.response_contract_evidence,
                 output_refusal=inputs.output_refusal,
                 preamble_chars=inputs.preamble_chars,
@@ -6454,6 +6505,9 @@ class HandlerDelegationWorkflow:
             quality_gates_checked=quality_gates_checked,
             quality_gates_failed=[] if completed else list(result.failure_reasons),
             llm_call_id=workflow.inference_llm_call_id,
+            provider_generation_id=_provider_generation_id(
+                workflow.inference_llm_call_id
+            ),
             context_pack_hash=workflow.context_pack_hash,
             # OMN-18196: the effect boundary's report, carried through unchanged.
             route=workflow.inference_route,
