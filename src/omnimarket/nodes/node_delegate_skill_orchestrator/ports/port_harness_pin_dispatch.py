@@ -13,7 +13,7 @@ goes to the injected port unchanged.
 
 from __future__ import annotations
 
-import inspect
+import functools
 from collections.abc import Callable, Mapping
 from typing import Any, cast
 from uuid import UUID
@@ -37,10 +37,12 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.protocol_delegation
 def _with_signature_of(
     template: Callable[..., Any], target: Callable[..., Any]
 ) -> Callable[..., Any]:
+    # ``wraps`` sets ``__wrapped__``, which ``inspect.signature`` follows, so the wrapper
+    # reports the template's signature with no attribute assignment on the function.
+    @functools.wraps(template)
     async def dispatch(**kwargs: Any) -> dict[str, object]:
         return cast("dict[str, object]", await target(**kwargs))
 
-    dispatch.__signature__ = inspect.signature(template)  # type: ignore[attr-defined]
     return dispatch
 
 

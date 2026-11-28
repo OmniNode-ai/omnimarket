@@ -11,7 +11,7 @@ tests/unit/delegation/test_harness_execute_producer_omn26220.py (the producer on
 from __future__ import annotations
 
 import inspect
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -114,5 +114,5 @@ def test_a_port_with_no_bus_is_left_as_it_is() -> None:
 
 def test_the_handler_wraps_the_port_the_runtime_injects() -> None:
     inner = InjectedBusPort(LoopbackBus(None))
-    handler = HandlerDelegateSkill(dispatch_port=inner)  # type: ignore[arg-type]
+    handler = HandlerDelegateSkill(dispatch_port=cast("Any", inner))
     assert isinstance(handler._dispatch_port, HarnessPinDispatchPort)
