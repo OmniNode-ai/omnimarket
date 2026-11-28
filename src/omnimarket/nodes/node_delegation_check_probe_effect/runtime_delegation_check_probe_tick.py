@@ -18,6 +18,7 @@ not measure the check (NOT_MEASURED, PRECONDITION-ABSENT or ERROR), which reads 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import contextlib
 import faulthandler
 import json
@@ -29,6 +30,7 @@ from pathlib import Path
 from typing import Any, get_args
 
 import yaml
+from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import BaseModel
 
 from omnimarket.handlers.bus_binding.declared_broker_publisher import (
@@ -38,6 +40,10 @@ from omnimarket.handlers.node_overlay_reader import (
     NodeOverlayError,
     NodeOverlayNotFoundError,
     load_structured_overlay,
+)
+from omnimarket.handlers.overlay_store.reader_store import (
+    OverlayAbsentFromStoreError,
+    StoreOverlayReader,
 )
 from omnimarket.models.overlay_documents.model_delegation_check_responders_overlay import (
     ModelDelegationCheckRespondersOverlay,
@@ -64,13 +70,25 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.handler_delega
     HandlerDelegationCheckProbe,
     contract_topics,
 )
+from omnimarket.nodes.node_delegation_check_probe_effect.handlers.handler_regression_ticket import (
+    BusTicketWriter,
+    HandlerRegressionTicket,
+    JsonRegressionStateStore,
+    ProtocolTicketWriter,
+    failing_step_of,
+)
 from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe import (
     CheckId,
     EnumCheckVerdict,
+    ModelChainSource,
     ModelDelegationCheckProbeOverlay,
     ModelDelegationCheckRequest,
     ModelDelegationCheckResult,
     gateway_leg_verdict,
+)
+from omnimarket.nodes.node_delegation_check_probe_effect.models.model_regression_ticket import (
+    ModelRegressionRunReading,
+    ModelRegressionTicketRequest,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.protocols.protocol_delegation_check import (
     ProtocolCheckResultPublisher,
@@ -136,6 +154,7 @@ def evidence_for(result: ModelDelegationCheckResult) -> dict[str, Any]:
     return {
         "check": result.check_id,
         "run_id": result.run_id,
+        "correlation_id": result.correlation_id,
         "event": result.event,
         "status": result.status,
         "conclusion": result.conclusion,
@@ -146,13 +165,57 @@ def evidence_for(result: ModelDelegationCheckResult) -> dict[str, Any]:
         "served_model": result.served_model,
         "chain": [f"{a.base_url or a.tier}:{a.outcome}" for a in result.chain],
         "failed_clauses": [c.name for c in result.clauses if not c.ok],
+        "failed_clause_details": {c.name: c.detail for c in result.clauses if not c.ok},
         "absent": [p.name for p in result.preconditions if not p.present],
         "emitted": result.emitted,
         "error": result.error,
         "runner": result.runner,
         "gateway_url": result.gateway_url,
         "tenant_slug": result.tenant_slug,
+        "chain_source": (
+            result.chain_source.model_dump(mode="json")
+            if result.chain_source is not None
+            else None
+        ),
     }
+
+
+def _read_store_row(
+    reader: StoreOverlayReader,
+) -> tuple[ModelDelegationCheckRespondersOverlay, ModelChainSource]:
+    """The responders row through the injected store reader, with the record's own source_ref and loaded_at."""
+    record = asyncio.run(reader.read_record(RESPONDERS_OVERLAY_ID))
+    document = record.get("document")
+    row = ModelDelegationCheckRespondersOverlay.model_validate(document)
+    loaded = record.get("loaded_at")
+    return row, ModelChainSource(
+        source="store",
+        source_ref=str(record.get("source_ref") or RESPONDERS_OVERLAY_ID),
+        loaded_at=datetime.fromisoformat(str(loaded)) if loaded else None,
+        rows=row.responders,
+    )
+
+
+def _document_reader(record_reader: StoreOverlayReader) -> ProtocolStoreDocumentReader:
+    """The record reader as a document reader: the record's document, or None for an overlay the store does not keep."""
+
+    def read(overlay_id: str) -> dict[str, Any] | None:
+        try:
+            record = asyncio.run(record_reader.read_record(overlay_id))
+        except OverlayAbsentFromStoreError:
+            return None
+        document = record["document"]
+        return dict(document) if isinstance(document, dict) else None
+
+    return read
+
+
+def check_line(result: ModelDelegationCheckResult) -> str:
+    """One journal line per check: the id, the verdict and the correlation id the run went on the bus under."""
+    return (
+        f"check={result.check_id} verdict={result.verdict.value} "
+        f"correlation_id={result.correlation_id} published={'yes' if result.emitted else 'no'}"
+    )
 
 
 def _write_atomically(path: Path, text: str) -> None:
@@ -162,13 +225,22 @@ def _write_atomically(path: Path, text: str) -> None:
     held.replace(path)
 
 
+def _whole_check_leg(result: ModelDelegationCheckResult) -> str:
+    """A gateway-only check has no machine half: its whole verdict is its leg (PASS, FAIL; anything else is unmeasured)."""
+    if result.verdict is EnumCheckVerdict.PASS:
+        return "pass"
+    if result.verdict is EnumCheckVerdict.FAIL:
+        return "fail"
+    return "unmeasured"
+
+
 def append_history(
     path: Path, results: list[ModelDelegationCheckResult], keep: int
 ) -> None:
     """One JSON line per run (the run in ``ModelMvpRun`` shape plus check and verdict), newest last, trimmed to ``keep``.
 
-    A customer-local check's line also carries ``gateway_leg`` (pass, fail or unmeasured), the verdict of its gateway clauses alone:
-    the beta board reads that field for C13 and C14 in place of the cloud workflows (OMN-26043).
+    Every line carries ``gateway_leg`` (pass, fail or unmeasured): for a customer-local check the verdict of its gateway clauses
+    alone, for a gateway-only check (C16, C30 ...) its whole verdict. The beta board reads that field in place of a cloud job run.
     """
     lines: list[str] = []
     with contextlib.suppress(OSError):
@@ -179,10 +251,10 @@ def append_history(
                 **r.mvp_run(),
                 "check": r.check_id,
                 "verdict": r.verdict.value,
-                **(
-                    {"gateway_leg": gateway_leg_verdict(r.clauses)}
+                "gateway_leg": (
+                    gateway_leg_verdict(r.clauses)
                     if r.check_id in CUSTOMER_LOCAL_CHECKS
-                    else {}
+                    else _whole_check_leg(r)
                 ),
             },
             sort_keys=True,
@@ -199,7 +271,8 @@ def main(
     publisher: ProtocolCheckResultPublisher | None = None,
     now: datetime | None = None,
     gateway: ProtocolGatewayClient | None = None,
-    store_reader: ProtocolStoreDocumentReader | None = None,
+    store_reader: ProtocolStoreDocumentReader | StoreOverlayReader | None = None,
+    ticket_writer: ProtocolTicketWriter | None = None,
 ) -> int:
     parser = argparse.ArgumentParser(prog=f"{NODE}.tick", description=__doc__)
     parser.add_argument("--omni-home", dest="registry_root", required=True, type=Path)
@@ -209,7 +282,11 @@ def main(
     args = parser.parse_args(argv)
     faulthandler.dump_traceback_later(tick_deadline_s(), exit=True)
     stamp = now or datetime.now(UTC)
-    reader = store_reader or read_store_document
+    reader: ProtocolStoreDocumentReader
+    if isinstance(store_reader, StoreOverlayReader):
+        reader = _document_reader(store_reader)
+    else:
+        reader = store_reader or read_store_document
     evidence_path = args.state_dir / EVIDENCE_FILE
     try:
         overlay = _settings(
@@ -222,16 +299,35 @@ def main(
         # The responder chain is the settings store's row. With none served the two checks that send a task through the
         # chain read PRECONDITION-ABSENT and C17, which reads no responder, still grades; a row that is served but broken
         # ends the tick like any other unreadable overlay.
-        try:
-            row: ModelDelegationCheckRespondersOverlay | None = _settings(
-                RESPONDERS_OVERLAY_ID,
-                ModelDelegationCheckRespondersOverlay,
-                reader,
-                file_env=RESPONDERS_FILE_ENV,
-            )
-        except NodeOverlayNotFoundError:
-            row = None
-    except (NodeOverlayError, ValueError, OSError) as exc:
+        row: ModelDelegationCheckRespondersOverlay | None = None
+        chain_source: ModelChainSource | None = None
+        if isinstance(store_reader, StoreOverlayReader):
+            # The record reader is the source: no file is consulted for the chain.
+            try:
+                row, chain_source = _read_store_row(store_reader)
+            except OverlayAbsentFromStoreError:
+                row = None
+        else:
+            try:
+                document = reader(RESPONDERS_OVERLAY_ID)
+                row = load_structured_overlay(
+                    RESPONDERS_OVERLAY_ID,
+                    ModelDelegationCheckRespondersOverlay,
+                    explicit=document,
+                    file_env=RESPONDERS_FILE_ENV,
+                )
+                chain_source = ModelChainSource(
+                    source="store" if document is not None else "overlay",
+                    source_ref=(
+                        f"store:{RESPONDERS_OVERLAY_ID}"
+                        if document is not None
+                        else f"overlay:{RESPONDERS_OVERLAY_ID}"
+                    ),
+                    rows=row.responders,
+                )
+            except NodeOverlayNotFoundError:
+                row = None
+    except (NodeOverlayError, ModelOnexError, ValueError, OSError) as exc:
         faulthandler.cancel_dump_traceback_later()
         reading = {
             "node": NODE,
@@ -252,10 +348,11 @@ def main(
                 gateway_row,
                 DevTenantCredential(secret_name=gateway_row.secret_name),
                 overlay.responder_timeout_s,
+                submit_timeout_s=overlay.submit_timeout_s,
             )
         except NodeOverlayNotFoundError:
             gateway = None
-        except (NodeOverlayError, ValueError, OSError) as exc:
+        except (NodeOverlayError, ModelOnexError, ValueError, OSError) as exc:
             faulthandler.cancel_dump_traceback_later()
             reading = {
                 "node": NODE,
@@ -276,6 +373,7 @@ def main(
         publisher=publisher or DeclaredBrokerPublisher(NODE, flat=True),
         topic=overlay.result_topic,
         gateway=gateway,
+        chain_source=chain_source,
     )
     results: list[ModelDelegationCheckResult] = []
     try:
@@ -292,12 +390,55 @@ def main(
     finally:
         faulthandler.cancel_dump_traceback_later()
     append_history(args.state_dir / overlay.history_file, results, overlay.history_keep)
+    tickets: list[dict[str, str]] = []
+    # Only a scheduled run counts: a manual run is someone probing, not the check's own record.
+    if overlay.regression_ticket is not None and args.trigger == "schedule":
+        from omnimarket.nodes.node_create_ticket.handlers.core_ticket_guard import (
+            core_lane_intake_policy,
+        )
+
+        settings = overlay.regression_ticket
+        notice = HandlerRegressionTicket(
+            store=JsonRegressionStateStore(args.state_dir / settings.state_file),
+            writer=ticket_writer or BusTicketWriter(settings.lane),
+            parent=settings.parent,
+            stamp=f"{core_lane_intake_policy().stamp_prefix} {settings.lane}",
+            repo=settings.repo,
+        )
+        for r in results:
+            outcome = notice.handle(
+                ModelRegressionTicketRequest(
+                    reading=ModelRegressionRunReading(
+                        check_id=r.check_id,
+                        run_id=r.run_id,
+                        verdict=r.verdict,
+                        failing_step=failing_step_of(
+                            [(c.name, c.ok) for c in r.clauses], r.error
+                        ),
+                    )
+                )
+            )
+            tickets.append(
+                {
+                    "check": outcome.check_id,
+                    "action": outcome.action.value,
+                    "ticket": outcome.ticket_id,
+                    "detail": outcome.detail,
+                }
+            )
     readings = {
         "node": NODE,
         "ran_at": stamp.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "runs": [evidence_for(r) for r in results],
+        **({"regression_tickets": tickets} if tickets else {}),
     }
     _write_atomically(evidence_path, json.dumps(readings, sort_keys=True) + "\n")
+    for r in results:
+        sys.stdout.write(check_line(r) + "\n")
+        if not r.emitted:
+            sys.stderr.write(
+                f"{NODE}: check={r.check_id} NOT PUBLISHED correlation_id={r.correlation_id}\n"
+            )
     sys.stdout.write(json.dumps(readings, sort_keys=True) + "\n")
     if not all(r.emitted for r in results):
         return EXIT_NOT_PUBLISHED

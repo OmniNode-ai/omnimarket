@@ -38,7 +38,7 @@ import os
 import socket
 import sys
 from collections.abc import Awaitable, Callable, Mapping
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from getpass import getpass
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -65,11 +65,9 @@ from omnimarket.handlers.routing.byok_model_discovery import (
     model_not_chosen_message,
 )
 from omnimarket.handlers.routing.byok_provider_backends import (
-    ByokPlanNotPermittedError,
     resolve_byok_provider_backend,
 )
 from omnimarket.handlers.routing.central_tenant_key_store import (
-    CentralStoreRefusedError,
     CentralTenantKeyStore,
 )
 from omnimarket.handlers.routing.customer_key_revoke import (
@@ -78,6 +76,13 @@ from omnimarket.handlers.routing.customer_key_revoke import (
 from omnimarket.handlers.routing.customer_key_revoke import (
     revoke_tenant_key as revoke_tenant_key_handler,
 )
+from omnimarket.handlers.routing.gateway_tenant_key_client import (
+    parse_expires,
+    refusals_as_click_messages,
+    register_signed_in,
+    signed_in_gateway,
+)
+from omnimarket.handlers.routing.lab_host_rows import lab_host_rows
 from omnimarket.handlers.routing.local_byok_route import house_provider_slug
 from omnimarket.inference.local_byok_credential_adapter import (
     LocalByokCredentialStore,
@@ -126,8 +131,6 @@ from omnimarket.nodes.node_secret_store_effect.handlers.handler_secret_store imp
     HandlerSecretStore,
 )
 from omnimarket.projection.credential_publisher import (
-    CredentialKeyRefusedError,
-    CredentialPlanUndeterminedError,
     CredentialStoreError,
     ModelInferenceCredentialCreateRequest,
     ProtocolCredentialEventBus,
@@ -234,6 +237,9 @@ def _central_secret_handler() -> HandlerSecretStore:
     return HandlerSecretStore()
 
 
+_signed_in_gateway = signed_in_gateway
+
+
 def _tenant_key_event_bus() -> ProtocolCredentialEventBus | None:
     """Let the publisher construct and own this runtime's Settings-backed bus.
 
@@ -256,7 +262,7 @@ def _registering_host() -> str | None:
     if table is None:
         return None
     try:
-        rows = _lab_host_rows(table)
+        rows = lab_host_rows(table)
     except click.ClickException:
         return None
     declared = [os.environ.get(env, "").strip() for env in _LANE_HOST_ENVS]
@@ -332,24 +338,6 @@ def _lab_host_table() -> Path | None:
     return Path(configured) if configured else None
 
 
-def _lab_host_rows(table: Path) -> list[tuple[str, str]]:
-    """Each row's ``(name, target)``, or a refusal naming the table."""
-    try:
-        document = yaml.safe_load(table.read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError) as exc:
-        raise click.ClickException(
-            f"the lab host table {table} could not be read ({exc}); nothing was stored."
-        ) from exc
-    rows = document.get("hosts") if isinstance(document, dict) else None
-    if not isinstance(rows, list) or not all(
-        isinstance(row, dict) and row.get("name") for row in rows
-    ):
-        raise click.ClickException(
-            f"the lab host table {table} has no hosts with a name; nothing was stored."
-        )
-    return [(str(row["name"]), str(row.get("target") or "")) for row in rows]
-
-
 def _resolve_bound_host(declared: str | None) -> str | None:
     """The lab host a registered key is bound to (OMN-21012), or ``None``.
 
@@ -367,7 +355,7 @@ def _resolve_bound_host(declared: str | None) -> str | None:
                 f"--host {declared!r} cannot be checked: there is no lab host table "
                 f"on this machine (set {_LAB_HOSTS_ENV}); nothing was stored."
             )
-        names = [name for name, _target in _lab_host_rows(table)]
+        names = [name for name, _target in lab_host_rows(table)]
         if host not in names:
             raise click.ClickException(
                 f"--host {declared!r} is not a host in the lab host table "
@@ -379,7 +367,15 @@ def _resolve_bound_host(declared: str | None) -> str | None:
 
 @secret_group.command("register-tenant-key")
 @click.argument("provider")
-@click.option("--tenant", required=True, help="Tenant that owns this provider key.")
+@click.option(
+    "--tenant",
+    default=None,
+    help=(
+        "Tenant that owns this provider key. Signed in to a gateway the key is "
+        "always the signed-in tenant's; naming another tenant is refused. "
+        "Required for operator registration on the bus."
+    ),
+)
 @click.option("--name", default=None, help="Credential label; defaults to PROVIDER.")
 @click.option("--plan", default=None, help="Provider product; omit to detect the plan.")
 @click.option(
@@ -443,7 +439,7 @@ def _resolve_bound_host(declared: str | None) -> str | None:
 )
 def register_tenant_key(
     provider: str,
-    tenant: str,
+    tenant: str | None,
     name: str | None,
     plan: str | None,
     model_option: tuple[str, ...],
@@ -455,16 +451,50 @@ def register_tenant_key(
     base_url: str | None,
     connection_id: str | None,
 ) -> None:
-    """Register a tenant's provider key from stdin and publish its reference."""
-    if not tenant.strip():
+    """Register a provider key from stdin: through the gateway when signed in.
+
+    Signed in (``onex cloud login``) the key and chosen models go to the gateway
+    over HTTPS and no message service settings are needed. ``--host`` and
+    ``--store central`` are operator tooling on lab hosts and keep the bus path.
+    """
+    if tenant is not None and not tenant.strip():
         raise click.ClickException("--tenant must not be empty; nothing was stored.")
-    expires_at = _parse_expires(expires)
+    expires_at = parse_expires(expires)
+    signed_in = (
+        _signed_in_gateway() if host is None and store_choice == "local" else None
+    )
+    if signed_in is None and tenant is None:
+        raise click.ClickException(
+            "--tenant is required unless this machine is signed in to a gateway "
+            "(run 'onex cloud login'); nothing was stored."
+        )
     bound_host = _resolve_bound_host(host)
     central = store_choice == "central"
     value = _read_value(f"llm.{provider}.api_key")
     if not value:
         raise click.ClickException("no value was read from stdin; nothing was stored.")
-    try:
+    if signed_in is not None:
+        with refusals_as_click_messages():
+            click.echo(
+                register_signed_in(
+                    signed_in,
+                    value,
+                    provider=provider,
+                    name=name,
+                    model_option=model_option,
+                    tenant=tenant,
+                    plan=plan,
+                    expected_version=expected_version,
+                    expires_at=expires_at,
+                    workspace_id=workspace_id,
+                    base_url=base_url,
+                    connection_id=connection_id,
+                )
+            )
+        return
+    if tenant is None:  # unreachable: refused above when not signed in
+        raise click.ClickException("--tenant is required; nothing was stored.")
+    with refusals_as_click_messages():
         request = ModelInferenceCredentialCreateRequest(
             name=name if name is not None else provider,
             provider=provider,
@@ -495,26 +525,6 @@ def register_tenant_key(
                 lane=_lab_host_bus_lane(bound_host),
             )
         )
-    except ValidationError as exc:
-        # Pydantic input dumps can contain caller data. Surface only the
-        # catalogue/field refusal messages, with no request representation.
-        message = "; ".join(
-            error["msg"] for error in exc.errors(include_input=False, include_url=False)
-        )
-        raise click.ClickException(message) from exc
-    except (
-        CredentialStoreError,
-        CredentialPlanUndeterminedError,
-        # OMN-20991: a key the provider refuses is a typed refusal, not a
-        # traceback. Its message names the provider's own words, never the key.
-        CredentialKeyRefusedError,
-        ByokPlanNotPermittedError,
-    ) as exc:
-        raise click.ClickException(str(exc)) from exc
-    except CentralStoreRefusedError as exc:
-        raise click.ClickException(
-            f"{exc}. Nothing was stored and nothing was published."
-        ) from exc
     shown = registered_credential_view(response, tenant)
     if not central:
         _fold_registered_tenant_key(response, tenant)
@@ -567,24 +577,6 @@ def revoke_tenant_key(
 
 def _fold_registered_tenant_key(response: Any, tenant: str) -> None:
     fold_registered_tenant_key(response, tenant, _tenant_key_store())
-
-
-def _parse_expires(expires: str | None) -> datetime | None:
-    """``--expires YYYY-MM-DD`` as midnight UTC that day, or a refusal.
-
-    Read before the key, so a typo costs nothing: the value is never read from
-    stdin and nothing is stored.
-    """
-    if expires is None:
-        return None
-    try:
-        day = date.fromisoformat(expires.strip())
-    except ValueError as exc:
-        raise click.ClickException(
-            f"--expires {expires!r} is not a date in the form YYYY-MM-DD; "
-            "nothing was stored."
-        ) from exc
-    return datetime(day.year, day.month, day.day, tzinfo=UTC)
 
 
 def _drain_pending_credential_events(db_path: Path) -> None:

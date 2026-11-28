@@ -454,6 +454,11 @@ class ModelTuiTaskCard(BaseModel):
     facts_template: str = Field(min_length=1)
     fallback_facts_template: str = Field(min_length=1)
     failure_template: str = Field(min_length=1)
+    tokens_template: str = Field(min_length=1)
+    seconds_template: str = Field(min_length=1)
+    cost_template: str = Field(min_length=1)
+    #: Said in place of a figure the record does not carry.
+    not_recorded: str = Field(min_length=1)
     glyphs: dict[str, str] = Field(default_factory=dict)
     #: The word after the glyph, by state.
     labels: dict[str, str]
@@ -722,6 +727,8 @@ class ModelTuiDesign(BaseModel):
     reason_chars: int = Field(ge=20)
     #: A setup read this recent, and not shown yet, opens a tab as it is.
     fresh_seconds: float = Field(gt=0)
+    #: The status read gives up after this long.
+    status_read_seconds: float = Field(gt=0)
     min_key_length: int = Field(ge=1)
     #: /config names the models set up while that line fits in this many
     #: characters; past it, a count per provider (OMN-23413).

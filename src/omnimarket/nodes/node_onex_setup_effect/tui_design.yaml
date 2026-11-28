@@ -181,6 +181,8 @@ reason_chars: 160
 # A setup read this recent, and not shown yet, opens a tab without reading it
 # again; an older one, or one a tab has shown, is read again after the tab opens.
 fresh_seconds: 30
+# The status read gives up after this long and says it could not read.
+status_read_seconds: 30
 min_key_length: 8
 # /config's "Set up now" line names the models while it fits one line of the
 # tab (160 columns at most); past this it counts them per provider.
@@ -640,10 +642,8 @@ words:
   dashboard_about: "A local web page with your tasks, cost and savings over time, in your browser."
   order_none: "No models yet. Run /config."
   tab_hint_config: "enter open · ←→ switch tab · k key · t test · x remove · esc close"
-  tab_hint_config_mine: "↑↓ move · enter actions · esc close"
-  tab_hint_model: "↑↓ move · enter first · + add · d info · esc close"
-  tab_hint_add_models: "space tick · ctrl+s save · esc back to providers"
-  tab_hint_delegation: "↑↓ navigate · space toggle · esc close"
+  tab_hint_model: "↑↓ move · enter make first · d details · esc close"
+  tab_hint_delegation: "space switch · ctrl+s save · esc close"
   tab_hint_dashboard_stopped: "s start · esc close"
   tab_hint_dashboard_running: "enter open · s stop · esc close"
   # The one line under the tabs: how many models, on how many servers, and the first.
@@ -653,6 +653,7 @@ words:
   summary_first: "{model} first"
   # The status bar at the foot of the main screen.
   status_reading: "reading your setup…"
+  status_unread_bar: "could not read your setup"
   status_none: "no model set up · /config"
   status_auto: "Auto · {count}"
   header_auto: "Auto"
@@ -744,8 +745,13 @@ header:
 # Delegated task card (OMN-26620 AC3).
 task_card:
   state_bar_colour: success
-  facts_template: "{model} · {tokens} tokens · {seconds} s · ${cost}"
-  fallback_facts_template: "{model} · {tokens} tokens · {seconds} s"
+  facts_template: "{model} · {tokens} · {seconds} · {cost}"
+  fallback_facts_template: "{model} · {tokens} · {seconds}"
+  # One figure each; a record without it says not_recorded instead.
+  tokens_template: "{tokens} tokens"
+  seconds_template: "{seconds} s"
+  cost_template: "${cost}"
+  not_recorded: "not recorded"
   failure_template: "Could not reach {model}. Check its key with /config."
   glyphs:
     running: "⠋"
@@ -787,13 +793,20 @@ footer:
         - {label: "?", words: help}
         - {label: ctrl+c, words: quit}
       drop_order: [ctrl+p, "?", "↑↓", "/"]
+    # The /config tab draws this line; config_mine is its list of your providers.
     config:
       keys:
-        - {label: Space}
-        - {label: Enter}
-        - {label: Esc}
-        - {label: Ctrl+S}
-      drop_order: [Ctrl+S, Enter, Space, Esc]
+        - {label: tab, words: next}
+        - {label: space, words: tick}
+        - {label: ctrl+s, words: save}
+        - {label: esc, words: close}
+      drop_order: [tab, space, ctrl+s]
+    config_mine:
+      keys:
+        - {label: "↑↓", words: move}
+        - {label: enter, words: actions}
+        - {label: esc, words: close}
+      drop_order: ["↑↓", enter]
 
 # /theme registry (OMN-26620 AC5).
 themes:
@@ -898,6 +911,8 @@ doctor_page:
   status_attention: "! needs attention"
   status_skipped: "– optional/skipped"
   fix_prefix: "fix:"
+  # Where a check's message turns from the reason to its own fix wording.
+  fix_marker: "Fix:"
   # A passing check with no words of its own, and an optional one not set up.
   said_ok: "ok"
   said_not_set_up: "not set up"

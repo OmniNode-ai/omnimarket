@@ -120,10 +120,19 @@ def _missing(message: Any) -> str | None:
     return template.format(names=", ".join(names))
 
 
+def _reason(message: Any) -> str:
+    """The check's reason: its message up to where its own fix wording starts
+    (the page names the fix itself, and that wording holds paths and quotes)."""
+    text = "" if message is None else str(message).strip()
+    head, found, _ = text.partition(f" {_g('fix_marker')}")
+    return head.strip() if found else text
+
+
 def _sentence(message: Any, status: str, *, has_fix: bool = False) -> str:
     """What the row says: a known code, start or setting first, then the
     message itself when it is safe, and never nothing for a row that needs
     attention and names no fix (verify pass 2026-11-26)."""
+    message = _reason(message)
     said = (
         _coded(message)
         or _started(message)

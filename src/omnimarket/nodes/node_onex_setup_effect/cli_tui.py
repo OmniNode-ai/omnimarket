@@ -18,6 +18,7 @@ import importlib
 import importlib.metadata
 import json
 import logging
+import math
 import re
 import shlex
 import signal
@@ -512,6 +513,11 @@ def _failure_reason(document: dict[str, object]) -> str | None:
                 if source.get(key):
                     return str(source[key])
     return None
+
+
+def _status_timeout() -> float:
+    """How long the status read may take before the bar says it could not read."""
+    return tui_design().status_read_seconds
 
 
 async def load_status() -> ModelTuiStatus:
@@ -1047,14 +1053,27 @@ class _TabbedScreen(ModalScreen[_ResultT]):
         if not found:  # the tab is closing
             return
         foot = found.first()
-        hints = cell_len(str(self.query_one(keys_id, Static).render()))
+        keys = self.query_one(keys_id, Static)
+        drawn = self._footer_screen()
+        hints = cell_len(
+            KeyFooter().render(drawn).plain if drawn else str(keys.render())
+        )
         buttons = sum(
             button.outer_size.width + 2
             for button in self.query_one(buttons_id).query(Button)
             if button.display
         )
         width = foot.size.width  # docked: as wide as the panel's inside
-        foot.set_class(hints + buttons + 2 > width, "-stacked")
+        stacked = hints + buttons + 2 > width
+        foot.set_class(stacked, "-stacked")
+        if drawn:  # keys drop, least important first, when the line is narrow
+            keys.update(
+                KeyFooter().render(drawn, width if stacked else width - buttons - 2)
+            )
+
+    def _footer_screen(self) -> str | None:
+        """The footer.screens entry this tab draws its key hints from, if any."""
+        return None
 
     def _leave(self, target: str) -> None:
         """Swap this tab for another; this one stays up while the next is read."""
@@ -1899,7 +1918,7 @@ class SetupScreen(_TabbedScreen[None]):
                 line, id="basket", classes="-empty" if self._is_empty(line) else ""
             )
             with Horizontal(id="cfg-foot"):
-                yield Static(_tab_hint("tab_hint_add_models"), id="keys")
+                yield Static(KeyFooter().render("config"), id="keys")
                 with Horizontal(id="buttons"):
                     yield Button(_say("button_save"), variant="primary", id="save")
                     yield Button(_say("button_cancel"), id="cancel")
@@ -3723,11 +3742,6 @@ def _spinner_frames() -> tuple[str, ...]:
     return ("|", "/", "-", "\\")
 
 
-def _spinner_frame() -> str:
-    frames = _spinner_frames()
-    return frames[0] if frames else "|"
-
-
 class TaskCard:
     """A delegated task as a card (OMN-26620 AC3, AC9, AC10)."""
 
@@ -3785,75 +3799,15 @@ class TaskCard:
             return "failed"
         return "cheap"
 
-    def _design(self) -> Any:
-        return tui_design()
-
-    def _glyphs(self) -> dict[str, str]:
-        design = self._design()
-        task_card = getattr(design, "task_card", None)
-        raw = getattr(task_card, "glyphs", None) if task_card is not None else None
-        if isinstance(raw, dict):
-            return raw
-        if isinstance(raw, BaseModel):
-            try:
-                return dict(raw.model_dump())
-            except Exception:
-                pass
-        card = getattr(design, "task_card", None)
-        result: dict[str, str] = {}
-        for state, key in {
-            "running": "running",
-            "done": "done",
-            "fallback": "fallback",
-            "failed": "failed",
-        }.items():
-            if isinstance(card, dict):
-                value = card.get(key)
-            else:
-                value = getattr(card, key, None)
-            if value is not None:
-                result[state] = str(value)
-        return result
-
-    def _bar_colours(self) -> dict[str, str]:
-        design = self._design()
-        task_card = getattr(design, "task_card", None)
-        raw = getattr(task_card, "bar_colours", None) if task_card is not None else None
-        if isinstance(raw, dict):
-            return raw
-        if isinstance(raw, BaseModel):
-            try:
-                return dict(raw.model_dump())
-            except Exception:
-                pass
-        return {}
-
     def mark(self) -> str:
-        glyphs = self._glyphs()
-        spinner = _spinner_frame()
-        if self.state == "running":
-            return str(glyphs.get("running", spinner))
+        glyphs = tui_design().task_card.glyphs
         # The design file names a glyph for every state; an unknown state shows
         # the done one rather than a glyph written here (AC8).
-        return str(glyphs.get(self.state, glyphs.get("done", "")))
+        return glyphs.get(self.state, glyphs.get("done", ""))
 
     def bar_colour_token(self) -> str:
-        colours = self._bar_colours()
-        if self.state in colours:
-            return str(colours[self.state])
-        if self.state == "running":
-            return "route_cheap"
-        if self.state == "done":
-            return "success"
-        if self.state == "fallback":
-            return "route_fallback"
-        if self.state == "failed":
-            return "error"
-        return getattr(
-            getattr(self._design(), "task_card", object()),
-            "state_bar_colour",
-            "success",
-        )
+        card = tui_design().task_card
+        return card.bar_colours.get(self.state, card.state_bar_colour)
 
     def bar_colour(self) -> str:
         """The bar's colour in the theme on screen (AC3, AC5)."""
@@ -3893,11 +3847,24 @@ class TaskCard:
     def _cost(self) -> object:
         return self._recorded.get("cost")
 
+    @staticmethod
+    def _decimals(value: object, digits: int) -> str:
+        try:
+            return f"{float(str(value)):.{digits}f}"
+        except ValueError:
+            return str(value)
+
     def facts_line(self) -> str:
-        """The card's second line, from the design's templates (AC8)."""
+        """The card's second line, from the design's templates (AC8). A figure
+        the record does not carry reads "not recorded", never "None"."""
         card = tui_design().task_card
         if self.state == "failed":
             return card.failure_template.format(model=self.model)
+        tokens, seconds, cost = (
+            self._tokens(),
+            self._recorded.get("seconds"),
+            self._cost(),
+        )
         template = (
             card.fallback_facts_template
             if self.state == "fallback"
@@ -3905,30 +3872,40 @@ class TaskCard:
         )
         return template.format(
             model=self.model,
-            tokens=self._format_tokens(self._tokens()),
-            seconds=self._recorded.get("seconds"),
-            cost=self._cost(),
+            tokens=card.not_recorded
+            if tokens is None
+            else card.tokens_template.format(tokens=self._format_tokens(tokens)),
+            seconds=card.not_recorded
+            if seconds is None
+            else card.seconds_template.format(seconds=self._decimals(seconds, 1)),
+            cost=card.not_recorded
+            if cost is None
+            else card.cost_template.format(cost=self._decimals(cost, 4)),
         )
 
     def render(self) -> object:
-        from rich.text import Text
+        return Group(*self.lines())
 
-        colour = self.bar_colour()
-        state = self.state
-        mark = self.mark()
+    def lines(self) -> list[Text]:
+        """The card's two lines: the state bar, then the facts."""
         card = tui_design().task_card
-        label = card.labels.get(state, state)
         bar = tui_design().drawing.card_bar
-        return Group(
-            Text(f"{bar} {mark} {label}   {self.task}", style=colour),
-            Text(f"{bar}   {self.facts_line()}"),
-        )
+        head = f"{bar} {self.mark()} {card.labels.get(self.state, self.state)}"
+        return [
+            Text(
+                f"{head}   {self.task}",
+                style=self.bar_colour(),
+                no_wrap=True,
+                overflow="ellipsis",
+            ),
+            Text(f"{bar}   {self.facts_line()}", no_wrap=True, overflow="ellipsis"),
+        ]
 
 
 class KeyFooter:
     """One-line key footer that drops keys when narrow (OMN-26620 AC4)."""
 
-    def render(self, screen: str, width: int) -> Text:
+    def render(self, screen: str, width: float = math.inf) -> Text:
         """The hint line: bold keys, muted words, the design's separator. Keys
         drop in the screen's declared order until it fits ``width``; if even one
         does not fit the line is empty."""
@@ -4920,7 +4897,7 @@ class OnexTui(App[int]):
         self._status_reads += 1
         read = self._status_reads
         try:
-            status = await self._load_status()
+            status = await asyncio.wait_for(self._load_status(), _status_timeout())
         except Exception as error:  # status is a convenience; never crash on it
             _LOG.warning("the delegation status read failed: %s", error, exc_info=True)
             # The status block and the footer say it; the raw error stays in the log.
@@ -4928,7 +4905,11 @@ class OnexTui(App[int]):
                 error, what="read the delegation status", next_step="Run /doctor."
             )
             status = self._status.model_copy(
-                update={"delegation": "unknown", "hooks": {}, "problem": str(error)}
+                update={
+                    "delegation": "unknown",
+                    "hooks": {},
+                    "problem": str(error) or type(error).__name__,
+                }
             )
         else:
             if status.problem:  # a failed read is said plainly, its cause logged
@@ -4974,7 +4955,11 @@ class OnexTui(App[int]):
             summary_renderable(status)  # the saved setup until the read lands
         )
         if status.models is None and status.model is None:
-            routing = (_say("status_reading"), _style("muted", "italic"))
+            routing = (
+                (_say("status_unread_bar"), _style("warning"))
+                if status.problem
+                else (_say("status_reading"), _style("muted", "italic"))
+            )
         elif status.model:
             routing = (
                 _say("status_first", model=_on_server(status.model, status.first_url)),
@@ -5299,33 +5284,19 @@ class OnexTui(App[int]):
         self._layout()
 
     def _layout(self) -> None:
-        """A roomy terminal gets the rounded prompt and, until the reader submits
-        something, the welcome; a small one keeps the compact header."""
+        """A roomy terminal gets the rounded prompt; every size gets the compact
+        header and the status block, never the large welcome (OMN-26620 AC2)."""
         welcome = tui_design().welcome
         roomy = (
             self.size.width >= welcome.min_width
             and self.size.height >= welcome.min_height
         )
-        showing = roomy  # the welcome stays; results appear below it
         main = self._main()
         if not main.query("#welcome"):  # a resize while the app closes
             return
         main.set_class(roomy, "-roomy")
-        main.query_one("#welcome").display = showing
-        palette_open = main.query_one("#palette", OptionList).display
-        # The open command menu needs the rows: the diagram gives them up.
-        diagram = showing and not self._started and not palette_open
-        main.query_one("#diagram").display = diagram
-        main.query_one("#diagram-title").display = diagram
-        main.query_one("#guide-wrap").display = (
-            showing
-            and not self._started
-            and not palette_open
-            and self.size.height >= welcome.guide.min_height
-        )
-        self._render_guide()
-        main.query_one("#header").display = not showing
-        main.query_one("#summary").display = not showing
+        main.query_one("#header").display = True
+        main.query_one("#summary").display = True
 
     def on_resize(self) -> None:
         self._layout()
@@ -6186,49 +6157,20 @@ class OnexTui(App[int]):
         metrics = metrics if isinstance(metrics, dict) else {}
         model = str(result.get("model_name") or _say("run_unknown_model"))
         cost = _measured_cost(metrics)
-        facts: list[tuple[str, str]] = [(model, "model")]
-        tokens_in, tokens_out = (
-            metrics.get("input_tokens"),
-            metrics.get("output_tokens"),
-        )
-        if tokens_in or tokens_out:
-            facts.append(
-                (
-                    _say(
-                        "run_tokens_in_out",
-                        tokens_in=f"{int(tokens_in or 0):,}",
-                        tokens_out=f"{int(tokens_out or 0):,}",
-                    ),
-                    "detail",
-                )
-            )
-        elif metrics.get("total_tokens"):
-            facts.append(
-                (
-                    _say("run_tokens", tokens=f"{int(metrics['total_tokens']):,}"),
-                    "detail",
-                )
-            )
-        if metrics.get("latency_ms"):
-            facts.append(
-                (
-                    _say(
-                        "run_seconds",
-                        seconds=f"{int(metrics['latency_ms']) / 1000:.1f}",
-                    ),
-                    "detail",
-                )
-            )
-        facts.append(
-            (
-                _say("run_cost", cost=f"{cost:.4f}")
-                if cost is not None
-                else _say("run_cost_unmeasured"),
-                "cost",
-            )
-        )
+        latency = metrics.get("latency_ms")
+        record: dict[str, object] = {
+            "model": model,
+            "state": "done",
+            "task": task.strip().splitlines()[0] if task.strip() else "",
+            "tokens_in": metrics.get("input_tokens"),
+            "tokens_out": metrics.get("output_tokens"),
+            "total_tokens": metrics.get("total_tokens"),
+            "seconds": int(latency) / 1000 if latency else None,
+            "cost": cost,
+        }
+        saved: list[tuple[str, str]] = []
         if cost is not None and metrics.get("cost_savings_usd"):
-            facts.append(
+            saved.append(
                 (
                     _say(
                         "run_saved", saved=f"{float(metrics['cost_savings_usd']):.4f}"
@@ -6237,15 +6179,22 @@ class OnexTui(App[int]):
                 )
             )
         elif cost is None:
-            facts.append((_say("run_saved_unmeasured"), "detail"))
+            saved.append((_say("run_saved_unmeasured"), "detail"))
         run_id = str(document.get("run_id") or "") if document else ""
         answer = str(result["response"]).strip()
         self._main().query_one("#output", OutputPane).write(
             answer_renderable(answer), kind="answer", plain=answer
         )
-        self._write(
-            facts_renderable(facts, _say("run_id", run=run_id[:8]) if run_id else ""),
-            kind="facts",
+        # The task card: a coloured state bar and one line of facts (AC3), then
+        # what was saved and the run id.
+        extras = facts_renderable(
+            saved, _say("run_id", run=run_id[:8]) if run_id else ""
+        )
+        lines = TaskCard.from_recorded(record).lines()
+        if extras.plain:
+            lines.append(extras)
+        self._main().query_one("#output", OutputPane).write(
+            Group(*lines), kind="facts", plain="\n".join(line.plain for line in lines)
         )
         # The model that answered is the last run's, not the one tried first.
         self._last_run_short = (

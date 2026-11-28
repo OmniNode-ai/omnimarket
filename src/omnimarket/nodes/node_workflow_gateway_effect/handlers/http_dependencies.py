@@ -38,6 +38,9 @@ from omnimarket.nodes.node_workflow_gateway_effect.handlers.adapters_memory impo
 from omnimarket.nodes.node_workflow_gateway_effect.handlers.caller_identity import (
     CompositeCallerIdentity,
 )
+from omnimarket.nodes.node_workflow_gateway_effect.handlers.handler_tenant_key_register import (
+    HandlerTenantKeyRegister,
+)
 from omnimarket.nodes.node_workflow_gateway_effect.handlers.handler_workflow_contracts_read import (
     HandlerWorkflowContractsRead,
 )
@@ -119,6 +122,7 @@ class WorkflowGatewayDependencies:
     receipt: HandlerWorkflowReceiptRead
     contracts: HandlerWorkflowContractsRead
     max_body_bytes: int
+    tenant_keys: HandlerTenantKeyRegister | None = None
     closers: tuple[Callable[[], Awaitable[None]], ...] = ()
 
 
@@ -248,6 +252,8 @@ class OverlayWorkflowGatewayDependencies:
             receipt=HandlerWorkflowReceiptRead(store=store),
             contracts=HandlerWorkflowContractsRead(catalog=catalog),
             max_body_bytes=int(config["http"]["max_body_bytes"]),
+            # No injected store or bus: the intake builds its own, with its writer identity.
+            tenant_keys=HandlerTenantKeyRegister(),
             closers=(publisher.close, pool.close),
         )
 

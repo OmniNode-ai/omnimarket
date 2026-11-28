@@ -78,7 +78,7 @@ async def test_an_unpriced_run_shows_cost_and_savings_as_not_measured() -> None:
         # The run line wraps in the output, so read it as one rendered string
         # (the OMN-26620 output is a stack of blocks, not a log of segments).
         flat = " ".join(text.split())
-        assert "cost not measured" in flat
+        assert "not recorded" in flat
         assert "savings not measured" in flat
         assert "$0.0000" not in text
         assert "saved" not in text.lower()

@@ -360,7 +360,7 @@ async def test_plain_text_is_delegated_and_its_receipt_reaches_the_status_bar() 
         text = _log_text(app)
         assert "A receipt proves the run happened." in text
         assert "Qwen3.8-27B" in text
-        assert "2,257 tokens" in text
+        assert "2.3k tokens" in text
         assert "6.7 s" in text
         assert "saved $0.0104" in text
         status = str(app.query_one("#status").render())
@@ -1248,9 +1248,9 @@ async def test_save_stays_on_screen_with_a_long_list_and_ctrl_s_saves(
             region = screen.query_one(f"#{button}").region
             assert region.height > 0, button
             assert region.bottom <= 30, button
-        assert (
-            str(screen.query_one("#keys").render())
-            == (tui_design().words["tab_hint_add_models"])
+        assert str(screen.query_one("#keys").render()) == " · ".join(
+            f"{key.label} {key.words}"
+            for key in tui_design().footer.screens["config"].keys
         )
         _tick(app, "qwen/qwen3.8-27b")
         await pilot.pause()

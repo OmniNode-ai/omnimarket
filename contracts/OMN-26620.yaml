@@ -42,7 +42,7 @@ dod_evidence:
   - AC2
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_header.py::test_header_no_taller_than_four_lines tests/unit/nodes/node_onex_setup_effect/test_header.py::test_tips_only_on_first_launch -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_header.py::test_header_no_taller_than_four_lines tests/unit/nodes/node_onex_setup_effect/test_header.py::test_tips_only_on_first_launch tests/unit/nodes/node_onex_setup_effect/test_start_screen_compact.py::test_the_start_screen_is_the_compact_header tests/unit/nodes/node_onex_setup_effect/test_start_screen_compact.py::test_the_tips_show_on_the_first_launch_only -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26620-ac3
   description: 'AC3: each delegated task shows as a card with a coloured state bar and one facts line.'
@@ -51,7 +51,7 @@ dod_evidence:
   - AC3
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_task_card.py::test_task_card_renders tests/unit/nodes/node_onex_setup_effect/test_task_card.py::test_card_facts_line_single -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_task_card.py::test_task_card_renders tests/unit/nodes/node_onex_setup_effect/test_task_card.py::test_card_facts_line_single tests/unit/nodes/node_onex_setup_effect/test_review_defects.py::test_d1_a_recorded_answer_is_drawn_as_a_task_card tests/unit/nodes/node_onex_setup_effect/test_review_defects.py::test_d1_a_record_without_a_cost_says_not_recorded tests/unit/nodes/node_onex_setup_effect/test_review_defects.py::test_d1_a_card_missing_every_figure_never_says_none -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26620-ac4
   description: 'AC4: the footer lists every key at 140 columns and does not wrap at 80.'
@@ -60,7 +60,7 @@ dod_evidence:
   - AC4
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_footer.py::test_footer_all_keys_at_140 tests/unit/nodes/node_onex_setup_effect/test_footer.py::test_footer_no_wrap_when_narrow -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_footer.py::test_footer_all_keys_at_140 tests/unit/nodes/node_onex_setup_effect/test_footer.py::test_footer_no_wrap_when_narrow tests/unit/nodes/node_onex_setup_effect/test_review_defects.py::test_d2_the_config_tab_draws_footer_screens_config -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26620-ac5
   description: 'AC5: /theme applies the chosen theme and it is restored on restart.'
