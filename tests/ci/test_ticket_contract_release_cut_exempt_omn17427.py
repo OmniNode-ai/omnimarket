@@ -3,7 +3,8 @@
 """A release cut's diff cannot carry a contract, so the prerequisite exempts it.
 
 The receipt gate admits a bot release cut only while its diff against the merge
-base is the root CHANGELOG.md plus optional pyproject.toml and uv.lock. A
+base is within the root pyproject.toml and uv.lock (OMN-25958: the cut writes no
+CHANGELOG.md, so a cut carrying one is no longer exempt). A
 contracts/OMN-*.yaml file added to the cut leaves that allowlist and fails the
 gate, while this prerequisite refused the cut for carrying no contract. Each
 test drives a real git repository, so the exemption reads the merge-base diff.
@@ -82,21 +83,22 @@ def _check(
     return push.check(head, base, TITLE)
 
 
-def test_changelog_only_release_cut_needs_no_contract(
+def test_changelog_only_cut_needs_a_contract(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """OMN-25958 AC3: the gate no longer admits a cut that adds CHANGELOG.md."""
     head = _cut(tmp_path, {"CHANGELOG.md": "## v0.4.313 (2026-10-13)\n"})
-    assert _check(monkeypatch, tmp_path, head) == ()
+    assert _check(monkeypatch, tmp_path, head) == (missing_contract_message(TICKET),)
 
 
-def test_release_cut_with_pins_needs_no_contract(
+def test_changelog_with_pins_cut_needs_a_contract(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     head = _cut(
         tmp_path,
         {"CHANGELOG.md": "## v0.4.313 (2026-10-13)\n", "uv.lock": "version = 1\n"},
     )
-    assert _check(monkeypatch, tmp_path, head) == ()
+    assert _check(monkeypatch, tmp_path, head) == (missing_contract_message(TICKET),)
 
 
 def test_changelog_free_release_cut_needs_no_contract(

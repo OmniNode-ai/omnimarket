@@ -118,3 +118,12 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_lane_work_reducer/test_overlay_requirement.py -q --no-cov -n 0 -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26721-infra-core-pin-pair"
+    description: >-
+      The locked omnibase-infra build and the locked omnibase-core build name one recorded pair, the core carries the lane work models, and every work contract records the hash of the relocked uv.lock (a known bad lock that moves infra without moving core fails the pair row).
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/ci/test_sibling_core_pin_pair_omn17427.py tests/ci/test_infra_pin_aa87c2dd6abe_work_contracts_omn23865.py -q --no-cov -n 0 -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"

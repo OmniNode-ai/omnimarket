@@ -18,16 +18,6 @@ requirements:
     acceptance:
       - id: AC2
         statement: 'AC2: replaying the same ledger events leaves the same served rows, and an older done event never replaces a newer one -- falsifier: uv run --frozen pytest tests/nodes/node_done_items_compute tests/nodes/node_projection_done_items -q -n 0 -p no:randomly --no-cov -k ''replay or older_done_event''; with the writer''s newer-only WHERE guard removed, the replay and older-event tests fail'
-  - id: req-omn25104-database
-    statement: The writer's upsert binds and orders on real Postgres.
-    acceptance:
-      - id: AC4
-        statement: 'AC4: the writer''s upsert binds and orders on real Postgres -- falsifier: INTEGRATION_POSTGRES_* set, uv run --frozen pytest tests/nodes/node_projection_done_items/test_done_items_real_postgres.py -q -n 0 -p no:randomly --no-cov; with the guard removed two tests fail'
-  - id: req-omn25104-contract
-    statement: This file is the definition of done for the ticket and names the runnable checks.
-    acceptance:
-      - id: AC7
-        statement: 'AC7: this definition-of-done contract exists at contracts/OMN-25104.yaml -- falsifier: the dod-verify check in CI'
   - id: req-omn25104-lab-item-allowed-program
     statement: The integration-proof item starts with programs a lab host runs, so the lab does not refuse it.
     acceptance:
@@ -95,3 +85,25 @@ dod_evidence:
       - check_type: command
         check_value: uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25104 --kind test -- uv run --frozen pytest tests/nodes/node_projection_done_items tests/nodes/node_done_items_compute -q --no-cov -m 'not kafka'
         cwd: .
+  - id: dod-omn25104-deleted-criteria-retired
+    description: AC4 and AC7 are no longer on the ticket; this item carries their typed retirements, and its test checks that the contract retires exactly those two bindings.
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest -q tests/contracts/test_omn25104_deleted_criteria_retired.py
+        cwd: .
+    supersedes_ac_binding:
+      - item: dod-omn25104-ac4
+        label: AC4
+        reason_kind: no_longer_applicable
+        reason: OMN-25104 carries no AC4 on the ticket now (AC1, AC2, AC3 and AC5 remain); the criterion was deleted from the ticket, so this item proves a criterion the ticket no longer has.
+        retired_by: claude-code-q-close25104-0835
+        retired_at: '2026-11-28T09:00:00Z'
+      - item: dod-omn25104-ac7
+        label: AC7
+        reason_kind: no_longer_applicable
+        reason: OMN-25104 carries no AC7 on the ticket now (AC1, AC2, AC3 and AC5 remain); the criterion was deleted from the ticket, so this item proves a criterion the ticket no longer has.
+        retired_by: claude-code-q-close25104-0835
+        retired_at: '2026-11-28T09:00:00Z'

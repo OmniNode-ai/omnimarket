@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.330"
+version = "0.4.331"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -1913,7 +1913,8 @@ omnibase-infra ={ git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag
 # OMN-26706: core moves to dev-20261126163618-6baa5af6b65d, the dev tag that carries the lane work types (omnibase_core#2381).
 # OMN-26286: core moves to dev-20261126163618-6baa5af6b65d (core 0.47.76), the tag omnibase_infra dev-20261120235610-e1c7b1f075d2 (omnibase_infra#6116) and omnimemory dev-20261120144838-db14a337f1ab both lock.
 # OMN-26708: core moves to dev-20261126163618-6baa5af6b65d, which carries omnibase_core#2381 (the lane work types the lane work projection folds).
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261126163618-6baa5af6b65d" }
+# OMN-26721: core moves to dev-20261127051535-94ed7507315d, the tag the pinned infra build (dev-20261128050503-277c1f2fe0b2) locks, so the infra and core pins name one pair and the core carries the lane work types.
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261127051535-94ed7507315d" }
 omnibase-spi = { git = "https://github.com/OmniNode-ai/omnibase_spi.git", tag = "dev-20261108170744-52946639a23a" }
 # OMN-26286: omnimemory moves to dev-20261120144838-db14a337f1ab, which locks the core tag above (omnibase-core dev-20261126163618-6baa5af6b65d).
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", tag = "dev-20261120144838-db14a337f1ab" }

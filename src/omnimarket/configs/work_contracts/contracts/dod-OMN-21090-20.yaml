@@ -32,7 +32,7 @@ acceptance:
     - '{answer}'
     environment:
       path: uv.lock
-      sha256: 63dc8f79549d245798ceaceada8748a04ef6d1836ffe11f3e099e2e10bffc2eb
+      sha256: 69555534018d89b1572e3176052ece17ae4164dcac26ae7bd1787762fdbf5bc7
     expected_exit: 0
     ticket: OMN-21090
     evidence_id: dod-omn21090-ac4-sampled-exemplar-revocation
