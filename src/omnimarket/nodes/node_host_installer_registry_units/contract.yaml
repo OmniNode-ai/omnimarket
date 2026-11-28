@@ -2433,6 +2433,77 @@ units:
     # h101's registry root links to an external volume, launchd could not open logs or stand in a working directory there, exit 78.
     log_directory: .local/state/omni/claude-pool-rotation-tick
     launchd_root: .local/state/omni/claude-pool-rotation-tick
+  # The Claude pool refill read (OMN-24943), the read-only pass of `onex-claude-pool-refill --dry-run`: once an hour it reads
+  # each host's pool with the overlay roots and probes the credential each host's lane runner draws, adding and marking
+  # nothing (the tick's dry run; a pool-mutating pass needs its own request and is not declared here). It names no host:
+  # it reads every host the pool overlay declares, so one host carries it. systemd hosts take claude-pool-refill-tick-systemd,
+  # a launchd host takes claude-pool-refill-tick.
+  claude-pool-refill-tick-systemd:
+    platform: systemd
+    kind: registry_module_tick
+    label: onex-claude-pool-refill-tick
+    template: templates/onex-registry-module-tick.service.tmpl
+    timer_template: templates/onex-registry-module-tick.timer.tmpl
+    schedule:
+      start_interval: 3600
+      run_timeout_s: 600
+      run_at_load: true
+      description: every 3600 s and at load
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /usr/bin/python3.12
+      - /usr/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_claude_pool_refill_effect.runtime_claude_pool_refill_tick
+    entry_file: src/omnimarket/nodes/node_claude_pool_refill_effect/runtime_claude_pool_refill_tick.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/claude-pool-refill-tick/last-run.json
+    state_directory: .onex_state/claude-pool-refill-tick
+  claude-pool-refill-tick:
+    platform: launchd
+    kind: registry_module_tick
+    label: ai.omninode.claude-pool-refill-tick
+    template: templates/ai.omninode.registry-module-tick.plist.tmpl
+    schedule:
+      start_interval: 3600
+      run_at_load: true
+      description: every 3600 s and at load
+    run_timeout_s: 600
+    registry_project: omnimarket
+    tick_no_sync: true
+    interpreter_candidates:
+      - /opt/homebrew/bin/python3.13
+      - /usr/local/bin/python3.13
+    module: omnimarket.nodes.node_claude_pool_refill_effect.runtime_claude_pool_refill_tick
+    entry_file: src/omnimarket/nodes/node_claude_pool_refill_effect/runtime_claude_pool_refill_tick.py
+    probe_argv: ["--probe"]
+    project_path_override:
+      request_field: project_path
+      requires: clean git checkout that carries entry_file
+    environment_path_overrides:
+      - ONEX_SKILL_OVERLAY_ROOTS
+    environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    environment:
+      ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
+    evidence_file: .local/state/omni/claude-pool-refill-tick/last-run.json
+    state_directory: .onex_state/claude-pool-refill-tick
+    log_directory: .local/state/omni/claude-pool-refill-tick
+    launchd_root: .local/state/omni/claude-pool-refill-tick
   silent-failure-alarm:
     platform: launchd
     kind: registry_module_tick

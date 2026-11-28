@@ -90,6 +90,8 @@ class Host:
     name: str
     target: str
     local: bool
+    #: False when the lab host table declares the row ``available: false`` (a parked host, out of placement).
+    available: bool = True
 
 
 @dataclass
@@ -193,6 +195,7 @@ def load_overlay(path: Path) -> Overlay:
             str(r["name"]),
             _safe(str(r["target"]), _SAFE_WORD, "target"),
             bool(r.get("local")),
+            r.get("available") is not False,
         )
         for r in rows
         if isinstance(r, dict) and r.get("name") and r.get("target")
@@ -828,7 +831,16 @@ class HandlerClaudePoolRefill:
                 )
             store = store_fingerprints(ov)
             adopt_lines: list[str] = []
-            served_hosts = [h for h in ov.hosts if not wanted or h.name in wanted]
+            # A host the lab host table parks (``available: false``) is not read by an unnamed pass: its name does not
+            # resolve, so the read would end verdict=error and fail every tick. A host named in the request is read.
+            served_hosts = [
+                h for h in ov.hosts if (h.name in wanted if wanted else h.available)
+            ]
+            parked_lines = [
+                f"claude-pool-refill host={h.name} verdict=skipped detail='declared unavailable in the lab host table'"
+                for h in ov.hosts
+                if not wanted and not h.available
+            ]
             if request.adopt:
                 adopt_lines = adopt_held_labels(
                     ov, served_hosts, store, execute=not request.dry_run
@@ -853,6 +865,7 @@ class HandlerClaudePoolRefill:
                     line = f"claude-pool-refill host={host.name} verdict=error detail={detail!r}"
                 bad += "verdict=ok" not in line
                 lines.append(line)
+            lines += parked_lines
             return ModelClaudePoolRefillResult(
                 exit_code=0 if bad == 0 else 1, lines=tuple(lines)
             )
