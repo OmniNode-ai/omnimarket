@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -13,6 +13,7 @@ from omnimarket.nodes.node_tenant_plan_assign_effect.handlers.handler_tenant_pla
     HandlerTenantPlanAssign,
 )
 from omnimarket.nodes.node_tenant_plan_assign_effect.handlers.tenant_plan_postgres import (
+    PlanAssignRecord,
     TenantPlanPostgres,
     TenantPlanStoreUnavailableError,
 )
@@ -25,7 +26,7 @@ pytestmark = pytest.mark.unit
 
 
 class _Down(TenantPlanPostgres):
-    async def assign(self, *, tenant_id, plan_code):  # type: ignore[no-untyped-def]
+    async def assign(self, *, tenant_id: UUID, plan_code: str) -> PlanAssignRecord:
         raise TenantPlanStoreUnavailableError("OSError")
 
 
