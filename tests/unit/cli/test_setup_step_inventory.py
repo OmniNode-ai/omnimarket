@@ -123,7 +123,13 @@ class TestSetupStepInventory:
         stale = [e["install_sh"] for e in _inventory() if e["install_sh"] not in real]
         assert not stale, f"inventory entries naming no install.sh step: {stale}"
 
-    def test_every_entry_is_marked_with_an_owner_and_a_reason(self) -> None:
+    def test_every_entry_is_marked_with_an_owner_and_a_reason(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The owners are operator commands (`onex setup` is INTERNAL in omnibase_core's surface);
+        # the operator runtime lists them with this switch on, so the test names the same surface
+        # instead of inheriting whatever the host environment happens to carry.
+        monkeypatch.setenv("ONEX_CLI_SHOW_ALL_COMMANDS", "1")
         commands = set(cli.list_commands(click.Context(cli)))
         for entry in _inventory():
             step = entry["install_sh"]
