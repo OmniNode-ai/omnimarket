@@ -144,3 +144,11 @@ dod_evidence:
       - check_type: "command"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-26706 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_lane_work_reducer/test_transitions.py tests/unit/nodes/node_lane_work_reducer/test_golden_chain.py -q --no-cov -n 0 -p no:randomly"
         cwd: "."
+  - id: "dod-omn26706-core-dev-tag-pin"
+    description: >-
+      omnibase-core is read from the dev merge tag dev-20261127051535-94ed7507315d, which contains the lane work types (6baa5af6b), through the uv git source, and uv.lock locks that same tag.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: "grep -c dev-20261127051535-94ed7507315d pyproject.toml uv.lock"
+        cwd: "."
