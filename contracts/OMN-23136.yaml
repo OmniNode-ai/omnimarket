@@ -9,19 +9,19 @@ interfaces_touched:
   - public_api
 context:
   ac_binding_provenance:
-    "dod-001":
+    "dod-omn23136-ac1-accepted-20261128t1345z":
       - label: "AC1"
         criterion_hash: "0aaf06ef6e45947b91d33cfb99b83858bcfa699500508de3296b37c361f1b2d1"
         proposed_by: "lane=dod-closeout-bind-2026-11-28T1345Z-c1"
         accepted_by: "lane=dod-closeout-accept-2026-11-28T1345Z-c1"
         accepted_at: "2026-11-28T14:15:01Z"
-    "dod-002":
+    "dod-omn23136-ac2-accepted-20261128t1345z":
       - label: "AC2"
         criterion_hash: "a59dba42eea55a730654bea0eabdf0d5df01246a613759f131f469ccc1297a8b"
         proposed_by: "lane=dod-closeout-bind-2026-11-28T1345Z-c1"
         accepted_by: "lane=dod-closeout-accept-2026-11-28T1345Z-c1"
         accepted_at: "2026-11-28T14:15:01Z"
-    "dod-003":
+    "dod-omn23136-ac3-accepted-20261128t1345z":
       - label: "AC3"
         criterion_hash: "4afbcbd28bd778a69e90169de4d993d2bb5347a442803514edc2b824e2ca7ba5"
         proposed_by: "lane=dod-closeout-bind-2026-11-28T1345Z-c1"
@@ -70,6 +70,30 @@ dod_evidence:
         cwd: "."
   - id: "dod-003"
     description: 'AC3: the relation_map reading row carries count and frozen cells (229 and 229 on the fixture, 230 and 229 with the planted back edge, unread when no gate result is given); golden and error chain events of the reading writer'
+    source: "manual"
+    binds_ac: [AC3]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest src/omnimarket/nodes/node_network_graph_compute -q --no-cov --tb=line -k reading_row_carries_counts'
+        cwd: "."
+  - id: "dod-omn23136-ac1-accepted-20261128t1345z"
+    description: 'AC1: the committed baseline holds 11 subsystems and the five relations at 229 occurrences, its sha256 matches, the gate reads it, and a changed number with the old hash reads RED'
+    source: "manual"
+    binds_ac: [AC1]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest src/omnimarket/nodes/node_network_graph_compute -q --no-cov --tb=line -k dependency_baseline_frozen'
+        cwd: "."
+  - id: "dod-omn23136-ac2-accepted-20261128t1345z"
+    description: 'AC2: the fixture tree reads PASS at 229 and a planted back edge reads 230 and RED'
+    source: "manual"
+    binds_ac: [AC2]
+    checks:
+      - check_type: "test_passes"
+        check_value: 'uv run pytest src/omnimarket/nodes/node_network_graph_compute -q --no-cov --tb=line -k planted_back_edge'
+        cwd: "."
+  - id: "dod-omn23136-ac3-accepted-20261128t1345z"
+    description: 'AC3: the relation_map reading row carries 229/229 on the fixture and 230/229 with the planted back edge'
     source: "manual"
     binds_ac: [AC3]
     checks:
