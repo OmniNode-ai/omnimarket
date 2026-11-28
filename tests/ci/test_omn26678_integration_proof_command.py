@@ -86,3 +86,12 @@ def test_contract_lab_item_command_resolves() -> None:
     """Known good: the contract's lab item starts with uv and runs the state root test."""
     contract = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))
     assert command_problems(contract) == []
+
+
+def test_lab_item_names_its_bus_lane() -> None:
+    """The lab-work run refuses a command that names no bus lane (no broker is read from the environment)."""
+    contract = yaml.safe_load(CONTRACT.read_text(encoding="utf-8"))
+    item = next(i for i in contract["dod_evidence"] if i["id"] == LAB_ITEM_ID)
+    for check in item["checks"]:
+        if "lab-work run" in check["check_value"]:
+            assert "--bus-lane dev" in shlex.join(shlex.split(check["check_value"]))
