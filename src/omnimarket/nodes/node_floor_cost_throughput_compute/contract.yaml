@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Floor Cost Throughput Compute
+#
+# One pure fold: handle(ModelCostThroughputRequest) -> ModelCostThroughputPanel. It turns the readings other nodes made (the simple
+# floor's merges number, the kept readings of the integration record's seen-running count, the delegation history's per-hour
+# attempts and costs by engine, and the day-over-day report's days) into the panel the factory floor draws: merges per hour, changes
+# seen running per hour, delegation calls by engine with their token and dollar cells, the cost per change seen running and a 7-day
+# trend. Every figure carries its source (node, data read, read time) and reads UNREADABLE with the reason when its source is missing;
+# a dollar cell with no recorded dollar source is UNREADABLE and is never estimated. No clock, no I/O, no model call; the same request
+# gives byte-identical output. The effect node node_floor_cost_throughput_effect makes the readings and writes the file.
+name: node_floor_cost_throughput_compute
+contract_name: node_floor_cost_throughput_compute
+node_name: node_floor_cost_throughput_compute
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: []
+
+description: >
+  Folds the floor's recorded readings into the cost-and-throughput panel (merges per hour, changes seen running per hour, delegation
+  calls by engine, cost per change seen running, a 7-day trend); every figure carries its source or reads UNREADABLE.
+
+handler:
+  module: omnimarket.nodes.node_floor_cost_throughput_compute.handlers.handler_floor_cost_throughput
+  class: HandlerFloorCostThroughput
+  input_model: omnimarket.models.floor_cost_throughput.ModelCostThroughputRequest
+  output_model: omnimarket.models.floor_cost_throughput.ModelCostThroughputPanel
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: build_cost_throughput_panel
+      handler:
+        name: HandlerFloorCostThroughput
+        module: omnimarket.nodes.node_floor_cost_throughput_compute.handlers.handler_floor_cost_throughput
+      input_model: omnimarket.models.floor_cost_throughput.ModelCostThroughputRequest
+      output_model: omnimarket.models.floor_cost_throughput.ModelCostThroughputPanel
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 5000
+  runtime_profiles: []
+
+input_model:
+  name: ModelCostThroughputRequest
+  module: omnimarket.models.floor_cost_throughput
+  description: The readings other nodes made; a reading not made is None.
+output_model:
+  name: ModelCostThroughputPanel
+  module: omnimarket.models.floor_cost_throughput
+  description: The served document, schema id omnimarket.floor_cost_throughput.v1.
+
+runtime_dispatch:
+  external_trigger: called in process by node_floor_cost_throughput_effect, a step of the factory floor publish; it has no bus surface of its own.
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+metadata:
+  transport_type: local

@@ -1,0 +1,22 @@
+name: node_floor_cost_throughput_effect
+version: "0.1.0"
+description: "Read the floor documents, fold them into the cost-and-throughput panel and write cost-throughput.json"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_floor_cost_throughput_effect: "omnimarket.nodes.node_floor_cost_throughput_effect"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "observability", "floor", "cost", "throughput", "files"]
+pack: "pipeline"
+display_name: "Floor Cost Throughput Writer"
+node_role: "effect"

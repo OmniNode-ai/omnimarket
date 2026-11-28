@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Floor Cost Throughput Effect
+#
+# Reads the floor's recorded documents (floor-simple.json, delegation-history.json and the day-over-day report), keeps dated readings of
+# the integration record's seen-running count, folds them with node_floor_cost_throughput_compute and writes cost-throughput.json for
+# the factory floor page. A document it cannot read is not passed on, so its figures read UNREADABLE.
+name: node_floor_cost_throughput_effect
+contract_name: node_floor_cost_throughput_effect
+node_name: node_floor_cost_throughput_effect
+contract_version: {major: 0, minor: 1, patch: 0}
+node_version: {major: 0, minor: 1, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: []
+
+description: >
+  Reads the floor's recorded documents, folds them into the cost-and-throughput panel with node_floor_cost_throughput_compute and
+  writes cost-throughput.json for the factory floor page.
+
+handler:
+  module: omnimarket.nodes.node_floor_cost_throughput_effect.handlers.handler_floor_cost_throughput_effect
+  class: HandlerFloorCostThroughputEffect
+  input_model: omnimarket.nodes.node_floor_cost_throughput_effect.models.model_floor_cost_throughput_effect.ModelFloorCostThroughputRequest
+  output_model: omnimarket.nodes.node_floor_cost_throughput_effect.models.model_floor_cost_throughput_effect.ModelFloorCostThroughputResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: write_cost_throughput_panel
+      handler:
+        name: HandlerFloorCostThroughputEffect
+        module: omnimarket.nodes.node_floor_cost_throughput_effect.handlers.handler_floor_cost_throughput_effect
+      input_model: omnimarket.nodes.node_floor_cost_throughput_effect.models.model_floor_cost_throughput_effect.ModelFloorCostThroughputRequest
+      output_model: omnimarket.nodes.node_floor_cost_throughput_effect.models.model_floor_cost_throughput_effect.ModelFloorCostThroughputResult
+
+descriptor:
+  node_archetype: effect
+  purity: side_effecting
+  idempotent: true
+  timeout_ms: 20000
+  runtime_profiles: []
+
+input_model:
+  name: ModelFloorCostThroughputRequest
+  module: omnimarket.nodes.node_floor_cost_throughput_effect.models.model_floor_cost_throughput_effect
+  description: The registry home.
+output_model:
+  name: ModelFloorCostThroughputResult
+  module: omnimarket.nodes.node_floor_cost_throughput_effect.models.model_floor_cost_throughput_effect
+  description: Whether the file was written, its path and how many figures read UNREADABLE.
+
+runtime_dispatch:
+  external_trigger: python -m omnimarket.nodes.node_floor_cost_throughput_effect run, as the cost_throughput step of python -m omnimarket.nodes.node_factory_floor_publish_effect.
+
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+runtime:
+  home_env: OMNI_HOME
+  data_dir_relpath: .claude_scratch/factory-floor
+  floor_simple_name: floor-simple.json
+  delegation_history_name: delegation-history.json
+  # The day-over-day report node's output, once it lands; absent until then, and the trend reads UNREADABLE.
+  day_over_day_name: day-over-day.json
+  readings_name: cost-throughput-readings.json
+  output_name: cost-throughput.json
+  readings_keep_days: 14
+
+metadata:
+  transport_type: local
