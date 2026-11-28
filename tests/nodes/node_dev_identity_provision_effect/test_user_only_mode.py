@@ -151,3 +151,14 @@ def test_contract_declares_user_only_paths_and_the_store_declares_the_key() -> N
     assert key["folder"] == "/shared/env"
     assert key["key"] == "DEV_DASHBOARD_READER_PASSWORD"
     assert key["key"] != "DEV_PROBE_USER_PASSWORD"
+
+
+def test_store_declares_a_password_key_for_the_pool_proof_tenant_user() -> None:
+    keys = yaml.safe_load(STORE_CONTRACT.read_text(encoding="utf-8"))["generated_keys"]
+    key = keys["dev_pool_tenant_password"]
+    assert key["folder"] == "/shared/env"
+    assert key["key"] == "DEV_POOL_TENANT_PASSWORD"
+    assert key["key"] not in {
+        "DEV_PROBE_USER_PASSWORD",
+        "DEV_DASHBOARD_READER_PASSWORD",
+    }
