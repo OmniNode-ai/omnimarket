@@ -104,6 +104,11 @@ retention_bounds:
   # database). `keep_linked` keeps an entry in which a file has more than one hard link: a virtual environment shares the
   # unpacked wheel that way, so an archive entry so linked is in use; a git checkout is hard-linked to uv's own git database,
   # never to a virtual environment, so the link there guards nothing. A cap naming any other folder is refused.
+  # The most a uv cache row's timeout_seconds may declare. `uv cache size` walks every file of the cache and a measured walk of a 100 GiB
+  # cache on a SATA disk took over half an hour, so the pass runs it, `uv cache prune` and each bucket scan only under the row's own
+  # timeout, and a row above this number (or one that is not a finite number) is refused before any of them runs. The number is the
+  # hour a hygiene tick may run (the unit's TimeoutStartSec).
+  uv_cache_max_timeout_seconds: 3600
   uv_evictable_buckets:
     archive-v0: {depth: 1, keep_linked: true}
     git-v0/checkouts: {depth: 2, keep_linked: false}

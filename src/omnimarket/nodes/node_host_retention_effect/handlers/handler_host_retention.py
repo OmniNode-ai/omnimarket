@@ -264,6 +264,11 @@ def validate_declarations(
             )
         except RefusalError as exc:
             refusals.append(str(exc))
+        if cache.timeout_seconds > bounds.uv_cache_max_timeout_seconds:
+            refusals.append(
+                f"uv cache {cache.path}: timeout_seconds {cache.timeout_seconds:g} is above the "
+                f"contract maximum {bounds.uv_cache_max_timeout_seconds:g}"
+            )
         for label, rule in (("cap", cache.cap), ("free_disk", cache.free_disk)):
             if rule is None:
                 continue
