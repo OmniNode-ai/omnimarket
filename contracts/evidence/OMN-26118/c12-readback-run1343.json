@@ -1,0 +1,39 @@
+{
+  "schema": "c12_provider_catalogue_readback.v1",
+  "ticket_id": "OMN-26118",
+  "probe": "c12-provider-catalogue",
+  "workflow": "chain-canary-c12-provider-catalogue.yml",
+  "workflow_repo": "omnibase_infra",
+  "source": "rolling work ledger STATUS row of lane q-t26118-102200 at 2026-11-26T22:51:06Z; no job log was re-read here, this host has no GitHub read path",
+  "ac1_cause": {
+    "summary": "The red named in the earlier readback (c12-readback.json) was the retired HTTP gateway requirement, the moved catalogue module and the container user, fixed in omnibase_infra#6107 with no clause removed; its failure lines and run ids 44894595216 and 44880470546 are held there.",
+    "newest_failure_text": [
+      {
+        "run_id": 44894595216,
+        "run_number": 1211,
+        "step": "Resolve the lab lane",
+        "line": "lane skipped -- dev-201: ingress_url <dev-201 ingress, port 8085> no answer (TimeoutError: timed out)"
+      }
+    ]
+  },
+  "ac2_green_runs": {
+    "newest_run_id": 45905096364,
+    "newest_run_number": 1343,
+    "created_at": "2026-11-26T22:29:21Z",
+    "jobs": {},
+    "run_numbers_success": [1339, 1340, 1341, 1342, 1343],
+    "conclusion": "success"
+  },
+  "ac2_clause_table": {
+    "removed_assertions": [],
+    "retired_facts_not_restored": [
+      {"fact": "gateway_url on the 8090 HTTP gateway", "retired_by": "one-runtime rulings 2026-11-02 and 2026-11-10"},
+      {"fact": "container onex-api and user appuser", "retired_by": "one-runtime rulings 2026-11-02 and 2026-11-10"}
+    ],
+    "kept_on_origin_dev": ["CUSTOMER_ONLY_PROVIDERS", "DEFAULT_CONTAINER=omninode-runtime", "DEFAULT_USER=omniinfra", "ingress_url"]
+  },
+  "ac3_status_row": {
+    "ledger_row": "crit=C12 probe=c12-provider-catalogue verdict=green read_at=2026-11-26T22:51:06Z",
+    "verdict": "green"
+  }
+}

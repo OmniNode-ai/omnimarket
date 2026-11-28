@@ -23,11 +23,15 @@ from omnimarket.models.overlay_documents.model_delegation_check_probe_overlay im
     CheckId,
     ModelDelegationCheckProbeOverlay,
 )
+from omnimarket.models.overlay_documents.model_delegation_check_responders_overlay import (
+    ModelDelegationCheckResponder,
+)
 
 __all__ = ["CheckId", "ModelDelegationCheckProbeOverlay"]
 
 CAUSE_PRODUCT = "product"
 CAUSE_LAB_MODEL = "lab-model"
+CAUSE_GATEWAY = "gateway"
 
 
 class _Frozen(BaseModel):
@@ -40,6 +44,18 @@ class EnumCheckVerdict(StrEnum):
     NOT_MEASURED = "NOT_MEASURED"
     PRECONDITION_ABSENT = "PRECONDITION-ABSENT"
     ERROR = "ERROR"
+
+
+class ModelChainSource(_Frozen):
+    """Where the responder chain a check resolved came from: the settings store or an overlay, with the declared rows.
+
+    ``source_ref`` and ``loaded_at`` are the store record's own; an overlay carries a ref naming the overlay and no stamp.
+    """
+
+    source: Literal["store", "overlay"]
+    source_ref: str = Field(min_length=1)
+    loaded_at: datetime | None = None
+    rows: tuple[ModelDelegationCheckResponder, ...]
 
 
 class ModelCheckClause(_Frozen):
@@ -181,6 +197,8 @@ class ModelDelegationCheckReading(_Frozen):
     window: int | None = None
     # NOT_MEASURED: the task never reached a local responder that answered.
     not_measured: str | None = None
+    # NOT_MEASURED by the gateway (a timeout or refusal on a request to it) names ``gateway``; absent, a lab model.
+    not_measured_cause: Literal["lab-model", "gateway"] = "lab-model"
     versions: dict[str, str] = Field(default_factory=dict)
     # A gateway-graded check names the gateway address it talked to and the tenant it acted as (OMN-26642).
     endpoint: str | None = None
@@ -212,7 +230,7 @@ class ModelDelegationCheckResult(_Frozen):
     status: Literal["completed", "errored"]
     conclusion: Literal["success", "failure"]
     verdict: EnumCheckVerdict
-    cause_class: Literal["product", "lab-model"] | None = None
+    cause_class: Literal["product", "lab-model", "gateway"] | None = None
     clauses: tuple[ModelCheckClause, ...] = ()
     preconditions: tuple[ModelCheckPrecondition, ...] = ()
     chain: tuple[ModelResponderAttempt, ...] = ()
@@ -227,6 +245,8 @@ class ModelDelegationCheckResult(_Frozen):
     gateway_url: str | None = None
     tenant_slug: str | None = None
     runner: str = "omnimarket-node"
+    # Where the chain this check resolved was declared; None when no responders row was served at all.
+    chain_source: ModelChainSource | None = None
 
     @model_validator(mode="after")
     def _aware_and_consistent(self) -> ModelDelegationCheckResult:

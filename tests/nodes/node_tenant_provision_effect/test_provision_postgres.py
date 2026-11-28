@@ -253,3 +253,37 @@ async def test_read_answers_by_id_and_by_slug_and_not_found(port: int) -> None:
             )
         )
         assert both.outcome == EnumTenantReadOutcome.REFUSED_INVALID_REQUEST
+
+
+async def test_an_existing_tenant_with_no_created_event_gets_one_queued_once(
+    port: int,
+) -> None:
+    """A tenant made outside this node (cli-run-a on dev) has no TENANT_CREATED row, so the mirror never learns it."""
+    async with identity_tables(port) as (admin, pool):
+        tenant_id = await admin.fetchval(
+            "INSERT INTO tenants (tenant_slug, slug, name, provisioning_state) "
+            "VALUES ('cli-run-a', 'cli-run-a', 'CLI run A', 'active') RETURNING tenant_id"
+        )
+        await admin.execute(
+            "INSERT INTO tenant_plans (tenant_id, plan_code) VALUES ($1, 'discovery')",
+            tenant_id,
+        )
+        assert await _counts(admin) == (1, 1, 0)
+        handler = _handler(pool)
+        first = await handler.handle(_command("cli-run-a"))
+        second = await handler.handle(_command("cli-run-a"))
+        assert (first.outcome, second.outcome) == (
+            OUTCOME.ALREADY_EXISTS,
+            OUTCOME.ALREADY_EXISTS,
+        )
+        assert await _counts(admin) == (1, 1, 1)
+        row = await admin.fetchrow(
+            "SELECT topic, envelope::text AS env FROM tenant_event_outbox"
+        )
+        assert row is not None
+        assert row["topic"] == "onex.tenant.events"
+        parsed = ModelTenantRegistryEvent.from_envelope(json.loads(row["env"]))
+        assert parsed.operation == "TENANT_CREATED"
+        assert parsed.tenant.tenant_id == tenant_id
+        assert parsed.tenant.tenant_slug == "cli-run-a"
+        assert parsed.tenant.plan_code == "discovery"

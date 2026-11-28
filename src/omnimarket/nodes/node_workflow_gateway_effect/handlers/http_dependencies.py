@@ -11,6 +11,7 @@ answered 503, never served unauthenticated.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -26,6 +27,7 @@ from omnimarket.handlers.edge_bearer_jwt_identity import (
     JwksSigningKeyProvider,
 )
 from omnimarket.handlers.node_overlay_reader import (
+    OVERLAY_ROOTS_ENV,
     NodeOverlayError,
     NodeOverlayNotFoundError,
     load_structured_overlay,
@@ -35,6 +37,9 @@ from omnimarket.nodes.node_workflow_gateway_effect.handlers.adapters_memory impo
 )
 from omnimarket.nodes.node_workflow_gateway_effect.handlers.caller_identity import (
     CompositeCallerIdentity,
+)
+from omnimarket.nodes.node_workflow_gateway_effect.handlers.handler_tenant_key_register import (
+    HandlerTenantKeyRegister,
 )
 from omnimarket.nodes.node_workflow_gateway_effect.handlers.handler_workflow_contracts_read import (
     HandlerWorkflowContractsRead,
@@ -117,6 +122,7 @@ class WorkflowGatewayDependencies:
     receipt: HandlerWorkflowReceiptRead
     contracts: HandlerWorkflowContractsRead
     max_body_bytes: int
+    tenant_keys: HandlerTenantKeyRegister | None = None
     closers: tuple[Callable[[], Awaitable[None]], ...] = ()
 
 
@@ -150,14 +156,31 @@ class OverlayWorkflowGatewayDependencies:
     not cached.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, settings_mount: Path | None = None) -> None:
         self._deps: WorkflowGatewayDependencies | None = None
+        self._settings_mount = (
+            settings_mount
+            if settings_mount is not None
+            else Path(load_contract_config()["settings_mount"]["path"])
+        )
+
+    def _environ(self) -> dict[str, str]:
+        """The process environment with the contract's settings mount after the declared roots."""
+        env = dict(os.environ)
+        roots = [
+            root for root in env.get(OVERLAY_ROOTS_ENV, "").split(os.pathsep) if root
+        ]
+        roots.append(str(self._settings_mount))
+        env[OVERLAY_ROOTS_ENV] = os.pathsep.join(roots)
+        return env
 
     async def get(self) -> WorkflowGatewayDependencies | None:
         if self._deps is not None:
             return self._deps
         try:
-            overlay = load_structured_overlay(OVERLAY_ID, ModelWorkflowGatewayOverlay)
+            overlay = load_structured_overlay(
+                OVERLAY_ID, ModelWorkflowGatewayOverlay, self._environ()
+            )
         except NodeOverlayNotFoundError:
             return None
         except NodeOverlayError as exc:
@@ -229,6 +252,8 @@ class OverlayWorkflowGatewayDependencies:
             receipt=HandlerWorkflowReceiptRead(store=store),
             contracts=HandlerWorkflowContractsRead(catalog=catalog),
             max_body_bytes=int(config["http"]["max_body_bytes"]),
+            # No injected store or bus: the intake builds its own, with its writer identity.
+            tenant_keys=HandlerTenantKeyRegister(),
             closers=(publisher.close, pool.close),
         )
 

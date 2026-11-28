@@ -125,7 +125,7 @@
     "extension": 1,
     "function": 15,
     "sequence": 44,
-    "table": 155,
+    "table": 159,
     "view": 11
   },
   "relations": [
@@ -8957,7 +8957,8 @@
         "SELECT, INSERT, UPDATE TO omninode_runtime"
       ],
       "indexes": [
-        "overlay_store_current_idx"
+        "overlay_store_current_idx",
+        "overlay_store_current_revision_idx"
       ],
       "internal_tenant_column_transform": {
         "key_fk_index_partition_dependencies": [],
@@ -8977,6 +8978,7 @@
       "producer": "node_projection_overlay_store",
       "readers": [
         "node_claude_token_pool_effect",
+        "node_delegation_check_probe_effect",
         "node_delegation_check_regression_effect",
         "node_dev_identity_provision_effect",
         "node_floor_emissions_publish_effect",
@@ -8989,6 +8991,7 @@
         "node_host_down_reading_effect",
         "node_host_introspection_announce_effect",
         "node_host_table_keys_ingest_effect",
+        "node_host_table_keys_read_effect",
         "node_lab_disk_watermark_effect",
         "node_overlay_assertion_stale_compute",
         "node_overlay_main_load_check_effect",
@@ -9006,6 +9009,200 @@
       "writers": [
         "node_projection_overlay_store",
         "service:omnimarket_projection_migration_runner"
+      ]
+    },
+    {
+      "accessor_nodes": [
+        "node_projection_overlay_store"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_overlay_store/migrations/0003_overlay_store_revision_provenance_audit.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "classified",
+      "constraints": [],
+      "contract_sources": [
+        "src/omnimarket/nodes/node_projection_overlay_store/contract.yaml"
+      ],
+      "current_schema": [
+        "omninode_internal"
+      ],
+      "dependencies": [],
+      "dependent_objects": [],
+      "domain": "OMNINODE_INTERNAL",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [],
+      "indexes": [
+        "overlay_store_audit_overlay_idx"
+      ],
+      "internal_tenant_column_transform": {
+        "key_fk_index_partition_dependencies": [],
+        "runtime_collision_scan": "not_applicable",
+        "source_occurrences": [],
+        "status": "not_applicable_no_source_tenant_id"
+      },
+      "keys": [
+        "PRIMARY KEY (write_id)"
+      ],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_overlay_store",
+      "name": "overlay_store_audit",
+      "owner_declaration": "node_projection_overlay_store",
+      "partitioning": [],
+      "producer": "node_projection_overlay_store",
+      "readers": [],
+      "target_schema": "omninode_internal",
+      "writers": [
+        "node_projection_overlay_store"
+      ]
+    },
+    {
+      "accessor_nodes": [
+        "node_projection_overlay_store"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_overlay_store/migrations/0003_overlay_store_revision_provenance_audit.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "classified",
+      "constraints": [],
+      "contract_sources": [
+        "src/omnimarket/nodes/node_projection_overlay_store/contract.yaml"
+      ],
+      "current_schema": [
+        "omninode_internal"
+      ],
+      "dependencies": [],
+      "dependent_objects": [],
+      "domain": "OMNINODE_INTERNAL",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [],
+      "indexes": [],
+      "internal_tenant_column_transform": {
+        "key_fk_index_partition_dependencies": [],
+        "runtime_collision_scan": "not_applicable",
+        "source_occurrences": [],
+        "status": "not_applicable_no_source_tenant_id"
+      },
+      "keys": [
+        "PRIMARY KEY (overlay_id, path)"
+      ],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_overlay_store",
+      "name": "overlay_store_provenance",
+      "owner_declaration": "node_projection_overlay_store",
+      "partitioning": [],
+      "producer": "node_projection_overlay_store",
+      "readers": [],
+      "target_schema": "omninode_internal",
+      "writers": [
+        "node_projection_overlay_store"
+      ]
+    },
+    {
+      "accessor_nodes": [
+        "node_projection_overlay_store"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_overlay_store/migrations/0003_overlay_store_revision_provenance_audit.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "classified",
+      "constraints": [],
+      "contract_sources": [
+        "src/omnimarket/nodes/node_projection_overlay_store/contract.yaml"
+      ],
+      "current_schema": [
+        "omninode_internal"
+      ],
+      "dependencies": [],
+      "dependent_objects": [],
+      "domain": "OMNINODE_INTERNAL",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [],
+      "indexes": [],
+      "internal_tenant_column_transform": {
+        "key_fk_index_partition_dependencies": [],
+        "runtime_collision_scan": "not_applicable",
+        "source_occurrences": [],
+        "status": "not_applicable_no_source_tenant_id"
+      },
+      "keys": [
+        "PRIMARY KEY (overlay_id)"
+      ],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_overlay_store",
+      "name": "overlay_store_revision",
+      "owner_declaration": "node_projection_overlay_store",
+      "partitioning": [],
+      "producer": "node_projection_overlay_store",
+      "readers": [],
+      "target_schema": "omninode_internal",
+      "writers": [
+        "node_projection_overlay_store"
+      ]
+    },
+    {
+      "accessor_nodes": [
+        "node_projection_overlay_store"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_overlay_store/migrations/0003_overlay_store_revision_provenance_audit.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "classified",
+      "constraints": [],
+      "contract_sources": [
+        "src/omnimarket/nodes/node_projection_overlay_store/contract.yaml"
+      ],
+      "current_schema": [
+        "omninode_internal"
+      ],
+      "dependencies": [],
+      "dependent_objects": [],
+      "domain": "OMNINODE_INTERNAL",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [],
+      "indexes": [],
+      "internal_tenant_column_transform": {
+        "key_fk_index_partition_dependencies": [],
+        "runtime_collision_scan": "not_applicable",
+        "source_occurrences": [],
+        "status": "not_applicable_no_source_tenant_id"
+      },
+      "keys": [
+        "PRIMARY KEY (write_id)"
+      ],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_overlay_store",
+      "name": "overlay_store_write",
+      "owner_declaration": "node_projection_overlay_store",
+      "partitioning": [],
+      "producer": "node_projection_overlay_store",
+      "readers": [],
+      "target_schema": "omninode_internal",
+      "writers": [
+        "node_projection_overlay_store"
       ]
     },
     {
@@ -11029,6 +11226,7 @@
         "node_projection_local_identity",
         "node_projection_run_trace",
         "node_projection_savings",
+        "node_projection_tenant_credentials",
         "node_projection_tenant_registry",
         "service:omnimarket_projection_migration_runner"
       ],
@@ -11046,6 +11244,7 @@
         "src/omnimarket/nodes/node_projection_local_identity/contract.yaml",
         "src/omnimarket/nodes/node_projection_run_trace/contract.yaml",
         "src/omnimarket/nodes/node_projection_savings/contract.yaml",
+        "src/omnimarket/nodes/node_projection_tenant_credentials/contract.yaml",
         "src/omnimarket/nodes/node_projection_tenant_registry/contract.yaml"
       ],
       "current_schema": [
@@ -11091,6 +11290,7 @@
         "node_projection_read_effect",
         "node_projection_run_trace",
         "node_projection_savings",
+        "node_projection_tenant_credentials",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
@@ -12404,8 +12604,8 @@
     "parity_status": "blocked",
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
-    "source_created_tables": 142,
-    "source_declared_tables": 155
+    "source_created_tables": 146,
+    "source_declared_tables": 159
   },
   "runtime_evidence": {
     "dsn_key_provenance": {
@@ -12421,7 +12621,7 @@
       "status": "blocked"
     },
     "live_catalog_parity": {
-      "reason": "repository sources contain 142 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-0-table gap require an authorized catalog read",
+      "reason": "repository sources contain 146 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-0-table gap require an authorized catalog read",
       "status": "blocked"
     }
   },

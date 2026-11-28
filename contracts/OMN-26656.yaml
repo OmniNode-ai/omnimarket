@@ -5,6 +5,28 @@ summary: A caller-supplied response contract no longer empties the check set of 
 is_seam_ticket: false
 interface_change: false
 interfaces_touched: []
+context:
+  ac_binding_provenance:
+    dod-omn26656-ac1-accepted-20261127t0945z:
+    - label: AC1
+      criterion_hash: 18495fc776e6df13a50f469f8568b0e72722ce86067e41ada1bc821f5923e1f1
+      proposed_by: lane=dod-closeout-bind-2026-11-27T0945Z-c0
+      accepted_by: lane=dod-closeout-accept-2026-11-27T0945Z-c0
+    dod-omn26656-ac2-accepted-20261127t0945z:
+    - label: AC2
+      criterion_hash: 1d5152199034a8e450d2ccf93ac85e61268012aeb7bd99c8c293c345034ddca5
+      proposed_by: lane=dod-closeout-bind-2026-11-27T0945Z-c0
+      accepted_by: lane=dod-closeout-accept-2026-11-27T0945Z-c0
+    dod-omn26656-ac3-accepted-20261127t0945z:
+    - label: AC3
+      criterion_hash: 60b2673a9c5cc2f4ced2f7963135aee9fb1b7d0d0841ce01a9ef9640878c2263
+      proposed_by: lane=dod-closeout-bind-2026-11-27T0945Z-c0
+      accepted_by: lane=dod-closeout-accept-2026-11-27T0945Z-c0
+    dod-omn26656-ac4-accepted-20261127t0945z:
+    - label: AC4
+      criterion_hash: c66cb218e784c9fd806a86b7d3e6ec95eaeddbb38395bcd0b527e37816c524b3
+      proposed_by: lane=dod-closeout-bind-2026-11-27T0945Z-c0
+      accepted_by: lane=dod-closeout-accept-2026-11-27T0945Z-c0
 requirements:
 - id: req-omn26656-contract-adds-code-checks
   statement: A response contract adds to a code class's checks and never replaces them, on the local path and on the bus path.
@@ -17,6 +39,8 @@ requirements:
     statement: 'AC3: the receipt of a code answer names each class check and the contract check with its verdict -- falsifier: a receipt that shows only the contract check'
   - id: AC4
     statement: 'AC4: a count over the last 7 days of recorded runs says how many accepted code answers were governed by a response contract and how many were untested -- falsifier: no count, or one with no source named'
+  - id: AC5
+    statement: 'AC5: an own-key session whose chosen provider answers 429, answers 503 or is unreachable ends failed on that provider and never calls another provider with the customer''s key -- falsifier: a provider other than the chosen one receives a call in such a session'
 evidence_requirements:
 - kind: tests
   description: The focused tests, each failing against the replaced check set first and passing on the fix.
@@ -124,4 +148,66 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_code_eval_trial_orchestrator/test_loop_wall_and_turn_cap_settings.py -q --no-cov -n 0 -p no:randomly -k "declared_default or uses_its_value"
+    cwd: .
+- id: dod-omn26656-own-key-never-leaves-provider
+  description: 'An own-key session whose chosen provider answers 429, answers 503 or is unreachable ends failed on that provider: the provider call log holds only the chosen provider (every declared successor rung sits behind a second recording provider that receives no call), every attempt names the key''s own backend, and the chosen provider is called with the customer''s key (positive control). The tests fail when the selection guard that passes over unselected rungs is removed.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/chains/local/test_chain_l12_own_key_never_leaves_provider_omn26656.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26656-own-key-integration-proof
+  description: Run the own-key no-swap tests on a lab host at the pushed head; hosted CI cannot place a lab run, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26656-ownkey --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/chains/local/test_chain_l12_own_key_never_leaves_provider_omn26656.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26656-runner-path-callers-first
+  description: The lab work runner's PATH puts the caller's entries ahead of its fallback directories, so a tool the caller placed on PATH is never shadowed by a user-level install; the order test fails at the base, where the fallbacks come first. The lab work runner is where a code draft's named tests run, so a shadowed tool there decides whether a failing named test is seen (AC1).
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_work_unit_effect/test_work_runner_path_order.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26656-ac1-accepted-20261127t0945z
+  description: 'AC1: a code request with a schema and a failing named test is refused by the gate, the local dispatch port and the bus workflow, a passing named test is accepted with the contract check evaluated beside the class check, and the bus acceptance site refuses a code pass that never evaluated its tests. Six of the twelve selected tests fail against the product code before omnimarket#6779.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_response_contract_adds_code_checks_omn26656.py -q --no-cov -n 0 -p no:randomly -k "gate_refuses or gate_accepts or bus or local_path or checks_in_force"
+    cwd: .
+- id: dod-omn26656-ac2-accepted-20261127t0945z
+  description: 'AC2: a document request that passes its contract is accepted on the gate, the local dispatch port and the bus workflow as before (these pass before omnimarket#6779, the unchanged behaviour), and a code answer with a failing named test is refused, which fails before omnimarket#6779.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_response_contract_adds_code_checks_omn26656.py -q --no-cov -n 0 -p no:randomly -k "document or gate_refuses_a_code_answer"
+    cwd: .
+- id: dod-omn26656-ac3-accepted-20261127t0945z
+  description: 'AC3: a code answer''s rule evaluations name passes_existing_tests and response_contract, each with its own verdict, and a request naming no tests records passes_existing_tests as untested. All four selected tests fail against the product code before omnimarket#6779.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_response_contract_adds_code_checks_omn26656.py -q --no-cov -n 0 -p no:randomly -k "receipt or untested"
+    cwd: .
+- id: dod-omn26656-ac4-accepted-20261127t0945z
+  description: 'AC4: the 7-day count of accepted code answers governed by a response contract, read from a fixture run store, counts only recent accepted contract-governed code answers, splits out the untested ones and prints a source= line naming the run store. Both selected tests fail against the product code before omnimarket#6779.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_response_contract_adds_code_checks_omn26656.py -q --no-cov -n 0 -p no:randomly -k "seven_day"
     cwd: .

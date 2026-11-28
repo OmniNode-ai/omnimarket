@@ -1,10 +1,16 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Store each loaded overlay, then publish what the store holds.
+"""Store each loaded overlay or set, then publish what the store holds.
 
 The snapshot is the store read back after the commit, so a reader on the bus sees what the database
 holds and nothing else, and one whole record per overlay. A malformed load raises, which the runtime
 dead-letters, and the stored overlay stays as it was.
+
+A set (a write that names a write id, the revision it was built on and its audit row) is applied by the store
+only on that revision, in one transaction with its provenance and its audit row. The audit topic then carries the
+row read from the table, and the reply topic carries the committed or conflict answer under the write id. A
+delivery of a write id that was applied before is answered again and applies nothing; it publishes the audit row
+only if an earlier delivery did not.
 """
 
 from __future__ import annotations
@@ -20,13 +26,15 @@ from omnimarket.handlers.handler_projection_runtime_writer import (
 )
 from omnimarket.handlers.overlay_store.store_postgres import PostgresOverlayStore
 from omnimarket.models.overlay_store import (
-    ModelOverlaySettingRecord,
+    EnumOverlayWriteOutcome,
     ModelOverlayStoreRecord,
+    ModelOverlayStoreWrite,
 )
 from omnimarket.projection.envelope import strip_runner_injected_keys
 from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta, PublishFn
 
 PublishKeyedFn = Callable[[str, bytes | None, bytes], Coroutine[Any, Any, None]]
+StoreFactory = Callable[[Any], Any]
 
 _STORE_TABLE = "overlay_store"
 _SNAPSHOT_MARK = "onex.snapshot."
@@ -41,9 +49,11 @@ class HandlerOverlayStoreProjectionRunner(BaseProjectionRunner):
         *,
         publish_fn: PublishFn | None = None,
         publish_keyed_fn: PublishKeyedFn | None = None,
+        store_factory: StoreFactory | None = None,
     ) -> None:
         super().__init__(publish_fn=publish_fn)
         self._publish_keyed_fn = publish_keyed_fn
+        self._store_factory = store_factory
         path = contract_path or Path(__file__).parent.parent / "contract.yaml"
         with open(path) as handle:
             self._contract: dict[str, Any] = yaml.safe_load(handle)
@@ -51,6 +61,9 @@ class HandlerOverlayStoreProjectionRunner(BaseProjectionRunner):
         self._snapshot_topic = next(
             t for t in published if t.startswith(_SNAPSHOT_MARK)
         )
+        write_topics = self._contract["write_topics"]
+        self._audit_topic: str = write_topics["audit"]
+        self._reply_topic: str = write_topics["write_reply"]
 
     @property
     def subscribe_topics(self) -> list[str]:
@@ -94,20 +107,39 @@ class HandlerOverlayStoreProjectionRunner(BaseProjectionRunner):
     ) -> bool:
         payload = strip_runner_injected_keys(data)
         payload.pop("_db", None)
-        # A setting set publishes the loader's record plus ``operator_paths``: the store keeps both, because the paths
-        # are what lets the next loader run keep the value instead of replacing it from the overlay home (OMN-26495).
-        loaded = ModelOverlaySettingRecord.model_validate(payload)
-        store = PostgresOverlayStore(self.db_for(_STORE_TABLE, operation="write").pool)
-        await store.write_version(loaded.model_dump(mode="json"))
-        current = await store.read_current(loaded.overlay_id)
+        write = ModelOverlayStoreWrite.model_validate(payload)
+        # Looked up at the call, so a test that replaces the module's store class reaches it.
+        make_store = self._store_factory or PostgresOverlayStore
+        store = make_store(self.db_for(_STORE_TABLE, operation="write").pool)
+        reply = await store.apply_write(write)
+        current = await store.read_current(write.overlay_id)
         publish = await self.get_keyed_publish_fn()
-        if publish is not None and current is not None:
+        if publish is None:
+            return True
+        committed = reply.outcome is EnumOverlayWriteOutcome.COMMITTED
+        if write.write_id is not None and committed:
+            # The audit topic carries the row the table holds, once: a delivery after a failed publish sends it.
+            audit = await store.pending_audit(write.write_id)
+            if audit is not None:
+                await publish(
+                    self._audit_topic,
+                    f"{audit.overlay_id}:{audit.key}".encode(),
+                    audit.model_dump_json().encode("utf-8"),
+                )
+                await store.mark_audit_published(write.write_id)
+        if current is not None:
             await publish(
                 self._snapshot_topic,
-                loaded.overlay_id.encode("utf-8"),
+                write.overlay_id.encode("utf-8"),
                 ModelOverlayStoreRecord.model_validate(current)
                 .model_dump_json(exclude_defaults=True)
                 .encode("utf-8"),
+            )
+        if write.write_id is not None:
+            await publish(
+                self._reply_topic,
+                write.write_id.encode("utf-8"),
+                reply.model_dump_json().encode("utf-8"),
             )
         return True
 
