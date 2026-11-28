@@ -11,6 +11,9 @@ import yaml
 from omnimarket.nodes.node_release_candidate_verify_effect.handlers.verifier_installed_content import (
     verify_installed,
 )
+from omnimarket.nodes.node_release_candidate_verify_effect.handlers.verifier_installer import (
+    verify_installer,
+)
 from omnimarket.nodes.node_release_candidate_verify_effect.handlers.verifier_plugin_content import (
     verify_plugin,
 )
@@ -68,6 +71,10 @@ class HandlerReleaseCandidateVerify:
                 request.manifest.plugin, overlay, request.plugin_record
             )
             commit = request.plugin_record.git_commit_sha
+        elif request.operation == "verify_installer":
+            if request.installer_script is None:
+                raise ValueError("verify_installer needs installer_script")
+            findings = verify_installer(request.manifest, request.installer_script)
         elif request.operation == "verify_pypi":
             findings = verify_pypi(request.manifest, request.pypi_facts)
         else:
@@ -84,6 +91,9 @@ class HandlerReleaseCandidateVerify:
             plugin_matches_manifest=matches
             if request.operation == "verify_plugin"
             else None,
+            installer_matches_manifest=matches
+            if request.operation == "verify_installer"
+            else None,
             reading=_reading(request.operation, matches),
             layout=layout,
             installed_git_commit_sha=commit,
@@ -97,6 +107,6 @@ def _reading(operation: str, matches: bool) -> str:
         return "candidate"
     return (
         "refused"
-        if operation in {"verify_pypi", "verify_ancestry"}
+        if operation in {"verify_pypi", "verify_ancestry", "verify_installer"}
         else "not-the-candidate"
     )

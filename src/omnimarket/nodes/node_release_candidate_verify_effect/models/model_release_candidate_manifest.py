@@ -4,7 +4,8 @@
 
 The manifest names what the train must publish and what every proof must have installed: the three
 wheels with their sha256 and RECORD, the plugin version and file list, the protected console scripts,
-the dashboard bundle pin and the changes the cut must contain. All sha256 values are lowercase hex.
+the dashboard bundle pin, the changes the cut must contain and the sha256 of the curl installer the
+release serves (OMN-25070 AC4). All sha256 values are lowercase hex.
 """
 
 from __future__ import annotations
@@ -81,6 +82,15 @@ class ModelManifestRequiredChange(BaseModel):
     sha: str = Field(min_length=7)
 
 
+class ModelManifestInstaller(BaseModel):
+    """The curl installer the release serves: the customer package it installs and the sha256 of its UTF-8 bytes."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    package: str = Field(min_length=1)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class ModelReleaseCandidateManifest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -90,3 +100,4 @@ class ModelReleaseCandidateManifest(BaseModel):
     plugin: ModelManifestPlugin
     dashboard_bundle: ModelManifestDashboardBundle
     required_changes: tuple[ModelManifestRequiredChange, ...] = ()
+    installer: ModelManifestInstaller | None = None

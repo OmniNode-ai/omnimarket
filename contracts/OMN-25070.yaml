@@ -53,6 +53,67 @@ requirements:
           gate and a market-side run_by_lane_scripts_kept test -- falsifier: uv run pytest
           tests/ci/test_omninode_onex_package_omn25070.py -k run_by_lane fails when omnimarket-projection-api is removed from,
           or retargeted in, pyproject.toml [project.scripts], or declared by packages/omninode-onex.
+  - id: req-omn25070-no-git-install
+    statement: The guide's install line, run as printed with --no-build into an empty HOME, never calls git, creates no .git directory, builds nothing and gives an onex that runs on each supported platform.
+    acceptance:
+      - id: AC1
+        statement: >-
+          AC1 (as written on the ticket, platforms as amended on 2026-11-18 and 2026-11-19: Apple Silicon macOS, Linux x86_64 and Linux arm64): the guide's install line, run as printed (with its --no-build) into an empty HOME with no UV_NO_BUILD in the environment, never calls git, creates no .git directory and gives an onex that runs, so every distribution of the dependency closure installs from a published wheel; with a build-backend stub that fails the test if invoked and a transitive dependency's newer release published only as a source distribution after the candidate, the line installs that dependency from a wheel or exits non-zero naming it, and a control line without --no-build invokes the stub and fails -- falsifier: uv run pytest tests/e2e/test_setup_packaged_journey.py -q -k no_git_install, on each of those runners (the onex installer workflow runs it on all three with the candidate wheel and ONEX_E2E_REQUIRE_COMPLETE=1).
+  - id: req-omn25070-one-package-uv-and-pipx
+    statement: The customer package is the only owner of onex and omni-agent, and uv and pipx each install it under Python 3.12 with exactly those two launchers.
+    acceptance:
+      - id: AC3
+        statement: >-
+          AC3 (ticket text as amended 2026-11-21), the part this falsifier checks: uv tool install --python 3.12 --no-build omninode-onex==<candidate> and pipx install --python 3.12 --pip-args=--only-binary=:all: omninode-onex==<candidate>, each into an empty HOME with a PATH of /usr/bin and /bin plus only the installers and Python 3.12 and Python 3.11 as the default interpreter for uv and pipx (UV_PYTHON, PIPX_DEFAULT_PYTHON), install under Python 3.12, put exactly onex and omni-agent on PATH, run onex, and build nothing from AC1's source-only certifi fixture, which is shown to be in the closure; each launcher is declared once, by omninode-onex with the target omnibase_core.cli.cli_commands:cli, counting console_scripts, gui_scripts and launcher files listed in any RECORD; every hashed file of the customer wheel's RECORD is installed with that sha256; every Requires-Dist of the customer package is a single == pin equal to the installed version, and every installed omnibase-, omnimarket or omninode- distribution is pinned; the customer package carries no code; offline controls (core only, both, none, a wrong target, a gui_scripts or RECORD launcher, a changed installed file, no pins, an unpinned or non-== pin, code in the wheel) fail. Not yet covered here, because they need the release train's candidate manifest: the owner and target as the manifest names them, the customer wheel's sha256, and the installed content of the other distributions. The pipx line without --python 3.12 fails because pipx installs through uv (PIPX_DEFAULT_BACKEND=uv, pipx's default when uv is on PATH); with pip, pipx picks a Python 3.12 from PATH itself. -- falsifier: uv run pytest tests/e2e/test_setup_packaged_journey.py -q -k one_package_uv_and_pipx.
+  - id: req-omn25070-installer-matches-manifest
+    statement: The candidate check refuses a served curl installer that is not the one the candidate manifest pins.
+    acceptance:
+      - id: AC4
+        statement: >-
+          AC4 (ticket text), the candidate-check part this falsifier checks: the M13 candidate check
+          (node_release_candidate_verify_effect, operation verify_installer) refuses a served script whose
+          sha256 differs from the one the manifest pins; whose ONEX_PACKAGE and ONEX_VERSION are not each
+          assigned exactly once (plain, +=, export, readonly, declare or local) to the manifest's installer
+          package and that distribution's version; that names an index other than https://pypi.org/simple
+          through --index-url, --extra-index-url, --default-index or --index, or -i (separate or attached)
+          in an install command or the set -- that builds it, or through UV_INDEX_URL,
+          UV_DEFAULT_INDEX, UV_INDEX or PIP_INDEX_URL; that uses UV_EXTRA_INDEX_URL, PIP_EXTRA_INDEX_URL,
+          --config-file, UV_CONFIG_FILE, PIP_CONFIG_FILE, --index-strategy, UV_INDEX_STRATEGY,
+          UV_FIND_LINKS, PIP_FIND_LINKS, or --find-links (or -f in an install command, separate or
+          attached) with a value that is not a plain shell variable such as "$NAME" or "${NAME}";
+          that sets UV_NO_BUILD*, UV_NO_BINARY*, PIP_NO_BINARY, PIP_ONLY_BINARY or
+          PIP_NO_BUILD_ISOLATION; or that runs pip, pip3, pipx, uv tool or uv install, uvx, uv tool run,
+          or uv add, sync or run without the exact token --no-build (or --only-binary=:all:) in the same
+          command, lines joined across backslash continuations and shell comments ignored (a # outside quotes at the
+          start of a word, as the shell reads it; a # inside a word such as a#b, $# or ${#1} is text; a
+          comment ends at its newline, so a backslash inside it does not continue the line). The installer rendered from
+          packages/omninode-onex/installer.json at the candidate version passes, naming PyPI explicitly
+          passes, and the installer's own --find-links "$ONEX_INSTALL_FIND_LINKS" test hook passes. This is
+          a list of refused spellings, not a shell interpreter: an index or install hidden behind eval,
+          sh -c or bash -c, a sourced file or a function built at run time, or a package given as a URL,
+          path or git reference, is not covered. Not covered here: the install on
+          actual macOS and Linux from a local stand-in for the domain (-k curl_installer_same_release).
+          -- falsifier: uv run pytest
+          tests/nodes/node_release_candidate_verify_effect/test_installer_matches_manifest.py -q -k installer_matches_manifest.
+  - id: req-omn25070-curl-installer-same-release
+    statement: The curl installer, fetched from a stand-in for our domain, installs the candidate exactly as the guide's uv line does.
+    acceptance:
+      - id: AC4
+        statement: >-
+          AC4 (ticket text), the install part this falsifier checks: on Linux x86_64, Linux arm64 and Apple
+          Silicon macOS, the candidate's script is served over HTTP from a local stand-in for our domain and
+          piped from curl into bash in an empty HOME with no uv on PATH and a git stub that fails the test if
+          called; it downloads the pinned uv from a local stand-in, installs it only after its sha256 matches,
+          runs the guide's install line with --no-build, never calls git, creates no .git directory, and leaves
+          exactly onex and omni-agent in uv's bin directory with onex running; with a uv download whose sha256
+          differs it exits non-zero before installing uv or onex; with a foreign onex already in uv's bin
+          directory it exits non-zero naming that file and the pipx fix, leaves the file unchanged, and the
+          guide's uv line in the same fixture fails without touching it; on Windows it refuses as not
+          supported yet, naming WSL. Until omninode-onex is published, the candidate wheel comes through the
+          installer's find-links variable and every other distribution comes from PyPI. Not covered here:
+          installed content checked against the release manifest, which exists only at release. -- falsifier:
+          uv run pytest tests/e2e/test_setup_packaged_journey.py -q -k curl_installer_same_release, on each of
+          those runners.
   - id: req-omn25070-market-proof-scripts
     statement: The two proof scripts run the core CLI as a module, not the onex launcher.
     acceptance:
@@ -117,6 +178,70 @@ dod_evidence:
     checks:
       - check_type: command
         check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25070 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_onex_installer_render_compute tests/ci/test_omninode_onex_install_sh_omn25070.py -q --no-cov
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn25070-no-git-install
+    description: >-
+      Builds the candidate wheel at this commit and runs the guide's install line test with ONEX_E2E_REQUIRE_COMPLETE=1, so a missing wheel fails rather than skips. Red while the candidate's pins resolve to a release without the onex setup fix.
+    source: manual
+    binds_ac:
+      - AC1
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: command
+        check_value: >-
+          sh -c 'd="$(mktemp -d)" && uv build --wheel --out-dir "$d" packages/omninode-onex && ONEX_TEST_ONEX_WHEEL="$(ls "$d"/omninode_onex-*.whl)" ONEX_E2E_REQUIRE_COMPLETE=1 uv run pytest tests/e2e/test_setup_packaged_journey.py -q --no-cov -k no_git_install'
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn25070-one-package-uv-and-pipx
+    description: >-
+      Builds the candidate wheel at this commit and installs it with uv and with pipx into empty homes whose default Python is 3.11, with ONEX_E2E_REQUIRE_COMPLETE=1 so a missing wheel fails rather than skips. Red while omnibase-core still declares onex and omni-agent beside omninode-onex (released 0.47.76 and earlier); green once the candidate pins the core release that stops declaring them. Needs pipx and Python 3.11 and 3.12 on the host.
+    source: manual
+    binds_ac:
+      - AC3
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: command
+        check_value: >-
+          sh -c 'd="$(mktemp -d)" && uv build --wheel --out-dir "$d" packages/omninode-onex && ONEX_TEST_ONEX_WHEEL="$(ls "$d"/omninode_onex-*.whl)" ONEX_E2E_REQUIRE_COMPLETE=1 uv run pytest tests/e2e/test_setup_packaged_journey.py -q --no-cov -k one_package_uv_and_pipx'
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn25070-hidden-launcher-control
+    description: >-
+      The one-owner checks treat omni-agent as a launcher the customer install must not expose: a distribution that declares it beside onex fails the hidden-launcher control, and onex alone passes. Runs without a wheel.
+    source: manual
+    binds_ac:
+      - AC3
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: command
+        check_value: uv run pytest tests/e2e/test_setup_packaged_journey.py -q --no-cov -k hidden_launcher_is_caught
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn25070-installer-matches-manifest
+    description: >-
+      The candidate check against the curl installer rendered from packages/omninode-onex/installer.json: the
+      rendered script passes, and a changed script, another index, another version or package, or an install
+      line without --no-build is refused. Fails on dev, where the manifest pins no installer and the check has no
+      verify_installer operation.
+    source: manual
+    binds_ac:
+      - AC4
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_release_candidate_verify_effect/test_installer_matches_manifest.py -q --no-cov -k installer_matches_manifest
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn25070-curl-installer-same-release
+    description: >-
+      Builds the candidate wheel at this commit and runs the curl installer journey and its three controls
+      with ONEX_E2E_REQUIRE_COMPLETE=1, so a missing wheel fails rather than skips. Red while the candidate's
+      pins resolve to a release whose onex --help fails (the installer refuses it); needs network access to
+      PyPI and to the uv release.
+    source: manual
+    binds_ac:
+      - AC4
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: command
+        check_value: >-
+          sh -c 'd="$(mktemp -d)" && uv build --wheel --out-dir "$d" packages/omninode-onex && ONEX_TEST_ONEX_WHEEL="$(ls "$d"/omninode_onex-*.whl)" ONEX_E2E_REQUIRE_COMPLETE=1 uv run pytest tests/e2e/test_setup_packaged_journey.py -q --no-cov -k curl_installer_same_release'
         cwd: ${OMNI_HOME}/omnimarket
   - id: dod-omn25070-market-proof-scripts
     description: Both proof scripts run nodes through the core module and run no onex launcher. Fails on dev, where both run uv run onex node.
