@@ -87,7 +87,7 @@ from omnimarket.models.model_local_done_gate_receipt import (
 )
 from omnimarket.models.model_local_done_gate_receipt_store import (
     ProtocolLocalDoneGateReceiptSource,
-    default_receipt_store,
+    default_receipt_source,
     receipt_reads_verified,
 )
 from omnimarket.nodes.node_dod_verify.handlers.dod_evidence_local_source import (
@@ -3257,7 +3257,7 @@ class EvidenceCollector:
             return None
         source = self._local_done_gate_receipts
         if source is None:
-            source = default_receipt_store()
+            source = default_receipt_source()
             if source is None:
                 return None
             self._local_done_gate_receipts = source
