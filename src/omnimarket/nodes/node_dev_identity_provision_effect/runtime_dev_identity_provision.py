@@ -14,6 +14,9 @@ the run reads the tenant over the ``--lane`` bus, sets the user's tenant attribu
 the two tenant claims back out of the token (names are printed, the token never is). It needs ``--username`` with its own
 ``--email`` and ``--password-key-id``.
 
+``run --user-only --read-role <role>`` (OMN-25103) creates the named ``--username`` (with its own ``--email`` and
+``--password-key-id``) with that realm role and NO tenant: no probe tenant is asked for and no tenant is read or bound.
+
 With no identity flag the overlay's user is provisioned. ``--username`` names another user, which then needs its own
 ``--email`` and ``--password-key-id`` (a key id the secret store node declares in its ``generated_keys``). An existing user is
 refused unless ``--reset-existing`` is given, and a user in the overlay's ``protected_usernames`` is refused unless
@@ -130,6 +133,8 @@ def _run(args: argparse.Namespace) -> int:
                 lookup_user=args.verb == "lookup",
                 delete_user=args.verb == "delete",
                 tenant_id=args.tenant_id,
+                user_only=args.user_only,
+                read_role=args.read_role,
             )
         )
     )
@@ -160,6 +165,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=UUID,
         help="bind the named --username to this EXISTING tenant (no probe tenant is created)",
     )
+    parser.add_argument(
+        "--user-only",
+        action="store_true",
+        help="create the named --username with --read-role and no tenant (needs --email and --password-key-id)",
+    )
+    parser.add_argument("--read-role", help="the realm role a --user-only run grants")
     try:
         return _run(parser.parse_args(list(sys.argv[1:] if argv is None else argv)))
     except (NodeOverlayError, ValidationError, ValueError, OSError) as exc:

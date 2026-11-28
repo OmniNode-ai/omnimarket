@@ -44,6 +44,9 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_harness_b
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_harness_process_runner import (
     HandlerHarnessProcessRunner,
 )
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_lab_agent_local_rung import (
+    HandlerLabAgentLocalRung,
+)
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_harness_backend_call import (
     ModelHarnessAttemptRecord,
     ModelHarnessBackendCallRequest,
@@ -122,7 +125,9 @@ class HandlerHarnessDelegation:
                 runner=HandlerHarnessProcessRunner(
                     environment=process_environment(bound),
                     agents=site.get("agents", {}),
+                    settings=documents,
                     codex=HandlerCodexHarnessAttempt(dependencies=bound),
+                    local_rung=HandlerLabAgentLocalRung(),
                 ),
                 gate=HandlerHarnessAnswerGate(),
                 cost_sink=HandlerHarnessCostPublisher(block["attempt_topic"]),

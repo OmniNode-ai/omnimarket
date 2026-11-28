@@ -25,7 +25,9 @@ from omnimarket.models.host_table_keys import (
     ModelHostTableKeysOverlay,
 )
 from omnimarket.models.overlay_keys import ModelLabHostsTable
-from omnimarket.models.overlay_store.model_overlay_store import ModelOverlayStoreRecord
+from omnimarket.models.overlay_store.model_overlay_store_write import (
+    ModelOverlayStoreWrite,
+)
 from omnimarket.nodes.node_host_table_compute.handlers.handler_host_table import (
     HandlerHostTable,
     HostTableRefusedError,
@@ -69,7 +71,7 @@ class HandlerHostTableKeysIngest:
             )
         return self._store, self._overlay
 
-    def handle(self, request: ModelOverlayStoreRecord) -> None:
+    def handle(self, request: ModelOverlayStoreWrite) -> None:
         """Write the host table document to the one key; return nothing.
 
         The node declares no publish topic and nothing consumes a result, so it returns no model: a returned

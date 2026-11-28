@@ -1932,6 +1932,24 @@ relation_evidence:
       list holds every UTC day's runs, verdict counts and token totals, so the
       dashboard's daily charts cover the whole selected range (OMN-21970).
       Declared ahead of its vendoring for the same reason as its cursor sequence.
+  - name: projection_delegation_quality_weekly
+    kind: view
+    database_ref: application
+    schema: public
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    producer: src/omnimarket/nodes/node_projection_delegation/migrations/0070_delegation_quality_weekly_view.sql
+    readers:
+      - src/omnimarket/nodes/node_projection_delegation/handlers/handler_delegation.py
+      - src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py
+    writers: []
+    authoritative_sources:
+      - src/omnimarket/nodes/node_projection_delegation/migrations/0070_delegation_quality_weekly_view.sql
+    classification_evidence: >-
+      tenant read view over delegation_events with one row per tenant whose cells
+      list holds every ISO week, task type and first-rung model with runs, first-try passes
+      and moves down the chain, so the dashboard's delegation-quality section reads
+      the weekly figures (OMN-26623). Vendored into omnibase_infra with the same change.
   - name: projection_delegation_token_usage
     kind: view
     database_ref: application

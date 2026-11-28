@@ -74,6 +74,15 @@ dod_evidence:
         check_value: >-
           uv run --frozen pytest tests/nodes/node_stability_gateway_key_provision_effect/test_per_check_key_name.py -q --no-cov -n 0 -p no:cacheprovider
         cwd: .
+  - id: dod-omn26566-truncated-answer-lifts-cap
+    description: "AC2, truncation step: a call that ends finish_reason=length under the caller's output cut (recorded C16 run 46060727920, correlation aaec1179-27e0-42f5-8162-3bd2d4274acd, meta-llama/llama-3.1-8b-instruct on tier=tenant_overlay, three identical re-asks) is re-asked once with the route's own ceiling from the overlay row or settings store instead of the same cut; a truncated house overlay answer still escalates to the next responder."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run --frozen pytest tests/unit/delegation/test_omn26566_truncated_overlay_answer_escalates.py -q --no-cov -n 0 -p no:cacheprovider
+        cwd: .
   - id: dod-omn26566-integration-proof
     description: "Local Done gate only, so it binds no criterion here: the overlay model tests run on a lab host at the pushed head."
     source: manual

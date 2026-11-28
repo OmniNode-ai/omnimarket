@@ -67,7 +67,17 @@ class ModelWorkflowReceiptCommand(BaseModel):
     runner_identity: str | None = None
 
 
+class ModelTenantKeyRegisterCommand(BaseModel):
+    """A signed-in tenant's provider key registration: the caller plus the decoded body."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    caller: ModelWorkflowCaller
+    body: Any = Field(repr=False)
+
+
 __all__: list[str] = [
+    "ModelTenantKeyRegisterCommand",
     "ModelWorkflowCaller",
     "ModelWorkflowContractsCommand",
     "ModelWorkflowHttpResponse",

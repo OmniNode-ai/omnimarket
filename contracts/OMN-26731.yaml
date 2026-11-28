@@ -1,0 +1,86 @@
+schema_version: "1.0.0"
+ticket_id: "OMN-26731"
+title: "A customer registers their own provider key through the gateway while signed in, with no message service of their own"
+summary: "onex secret register-tenant-key, when the CLI is signed in to a gateway, sends the key and chosen models to the gateway's POST /v1/workflows/tenant-keys over HTTPS. The gateway writes the key under the tenant UUID the sign-in resolves to and refuses a request naming another tenant. The bus path stays for --host and --store central, operator tooling on lab hosts."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn26731-gateway-key-registration"
+    statement: |-
+      A signed-in customer registers a provider key through the gateway with no message service settings on their machine.
+    acceptance:
+      - id: "AC1"
+        statement: |-
+          AC1: the customer's key registration command sends the key to the gateway over its signed-in HTTP API and needs no message service settings on the customer's machine -- falsifier: the clean-container test's key step on a machine with no KAFKA_BOOTSTRAP_SERVERS fails or asks for a broker
+      - id: "AC2"
+        statement: |-
+          AC2: the gateway stores the key for the signed-in tenant only, under the tenant's own id, and a request for another tenant is refused -- falsifier: a test registering for tenant A with tenant B's sign-in succeeds
+      - id: "AC3"
+        statement: |-
+          AC3: after registration from the clean container, one delegation answers from the customer's chosen model through their own key -- falsifier: the receipt names another model or a platform credential
+evidence_requirements:
+  - kind: "tests"
+    description: "One test body with the transport injected: the signed-in command reaches a fake gateway with no broker, stores under the tenant UUID and is refused for another tenant."
+    command: "uv run pytest tests/unit/cli/test_omn26731_register_tenant_key_gateway.py -q -n 0 --no-cov"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn26731-signed-in-register-needs-no-broker"
+    description: "With KAFKA_BOOTSTRAP_SERVERS unset and the bus forced to fail the test, the signed-in command registers through the gateway; the test errors on the unmodified tree because the gateway route and client do not exist."
+    source: "manual"
+    binds_ac: ["AC1", "AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn26731_register_tenant_key_gateway.py -q -n 0 --no-cov -k signed_in_register"
+        cwd: "."
+  - id: "dod-omn26731-other-tenant-refused"
+    description: "The key is stored under the caller's tenant UUID, a body naming tenant B with tenant A's sign-in answers 403 with nothing stored, and an unknown sign-in answers 401."
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn26731_register_tenant_key_gateway.py -q -n 0 --no-cov -k 'another_tenant or unknown_sign_in or signed_in_register'"
+        cwd: "."
+  - id: "dod-omn26731-api-key-sign-in-reads-back"
+    description: "The signed-in reader sees the sign-in that onex cloud login and onex auth login --api-key-stdin store on disk (an API key, no client id). In the clean-container run on h201 of 27 Nov at head b0c4ec455e5804978d72a3e4434d61f6acbc1ae4, register-tenant-key after onex cloud login answered 'Error: --tenant is required unless this machine is signed in' because the reader asked for a client id; the test fails on that tree and passes with the reader taking the stored API-key credential. AC3 is not bound here: the same container run, with the reader fixed, reached the dev gateway and got HTTP 500 because the gateway's secret store refused the create (403 not allowed to create on secrets), so no delegation after registration was read."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn26731_register_tenant_key_gateway.py -q -n 0 --no-cov -k api_key_sign_in"
+        cwd: "."
+  - id: "dod-omn26731-integration-proof-runnable"
+    description: "Run the same test body on a lab host at the pushed head, addressed to the declared dev bus lane; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The delegation receipt of AC3 is read from the clean-container rerun. The work unit runs uv directly: the lab host refuses env as an executable (refused at d14f038d47), so the earlier env-wrapped form could not run there; the same test file passed on h202 in work unit lw-c318898248e0437d, exit 0."
+    source: "manual"
+    execution_scope: local_done_gate
+    checks:
+      - check_type: "command"
+        check_value: "onex lab-work run --bus-lane dev --omnibase-path \"${OMNI_HOME:?}\" --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-26731 --kind test -- uv run --frozen pytest tests/unit/cli/test_omn26731_register_tenant_key_gateway.py -q --no-cov"
+        cwd: "."
+  - id: "dod-omn26731-integration-proof-argv-runnable"
+    description: "The lab work unit in the integration-proof item starts with an executable the lab handler's allowlist runs; the test fails on the tree where that argv began with env, which the lab refused."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn26731_integration_proof_runnable.py -q -n 0 --no-cov"
+        cwd: "."
+  - id: dod-omn26731-own-key-delegation-receipt
+    description: >-
+      After registering a provider key through the gateway from the clean container on h201 as tenant cli-run-a with
+      omnimarket#7021 installed from its pushed head b368d6b03b476095a7659c675c9f6a058846b8b3, one onex cloud delegate
+      (code_generation) answered with the receipt naming the chosen model qwen/qwen3-coder, credential_source customer_key
+      and route byok-openrouter, status completed (workflow 80ca9828-a88e-4915-88e4-1e3b0ff7a1a6). An earlier delegation
+      of the same session on task type reasoning was answered by meta-llama/llama-3.1-8b-instruct, also on the customer key;
+      the committed receipt is the code_generation one, the run that names the chosen model. The check pins the committed
+      receipt by hash and refuses a receipt that names another model or a platform credential.
+    source: manual
+    binds_ac:
+    - AC3
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/unit/cli/test_omn26731_own_key_delegation_receipt.py -q -n 0 --no-cov
+      cwd: .
