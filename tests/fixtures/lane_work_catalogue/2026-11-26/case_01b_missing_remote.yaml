@@ -1,0 +1,90 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Catalogue fixture (OMN-26701): a pinned snapshot of the 2026-11-26 failure,
+# the raw results quoted verbatim from the sources below, each with the sha256 of
+# its quote. Roots: ledger (the ledger directory: path `live` is the live file,
+# `roll:<day>-split` an archive roll), remote-lane-receipts, open-work (the orchestrator handoff).
+schema: "lane_work_catalogue_fixture.v1"
+day: "2026-11-26"
+case: "case_01b_missing_remote"
+catalogue_row: "1b"
+summary: "Push guard refused on a wrong overlay root; the lane's worktree had no origin remote."
+w_rows:
+  - "W900"
+  - "W902"
+entry_state: "pushing"
+sources:
+  - id: "s1"
+    role: "evidence"
+    root: "ledger"
+    path: "roll:2026-11-26-split"
+    row_timestamp: "2026-11-26T06:45:23Z"
+    lane: "pushprobe2-55800"
+    row_kind: "FRICTION"
+    quote: "| class=refusal | guard=pre_tool_use_shared_tree_git_guard.sh | reason=unauthorised-shared-tree-git-mutation | lane_source=env | dedupe=413059a4d313 | class_key=hook.pre_tool_use_shared_tree_git_guard%2e;sh.template.603ac448e0 | key_version=4f9a31c00dcb5dd989f3e694eff35a98d75faa70832fe7c4334f6770d08de7a5 | refusal_count=1 | suppressed_since_last_row=0 | detail=\"BLOCKED (OMN-18645): ledger ruling re-read could not be verified (the reader node exited 1 without an answering READER line); repair the ledger/journal before publishing.\""
+    sha256: "84f373334bc197188595422197fa86e72bed27b86a872826ced1e0972a32be8c"
+    redacted: false
+    note: "the guard's own refusal on h202"
+  - id: "s2"
+    role: "evidence"
+    root: "ledger"
+    path: "roll:2026-11-26-split"
+    row_timestamp: "2026-11-26T06:45:53Z"
+    lane: "pushprobe2-55800"
+    row_kind: "FRICTION"
+    quote: ", so the push guard's reader exits 1 with no `READER` line and refuses every publish."
+    sha256: "0268f2357a599085cdc30e920a51acb3858daa484b0e7bcdf9b9b26d2d22505a"
+    redacted: false
+  - id: "s3"
+    role: "raw_result"
+    root: "ledger"
+    path: "roll:2026-11-26-split"
+    row_timestamp: "2026-11-26T06:57:18Z"
+    lane: "pushprobe3-56200"
+    row_kind: "FRICTION"
+    quote: "| cost=~3 lane-minutes | class=other | outcome=blocked | host=h202 | run=rlane-pushprobe3-56200-76f095 | parent=orchestrator-31d9-swarm | req=0207b133-b2f6-4bb9-bb24-07fc4a68623e | via=bus:h200 | BLOCKER: no `origin` remote in this lane's worktree, so the dry-run push fails with `fatal: 'origin' does not appear to be a git repository`; the push guard's reader was also not found."
+    sha256: "503b953e2aa5142e3265661b77df9247f7fed6167cf9e528701bc44fc9934cf2"
+    redacted: false
+  - id: "s4"
+    role: "evidence"
+    root: "ledger"
+    path: "roll:2026-11-26-split"
+    row_timestamp: "2026-11-26T06:57:14Z"
+    lane: "pushprobe3-56200"
+    row_kind: "TERMINAL"
+    quote: "| outcome=blocked | host=h202 | run=rlane-pushprobe3-56200-76f095 | parent=orchestrator-31d9-swarm | delegated=0 delegation_reason=no-text-or-code | blocker=no `origin` remote in this lane's worktree, so the dry-run push fails with `fatal: 'origin' does not appear to be a git repository`; the push guard's reader was also not found."
+    sha256: "70cacc540e0e378796eb27d9e29a3ab328e679ff484903b1443ba35285527bbd"
+    redacted: false
+  - id: "s5"
+    role: "evidence"
+    root: "open-work"
+    path: "open-work.md"
+    w_row: "W900"
+    quote: "| W900 | 07:55Z pushprobe2: h202 lane still got "
+    sha256: "e997b4b111f4f7ea23523656af5c671b833278557be6763c0d0f689f3208ffab"
+    redacted: false
+  - id: "s6"
+    role: "evidence"
+    root: "open-work"
+    path: "open-work.md"
+    w_row: "W902"
+    quote: "| W902 | 08:10Z plugin reinstalled 42804b8a212f, h202 roots"
+    sha256: "d687866107ed92e442bfe8283f4f186006ce889e390f9236ac149c3dccafb8ac"
+    redacted: false
+replay:
+  - step: "raw_result"
+    source: "s3"
+    expect:
+      event:
+        kind: "push_refused"
+        event_class: "missing_remote"
+      state: "help_requested"
+      action:
+        kind: "help_request"
+        help_origin: "pushing"
+expected:
+  final_state: "help_requested"
+  action:
+    kind: "help_request"
+    carries: "the refusal text"
+    at_once: true

@@ -1,0 +1,109 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Catalogue fixture (OMN-26701): a pinned snapshot of the 2026-11-26 failure,
+# the raw results quoted verbatim from the sources below, each with the sha256 of
+# its quote. Roots: ledger (the ledger directory: path `live` is the live file,
+# `roll:<day>-split` an archive roll), remote-lane-receipts, open-work (the orchestrator handoff).
+schema: "lane_work_catalogue_fixture.v1"
+day: "2026-11-26"
+case: "case_06_never_started"
+catalogue_row: "6"
+summary: "no-host (exit 75) and STALE-RUNNER placements were reported as running; the worker never ran."
+w_rows:
+  - "W937"
+  - "W939"
+  - "W959"
+entry_state: "awaiting_worker"
+sources:
+  - id: "s1"
+    role: "evidence"
+    root: "ledger"
+    path: "roll:2026-11-26-split"
+    row_timestamp: "2026-11-26T09:22:32Z"
+    lane: "mcpinv-62600"
+    row_kind: "STATUS"
+    quote: "| to=orchestrator-31d9-swarm | ticket=OMN-26043 | status=no-host | host=none | exit=75 | run=rlane-mcpinv-62600-b61b2d"
+    sha256: "63d726067dd7732e21e1a0e8b7fcc3f15529b9b7bf18710ba1fce78c742cccb0"
+    redacted: false
+  - id: "s2"
+    role: "evidence"
+    root: "ledger"
+    path: "roll:2026-11-26-split"
+    row_timestamp: "2026-11-26T09:22:18Z"
+    lane: "mcpbuild-62600"
+    row_kind: "STATUS"
+    quote: "| to=orchestrator-31d9-swarm | ticket=OMN-26043 | status=no-host | host=none | exit=75 | run=rlane-mcpbuild-62600-370b8c"
+    sha256: "143ef65f4f2412c103551a3cf208fe15b081da3e5707bfa56a1ff1a5b8ea0b2d"
+    redacted: false
+  - id: "s3"
+    role: "evidence"
+    root: "ledger"
+    path: "roll:2026-11-26-split"
+    row_timestamp: "2026-11-26T09:24:07Z"
+    lane: "relid2-62800"
+    row_kind: "STATUS"
+    quote: "| to=orchestrator-31d9-swarm | ticket=OMN-25856 | status=no-host | host=none | exit=75 | run=rlane-relid2-62800-3dddab"
+    sha256: "d81173b1a92c95332058f66e5ef82a504fa93f955f3f8a12006f6d0ae370105e"
+    redacted: false
+  - id: "s4"
+    role: "evidence"
+    root: "remote-lane-receipts"
+    path: "mcpinv-62600/rlane-mcpinv-62600-b61b2d.out"
+    lane: "mcpinv-62600"
+    quote: "FAILED remote-lane lane=mcpinv-62600 host=none status=no-host exit=75 duration_s=66.4"
+    sha256: "b9e91dd60b9c90ace794f430e13156acd5da5d2f452c121b3c8f44831eecabba"
+    redacted: false
+  - id: "s5"
+    role: "evidence"
+    root: "remote-lane-receipts"
+    path: "mcpinv-62600/rlane-mcpinv-62600-b61b2d.json"
+    lane: "mcpinv-62600"
+    quote: "\"status\": \"no-host\","
+    sha256: "3389e90dcb79174d3c65b1700d87b3300da6843baae2088cb5ce8951ef5232d4"
+    redacted: false
+  - id: "s6"
+    role: "evidence"
+    root: "open-work"
+    path: "open-work.md"
+    w_row: "W937"
+    quote: "| W937 | 14:05Z operator: MCP work exists, check the ledger; wants an MCP service as an effect node loading functionality from the registry. Found RULING 2026-11-25T19:32:21Z (One MCP server plan, decision 13); mcp-plan-find (Mac) locating the plan and its slices; mcpinv and mcpbuild never started (no-host exit 75), hold until the plan is read. hinv: harness backends already exist (kind harness: codex, claude-glm, claude) in delegation_routing_overlay.v1; told hglm hcodex hclaude hchain to extend them. c13local: truncation again (PROBE budget), blocked by release identity like every packaged omnimarket change (relid2) | orchestrator | +20m |"
+    sha256: "d438af50608367bbbbd5b6d04080faaaf110c115019d518908a0924b06ae474b"
+    redacted: false
+  - id: "s7"
+    role: "evidence"
+    root: "open-work"
+    path: "open-work.md"
+    w_row: "W939"
+    quote: "| W939 | 14:20Z MCP: the One MCP server plan (OMN-15920, KB cbd24a27 beta/plans/2026-11-25-one-mcp-server-plan.md, node_mcp_server_effect reads the registry); PR 1 halves: core#2376 draft, infra 5072b9899 and omnimarket 74d3b1eeac unpushed (old push guard). Placed mcpcore2 mcpinfra2 mcpmkt2; the mcpinv and mcpbuild lanes never started (no-host). Ruling row 2026-11-25T19:32:21Z carries the wrong ticket (OMN-21950) | orchestrator | +30m |"
+    sha256: "a2d35cc40900c2a9e5da244dfa048cc6fb9b236ad35a31fc87c57a77242bd973"
+    redacted: false
+  - id: "s8"
+    role: "evidence"
+    root: "open-work"
+    path: "open-work.md"
+    w_row: "W959"
+    quote: "| W959 | 17:50Z operator: set a tick, set a min and max -> CronCreate 24416e47 every 15 min (fill_tick.py: floor 12, ceiling 24, standing queue lane-queue.tsv; copies in swarm-ticks). Plugin moved to 0.4.505: placements on the 0.4.503 runner were STALE-RUNNER (fx6913 fx6920 ghtoken scram) -> place3 points at 0.4.505, requeued; fx6304 refused merged -> requeued with ack. Opened omnimarket#6927 (GLM handler) and #6928 (Codex handler) | orchestrator | +15m |"
+    sha256: "215a2f6da1b4c16d61ba67a0b85e97b1cd5e49766d364a1b135d3e19f4c89844"
+    redacted: false
+    note: "names STALE-RUNNER for fx6913 fx6920 ghtoken scram; no receipt on this Mac carries that refusal for those lanes"
+replay:
+  - step: "tick"
+    at: "2026-11-26T09:41:25Z"
+    deadline: "worker"
+    expect:
+      event:
+        kind: "deadline_passed"
+        deadline: "worker"
+      state: "blocked"
+      action:
+        kind: "terminal"
+        reason: "worker_never_started"
+        decision: "none"
+expected:
+  final_state: "blocked"
+  action:
+    kind: "terminal"
+    reason: "worker_never_started"
+    decision: "none"
+  counted_as_running: false
+  worker_events_emitted: []

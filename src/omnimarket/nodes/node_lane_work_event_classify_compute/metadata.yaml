@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_lane_work_event_classify_compute
+version: "0.1.0"
+description: "Turn every raw lane work result into a named lane work event by typed fields and an ordered overlay pattern table"
+omnibase_core_compat: ">=0.47.81,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_lane_work_event_classify_compute: "omnimarket.nodes.node_lane_work_event_classify_compute"
+capabilities:
+  standalone: true
+  # false until the lane work orchestrator calls the handler in process (plan task 7).
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.47.81"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "lane-work", "classifier", "pure"]
+pack: "pr_lifecycle"
+display_name: "Lane Work Event Classify"
+node_role: "compute"

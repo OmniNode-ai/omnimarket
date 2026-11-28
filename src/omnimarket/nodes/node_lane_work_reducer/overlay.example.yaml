@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Bootstrap values for the lane work reducer's configuration. The reducer reads no file:
+# the lane work orchestrator resolves its overlay (the settings store first) and passes
+# these in as ModelLaneWorkReducerConfig. Each value is an input, never a constant.
+repeat_bound: 2          # the same admissible failure twice
+help_budget: 3           # help episodes per workflow
+deadline_seconds:
+  worker: 900
+  claim_read: 120
+  observation: 600
+  poll: 300
+  wait_budget: 900       # the release identity wait budget
+  proof: 1800
+  post: 120
+  handoff: 300
+  confirmation: 600
+  help: 900
+# The help chain, tried in order from the tier above the worker's own. It is copied into
+# a workflow's state when its start folds.
+help_tiers:
+  - {name: local, backend_id: local, harness: local, model: qwen, effort: high}

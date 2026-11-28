@@ -1,0 +1,103 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+schema_version: "1.0.0"
+ticket_id: "OMN-26701"
+title: "Lane work orchestrator: the 2026-11-26 failure catalogue replay fixtures"
+summary: >-
+  Acceptance for OMN-26701 (epic OMN-26698, task 5 of the lane work orchestrator plan). Eight pinned
+  fixtures under tests/fixtures/lane_work_catalogue/2026-11-26/ quote the raw results of the
+  2026-11-26 failures verbatim, each with its source and the sha256 of the quote, plus the expected
+  final state and action. tests/unit/nodes/node_lane_work_reducer/test_catalogue_replay.py checks the
+  fixtures (AC1) and replays them through the classifier and the reducer that tasks 3 and 4 add (AC2).
+  AC2 is red until those tasks land, by design. AC3 is the lab step on the Mac that holds the ledger,
+  receipts and open-work rows.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn26701-catalogue-fixtures"
+    statement: >-
+      The first slice of the lane work orchestrator is judged by eight fixtures made of real raw
+      results from 2026-11-26.
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          Eight fixtures, each with a non-empty sources list, a root and file per source, and a sha256
+          per quote -- falsifier: a test counts the fixture files and checks each source
+      - id: "AC2"
+        statement: >-
+          All eight fixtures reach their expected state and action through the classifier and the
+          reducer, with no skipped case -- falsifier: the replay test passes and pytest -rs reports no
+          skipped case
+      - id: "AC3"
+        statement: >-
+          Every quoted source resolves on the Mac -- falsifier: the lab step lists each source as found
+          with a matching sha256, and one missing source fails the task
+evidence_requirements: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn26701-ac1-fixtures"
+    description: >-
+      AC1: the fixture checks count eight files and check each source's root, path and sha256.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_reducer/test_catalogue_replay.py -k test_ac1 -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26701-ac2-replay"
+    description: >-
+      AC2: the replay of all eight fixtures through the classifier and the reducer passes with no skip.
+      Red until the reducer (task 3) and the classifier (task 4) land.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_reducer/test_catalogue_replay.py -m unit -rs -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26701-ac3-lab-step"
+    description: >-
+      AC3: on the Mac that holds the ledger, each fixture source is resolved through its root, the quote
+      is found with grep -F in the named file, and its sha256 matches. The output is posted in the pull
+      request.
+    source: "manual"
+    binds_ac: ["AC3"]
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "test -d tests/fixtures/lane_work_catalogue/2026-11-26"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26701-ac2-replay-on-stack"
+    description: >-
+      AC2: with the reducer (task 3) and the classifier (task 4) branches merged in, the eight replay
+      cases pass through the classifier and the reducer, none skipped.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_reducer/test_catalogue_replay.py -k test_catalogue_replay -rs -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26701-integration-proof"
+    description: >-
+      The catalogue replay runs on a lab host at the pushed head.
+    source: "manual"
+    binds_ac: ["AC2"]
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-26701 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_lane_work_reducer/test_catalogue_replay.py -q --no-cov -n 0 -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26701-ac3-ledger-roll-paths"
+    description: >-
+      AC3: every ledger source names the day's roll, not the live file that rolls daily, so each quoted
+      row still resolves with grep -F after the ledger rolls; all 22 ledger quotes were found in the
+      2026-11-26 roll with a matching sha256.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_reducer/test_catalogue_replay.py -k test_ac3 -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"

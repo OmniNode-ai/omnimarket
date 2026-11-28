@@ -1,0 +1,60 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Catalogue fixture (OMN-26701): a pinned snapshot of the 2026-11-26 failure,
+# the raw results quoted verbatim from the sources below, each with the sha256 of
+# its quote. Roots: ledger (the ledger directory: path `live` is the live file,
+# `roll:<day>-split` an archive roll), remote-lane-receipts, open-work (the orchestrator handoff).
+schema: "lane_work_catalogue_fixture.v1"
+day: "2026-11-26"
+case: "case_12_cause_unknown"
+catalogue_row: "12"
+summary: "Reds with unknown cause."
+w_rows:
+  - "W950"
+entry_state: "diagnosing"
+sources:
+  - id: "s1"
+    role: "evidence"
+    root: "ledger"
+    path: "roll:2026-11-26-split"
+    row_timestamp: "2026-11-26T10:07:09Z"
+    lane: "openprs2r-65000"
+    row_kind: "MSG"
+    quote: "| openprs2r-65000 report .claude_scratch/reports/openprs2r-65000-2026-11-26T1015Z.md. 17 open launch-ticket PRs (set inferred from ls* swarm lanes plus OMN-26043, not read from Linear). RED required, need owners: omnibase_infra#6307 (26316), omnimarket#6887 (26152), #6897 #6903 #6909 #6912 (26043), #6899 (26117), #6921 (25827), #6923 (26520); last two also red repo-evidence / dod-verify. PENDING: omnibase_infra#6302. Drafts not CI-read: infra 6305 6306, market 6895 6896 6916 6918 6920. No ready PR has a Lab line naming its exact head; drafts naming head: infra 6305, market 6896 6918 6920."
+    sha256: "e056ad1ab867e73b14b7a6657b15d02a0f057328a2c96999b88c186f5f7cf5c6"
+    redacted: false
+    note: "the open-PR read that names #6897 and #6912 red and needing owners"
+  - id: "s2"
+    role: "raw_result"
+    root: "open-work"
+    path: "open-work.md"
+    w_row: "W950"
+    quote: "| W950 | 16:05Z updated omnimarket#6899 with dev; #6903 conflicts -> fx6903c; #6912 and #6897 red on Split 1/5, cause unknown -> fx6912c fx6897d with five whys | orchestrator | +20m |"
+    sha256: "857e9f6711308ea70516368fd6678df2f0b1e037d8bdbe6864eb77c6971635d5"
+    redacted: false
+  - id: "s3"
+    role: "evidence"
+    root: "ledger"
+    path: "roll:2026-11-26-split"
+    row_timestamp: "2026-11-26T11:08:06Z"
+    lane: "fx6912d-66600"
+    row_kind: "TERMINAL"
+    quote: "| outcome=partial | host=h053 | run=rlane-fx6912d-66600-fdaf74 | parent=orchestrator-31d9-swarm | delegated=0 delegation_reason=no-text-or-code"
+    sha256: "651daf90fdba3e52764a498207d893600bd64dd7ee3c91c2a0d4d76dcbad5af2"
+    redacted: false
+    note: "the lane on #6912 ended partial"
+replay:
+  - step: "raw_result"
+    source: "s2"
+    expect:
+      event:
+        kind: "cause_unknown"
+      state: "help_requested"
+      action:
+        kind: "help_request"
+        to: "the tier above the worker"
+expected:
+  final_state: "help_requested"
+  action:
+    kind: "help_request"
+    to: "the tier above the worker"

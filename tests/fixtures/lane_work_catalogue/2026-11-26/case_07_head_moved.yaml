@@ -1,0 +1,99 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Catalogue fixture (OMN-26701): a pinned snapshot of the 2026-11-26 failure,
+# the raw results quoted verbatim from the sources below, each with the sha256 of
+# its quote. Roots: ledger (the ledger directory: path `live` is the live file,
+# `roll:<day>-split` an archive roll), remote-lane-receipts, open-work (the orchestrator handoff).
+schema: "lane_work_catalogue_fixture.v1"
+day: "2026-11-26"
+case: "case_07_head_moved"
+catalogue_row: "7"
+summary: "Heads moved after the proof and the change was merged unproven."
+w_rows:
+  - "W916"
+  - "W919"
+  - "W955"
+entry_state: "handing_off"
+entry_head: "0dbe3156e52dcb33b15fc3c82f5959de6691a4de"
+entry_request: "R1"
+sources:
+  - id: "s1"
+    role: "evidence"
+    root: "ledger"
+    path: "roll:2026-11-26-split"
+    row_timestamp: "2026-11-26T05:50:06Z"
+    lane: "pf6904-52800"
+    row_kind: "MSG"
+    quote: "| ticket=OMN-26043 | source=title | repo=omnimarket | pr=omnimarket#6904 | head=0dbe3156e52dcb33b15fc3c82f5959de6691a4de | needs=land | req=76005ebf-bb83-425b-b949-9442a49cb51f | via=bus:h200 | Handoff from pf6904-52800: omnimarket#6904 is ready to land at this head. Send a red back to pf6904-52800 by MSG."
+    sha256: "f3e4d7a0ea3ca1104bad6f6e7c584388456e3dfbf240ec2427748a5e190bba12"
+    redacted: false
+    note: "the handoff at the proven head 0dbe3156e52dcb33b15fc3c82f5959de6691a4de"
+  - id: "s2"
+    role: "evidence"
+    root: "ledger"
+    path: "roll:2026-11-26-split"
+    row_timestamp: "2026-11-26T09:28:06Z"
+    lane: "landing-L49434"
+    row_kind: "CLAIM"
+    quote: "| pr=omnimarket#6923 | relay=landing-controller | host=h051 | est ~1 lane-hours; displaces a fix worker on the busy controller host; (OMN-19998)"
+    sha256: "1f73ab4b3e6f811f68e76f94e770f8d1d024e2d7ea8af3dff883f737c9a10105"
+    redacted: false
+    note: "omnimarket#6923 worked at head 18f413920d88"
+  - id: "s3"
+    role: "evidence"
+    root: "open-work"
+    path: "open-work.md"
+    w_row: "W916"
+    quote: "| W916 | 10:45Z omnimarket#6904 MERGED 08:01:35Z at head 66c0953dfbca, a head the lab never proved (proofs at 0dbe3156 and 5e14d2f2): the armed auto-merge landed a moved head (operator asked 06:55Z, no answer); 6306 proof posted (731 pass, known bad 2 fail) | orchestrator | operator |"
+    sha256: "50a735af2d78e4f414280ba75107c3bdb9363ea942af26ae92dab02ad9cb051d"
+    redacted: false
+  - id: "s4"
+    role: "evidence"
+    root: "open-work"
+    path: "open-work.md"
+    w_row: "W919"
+    quote: "| W919 | 11:10Z omnibase_infra#6298 and #6301 MERGED 08:16Z at heads 63e7b0eb and 74ee8415 the lab never proved (queued 07:09Z and 07:23Z before auto-merge was turned off; the controller updated the branches after the proofs). Queue now holds only 6221 and 6248 of ours, both with a proof line naming their head. Gap: the merge queue keeps a change queued after its head moves | orchestrator | +20m |"
+    sha256: "e3f352227fa7ea9251425585921d73b94672be1ec77788e96289c523c54b6d0c"
+    redacted: false
+  - id: "s5"
+    role: "evidence"
+    root: "open-work"
+    path: "open-work.md"
+    w_row: "W955"
+    quote: "| W955 | 17:05Z omnimarket#6923 merged 10:54Z at head 9c5e5016cd (proof was 18f413920d; the bot merged dev into it): another moved-head merge by the landing path; 6909 proof at a3c834bc4 posted (96 pass, known bad 7 fail); 6903 already has dev merged by onexbot at 6f1bc80883 | orchestrator | +20m |"
+    sha256: "671a6f67a99fc2704bf0df55701815dd2571d96d2fe6d53a661de7ccb8ec8350"
+    redacted: false
+replay:
+  - step: "typed_result"
+    derived_from: "s3"
+    kind: "pr_observation"
+    payload:
+      pr: "omnimarket#6904"
+      head_sha: "66c0953dfbca"
+      observed_after_last_push: true
+    expect:
+      event:
+        kind: "head_moved"
+      state: "proving"
+      action:
+        kind: "lab_proof"
+        at_head: "66c0953dfbca"
+  - step: "typed_result"
+    derived_from: "s1"
+    kind: "handoff_answer"
+    payload:
+      outcome: "handed_off"
+      request_id: "R1"
+      head_sha: "0dbe3156e52dcb33b15fc3c82f5959de6691a4de"
+    expect:
+      event:
+        kind: "handoff_written"
+      receipt: "refused"
+      state: "proving"
+      reason: "request_matches is false for the old request"
+expected:
+  final_state: "proving"
+  action:
+    kind: "lab_proof"
+    at_head: "66c0953dfbca"
+  old_request_answer: "refused"

@@ -1,0 +1,110 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Catalogue fixture (OMN-26701): a pinned snapshot of the 2026-11-26 failure,
+# the raw results quoted verbatim from the sources below, each with the sha256 of
+# its quote. Roots: ledger (the ledger directory: path `live` is the live file,
+# `roll:<day>-split` an archive roll), remote-lane-receipts, open-work (the orchestrator handoff).
+schema: "lane_work_catalogue_fixture.v1"
+day: "2026-11-26"
+case: "case_01_push_guard"
+catalogue_row: "1"
+summary: "Push guard refused on ruling ACK rows written without a lane cell, three times on one host; the commit was left unpushed."
+w_rows:
+  - "W943"
+  - "W951"
+  - "W953"
+entry_state: "pushing"
+sources:
+  - id: "s1"
+    role: "evidence"
+    root: "ledger"
+    path: "roll:2026-11-26-split"
+    row_timestamp: "2026-11-26T09:44:41Z"
+    lane: "red6909-61400"
+    row_kind: "ACK"
+    quote: "| id=2026-11-26T09:44:41Z-red6909-61400 | to=orchestrator-31d9-swarm | re=2026-11-26T09:16:23Z | ticket=OMN-26043 | req=1bded42c-1391-4aa3-99b7-84dc74ba7aba | via=bus:h053 | read; process ruling, no change to this lane's scope."
+    sha256: "c86ab14d34c175fe13b95257af1552f600c2d222be916ca73e4de3da91686365"
+    redacted: false
+    note: "ruling ACK row: it carries `from=` and no `lane=` cell, the defect W951 names"
+  - id: "s2"
+    role: "evidence"
+    root: "ledger"
+    path: "roll:2026-11-26-split"
+    row_timestamp: "2026-11-26T09:45:45Z"
+    lane: "red6909-61400"
+    row_kind: "ACK"
+    quote: "| id=2026-11-26T09:45:45Z-red6909-61400 | to=orchestrator-31d9-swarm | re=2026-11-26T09:16:23Z | ruling=2026-11-26T09:16:23Z | ruling-sha256=d018fd8c7be1ca74b592839578566f5682ddd6f768f6641ba71e883011de1371 | ticket=OMN-26043"
+    sha256: "bd6d650c0ae1cfb829945b712d37fdad647aaf8a8e07d3161b8014f6636b0d65"
+    redacted: false
+    note: "the rewritten ACK, now with ruling and ruling-sha256 cells, still without a lane cell"
+  - id: "s3"
+    role: "raw_result"
+    root: "ledger"
+    path: "roll:2026-11-26-split"
+    row_timestamp: "2026-11-26T09:47:18Z"
+    lane: "red6909-61400"
+    row_kind: "FRICTION"
+    quote: "| cost=~38 lane-minutes | class=ruling | outcome=blocked | host=h053 | run=rlane-red6909-61400-e4acac | parent=orchestrator-31d9-swarm | req=68aa51e0-3f83-4525-9ddc-dc2b24696720 | via=bus:h200 | BLOCKER: push refused by the OMN-18645 ruling-ACK guard after the ACKs were written; local merge `eb3ad01782` is committed and unpushed."
+    sha256: "c393de93fbbe222e1caca409c460547234a746be60198bd77f27c7d836a99822"
+    redacted: false
+  - id: "s4"
+    role: "evidence"
+    root: "ledger"
+    path: "roll:2026-11-26-split"
+    row_timestamp: "2026-11-26T09:47:14Z"
+    lane: "red6909-61400"
+    row_kind: "TERMINAL"
+    quote: "| outcome=blocked | host=h053 | run=rlane-red6909-61400-e4acac | parent=orchestrator-31d9-swarm | delegated=0 delegation_reason=no-text-or-code | blocker=push refused by the OMN-18645 ruling-ACK guard after the ACKs were written; local merge `eb3ad01782` is committed and unpushed."
+    sha256: "34ee7c03b182b2ee0f619a4449a199bdf1f162c58a7d10e97a9498a9b0d13363"
+    redacted: false
+  - id: "s5"
+    role: "evidence"
+    root: "remote-lane-receipts"
+    path: "red6909-61400/rlane-red6909-61400-e4acac.json"
+    lane: "red6909-61400"
+    field: "result"
+    quote: "The push guard refused three times even after I ACKed all three rulings and the MSG."
+    sha256: "e344f8fea8bbc7cf05ebab88b65064baa98a07a3b17350f5df1afac1d07a7533"
+    redacted: false
+  - id: "s6"
+    role: "evidence"
+    root: "open-work"
+    path: "open-work.md"
+    w_row: "W943"
+    quote: "| W943 | 14:55Z dev contract already fixed by omnimarket#6922 (60efb72fd5, 09:28Z); fix22708 told to check only the producer; red6909 merged dev locally but the push guard refused 3 times on h053 -> Mac push6909-6914 workflow, guard053 five whys | orchestrator | +20m |"
+    sha256: "b3ba96652f9efc6e8b92157db3075b5e0b4b8f921cb1133157e3b78c10b5271d"
+    redacted: false
+  - id: "s7"
+    role: "evidence"
+    root: "open-work"
+    path: "open-work.md"
+    w_row: "W951"
+    quote: "| W951 | 16:15Z guard053r: h053 push refusals = ruling ACK rows written without a lane cell; fix pushed and opened; hclauder2 (Claude handler: refuses API-key login by name, effort per tier, receipt names the answering model) staged, blocked by release identity; bump6310 refused: another lane holds omnibase_infra#6310; reworded fx6903 fx6912 fx6897 (named a merged ticket) and pf6909 (stale) | orchestrator | +20m |"
+    sha256: "b711545f1a6cd455d99d45894f44b14bc8b3f67d603c67c755f17c98c1505cc0"
+    redacted: false
+  - id: "s8"
+    role: "evidence"
+    root: "open-work"
+    path: "open-work.md"
+    w_row: "W953"
+    quote: "| W953 | 16:45Z omnimarket#6919 MERGED (post-release bump 0.4.329): release identity unblocked; placed m6909 m6914 m6903 m6899 (dev merges) and cdead ccodex cglm cclaude cblock ctenant (commit staged patches), one at a time, h201 and h202 only (h053 push guard fix"
+    sha256: "af9a83f6475a1da77dfbba52e5f0fe3f027eb67f517c93ef13c853c4448eb8bc"
+    redacted: false
+replay:
+  - step: "raw_result"
+    source: "s3"
+    expect:
+      event:
+        kind: "push_refused"
+        event_class: "guard_ledger_cell"
+      state: "help_requested"
+      action:
+        kind: "help_request"
+        help_origin: "pushing"
+expected:
+  final_state: "help_requested"
+  action:
+    kind: "help_request"
+    carries: "the refusal text"
+    at_once: true
+  never: "a silent unpushed commit"
