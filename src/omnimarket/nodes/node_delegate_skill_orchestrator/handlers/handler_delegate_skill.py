@@ -16,7 +16,7 @@ import inspect
 import logging
 import math
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, Protocol, TypedDict
 from uuid import UUID
@@ -77,6 +77,9 @@ from omnimarket.models.delegation.delegation_ticket_id import (
 from omnimarket.models.delegation.local_credential_refusal import (
     ModelLocalCredentialRefusal,
 )
+from omnimarket.models.delegation.model_delegation_routing_overlay import (
+    ModelDelegationRoutingOverlay,
+)
 from omnimarket.models.delegation.wire.model_attempt_configuration import (
     ModelAttemptConfiguration,
 )
@@ -130,6 +133,9 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_prompt_size_
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_delegation_claim import (
     ProtocolDelegationIdempotencyPort,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_harness_delegation_dispatch import (
+    HarnessDelegationDispatch,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import (
     ProtocolDelegationEventBus,
@@ -1544,7 +1550,13 @@ class HandlerDelegateSkill:
         *,
         dispatch_port: ProtocolDelegationDispatchPort | None = None,
         idempotency_port: ProtocolDelegationIdempotencyPort | None = None,
+        harness_overlay: ModelDelegationRoutingOverlay | None = None,
     ) -> None:
+        # OMN-26219: kept so a pin on a kind: harness backend can be published to the harness
+        # handler even when the runtime injected its own dispatch port (see _harness_route).
+        self._event_bus = event_bus
+        self._harness_overlay = harness_overlay
+        self._port_injected = dispatch_port is not None
         # OMN-18887: the correlation-keyed claim. Injected on the same terms as
         # the dispatch port and resolved by the same ports package, so this
         # handler owns a protocol rather than a database, and every one of the
@@ -1574,6 +1586,44 @@ class HandlerDelegateSkill:
             )
 
             self._dispatch_port = select_delegation_dispatch_port(event_bus)
+
+    def _harness_route(
+        self, backend_id: str | None
+    ) -> HarnessDelegationDispatch | None:
+        """The harness dispatch for a pin the routing overlay declares a harness backend (OMN-26219).
+
+        The runtime auto-wiring injects its own dispatch port, which knows nothing of the
+        harness handler, so the pin has to be sent here, ahead of the injected port. Only an
+        injected port on a real broker bus takes this route: the port this handler selects
+        for itself already carries the harness branch, and an in-memory bus has no harness
+        handler consuming the command.
+        """
+        if backend_id is None or not self._port_injected or self._event_bus is None:
+            return None
+        from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+
+        if isinstance(self._event_bus, EventBusInmemory):
+            return None
+        from omnimarket.handlers.routing import routing_tiers_path as rtp
+        from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import (
+            load_runtime_delegation_dispatch_config,
+        )
+
+        config = load_runtime_delegation_dispatch_config()
+        if (
+            config.topics.harness_command is None
+            or config.topics.harness_completed is None
+        ):
+            return None
+        overlay = (
+            self._harness_overlay
+            if self._harness_overlay is not None
+            else rtp.load_delegation_routing_overlay()
+        )
+        harness = HarnessDelegationDispatch(
+            event_bus=self._event_bus, config=config, overlay=overlay
+        )
+        return harness if harness.admits(backend_id) else None
 
     async def _dispatch_and_build_terminal(
         self, request: ModelDelegateSkillRequest
@@ -1808,8 +1858,20 @@ class HandlerDelegateSkill:
             # orphaning it, which matters because an abandoned dispatch keeps
             # the runtime port's correlation-scoped broker subscription open
             # and hands the same stall to the next record.
-            result = await asyncio.wait_for(
-                self._dispatch_port.dispatch(
+            harness = self._harness_route(request.backend_id)
+            if harness is not None and request.backend_id is not None:
+                dispatch_call: Awaitable[dict[str, object]] = harness.dispatch(
+                    prompt=request.prompt,
+                    task_type=request.task_type,
+                    correlation_id=request.correlation_id,
+                    wait=request.wait,
+                    execution_timeout_seconds=dispatch_execution_timeout_seconds,
+                    tenant_id=request.tenant_id,
+                    backend_id=request.backend_id,
+                    attribution=_request_attribution(request) or None,
+                )
+            else:
+                dispatch_call = self._dispatch_port.dispatch(
                     prompt=request.prompt,
                     task_type=request.task_type,
                     correlation_id=request.correlation_id,
@@ -1867,7 +1929,9 @@ class HandlerDelegateSkill:
                     **_terminal_measure_dispatch_kwargs(
                         request, queue_wait_ms, self._dispatch_port.dispatch
                     ),
-                ),
+                )
+            result = await asyncio.wait_for(
+                dispatch_call,
                 timeout=remaining_execution_ms / 1000.0 + wait_allowance_seconds,
             )
         except asyncio.CancelledError:
