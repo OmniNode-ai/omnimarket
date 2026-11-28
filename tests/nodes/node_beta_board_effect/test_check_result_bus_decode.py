@@ -49,3 +49,21 @@ def test_no_handler_holds_the_topic_as_a_constant() -> None:
         if "delegation-check-probe-completed" in p.read_text(encoding="utf-8")
     ]
     assert offenders == []
+
+
+def test_an_undeclared_broker_is_an_error_read_never_no_events(monkeypatch) -> None:
+    from datetime import UTC, datetime
+
+    from omnimarket.handlers.bus_binding.node_broker import NodeBrokerResolutionError
+    from omnimarket.nodes.node_beta_board_effect.handlers import (
+        adapter_check_result_bus as bus,
+    )
+
+    def refuse(_node: str):
+        raise NodeBrokerResolutionError("no event_bus declared")
+
+    monkeypatch.setattr(bus, "resolve_dialable_broker", refuse)
+    got = bus.KafkaCheckResultSource().read("t", datetime.now(UTC))
+    assert got.records == ()
+    assert got.error is not None
+    assert "no event_bus declared" in got.error

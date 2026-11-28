@@ -2,27 +2,30 @@
 # SPDX-License-Identifier: MIT
 """The beta board's bus read of the delegation check probe's run events (OMN-26723).
 
-Broker auth comes from the shared omnibase_infra builder over the lane's standard KAFKA_* environment, so no credential is read or named
-here. The read assigns partitions and seeks to the first offset at or after the bound: it joins no consumer group and commits nothing.
+The broker is the one the board node's own overlay declares (``event_bus``), resolved the way the probe's publisher resolves its own;
+``KAFKA_BOOTSTRAP_SERVERS`` is never read and no credential is named here. The read assigns partitions and seeks to the first offset at or after the bound: it joins no consumer group and commits nothing.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
-import os
 from datetime import datetime
 from typing import Any
 
 from pydantic import ValidationError
 
+from omnimarket.handlers.bus_binding.node_broker import (
+    NodeBrokerResolutionError,
+    resolve_dialable_broker,
+)
 from omnimarket.nodes.node_beta_board_effect.models.model_beta_board import (
     ModelCheckResultRead,
     ModelCheckResultRecord,
 )
 from omnimarket.topic_namespace import apply_topic_namespace
 
-BOOTSTRAP_ENV = "KAFKA_BOOTSTRAP_SERVERS"
+NODE = "node_beta_board_effect"
 _POLL_TIMEOUT_MS = 5_000
 _READ_DEADLINE_S = 30.0
 
@@ -45,13 +48,21 @@ def decode_record(value: bytes) -> ModelCheckResultRecord | None:
 
 async def _read(topic: str, since: datetime) -> list[ModelCheckResultRecord]:
     from aiokafka import AIOKafkaConsumer, TopicPartition
-    from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
 
+    broker = resolve_dialable_broker(NODE)
+    options: dict[str, str] = {}
+    if broker.sasl_mechanism is not None:
+        options["sasl_mechanism"] = broker.sasl_mechanism
+    if broker.sasl_username is not None:
+        options["sasl_plain_username"] = broker.sasl_username
+    if broker.sasl_password is not None:
+        options["sasl_plain_password"] = broker.sasl_password.get_secret_value()
     consumer: Any = AIOKafkaConsumer(
-        bootstrap_servers=os.environ[BOOTSTRAP_ENV],
+        bootstrap_servers=broker.bootstrap_servers,
+        security_protocol=broker.security_protocol or "PLAINTEXT",
         group_id=None,
         enable_auto_commit=False,
-        **build_aiokafka_auth_kwargs_from_env(),
+        **options,
     )
     await consumer.start()
     found: list[ModelCheckResultRecord] = []
@@ -99,7 +110,14 @@ class KafkaCheckResultSource:
             records = asyncio.run(
                 asyncio.wait_for(_read(topic, since), _READ_DEADLINE_S)
             )
-        except (KeyError, LookupError, OSError, TimeoutError, ImportError) as exc:
+        except (
+            NodeBrokerResolutionError,
+            KeyError,
+            LookupError,
+            OSError,
+            TimeoutError,
+            ImportError,
+        ) as exc:
             return ModelCheckResultRead(
                 error=f"the check result topic cannot be read: {type(exc).__name__} {exc}"[
                     :240
