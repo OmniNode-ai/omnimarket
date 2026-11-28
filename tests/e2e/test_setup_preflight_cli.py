@@ -56,6 +56,8 @@ def test_actual_preflight_is_readonly_and_never_prompts(
     env = {
         "HOME": str(home),
         "ONEX_STATE_DIR": str(tmp_path / "state"),
+        # Core lists `setup` on the operator surface only until the switch is on.
+        "ONEX_CLI_SHOW_ALL_COMMANDS": "1",
         "PATH": str(Path(sys.executable).parent)
         + os.pathsep
         + os.environ.get("PATH", "/usr/bin:/bin:/usr/sbin:/sbin"),
@@ -141,7 +143,11 @@ def test_windows_without_unix_locks_reports_wsl_remedy(
     result = subprocess.run(
         [sys.executable, "-c", script, "setup", "--no-interactive", *options],
         cwd=workspace,
-        env={"HOME": str(home), "ONEX_STATE_DIR": str(tmp_path / "state")},
+        env={
+            "HOME": str(home),
+            "ONEX_STATE_DIR": str(tmp_path / "state"),
+            "ONEX_CLI_SHOW_ALL_COMMANDS": "1",
+        },
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,

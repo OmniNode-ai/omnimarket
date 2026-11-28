@@ -68,6 +68,9 @@ from omnibase_core.models.delegation.wire import (
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
+from omnibase_infra.models.dispatch.model_malformed_command_terminal import (
+    ModelMalformedCommandTerminal,
+)
 from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts_from_paths
 from omnibase_infra.runtime.auto_wiring.handler_wiring import (
     _declared_failure_terminal_topics,
@@ -1012,14 +1015,24 @@ async def test_a_real_inference_dispatch_failure_closes_the_workflow_end_to_end(
         "in ROUTED and the caller waits out the whole ingress budget"
     )
     assert isinstance(envelope.payload, dict)
-    terminal = ModelBoundaryFailureTerminal.model_validate(envelope.payload)
-    assert terminal.origin_topic == _INFERENCE_REQUEST_TOPIC
-    assert terminal.status == "failed"
-    # Attributed, not "dispatch_timeout": the boundary names the validation
-    # class and carries the concrete discriminator validation reason.
-    assert terminal.failure_class == "ValueError"
-    assert "llm_inference" in terminal.failure_reason
-    assert "timeout" not in terminal.failure_reason.casefold()
+    # A discriminator the intent model refuses is a publisher-malformed command:
+    # the engine answers it with the contract's declared failure terminal.
+    malformed = ModelMalformedCommandTerminal.model_validate(envelope.payload)
+    assert malformed.origin_topic == _INFERENCE_REQUEST_TOPIC
+    assert malformed.topic == _INFERENCE_FAILED_TOPIC
+    assert malformed.status == "failed"
+    assert malformed.failure_class == "publisher_malformed"
+    assert malformed.retryable is False
+    # Attributed, not "dispatch_timeout": the terminal carries the concrete
+    # discriminator validation reason.
+    assert "llm_inference" in malformed.failure_reason
+    assert "timeout" not in malformed.failure_reason.casefold()
+    terminal = _boundary_terminal(
+        correlation_id,
+        origin_topic=malformed.origin_topic,
+        failure_class=malformed.failure_class,
+        failure_code=malformed.failure_code,
+    )
 
     handler = HandlerDelegationWorkflow(workflows={})
     await handler.handle(_make_request(correlation_id))
