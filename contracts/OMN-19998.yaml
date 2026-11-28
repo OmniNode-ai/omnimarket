@@ -271,6 +271,11 @@ requirements:
     acceptance:
       - id: AC135
         statement: 'AC135: a lab-agent backend with a bound local rung answers through it with the local model named on the receipt, and with none bound still returns launch_failed; the local rung adapter takes the local tier pick from the routing authority and runs the local dispatch port pinned to it -- falsifier: uv run --frozen pytest tests/unit/delegation/test_harness_lab_agent_local_rung.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-work-contract-lock-pin-bump
+    statement: The work contract environment pin of uv.lock survives the post-release bot bump and still refuses a dependency change.
+    acceptance:
+      - id: AC136
+        statement: 'AC136: the uv.lock pin digest masks only the omnimarket self-entry version and the lock revision line, so a version-only bump keeps every work contract pin valid, while a changed dependency version still raises input_pin_mismatch and non-lock pins stay raw sha256 -- falsifier: uv run --frozen pytest tests/nodes/test_work_contract_pins_current.py -q --no-cov -n 0 -p no:randomly'
 evidence_requirements:
   - kind: tests
     description: Recorded gate subject spellings and named causes run through the production ledger parser and contract handler.
@@ -1027,4 +1032,13 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/delegation/test_harness_lab_agent_local_rung.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+
+  - id: dod-omn19998-work-contract-lock-pin-bump
+    description: A uv.lock carrying a bumped self version and lock revision passes the environment pin; a changed dependency version raises input_pin_mismatch; a non-lock file is still pinned by raw sha256; all 70 corpus pins match the current lock. The live reading on a bump head is on the pull request's Lab line.
+    source: manual
+    binds_ac: [AC136]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/test_work_contract_pins_current.py -q --no-cov -n 0 -p no:randomly
         cwd: .
