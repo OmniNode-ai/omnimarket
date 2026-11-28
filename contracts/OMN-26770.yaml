@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: OMN-26770
+title: "A branch commit is never refused for its package version; version identity is checked only on the release path"
+summary: The check-release-identity hook runs in the branch context and the ci.yml release-identity gate runs the release context only on a release ref or tag, both pinned by sha to the omnibase_core commit that adds the context.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26770-release-path-only
+    statement: The version-ahead rule applies only on a release ref or tag; a branch commit or feature PR at the latest published version passes.
+    acceptance:
+      - id: AC1
+        statement: "AC1: a branch commit and a feature PR that change packaged source at a version equal to the latest published one pass check-release-identity in omnimarket -- falsifier: uv run pytest tests/ci/test_release_identity_context_omn26770.py -k branch_commit_at_equal_version fails on the base config"
+      - id: AC2
+        statement: "AC2: a release PR or tag at a version equal to the latest published one is still refused -- falsifier: uv run pytest tests/ci/test_release_identity_context_omn26770.py -k release_ref_at_equal_version fails when the release context passes"
+evidence_requirements:
+  - kind: tests
+    description: Branch context passes and a release ref is refused at an equal version, using the pinned omnibase_core runtime.
+    command: uv run pytest tests/ci/test_release_identity_context_omn26770.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26770-omnimarket-branch-equal-passes
+    description: "An equal-version branch commit passes check-release-identity with the hook's own args at the pinned omnibase_core sha."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/ci/test_release_identity_context_omn26770.py -k "branch_commit_at_equal_version or branch_context or hook_runs" -q --no-cov
+        cwd: .
+  - id: dod-omn26770-omnimarket-release-equal-refused
+    description: "A release ref (tag, main, release PR) at an equal version gets the release context and is refused."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/ci/test_release_identity_context_omn26770.py -k "release_ref" -q --no-cov
+        cwd: .

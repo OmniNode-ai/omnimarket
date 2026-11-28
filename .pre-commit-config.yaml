@@ -161,13 +161,6 @@ repos:
       - id: precommit-interpreter-resolution
         require_serial: true
         always_run: true
-      # OMN-16344 release-identity gate: no packaged-source change on a published
-      # version without a bump. pass_filenames hands the hook the staged paths that
-      # match its files filter, which is what the local hook's --staged did; CI keeps
-      # the PR-base comparison (ci.yml job 'release-identity-gate').
-      - id: check-release-identity
-        require_serial: true
-        pass_filenames: true
       # OMN-18790 skip-count ratchet selftest. The data file is this repo's
       # config/skip_count_baseline.yaml; the CI job 'skip-count-ratchet' reads it
       # with --baseline. The files filter keeps the local hook's triggers except the
@@ -188,6 +181,19 @@ repos:
   # OMN-19998: a public workflow selects no lab runner. No baseline: a job still on the
   # lab has a typed route packaged with this core, and the routes only shrink. CI twin:
   # the last steps of job public-runner-placement in .github/workflows/ci.yml read this rev.
+  # OMN-26770: a branch commit is never refused for its package version. The hook runs in
+  # the branch context; the version-ahead rule is the release path's (ci.yml job
+  # 'release-identity-gate' passes --context release on a release ref or tag). Pinned by
+  # sha to the omnibase_core commit that adds --context, so no work waits on a release.
+  # pass_filenames hands the hook the staged paths that match its files filter. The
+  # args replace the hook's default ones, so --root stays. SYNC with ci.yml.
+  - repo: https://github.com/OmniNode-ai/omnibase_core
+    rev: 33de8a4df42bba1763db7e91aa97d27474a086d2  # pragma: allowlist secret
+    hooks:
+      - id: check-release-identity
+        args: [--root, ., --context, branch]
+        require_serial: true
+        pass_filenames: true
   - repo: https://github.com/OmniNode-ai/omnibase_core
     rev: dev-20261105190003-87a6f5ddcbcc
     hooks:

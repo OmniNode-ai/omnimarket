@@ -2811,15 +2811,41 @@ jobs:
       - name: No code merged onto a published version without a bump (OMN-16344)
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref || 'dev' }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref || '' }}
         run: |
           set -euo pipefail
           BASE="${BASE_REF}"
           git fetch --quiet origin "${BASE}" || true
-          # OMN-21940: omnibase_core's runtime, at the tag the pre-commit hook
-          # 'check-release-identity' pins.
-          uv run --no-project --with 'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@dev-20261101023710-a66b5ff79cc0' \
+          # OMN-26770: the version-ahead rule is the release path's. A release ref
+          # (a tag, main, a PR into main, or a release/ branch) is checked in the
+          # release context; every other ref is a branch and is never refused for
+          # its version. SYNC with the pre-commit hook 'check-release-identity',
+          # which runs in the branch context.
+          CONTEXT=branch
+          case "${GITHUB_REF}" in
+            refs/tags/*|refs/heads/main|refs/heads/release/*) CONTEXT=release ;;
+          esac
+          if [ "${BASE}" = "main" ] || [[ "${HEAD_REF}" == release/* ]]; then
+            CONTEXT=release
+          fi
+          echo "release-identity context: ${CONTEXT}"
+          # OMN-21940: omnibase_core's runtime, at the rev the pre-commit hook
+          # 'check-release-identity' pins. OMN-26770: that rev is the omnibase_core
+          # commit that adds --context, read from .pre-commit-config.yaml so the
+          # hook and this gate cannot drift apart.
+          REV="$(uv run --no-project --with pyyaml python -c '
+          import yaml
+          config = yaml.safe_load(open(".pre-commit-config.yaml"))
+          print(next(
+              repo["rev"]
+              for repo in config["repos"]
+              for hook in repo.get("hooks") or []
+              if hook["id"] == "check-release-identity"
+          ))
+          ')"
+          uv run --no-project --with "omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@${REV}" \
             python -m omnibase_core.nodes.node_release_identity_check_compute.runtime_release_identity_check \
-            --root . --base "origin/${BASE}"
+            --root . --base "origin/${BASE}" --context "${CONTEXT}"
 
   wire-compatibility-gate:
     name: Wire Compatibility Gate
