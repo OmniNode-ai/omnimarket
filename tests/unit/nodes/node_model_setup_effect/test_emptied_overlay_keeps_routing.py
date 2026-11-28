@@ -183,6 +183,8 @@ def test_remove_last_local_then_delegate(tmp_path: Path) -> None:
         "PATH": f"{onex.parent}:/usr/bin:/bin",
         "LANG": "C.UTF-8",
         "ONEX_STATE_DIR": str(tmp_path / "state"),
+        # omnibase_core hides the `models` group (undecided surface) unless the operator switch is on.
+        "ONEX_CLI_SHOW_ALL_COMMANDS": "1",
     }
     server = ThreadingHTTPServer(("127.0.0.1", 0), _LocalModel)
     thread = threading.Thread(target=server.serve_forever, daemon=True)

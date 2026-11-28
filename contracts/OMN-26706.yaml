@@ -1,0 +1,154 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+schema_version: "1.0.0"
+ticket_id: "OMN-26706"
+title: "The lane work reducer: a pure reducer node whose contract holds the sixteen states and every edge of the lane work loop"
+summary: >-
+  Acceptance for OMN-26706 (epic OMN-26698, task 3 of the lane work orchestrator plan). The node
+  node_lane_work_reducer declares the sixteen states and every edge of plan section 3.4 in the
+  state_machine block of its contract.yaml; its handler parses the block into ModelFSMSubcontract,
+  looks the edge up by state, trigger, conditions and priority, refuses an input with no edge, and
+  applies the repeat rule, the help budget and the armed deadlines.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn26706-lane-work-reducer"
+    statement: >-
+      The lane work loop is a pure reducer whose contract is the only table of its states and edges.
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          every declared edge has a test -- falsifier: a test asserts the parametrise list length equals the number of transitions in contract.yaml
+      - id: "AC2"
+        statement: >-
+          no I/O, clock, UUID or model call in the handler -- falsifier: grep -nE "datetime.now|time.time|uuid4|open(|subprocess|httpx|requests|execute_transition" handlers/handler_lane_work_reducer.py prints nothing
+      - id: "AC3"
+        statement: >-
+          the state list has one source -- falsifier: node_fsm_single_source_check_compute passes over the node, and a test asserts EnumLaneWorkState equals the contract state names
+      - id: "AC4"
+        statement: >-
+          the repeat rule counts admissible failures across states and nothing else -- falsifier: the repeat-rule tests
+      - id: "AC5"
+        statement: >-
+          worker deadlines fire only as armed -- falsifier: the deadline tests
+      - id: "AC6"
+        statement: >-
+          replay is byte-deterministic for states and intents -- falsifier: a test folds a 30-event sequence twice and compares the serialized states and intents
+      - id: "AC7"
+        statement: >-
+          an answer for an old handoff request, a handed-off answer naming another head, or a handed-off answer followed by an observation of another head, does not end the workflow -- falsifier: the three ac7 tests
+      - id: "AC8"
+        statement: >-
+          the pull request cites formal/lane_work_loop and its digest -- falsifier: the pull request body read
+evidence_requirements: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn26706-ac1"
+    description: >-
+      AC1: every declared edge has a test.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_reducer/test_transitions.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26706-ac2"
+    description: >-
+      AC2: no I/O, clock, UUID or model call in the handler.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_reducer/test_golden_chain.py -k test_ac2 -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26706-ac3"
+    description: >-
+      AC3: the state list has one source.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_reducer/test_golden_chain.py -k test_ac3 -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26706-ac4"
+    description: >-
+      AC4: the repeat rule counts admissible failures across states and nothing else.
+    source: "manual"
+    binds_ac: ["AC4"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_reducer/test_golden_chain.py -k test_ac4 -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26706-ac5"
+    description: >-
+      AC5: worker deadlines fire only as armed.
+    source: "manual"
+    binds_ac: ["AC5"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_reducer/test_golden_chain.py -k test_ac5 -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26706-ac6"
+    description: >-
+      AC6: replay is byte-deterministic for states and intents.
+    source: "manual"
+    binds_ac: ["AC6"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_reducer/test_golden_chain.py -k test_ac6 -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26706-ac7"
+    description: >-
+      AC7: an answer for an old handoff request, a handed-off answer naming another head, or a handed-off answer followed by an observation of another head, does not end the workflow.
+    source: "manual"
+    binds_ac: ["AC7"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_reducer/test_golden_chain.py -k test_ac7 -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26706-ac8-pr-cites-model"
+    description: >-
+      AC8: the node's contract names the model it implements, formal/lane_work_loop; the pull request body carries its digest.
+    source: "manual"
+    binds_ac: ["AC8"]
+    checks:
+      - check_type: "command"
+        check_value: "grep -q formal/lane_work_loop src/omnimarket/nodes/node_lane_work_reducer/contract.yaml"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26706-contract-gates"
+    description: >-
+      The reducer contract declares its trigger, its typed machine has no unknown keys, the handler carries no suppression comment, and the work-contract pins match uv.lock.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/contracts/test_walkable_state_machines.py tests/nodes/test_work_contract_pins_current.py -q -p no:randomly -k 'lane_work or pins'"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26706-trigger-declaration"
+    description: >-
+      The reducer contract declares an on-demand trigger with command and owner, and the trigger declaration check accepts it.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_reducer/test_trigger_declaration.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26706-overlay-optional-and-pin-pair"
+    description: >-
+      The reducer's overlay is declared optional, so Overlay Main Load does not require a document in the overlay repository, and omnibase-infra and omnibase-core move together to a pair that co-resolves.
+    source: "manual"
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/nodes/node_lane_work_reducer/test_overlay_optional.py tests/ci/test_sibling_core_pin_pair_omn17427.py -q -p no:randomly"
+        cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26706-integration-proof"
+    description: >-
+      The node's unit tests pass on a lab host at the pushed head.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-26706 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_lane_work_reducer/test_transitions.py tests/unit/nodes/node_lane_work_reducer/test_golden_chain.py -q --no-cov -n 0 -p no:randomly"
+        cwd: "."
