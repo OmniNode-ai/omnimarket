@@ -37,6 +37,12 @@ Each refusal names the background Workflow as the place to wait. Subagent and wo
 (``agent_id`` set) pass, and a headless session's calls are held to the shape rules only. Text
 inside quotes is never parsed as shell.
 
+Turn budget (OMN-20893, operator 2026-11-25 11:58Z): each call under the ceiling above can still
+chain into minutes of held foreground. The hook sums the main-session tool time since the
+operator's last prompt; past the declared budget (``foreground_turn_budget_seconds`` in
+contract.yaml, 60 s) the next call that is not a short read or the detached form is refused and
+names the detached form. Only Bash calls are judged, so answering the operator is never blocked.
+
 RULING 2026-10-10T17:54:29Z also sends fetching to background lanes. In an operator-facing
 main session, curl, wget, git fetch/pull/clone and the WebFetch/WebSearch tools are refused.
 Local reads and a fully detached fetch remain available.
@@ -68,6 +74,7 @@ DETACHED_FORM = "nohup <command> > <file> 2>&1 &"
 SHAPE_GUARD = "operator_access_mode_foreground_bash_shape"
 WAIT_GUARD = "operator_access_mode_foreground_wait"
 FETCH_GUARD = "operator_access_mode_foreground_fetch"
+TURN_GUARD = "operator_access_mode_foreground_turn_budget"
 FETCH_TOOLS = frozenset({"WebFetch", "WebSearch"})
 FETCH_REASON = (
     "BLOCKED (foreground fetch): fetching belongs to a background lane or Workflow;"
@@ -434,6 +441,61 @@ def _fetch_stage(stage: str) -> bool:
     return i < len(rest) and rest[i] in {"fetch", "pull", "clone"}
 
 
+TURN_HEAD = "BLOCKED (foreground turn budget, OMN-20893): "
+SHORT_READ_TIMEOUT_MS = 10_000
+READ_WORDS = frozenset(
+    {"cat", "ls", "head", "tail", "grep", "egrep", "rg", "wc", "stat", "date", "pwd", "echo",
+     "printf", "file", "find", "diff", "test", "which", "basename", "dirname", "readlink"}
+)  # fmt: skip
+GIT_READS = frozenset(
+    {"status", "log", "diff", "show", "rev-parse", "branch", "ls-files", "cat-file",
+     "merge-base", "describe", "blame", "rev-list", "remote"}
+)  # fmt: skip
+
+
+def is_short_read(command: str, timeout_ms: int | None) -> bool:
+    """One plain local read: a known read command, no chaining, no long timeout."""
+    if timeout_ms is not None and timeout_ms > SHORT_READ_TIMEOUT_MS:
+        return False
+    scanned = scan(command)
+    if scanned.ops or len(scanned.segments) != 1:
+        return False
+    tokens = _tokens(scanned.segments[0])
+    while tokens and (
+        re.match(r"^[A-Za-z_][A-Za-z_0-9]*=", tokens[0]) or tokens[0] in PREFIX_WORDS
+    ):
+        tokens = tokens[1:]
+    if not tokens:
+        return False
+    name = tokens[0].rsplit("/", 1)[-1]
+    rest = tokens[1:]
+    if name == "git":
+        i = 0
+        while i < len(rest) and rest[i].startswith("-"):
+            i += 2 if rest[i] in {"-C", "-c", "--git-dir", "--work-tree"} else 1
+        return i < len(rest) and rest[i] in GIT_READS
+    if name == "tail" and _follows(_options(rest)):
+        return False
+    if name == "find" and any(t in {"-exec", "-execdir", "-delete"} for t in rest):
+        return False
+    return name in READ_WORDS
+
+
+def _turn_budget_problem(request: ModelForegroundBashRequest) -> str:
+    if request.turn_tool_seconds <= request.turn_budget_seconds:
+        return ""
+    if is_detached_launch(request.command, scan(request.command)):
+        return ""
+    if is_short_read(request.command, request.timeout_ms):
+        return ""
+    return (
+        f"{TURN_HEAD}this turn has held the foreground for {request.turn_tool_seconds:.0f} s of"
+        f" tool time (budget {request.turn_budget_seconds:.0f} s). Only a short read passes now;"
+        f" run this as one detached launch: {DETACHED_FORM}, or hand it to a background"
+        " Workflow that reports back, and answer the operator."
+    )
+
+
 class HandlerForegroundBashGuard:
     """Refuse a main-session Bash call that can prompt, chain or wait."""
 
@@ -466,5 +528,10 @@ class HandlerForegroundBashGuard:
                     WAIT_HEAD + "; ".join(waits) + "." + WAIT_TAIL,
                     WAIT_GUARD,
                     "foreground-wait",
+                )
+            over = _turn_budget_problem(request)
+            if over:
+                return ModelHookVerdict.refuse(
+                    over, TURN_GUARD, "foreground-turn-budget"
                 )
         return ModelHookVerdict.allow()

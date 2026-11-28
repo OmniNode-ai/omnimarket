@@ -92,5 +92,7 @@ event_bus:
 lifecycle: experimental
 
 metadata:
+  # Main-session tool time per turn past which only a short read or a detached launch passes.
+  foreground_turn_budget_seconds: 60
   tickets: [OMN-20892, OMN-20893, OMN-20894, OMN-20895, OMN-20896]
   transport_type: local

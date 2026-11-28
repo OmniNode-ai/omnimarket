@@ -1,0 +1,69 @@
+schema_version: 1.0.0
+ticket_id: OMN-20893
+title: The main session refuses a blocking shell wait (sleep, --watch, long timeout) in both access modes and points to a background Workflow
+summary: The foreground Bash guard also counts main-session tool time in the turn, read from the session transcript since the operator's last prompt. Past the declared budget (foreground_turn_budget_seconds in the node contract, 60 s) the next Bash call that is not a short read or the detached launch form is refused and names the detached form. Answering the operator is never a Bash call and is never refused.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn20893-turn-budget
+  statement: A chain of foreground calls that each pass the per-call ceiling is refused once the turn's tool time passes the declared budget.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: past 60 s of main-session tool time in the turn, the next call that is not a short read is refused and names the detached form; a short turn passes -- falsifier: uv run --frozen pytest tests/nodes/node_operator_access_mode_effect/test_foreground_turn_budget.py'
+evidence_requirements:
+- kind: tests
+  description: The foreground turn budget tests and the existing access-mode tests pass at the pushed head.
+  command: uv run --frozen pytest tests/nodes/node_operator_access_mode_effect -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn20893-turn-budget-refuses-chain
+  description: 'AC4: a recorded chain of three 100 s calls sums to 300 s of turn tool time and the next non-read call is refused naming the detached form and the background Workflow; a call over the budget is refused only past 60 s.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_operator_access_mode_effect/test_foreground_turn_budget.py -q --no-cov -n 0 -p no:randomly -k "recorded_chain or exactly_at_sixty or anything_else"
+    cwd: .
+- id: dod-omn20893-turn-budget-known-good
+  description: 'AC4: a known-good short turn (25 s), short reads and the detached form past the budget, a lane, a headless run, a new operator prompt and a Stop-hook re-prompt all behave as declared.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_operator_access_mode_effect/test_foreground_turn_budget.py -q --no-cov -n 0 -p no:randomly -k "short_turn or short_reads or lane_and_a_headless or new_operator_prompt or stop_hook_reprompt"
+    cwd: .
+- id: dod-omn20893-never-blocks-answering
+  description: 'AC4: through the hook entry, the refused turn still lets a SendUserMessage reply, a short read, a lane call and an environment-raised budget through.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/nodes/node_operator_access_mode_effect/test_foreground_turn_budget.py -q --no-cov -n 0 -p no:randomly -k "hook_entry or declared_budget"
+    cwd: .
+- id: dod-omn20893-turn-budget-integration-proof
+  description: 'AC4: the pushed head of the turn-budget tests ran on a lab host through the bus and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.'
+  source: manual
+  execution_scope: local_done_gate
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: command
+    check_value: 'onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane fgturn-4800 --kind test -- uv run --frozen pytest tests/nodes/node_operator_access_mode_effect/test_foreground_turn_budget.py -q --no-cov -n 0 -p no:randomly'
+    cwd: .
+- id: dod-omn20893-turn-budget-shipped-at-head
+  description: 'AC4: the hook entry at the pushed head carries the turn-time reader the foreground guard asks (turn_tool_seconds).'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: command
+    check_value: |-
+      bash -c 'curl --fail --silent --show-error --location --max-time 60 "https://raw.githubusercontent.com/OmniNode-ai/omnimarket/$(git rev-parse HEAD)/src/omnimarket/nodes/node_operator_access_mode_effect/runtime_operator_hook_cli.py" | grep -q "def turn_tool_seconds"'
+    cwd: .
