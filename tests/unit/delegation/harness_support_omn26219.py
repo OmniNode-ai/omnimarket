@@ -114,3 +114,19 @@ class ListCostSink:
 
     def record(self, attempt: ModelHarnessAttemptRecord) -> None:
         self.records.append(attempt)
+
+
+class TierSettings:
+    """The settings store seam, injected: the ``claude_harness_tiers`` document, one row per backend id."""
+
+    def __init__(self, tiers: dict[str, dict[str, Any]] | None = None) -> None:
+        self._tiers = tiers
+
+    def read(self, name: str) -> dict[str, Any] | None:
+        if name != "claude_harness_tiers" or self._tiers is None:
+            return None
+        return {"schema_version": 1, "tiers": self._tiers}
+
+
+def tier_row(order: list[str], effort: str | None = None) -> dict[str, Any]:
+    return {"credential_order": order, **({"effort": effort} if effort else {})}

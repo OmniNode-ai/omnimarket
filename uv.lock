@@ -11,7 +11,7 @@ resolution-markers = [
 [manifest]
 overrides = [
     { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261126163618-6baa5af6b65d" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261124065450-0ecba67c8fee" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261125090037-c2bc2ccf8f10" },
     { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261108170744-52946639a23a" },
 ]
 
@@ -3075,8 +3075,8 @@ dependencies = [
 
 [[package]]
 name = "omnibase-infra"
-version = "0.38.83"
-source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261124065450-0ecba67c8fee#0ecba67c8fee08ec4f7e776cbb8e43dd1667f50b" }
+version = "0.38.84"
+source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261125090037-c2bc2ccf8f10#c2bc2ccf8f101d2bf2fda1fc2a10c2382b03e495" }
 dependencies = [
     { name = "a2a-sdk" },
     { name = "aiofiles" },
@@ -3142,7 +3142,7 @@ dependencies = [
 
 [[package]]
 name = "omnimarket"
-version = "0.4.329"
+version = "0.4.330"
 source = { editable = "." }
 dependencies = [
     { name = "aiokafka" },
@@ -3220,7 +3220,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "jsonschema", specifier = ">=4.18.0" },
     { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261126163618-6baa5af6b65d" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261124065450-0ecba67c8fee" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261125090037-c2bc2ccf8f10" },
     { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261108170744-52946639a23a" },
     { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?tag=dev-20261120144838-db14a337f1ab" },
     { name = "packaging", specifier = ">=24.0" },

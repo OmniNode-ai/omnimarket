@@ -24,6 +24,8 @@ _RULE: dict[str, Any] = {
 }
 _DOC: dict[str, Any] = {
     "schema_version": "lane_work_classify.v1",
+    "evidence_limit": 4000,
+    "log_timestamp_pattern": r"^\d{4}-\d{2}-\d{2}T[\d:.]+Z ",
     "ci_verdict_events": {"green": "check_green", "red": "check_red"},
     "rules": [
         _RULE,
@@ -39,6 +41,13 @@ _DOC: dict[str, Any] = {
             "ignore_case": True,
             "red_kind_check_name": "worker-log-read",
         },
+        {
+            "pattern": "ruff format",
+            "event": "log_read",
+            "ignore_case": False,
+            "red_kind": "format",
+            "source": "ci_job_log",
+        },
     ],
 }
 
@@ -53,6 +62,7 @@ def test_the_complete_document_loads_and_keeps_rule_order() -> None:
     assert [r.event.value for r in doc.rules] == [
         "head_moved",
         "push_refused",
+        "log_read",
         "log_read",
     ]
     assert doc.rules[1].event_class == "guard_ledger_cell"
@@ -110,3 +120,59 @@ def test_the_model_is_frozen() -> None:
 
     with pytest.raises(ValidationError):
         setattr(doc, "rules", ())  # noqa: B010
+
+
+def test_the_evidence_limit_and_the_log_timestamp_pattern_load() -> None:
+    doc = ModelLaneWorkClassifyOverlay.model_validate(_DOC)
+
+    assert doc.evidence_limit == 4000
+    assert doc.log_timestamp_pattern is not None
+
+
+def test_a_document_without_an_evidence_limit_is_refused() -> None:
+    bare = {k: v for k, v in _DOC.items() if k != "evidence_limit"}
+
+    with pytest.raises(ValidationError):
+        ModelLaneWorkClassifyOverlay.model_validate(bare)
+
+
+def test_an_evidence_limit_below_one_is_refused() -> None:
+    with pytest.raises(ValidationError):
+        ModelLaneWorkClassifyOverlay.model_validate({**_DOC, "evidence_limit": 0})
+
+
+def test_a_log_timestamp_pattern_that_is_not_a_regular_expression_is_refused() -> None:
+    with pytest.raises(ValidationError, match="not a compilable"):
+        ModelLaneWorkClassifyOverlay.model_validate(
+            {**_DOC, "log_timestamp_pattern": "("}
+        )
+
+
+def test_a_rule_names_its_red_kind_and_source() -> None:
+    doc = ModelLaneWorkClassifyOverlay.model_validate(_DOC)
+
+    assert doc.rules[3].red_kind == "format"
+    assert doc.rules[3].source == "ci_job_log"
+    assert doc.rules[0].red_kind is None
+    assert doc.rules[0].source is None
+
+
+def test_a_red_kind_on_another_event_is_refused() -> None:
+    with pytest.raises(ValidationError, match="red_kind belongs to a log_read rule"):
+        ModelLaneWorkClassifyOverlay.model_validate(_with_rule(red_kind="format"))
+
+
+def test_a_red_kind_beside_a_red_kind_check_name_is_refused() -> None:
+    with pytest.raises(ValidationError, match="not both"):
+        ModelLaneWorkClassifyOverlay.model_validate(
+            _with_rule(
+                event="log_read",
+                red_kind="format",
+                red_kind_check_name="x",
+            )
+        )
+
+
+def test_an_unknown_source_is_refused() -> None:
+    with pytest.raises(ValidationError):
+        ModelLaneWorkClassifyOverlay.model_validate(_with_rule(source="stdout"))

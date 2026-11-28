@@ -28,6 +28,9 @@ from omnimarket.enums.enum_dod_verify_unresolved_cause import (
 from omnimarket.models.model_criteria_drift import (
     ModelCriteriaCheck,
 )
+from omnimarket.models.model_local_done_gate_receipt_store import (
+    receipt_from_results,
+)
 from omnimarket.nodes.node_dod_verify.models.model_dod_acceptance_summary import (
     ModelDodAcceptanceSummary,
 )
@@ -839,6 +842,17 @@ class HandlerDodVerify:
                 else criteria_check.message(command.ticket_id)
             )
 
+        # Built before the state: nothing may branch once the verdict is
+        # constructed (test_omn18901 asserts the return is unconditional).
+        contract_sha = contract_subject.commit_sha if contract_subject else None
+        local_done_gate_receipt = receipt_from_results(
+            ticket_id=command.ticket_id,
+            contract_sha=contract_sha,
+            run_id=str(command.correlation_id),
+            results=checks,
+            execution_audience=execution_audience,
+        )
+
         state = ModelDodVerifyState(
             correlation_id=command.correlation_id,
             ticket_id=command.ticket_id,
@@ -905,6 +919,7 @@ class HandlerDodVerify:
             criteria_amendment=(criteria_check.amendment if criteria_check else None),
             criteria_delegated=bool(criteria_check and criteria_check.delegated),
             unresolved_cause=unresolved_cause,
+            local_done_gate_receipt=local_done_gate_receipt,
         )
 
         return state

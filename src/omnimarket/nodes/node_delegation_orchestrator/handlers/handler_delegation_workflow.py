@@ -500,6 +500,12 @@ _DECLARED_TRANSITIONS: dict[
 # FSM handler. ``HandlerDelegationWorkflow.handle`` routes off this table instead
 # of a hand-maintained isinstance ladder — each payload type resolves to exactly
 # one per-step handler, with no catch-all branch (undeclared types fail closed).
+# OMN-26043: the named-test step runs in a worker thread; a runner that never
+# returns would hold the inference-response step open and leave the workflow
+# published forever. The step is bounded by its tests' own timeouts plus this
+# grace; past it the run reads as no run (not_run).
+_NAMED_TEST_GRACE_SECONDS: float = 30.0
+
 _PER_STEP_DISPATCH: dict[type, str] = {
     ModelDelegationRequest: "handle_delegation_request",
     ModelInvocationCommand: "handle_invocation_command",
@@ -1397,7 +1403,9 @@ _UNSET_REQUEST_MAX_TOKENS: Final[int] = int(
 )
 
 
-def _provider_max_tokens(request_max_tokens: int, backend_ceiling: int) -> int:
+def _provider_max_tokens(
+    request_max_tokens: int, backend_ceiling: int, *, budget_lifted: bool = False
+) -> int:
     """The output limit the provider call carries.
 
     The routing decision's contract-declared ceiling (cloud-glm: 65536) is the
@@ -1405,7 +1413,14 @@ def _provider_max_tokens(request_max_tokens: int, backend_ceiling: int) -> int:
     caller (a job payload asking for 3 tokens) and is passed through, never
     above the ceiling. A request at or above that default is the unset value and posts the
     ceiling, as OMN-13345 requires.
+
+    OMN-26566: once a call under the caller's cut ended ``finish_reason=length``
+    the cut is lifted for the rest of the run (``budget_lifted``) and the call
+    carries the route's own ceiling, which the overlay row or the settings
+    store declares, never a literal here.
     """
+    if budget_lifted:
+        return backend_ceiling
     if request_max_tokens < _UNSET_REQUEST_MAX_TOKENS:
         return min(request_max_tokens, backend_ceiling)
     return backend_ceiling
@@ -1701,7 +1716,9 @@ def _evaluate_compliance(
             # GLM (finish_reason=length), tanking the quality gate. Same defect
             # class as OMN-13342/#1282 (generation path).
             max_tokens=_provider_max_tokens(
-                workflow.request.max_tokens, workflow.routing_decision.max_tokens
+                workflow.request.max_tokens,
+                workflow.routing_decision.max_tokens,
+                budget_lifted=workflow.output_budget_lifted,
             ),
             temperature=temperature,
             timeout_seconds=_inference_timeout_seconds(workflow),
@@ -2588,6 +2605,9 @@ class DelegationWorkflowState:
     # same-tier retries above it NEVER increments ``escalation_count`` and emits
     # no escalation event — retrying one responder is not climbing a ladder.
     customer_route_retry_count: int = 0
+    # OMN-26566: True once a call under the caller's output cut ended
+    # ``finish_reason=length`` and the run re-asked with the route's ceiling.
+    output_budget_lifted: bool = False
     customer_route_retry_backend_ref: str | None = None
     # OMN-14058 (OPERATOR-ACCEPTED INTERIM): resolved ONCE in
     # handle_delegation_request and carried onto every TerminalEmissionInputs
@@ -2686,7 +2706,10 @@ class HandlerDelegationWorkflow:
         named_test_runner: Callable[[ModelNamedTestRunRequest], ModelNamedTestRunResult]
         | None = None,
         completion_bound_seconds: int | None = None,
+        named_test_bound_seconds: float | None = None,
     ) -> None:
+        # OMN-26043: None derives the bound from the request's own test timeouts.
+        self._named_test_bound_seconds = named_test_bound_seconds
         # OMN-22822: an inference response older than this bound is expired, not
         # an answer. None reads ``completion_bound.max_wall_seconds`` from this
         # node's contract on first use, so construction does no I/O.
@@ -3263,7 +3286,9 @@ class HandlerDelegationWorkflow:
                 # GLM (finish_reason=length). Same defect class as
                 # OMN-13342/#1282 (generation path).
                 max_tokens=_provider_max_tokens(
-                    workflow.request.max_tokens, decision.max_tokens
+                    workflow.request.max_tokens,
+                    decision.max_tokens,
+                    budget_lifted=workflow.output_budget_lifted,
                 ),
                 temperature=temperature,
                 timeout_seconds=_inference_timeout_seconds(workflow),
@@ -3855,6 +3880,16 @@ class HandlerDelegationWorkflow:
             )
 
             error_retryable = _should_escalate_inference_error(response.error_message)
+
+            lifted_intents = self._maybe_lift_output_budget(
+                workflow,
+                response.error_message,
+                attempt_cost_usd,
+                prompt_tokens=response.prompt_tokens,
+                completion_tokens=response.completion_tokens,
+            )
+            if lifted_intents is not None:
+                return lifted_intents
 
             # OMN-20157: a typed refusal about the account or the model (a 402,
             # prepaid credits empty, a 404 model-not-found the effect could not
@@ -5093,6 +5128,48 @@ class HandlerDelegationWorkflow:
         if "excluded_backend_refs" in model_fields:
             intent_kwargs["excluded_backend_refs"] = tuple(sorted(excluded))
         return [ModelRoutingIntent(**intent_kwargs)]
+
+    def _maybe_lift_output_budget(
+        self,
+        workflow: DelegationWorkflowState,
+        error_message: str,
+        attempt_cost_usd: float,
+        *,
+        prompt_tokens: int,
+        completion_tokens: int,
+    ) -> list[BaseModel] | None:
+        """Re-ask once with the route's own output ceiling after a cut answer.
+
+        OMN-26566. A call that ended ``finish_reason=length`` under the caller's
+        output cut cannot succeed by being asked again with the same cut, and a
+        customer route has no successor tier (INV-068), so the run failed with
+        no receipt. The caller's cut is lifted once to the ceiling the routing
+        decision carries from the overlay row or the settings store.
+        """
+        decision = workflow.routing_decision
+        if (
+            workflow.output_budget_lifted
+            or decision is None
+            or workflow.request is None
+            or _finish_reason_of_failed_call(error_message)
+            is not EnumProviderFinishReason.LENGTH
+            or _provider_max_tokens(workflow.request.max_tokens, decision.max_tokens)
+            >= decision.max_tokens
+        ):
+            return None
+        workflow.output_budget_lifted = True
+        self._bank_attempt_spend(
+            workflow,
+            cost_usd=attempt_cost_usd,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+        )
+        workflow.inference_content = None
+        workflow.inference_model_used = None
+        workflow.inference_intent_in_flight = False
+        workflow.routing_decision = None
+        self._advance(workflow, EnumDelegationState.ROUTED)
+        return list(self.handle_routing_decision(decision))
 
     def _maybe_retry_customer_route(
         self,
@@ -6604,12 +6681,25 @@ class HandlerDelegationWorkflow:
                     ),
                 }
             )
-            outcome = await asyncio.to_thread(
-                self._named_test_runner,
-                ModelNamedTestRunRequest(
-                    spec=spec, answer_content=payload.llm_response_content
-                ),
+            runner_request = ModelNamedTestRunRequest(
+                spec=spec, answer_content=payload.llm_response_content
             )
+            bound = (
+                self._named_test_bound_seconds
+                if self._named_test_bound_seconds is not None
+                else runner_request.timeout_seconds * max(1, len(spec.test_ids))
+                + _NAMED_TEST_GRACE_SECONDS
+            )
+            try:
+                outcome = await asyncio.wait_for(
+                    asyncio.to_thread(self._named_test_runner, runner_request),
+                    timeout=bound,
+                )
+            except TimeoutError:
+                outcome = ModelNamedTestRunResult(
+                    status=EnumNamedTestRunStatus.REFUSED,
+                    detail=f"named test runner gave no result within {bound:g}s",
+                )
             _logger.info(
                 "HandlerDelegationWorkflow: named test run status=%s correlation=%s %s",
                 outcome.status.value,

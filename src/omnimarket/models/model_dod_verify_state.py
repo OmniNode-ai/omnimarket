@@ -21,6 +21,7 @@ from omnimarket.models.model_criteria_drift import (
     ModelCriteriaAmendment,
     ModelCriterionDrift,
 )
+from omnimarket.models.model_local_done_gate_receipt import ModelLocalDoneGateReceipt
 
 
 class EnumEvidenceCheckStatus(StrEnum):
@@ -694,6 +695,12 @@ class ModelDodVerifyState(BaseModel):
         default=(), exclude_if=lambda value: not value
     )
     criteria_amendment: ModelCriteriaAmendment | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    # OMN-26725: set only on a local_done_gate run that resolved a contract
+    # revision. Published with the state on the terminal topic, it is what a
+    # hosted verifier reads to count a skipped local_done_gate item verified.
+    local_done_gate_receipt: ModelLocalDoneGateReceipt | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
     # OMN-21676: True when the contract records criteria and this hosted run left

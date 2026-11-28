@@ -13,6 +13,7 @@ no runner ran is refused as INSUFFICIENT, never accepted.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -198,6 +199,43 @@ async def test_named_tests_no_runner_ran_are_refused_never_accepted(
     assert len(seen) == 1
     assert seen[0].spec.test_ids == (_TEST_ID,)
     assert seen[0].spec.workspace_root is None
+    assert intent.payload.named_test_run is None
+    assert intent.payload.named_tests_requested is True
+    verdict = _verdict(intent)
+    assert verdict.passed is False
+    assert NO_NAMED_TEST_RUN_REASON in verdict.failure_reasons
+
+
+@pytest.mark.asyncio
+async def test_a_named_test_runner_that_never_returns_is_refused_not_awaited_forever(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OMN-26043: a runner that hangs must not leave the workflow published forever.
+
+    Live: two named-test workflows stayed ``published`` with no handler event and
+    no error. The runner runs in a worker thread; one that never returns held the
+    inference-response step open, so no gate intent, no terminal. The step is now
+    bounded and a runner past its bound reads as no run (INSUFFICIENT, not_run).
+    """
+    import threading
+
+    _no_escalation(monkeypatch)
+    release = threading.Event()
+
+    def hanging(_request: ModelNamedTestRunRequest) -> ModelNamedTestRunResult:
+        release.wait(timeout=30)
+        raise AssertionError("released only after the bound")
+
+    handler = hw.HandlerDelegationWorkflow(
+        workflows={}, named_test_runner=hanging, named_test_bound_seconds=0.2
+    )
+    try:
+        intent = await asyncio.wait_for(
+            _gate_intent(CORRECT, named_tests=_named_tests(), handler=handler),
+            timeout=10,
+        )
+    finally:
+        release.set()
     assert intent.payload.named_test_run is None
     assert intent.payload.named_tests_requested is True
     verdict = _verdict(intent)

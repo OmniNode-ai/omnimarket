@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+schema_version: "1.0.0"
+ticket_id: "OMN-26615"
+title: "omnimarket declares the one-line help of its onex commands for onex --help"
+summary: "The omnimarket package declares each onex command's one-line help in the onex.cli.help entry-point group, so onex --help can print it without importing the command; a test fails when a declared line differs from the command's own help."
+is_seam_ticket: false
+interface_change: true
+interfaces_touched:
+  - public_api
+requirements:
+  - id: req-omn26615-market-help-lines
+    statement: "Every visible onex command this package provides has an onex.cli.help entry that prints exactly what the command prints at any terminal width; hidden, deprecated or explicit-short-help commands have none."
+    acceptance:
+      - id: AC1
+        statement: "AC1: each visible command of this package has an onex.cli.help entry equal to its own help line at every terminal width from 10 to 139; Falsifier: tests/unit/cli/test_onex_cli_help_table_omn26615.py::test_declared_help_prints_exactly_what_the_command_prints, 30 failed on origin/dev d7fa70074"
+      - id: AC2
+        statement: "AC2: no entry exists for a command this package does not provide, and none for a hidden, deprecated or short_help command; Falsifier: tests/unit/cli/test_onex_cli_help_table_omn26615.py::test_every_help_entry_names_a_command_of_this_package"
+evidence_requirements:
+  - kind: tests
+    description: The declared help lines match the commands' own help lines.
+    command: uv run pytest tests/unit/cli/test_onex_cli_help_table_omn26615.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26615-market-ac1
+    description: "AC1: each visible command's declared help line prints exactly what the command prints at terminal widths 10 to 139."
+    source: manual
+    binds_ac:
+      - AC1
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/cli/test_onex_cli_help_table_omn26615.py::test_declared_help_prints_exactly_what_the_command_prints -q -n 0 --no-cov -p no:cacheprovider
+        cwd: .
+  - id: dod-omn26615-market-ac2
+    description: "AC2: the help table is non-empty and names only commands this package provides."
+    source: manual
+    binds_ac:
+      - AC2
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/cli/test_onex_cli_help_table_omn26615.py::test_a_help_table_exists_when_there_are_commands tests/unit/cli/test_onex_cli_help_table_omn26615.py::test_every_help_entry_names_a_command_of_this_package -q -n 0 --no-cov -p no:cacheprovider
+        cwd: .

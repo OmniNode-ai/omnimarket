@@ -22,6 +22,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/models/test_lane_work_classify_overlay_document_omn26707.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26707-overlay-model-spike-fields
+  description: The shared overlay model carries evidence_limit, log_timestamp_pattern and the rule fields red_kind and source, the same four fields as the node's own model on omnimarket#6957; the tests that load them, and refuse a missing evidence_limit or a red_kind off a log_read rule, fail before the fields exist and pass after.
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_lane_work_classify_overlay_document_omn26707.py -q --no-cov -n 0 -p no:randomly -k "evidence_limit or log_timestamp or red_kind or source"
+    cwd: .
 - id: dod-omn26707-overlay-model-integration-proof
   description: Run the overlay model tests on a lab host at the pushed head. This local completion proof carries no hosted AC bindings.
   source: manual

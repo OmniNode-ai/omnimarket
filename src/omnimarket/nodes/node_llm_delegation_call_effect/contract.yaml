@@ -52,10 +52,14 @@ description: |
   nested tool sandboxes can refuse that open. Startup refusal is a typed result,
   never grounds to change credentials, CODEX_HOME or sandbox permissions.
 
-  The Claude harness (harness: claude) runs claude -p on the subscription login in a clean
-  temporary directory at the effort of its model family (haiku low, sonnet medium, opus high; held in the handler, not on the backend wire model). An ANTHROPIC_API_KEY or
-  ANTHROPIC_AUTH_TOKEN in its environment is refused by name (exit_cause credential_refused),
-  never launched, and the receipt carries the model the harness reported it ran (OMN-26043).
+  The Claude harness (harness: claude) runs claude -p in a clean temporary directory. What each tier runs on
+  (subscription, api_key, or subscription then api_key) and its effort are rows of the settings store overlay
+  claude_harness_tiers, read on every call through the injected overlay-document reader; no mode or effort is chosen in
+  code, and a tier with no row is refused by the row's name (exit_cause credential_refused) without launching. An API key
+  is resolved from the secret store by the name the delegation_adapters agent entry declares in secret_env, reaches only
+  the child's environment and never a command line, a receipt or a log. A subscription launch inherits no key. A limited
+  or absent login (exit_cause not_logged_in) moves to the next declared credential; with none left the call is refused by
+  name. The receipt carries the model the harness reported it ran (OMN-26043).
 
   HandlerClaudeCredentialProbe runs one Claude Code call that proves the credential in
   the host's environment (OMN-21626). It takes ModelClaudeCredentialProbeRequest (prompt,
