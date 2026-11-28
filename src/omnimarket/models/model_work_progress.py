@@ -35,6 +35,10 @@ class ModelWorkProgressBudgets(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid", strict=True)
 
     budget_seconds: dict[str, PositiveInt]
+    #: Seconds per phase per watched kind for the episode judgment; absent until that operation is used.
+    episode_limit_seconds: dict[str, dict[str, PositiveInt]] | None = None
+    #: Per-job override of the scheduled round limit.
+    round_job_limit_seconds: dict[str, PositiveInt] | None = None
     event_bus: ModelNodeEventBus | None = Field(default=None, strict=False)
 
 

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 name: node_work_progress_compute
 version: "1.0.0"
-description: Finds lanes whose current phase entry strictly exceeds its supplied budget
+description: Finds lanes whose current phase entry strictly exceeds its supplied budget, and judges watched things (lane, pr, round, tick) into one alert per crossing and one close per resumed thing
 omnibase_core_compat: ">=0.47.28,<0.48.0"
 entry_points:
   onex.nodes:
@@ -20,7 +20,7 @@ dependencies:
   - pyyaml>=6.0
 authors: [OmniNode Team]
 license: MIT
-tags: [compute, stall, progress, deterministic]
+tags: [compute, stall, progress, deterministic, episode]
 node_role: compute
 pack: "liveness"
 display_name: "Work Progress Compute"

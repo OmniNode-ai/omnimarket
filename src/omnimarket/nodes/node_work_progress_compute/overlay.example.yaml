@@ -3,6 +3,15 @@ budget_seconds:
   placed: 600
   claimed: 1800
   pr_open: 3600
+# Limits for the episode judgment: one per phase of each watched kind in the contract.
+episode_limit_seconds:
+  lane: {placed: 600, claimed: 1800, pr_open: 3600}
+  pr: {draft: 14400, ci_pending: 2700, red_unowned: 1800, green_unarmed: 1800, armed: 3600}
+  round: {awaiting_next_run: 7200}
+  tick: {overdue: 1800, running: 1500}
+# Optional per-job override of the scheduled round limit.
+round_job_limit_seconds:
+  example_job: 900
 # The bus the node's client reaches it on, read by onex run-node.
 event_bus:
   type: kafka

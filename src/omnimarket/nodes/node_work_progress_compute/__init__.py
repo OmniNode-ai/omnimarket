@@ -4,6 +4,9 @@
 
 from __future__ import annotations
 
-from omnimarket.nodes.node_work_progress_compute.node import NodeWorkProgressCompute
+from omnimarket.nodes.node_work_progress_compute.node import (
+    NodeWorkEpisodesCompute,
+    NodeWorkProgressCompute,
+)
 
-__all__ = ["NodeWorkProgressCompute"]
+__all__ = ["NodeWorkEpisodesCompute", "NodeWorkProgressCompute"]
