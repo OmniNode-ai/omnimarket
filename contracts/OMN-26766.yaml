@@ -52,7 +52,6 @@ dod_evidence:
   - id: "dod-omn26766-lab-item-binds-no-criterion"
     description: "The lab-only integration-proof item binds no criterion, since the hosted must-fail control at the merge base never runs a local_done_gate item; AC1 and AC2 stay bound by hosted test items."
     source: "manual"
-    binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/ci/test_omn26766_contract_hosted_controllable.py -q --no-cov"
