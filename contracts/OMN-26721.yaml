@@ -100,3 +100,12 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/nodes/node_lane_work_orchestrator/test_handlers_are_bound.py tests/unit/contracts/test_walkable_state_machines.py -q --no-cov -n 0 -p no:randomly"
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: "dod-omn26721-runtime-image-core-has-lane-work"
+    description: >-
+      The omnibase-core that the pinned omnibase-infra tag locks carries the lane work models, so the composed runtime image can auto-wire the orchestrator (a known bad infra tag locks a core with none).
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "command"
+        check_value: "grep -q 'omnibase_infra.git\", tag = \"dev-20261128050503-277c1f2fe0b2\"' pyproject.toml"
+        cwd: "${OMNI_HOME}/omnimarket"
