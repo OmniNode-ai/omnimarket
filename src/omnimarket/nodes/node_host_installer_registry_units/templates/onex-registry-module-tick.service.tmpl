@@ -15,5 +15,5 @@ __ENVIRONMENT__
 __ENVIRONMENT_FILE__
 ExecStart="__UV__" "run" "--frozen" __TICK_SYNC_ARGS__ "--python" "__PYTHON__" "--project" "__PROJECT__" "python" "-m" "__MODULE__" "--omni-home" "__OMNI_HOME__" "--state-dir" "__EVIDENCE_DIR__"
 TimeoutStartSec=__RUN_TIMEOUT__
-StandardOutput=append:__STATE_DIR__/__UNIT__.out.log
-StandardError=append:__STATE_DIR__/__UNIT__.err.log__KILL_MODE__
+StandardOutput=__LOG_STDOUT__
+StandardError=__LOG_STDERR____KILL_MODE__

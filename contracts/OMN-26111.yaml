@@ -1,0 +1,86 @@
+schema_version: "1.0.0"
+ticket_id: OMN-26111
+title: node_host_retention_effect has a declared trigger and runs once each on h202, h200, h201 and h053 with a run line
+summary: The registry installer renders a systemd timer that previews the named host's retention overlay row and records one result per run.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26111-host-retention-trigger
+    statement: Declare a host-local trigger for the retention node and verify the named overlay row on each host.
+    acceptance:
+      - id: AC1
+        statement: >-
+          AC1: a registry unit or schedule for node_host_retention_effect is declared in node_host_installer_registry_units/contract.yaml -- falsifier: uv run pytest tests -q -k registry_units_contract
+      - id: AC2
+        statement: >-
+          AC2: the node ran once on each of h202, h200, h201 and h053 and each run line names that host's overlay row -- falsifier: onex ledger query for the run lines naming each host
+evidence_requirements:
+  - kind: tests
+    description: Render the registered unit, run its probe and tick with a fixture overlay, and read the resulting receipt.
+    command: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_host_retention_registry_units_contract.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26111-ac1-registry-render
+    description: The focused contract test loads the unit and checks the rendered timer and scheduled module.
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_host_retention_registry_units_contract.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn26111-ac2-run-record
+    description: The hosted test exercises the run record with a fixture overlay. The local Done gate reads the four live observations.
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_host_installer_registry_units/test_host_retention_registry_units_contract.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn26111-hosted-deploy-smoke
+    description: Run a dry-run request through the registry installer handler, with the host interpreter lookup fixed, and check the rendered service and timer.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: |
+          set -eu;
+          probe_dir=$(mktemp -d);
+          trap 'rm -rf "$probe_dir"' EXIT;
+          uv sync --frozen --group dev;
+          ln -s "$PWD" "$probe_dir/omnimarket";
+          uv run --frozen python -c 'import sys; from omnimarket.nodes.node_host_installer_registry_units.handlers import handler_registry_units as h; from omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units import ModelRegistryUnitsRequest; h.interpreter_present = lambda path: path == "/usr/bin/python3.12"; root = sys.argv[1]; out = h.HandlerRegistryUnits().handle(ModelRegistryUnitsRequest(unit="host-retention-systemd", mode="dry-run", home=root, registry_root=root, workspace_config_root=root, host_name="probe-host", path_overrides={"ONEX_SKILL_OVERLAY_ROOTS": root})); rendered = out.rendered; assert out.status == "success" and "runtime_host_retention_preview" in rendered and "ONEX_HOST_NAME=probe-host" in rendered and "OnActiveSec=1s" in rendered, (out.status, out.stderr)' "$probe_dir"
+        cwd: .
+  - id: dod-omn26111-integration-proof
+    description: Verify the active h202 retention timer and its successful journal line, then read successful run lines for all four hosts from the live ledger.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: |
+          journal=$(ssh -o BatchMode=yes -o ConnectTimeout=10 h202 'systemctl --user is-active --quiet onex-host-retention.timer && journalctl --user -u onex-host-retention.service --since="24 hours ago" --output=cat --no-pager') &&
+          printf '%s\n' "$journal" | python3 -c 'import json, sys; runs = (json.loads(line) for line in sys.stdin if line.startswith("{")); assert any(run.get("host") == "h202" and run.get("status") == "ok" and run.get("dry_run") is True and run.get("errors") == [] for run in runs), "no successful h202 retention preview in the journal"'
+        cwd: .
+      - check_type: command
+        check_value: |
+          set -eu
+          ledger_reply=$(mktemp)
+          trap 'rm -f "$ledger_reply"' EXIT
+          onex ledger query --ticket OMN-26111 --kind STATUS --limit 100 > "$ledger_reply"
+          python3 - "$ledger_reply" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          reply = json.loads(Path(sys.argv[1]).read_text())
+          assert not reply.get("error"), reply.get("error")
+          hosts = {"h202", "h200", "h201", "h053"}
+          for row in reply["rows"]:
+              cells = set(row["raw_row"].split(" | "))
+              if {"src=node_host_retention_effect", "exit_code=0"} <= cells:
+                  hosts = {host for host in hosts if not {f"host={host}", f"overlay_row={host}"} <= cells}
+          assert not hosts, f"missing successful retention runs: {sorted(hosts)}"
+          PY
+        cwd: .
