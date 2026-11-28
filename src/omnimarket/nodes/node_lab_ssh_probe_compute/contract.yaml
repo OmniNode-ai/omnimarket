@@ -37,13 +37,26 @@ descriptor:
   purity: pure
   idempotent: true
   side_effects: []
-  runtime_profiles: []
+  runtime_profiles: [effects]
+terminal_event: onex.evt.omnimarket.lab-ssh-probe-rendered.v1
 event_bus:
-  subscribe_topics: []
-  publish_topics: []
+  subscribe_topics:
+  - onex.cmd.omnimarket.lab-ssh-probe-requested.v1
+  publish_topics:
+  - onex.evt.omnimarket.lab-ssh-probe-rendered.v1
 runtime_dispatch:
-  external_trigger: Direct invocation with the host table rows and the host the probe runs on (python -m omnimarket.nodes.node_lab_ssh_probe_compute, one JSON request on stdin, one JSON script on stdout); the node holds no bus route, so it adds no topic.
+  command_topic: onex.cmd.omnimarket.lab-ssh-probe-requested.v1
+  external_trigger: A demand on the command topic carrying the host table rows and the host the probe runs on, answered on the terminal event with the script; the same request also runs directly (python -m omnimarket.nodes.node_lab_ssh_probe_compute, one JSON request on stdin, one JSON script on stdout).
+externally_consumed_topics:
+- onex.evt.omnimarket.lab-ssh-probe-rendered.v1
+broker_acl_grants:
+- principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+  grants:
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-ssh-probe-requested.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-ssh-probe-requested.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-ssh-probe-rendered.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-ssh-probe-rendered.v1, operation: DESCRIBE}
 metadata:
   ticket: OMN-24279
-  transport_type: local
+  transport_type: kafka
 lifecycle: experimental
