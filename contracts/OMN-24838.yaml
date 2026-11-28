@@ -1,0 +1,131 @@
+schema_version: 1.0.0
+ticket_id: OMN-24838
+title: 'Review findings 1 to 6 on omnimarket PR 5611 are fixed or argued: the turn count test reads the exposure, the zero stamp is proven, and the lab readback is on the new head'
+summary: Review findings on the turn-count change (omnimarket#5611). The terminal test reads the exposure through the read node, a delegation that dispatched nothing stores an explicit zero, the delegate-skill count is stored only when the payload carried one, the sqlite column tests open the adapter before projecting and cover a pre-existing store, the migration number text names 0069, and the lab readback runs the unit file and the Postgres twin at the pushed head.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24838-ac1
+  statement: 'every required check-run of omnimarket#5611 reads success at the new head, and a PR comment starting `Lab: head=<new head>` names the sha, the command and 4 Postgres tests passed, not skipped'
+  acceptance:
+  - id: AC1
+    statement: 'AC1: every required check-run of omnimarket#5611 reads success at the new head, and a PR comment starting `Lab: head=<new head>` names the sha, the command and 4 Postgres tests passed, not skipped -- falsifier: `onex scm pr-checks OmniNode-ai/omnimarket#5611` lists a required context that is not success at the new head, or the Lab comment lacks the sha, the command or the 4 passed'
+- id: req-omn24838-ac2
+  statement: the turn-count terminal test reads the exposure through the read node and asserts that a reported 0 returns 0 and an unreported count returns null, red on a read that renders null as zero and green at the new head
+  acceptance:
+  - id: AC2
+    statement: 'AC2: the turn-count terminal test reads the exposure through the read node and asserts that a reported 0 returns 0 and an unreported count returns null, red on a read that renders null as zero and green at the new head -- falsifier: `uv run pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q -p no:cacheprovider` passes with the read changed to render null as 0'
+- id: req-omn24838-ac3
+  statement: a producer-level test shows that refused and failed-before-dispatch terminals and the _stamp_not_routed rows carry an explicit 0, or an explicit 0 stamp is added, and the migration 0069 comment matches the code
+  acceptance:
+  - id: AC3
+    statement: 'AC3: a producer-level test shows that refused and failed-before-dispatch terminals and the _stamp_not_routed rows carry an explicit 0, or an explicit 0 stamp is added, and the migration 0069 comment matches the code -- falsifier: `uv run pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q -p no:cacheprovider` passes with the explicit 0 stamp removed'
+- id: req-omn24838-ac4
+  statement: the sqlite test opens the adapter and reads PRAGMA table_info before any terminal is projected, adds a pre-existing-store case, and checks the column type the on-connect adder gives
+  acceptance:
+  - id: AC4
+    statement: 'AC4: the sqlite test opens the adapter and reads PRAGMA table_info before any terminal is projected, adds a pre-existing-store case, and checks the column type the on-connect adder gives -- falsifier: `uv run pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q -p no:cacheprovider` passes with the on-connect column DDL removed'
+- id: req-omn24838-ac5
+  statement: the skill fixtures set attempts_count=5 against 3 attempt-history entries and assert 5, with tests for a skill-path terminal with no count (NULL) and a malformed count, red on a count derived from the history length
+  acceptance:
+  - id: AC5
+    statement: 'AC5: the skill fixtures set attempts_count=5 against 3 attempt-history entries and assert 5, with tests for a skill-path terminal with no count (NULL) and a malformed count, red on a count derived from the history length -- falsifier: `uv run pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q -p no:cacheprovider` passes with the count derived from the history length'
+- id: req-omn24838-ac6
+  statement: contracts/OMN-18534.yaml and the PR title name the omnibase_infra migration copy as 0069, and the PR comment confirms that copy is applied before this code deploys
+  acceptance:
+  - id: AC6
+    statement: 'AC6: contracts/OMN-18534.yaml and the PR title name the omnibase_infra migration copy as 0069, and the PR comment confirms that copy is applied before this code deploys -- falsifier: `git grep -n 0068 -- contracts/OMN-18534.yaml` at the new head prints a line that names the omnibase_infra copy'
+- id: req-omn24838-ac7
+  statement: 'the non-blocking findings 7 to 10 are fixed or argued in a PR comment: the Postgres test asserts an int, a test pins which of two differing terminal counts wins, the _project readback is checked, and the Protocol refactor and declared-columns move are split out'
+  acceptance:
+  - id: AC7
+    statement: 'AC7: the non-blocking findings 7 to 10 are fixed or argued in a PR comment: the Postgres test asserts an int, a test pins which of two differing terminal counts wins, the _project readback is checked, and the Protocol refactor and declared-columns move are split out -- falsifier: `uv run pytest tests/test_omn18534_turn_count_real_postgres.py tests/unit/delegation/test_terminal_turn_count_omn18534.py -q -p no:cacheprovider` passes with the `== 100` coupling restored or the two-count test removed'
+evidence_requirements:
+- kind: tests
+  description: The turn count tests pass at the pushed head.
+  command: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24838-ac1
+  description: The lab command runs the unit file and the real-Postgres twin at the pushed head through the lab work runner and reads 4 Postgres tests passed, not skipped; hosted CI reads every required check success at the new head. Hosted CI cannot reach the lab host, so only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24838 --kind test -- uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py tests/test_omn18534_turn_count_real_postgres.py -q --no-cov -p no:randomly -p no:cacheprovider -rs
+    cwd: .
+- id: dod-omn24838-ac2
+  description: 'A reported 0 and an unreported count are read through the real read node over a sqlite store: 0 is served as the integer 0 and an unreported count is served as null; a read that renders null as 0 turns the test red.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -p no:cacheprovider -k "read_node"
+    cwd: .
+- id: dod-omn24838-ac3
+  description: A refusal produced by the real delegate-skill handler states 0 and stores 0; a refusal that omits the count and a not-routed failure that reported no count are stamped 0, on the sync writer and the async runner; a routed failure with no count stays NULL and a recorded count is never erased.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -p no:cacheprovider -k "producer_refusal or omits_the_count or not_routed or routed_failure"
+    cwd: .
+- id: dod-omn24838-ac4
+  description: The sqlite store declares turn_count INTEGER, nullable, with no default before any terminal is projected; a store created before the column gains it on connect declared INTEGER, as a fresh store has it; the row on disk carries the projected count.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -p no:cacheprovider -k "fresh_sqlite_store or gains_it_on_connect or row_on_disk"
+    cwd: .
+- id: dod-omn24838-ac5
+  description: A delegate-skill terminal with attempts_count 5 against 3 attempt records stores 5; a skill terminal with no count and no history stores NULL; a skill terminal that omits the count stores NULL, not the length the model derives; a negative, fractional or non-numeric count is refused and stores nothing.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -p no:cacheprovider -k "stated_count or no_count_and_no_history or omits_the_count_stores_null or malformed_count"
+    cwd: .
+- id: dod-omn24838-ac6
+  description: contracts/OMN-18534.yaml names the omnibase_infra copy as 0069 and no line of it reads 0068; the PR comment records the copy on the omnibase_infra dev tip and its pinned checksum. Only the local Done gate runs this unbound check.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: '! git grep -n 0068 -- contracts/OMN-18534.yaml'
+    cwd: .
+- id: dod-omn24838-ac7
+  description: The real-Postgres twin asserts an int for the omitted count, a test pins that the later of two differing reported counts wins, a test reads the projected row back from the sqlite file on disk, and the unit and Postgres files pass; the Protocol refactor and the declared-columns move stay, argued in a PR comment with the file code-line counts.
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/test_omn18534_turn_count_real_postgres.py tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -p no:cacheprovider
+    cwd: .
+- id: dod-omn24838-ac1-hosted
+  description: The unit file and the real-Postgres twin pass in the hosted run, where the Postgres service container is present, and the twin errors (it never skips) when the database is unreachable; the lab command of dod-omn24838-ac1 stays the unbound local Done gate proof of the same files at the pushed head.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py tests/test_omn18534_turn_count_real_postgres.py -q --no-cov -p no:randomly -p no:cacheprovider
+    cwd: .
+- id: dod-omn24838-ac6-hosted
+  description: A test reads contracts/OMN-18534.yaml and asserts it names 0069 and carries no 0068; the git grep command of dod-omn24838-ac6 stays the unbound local Done gate check of the same text.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/delegation/test_terminal_turn_count_omn18534.py -q --no-cov -p no:randomly -p no:cacheprovider -k "ticket_contract_names_the_omnibase_infra_copy or bytes_are_pinned or comment_states"
+    cwd: .
