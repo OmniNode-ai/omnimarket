@@ -32,19 +32,17 @@ DEFAULTS: dict[str, dict[str, JsonValue]] = {
 
 
 class _Pipeline:
-    """The projection's write path and the Valkey writer's apply, over two in-memory stores."""
+    """The projection's write path over the table; nothing writes Valkey (the table is the record, OMN-24028)."""
 
-    def __init__(self, *, valkey_drops: bool = False) -> None:
+    def __init__(self, *, table_drops: bool = False) -> None:
         self.table = InMemoryOverlayStore()
-        self.valkey = InMemoryOverlayStore()
         self.writes = 0
-        self._drops = valkey_drops
+        self._drops = table_drops
 
     async def write(self, record: Mapping[str, JsonValue]) -> None:
         self.writes += 1
-        await self.table.write_version(record)
         if not self._drops:
-            await self.valkey.write_version(record)
+            await self.table.write_version(record)
 
 
 async def _seed(pipe: _Pipeline, intake: Mapping[str, str] = INTAKE) -> ModelSeedResult:
@@ -52,7 +50,6 @@ async def _seed(pipe: _Pipeline, intake: Mapping[str, str] = INTAKE) -> ModelSee
         intake,
         DEFAULTS,
         table=pipe.table,
-        settings_store=pipe.valkey,
         write=pipe.write,
         source_ref="settings-defaults@test",
         loaded_by="bootstrap",
@@ -76,23 +73,22 @@ async def test_bootstrap_seed_idempotent_a_second_run_writes_nothing() -> None:
     assert pipe.writes == 2
 
 
-async def test_bootstrap_seed_idempotent_the_table_and_valkey_agree_on_each_record() -> (
+async def test_bootstrap_seed_idempotent_the_table_holds_each_default_after_one_run() -> (
     None
 ):
     pipe = _Pipeline()
     await _seed(pipe)
-    for overlay_id in DEFAULTS:
+    for overlay_id, document in DEFAULTS.items():
         in_table = await pipe.table.read_current(overlay_id)
-        in_valkey = await pipe.valkey.read_current(overlay_id)
         assert in_table is not None
-        assert in_table == in_valkey
+        assert in_table["document"] == document
 
 
-async def test_bootstrap_seed_idempotent_a_valkey_that_lacks_the_record_is_a_disagreement() -> (
+async def test_bootstrap_seed_idempotent_a_table_that_lacks_the_record_is_a_disagreement() -> (
     None
 ):
     with pytest.raises(SeedDisagreementError, match="lab_hosts"):
-        await _seed(_Pipeline(valkey_drops=True))
+        await _seed(_Pipeline(table_drops=True))
 
 
 @pytest.mark.parametrize("missing", BOOTSTRAP_BINDINGS)

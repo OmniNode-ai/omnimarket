@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: MIT
 """``onex settings set|get|list|bootstrap-file``: one declared command over the central settings store.
 
-A shim over ``node_overlay_setting_set_effect`` (the set), the injected store of ``store_wiring`` (get and list) and
-``render_bootstrap_file`` (the host's bootstrap file); it holds no store address, kind or setting of its own. The store a
-read uses is built from the host's bootstrap file (``--bootstrap-file`` or ``ONEX_BOOTSTRAP_FILE``) through the one wiring
-function, and a secret that kind declares is taken from the environment variable of the same name, which the host's secret
-injection fills.
+A shim over ``node_overlay_setting_set_effect`` (the set), the table (get, list and the seed's agreement check) and
+``render_bootstrap_file`` (the host's bootstrap file); it holds no store address, kind or setting of its own. The table is
+the settings store of record: the database the projection writes, read through the snapshot topic the projection publishes
+after it commits (nothing but a runtime connects to a database). A set publishes the declared loaded event and the store's
+reply names the committed row; a get or list reads the table, never a cache (OMN-24028).
 
 A set that succeeded in the store also rewrites that overlay's local file (``<root>/<overlay>/overlay.yaml`` under
 ``ONEX_SKILL_OVERLAY_ROOTS``) with the new value and a ``# settings-set:`` provenance line (path, actor, time and the value's
@@ -46,7 +46,6 @@ from omnimarket.handlers.overlay_store.setting_paths import (
     value_digest,
 )
 from omnimarket.handlers.overlay_store.settings_seed import seed_defaults
-from omnimarket.handlers.overlay_store.store_wiring import build_overlay_store
 from omnimarket.nodes.node_overlay_setting_set_effect.handlers.handler_overlay_setting_set import (
     load_settable_settings,
 )
@@ -90,27 +89,6 @@ def _resolve(overlay: str, key: str) -> tuple[ModelSettableSetting, str]:
 
 def _env_secrets(names: tuple[str, ...]) -> Mapping[str, str]:
     return {name: os.environ.get(name, "") for name in names}
-
-
-def _store(ctx: click.Context, bootstrap_file: Path | None) -> ProtocolOverlayStore:
-    injected = (ctx.obj or {}).get("store")
-    if injected is not None:
-        store: ProtocolOverlayStore = injected
-        return store
-    path = bootstrap_file or (
-        Path(os.environ[BOOTSTRAP_FILE_ENV])
-        if os.environ.get(BOOTSTRAP_FILE_ENV)
-        else None
-    )
-    if path is None:
-        raise click.ClickException(
-            f"name the host's bootstrap file with --bootstrap-file or {BOOTSTRAP_FILE_ENV}"
-        )
-    try:
-        bootstrap = parse_bootstrap_file(path.read_text(encoding="utf-8"))
-        return build_overlay_store(bootstrap, fetch_secrets=_env_secrets)
-    except (OSError, ValueError) as exc:
-        raise click.ClickException(f"{type(exc).__name__}: {exc}") from exc
 
 
 _LOOP: asyncio.AbstractEventLoop | None = None
@@ -159,15 +137,11 @@ def settings_group(ctx: click.Context) -> None:
 @settings_group.command("get")
 @click.argument("overlay")
 @click.argument("key")
-@bootstrap_option
 @click.pass_context
-def get_command(
-    ctx: click.Context, overlay: str, key: str, bootstrap_file: Path | None
-) -> None:
+def get_command(ctx: click.Context, overlay: str, key: str) -> None:
     """Print one declared setting's stored value as JSON."""
     _setting, path = _resolve(overlay, key)
-    store = _store(ctx, bootstrap_file)
-    value = _current(store, path, overlay)
+    value = _current(_live_table(ctx)[0], path, overlay)
     if value is None:
         raise click.ClickException(
             f"the store holds no value of {key} for the overlay {overlay}"
@@ -177,19 +151,16 @@ def get_command(
 
 @settings_group.command("list")
 @click.option("--overlay", default=None, help="only this overlay's declared settings")
-@bootstrap_option
 @click.pass_context
-def list_command(
-    ctx: click.Context, overlay: str | None, bootstrap_file: Path | None
-) -> None:
+def list_command(ctx: click.Context, overlay: str | None) -> None:
     """List each declared setting, tab-separated: overlay, key, current value (or <unset>)."""
-    store = _store(ctx, bootstrap_file)
+    table = _live_table(ctx)[0]
     for setting in _declared():
         if overlay is not None and setting.overlay_id != overlay:
             continue
         value: JsonValue | None = None
         if "{" not in setting.path:  # a placeholder key has no one value to show
-            value = _current(store, setting.path, setting.overlay_id)
+            value = _current(table, setting.path, setting.overlay_id)
         shown = UNSET if value is None else json.dumps(value)
         click.echo(f"{setting.overlay_id}\t{setting.key}\t{shown}")
 
@@ -307,13 +278,12 @@ async def _refresh(table: Any) -> None:
         await refresh()
 
 
-def _live_seed_paths(
-    ctx: click.Context, store: ProtocolOverlayStore
-) -> tuple[Any, Any]:
-    """The table reader and the write path of a seed: injected for a test, the loader's bus otherwise."""
-    obj = ctx.obj or {}
-    if obj.get("seed_table") is not None and obj.get("seed_write") is not None:
-        return obj["seed_table"], obj["seed_write"]
+def _live_table(ctx: click.Context) -> tuple[ProtocolOverlayStore, Any]:
+    """The table reader and its bus opener: injected for a test, the loader's bus and snapshot topic otherwise."""
+    injected = (ctx.obj or {}).get("table")
+    if injected is not None:
+        table: ProtocolOverlayStore = injected
+        return table, None
     from omnimarket.handlers.node_overlay_reader import load_structured_overlay
     from omnimarket.handlers.overlay_store.bus_opener import (
         open_lane_bus,
@@ -343,13 +313,26 @@ def _live_seed_paths(
             root=workspace_root(os.environ),
         )
 
-    table = BusSnapshotOverlayStore(
-        open_bus=open_bus,
-        topic=contract["snapshot_read"]["topic"],
-        group_prefix=contract["config"]["group_prefix"],
-        window_s=float(contract["config"]["read_window_s"]),
+    return (
+        BusSnapshotOverlayStore(
+            open_bus=open_bus,
+            topic=contract["snapshot_read"]["topic"],
+            group_prefix=contract["config"]["group_prefix"],
+            window_s=float(contract["config"]["read_window_s"]),
+        ),
+        (open_bus, contract["event_bus"]["publish_topics"][0]),
     )
-    loaded_topic = contract["event_bus"]["publish_topics"][0]
+
+
+def _live_seed_write(
+    ctx: click.Context, table: ProtocolOverlayStore, wiring: Any
+) -> Any:
+    """The write path of a seed: injected for a test, the loaded event on the loader's bus otherwise, then wait for the
+    table to show the record (the projection commits it and publishes the snapshot)."""
+    injected = (ctx.obj or {}).get("seed_write")
+    if injected is not None:
+        return injected
+    open_bus, loaded_topic = wiring
 
     async def write(record: Mapping[str, JsonValue]) -> None:
         async with open_bus() as bus:
@@ -362,12 +345,12 @@ def _live_seed_paths(
         deadline = loop.time() + SEED_AGREE_WAIT_S
         while loop.time() < deadline:
             await _refresh(table)
-            current = await store.read_current(str(record["overlay_id"]))
+            current = await table.read_current(str(record["overlay_id"]))
             if current is not None and current.get("digest") == record["digest"]:
                 return
             await asyncio.sleep(1.0)
 
-    return table, write
+    return write
 
 
 @settings_group.command("seed")
@@ -400,24 +383,23 @@ def seed_command(
         intake = parse_bootstrap_file(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise click.ClickException(f"{type(exc).__name__}: {exc}") from exc
-    store = _store(ctx, path)
+    table, wiring = _live_table(ctx)
     ids = sorted({s.overlay_id for s in _declared() if overlay in (None, s.overlay_id)})
     defaults = _overlay_defaults(ids, os.environ)
     kept: list[str] = []
     to_seed: dict[str, dict[str, JsonValue]] = {}
     for overlay_id, document in defaults.items():
-        if _run_on_one_loop(_read(store, overlay_id)) is not None:
+        if _run_on_one_loop(_read(table, overlay_id)) is not None:
             kept.append(overlay_id)  # a live value is never overwritten
         else:
             to_seed[overlay_id] = document
-    table, write = _live_seed_paths(ctx, store)
+    write = _live_seed_write(ctx, table, wiring)
     try:
         result = _run_on_one_loop(
             seed_defaults(
                 intake,
                 to_seed,
                 table=table,
-                settings_store=store,
                 write=write,
                 source_ref="onex-settings-seed",
                 loaded_by=os.environ.get(ACTOR_ENV, SEED_ACTOR),

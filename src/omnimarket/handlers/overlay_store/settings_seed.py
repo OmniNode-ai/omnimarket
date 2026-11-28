@@ -4,7 +4,8 @@
 
 A run refuses, naming the input, before it writes anything when a store, broker or Infisical input is missing from the
 intake. An overlay whose newest stored digest is already the default's writes nothing, so a second run writes nothing. After
-the writes, the table's newest record of each overlay and the settings store's must agree on digest and revision.
+the writes, the table's newest record of each overlay must carry the digest that was written and a revision. The table
+(the database the projection writes, read through its snapshot) is the settings store of record; nothing else is compared.
 """
 
 from __future__ import annotations
@@ -40,13 +41,12 @@ async def seed_defaults(
     defaults: Mapping[str, Mapping[str, JsonValue]],
     *,
     table: ProtocolOverlayStore,
-    settings_store: ProtocolOverlayStore,
     write: WritePath,
     source_ref: str,
     loaded_by: str,
     now: datetime,
 ) -> ModelSeedResult:
-    """Seed each default the table lacks through ``write``, render the host's bootstrap file, then check the two stores agree."""
+    """Seed each default the table lacks through ``write``, render the host's bootstrap file, then check the table holds what was written."""
     bootstrap_file = render_bootstrap_file(intake)  # refuses by name before any write
     written: list[str] = []
     unchanged: list[str] = []
@@ -67,7 +67,9 @@ async def seed_defaults(
         await write(record.model_dump(mode="json"))
         written.append(overlay_id)
     for overlay_id in sorted(defaults):
-        await _require_agreement(overlay_id, table, settings_store)
+        await _require_agreement(
+            overlay_id, table, document_digest(dict(defaults[overlay_id]))
+        )
     return ModelSeedResult(
         written=tuple(written),
         unchanged=tuple(unchanged),
@@ -76,20 +78,17 @@ async def seed_defaults(
 
 
 async def _require_agreement(
-    overlay_id: str, table: ProtocolOverlayStore, settings_store: ProtocolOverlayStore
+    overlay_id: str, table: ProtocolOverlayStore, digest: str
 ) -> None:
-    in_table = await table.read_current(overlay_id)
-    in_store = await settings_store.read_current(overlay_id)
-    if in_table is None or in_store is None:
+    held = await table.read_current(overlay_id)
+    if held is None:
         raise SeedDisagreementError(
-            f"overlay {overlay_id}: the table holds {'a record' if in_table else 'none'}, "
-            f"the settings store holds {'a record' if in_store else 'none'}"
+            f"overlay {overlay_id}: the table holds no record after the seed"
         )
-    for field in ("digest", "revision"):
-        if in_table.get(field) != in_store.get(field):
-            raise SeedDisagreementError(
-                f"overlay {overlay_id}: {field} differs between the table and the settings store"
-            )
+    if held.get("digest") != digest:
+        raise SeedDisagreementError(
+            f"overlay {overlay_id}: the table's digest is not the default's after the seed"
+        )
 
 
 __all__ = ["ModelSeedResult", "SeedDisagreementError", "seed_defaults"]

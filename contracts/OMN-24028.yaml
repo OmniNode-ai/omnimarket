@@ -150,3 +150,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/settings_store/test_settings_cli.py -q -n 0 --no-cov -p no:cacheprovider -k one_event_loop
     cwd: .
+- id: dod-omn24028-settings-table-of-record
+  description: 'onex settings get, list and the seed agreement check read the table the projection writes (its snapshot), never Valkey: seed agrees after one run with a Valkey that holds nothing, and a set followed by a get returns the value from the table; the two new tests and the reworked seed tests fail on the pushed parent head with the seed refusing on the settings store'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/settings_store/test_settings_cli.py tests/settings_store/test_bootstrap_seed_idempotent.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
