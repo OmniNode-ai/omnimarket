@@ -144,3 +144,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/settings_store/test_valkey_acl_rules.py tests/settings_store/test_settings_cli.py -q -n 0 --no-cov -p no:cacheprovider -k "may_select or one_event_loop"
     cwd: .
+- id: dod-omn24052-overlay-pair-route
+  description: 'the overlay main load check accepts, for a node added in the pull request, an open overlay-repo pull request that the body names and that pins the node at this pull request head, and only when the document loads through this tree model; a pair pinned at another commit, a document the model refuses, a number that was not fetched, and a check run without the pair head are all refused.'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_overlay_main_load_check_effect/test_overlay_pair_route.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .

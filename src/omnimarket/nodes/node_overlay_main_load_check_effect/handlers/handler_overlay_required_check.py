@@ -169,9 +169,47 @@ def owner_of(node_dir: Path, first_commit_subject: Callable[[str], str]) -> str:
 class HandlerOverlayRequiredCheck:
     """Judges the nodes a pull request adds against the overlays tree."""
 
-    def __init__(self, *, merged_pr_adds: Callable[[Path, int, str], bool]) -> None:
-        """``merged_pr_adds(checkout, pr, overlay_id)`` says whether a merged overlays pull request added the document."""
+    def __init__(
+        self,
+        *,
+        merged_pr_adds: Callable[[Path, int, str], bool],
+        open_pair_refusal: Callable[[Path, str, int, str, str], str | None]
+        | None = None,
+    ) -> None:
+        """``merged_pr_adds(checkout, pr, overlay_id)`` says whether a merged overlay-repo pull request added the document.
+
+        ``open_pair_refusal(checkout, documents_dir, pr, overlay_id, head_sha)`` (OMN-24052) says why an open overlay-repo pull request does not
+        satisfy the requirement, or ``None`` when it does; unset, the paired route is off.
+        """
         self._merged_pr_adds = merged_pr_adds
+        self._open_pair_refusal = open_pair_refusal
+
+    def _pair_verdict(
+        self, command: ModelOverlayRequiredCommand, overlay_id: str
+    ) -> tuple[str | None, list[str]]:
+        """``(paired line, refusal reasons)``: the line when a named open pull request satisfies the requirement."""
+        if (
+            self._open_pair_refusal is None
+            or command.overlays_checkout is None
+            or command.pair_head_sha is None
+        ):
+            return None, []
+        checkout = Path(command.overlays_checkout)
+        try:
+            documents_dir = (
+                Path(command.overlays_root).resolve().relative_to(checkout.resolve())
+            ).as_posix()
+        except ValueError:
+            return None, ["the documents root is not inside the checkout"]
+        reasons: list[str] = []
+        for pr in named_overlay_prs(command.pr_body):
+            reason = self._open_pair_refusal(
+                checkout, documents_dir, pr, overlay_id, command.pair_head_sha
+            )
+            if reason is None:
+                return f"overlay-repo PR {pr}", []
+            reasons.append(reason)
+        return None, reasons
 
     def _named_pr_adds(
         self, command: ModelOverlayRequiredCommand, overlay_id: str
@@ -208,8 +246,13 @@ class HandlerOverlayRequiredCheck:
                 )
             )
             missing = ()
+        paired: list[str] = []
         for requirement in missing:
             if self._named_pr_adds(command, requirement.overlay_id):
+                continue
+            pair, pair_reasons = self._pair_verdict(command, requirement.overlay_id)
+            if pair is not None:
+                paired.append(f"paired {requirement.node} with {pair}")
                 continue
             looked_for = overlay_path(overlays_root, requirement.overlay_id)
             findings.append(
@@ -223,9 +266,14 @@ class HandlerOverlayRequiredCheck:
                         f"{store_reading(command.store_snapshot_root)}. Either merge the overlay "
                         f"first, or name the merged overlays pull request that adds it in the pull request body "
                         f"(a merged overlays pull request, as overlays#<number>)."
+                        f" Or pair it with an open overlay-repo pull request that pins it at this head."
+                        + "".join(f" Pair refused: {r}." for r in pair_reasons)
                     ),
                 )
             )
         return ModelOverlayRequiredResult(
-            ok=not findings, judged=command.nodes, findings=tuple(findings)
+            ok=not findings,
+            judged=command.nodes,
+            findings=tuple(findings),
+            paired=tuple(paired),
         )

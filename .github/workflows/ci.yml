@@ -4828,10 +4828,26 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          OVERLAYS_TOKEN: ${{ steps.overlays-token.outputs.token }}
         run: |
+          set -euo pipefail
+          # OMN-24052: the paired route. A node's first overlay and the node cannot merge in either order (the overlay repository's CI
+          # loads a pin through the node's model at the pinned commit; this check wants the document on its main), so each OPEN pull
+          # request of that repository the body names is fetched here, read-only, into refs/pair-overlay/<n>. The node then accepts it
+          # only when it pins the node at THIS head and its document loads through THIS tree's model. The other repository's own check
+          # fails that pull request until its pin is on omnimarket dev.
+          for pr in $(uv run python -m omnimarket.nodes.node_overlay_main_load_check_effect pair-prs --overlays-root "$OVERLAYS_CHECKOUT/$OVERLAYS_DOCUMENTS_DIR"); do
+            auth="$(printf 'x-access-token:%s' "$OVERLAYS_TOKEN" | base64 -w0)"
+            echo "::add-mask::$auth"
+            git -C "$OVERLAYS_CHECKOUT" -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" \
+              fetch -q --no-tags --depth 1 origin "+refs/pull/$pr/head:refs/pair-overlay/$pr" \
+              || echo "overlay-repo PR $pr could not be fetched; the paired route will refuse it"
+          done
           uv run python -m omnimarket.nodes.node_overlay_main_load_check_effect added-nodes \
             --base-ref HEAD^1 \
             --overlays-root "$OVERLAYS_CHECKOUT/$OVERLAYS_DOCUMENTS_DIR" \
+            --pair-head-sha "$PR_HEAD_SHA" \
             --overlays-checkout "$OVERLAYS_CHECKOUT"
 
   # OMN-26424: every setting a lane, host, CI job or image build reads is declared in overlays, and a change that ADDS a read of a
