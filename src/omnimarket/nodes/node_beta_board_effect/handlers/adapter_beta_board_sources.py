@@ -171,6 +171,72 @@ def read_probe(
     )
 
 
+def read_gateway_leg(
+    probe: ModelBetaProbe, rt: ModelBetaBoardRuntime, home: Path, now: datetime
+) -> ModelSourceRead:
+    """A probe's readings from the gateway leg of its check: the ``gateway_leg`` of that check's runs in the probe node's run history.
+
+    Newest first. A line that is another check's, carries no verdict of ``pass`` or ``fail`` (an unmeasured leg is no reading), has an
+    event the probe excludes or has no readable time is skipped; a history that cannot be read is ``unread``, never a pass.
+    """
+    path = home / rt.gateway_history_relpath
+
+    def unread(reason: str) -> ModelSourceRead:
+        return ModelSourceRead(
+            source_id=probe.id,
+            kind="gateway_leg",
+            read="unread",
+            read_at=now,
+            reason=reason[:240],
+        )
+
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return unread(
+            f"the check run history cannot be read: {type(exc).__name__} {rt.gateway_history_relpath}"
+        )
+    points: list[ModelReadingPoint] = []
+    for raw in text.splitlines():
+        try:
+            line = json.loads(raw)
+        except ValueError:
+            continue
+        if not isinstance(line, dict) or line.get("check") != probe.gateway_check:
+            continue
+        if probe.events and str(line.get("event") or "") not in probe.events:
+            continue
+        leg = line.get("gateway_leg")
+        if leg not in ("pass", "fail"):
+            continue
+        moment = parse_moment(str(line.get("created_at") or ""))
+        if moment is None:
+            continue
+        points.append(
+            ModelReadingPoint(
+                at=moment,
+                verdict="pass" if leg == "pass" else "fail",
+                ref=f"{probe.gateway_check} gateway leg {line.get('run_id') or ''}".strip(),
+            )
+        )
+    points.sort(key=lambda p: p.at, reverse=True)
+    if (
+        points
+        and (now - points[0].at).total_seconds() > rt.gateway_reading_max_age_seconds
+    ):
+        return unread(
+            f"the newest scheduled run is older than two hours ({rt.gateway_reading_max_age_seconds} s): no current reading"
+        )
+    return ModelSourceRead(
+        source_id=probe.id,
+        kind="gateway_leg",
+        read="read",
+        read_at=now,
+        reason="" if points else "no run of the check has a graded gateway leg",
+        points=tuple(points[: rt.probe_run_limit]),
+    )
+
+
 def read_ledger_readings(
     source: ProtocolLedgerRowSource,
     readings: Sequence[ModelBetaLedgerReading],
@@ -355,6 +421,10 @@ def refresh_probes(
         ),
     )
     for probe in ordered:
+        if probe.gateway_check:
+            # A local file read: no source-control round trip, so no refresh window, cache or stage deadline applies.
+            result[probe.id] = read_gateway_leg(probe, rt, home, now)
+            continue
         previous = kept.get(probe.id)
         if (
             previous is not None

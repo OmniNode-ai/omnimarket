@@ -30,7 +30,7 @@ descriptor:
     - effects
   idempotent: false
 description: >
-  Serves the workflow gateway from the runtime's HTTP port: submit a workflow (allowlisted type, payload checked against the catalog schema, per-principal rate limit, monthly plan quota, command published on the catalog's topic, 202 only after the publish), read a tenant's workflow status, render a terminal workflow's receipt, and advertise the servable catalog (GET /v1/workflows/contracts). A workflow of another tenant answers 404, the same as an unknown id.
+  Serves the workflow gateway from the runtime's HTTP port: submit a workflow (allowlisted type, payload checked against the catalog schema, per-principal rate limit, monthly plan quota, command published on the catalog's topic, 202 only after the publish), read a tenant's workflow status, render a terminal workflow's receipt, and advertise the servable catalog (GET /v1/workflows/contracts). A repeated correlation_id from one tenant returns the original job (same workflow id, its current status) with nothing published again, or a 409 correlation_id_conflict when the payload differs; another tenant's number is independent. A workflow of another tenant answers 404, the same as an unknown id.
 input_model:
   name: "ModelWorkflowSubmitCommand"
   module: "omnimarket.nodes.node_workflow_gateway_effect.models.model_workflow_http"
@@ -45,6 +45,17 @@ config:
     bootstrap_servers_env: "KAFKA_BOOTSTRAP_SERVERS"
   http:
     max_body_bytes: 1048576
+  # The cloud runtime has no lab host to load settings: a ConfigMap holding
+  # node_workflow_gateway_effect/overlay.yaml is mounted at this folder. The gateway reads it after
+  # every root ONEX_SKILL_OVERLAY_ROOTS names, so a host that declares roots keeps its own document.
+  settings_mount:
+    path: "/etc/onex/settings"
+runtime_dispatch:
+  external_trigger: true
+  # A request to the runtime's HTTP mount starts this node; no topic, timer or host unit does.
+  on_demand:
+    command: an HTTP request to the runtime mount at /v1/workflows (POST /v1/workflows, GET /v1/workflows/{id}/status, GET /v1/workflows/{id}/receipt, GET /v1/workflows/contracts)
+    owner: OmniNode Platform Team
 http_mount:
   factory: "omnimarket.nodes.node_workflow_gateway_effect.handlers.http_app:create_app"
   path_prefix: "/v1/workflows"
@@ -67,6 +78,12 @@ http_routes:
     handler:
       name: HandlerWorkflowStatusRead
       module: omnimarket.nodes.node_workflow_gateway_effect.handlers.handler_workflow_status_read
+  - operation: tenant_key_register
+    method: POST
+    path: "/v1/workflows/tenant-keys"
+    handler:
+      name: HandlerTenantKeyRegister
+      module: omnimarket.nodes.node_workflow_gateway_effect.handlers.handler_tenant_key_register
   - operation: receipt
     method: GET
     path: "/v1/workflows/{workflow_id}/receipt"
@@ -92,6 +109,8 @@ capabilities:
     description: "Serve POST /v1/workflows."
   - name: "workflow_gateway_status_read"
     description: "Serve GET /v1/workflows/{workflow_id}/status."
+  - name: "workflow_gateway_tenant_key_register"
+    description: "Serve POST /v1/workflows/tenant-keys: register the signed-in tenant's own provider key under the tenant UUID and refuse another tenant."
   - name: "workflow_gateway_receipt_read"
     description: "Serve GET /v1/workflows/{workflow_id}/receipt."
 metadata:

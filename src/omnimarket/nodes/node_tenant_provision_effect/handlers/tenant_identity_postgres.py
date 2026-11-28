@@ -23,6 +23,7 @@ import asyncpg
 
 from omnimarket.nodes.node_tenant_provision_effect.handlers.tenant_created_envelope import (
     TENANT_CREATED,
+    TENANT_EVENTS_TOPIC,
     build_tenant_created_envelope,
 )
 from omnimarket.nodes.node_tenant_provision_effect.models.model_tenant_provision import (
@@ -39,7 +40,7 @@ _DRIVER_ERRORS = (
 _OUTBOX_BY_COMMAND = """
 SELECT o.envelope, t.tenant_slug, t.owner_email
 FROM tenant_event_outbox o
-JOIN tenants t ON t.tenant_id = o.tenant_id
+JOIN tenants t ON t.tenant_id = (o.envelope #>> '{payload,tenant,tenant_id}')::uuid
 WHERE o.envelope ->> 'correlation_id' = $1
   AND o.envelope ->> 'operation' = $2
 LIMIT 1
@@ -52,7 +53,7 @@ RETURNING tenant_id, tenant_slug, name, provisioning_state, created_at
 """
 _TENANT_BY_SLUG = """
 SELECT t.tenant_id, t.tenant_slug, t.name, t.provisioning_state, t.created_at, t.owner_email,
-       (SELECT pt.code FROM tenant_plans tp JOIN plan_tiers pt ON pt.id = tp.plan_id
+       (SELECT tp.plan_code FROM tenant_plans tp
          WHERE tp.tenant_id = t.tenant_id AND tp.is_active LIMIT 1) AS plan_code
 FROM tenants t
 WHERE t.tenant_slug = $1
@@ -60,13 +61,36 @@ WHERE t.tenant_slug = $1
 _TENANT_BY_ID = _TENANT_BY_SLUG.replace("t.tenant_slug = $1", "t.tenant_id = $1")
 _DEFAULT_PLAN = "SELECT id, code FROM plan_tiers WHERE is_default ORDER BY code LIMIT 1"
 _INSERT_PLAN = """
-INSERT INTO tenant_plans (tenant_id, plan_id)
+INSERT INTO tenant_plans (tenant_id, plan_code)
 VALUES ($1, $2)
 ON CONFLICT (tenant_id) WHERE is_active = true DO NOTHING
 """
+# The live outbox (the identity schema seam) carries the destination topic and the envelope, never a tenant id column: the
+# tenant is read back from the envelope's payload.
 _INSERT_OUTBOX = (
-    "INSERT INTO tenant_event_outbox (tenant_id, envelope) VALUES ($1, $2::jsonb)"
+    "INSERT INTO tenant_event_outbox (topic, envelope) VALUES ($1, $2::jsonb)"
 )
+# A tenant created outside this node has no TENANT_CREATED row, so the registry mirror never learns it (OMN-26594).
+_CREATED_EVENT_FOR_TENANT = """
+SELECT 1 FROM tenant_event_outbox
+WHERE envelope ->> 'operation' = $1
+  AND envelope #>> '{payload,tenant,tenant_id}' = $2
+LIMIT 1
+"""
+_INSERT_API_KEY = """
+INSERT INTO tenant_api_keys (tenant_id, name, key_hash)
+VALUES ($1, $2, $3)
+ON CONFLICT DO NOTHING
+RETURNING id
+"""
+# Used only when the key carries an expiry (OMN-26476), so a database without the expiry column keeps working for a key without one.
+_INSERT_API_KEY_WITH_EXPIRY = """
+INSERT INTO tenant_api_keys (tenant_id, name, key_hash, expires_at)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT DO NOTHING
+RETURNING id
+"""
+_ACTIVE_KEY_HASH_BY_NAME = "SELECT key_hash FROM tenant_api_keys WHERE tenant_id = $1 AND name = $2 AND is_active"
 
 
 class TenantStoreUnavailableError(Exception):
@@ -88,6 +112,15 @@ class EnumProvisionKind(StrEnum):
     NO_DEFAULT_PLAN = "no_default_plan"
 
 
+class EnumApiKeyKind(StrEnum):
+    """What one key insert found and did."""
+
+    CREATED = "created"
+    EXISTS = "exists"
+    NAME_CONFLICT = "name_conflict"
+    HASH_TAKEN = "hash_taken"
+
+
 @dataclass(frozen=True)
 class TenantRow:
     """One tenant as read: the six fields a read answers."""
@@ -107,6 +140,7 @@ class ProvisionRecord:
     kind: EnumProvisionKind
     envelope: dict[str, Any] | None = None
     tenant: TenantRow | None = None
+    event_queued: bool = False
 
 
 def _row(record: Any) -> TenantRow:
@@ -188,13 +222,17 @@ class TenantIdentityPostgres:
                 raise TenantStoreUnavailableError("tenant row vanished during insert")
             if existing["owner_email"] == command.owner_email:
                 return ProvisionRecord(
-                    kind=EnumProvisionKind.ALREADY_EXISTS, tenant=_row(existing)
+                    kind=EnumProvisionKind.ALREADY_EXISTS,
+                    tenant=_row(existing),
+                    event_queued=await self._queue_missing_created_event(
+                        connection, command, existing
+                    ),
                 )
             return ProvisionRecord(kind=EnumProvisionKind.SLUG_TAKEN)
         plan = await connection.fetchrow(_DEFAULT_PLAN)
         if plan is None:
             raise _NoDefaultPlanError
-        await connection.execute(_INSERT_PLAN, inserted["tenant_id"], plan["id"])
+        await connection.execute(_INSERT_PLAN, inserted["tenant_id"], plan["code"])
         envelope = build_tenant_created_envelope(
             command_id=command.command_id,
             tenant_id=inserted["tenant_id"],
@@ -205,9 +243,46 @@ class TenantIdentityPostgres:
             plan_code=plan["code"],
         )
         await connection.execute(
-            _INSERT_OUTBOX, inserted["tenant_id"], json.dumps(envelope)
+            _INSERT_OUTBOX, TENANT_EVENTS_TOPIC, json.dumps(envelope)
         )
         return ProvisionRecord(kind=EnumProvisionKind.CREATED, envelope=envelope)
+
+    @staticmethod
+    async def _queue_missing_created_event(
+        connection: asyncpg.Connection,
+        command: ModelTenantProvisionCommand,
+        existing: Any,
+    ) -> bool:
+        """Queue the ``TENANT_CREATED`` row an existing tenant lacks; ``False`` when it already has one.
+
+        The registry mirror fills only from that event, so a tenant made by another path (a seed, an earlier build)
+        stays unmirrored and every delegation row of it is refused by the projection. The row is built from the stored
+        tenant, in the transaction that read it; a second run finds the row and writes nothing.
+        """
+        tenant_id: UUID = existing["tenant_id"]
+        if await connection.fetchrow(
+            _CREATED_EVENT_FOR_TENANT, TENANT_CREATED, str(tenant_id)
+        ):
+            return False
+        plan_code = existing["plan_code"]
+        if plan_code is None:
+            plan = await connection.fetchrow(_DEFAULT_PLAN)
+            if plan is None:
+                raise _NoDefaultPlanError
+            plan_code = plan["code"]
+        envelope = build_tenant_created_envelope(
+            command_id=command.command_id,
+            tenant_id=tenant_id,
+            tenant_slug=existing["tenant_slug"],
+            name=existing["name"],
+            status=existing["provisioning_state"],
+            created_at=existing["created_at"],
+            plan_code=plan_code,
+        )
+        await connection.execute(
+            _INSERT_OUTBOX, TENANT_EVENTS_TOPIC, json.dumps(envelope)
+        )
+        return True
 
     @staticmethod
     async def _by_command(
@@ -227,6 +302,49 @@ class TenantIdentityPostgres:
         envelope: dict[str, Any] = json.loads(found["envelope"])
         return ProvisionRecord(kind=EnumProvisionKind.REPLAY, envelope=envelope)
 
+    async def ensure_api_key(
+        self,
+        *,
+        tenant_id: UUID,
+        name: str,
+        key_hash: str,
+        expires_at: datetime | None = None,
+    ) -> EnumApiKeyKind:
+        """Insert one active key row for the tenant, or report what already holds the name or the hash (OMN-26586).
+
+        ``ON CONFLICT DO NOTHING`` covers both unique constraints (``key_hash`` and the active ``(tenant_id, name)`` index);
+        a conflict is then told apart by reading the active row under the name. Nothing is replaced or revoked.
+        """
+        try:
+            pool = await self._get_pool()
+            async with pool.acquire() as connection, connection.transaction():
+                if expires_at is None:
+                    inserted = await connection.fetchrow(
+                        _INSERT_API_KEY, tenant_id, name, key_hash
+                    )
+                else:
+                    inserted = await connection.fetchrow(
+                        _INSERT_API_KEY_WITH_EXPIRY,
+                        tenant_id,
+                        name,
+                        key_hash,
+                        expires_at,
+                    )
+                if inserted is not None:
+                    return EnumApiKeyKind.CREATED
+                held = await connection.fetchrow(
+                    _ACTIVE_KEY_HASH_BY_NAME, tenant_id, name
+                )
+        except TenantStoreUnavailableError:
+            raise
+        except _DRIVER_ERRORS as exc:
+            raise _unavailable(exc) from None
+        if held is None:
+            return EnumApiKeyKind.HASH_TAKEN
+        if held["key_hash"] == key_hash:
+            return EnumApiKeyKind.EXISTS
+        return EnumApiKeyKind.NAME_CONFLICT
+
     async def read(
         self, *, tenant_id: UUID | None, tenant_slug: str | None
     ) -> TenantRow | None:
@@ -245,6 +363,7 @@ class TenantIdentityPostgres:
 
 
 __all__ = [
+    "EnumApiKeyKind",
     "EnumProvisionKind",
     "ProvisionRecord",
     "TenantIdentityPostgres",

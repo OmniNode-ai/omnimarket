@@ -4,15 +4,19 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shlex
 import subprocess
 import uuid
-from collections.abc import Callable, Mapping, Sequence
-from datetime import UTC, datetime
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from omnibase_infra.event_bus.models.config import ModelKafkaEventBusConfig
 
 from omnimarket.nodes.node_work_ledger_reader_effect.models import (
     ModelBusSessionReadRoute,
@@ -47,11 +51,23 @@ def open_claims_query() -> ModelPointQuery:
     return ModelPointQuery(query="open-claims")
 
 
-def _request(query: ModelPointQuery, correlation_id: str) -> dict[str, object]:
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _request(
+    query: ModelPointQuery,
+    correlation_id: str,
+    *,
+    deadline: datetime | None = None,
+) -> dict[str, object]:
+    """The wire request; ``deadline`` is the instant this caller stops waiting (OMN-26609)."""
     request: dict[str, object] = {
         "correlation_id": correlation_id,
         "query": query.query,
     }
+    if deadline is not None:
+        request["deadline"] = _stamp(deadline)
     if query.lanes:
         request["lanes"] = list(query.lanes)
     if query.lane:
@@ -126,17 +142,27 @@ class CommandPointRead:
         argv: Sequence[str],
         timeout_seconds: int,
         new_id: Callable[[], str] = lambda: str(uuid.uuid4()),
+        *,
+        stamp_deadline: bool = False,
+        clock: Callable[[], datetime] = _now,
     ) -> None:
         self._argv = list(argv)
         self._timeout = timeout_seconds
         self._new_id = new_id
+        self._stamp_deadline = stamp_deadline
+        self._clock = clock
 
     def read(self, query: ModelPointQuery) -> ModelPointAnswer:
         correlation_id = self._new_id()
+        deadline = (
+            self._clock() + timedelta(seconds=self._timeout)
+            if self._stamp_deadline
+            else None
+        )
         try:
             done = subprocess.run(
                 self._argv,
-                input=json.dumps(_request(query, correlation_id)),
+                input=json.dumps(_request(query, correlation_id, deadline=deadline)),
                 capture_output=True,
                 text=True,
                 timeout=self._timeout,
@@ -193,6 +219,59 @@ class JournalEventSink:
             fh.write(event.model_dump_json() + "\n")
 
 
+_CONFIG_ROOT_ENV = "ONEX_WORKSPACE_CONFIG_ROOT"
+_SASL_ENVIRONMENT = ("KAFKA_SASL_USERNAME", "KAFKA_SASL_PASSWORD")
+
+
+@contextlib.contextmanager
+def _config_root_declared(declared: str | None) -> Iterator[None]:
+    """Name the overlay's mounted config root for the lane resolver; put the variable back after (OMN-24562).
+
+    The dev runtime mounts the lane declaration but exports no ONEX_WORKSPACE_CONFIG_ROOT. A root the environment
+    already names wins.
+    """
+    if declared is None or os.environ.get(_CONFIG_ROOT_ENV, "").strip():
+        yield
+        return
+    os.environ[_CONFIG_ROOT_ENV] = declared
+    try:
+        yield
+    finally:
+        os.environ.pop(_CONFIG_ROOT_ENV, None)
+
+
+def resolve_bus_session_config(
+    route: ModelBusSessionReadRoute, environ: Mapping[str, str]
+) -> ModelKafkaEventBusConfig:
+    """The declared lane's broker config; the SASL identity from the environment when no client store holds one.
+
+    A lab host or runtime container holds the lane's identity in KAFKA_SASL_USERNAME / KAFKA_SASL_PASSWORD and has no
+    credential store, so the credential resolver steps aside (transport None) and the environment answers.
+    """
+    from omnibase_infra.cli.delegate_lane_credentials import resolve_lane_binding
+    from omnibase_infra.handlers.lane_kafka_event_bus_config import (
+        lane_event_bus_config,
+    )
+
+    if route.bus_lane != "dev":
+        raise ValueError("Work-ledger queries are enabled for the dev lane only")
+    with _config_root_declared(route.workspace_config_root):
+        selection, transport = resolve_lane_binding(route.bus_lane, environ=environ)
+    config = lane_event_bus_config(selection, transport)
+    if transport is None:
+        username, password = (
+            environ.get(name, "").strip() for name in _SASL_ENVIRONMENT
+        )
+        if username and password:
+            config = config.model_copy(
+                update={
+                    "sasl_plain_username": username,
+                    "sasl_plain_password": password,
+                }
+            )
+    return config
+
+
 def build_point_read(
     route: ModelCommandReadRoute | ModelInMemoryReadRoute | ModelBusSessionReadRoute,
     environ: Mapping[str, str] | None = None,
@@ -207,25 +286,28 @@ def build_point_read(
 
         def factory() -> ProtocolBusQueryClient:
             # Imported here so a host that never uses this route imports nothing from infra.
-            from omnibase_infra.cli.cli_ledger import (
-                resolve_work_ledger_query_transport,
-            )
             from omnibase_infra.handlers.handler_work_ledger_query import (
                 HandlerWorkLedgerQuery,
             )
 
             return HandlerWorkLedgerQuery(
-                resolve_work_ledger_query_transport(route.bus_lane)
+                resolve_bus_session_config(
+                    route, os.environ if environ is None else environ
+                )
             )
 
-        return BusSessionPointRead(factory, route.timeout_seconds)
+        return BusSessionPointRead(
+            factory, route.timeout_seconds, stamp_deadline=route.stamp_deadline
+        )
     env = os.environ if environ is None else environ
     argv = shlex.split(env.get(route.command_env, ""))
     if not argv:
         raise ReaderRouteError(
             f"{route.command_env} is not set; the overlay names it as the bus read command"
         )
-    return CommandPointRead(argv, route.timeout_seconds)
+    return CommandPointRead(
+        argv, route.timeout_seconds, stamp_deadline=route.stamp_deadline
+    )
 
 
 __all__ = [

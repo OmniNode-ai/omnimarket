@@ -14,7 +14,8 @@ class ModelFailureAlarmRequest(BaseModel):
     failure classes are read from. ``controller_ticks_path`` is the landing controller's ticks.jsonl. The
     operator push channel is ``alert_command``, the command field the host reconcile alarm already uses:
     the alarm text is appended to its argv as the last argument. ``ledger_append_command`` is that node's
-    bus ledger writer.
+    bus ledger writer. A command whose first token is ``{python}`` runs under ``python_interpreter``, the
+    declared setting, which is the running environment's own interpreter when left empty.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -31,6 +32,7 @@ class ModelFailureAlarmRequest(BaseModel):
     alert_command: str = ""
     ledger_append_command: str = ""
     host: str = ""
+    python_interpreter: str = ""
 
 
 class ModelCauseAlarm(BaseModel):

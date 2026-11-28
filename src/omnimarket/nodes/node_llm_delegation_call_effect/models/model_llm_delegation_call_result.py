@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from omnimarket.enums.enum_anthropic_stop_reason import EnumAnthropicStopReason
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
+from omnimarket.enums.enum_cost_source import EnumCostSource
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_provider_finish_reason import EnumProviderFinishReason
 from omnimarket.enums.enum_secret_source import EnumSecretSource
@@ -75,6 +76,9 @@ class ModelLlmDelegationCallResult(BaseModel):
     # Token evidence only; cost provenance is carried separately by cost_basis.
     usage_source: EnumUsageSource = EnumUsageSource.UNKNOWN
     cost_basis: EnumCostBasis = EnumCostBasis.UNKNOWN
+    # Which figure ``actual_cost_usd`` is: the charge the provider reported in
+    # its usage accounting, or the provider's token counts times a price.
+    cost_source: EnumCostSource = EnumCostSource.ESTIMATED
     # OMN-23413 AC35: which source priced this call (the provider's own list,
     # models.dev, or packaged configuration) and when that source was read
     # (ISO UTC; None for packaged configuration). Both None when unpriced.
@@ -164,6 +168,12 @@ class ModelLlmDelegationCallResult(BaseModel):
     # this is MORE TRUSTWORTHY attribution than the configured name alone and
     # should be preferred for event/receipt attribution.
     served_model_id: str | None = None
+
+    # OMN-18079: the provider's own id for this generation (an OpenRouter
+    # ``gen-...`` id, the chat completion ``id``), so the answering model can be
+    # looked up at the provider. ``None`` when the provider returned none; it is
+    # never filled from the requested model.
+    provider_generation_id: str | None = None
 
     # OMN-19205: earlier calls of this same customer route that the provider
     # could not serve (a throttle, or an upstream outage inside a 200), in the

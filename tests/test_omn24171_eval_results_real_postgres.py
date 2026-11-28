@@ -14,6 +14,7 @@ import json
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import quote, quote_plus
@@ -35,6 +36,7 @@ from omnimarket.nodes.node_projection_eval_results.models.model_eval_projection_
     TOPIC_CODE_TRY,
     TOPIC_JUDGED,
     TOPIC_RUN_CLOSED,
+    TOPIC_TICK,
 )
 from omnimarket.nodes.node_projection_eval_results.models.model_eval_rows import (
     ModelEvalItemRow,
@@ -431,3 +433,84 @@ async def test_not_materialized_a_missing_table_is_withheld_then_dead_lettered()
         outcome = await writer._project(TOPIC_JUDGED, dict(payload), meta)
         assert outcome["refused"][0]["reason"] == "not_materialized"
         assert [t for t, _ in published if t.startswith("onex.dlq.")]
+
+
+@pytest.mark.integration
+async def test_omn26410_a_tick_attests_a_noop_and_a_judged_event_upserts_its_row_unattested() -> (
+    None
+):
+    """On a real schema: a tick writes no row and says why; a source event writes its row and says nothing."""
+    call = "00000000-0000-0000-0000-00000000c001"
+    async with _migrated_schema() as (db, _admin):
+        writer = EvalResultsProjectionWriter(overlay=overlay(), clock=lambda: at(100))
+        cast(Any, writer)._db = db
+        published: list[tuple[str, dict[str, Any]]] = []
+
+        async def publish(topic: str, value: bytes) -> None:
+            published.append((topic, json.loads(value)))
+
+        writer._publish_fn = publish
+
+        async def deliver(topic: str, payload: dict[str, Any]) -> dict[str, Any]:
+            return await writer._project(
+                topic,
+                {
+                    **payload,
+                    "_envelope_timestamp": at(2).isoformat(),
+                    "_tenant_id": TENANT,
+                },
+                MessageMeta(partition=0, offset=0, fallback_id="", topic=topic),
+            )
+
+        first = await deliver(TOPIC_TICK, {"now": at(100).isoformat()})
+        assert first["rows_upserted"] == 0
+        assert first["snapshot"]["published"] is True
+        assert first["projection_noop_reason"] == "tick"
+        second = await deliver(TOPIC_TICK, {"now": at(101).isoformat()})
+        assert second["snapshot"] == {"published": False, "reason": "interval"}
+        assert second["projection_noop_reason"] == "tick"
+        assert (await _counts(db))["eval_item_scores"] == 0
+
+        landed = await deliver(TOPIC_JUDGED, judged_event(call))
+        assert landed["rows_upserted"] >= 1
+        assert "projection_noop_reason" not in landed
+        assert (await _counts(db))["eval_item_scores"] == 1
+
+
+@pytest.mark.integration
+async def test_omn26152_a_tick_inside_the_interval_opens_no_pool_and_a_publishing_tick_one() -> (
+    None
+):
+    """On a real schema, through the delivery path: only the tick that republishes connects."""
+    async with _migrated_schema() as (db, _admin):
+        connects: list[str] = []
+
+        class _Counting(_SchemaAdapter):
+            async def connect(self) -> None:
+                connects.append("connect")
+
+        counting = _Counting(cast(Any, db)._inner)
+        writer = EvalResultsProjectionWriter(overlay=overlay(), clock=lambda: at(100))
+        cast(Any, writer)._db = counting
+
+        async def publish(topic: str, value: bytes) -> None:
+            return None
+
+        writer._publish_fn = publish
+        meta = MessageMeta(partition=0, offset=0, fallback_id="", topic=TOPIC_TICK)
+
+        def tick(now: str) -> dict[str, Any]:
+            return {"now": now, "_envelope_timestamp": now, "_tenant_id": TENANT}
+
+        first = await writer._project_one_message(
+            TOPIC_TICK, tick(at(100).isoformat()), meta
+        )
+        assert first["snapshot"]["published"] is True
+        for second in range(1, 51):
+            inside = await writer._project_one_message(
+                TOPIC_TICK,
+                tick((at(100) + timedelta(seconds=second)).isoformat()),
+                meta,
+            )
+            assert inside["snapshot"] == {"published": False, "reason": "interval"}
+        assert connects == ["connect"]

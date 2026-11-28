@@ -1,0 +1,102 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Tenant Outbox Flush Effect
+#
+# node_tenant_provision_effect writes one TENANT_CREATED row to tenant_event_outbox and leaves it unpublished. On
+# tenant-outbox-flush-requested this node reads the unpublished rows through an injected store, publishes each envelope to
+# the tenant events topic through an injected bus, and marks a row published only after the broker acknowledged it. A
+# failed publish leaves the row (the error is recorded) and the next pass sends it again; a published row is never read
+# again. The answer is a typed outcome on the completed topic.
+name: node_tenant_outbox_flush_effect
+contract_name: node_tenant_outbox_flush_effect
+node_name: node_tenant_outbox_flush_effect
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+lifecycle: experimental
+runtime_profiles: [effects]
+description: >
+  Flushes unpublished tenant_event_outbox rows to the tenant events topic. Reads through the store port, publishes through
+  the bus port, marks a row published only after the broker acknowledges, and leaves a row whose publish failed.
+handler:
+  module: omnimarket.nodes.node_tenant_outbox_flush_effect.handlers.handler_tenant_outbox_flush
+  class: HandlerTenantOutboxFlush
+  input_model: omnimarket.nodes.node_tenant_outbox_flush_effect.models.model_tenant_outbox_flush.ModelTenantOutboxFlushCommand
+input_model:
+  name: ModelTenantOutboxFlushCommand
+  module: omnimarket.nodes.node_tenant_outbox_flush_effect.models.model_tenant_outbox_flush
+  description: The command id and the batch limit of one flush pass.
+output_model:
+  name: ModelTenantOutboxFlushResult
+  module: omnimarket.nodes.node_tenant_outbox_flush_effect.models.model_tenant_outbox_flush
+  description: The typed outcome with the published, failed and mark-failed counts.
+descriptor:
+  node_archetype: effect
+  purity: impure
+  runtime_profiles: [effects]
+  idempotent: true
+  side_effects: [database-write, bus-publish]
+  timeout_ms: 60000
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - operation: tenant_outbox_flush
+      topic: onex.cmd.omnimarket.tenant-outbox-flush-requested.v1
+      message_category: command
+      event_model: omnimarket.nodes.node_tenant_outbox_flush_effect.models.model_tenant_outbox_flush.ModelTenantOutboxFlushCommand
+      handler_module: omnimarket.nodes.node_tenant_outbox_flush_effect.handlers.handler_tenant_outbox_flush
+      handler:
+        name: HandlerTenantOutboxFlush
+        module: omnimarket.nodes.node_tenant_outbox_flush_effect.handlers.handler_tenant_outbox_flush
+topics:
+  tenant_outbox_flush:
+    requested: onex.cmd.omnimarket.tenant-outbox-flush-requested.v1
+    completed: onex.evt.omnimarket.tenant-outbox-flush-completed.v1
+  # The topic each outbox envelope is published to; the handler reads it from here and the runtime injects it.
+  flush:
+    tenant_events: onex.tenant.events # onex-topic-allow: control-plane tenant lifecycle topic the outbox flush writes
+terminal_event: onex.evt.omnimarket.tenant-outbox-flush-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.tenant-outbox-flush-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.tenant-outbox-flush-completed.v1
+  on_demand:
+    command: onex node node_tenant_outbox_flush_effect --operation tenant_outbox_flush
+    owner: OmniNode Platform Team
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.tenant-outbox-flush-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.tenant-outbox-flush-completed.v1
+externally_consumed_topics:
+  - onex.evt.omnimarket.tenant-outbox-flush-completed.v1
+broker_acl_grants:
+  - principal: "${ONEX_ACL_TENANT_OPERATOR_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-outbox-flush-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-outbox-flush-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-outbox-flush-completed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-outbox-flush-completed.v1, operation: DESCRIBE}
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-outbox-flush-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-outbox-flush-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-outbox-flush-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-outbox-flush-completed.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.tenant.events, operation: WRITE} # onex-topic-allow: control-plane tenant lifecycle topic the outbox flush writes
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.tenant.events, operation: DESCRIBE} # onex-topic-allow: control-plane tenant lifecycle topic the outbox flush writes
+identity_io:
+  db_tables:
+    - name: tenant_event_outbox
+      database_ref: omninode_cloud
+      schema: public
+      migration: "20260816_tenant_event_outbox.sql"
+      access: read_update
+      role: tenant_identity
+golden_path:
+  - "A flush command is published on the requested topic"
+  - "Each unpublished outbox envelope is published to the tenant events topic and marked published after the broker ack"
+  - "A row whose publish failed stays unpublished and is sent by the next flush"
+  - "The completed topic carries the typed outcome with the counts"
+metadata:
+  transport_type: database

@@ -67,7 +67,7 @@ def _handler(ledger: Path) -> HandlerWorkLedgerAppendEffect:
 
 @pytest.fixture
 def ledger(tmp_path: Path) -> Path:
-    path = tmp_path / "ROLLING_WORK_LEDGER.md"
+    path = tmp_path / "scratch_rows.md"
     path.write_text("# Ledger\n")
     return path
 

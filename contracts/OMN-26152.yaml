@@ -3,7 +3,7 @@
 ---
 schema_version: "1.0.0"
 ticket_id: OMN-26152
-title: "A goal-less hook event of a session with no goal to join no longer re-reads and re-folds the whole session in the goal-trace writer"
+title: "A goal-less hook event of a session with no goal to join no longer re-reads and re-folds the whole session in the goal-trace writer, and a work ledger query splits only the rows it keeps"
 summary: The goal-trace writer holds the largest share of the shared dev runtime's GIL because one recorded session of 94501 goal-less hook rows is re-read and re-folded for every new hook event; the narrow path writes the event's own unassigned row and skips the scope read and the fold.
 is_seam_ticket: false
 interface_change: false
@@ -16,15 +16,82 @@ requirements:
         statement: "AC2: the biggest holder, the goal-trace writer at 41.0 percent of the GIL in a 60 s py-spy sample, is fixed at its cause in handler_goal_trace_writer.py, one pull request for that cause, with tests -- falsifier: `uv run pytest tests/test_golden_chain_projection_goal_trace_writer.py -q --no-cov` passes at the unfixed base or fails at the fixed head"
       - id: AC5
         statement: "AC5: a regression test built from the recorded session shape (fixture tests/fixtures/goal_trace_hot_session/recorded_2026-11-20.json) fails on the unfixed writer and passes on the fix -- falsifier: `uv run pytest tests/test_golden_chain_projection_goal_trace_writer.py -q --no-cov -k goal_free_session` passes at the unfixed base or fails at the fixed head"
+  - id: req-omn26152-work-ledger-lazy-parse
+    statement: A work ledger query splits the cells of only the rows its selection keeps, once each, and compares a since read as text, so a window read costs a regular-expression match per row instead of a full parse per row.
+    acceptance:
+      - id: AC6
+        statement: "AC6: the next holder after the goal-trace writer, node_work_ledger_query_effect at 50.3 percent of the GIL in a 60 s py-spy sample of the shared dev runtime, is fixed at its cause in work_ledger_query_replay.py (LedgerRow.__init__ split every row's cells and matched every cell at parse time, select_rows parsed a datetime per row and looked a lane up through three one-cell scans), one pull request for that cause, with tests -- falsifier: `uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_replay_lazy_row_parse.py -q --no-cov` passes at the unfixed base or fails at the fixed head"
+      - id: AC7
+        statement: "AC7: a regression test built from the shape of the recorded window (fixture tests/fixtures/work_ledger_query/saturated_window_sample.txt) fails on the eager parse and passes on the lazy one, and its selections equal an independent eager reader's -- falsifier: `uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_replay_lazy_row_parse.py -q --no-cov` passes at the unfixed base or fails at the fixed head"
+  - id: req-omn26152-eval-results-tick-no-pool
+    statement: A runtime tick inside the eval-results publish interval opens no database pool, because a pool belongs to the loop of one delivery and the tick owes no work.
+    acceptance:
+      - id: AC9
+        statement: "AC9: the eval-results writer's tick path (an asyncpg pool opened and closed on every tick, 2,376 pairs of min=2,max=10 in 30 minutes of the shared dev runtime log) opens no pool for a tick inside the publish interval, one pull request for that cause, with tests -- falsifier: `uv run pytest tests/nodes/node_projection_eval_results/test_tick_pool_churn.py -q --no-cov` passes at the unfixed base or fails at the fixed head"
+  - id: req-omn26152-contract-parse-cache
+    statement: A repeated read of an unchanged repository contract is not re-parsed by the durable gate; a changed file is parsed again.
+    acceptance:
+      - id: AC8
+        statement: "AC8: the durable gate's contract read, 37 percent of the shared dev runtime's samples in run_durable_gate to yaml.safe_load, parses an unchanged contract once through a bounded injected cache keyed by path and content hash, one pull request for that cause, with tests -- falsifier: `uv run pytest tests/unit/nodes/node_dod_verify/test_repo_contract_parse_cache_omn_26152.py -q --no-cov` passes at the unfixed base or fails at the fixed head"
+  - id: req-omn26152-work-ledger-held-read
+    statement: An unpaged work ledger window read is parsed once while the store's watermark is unchanged and cut to the asked bounds on each later query; an appended row changes the watermark and is read on the next query.
+    acceptance:
+      - id: AC10
+        statement: "AC10: the work ledger query node's unpaged window reads (rows, holds, inbox, open claims, rulings), which rebuilt and re-parsed every row of the window on each query, are held in a bounded cache validated by the store's newest row and projection timestamps, one pull request for that cause, with tests -- falsifier: `uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_unpaged_window_held.py -q --no-cov` passes at the unfixed base or fails at the fixed head"
+  - id: req-omn26152-merge-override-sweep
+    statement: A merge override alarm sweep reads the verdict keys once, so its cost in database reads does not grow with the number of pending rows.
+    acceptance:
+      - id: AC11
+        statement: "AC11: the merge override alarm sweep, 20.5 percent of the active samples in a 30 s py-spy sample of the shared dev runtime (one verdict query and one database connect per pending row, pending rows never deleted), reads the verdict table once per sweep -- falsifier: `uv run pytest tests/unit/nodes/node_merge_override_alarm_effect/test_pending_sweep_reads_verdicts_once_omn26152.py -q -n 0 --no-cov -p no:cacheprovider` passes at the unfixed base or fails at the fixed head"
+  - id: req-omn26152-loop-free-test-deterministic
+    statement: The gpu power caps loop-free test does not depend on elapsed wall time, so a loaded runner cannot fail it while the handler sends off the loop.
+    acceptance:
+      - id: AC12
+        statement: "AC12: the gpu power caps loop-free test passes with the handler's send off the loop thread and fails with the send on the loop thread, whatever the runner load -- falsifier: `uv run pytest tests/unit/runtime_guard/test_lab_receipt_waiters_leave_loop_free.py -q --no-cov` passes with the send on the loop thread or fails with the send off it"
+  - id: req-omn26152-retention-schedule-cache
+    statement: The retention gate parses its contract schedule once per unchanged file content, and a changed file is parsed again.
+    acceptance:
+      - id: AC13
+        statement: "AC13: the retention gate's contract_schedule parse, about 10.6 percent of the shared dev runtime's CPU samples (a YAML parse on every runtime tick), parses an unchanged contract once through a bounded cache keyed by path and content hash, one pull request for that cause, with tests -- falsifier: `uv run pytest tests/unit/nodes/node_retention_cleanup/test_contract_schedule_cache_omn26152.py -q -n 0 --no-cov -p no:cacheprovider` passes at the unfixed base or fails at the fixed head"
+  - id: req-omn26152-closer-git-once-per-clone
+    statement: The ticket closer reads each repository clone once per run and caps its git processes, instead of running git processes per ticket per clone.
+    acceptance:
+      - id: AC14
+        statement: "AC14: the ticket closer's merge reader, 53 percent of the shared dev runtime's CPU in git children (97 git processes in 40 s), runs one git log per clone for a whole run, answers every id equal to the per-ticket reading, and caps the git processes of a run, one pull request for that cause, with tests -- falsifier: `uv run pytest tests/nodes/node_ticket_closer_scheduled_effect/test_contract_candidate_source.py -q -n 0 --no-cov -p no:cacheprovider` passes at the unfixed base or fails at the fixed head"
 evidence_requirements:
   - kind: tests
     description: Writer golden chain including the narrow-path regression tests.
     command: uv run pytest tests/test_golden_chain_projection_goal_trace_writer.py -q --no-cov
+  - kind: tests
+    description: The work ledger query node's unit tests including the lazy-parse regression tests.
+    command: uv run pytest tests/unit/nodes/node_work_ledger_query_effect -q --no-cov
+  - kind: tests
+    description: Eval-results tick pool-churn regression tests and the node's suite.
+    command: uv run pytest tests/nodes/node_projection_eval_results -q --no-cov
+  - kind: tests
+    description: The merge override alarm node's unit tests including the sweep read-count regression test.
+    command: uv run pytest tests/unit/nodes/node_merge_override_alarm_effect -q -n 0 --no-cov -p no:cacheprovider
 emergency_bypass:
   enabled: false
   justification: ""
   follow_up_ticket_id: ""
 dod_evidence:
+  - id: dod-omn26152-ac13
+    description: "The retention gate parses an unchanged contract once and a changed one again; the test file is absent at the merge base so the check fails there (must-fail control)."
+    source: manual
+    binds_ac: [AC13]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/unit/nodes/node_retention_cleanup/test_contract_schedule_cache_omn26152.py -q -n 0 --no-cov -p no:cacheprovider
+  - id: dod-omn26152-ac11
+    description: "The sweep reads the verdict table once for 200 pending rows; the test file is absent at the merge base so the check fails there (must-fail control)."
+    source: manual
+    binds_ac: [AC11]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/unit/nodes/node_merge_override_alarm_effect/test_pending_sweep_reads_verdicts_once_omn26152.py -q -n 0 --no-cov -p no:cacheprovider
   - id: dod-omn26152-ac2
     description: "The writer golden chain passes at the fixed head, with the narrow path and the full fold."
     source: manual
@@ -41,6 +108,38 @@ dod_evidence:
       - check_type: test_passes
         check_value: >-
           uv run pytest tests/test_golden_chain_projection_goal_trace_writer.py -q --no-cov -k 'goal_free_session or narrow_path'
+  - id: dod-omn26152-ac2b
+    description: "The work ledger query node's unit tests pass at the fixed head, with the lazy parse and the eager-reader equivalence."
+    source: manual
+    binds_ac: [AC6, AC7]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_replay_lazy_row_parse.py -q --no-cov
+  - id: dod-omn26152-ac9
+    description: "Two ticks inside the publish interval open one pool in total, and a hundred open none."
+    source: manual
+    binds_ac: [AC9]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/nodes/node_projection_eval_results/test_tick_pool_churn.py -q --no-cov
+  - id: dod-omn26152-ac8-parse-cache
+    description: "A second read of an unchanged contract parses zero files, a changed file is re-parsed, the cache is bounded and returns copies."
+    source: manual
+    binds_ac: [AC8]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/unit/nodes/node_dod_verify/test_repo_contract_parse_cache_omn_26152.py -q --no-cov
+  - id: dod-omn26152-ac10-held-read
+    description: "A second identical unpaged query reads and parses no row, an appended row is returned on the next query, and the held answer equals a fresh one."
+    source: manual
+    binds_ac: [AC10]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_unpaged_window_held.py -q --no-cov
   - id: dod-omn26152-deploy-contract
     description: "Hosted deploy check runs the writer golden chain without a live database."
     source: manual
@@ -61,3 +160,19 @@ dod_evidence:
           env -u PYTHONPATH uv run --frozen pytest tests/test_projection_goal_trace_real_postgres.py
           -q -n 0 --no-cov -k goal_free_session
         cwd: .
+  - id: dod-omn26152-loop-free-deterministic
+    description: "The loop-free test file passes at the head; its control sends on the loop thread and fails."
+    source: manual
+    binds_ac: [AC12]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/unit/runtime_guard/test_lab_receipt_waiters_leave_loop_free.py -q --no-cov
+  - id: dod-omn26152-closer-git-once-per-clone
+    description: "The ticket closer's merge reader runs one git log per clone for a whole run, answers every id from an in-memory map equal to the per-ticket reading, and caps the git processes of a run; the new tests are absent at the merge base so the check fails there (must-fail control)."
+    source: manual
+    binds_ac: [AC14]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/nodes/node_ticket_closer_scheduled_effect/test_contract_candidate_source.py -q -n 0 --no-cov -p no:cacheprovider

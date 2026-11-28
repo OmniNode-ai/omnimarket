@@ -28,11 +28,18 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+from omnimarket.handlers.projection_table_sql import (
+    _parse_timestamp,
+    order_clause,
+    quote_identifier,
+    select_list,
+    serialise_row,
+)
 from omnimarket.models.priced_spend import historical_unpriced_zero_reader
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.table_reader import (
@@ -41,12 +48,7 @@ from omnimarket.projection.table_reader import (
     ProjectionReadError,
     TablePageView,
     WindowQuery,
-    _parse_timestamp,
-    order_clause,
-    quote_identifier,
     recency_column,
-    select_list,
-    serialise_row,
 )
 from omnimarket.projection.tenant_registry_resolution import (
     TENANT_REGISTRY_MIRROR_TABLE,
@@ -255,6 +257,14 @@ class _ReadOnlyRegistryQuery:
         return [dict(row) for row in rows]
 
 
+def _utc_stamp(value: Any) -> datetime | None:
+    """A stored timestamp as an aware UTC datetime; a stamp with no zone is read as UTC."""
+    parsed = _parse_timestamp(value)
+    if parsed is None:
+        return None
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+
+
 class SqliteTableRowSource:
     """Read projection exposures from the local SQLite store.
 
@@ -361,9 +371,16 @@ class SqliteTableRowSource:
         since: str | None = None,
         correlation_id: str | None = None,
         selection: str = "newest",
+        window_seconds: int | None = None,
+        row_cap: int | None = None,
     ) -> list[dict[str, Any]]:
-        """The exposure's served window, ordered by ``order_spec``."""
-        return await asyncio.to_thread(
+        """The exposure's served window, ordered by ``order_spec``.
+
+        A ``window_seconds`` read keeps the rows whose recency value lies in the
+        last that many seconds, newest first, at most ``row_cap`` of them; the
+        local store is small, so the bound is applied to the fetched window.
+        """
+        fetched = await asyncio.to_thread(
             self._fetch,
             cfg,
             order_spec,
@@ -372,6 +389,24 @@ class SqliteTableRowSource:
             correlation_id,
             selection,
         )
+        if window_seconds is None:
+            return fetched
+        recency = cfg.freshness_column
+        if recency is None:
+            raise ProjectionReadError(
+                "unsupported_filter",
+                f"exposure {cfg.topic!r} declares no freshness_column to window by",
+                status_code=422,
+            )
+        floor = datetime.now(UTC) - timedelta(seconds=window_seconds)
+        dated = [
+            (stamp, row)
+            for row in fetched
+            if (stamp := _utc_stamp(row.get(recency))) is not None and stamp >= floor
+        ]
+        dated.sort(key=lambda pair: pair[0], reverse=True)
+        kept = [row for _, row in dated]
+        return kept if row_cap is None else kept[:row_cap]
 
     def _smallest_cursor(
         self, cfg: ProjectionTableConfig, cursor_column: str, tenant_id: str | None

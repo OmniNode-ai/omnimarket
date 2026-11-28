@@ -29,6 +29,7 @@ from omnimarket.nodes.node_silent_failure_alarm_effect.models import (
     ModelSilentFailureAlarmOptions,
     ModelSilentFailureAlarmRequest,
 )
+from tests.helpers.fake_alarm_ledger import LEDGER_FIXTURE_NAME
 from tests.nodes.node_silent_failure_alarm_compute.test_golden_chain_silent_failure_alarm_compute import (
     HOST_NOW,
     Watch,
@@ -57,8 +58,7 @@ def _stamp(at) -> str:
 
 
 def _ledger(options: ModelSilentFailureAlarmOptions) -> Path:
-    assert options.ledger is not None
-    return options.ledger
+    return options.registry_root / LEDGER_FIXTURE_NAME
 
 
 def _watcher(options: ModelSilentFailureAlarmOptions, at, merges: int) -> None:

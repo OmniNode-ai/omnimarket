@@ -13,6 +13,7 @@ from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
 from pydantic import BaseModel
 
+from omnimarket.handlers.repository_retirement_policy import load_retirement_policy
 from omnimarket.models.model_host_reconcile import ModelHostReconcileRunResult
 from omnimarket.nodes.node_host_reconcile_effect.handlers import (
     handler_host_reconcile_effect as effect,
@@ -24,7 +25,6 @@ from omnimarket.nodes.node_host_reconcile_effect.handlers.handler_host_reconcile
     _ReconcilePass,
 )
 from omnimarket.nodes.node_host_reconcile_effect.handlers.retired_repositories import (
-    load_retirement_policy,
     retired_repository_findings,
 )
 from tests.test_host_reconcile_effect import (

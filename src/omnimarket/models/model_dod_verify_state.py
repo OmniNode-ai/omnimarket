@@ -21,6 +21,7 @@ from omnimarket.models.model_criteria_drift import (
     ModelCriteriaAmendment,
     ModelCriterionDrift,
 )
+from omnimarket.models.model_local_done_gate_receipt import ModelLocalDoneGateReceipt
 
 
 class EnumEvidenceCheckStatus(StrEnum):
@@ -617,6 +618,15 @@ class ModelDodVerifyState(BaseModel):
     failed_count: int = Field(default=0, ge=0)
     skipped_count: int = Field(default=0, ge=0)
     superseded_count: int = Field(default=0, ge=0)
+    # OMN-25856: set only when the dispatch budget stopped the run. How many
+    # executable checks ran, and how many were left unrun (each carried in
+    # ``checks`` as SKIPPED / CHECK_BUDGET_EXCEEDED, never as a pass).
+    budget_checks_run: int | None = Field(
+        default=None, ge=0, exclude_if=lambda value: value is None
+    )
+    budget_checks_not_run: int | None = Field(
+        default=None, ge=0, exclude_if=lambda value: value is None
+    )
     # OMN-15391: checks that executed and exited 0 but whose exit status cannot
     # depend on the product change. Counted separately and NEVER folded into
     # ``verified_count`` — that field is the completion tally an operator reads
@@ -685,6 +695,12 @@ class ModelDodVerifyState(BaseModel):
         default=(), exclude_if=lambda value: not value
     )
     criteria_amendment: ModelCriteriaAmendment | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    # OMN-26725: set only on a local_done_gate run that resolved a contract
+    # revision. Published with the state on the terminal topic, it is what a
+    # hosted verifier reads to count a skipped local_done_gate item verified.
+    local_done_gate_receipt: ModelLocalDoneGateReceipt | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
     # OMN-21676: True when the contract records criteria and this hosted run left

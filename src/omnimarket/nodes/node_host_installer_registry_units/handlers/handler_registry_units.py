@@ -22,6 +22,7 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 from collections.abc import Callable, Iterator
@@ -37,17 +38,23 @@ from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.overlay_keys import resolve_lab_hosts_table
 from omnimarket.handlers.rules_overlay_root_declared import declared_overlay_root
 from omnimarket.handlers.rules_unit_roots import (
+    UnitProjectWorktreeError,
     UnitRootPinnedError,
     UnitRootRefusedError,
     pinned_plugin_cache_version,
     under_worktrees,
 )
 from omnimarket.models.overlay_keys import ModelLabHostsTable
+from omnimarket.nodes.node_host_installer_registry_units.handlers.node_schedule_unit import (
+    default_overlay,
+    run_node_schedule,
+)
 from omnimarket.nodes.node_host_installer_registry_units.models.model_registry_units import (
     ModelCopiedUnitPayload,
     ModelRegistryUnitsRequest,
     ModelRegistryUnitsResult,
 )
+from omnimarket.nodes.node_lab_alarm.overlay import ModelLabAlarmOverlay
 
 NODE_DIR = Path(__file__).resolve().parents[1]
 
@@ -172,6 +179,32 @@ def interpreter_present(path: str) -> bool:
     return os.path.isfile(path) and os.access(path, os.X_OK)
 
 
+def host_platform() -> str:
+    """The platform this host's scheduler belongs to: ``darwin`` for the Mac's launchd, ``linux`` for a lab host's systemd."""
+    return "darwin" if sys.platform == "darwin" else "linux"
+
+
+def for_host_platform(unit: dict[str, Any]) -> dict[str, Any]:
+    """The unit as this host installs it.
+
+    A unit declared for launchd may carry a ``systemd`` block: the fields a Linux host installs differently (``label``,
+    ``template``, ``timer_template``, ``schedule``, ``interpreter_candidates``). On a Linux host the block replaces those fields and the
+    unit becomes ``platform: systemd``; every other field (module, environment, configuration, state) is the one
+    declaration both platforms share. On the Mac, and for a unit with no block, the unit is returned unchanged.
+    """
+    declared = unit.get("systemd")
+    if not declared or host_platform() != "linux":
+        return unit
+    resolved = {
+        key: value
+        for key, value in unit.items()
+        if key not in ("systemd", "run_timeout_s")
+    }
+    resolved.update(declared)
+    resolved["platform"] = "systemd"
+    return resolved
+
+
 Runner = Callable[[list[str]], "subprocess.CompletedProcess[str]"]
 
 
@@ -234,8 +267,12 @@ class HandlerRegistryUnits:
         run: Runner = run_command,
         units: dict[str, dict[str, Any]] | None = None,
         hosts: Callable[[], ModelLabHostsTable] | None = None,
+        schedule_overlay: Callable[[], ModelLabAlarmOverlay] | None = None,
     ) -> None:
         self.run = run
+        self.schedule_overlay = (
+            schedule_overlay if schedule_overlay is not None else default_overlay
+        )
         self.units = units if units is not None else load_units()
         self.hosts = hosts if hosts is not None else default_hosts
 
@@ -299,6 +336,7 @@ class HandlerRegistryUnits:
             return self.result(
                 request, 2, error=f"{request.unit} is not a unit of this node\n"
             )
+        unit = for_host_platform(unit)
         if request.plan_verb is not None:
             verb = request.plan_verb
             plan_text = (
@@ -311,6 +349,14 @@ class HandlerRegistryUnits:
             with self.install_lock(request, unit):
                 if unit.get("kind") == "copied_tree":
                     return self.copied_unit(request, unit)
+                if unit.get("kind") == "node_schedule":
+                    return run_node_schedule(
+                        request,
+                        unit,
+                        run=lambda command: self.run(list(command)),
+                        overlay_root=self.overlays_root,
+                        overlay=self.schedule_overlay,
+                    )
                 if unit.get("platform") == "systemd":
                     return self.dispatch_systemd(request, unit)
                 return self.dispatch(request, unit)
@@ -449,7 +495,37 @@ class HandlerRegistryUnits:
             raise ValueError(
                 f"project_path {request.project_path!r} is not an absolute path"
             )
+        # OMN-26549: a unit that runs a worktree dies when the worktree is removed (uv exits 2 on every fire).
+        if under_worktrees(str(project)):
+            raise UnitRootRefusedError(request.unit, [str(project)])
+        # A lane's tree outside omni_worktrees (a remote lane's run directory) is removed the same way: the
+        # silent-failure alarm unit on a lab host died on 2026-11-16 from one, so git is asked, not the path.
+        if self.is_linked_worktree(project):
+            raise UnitProjectWorktreeError(request.unit, str(project))
         return project, project.resolve() == canonical.resolve()
+
+    def is_linked_worktree(self, project: Path) -> bool:
+        """True when ``project`` is a linked worktree: its git directory is not the common one of its repository.
+
+        A path that is not a git checkout is not one; ``checkout_revision`` refuses it with its own reason.
+        """
+        found = self.run(
+            [
+                "git",
+                "-C",
+                str(project),
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-dir",
+                "--git-common-dir",
+            ]
+        )
+        directories = found.stdout.split()
+        return (
+            found.returncode == 0
+            and len(directories) == 2
+            and Path(directories[0]).resolve() != Path(directories[1]).resolve()
+        )
 
     def checkout_revision(
         self, project: Path, unit: dict[str, Any], expected: str
@@ -511,6 +587,25 @@ class HandlerRegistryUnits:
                     f"{name} names {left.group(0)}, which this request does not set"
                 )
             filled[str(name)] = request.path_overrides.get(str(name), text)
+        for name, tails in (unit.get("environment_append_roots") or {}).items():
+            if str(name) not in filled:
+                raise ValueError(
+                    f"{request.unit} appends roots to {name}, which it does not declare"
+                )
+            if str(name) in request.path_overrides:
+                continue
+            appended: list[str] = []
+            for tail in tails:
+                text = str(tail)
+                for key, value in values.items():
+                    text = text.replace("{" + key + "}", value)
+                left = PLACEHOLDER.search(text)
+                if left is not None:
+                    raise ValueError(
+                        f"{name} appends {left.group(0)}, which this request does not set"
+                    )
+                appended.append(text)
+            filled[str(name)] = os.pathsep.join([filled[str(name)], *appended])
         for name, field in (unit.get("environment_inputs") or {}).items():
             if not NAME.fullmatch(str(name)):
                 raise ValueError(f"invalid unit environment name {name!r}")
@@ -639,8 +734,7 @@ class HandlerRegistryUnits:
     ) -> str:
         """The unit's declared configuration document with every placeholder filled.
 
-        Built-in placeholders are {home}, {registry_root} and {ledger_path} (the request's, else the registry's own
-        ledger file). The others are the declaration's ``inputs``: each names a request field and an environment
+        Built-in placeholders are {home} and {registry_root}. The others are the declaration's ``inputs``: each names a request field and an environment
         variable of the installing shell, and falls back to the value the unit's last install recorded, so a
         reinstall with no inputs reproduces the file. A placeholder nothing fills is refused, so a configuration is
         never written with a hole in it, except in a top-level key the declaration lists under ``optional_keys``:
@@ -649,12 +743,9 @@ class HandlerRegistryUnits:
         declared = unit.get("config_file")
         if not declared:
             return ""
-        root = Path(request.registry_root)
         values = {
             "home": request.home,
             "registry_root": request.registry_root,
-            "ledger_path": request.ledger_path
-            or str(root / "docs/tracking/ROLLING_WORK_LEDGER.md"),
         }
         values.update(self.config_inputs(request, unit))
 
@@ -1242,6 +1333,8 @@ class HandlerRegistryUnits:
         service, timer = self.render_systemd(request, unit, project, uv, python)
         text = service + "\n" + timer
         declared_files = self.declared_file_writes(request, unit)
+        config_path = self.config_target(request, unit)
+        config = self.config_text(request, unit)
         if request.mode == "dry-run":
             return self.result(
                 request,
@@ -1250,11 +1343,14 @@ class HandlerRegistryUnits:
                 + "".join(
                     f"\ndeclared file {path}:\n{body}"
                     for path, body, _mode in declared_files
-                ),
+                )
+                + (f"\nconfiguration {config_path}:\n{config}" if config else ""),
                 rendered=text,
                 project=project,
                 revision=revision,
                 canonical=canonical,
+                config=config,
+                config_path=str(config_path or ""),
             )
         proof = self.start_check(request, unit, uv, python, project)
         if proof.returncode:
@@ -1265,6 +1361,12 @@ class HandlerRegistryUnits:
         unit_dir.mkdir(parents=True, exist_ok=True)
         for path, body, mode in declared_files:
             self.write_config(path, body, mode)
+        if config_path is not None:
+            self.write_config(
+                config_path,
+                config,
+                int(str(unit["config_file"].get("mode", "0600")), 8),
+            )
         previous = {
             path: (path.read_bytes() if path.exists() else None)
             for path in (service_path, timer_path)
@@ -1330,6 +1432,7 @@ class HandlerRegistryUnits:
                     "project": str(project),
                     "project_is_canonical": canonical,
                     "revision": revision,
+                    "config_inputs": self.config_inputs(request, unit),
                     "installed_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 },
                 indent=1,
@@ -1348,6 +1451,8 @@ class HandlerRegistryUnits:
             revision=revision,
             canonical=canonical,
             record=str(record),
+            config=config,
+            config_path=str(config_path or ""),
         )
 
     def status_systemd(

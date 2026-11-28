@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Synthetic values. The deployment's overlay lives at <root>/node_delegation_check_probe_effect/overlay.yaml under a root named
+# in ONEX_SKILL_OVERLAY_ROOTS, or the file ONEX_DELEGATION_CHECK_PROBE_OVERLAY names. No key has a default.
+# The responder chain is not here: it is the settings store's delegation_check_responders row, set with
+# python -m omnimarket.nodes.node_overlay_setting_set_effect --overlay delegation_check_responders --key responders --value-json <list> --actor <who>
+checks: [C11, C12, C13, C14, C15, C16, C17, C28, C29, C30]
+history_file: delegation-check-runs.jsonl
+history_keep: 120
+result_topic: onex.evt.omnimarket.delegation-check-probe-completed.v1
+responder_timeout_s: 10
+# Optional: the cap of the gateway workflow submit, apart from a responder's. Absent, the submit shares responder_timeout_s.
+submit_timeout_s: 30
+# The bus the tick delivers its run record on: the lane id only, the broker address stays in the lane declaration table.
+event_bus:
+  type: kafka
+  lane: dev
+# The gateway row of the seven gateway-graded checks is the settings store's delegation_check_gateway row, not this document:
+# python -m omnimarket.nodes.node_overlay_setting_set_effect --overlay delegation_check_gateway --key gateway --value-json '{"schema_version":1,"gateway_url":"<scheme>://<host>:<port>","tenant_slug":"<a tenant of the dev tenant node>","credential_kind":"<api_key|jwt>","secret_name":"<optional: the secret name of the credential when the dev tenant node does not name it>"}' --actor <who>

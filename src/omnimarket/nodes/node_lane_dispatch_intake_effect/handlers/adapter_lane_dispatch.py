@@ -52,14 +52,13 @@ class ScriptBriefBuilder:
 
     The five parts are the skill's order: premise table, task, the committed standing rules block
     (``scripts/lane_rules_block.py``), the generated 3a constraints (``lane_brief.py constraints``) and the report. No model
-    writes any of it, so the dispatcher needs no Claude login of its own. The landing ruling, model, effort, repository and
-    scope sentence are the dispatcher's declared defaults below; a request carries only lane, ticket, host and task.
+    writes any of it, so the dispatcher needs no Claude login of its own. The landing ruling, effort, repository and
+    scope sentence are the dispatcher's declared defaults below, and the model is injected from the model bindings; a request carries only lane, ticket, host and task.
     """
 
     LANDING_LANE = "landing-controller"
     LANDING_RULING_LANE = "orchestrator-83"
     LANDING_RULING = "2026-09-29T06:34:17Z"
-    MODEL = "claude-sonnet-5-5"
     EFFORT = "medium"
     REPO = "omnimarket"
     OUT_OF_SCOPE = "prod, any manual restart of dev, hand edits on a lab host outside declared config, merging or arming any PR"
@@ -70,8 +69,11 @@ class ScriptBriefBuilder:
         scratch: Path,
         ledger: Path | None = None,
         run: Run = subprocess.run,
+        *,
+        model: str,
     ) -> None:
         self._plugin_root, self._scratch, self._ledger = plugin_root, scratch, ledger
+        self._model = model
         self._run = run
 
     def _ledger_args(self) -> tuple[str, ...]:
@@ -113,7 +115,7 @@ class ScriptBriefBuilder:
             "--ticket",
             request.ticket,
             "--model",
-            self.MODEL,
+            self._model,
             "--effort",
             self.EFFORT,
             "--out-of-scope",

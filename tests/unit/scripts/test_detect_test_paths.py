@@ -49,6 +49,15 @@ _REMOTE_LANE_HANDLER = (
 )
 
 
+def _adjacency_with_unit_rule(tmp_path: Path, enabled: bool) -> Path:
+    """A copy of the shipped adjacency with the unit file-scoped rule switched on or off."""
+    document = yaml.safe_load(ADJACENCY_PATH.read_text())
+    document["unit_file_selection_enabled"] = enabled
+    copy = tmp_path / "adjacency_unit_rule.yaml"
+    copy.write_text(yaml.safe_dump(document))
+    return copy
+
+
 def test_adjacency_yaml_loads() -> None:
     from omnimarket.nodes.node_test_selection_selector_compute.adapters.adjacency_file import (
         load_adjacency_map,
@@ -793,12 +802,15 @@ def test_delegation_test_directory_change_still_narrows() -> None:
     assert path.startswith(tuple(sel.selected_paths))
 
 
-def test_delegation_unit_test_change_is_not_a_protected_surface() -> None:
-    # tests/unit/ is too heavy to narrow (OMN-22868), so this change takes the
-    # full-suite matrix for its weight, not as a protected surface.
+def test_delegation_unit_test_change_is_not_a_protected_surface(
+    tmp_path: Path,
+) -> None:
+    # With the unit file-scoped rule off, tests/unit/ is too heavy to narrow
+    # (OMN-22868), so this change takes the full-suite matrix for its weight,
+    # not as a protected surface.
     sel = compute_selection(
         ["tests/unit/delegation/test_something.py"],
-        ADJACENCY_PATH,
+        _adjacency_with_unit_rule(tmp_path, enabled=False),
         ref_name="jonah/feature",
     )
     assert sel.is_full_suite is True
@@ -868,8 +880,10 @@ def test_protection_globs_reject_invalid_types(invalid: object) -> None:
 
 
 def test_empty_selection_fallback_uses_full_suite_shard_matrix() -> None:
+    # A markdown file is a data-only file (data_only_globs) and narrows; Dockerfile matches no
+    # narrowing rule, so it takes the fallback this test exists for.
     sel = compute_selection(
-        changed_files=["README.md"],
+        changed_files=["Dockerfile"],
         adjacency_path=ADJACENCY_PATH,
         ref_name="jonah/feature",
         event_name="pull_request",
@@ -921,9 +935,14 @@ _LIGHT_CHANGE = [
 ]
 
 
-def test_narrowed_selection_with_the_unit_tree_takes_the_full_suite_matrix() -> None:
+def test_narrowed_selection_with_the_unit_tree_takes_the_full_suite_matrix(
+    tmp_path: Path,
+) -> None:
     selection = compute_selection(
-        _HEAVY_CHANGE, ADJACENCY_PATH, ref_name="omn-22868-x", event_name="pull_request"
+        _HEAVY_CHANGE,
+        _adjacency_with_unit_rule(tmp_path, enabled=False),
+        ref_name="omn-22868-x",
+        event_name="pull_request",
     )
     assert selection.is_full_suite is True
     assert (
@@ -931,6 +950,34 @@ def test_narrowed_selection_with_the_unit_tree_takes_the_full_suite_matrix() -> 
     )
     assert selection.split_count == 20
     assert selection.selected_paths == ["tests/"]
+
+
+def test_unit_file_change_narrows_when_the_unit_rule_is_on(tmp_path: Path) -> None:
+    # The shipped adjacency has the unit file-scoped rule on: the same change that
+    # takes the full-suite matrix with the rule off narrows to the unit file's
+    # own tests and stays inside the narrowed shard bound.
+    on = compute_selection(
+        _HEAVY_CHANGE,
+        _adjacency_with_unit_rule(tmp_path, enabled=True),
+        ref_name="omn-22868-x",
+        event_name="pull_request",
+    )
+    assert on.is_full_suite is False
+    assert on.full_suite_reason is None
+    assert "tests/unit/" not in on.selected_paths
+    assert (
+        "tests/unit/clone_dirty_converge/test_canonical_clone_dirty_converge.py"
+        in on.selected_paths
+    )
+    assert 3 <= on.split_count <= 5
+    # Known bad: the same change with the rule off is the full-suite matrix.
+    off = compute_selection(
+        _HEAVY_CHANGE,
+        _adjacency_with_unit_rule(tmp_path, enabled=False),
+        ref_name="omn-22868-x",
+        event_name="pull_request",
+    )
+    assert off.is_full_suite is True
 
 
 def test_narrowed_selection_under_the_bound_stays_narrowed() -> None:
@@ -944,7 +991,7 @@ def test_narrowed_selection_under_the_bound_stays_narrowed() -> None:
 
 
 def test_without_the_selector_the_heavy_selection_is_two_unplanned_shards(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     # Failing control (OMN-23296): a policy that sizes by path count alone, as the
     # old script did, gives the selection with tests/unit/ only the path-count
@@ -968,7 +1015,10 @@ def test_without_the_selector_the_heavy_selection_is_two_unplanned_shards(
         lambda _source, _policy: selector.HandlerTestSelectionSelector(None, loose),
     )
     selection = compute_selection(
-        _HEAVY_CHANGE, ADJACENCY_PATH, ref_name="omn-22868-x", event_name="pull_request"
+        _HEAVY_CHANGE,
+        _adjacency_with_unit_rule(tmp_path, enabled=False),
+        ref_name="omn-22868-x",
+        event_name="pull_request",
     )
     assert selection.is_full_suite is False
     assert selection.split_count == loose.path_count_max_shards
@@ -1014,9 +1064,14 @@ def test_split_count_by_duration_no_narrowed_shard_past_target() -> None:
     assert narrowed > 0
 
 
-def test_shards_fit_target_heavy_selection_is_the_planned_matrix() -> None:
+def test_shards_fit_target_heavy_selection_is_the_planned_matrix(
+    tmp_path: Path,
+) -> None:
     selection = compute_selection(
-        _HEAVY_CHANGE, ADJACENCY_PATH, ref_name="omn-23296-x", event_name="pull_request"
+        _HEAVY_CHANGE,
+        _adjacency_with_unit_rule(tmp_path, enabled=False),
+        ref_name="omn-23296-x",
+        event_name="pull_request",
     )
     assert selection.is_full_suite is True
     assert selection.split_count == 20

@@ -76,6 +76,10 @@ class ModelMissCollectPolicy(_Frozen):
     shard_job_pattern: str = Field(min_length=1)
     artifact_max_bytes: int = Field(ge=1, le=524288)
     artifact_unzipped_max_bytes: int = Field(ge=1)
+    #: The check run that carries a night's attribution record is named ``<prefix>:<slot date>``.
+    record_check_name_prefix: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
+    #: Case-insensitive regular expressions a record's text fields must not match (hosts, addresses, mailboxes, paths).
+    record_denied_patterns: tuple[str, ...] = Field(min_length=1)
 
     @field_validator("nightly_slot_time_utc", mode="before")
     @classmethod
@@ -92,6 +96,22 @@ def load_policy(path: Path = POLICY_PATH) -> ModelMissCollectPolicy:
     )
 
 
+class ModelCollectServeOverlay(_Frozen):
+    """The serve tick's own settings: the bus lane and consumer group it reads the command topic under, the clone
+    its first-parent commit range reads, and the directory its durable alarm rows live in. No value is set in code."""
+
+    bus_lane: str = Field(min_length=1)
+    workspace_root: str = Field(min_length=1)
+    consumer_group: str = Field(min_length=1)
+    max_records: int = Field(ge=1)
+    read_timeout_s: float = Field(gt=0)
+    join_timeout_s: float = Field(gt=0)
+    #: The clone ``git log --first-parent`` reads the commit range in; never fetched or written.
+    commit_clone: str = Field(min_length=1)
+    #: Where the alarm rows and collector results are kept between passes (each pass is a new process).
+    state_dir: str = Field(min_length=1)
+
+
 class ModelMissCollectSettings(_Frozen):
     """The deployment overlay. ``owner_role`` has no default."""
 
@@ -101,6 +121,12 @@ class ModelMissCollectSettings(_Frozen):
     alarm_route: str = Field(min_length=1)
     collector_enabled: bool
     status_tick: str = Field(min_length=1)
+    #: Repositories a published record may name. Empty refuses every record (fail closed).
+    public_repositories: tuple[str, ...] = ()
+    #: Names of private repositories, hosts or people the deployment refuses in a record; case-insensitive substrings.
+    private_terms: tuple[str, ...] = ()
+    #: The serve tick's settings; absent on an overlay that does not run the tick.
+    serve: ModelCollectServeOverlay | None = None
 
     @classmethod
     def load(cls, document: dict[str, Any]) -> Self:

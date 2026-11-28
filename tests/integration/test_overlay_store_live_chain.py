@@ -39,7 +39,12 @@ from omnimarket.nodes.node_overlay_store_read_effect.handlers import (
     compare_documents,
 )
 from omnimarket.projection.runner import MessageMeta
-from tests.test_overlay_store_real_postgres import MIGRATION, _ConnectionRunner, _dsn
+from tests.test_overlay_store_real_postgres import (
+    MIGRATION_FILES,
+    MIGRATIONS,
+    _ConnectionRunner,
+    _dsn,
+)
 from tests.unit.nodes.node_overlay_store.support import LOADED_TOPIC, SNAPSHOT_TOPIC
 
 pytestmark = [pytest.mark.integration, pytest.mark.kafka]
@@ -69,7 +74,8 @@ async def test_a_real_overlay_travels_a_real_broker_and_database_and_reads_back_
     await admin.execute(f"CREATE DATABASE {database}")
     connection = await asyncpg.connect(_dsn(database))
     await connection.execute("CREATE SCHEMA IF NOT EXISTS omninode_internal")
-    await connection.execute(MIGRATION.read_text(encoding="utf-8"))
+    for name in MIGRATION_FILES:
+        await connection.execute((MIGRATIONS / name).read_text(encoding="utf-8"))
 
     def open_bus() -> Any:
         return open_lane_bus(

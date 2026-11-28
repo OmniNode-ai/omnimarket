@@ -1,0 +1,77 @@
+schema_version: 1.0.0
+ticket_id: OMN-26410
+title: The dev runtime EvalResultsProjectionWriter upserts a row for a judged eval event on an image that carries omnimarket 6563, and the cause of the zero-row upserts is named and fixed
+summary: >-
+  The EvalResultsProjectionWriter returns rows_upserted 0 for a runtime tick by design (it republishes the snapshot once per publish interval), and the runtime logged each such delivery as a failed write. The writer now attests a tick that published or was skipped inside the interval under the result key projection_noop_reason with the value tick, and GoalTraceProjectionWriter attests an event outside goal scope with the value skipped. A tick whose snapshot was refused or had no transport, a malformed judged event (dead-lettered) and a valid judged event are never attested; a valid judged event upserts its row. The key and values are restated in omnimarket and not imported from omnibase_infra, so the two repositories merge in either order. The health gate, the boot guard and the compose files are unchanged.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26410-writer-attests-tick
+    statement: The eval results writer attests a designed zero-row tick, never a source event, so the runtime can tell it from a lost write.
+    acceptance:
+      - id: AC2
+        statement: "AC2: a regression test built from the recorded writer log lines and dead-letter record of that build (fixture path named in the PR) shows that a valid judged eval event leads the writer to upsert one row and a malformed one to dead-letter -- falsifier: uv run pytest tests/nodes/node_projection_eval_results -q -k eval_rows_upserted fails at omnimarket origin/dev and passes on the PR branch"
+      - id: AC3
+        statement: "AC3: the health gate, the boot guard and the compose files are unchanged by the PR -- falsifier: git diff origin/dev --stat on the PR branch lists no health gate setting, no boot guard file and no compose file, run with uv run pytest tests/nodes/node_projection_eval_results -q"
+  - id: req-omn26410-alert-liveness-attests-skipped
+    statement: The alert channel liveness writer attests a throttled tick as a designed zero-row delivery, so the runtime does not log it as a lost write.
+    acceptance:
+      - id: AC5
+        statement: "AC5: a throttled alert channel liveness tick leads the writer to attest projection_noop_reason skipped, and a measured verdict that writes its row carries no attestation -- falsifier: uv run pytest tests/test_projection_alert_channel_liveness.py -q -k attests_a_skipped fails at omnimarket origin/dev and passes on the PR branch"
+evidence_requirements:
+  - kind: tests
+    description: The eval results writer tests at the pushed head, with the goal trace writer golden chain.
+    command: uv run --frozen pytest tests/nodes/node_projection_eval_results tests/test_golden_chain_projection_goal_trace_writer.py -q --no-cov
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+  - id: dod-omn26410-ac2-judged-upsert
+    description: "A valid judged delivery upserts its row and carries no attestation; the recorded dev broker judge render result dead-letters and carries no attestation. The recorded event is the helper recorded_judged_render_result in tests/nodes/node_projection_eval_results/support.py."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_projection_eval_results -q --no-cov -k eval_rows_upserted
+        cwd: .
+  - id: dod-omn26410-ac3-gate-unchanged
+    description: The change touches two writer modules, one enum and tests; no health gate setting, no boot guard file and no compose file, and the node's tests pass.
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_projection_eval_results -q --no-cov
+        cwd: .
+  - id: dod-omn26410-attestation
+    description: A tick inside the interval and a tick that republishes attest tick; a tick whose snapshot is refused, a valid judged delivery and a malformed one do not; the goal trace writer attests skipped for an event outside goal scope.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_projection_eval_results/test_noop_attestation.py tests/test_golden_chain_projection_goal_trace_writer.py -q --no-cov
+        cwd: .
+  - id: dod-omn26410-deploy
+    description: Hosted-runner probe that reads the committed eval results writer from GitHub at the checked-out commit and requires the tick attestation.
+    source: manual
+    checks:
+      - check_type: command
+        check_value: >-
+          gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_projection_eval_results/handlers/handler_eval_results_writer.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | python3 -c 'import sys; src = sys.stdin.read(); assert "NOOP_REASON_KEY: EnumProjectionNoopReason.TICK.value" in src'
+        cwd: ${OMNI_HOME}/omnimarket
+  - id: dod-omn26410-integration-proof
+    description: The pushed head ran the eval results writer and goal trace writer tests on a lab host through the lab work runner and exited 0. Hosted CI cannot reach the lab, so only the local Done gate runs this check.
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26410 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_projection_eval_results tests/test_golden_chain_projection_goal_trace_writer.py -q --no-cov'
+        cwd: .
+  - id: dod-omn26410-alert-liveness-skipped
+    description: The alert channel liveness writer attests skipped for a throttled tick (a designed zero-row delivery) and attests nothing for a measured verdict that writes its row; the test fails at origin/dev.
+    source: manual
+    binds_ac: [AC5]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/test_projection_alert_channel_liveness.py -q --no-cov -k attests_a_skipped
+        cwd: .

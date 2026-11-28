@@ -58,7 +58,8 @@ TOPIC_REGISTERED = "onex.evt.omnimarket.credential-registered.v1"
 TOPIC_REVOKED = "onex.evt.omnimarket.credential-revoked.v1"
 STATE_TOPIC = "onex.evt.omnimarket.tenant-credential-state.v1"
 OVERLAY_TOPIC = "onex.evt.omnimarket.tenant-routing-overlay-state.v1"
-TENANT = "omn21217-state-tenant"
+# OMN-26594: a UUID is written as given; a slug would need a registry mirror row.
+TENANT = "7f3b0a51-8c2d-4e69-8d4f-2a1b6c8e9f45"
 _COMPARED = (
     "api_key_ref",
     "tenant_id",

@@ -27,7 +27,7 @@ from omnimarket.nodes.node_reading_writer_effect.overlay import (
 )
 
 ReadingVerdict = Literal["pass", "fail", "unknown"]
-SourceKind = Literal["workflow_run", "ledger_row"]
+SourceKind = Literal["workflow_run", "ledger_row", "gateway_leg"]
 SourceState = Literal["pass", "fail", "stale", "unread"]
 CriterionState = Literal["pass", "fail", "stale", "unread", "no_reading"]
 
@@ -54,6 +54,10 @@ class ModelBetaProbe(BaseModel):
     # The workflow's schedule (five-field UTC cron). Given, the probe's read is cached for each schedule slot and read from the
     # source again only when a slot passes; absent, the probe is read every cycle (OMN-19998).
     cron: str | None = None
+    # Names a delegation check (C13, C14 ...): the probe is then read from that check's gateway leg, in the delegation check probe
+    # node's run history, and the workflow above is not read (ruling 2026-11-24T13:11:36Z: a check that depends on the cloud is read
+    # through the gateway; the cloud workflow stays a check of the next milestone). ``events`` filters the history's ``event`` too.
+    gateway_check: str | None = Field(default=None, min_length=1)
 
     @field_validator("cron")
     @classmethod
@@ -180,6 +184,10 @@ class ModelBetaBoardContractRuntime(BaseModel):
     probe_read_timeout_seconds: int = Field(ge=1)
     stage_deadline_seconds: int = Field(ge=1)
     probe_refresh_seconds: int = Field(ge=0)
+    # The delegation check probe node's run history under the registry home, read for a probe that names a ``gateway_check``.
+    gateway_history_relpath: str = Field(min_length=1)
+    # A scheduled run's reading older than this is no reading: the source reads unread, never a stale verdict.
+    gateway_reading_max_age_seconds: int = Field(ge=1)
     transport: ModelBetaTransport
     page_refresh_seconds: int = Field(ge=30)
 

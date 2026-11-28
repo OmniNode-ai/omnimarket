@@ -44,8 +44,17 @@ from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.host_disk_growth i
 from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.host_disk_ports import (
     ProtocolHostDiskPublisher,
 )
+from omnimarket.nodes.node_lab_disk_watermark_effect.handlers.inode_alarm import (
+    InodeUsage,
+    build_appender,
+    inode_usage,
+    load_inode_alarm,
+    raise_alarms,
+    read_inodes,
+)
 from omnimarket.nodes.node_lab_disk_watermark_effect.models.model_lab_disk_watermark import (
     Level,
+    ModelClassScanSkip,
     ModelHostDiskReadingSettings,
     ModelLabDiskWatermarkGrowthReading,
     ModelLabDiskWatermarkOverlay,
@@ -57,6 +66,9 @@ from omnimarket.nodes.node_lab_disk_watermark_effect.models.model_lab_disk_water
     ModelWatermarkGrowth,
     ModelWatermarkHost,
     ModelWatermarkVolume,
+)
+from omnimarket.nodes.node_reading_writer_effect.protocols import (
+    ProtocolReadingAppender,
 )
 
 NODE_NAME = "node_lab_disk_watermark_effect"
@@ -196,6 +208,8 @@ class HandlerLabDiskWatermark:
         publisher: ProtocolHostDiskPublisher | None = None,
         new_id: Callable[[], str] = lambda: uuid.uuid4().hex,
         environ: Mapping[str, str] | None = None,
+        inodes: Callable[[str], InodeUsage] | None = None,
+        inode_appender: ProtocolReadingAppender | None = None,
     ) -> None:
         self.usage = usage if usage is not None else (lambda path: disk_usage(path))
         self.now = now
@@ -204,6 +218,8 @@ class HandlerLabDiskWatermark:
         self.publisher = publisher
         self.new_id = new_id
         self.environ = environ if environ is not None else os.environ
+        self.inodes = inodes if inodes is not None else inode_usage
+        self.inode_appender = inode_appender
 
     def handle(
         self, request: ModelLabDiskWatermarkRequest
@@ -249,6 +265,20 @@ class HandlerLabDiskWatermark:
             growth, growth_paged = self._growth(
                 row, row.growth, reading_file, usages, not request.dry_run
             )
+        declaration = load_inode_alarm()
+        inode_readings, inodes_unread = read_inodes(
+            tuple(volume.path for volume in row.volumes), declaration, self.inodes
+        )
+        inode_alarms = raise_alarms(
+            row.name,
+            inode_readings,
+            declaration,
+            now=self.now(),
+            appender=self.inode_appender
+            or build_appender(declaration, row.name, self.environ),
+            state_file=reading_file.with_name(f"{reading_file.name}.inode-alarm.json"),
+            persist=not request.dry_run,
+        )
         reading = ModelLabDiskWatermarkGrowthReading(
             host_name=row.name,
             read_at=self.now().strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -259,6 +289,9 @@ class HandlerLabDiskWatermark:
             written=not request.dry_run,
             growth=growth,
             growth_paged=growth_paged,
+            inodes=inode_readings,
+            inode_alarms=inode_alarms,
+            inodes_unread=inodes_unread,
         )
         if not request.dry_run:
             self._write(reading_file, reading)
@@ -266,11 +299,24 @@ class HandlerLabDiskWatermark:
             return reading
         # The reading file is written first: the class scan walks whole caches and must never delay the level
         # placement reads (the unit's start timeout is the contract's, and is not widened for it).
+        host_disk = self._host_disk(
+            row,
+            settings,
+            usages,
+            correlation_id,
+            request.dry_run,
+            budget_seconds=request.budget_seconds,
+            entry_cache_file=reading_file.with_name(
+                f"{reading_file.name}.uv-entries.json"
+            ),
+        )
         return reading.model_copy(
             update={
-                "host_disk": self._host_disk(
-                    row, settings, usages, correlation_id, request.dry_run
-                )
+                "host_disk": host_disk,
+                "scan_skipped": tuple(
+                    ModelClassScanSkip(class_name=name, skipped_entries=count)
+                    for name, count in self.classes.skipped_by_class()
+                ),
             }
         )
 
@@ -281,8 +327,17 @@ class HandlerLabDiskWatermark:
         usages: list[tuple[str, Usage]],
         correlation_id: str,
         dry_run: bool,
+        *,
+        budget_seconds: float | None = None,
+        entry_cache_file: Path | None = None,
     ) -> ModelHostDiskRead | ModelHostDiskReadFailed:
-        classes = self.classes.read_classes(row, settings)
+        classes = self.classes.read_classes(
+            row,
+            settings,
+            budget_seconds=budget_seconds,
+            entry_cache_file=entry_cache_file,
+            persist_entry_cache=not dry_run,
+        )
         read = ModelHostDiskRead(
             correlation_id=correlation_id,
             host_name=row.name,
@@ -450,7 +505,17 @@ class HandlerLabDiskWatermark:
     def _write(self, target: Path, reading: ModelLabDiskWatermarkReading) -> None:
         # The growth fields are the run's result and never part of the file: the file is the contract's own model.
         text = json.dumps(
-            reading.model_dump(exclude={"host_disk", "growth", "growth_paged"}),
+            reading.model_dump(
+                exclude={
+                    "host_disk",
+                    "growth",
+                    "growth_paged",
+                    "inodes",
+                    "inode_alarms",
+                    "inodes_unread",
+                    "scan_skipped",
+                }
+            ),
             indent=2,
         )
         self._write_text(target, text + "\n")

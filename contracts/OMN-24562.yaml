@@ -1,0 +1,375 @@
+schema_version: 1.0.0
+ticket_id: OMN-24562
+title: The lab disk watermark alarms below 15 percent free inodes and names an owner
+summary: 'node_lab_disk_watermark_effect reads the inode use of every volume a pool host declares, beside the byte share it already reads. A volume below the free-inode share its contract declares (15 percent) writes the lab stack reaper''s alarm rows (one FRICTION row and one STATUS row with alarms=1, each naming the owner) through the bus append command, once per declared interval, and the service exits 2 so the journal and the unit state show it. The watermark unit carries the append command in its environment.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24562-inode-alarm
+  statement: A lab host whose root filesystem runs short of inodes alarms on the watermark tick, naming the owner, before placement refuses a lane there.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: a reading at 14 percent free inodes produces the alarm rows with owner= in both, and a reading at 16 percent produces none -- falsifier: uv run pytest tests/nodes/node_lab_disk_watermark_effect/test_inode_alarm_omn24562.py -q fails when the threshold or the owner cell is removed'
+- id: req-omn24562-thermal-guard
+  statement: A lab host that runs hot is held out of placement through its declared hold file and released only once it has cooled, with the thresholds, names and texts all read from the overlay.
+  acceptance:
+  - id: AC2
+    statement: 'AC2: node_host_thermal_guard_effect writes the hold file and a HOLD row above the hold threshold, removes it and writes a RELEASE row below the lower release threshold once the minimum hold has passed, and changes nothing between the two -- falsifier: uv run pytest tests/nodes/node_host_thermal_guard_effect -q fails when the release threshold is raised to the hold threshold or the minimum hold is dropped'
+- id: req-omn24562-thermal-guard-overlay-model
+  statement: The thermal guard node's overlay document has a typed model in omnimarket that the overlays repository can pin ahead of the node.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: ModelHostThermalGuardOverlay validates the overlay document of the thermal guard node and refuses a malformed one -- falsifier: tests/unit/models/test_host_thermal_guard_overlay_document_omn24562.py fails collection or any of its tests fails'
+- id: req-omn24562-observability-overlay-model
+  statement: The host observability installer's overlay document has a typed model in omnimarket that its overlay document can be pinned to ahead of the node.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: ModelObservabilityOverlay validates the overlay document of the host observability installer and refuses a malformed one -- falsifier: tests/unit/models/test_observability_overlay_document_omn24562.py fails collection or any of its tests fails'
+- id: req-omn24562-tenant-key-overlay-model
+  statement: The tenant gateway key node's overlay document has a typed model in omnimarket that its overlay document can be pinned to ahead of the node.
+  acceptance:
+  - id: AC4
+    statement: 'AC4: ModelTenantApiKeyOverlay validates the overlay document of the tenant gateway key node and refuses a malformed one -- falsifier: tests/unit/models/test_tenant_api_key_overlay_document_omn24562.py fails collection or any of its tests fails'
+- id: req-omn24562-unit-file-scoped-root
+  statement: A changed file under tests/unit/ selects that file and what imports or names it, not the whole tests/unit/ directory, and a change the rule cannot attribute keeps the directory.
+  acceptance:
+  - id: AC8
+    statement: 'AC8: a changed tests/unit file selects itself, its importers in any folder and the tests that spell its path, and an unattributable helper keeps tests/unit/ -- falsifier: tests/nodes/node_test_selection_selector_compute/test_unit_file_scoped_root.py fails when the unit branch of the resolver is removed'
+- id: req-omn24562-tenant-outbox-flush
+  statement: The TENANT_CREATED rows node_tenant_provision_effect leaves unpublished in tenant_event_outbox are published to the tenant events topic by one node, each marked published only after the broker acknowledges.
+  acceptance:
+  - id: AC12
+    statement: 'AC12: node_tenant_outbox_flush_effect publishes each unpublished outbox row once, leaves a row whose publish failed unmarked for the next pass, and never reads a row already marked published -- falsifier: uv run pytest tests/nodes/node_tenant_outbox_flush_effect -q fails when the mark is moved before the publish or a failed row is marked'
+- id: req-omn24562-lint-split-parallel
+  statement: The required lint context is an aggregate of parallel group jobs, every old lint step still runs in exactly one group, and the Direct Model Call Gate positive control judges each planted case on a scratch repository holding only that file.
+  acceptance:
+  - id: AC6
+    statement: 'AC6: ci.yml carries lint-group-1 to lint-group-6 and a lint aggregate that needs all of them, each of the 128 steps listed in tests/ci/lint_steps_before_omn24562.txt runs in one group, and the Direct Model Call Gate positive control runs with --repo-root on a scratch repository -- falsifier: uv run pytest tests/ci/test_lint_split_omn24562.py tests/ci/test_direct_model_call_ci_gate.py fails when a step is dropped from every group or the control scans the whole tree'
+- id: req-omn24562-tui-refusal-note-stable
+  statement: The setup screen's refusal to save with nothing chosen is not replaced by a later model find, so the full suite does not fail on a loaded runner.
+  acceptance:
+  - id: AC9
+    statement: 'AC9: after Save is refused with no model chosen, the pending or running auto-find does not replace the refusal note -- falsifier: tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py::test_config_refusal_note_survives_the_late_auto_find fails when the find is not cancelled on refusal'
+- id: req-omn24562-customer-key-removal
+  statement: A customer provider key registers unbound, routes, and is revoked before its secret is deleted, so a refused revoke publish never leaves an unrevoked row with no secret.
+  acceptance:
+  - id: AC8
+    statement: 'AC8: register-tenant-key without --host stores the key unbound and revoke-tenant-key publishes the revoke before it deletes the stored secret -- falsifier: uv run pytest tests/test_credential_publisher.py tests/unit/cli/test_omn24562_revoke_tenant_key_command.py tests/unit/cli/test_omn21012_register_tenant_key_host.py fails when a refused publish still deletes the secret or the key carries the registering host'
+- id: req-omn24562-suite-admission-both-ways
+  statement: A code eval suite task is kept only if its known-good answer passes and an empty answer fails, both through the grader's own score handler.
+  acceptance:
+  - id: AC7
+    statement: 'AC7: the suite admission helper admits a task whose known-good answer passes and whose empty answer fails, and refuses one whose empty answer passes, whose known good fails, or whose check needs the network -- falsifier: tests/nodes/node_code_eval_trial_orchestrator/test_suite_admission_both_ways.py fails collection or any of its tests fails'
+- id: req-omn24562-windowed-read-every-exposure
+  statement: Every exposure that declares a freshness_column answers the 1d, 7d and 30d windowed read through the real store path, including one whose freshness column is not a served column, without growing the baselined table reader.
+  acceptance:
+  - id: AC8
+    statement: 'AC8: the 1d, 7d and 30d windowed read answers 200 for every node contract declaring a freshness_column on real Postgres, and table_reader.py stays at or under its 914 code lines -- falsifier: uv run pytest tests/test_omn24562_windowed_read_every_exposure_real_postgres.py tests/test_omn24562_table_reader_unserved_freshness.py fails when the window order alias is dropped or the reader grows'
+- id: req-omn24562-fixture-readers-on
+  statement: A pull request whose only test-infrastructure trigger is a changed data fixture under tests/fixtures/ runs the tests that read the fixture and not the full suite.
+  acceptance:
+  - id: AC9
+    statement: 'AC9: with the shipped adjacency file, each of the four recorded fixture-only merges narrows and no test file naming a changed file is left out of its selection, and a selection with its readers removed reports misses -- falsifier: uv run pytest tests/nodes/node_test_selection_selector_compute/test_data_readers.py -k shipped fails when data_file_readers_enabled is false'
+- id: req-omn24562-responder-reader
+  statement: The delegation check responder reader answers a llama.cpp listing without max_model_len, advances past a dead responder and prefers the least busy one.
+  acceptance:
+  - id: AC10
+    statement: 'AC10: the live reader chooses a responder whose listing carries meta.n_ctx only, skips a dead one and orders by load -- falsifier: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_http_responder_reader_live_shapes.py -q fails'
+- id: req-omn24562-etcd-lab-members-overlay-model
+  statement: The lab etcd voter set has a typed overlay model in omnimarket that the overlay home can pin ahead of its document, with the rules the provisioning script expects and a read that renders the text of members.tsv.
+  acceptance:
+  - id: AC11
+    statement: 'AC11: ModelEtcdLabMembersOverlay accepts the current five voters, renders their members.tsv rows, and refuses a sixth voter, a repeated name, a second learner and a second laptop voter -- falsifier: tests/unit/models/test_etcd_lab_members_overlay_document_omn24562.py fails collection or any of its tests fails'
+- id: req-omn24562-alarm-router-runtime-interpreter
+  statement: The failure alarm router runs a command that names an absent host venv interpreter under the running environment's interpreter, never refusing the fire on a host path.
+  acceptance:
+  - id: AC13
+    statement: 'AC13: a router command whose first token is an absent .venv/bin/python path runs under the runtime interpreter, and a present one is left as named -- falsifier: uv run pytest tests/nodes/node_failure_alarm_router_effect/test_interpreter_setting.py -q fails when the absent-venv resolution is removed'
+- id: req-omn24562-census-unit-workspace-root
+  statement: The daily ledger file census unit exports the workspace config root, so its publish of the daily record resolves the broker instead of being refused with exit 3.
+  acceptance:
+  - id: AC14
+    statement: 'AC14: the census registry unit declares ONEX_WORKSPACE_CONFIG_ROOT as {workspace_config_root} and the rendered service carries it -- falsifier: uv run pytest tests/unit/contracts/test_node_trigger_declarations.py -k workspace_config_root fails when the environment line is removed from the unit'
+evidence_requirements:
+- kind: tests
+  description: The inode alarm tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_lab_disk_watermark_effect -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24562-ac1
+  description: 'AC1: 14 percent free inodes alarms with owner= in the FRICTION and STATUS rows, 16 percent and exactly 15 percent do not (failing control: the same test fails with the share set to 10).'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_lab_disk_watermark_effect/test_inode_alarm_omn24562.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24562-integration-proof
+  description: the watermark tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24562 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lab_disk_watermark_effect -q --no-cov
+- id: dod-omn24562-thermal-guard-ac2
+  description: 'AC2: a hold above the hold threshold, a release only below the release threshold after the minimum hold, nothing between the two (failing control: the same tests refuse to run at the merge base, where node_host_thermal_guard_effect does not exist).'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_host_thermal_guard_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24562-thermal-guard-overlay-model-tests
+  description: The overlay document model for the thermal guard node accepts a valid document and refuses malformed ones; the test file fails at collection with ModuleNotFoundError before the model module exists and passes after.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_host_thermal_guard_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24562-observability-overlay-model-tests
+  description: The overlay document model for the host observability installer accepts a valid document and refuses malformed ones; the test file fails at collection with ModuleNotFoundError before the model module exists and passes after.
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_observability_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24562-tenant-key-overlay-model-tests
+  description: The overlay document model for the tenant gateway key node accepts a valid document and refuses malformed ones; the test file fails at collection with ModuleNotFoundError before the model module exists and passes after.
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_tenant_api_key_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24562-unit-file-scoped-root
+  description: 'AC8: a changed tests/unit test file selects the file only; a helper selects its importers in another unit folder and the test that spells its path; an unattributable helper, a non-python file and a package marker keep their directory (failing control: most of the new tests fail at the merge base, where the directory is selected; the rule is the adjacency switch unit_file_selection_enabled, on in the shipped adjacency and off in the frozen replay snapshot, so the stage 0 receipts are unchanged). Replay over the 60 pinned merges: 18 change tests/unit, narrowed 10 to 12, full suite 50 to 48, selected seconds 574954.625506 to 552493.098902.'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_test_selection_selector_compute/test_unit_file_scoped_root.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24562-unit-file-scoped-root-detect-paths
+  description: 'AC8: the detect_test_paths fixtures that pin the old behaviour run with the unit file-scoped switch off in a copy of the shipped adjacency, and a new test shows the same tests/unit change narrowing with the switch on (failing control: with the switch on, the four old-behaviour tests see a narrowed selection and fail).'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/scripts/test_detect_test_paths.py -q -n 0 --no-cov -p no:randomly -k "unit_rule or unit_test_change_is_not_a_protected_surface or unit_tree_takes_the_full_suite_matrix or heavy_selection_is_the_planned_matrix"
+    cwd: .
+- id: dod-omn24562-lint-split-parallel
+  description: 'AC6: the lint job is split into six parallel group jobs behind a lint aggregate with the same name; the test lists every old step and refuses a missing one (failing control: before the split the test fails on 128 missing steps, dropping Ruff check from every group fails test_dropping_a_step_is_refused), and the Direct Model Call Gate positive control runs each plant on a scratch repository.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_lint_split_omn24562.py tests/ci/test_direct_model_call_ci_gate.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24562-tui-refusal-note-stable
+  description: 'AC9: the refusal note stays after the auto-find window passes (failing control: at the merge base the same test fails with the note reading no models found, the text the find writes).'
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py -q -n 0 --no-cov -p no:randomly -k "refusal_note_survives or refuses_to_save_with_no_model_selected"
+- id: dod-omn24562-suite-admission-both-ways
+  description: A code eval suite task is kept only if its known-good answer passes and an empty answer fails, both run through the grader's own score handler; a recorded task whose merge carries another ticket's contract or a deploy-time check is read by the suite's recorded held paths and check items (the test file fails at collection before the admission helper exists and passes after).
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_code_eval_trial_orchestrator/test_suite_admission_both_ways.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24562-unit-file-scoped-root-reference-cache
+  description: 'AC8: a deleted-file lookup reuses the parsed references of every test file instead of parsing the tree again, so test_split_count_by_duration_no_narrowed_shard_past_target finishes inside its shard timeout (failing control: at the previous head the second lookup parses every file again and the test fails; recorded 308 s before, 89 s after on the same host).'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_test_selection_selector_compute/test_unit_file_scoped_root.py -q -n 0 --no-cov -p no:randomly -k second_deleted_file_does_not_reparse_the_tree
+    cwd: .
+- id: dod-omn24562-customer-key-removal
+  description: 'AC8: a customer key registers unbound and is revoked before its secret is deleted; a refused publish keeps the secret and a central-store key is reported as not deletable (failing control: at the base the revoke command is absent and the publisher deletes before it publishes, so these files fail there).'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_credential_publisher.py tests/unit/cli/test_omn24562_revoke_tenant_key_command.py tests/unit/cli/test_omn21012_register_tenant_key_host.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24562-windowed-read-every-exposure
+  description: 'Every node contract that declares a freshness_column (61) answers the 1d, 7d and 30d windowed read through the real store path on real Postgres, built from its own migrations (failing control: the same walk answers 503 for a TEXT freshness column under the window expression before OMN-21288, and for an exposure whose freshness column is not a served column before this change).'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn24562_windowed_read_every_exposure_real_postgres.py tests/test_omn24562_table_reader_unserved_freshness.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24562-fixture-readers-on
+  description: 'AC9: the shipped adjacency file turns data_file_readers_enabled on. Replay of the 4 recorded fixture-only merges with the shipped file: all 4 narrow, zero test files naming a changed file are missed, the known-bad selection (readers removed) reports misses, and the 2 merges that also change uv.lock stay a full suite (failing control: the shipped-settings tests fail against the previous adjacency file).'
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_test_selection_selector_compute/test_data_readers.py -q -n 0 --no-cov -p no:randomly -k shipped
+    cwd: .
+- id: dod-omn24562-responder-reader-ac10
+  description: 'AC10: four tests over real loopback sockets pass; they fail if the reader raises on a listing with no max_model_len, stops at a dead first responder, or ignores load.'
+  source: manual
+  binds_ac:
+  - AC10
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_http_responder_reader_live_shapes.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24562-additive-latency-no-wall-clock
+  description: 'AC10: the two additive latency tests of the hook adapter read the injected clock and the deadline handed to the client, never the runner wall clock; with every wait stretched by 0.7 s the old per_prompt test fails (1.2 s against a 0.9 s limit, as Tests (Split 13/20) failed at 1.15 s) and the file passes.'
+  source: manual
+  binds_ac:
+  - AC10
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_claude_code_hook_adapter_effect/test_additive_rows_omn22016.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24562-etcd-lab-members-overlay-model-tests
+  description: The overlay document model for the lab etcd member set accepts the current five voters and renders their members.tsv rows, and refuses a sixth voter, a repeated name, a second learner and a second laptop voter; the test file fails at collection with ModuleNotFoundError before the model module exists and passes after (26 passed).
+  source: manual
+  binds_ac:
+  - AC11
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_etcd_lab_members_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24562-tenant-outbox-flush-ac5
+  description: 'AC12: a published row is not sent twice, a failed publish leaves the row and records the error, a mark follows only an ack, a store that cannot be read is a typed outcome (failing control: the tests fail at the merge base, where the node does not exist).'
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_tenant_outbox_flush_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24562-outbox-flush-store-scratch-pg
+  description: 'AC12: the Postgres store reads, marks and records failures against a scratch PostgreSQL 16 holding the dev tenant_event_outbox shape (no attempts or last_error column), and against the same table with both columns added (failing control: before the store checked for the columns the first test failed with UndefinedColumnError).'
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_tenant_outbox_flush_effect/test_outbox_postgres_scratch.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24562-outbox-flush-autowires-bare
+  description: 'AC12: the runtime builds HandlerTenantOutboxFlush with no arguments and the infra auto-wiring wires the node in process without quarantining its handler, the way node_tenant_provision_effect wires (failing control: with the handler requiring store, publisher and topic, the auto-wiring test fails naming node_tenant_outbox_flush_effect and the bare-construction test fails with TypeError).'
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_tenant_outbox_flush_effect/test_flush_handler.py -q -n 0 --no-cov -p no:cacheprovider -k bare
+    cwd: .
+- id: dod-omn24562-outbox-flush-refusals-by-name
+  description: 'AC12: a missing overlay is refused with exit 3 naming the node and the overlay file, a missing outbox table or column is refused by name before any row statement is sent, and a closer that raises is a stderr line and not a traceback (failing control: before the change the first seven tests failed and the closer test ended in an uncaught RuntimeError).'
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_tenant_outbox_flush_effect/test_refusals_by_name_omn24562.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24562-outbox-flush-strict-composed-wiring
+  description: 'AC12: the flush node wires through the infra runtime auto-wiring with ONEX_WIRING_STRICT_MODE=1 and no handler is quarantined; on the composed image the handler of head 7d0b54eeb4 (constructor requiring store, publisher and topic) is quarantined as unresolvable_handler, which strict mode turns into a boot crash, and the handler of this head wires (failing control: the same test fails with the old handler).'
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_tenant_outbox_flush_effect/test_composed_wiring_strict_omn24562.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24562-dupguard-lane-token
+  description: 'AC11: the duplicate guard''s claims read names only lane tokens in its lane-scoped read. A one hour row whose lane cell is wt:<repo>/<worktree> (a hook FRICTION row, 2026-11-26T21:20Z) no longer makes the work-ledger query refuse the request (lanes.N String should match pattern) and every pr-create refuse unchecked; the real lanes are still asked for. The new test fails against the previous handler (named both lanes) and passes after; an unreadable read still refuses unchecked.'
+  source: manual
+  binds_ac:
+  - AC11
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/scm/test_scm_duplicate_guard_reader_timeout.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+
+- id: dod-omn24562-outbox-flush-overlay-and-entry
+  description: 'AC12: the flush node overlay document validates its shipped example and refuses a malformed one, and the node is registered in the onex.nodes entry points; the overlay home now carries the document for the node, which the Overlay Main Load check found missing at the previous head'
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_tenant_outbox_flush_effect/test_overlay_and_entry.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+
+- id: dod-omn24562-flush-schedule-overlay-model
+  description: 'AC12: the schedule overlay document model for the tenant outbox flush scheduled node accepts its job_id, run_interval_seconds and grace_seconds document and refuses a missing key, an extra key and a malformed value; the test file fails at collection with ModuleNotFoundError before the model module exists and passes after.'
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_tenant_outbox_flush_schedule_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+
+- id: dod-omn24562-alarm-router-runtime-interpreter
+  description: 'AC13: the failure alarm router resolves an absent host .venv/bin/python first token to the runtime interpreter and leaves a present one alone (failing control: at the merge base the absent-venv test fails with InterpreterMissingError naming the host path).'
+  source: manual
+  binds_ac:
+  - AC13
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_failure_alarm_router_effect/test_interpreter_setting.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+
+- id: dod-omn24562-reader-bus-session-lane-resolution
+  description: 'AC13: the work ledger reader resolves its bus-session lane from the route''s declared workspace_config_root and the runtime''s KAFKA_SASL_USERNAME and KAFKA_SASL_PASSWORD, which the dev runtime holds with no exported config root and no client credential store; the failure alarm router''s rows command no longer exits 69 on it (failing control: at the merge base the test file fails at collection with ImportError for resolve_bus_session_config).'
+  source: manual
+  binds_ac:
+  - AC13
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_bus_session_lane_resolution_omn24562.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+
+- id: dod-omn24562-silent-alarm-append-bus-command
+  description: 'AC13: the silent failure alarm appends its episode rows through the unit-declared ONEX_LEDGER_BUS_APPEND_COMMAND (bus lane and workspace root bound) instead of the unbound `onex work-ledger`, which exits 69 on a pool host and made the tick exit 3 (failing controls: the handler test fails at the merge base because the default command is used, and the unit contract at the merge base declares no such environment key).'
+  source: manual
+  binds_ac:
+  - AC13
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/test_ledger_append_via_node.py tests/nodes/node_host_installer_registry_units/test_silent_failure_alarm_bus_append_omn24562.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+
+- id: dod-omn24562-census-unit-workspace-root
+  description: 'AC14: the daily ledger file census unit carries ONEX_WORKSPACE_CONFIG_ROOT in its rendered service (failing control: at the merge base the declaration is absent and the test fails with KeyError; the 2026-11-27 daily run exited 3 with PUBLISH REFUSED NodeBrokerResolutionError).'
+  source: manual
+  binds_ac:
+  - AC14
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/contracts/test_node_trigger_declarations.py -k workspace_config_root -q -n 0 --no-cov -p no:randomly
+    cwd: .

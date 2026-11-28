@@ -1,0 +1,49 @@
+schema_version: 1.0.0
+ticket_id: OMN-26471
+title: 'omnibase_infra: a least-grant tenant_identity_writer role and the omninode_cloud topology entry exist on the dev lane'
+summary: This pull request adds node_cross_owner_ask_check_compute, which checks a request to another owner about that owner's repository against that repository, read at the owner's base through the canonical clone, before the request is drafted. It does not carry the ticket's role criteria.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26471-cross-owner-ask-check
+  statement: A request to another owner about that owner's repository is refused when that owner's file already holds the object.
+  acceptance:
+  - id: AC7
+    statement: 'AC7: the node refuses an ask for an object the owner file declares as a bare name under a domain, and lets an ask for an undeclared object go on -- falsifier: uv run pytest tests/nodes/node_cross_owner_ask_check_compute -q -n 0 --no-cov exits non-zero'
+evidence_requirements:
+- kind: tests
+  description: The cross-owner ask check tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_cross_owner_ask_check_compute -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26471-ac7-cross-owner-ask-check
+  description: 'AC7: the focused tests pass, among them the real-shape entry (kind sequence, domain OMNINODE_INTERNAL, no schema) refused as present for the qualified name public.tenant_event_outbox_id_seq and an undeclared object allowed.'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_cross_owner_ask_check_compute -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26471-ac7-integration-proof
+  description: 'AC7: the node runs through the onex CLI over a request shaped like the real entry and answers present for the qualified name.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: uv run --frozen onex node node_cross_owner_ask_check_compute --input tests/fixtures/cross_owner_ask_present_omn26471.json --state-root .onex_state/cross-owner-ask
+    cwd: .
+  - check_type: command
+    check_value: 'grep -F ''"verdict": "present"'' .onex_state/cross-owner-ask/workflow_result.json'
+    cwd: .
+- id: dod-omn26471-ac7-hosted-deploy-probe
+  description: 'Deploy scope: the pushed head carries the cross-owner ask check handler, read from GitHub at the checked-out revision so the hosted runner can run it.'
+  source: manual
+  checks:
+  - check_type: command
+    check_value: bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_cross_owner_ask_check_compute/handlers/handler_cross_owner_ask_check.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "class HandlerCrossOwnerAskCheck" >/dev/null'
+    cwd: .

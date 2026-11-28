@@ -15,6 +15,9 @@ read needs 84 pages and its claim-kinds read 25; its one hour read needs one and
 
 The guard is never weakened: the narrowed reads must give the same live claims as the whole-window read (a lane with an old CLAIM
 and a recent row of any type still holds it), and when no read answers the guard refuses ``unchecked`` and opens nothing.
+
+A read that fails is retried once with the same bounded shape (OMN-26387): the 168 hour every-row read does not finish in 400
+seconds even on a responsive answerer (measured on h053, 2026-11-24), so it is never the fallback.
 """
 
 from __future__ import annotations
@@ -37,9 +40,14 @@ from omnimarket.handlers.adapter_work_ledger_rows_reader import (
 from omnimarket.handlers.handler_ledger_claims import claim_lane
 from omnimarket.handlers.scm import scm_cli
 from omnimarket.handlers.scm.scm_duplicate_guard import EXIT_CLEAR, EXIT_UNCHECKED
+from omnimarket.models.model_ledger_claims_read import ModelLedgerClaimsReadConfig
 from omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers import (
     handler_pr_duplicate_snapshot as snapshot_module,
 )
+from omnimarket.nodes.node_pr_duplicate_snapshot_effect.handlers.ledger_claims_read import (
+    read_claims_text,
+)
+from omnimarket.protocols.protocol_ledger_rows_reader import LedgerReadError
 from tests.unit.handlers.scm.test_scm_duplicate_guard import (
     CAUSE,
     CREATE_ARGS,
@@ -104,6 +112,7 @@ class Broker:
         refuse_lanes: bool = False,
         window_rows: int = WINDOW_ROWS,
         hour_lanes: int = HOUR_LANES,
+        late_first_reads: int = 0,
     ) -> None:
         # The last hour's other lanes: HOUR_ROWS STATUS rows spread over hour_lanes lanes.
         busy = [
@@ -115,6 +124,8 @@ class Broker:
         self.refuse_all = refuse_all
         self.refuse_lanes = refuse_lanes
         self.window_rows = window_rows
+        # The first reads of the run the answerer answers after the caller's wait (the stall of 2026-11-24).
+        self.late_first_reads = late_first_reads
         self.argvs: list[list[str]] = []
         self.timeouts: list[float] = []
 
@@ -127,6 +138,8 @@ class Broker:
         hours = int(argv[argv.index("--window-hours") + 1])
         kinds = [argv[i + 1] for i, word in enumerate(argv) if word == "--kind"]
         lanes = [argv[i + 1] for i, word in enumerate(argv) if word == "--row-lane"]
+        if len(self.argvs) <= self.late_first_reads:
+            raise subprocess.TimeoutExpired(argv, timeout)
         if self.refuse_all or (self.refuse_lanes and lanes):
             return subprocess.CompletedProcess(
                 argv, self.recorded["exit"], "", self.recorded["stderr"]
@@ -264,10 +277,21 @@ def test_the_narrowed_read_holds_the_same_live_claims_as_the_whole_window(
     assert result.exit_code == EXIT_CLEAR, result.output
 
 
-def test_the_whole_window_read_still_finds_the_claim_when_the_lane_scoped_read_is_refused(
-    world: World, monkeypatch: pytest.MonkeyPatch
+def is_whole_window_read(argv: Sequence[str]) -> bool:
+    """The 168 hour read of every row of every lane: no kind filter, no lane filter, a window over the heartbeat hour."""
+    return (
+        "--kind" not in argv
+        and "--row-lane" not in argv
+        and int(argv[argv.index("--window-hours") + 1]) > 1
+    )
+
+
+def test_a_reader_that_refuses_the_lane_scoped_read_leaves_the_guard_unchecked_and_the_window_unread(
+    world: World,
+    monkeypatch: pytest.MonkeyPatch,
+    sent: list[object],
 ) -> None:
-    """The fallback shape: a reader that refuses the lane filter (an older one) is read whole, and the claim is found."""
+    """The whole-window read is no fallback: a reader that refuses the lane filter makes the guard refuse, never clear."""
     broker = use_broker(
         monkeypatch,
         Broker(other_lane_claim_rows(), "h201", refuse_lanes=True, window_rows=2000),
@@ -275,10 +299,135 @@ def test_the_whole_window_read_still_finds_the_claim_when_the_lane_scoped_read_i
 
     result = invoke(world.check_args())
 
+    assert result.exit_code == EXIT_UNCHECKED, f"{result.output}; reads {broker.argvs}"
+    assert not any(is_whole_window_read(argv) for argv in broker.argvs)
+    assert sent == []
+
+
+@pytest.mark.parametrize("host", HOSTS)
+def test_a_late_first_answer_is_retried_as_the_bounded_read_and_never_as_the_whole_window(
+    world: World,
+    monkeypatch: pytest.MonkeyPatch,
+    host: str,
+) -> None:
+    """OMN-26387: the answerer stalls past the wait of the first read; the guard asks the same bounded read once more and finds the claim."""
+    broker = use_broker(
+        monkeypatch, Broker(other_lane_claim_rows(), host, late_first_reads=1)
+    )
+
+    result = invoke(world.check_args())
+
     assert result.exit_code == scm_cli.EXIT_DUPLICATE, (
-        f"{result.stderr}; reads {broker.argvs}"
+        f"{host}: exit {result.exit_code}; {result.stderr}; reads {broker.argvs}"
     )
     assert json.loads(result.stdout)["adopt_lane"] == "cause-core-0010"
+    assert not any(is_whole_window_read(argv) for argv in broker.argvs), (
+        f"a whole-window read was made: {broker.argvs}"
+    )
+    first, retry = broker.argvs[0], broker.argvs[1]
+    assert retry == first, "the retry is the same read as the one that was late"
+
+
+def test_two_late_answers_leave_the_guard_unchecked_after_one_retry_and_no_wider_read(
+    world: World, monkeypatch: pytest.MonkeyPatch, sent: list[object]
+) -> None:
+    broker = use_broker(
+        monkeypatch, Broker(other_lane_claim_rows(), "h053", late_first_reads=99)
+    )
+
+    result = invoke(world.check_args())
+
+    assert result.exit_code == EXIT_UNCHECKED, result.output
+    assert len(broker.argvs) == 2, f"one read and one retry, not {broker.argvs}"
+    assert not any(is_whole_window_read(argv) for argv in broker.argvs)
+    assert sent == []
+
+
+class StubReader:
+    """A ``ProtocolLedgerRowsReader`` that answers or fails by script, remembering the wait it was built with."""
+
+    def __init__(self, wait: float, script: list[object], log: list[float]) -> None:
+        self.wait = wait
+        self.script = script
+        self.log = log
+
+    def rows(
+        self,
+        *,
+        reader: str,
+        window_hours: int,
+        kinds: Sequence[str] = (),
+        lanes: Sequence[str] = (),
+    ) -> tuple[str, ...]:
+        self.log.append(self.wait)
+        step = self.script.pop(0)
+        if isinstance(step, LedgerReadError):
+            raise step
+        assert isinstance(step, tuple)
+        return step
+
+
+def stub_config(**changes: float) -> ModelLedgerClaimsReadConfig:
+    declared: dict[str, Any] = {
+        "reader": "pr-duplicate-guard-claims",
+        "window_hours": 168,
+        "heartbeat_window_hours": 1,
+        "claim_kinds": ["CLAIM"],
+        "primary_timeout_s": 10,
+        "retry_timeout_s": 10,
+        "total_budget_s": 40,
+    }
+    declared.update(changes)
+    return ModelLedgerClaimsReadConfig.model_validate(declared)
+
+
+def test_the_retry_waits_only_what_is_left_of_the_declared_budget() -> None:
+    """Every wait is the declared one or what the injected clock says is left of the total, never more."""
+    now = [0.0]
+    log: list[float] = []
+    row = _row(5, "CLAIM", LANE, CAUSE, "mine")
+    script: list[object] = [LedgerReadError("timed out"), (row,), (row,)]
+
+    def reader_for(wait: float) -> StubReader:
+        now[0] += 35.0 if not log else 0.0  # the first read used 35 of the 40 seconds
+        return StubReader(wait, script, log)
+
+    text = read_claims_text(reader_for, stub_config(), clock=lambda: now[0])
+
+    assert row in text
+    assert log[0] == 10, log
+    assert log[1] == pytest.approx(5.0), log
+
+
+def test_a_spent_budget_ends_the_claims_read_without_another_read() -> None:
+    now = [0.0]
+    log: list[float] = []
+    script: list[object] = [
+        LedgerReadError("timed out"),
+        (_row(5, "CLAIM", LANE, CAUSE, "mine"),),
+    ]
+
+    def reader_for(wait: float) -> StubReader:
+        now[0] += 50.0  # past the 40 second total after the first read
+        return StubReader(wait, script, log)
+
+    with pytest.raises(LedgerReadError, match="budget"):
+        read_claims_text(reader_for, stub_config(), clock=lambda: now[0])
+
+    assert len(log) == 1, "no read after the budget was spent"
+
+
+def test_the_node_contract_declares_one_retry_wait_and_no_whole_window_fallback() -> (
+    None
+):
+    declared = ledger_read_contract()
+    assert declared is not None
+    assert "fallback_timeout_s" not in declared
+    assert declared["retry_timeout_s"] > 0
+    assert (
+        2 * (declared["primary_timeout_s"] + declared["retry_timeout_s"])
+        <= declared["total_budget_s"]
+    )
 
 
 @pytest.mark.parametrize("host", HOSTS)
@@ -332,7 +481,7 @@ def test_the_bounds_of_the_claims_read_are_declared_in_the_node_contract_and_use
     assert broker.timeouts
     primary = declared["primary_timeout_s"]
     assert broker.timeouts == [primary, primary]
-    assert 2 * primary + declared["fallback_timeout_s"] <= declared["total_budget_s"]
+    assert 2 * (primary + declared["retry_timeout_s"]) <= declared["total_budget_s"]
     assert declared["heartbeat_window_hours"] * 3600 >= 0.75 * 3600, (
         "the heartbeat read must cover a CLAIM's live hours"
     )
@@ -368,3 +517,48 @@ def test_the_claims_read_names_the_lanes_the_last_hour_holds_and_no_other(
     assert "quiet-0100" not in named
     assert {"cause-core-0010", LANE} <= set(named)
     assert len(named) == len(set(named)) == HOUR_LANES + 2
+
+
+class LaneRecordingReader:
+    """Answers the one hour read with the rows given and records the lanes the claims read names."""
+
+    def __init__(self, hour_rows: tuple[str, ...], named: list[Sequence[str]]) -> None:
+        self.hour_rows = hour_rows
+        self.named = named
+
+    def rows(
+        self,
+        *,
+        reader: str,
+        window_hours: int,
+        kinds: Sequence[str] = (),
+        lanes: Sequence[str] = (),
+    ) -> tuple[str, ...]:
+        if not kinds:
+            return self.hour_rows
+        self.named.append(tuple(lanes))
+        return ()
+
+
+def test_a_heartbeat_row_whose_lane_is_no_lane_token_is_not_asked_for_in_the_claims_read() -> (
+    None
+):
+    """OMN-24562: from 2026-11-26T21:20Z a hook's FRICTION row named ``wt:<repo>/<worktree>`` as its lane.
+
+    The work-ledger query refuses a request whose ``lanes`` hold anything that is not a lane token (envelope validation:
+    ``lanes.N: String should match pattern``), so one such row in the last hour made every claims read exit 69 and every
+    ``onex scm pr-create`` refuse ``unchecked``. A cell that is no lane token cannot be the lane of a CLAIM (the ledger grammar's
+    lane is that token), so it is left out of the lane list; the real lanes are still asked for, and a read that fails still
+    refuses.
+    """
+    named: list[Sequence[str]] = []
+    odd = "2026-11-26T21:20:36Z | FRICTION | lane=wt:macleak/some-repo | actor=hook | class=refusal"
+    mine = _row(5, "STATUS", LANE, "working")
+
+    text = read_claims_text(
+        lambda _wait: LaneRecordingReader((odd, mine), named), stub_config()
+    )
+
+    assert named == [(LANE,)], named
+    assert odd in text
+    assert mine in text

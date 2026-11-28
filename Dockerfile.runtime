@@ -22,6 +22,9 @@ RUN /app/.venv/bin/python -m omnibase_infra.runtime.strip_runtime_entry_points
 COPY --chown=omniinfra:omniinfra src/omnimarket/configs/routing_tiers.yaml /app/config/delegation/routing_tiers.yaml
 COPY --chown=omniinfra:omniinfra src/omnimarket/configs/bifrost_delegation.yaml /app/config/delegation/bifrost_delegation.base.yaml
 ENV BIFROST_BASE_CONTRACT_PATH=/app/config/delegation/bifrost_delegation.base.yaml
+# OMN-24052: this image is the operator runtime on lab and dev hosts. omnibase_core hides the INTERNAL command
+# groups (settings, scm, ...) unless this switch is on; the customer surface list itself is unchanged.
+ENV ONEX_CLI_SHOW_ALL_COMMANDS=1
 
 RUN /app/.venv/bin/python - <<'PY'
 import importlib
@@ -55,6 +58,54 @@ for node in NODES:
     importlib.import_module(entry.value)
 print("github nodes registered and importable:", ",".join(NODES))
 GITHUB_NODES
+
+# OMN-26405: the prebuilt node manifest, rebuilt here as the last instruction that
+# changes any stamp input. The infra image stamps its manifest before this layer
+# uninstalls and reinstalls omnimarket and strips the entry points, so the stamp's
+# distribution listing no longer matched the installed one and every boot read the
+# file stale. The same entry point the infra image runs builds it again from what is
+# installed now. The active package set and the workload come from the stamp of the
+# manifest the base image carries (the infra image wrote them from the runtime
+# policy); a build argument still wins. The step fails closed: no stamp, an empty set
+# or a workload that is not a plain word stops the build rather than stamping an
+# empty set. Nothing after this point installs, copies or strips anything.
+ARG PREBUILT_ACTIVE_RUNTIME_PACKAGES=""
+ARG PREBUILT_WORKLOAD=""
+RUN <<'MANIFEST'
+set -eu
+py=/app/.venv/bin/python
+stamped="$("${py}" - <<'PY'
+import sys
+
+from omnibase_infra.handlers.handler_prebuilt_manifest import prebuilt_manifest_path
+from omnibase_infra.models.node_announce.model_prebuilt_node_manifest import (
+    ModelPrebuiltNodeManifest,
+)
+
+path = prebuilt_manifest_path()
+if not path.is_file():
+    sys.exit(f"OMN-26405: the base image carries no prebuilt node manifest at {path}")
+stamp = ModelPrebuiltNodeManifest.model_validate_json(path.read_bytes()).stamp
+print(stamp.active_packages)
+print(stamp.workload)
+PY
+)"
+active="${PREBUILT_ACTIVE_RUNTIME_PACKAGES:-$(printf '%s\n' "${stamped}" | sed -n 1p)}"
+workload="${PREBUILT_WORKLOAD:-$(printf '%s\n' "${stamped}" | sed -n 2p)}"
+case "${active}" in
+  ""|*[!A-Za-z0-9_.,-]*)
+    echo "OMN-26405: no usable active package set for the prebuilt manifest (got '${active}'); the base image's stamp names none and PREBUILT_ACTIVE_RUNTIME_PACKAGES is unset" >&2
+    exit 1;;
+esac
+case "${workload}" in
+  ""|*[!A-Za-z0-9_.-]*)
+    echo "OMN-26405: no usable workload for the prebuilt manifest (got '${workload}')" >&2
+    exit 1;;
+esac
+ONEX_ACTIVE_RUNTIME_PACKAGES="${active}" \
+  "${py}" -m omnibase_infra.nodes.node_boot_catalog_effect.runtime_prebuilt_manifest build \
+    --workload "${workload}"
+MANIFEST
 
 LABEL com.omninode.omnimarket_vcs_ref=${OMNIMARKET_VCS_REF}
 USER root

@@ -211,9 +211,13 @@ def test_s5_the_decision_compute_contract_names_the_models_the_orchestrator_pass
         assert getattr(importlib.import_module(spec["module"]), spec["name"]) is model
 
 
-def test_the_published_topics_are_the_two_the_run_readers_consume() -> None:
-    # The projection and the schedule verdict read these two names; a rename here is a seam break.
+def test_the_published_topics_are_the_two_the_run_readers_consume_and_the_lab_work_command() -> (
+    None
+):
+    # The projection and the schedule verdict read the two run names; a rename here is a seam break.
+    # The lab work command topic is where the tick route puts each due unit before it returns.
     assert ORCHESTRATOR["event_bus"]["publish_topics"] == [
+        "onex.cmd.omnimarket.lab-work-unit-requested.v1",
         "onex.evt.omnimarket.host-hygiene-run-completed.v1",
         "onex.evt.omnimarket.schedule-run.v1",
     ]

@@ -17,8 +17,8 @@ Rule
 For every ``src/omnimarket/nodes/*/contract.yaml``: each declared publish topic
 that is NOT the contract's ``terminal_event`` requires evidence of a publish or
 emit call somewhere in that node package's Python. ``terminal_event`` is exempt
-because the runtime publishes it on the handler's behalf. So is a declared
-failure terminal (``runtime_dispatch.terminal_events.failure``) when the node's
+because the runtime publishes it on the handler's behalf. So is a topic ``published_events`` routes a result class
+the node defines to, and a declared failure terminal (``runtime_dispatch.terminal_events.failure``) when the node's
 Python carries ``terminal_failure_cause``: the runtime's failure-terminal guard
 publishes a result carrying one on that topic (OMN-20867). Without that field no
 result can reach the failure terminal, and it stays an offender.
@@ -40,8 +40,9 @@ import re
 import sys
 from pathlib import Path
 
-import yaml
 from pydantic import BaseModel, ConfigDict, Field
+
+from omnimarket.handlers.libyaml_loader import load_yaml_text
 
 # Evidence that a node's Python actually reaches the bus. Deliberately broad:
 # the gate's job is to catch contracts with ZERO publish surface, not to police
@@ -76,7 +77,7 @@ def scan_publish_parity(root: Path) -> list[ModelPublishParityFinding]:
     """Return one finding per node that declares an unpublished topic."""
     findings: list[ModelPublishParityFinding] = []
     for contract_path in sorted(root.glob("*/contract.yaml")):
-        raw = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+        raw = load_yaml_text(contract_path.read_text(encoding="utf-8"))
         if not isinstance(raw, dict):
             continue
         event_bus = raw.get("event_bus") or {}
@@ -86,20 +87,18 @@ def scan_publish_parity(root: Path) -> list[ModelPublishParityFinding]:
         if not isinstance(declared, list):
             continue
         node_dir = contract_path.parent
-        exempt = {str(raw.get("terminal_event"))}
-        if _returns_failure_cause(node_dir):
+        source = _node_source(node_dir)
+        exempt = {str(raw.get("terminal_event"))} | _routed_result_topics(raw, source)
+        if _FAILURE_CAUSE_EVIDENCE.search(source):
             exempt |= _failure_terminals(raw)
         candidates = sorted({str(topic) for topic in declared} - exempt)
-        if not candidates:
-            continue
-        if _has_publish_evidence(node_dir):
-            continue
-        findings.append(
-            ModelPublishParityFinding(
-                node=node_dir.name,
-                undeclared_topics=tuple(candidates),
+        if candidates and not _PUBLISH_EVIDENCE.search(source):
+            findings.append(
+                ModelPublishParityFinding(
+                    node=node_dir.name,
+                    undeclared_topics=tuple(candidates),
+                )
             )
-        )
     return findings
 
 
@@ -114,18 +113,22 @@ def _failure_terminals(raw: dict[str, object]) -> set[str]:
     return {failure} if isinstance(failure, str) and failure else set()
 
 
-def _returns_failure_cause(node_dir: Path) -> bool:
-    return any(
-        _FAILURE_CAUSE_EVIDENCE.search(path.read_text(encoding="utf-8"))
-        for path in sorted(node_dir.rglob("*.py"))
+def _routed_result_topics(raw: dict[str, object], source: str) -> set[str]:
+    entries = raw.get("published_events")
+    # The runtime publishes a handler's returned model on the topic ``published_events`` names for its class; a class
+    # the node never defines exempts nothing.
+    return {
+        str(e["topic"])
+        for e in (entries if isinstance(entries, list) else [])
+        if isinstance(e, dict)
+        and re.search(rf"^class {re.escape(str(e.get('event_type')))}\b", source, re.M)
+    }
+
+
+def _node_source(node_dir: Path) -> str:
+    return "\n".join(
+        p.read_text(encoding="utf-8") for p in sorted(node_dir.rglob("*.py"))
     )
-
-
-def _has_publish_evidence(node_dir: Path) -> bool:
-    for python_path in sorted(node_dir.rglob("*.py")):
-        if _PUBLISH_EVIDENCE.search(python_path.read_text(encoding="utf-8")):
-            return True
-    return False
 
 
 def _repo_root() -> Path:

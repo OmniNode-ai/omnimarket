@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The four runtime files that moved their ledger reads to the bus stay cleared.
+"""The runtime files that moved their ledger reads or mentions off the ledger file stay cleared.
 
 Each file listed here used to hold an executable reader of the work ledger file or its path
 variable. The census run over this tree must print no hit for any of them, and the per-file
@@ -29,6 +29,8 @@ _CLEARED = (
     "src/omnimarket/nodes/node_operator_capture_effect/contract.yaml",
     "src/omnimarket/nodes/node_operator_capture_effect/handlers/capture_ports.py",
     "src/omnimarket/nodes/node_operator_capture_effect/runtime_capture_cli.py",
+    "src/omnimarket/nodes/node_lab_fill_plan_compute/handlers/handler_lab_fill_lane_render.py",
+    "src/omnimarket/nodes/node_ledger_reconcile_effect/protocols/local_ledger_reconcile_adapters.py",
 )
 # A file the census still lists today, so the run below is proven able to print a hit.
 _STILL_LISTED = "src/omnimarket/handlers/ledger_row_grammar.py"

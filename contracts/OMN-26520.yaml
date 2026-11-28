@@ -1,0 +1,110 @@
+schema_version: 1.0.0
+ticket_id: OMN-26520
+title: 'dev runtime unhealthy: DoneItemsProjectionWriter writes zero rows'
+summary: 'The done-items writer legitimately writes nothing for a work-ledger TERMINAL whose outcome is not done, and the runtime health dimension projection_apply_divergence read twenty or more such events in a window as a writer that wrote nothing, which the container healthcheck turns into unhealthy. The writer now reports events_not_applicable and the health rule subtracts it before grading, so a silent zero-row writer is still DEGRADED.'
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26520-filter-is-not-a-silent-writer
+  statement: A projection that reports an event as filtered by its own contract is not graded as a writer that wrote nothing, and a writer that errors or reports no filter still is.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the cause is named in the PR body under a section headed Measured cause with log lines, offsets and a UTC read time -- falsifier: onex scm pr-view of the PR shows no such section'
+  - id: AC2
+    statement: 'AC2: the PR body answers whether zero written rows should make the runtime unhealthy under a section headed Unhealthy decision naming a file path and a line number -- falsifier: onex scm pr-view of the PR shows no such section'
+  - id: AC3
+    statement: 'AC3: a test built from the recorded dev event data fails at origin/dev and passes with the fix, and a writer that errors or reports no filter is still reported unhealthy by its own test -- falsifier: uv run pytest tests/nodes/node_projection_done_items -q -n 0 --no-cov -p no:cacheprovider fails at origin/dev and passes with the fix'
+  - id: AC4
+    statement: 'AC4: the dispatch deadline, the boot guard and the broker health check are unchanged and no compose file is changed -- falsifier: git diff origin/dev --stat on the branch lists none of them'
+  - id: AC5
+    statement: 'AC5: on the running dev runtime after the deploy agent applies the change, docker inspect of omninode-runtime reads healthy and the done_items row count rises across two reads 10 minutes apart -- falsifier: the health reads unhealthy or the count is unchanged'
+evidence_requirements:
+- kind: tests
+  description: The OMN-26520 tests pass at the pushed head.
+  command: uv run pytest tests/nodes/node_projection_done_items -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26520-ac1
+  description: 'AC1: the Measured cause section of the PR body; the recorded event fixture the tests read is the data it cites.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_projection_done_items -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26520-ac2
+  description: 'AC2: the Unhealthy decision section of the PR body; the tests pin that a filter is not graded as a silent writer.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_projection_done_items -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26520-ac3
+  description: 'AC3: filtered events are healthy, a silent zero and a partly filtered window below the floor stay DEGRADED, and the file tests/nodes/node_projection_done_items/test_done_items_not_applicable_omn26520.py fails at origin/dev.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_projection_done_items -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26520-ac4
+  description: 'AC4: no dispatch deadline, boot guard, broker health check or compose file is in the diff.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_projection_done_items -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26520-ac5
+  description: 'AC5: the real-Postgres test shows a not-done TERMINAL writes no row and reports events_not_applicable, the writer behaviour the dev runtime health read depends on; the live dev read is the unbound dod-omn26520-ac5-live-read item.'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_projection_done_items/test_done_items_real_postgres.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26520-ac5-dev-readings
+  description: 'AC5 as measured on the dev runtime: omninode-runtime read healthy (23:01:35Z), and the done_items row count rose from 136 (23:04Z and 23:15Z reads) to 139 while done events arrived, max projected_at advancing to 23:47:10Z. A later pair of reads 627 s apart read 139 both times, so a rise inside a ten minute window is shown only where a done event arrived in it. The recorded readings are the committed fixture; the file tests/nodes/node_projection_done_items/test_done_items_dev_readings_omn26520.py does not exist at origin/dev.'
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_projection_done_items/test_done_items_dev_readings_omn26520.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26520-ac5-dev-rise
+  description: 'AC5 as measured on the dev runtime on 2026-11-26: omninode-runtime read healthy (failing streak 0) at 02:02:30Z and 02:13:44Z, and the done_items row count rose from 142 to 143 across those two reads, 11 min 14 s apart, max projected_at advancing from 01:58:38Z to 02:08:40Z. The earlier pair (01:52:07Z unhealthy, 02:02:30Z healthy) read 142 both times and the runtime read unhealthy at 01:52:07Z; both are in the committed fixture. The file tests/nodes/node_projection_done_items/test_done_items_dev_rise_omn26520.py does not exist at origin/dev.'
+  source: manual
+  execution_scope: hosted_and_local
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_projection_done_items/test_done_items_dev_rise_omn26520.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26520-ac5-live-read
+  description: 'AC5 live read on the dev runtime on omni-201 only after the deploy agent applies the merged change; hosted CI cannot reach it, so only the local Done gate runs this unbound check.'
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: ssh omni-201 docker inspect --format '{{.State.Health.Status}}' omninode-runtime
+    cwd: .
+- id: dod-omn26520-integration-proof
+  description: the done-items projection tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26520 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_projection_done_items -q --no-cov

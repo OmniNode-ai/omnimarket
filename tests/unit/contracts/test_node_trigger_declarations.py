@@ -12,11 +12,16 @@ from __future__ import annotations
 import importlib
 import io
 import json
+import os
+import subprocess
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
+from omnibase_core.validators.no_unguarded_git_subprocess import (
+    scrub_git_location_env,
+)
 from pydantic import ValidationError
 
 from omnimarket.models.model_node_trigger import (
@@ -112,6 +117,46 @@ def test_the_census_unit_renders_a_daily_timer_that_runs_the_tick_module(
     assert f'"ONEX_LEDGER_CENSUS_ROOT={tmp_path}/omni"' in service
 
 
+def test_the_census_unit_carries_the_workspace_config_root_its_publish_resolves_the_broker_from(
+    tmp_path: Path, linux_host: None
+) -> None:
+    """The 2026-11-27 daily run exited 3: PUBLISH REFUSED NodeBrokerResolutionError, no workspace config root.
+
+    The tick publishes through the declared-broker publisher, which reads config/lab/ci_bus_lanes.yaml under
+    ONEX_WORKSPACE_CONFIG_ROOT; the unit must export it, as every other tick that publishes does.
+    """
+    unit = load_units()[CENSUS_UNIT]
+    assert (
+        unit["environment"]["ONEX_WORKSPACE_CONFIG_ROOT"] == "{workspace_config_root}"
+    )
+    checkout = tmp_path / "branch"
+    base.make_checkout(checkout)
+    (checkout / unit["entry_file"]).parent.mkdir(parents=True, exist_ok=True)
+    (checkout / unit["entry_file"]).write_text("print('tick')\n", encoding="utf-8")
+    base._git(["git", "-C", str(checkout), "add", "-A"], check=True)
+    base._git(
+        [
+            *("git", "-C", str(checkout), "-c", "user.name=t"),
+            *("-c", "user.email=t@e.com", "commit", "-q", "-m", "y"),
+        ],
+        check=True,
+    )
+    result = HandlerRegistryUnits(base.Recorder()).handle(
+        base.request(
+            tmp_path,
+            unit=CENSUS_UNIT,
+            mode="install",
+            project_path=str(checkout),
+            workspace_config_root=str(tmp_path / "config"),
+            path_overrides={},
+        )
+    )
+    assert result.status == "success", result.stderr
+    unit_dir = tmp_path / "home" / ".config/systemd/user"
+    service = (unit_dir / f"{unit['label']}.service").read_text(encoding="utf-8")
+    assert f'"ONEX_WORKSPACE_CONFIG_ROOT={tmp_path}/config"' in service
+
+
 def test_the_census_tick_probe_answers_and_one_tick_keeps_the_daily_record(
     tmp_path: Path,
 ) -> None:
@@ -122,17 +167,47 @@ def test_the_census_tick_probe_answers_and_one_tick_keeps_the_daily_record(
     assert json.loads(probe.getvalue()) == {"status": "probe_ok"}
     registry = tmp_path / "registry"
     registry.mkdir()
-    (registry / "omnimarket").symlink_to(REPO_ROOT)
+    registered = [
+        str(row["name"])
+        for row in yaml.safe_load(
+            (NODES / CENSUS / "overlay.example.yaml").read_text(encoding="utf-8")
+        )["repositories"]
+    ]
+    assert "omnimarket" in registered
+    for name in registered:
+        if name == "omnimarket":
+            (registry / name).symlink_to(REPO_ROOT)
+            continue
+        # a registered repository the tick counts: an empty clone holds no reader, so it stays under its row
+        (registry / name).mkdir()
+        subprocess.run(
+            ["git", "-C", str(registry / name), "init", "-q"],
+            check=True,
+            capture_output=True,
+            env=scrub_git_location_env(os.environ),
+        )
     out = io.StringIO()
+    sent: list[dict[str, object]] = []
+
+    class _Bus:
+        def publish(self, **event: object) -> bool:
+            sent.append(dict(event))
+            return True
+
     code = module.main(
         ["--omni-home", str(registry), "--state-dir", str(tmp_path / "state")],
         environ={},
         stdout=out,
+        publisher=_Bus(),
     )
     assert code == 0, out.getvalue()
+    assert [e["topic"] for e in sent] == [
+        "onex.evt.omnimarket.ledger-file-census-daily-record.v1"
+    ]
     evidence = json.loads((tmp_path / "state" / "last-run.json").read_text("utf-8"))
     assert evidence["exit_code"] == 0
-    assert evidence["record"]["repositories"][0]["repository"] == "omnimarket"
+    assert evidence["published"] is True
+    assert [r["repository"] for r in evidence["record"]["repositories"]] == registered
     assert "CENSUS-RECORD " in out.getvalue()
 
 

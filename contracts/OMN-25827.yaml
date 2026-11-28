@@ -1,0 +1,180 @@
+schema_version: 1.0.0
+ticket_id: OMN-25827
+title: A local no-credential refusal reads provider_credential_missing, never provider_auth_failed (why-anthropic F3)
+summary: _inference_error_failure_class matches the CredentialUnresolvedError code before the generic markers and no longer treats the bare substring auth as a rejected credential.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn25827-nightly-reads-success
+  statement: Dev's delegation-regression-nightly reads success on its live golden tasks, each failed case with a named cause fixed at its source without weakening a golden case.
+  acceptance:
+  - id: AC1
+    statement: "AC1: each of the cases I1, I3, I5, I6 and I7 that failed in run 44259885965 has a named cause (delegate answer quality, route, grader or environment) with its case output quoted in the lane's TERMINAL row -- falsifier: the lane's TERMINAL row names no cause or quotes no case output for one of the five cases"
+  - id: AC2
+    statement: "AC2: one pull request on the omnimarket default branch fixes each named cause at its source with a test that fails at the unfixed base and passes at the new head, built from the recorded case output (fixture path in the PR) -- falsifier: `uv run pytest <the new test path> -q` run at the unfixed base commit passes, or `onex scm pr-view` shows no such pull request"
+  - id: AC3
+    statement: "AC3: the fix weakens no golden case, so the diff removes no assertion and adds no skip, xfail, loosened threshold, edited case expectation or changed required-check list -- falsifier: `git diff <base> <head> -- tests/ .github/` shows a removed assert, a new skip or xfail marker, an edited expectation or threshold, or a changed required-check list"
+  - id: AC4
+    statement: "AC4: the pull request body carries a line starting `Lab:` with the head sha, the command and exit 0 -- falsifier: the pull request body has no line starting `Lab:`, or the lab run exit is not 0 at the head"
+  - id: AC5
+    statement: "AC5: after the fix is deployed where the nightly runs, a dev delegation-regression-nightly dispatched with the stability lane through the declared path has a newest run that reads success -- falsifier: `onex scm run-list OmniNode-ai/omnimarket --workflow delegation-regression-nightly.yml --branch dev --limit 1` shows a conclusion other than success"
+evidence_requirements:
+- kind: tests
+  description: The F3 classification tests pass at the pushed head.
+  command: uv run pytest tests/unit/delegation/test_inference_error_credential_unresolved_omn25827.py -q -n 0 --no-cov -p no:cacheprovider
+- kind: tests
+  description: The house route climb tests pass at the pushed head.
+  command: uv run pytest tests/unit/delegation/test_omn25827_house_overlay_route_climbs.py -q -n 0 --no-cov -p no:cacheprovider
+- kind: tests
+  description: The failed-case cause tests pass at the pushed head.
+  command: uv run pytest tests/delegation_golden/test_runner_names_failure_cause_omn25827.py -q -n 0 --no-cov -p no:cacheprovider
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn25827-ac1
+  description: 'AC1: the new test fails at origin/dev (three failures: two refusal variants and the bare-auth prose) and passes at the head, beside the existing 401/403 controls.'
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_inference_error_credential_unresolved_omn25827.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn25827-ac2
+  description: 'AC2: the sibling classification tests still pass together with the new test file, which does not exist at the merge base, so the control at the merge base fails.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_inference_error_503_status_first_omn20712.py tests/unit/delegation/test_inference_error_429_word_boundary_omn20154.py tests/unit/delegation/test_omn18265_provider_error_in_200_body.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_inference_error_credential_unresolved_omn25827.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn25827-ac3
+  description: 'AC3: the new test file has two failing tests at the base (the house route re-issued to the refusing backend, and delta returning the spent house row) and passes at the head.'
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_omn25827_house_overlay_route_climbs.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn25827-ac4
+  description: 'AC4: the customer controls and the neighbouring tenant overlay suites pass at the head.'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_omn25827_house_overlay_route_climbs.py tests/unit/delegation/test_omn18265_provider_error_in_200_body.py tests/nodes/node_delegation_routing_reducer/test_omn15631_tenant_overlay_routing.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn25827-ac6
+  description: 'AC6: the new test file has two failing tests at the base (the recorded failed case and its JSON-string row carry no cause line) and five passing at the head.'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/delegation_golden/test_runner_names_failure_cause_omn25827.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn25827-live-ac1
+  description: "AC1 (live text): the named causes are read from the recorded case output (cases I1, I3, I5, I7 of the recorded fixture), and the failed-case cause line is built from it. Run at the merge base the new contract test fails; the TERMINAL-row half of the falsifier is read by the reviewer and is not claimed here."
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/delegation_golden/test_runner_names_failure_cause_omn25827.py -q -n 0 --no-cov -p no:cacheprovider -p no:randomly
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_omn25827_contract_matches_ticket_criteria.py -q -n 0 --no-cov -p no:cacheprovider -p no:randomly -k 'no_drift or requirements_declare'
+    cwd: .
+- id: dod-omn25827-live-ac2
+  description: "AC2 (live text): the fix tests built from the recorded case output pass at the head (credential classification, house route climb, failed-case cause), and the contract declares the live text. The new contract test file does not exist at the merge base."
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_inference_error_credential_unresolved_omn25827.py tests/unit/delegation/test_omn25827_house_overlay_route_climbs.py -q -n 0 --no-cov -p no:cacheprovider -p no:randomly
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_omn25827_contract_matches_ticket_criteria.py -q -n 0 --no-cov -p no:cacheprovider -p no:randomly
+    cwd: .
+- id: dod-omn25827-live-ac3
+  description: "AC3 (live text): this change touches nothing under .github/ and not the golden corpus; the diff of the original fix is read by the reviewer and is not claimed here."
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: command
+    check_value: "bash -c 'git diff --quiet origin/dev -- .github/ tests/delegation_golden/corpus.yaml'"
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_omn25827_contract_matches_ticket_criteria.py -q -n 0 --no-cov -p no:cacheprovider -p no:randomly -k live_criterion_text_is_declared_verbatim
+    cwd: .
+- id: dod-omn25827-live-ac4
+  description: "AC4 (live text): the contract declares the live AC4 text and binds it by its own item. The Lab line of the pull request body is read by the reviewer and is not claimed here."
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_omn25827_contract_matches_ticket_criteria.py -q -n 0 --no-cov -p no:cacheprovider -p no:randomly -k 'live_criterion_is_bound_by_its_own_item or seeded_control'
+    cwd: .
+- id: dod-omn25827-live-ac5
+  description: "AC5 (live text): the recorded readback of the nightly workflow (run 45776287508 at 2026-11-26T07:34:07Z and run 45569166018 at 2026-11-25T07:34:14Z, both lane=dev, both success) has a newest run reading success, and a seeded failed newest run does not. The fixture records a read made from GitHub; it is not a dispatch on the stability lane."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/ci/test_omn25827_contract_matches_ticket_criteria.py -q -n 0 --no-cov -p no:cacheprovider -p no:randomly -k live_ac5
+    cwd: .
+  supersedes_ac_binding:
+  - item: dod-omn25827-ac1
+    label: AC1
+    reason_kind: superseded_by
+    superseded_by: dod-omn25827-live-ac1
+    reason: "The live ticket OMN-25827 carries other text under AC1 than this item was written against; the live criterion is bound by dod-omn25827-live-ac1. This item still runs its own tests."
+    retired_by: lt25827b-59400
+    retired_at: "2026-11-26T08:30:00Z"
+  - item: dod-omn25827-ac2
+    label: AC2
+    reason_kind: superseded_by
+    superseded_by: dod-omn25827-live-ac2
+    reason: "The live ticket OMN-25827 carries other text under AC2 than this item was written against; the live criterion is bound by dod-omn25827-live-ac2. This item still runs its own tests."
+    retired_by: lt25827b-59400
+    retired_at: "2026-11-26T08:30:00Z"
+  - item: dod-omn25827-ac3
+    label: AC3
+    reason_kind: superseded_by
+    superseded_by: dod-omn25827-live-ac3
+    reason: "The live ticket OMN-25827 carries other text under AC3 than this item was written against; the live criterion is bound by dod-omn25827-live-ac3. This item still runs its own tests."
+    retired_by: lt25827b-59400
+    retired_at: "2026-11-26T08:30:00Z"
+  - item: dod-omn25827-ac4
+    label: AC4
+    reason_kind: superseded_by
+    superseded_by: dod-omn25827-live-ac4
+    reason: "The live ticket OMN-25827 carries other text under AC4 than this item was written against; the live criterion is bound by dod-omn25827-live-ac4. This item still runs its own tests."
+    retired_by: lt25827b-59400
+    retired_at: "2026-11-26T08:30:00Z"
+  - item: dod-omn25827-ac6
+    label: AC6
+    reason_kind: no_longer_applicable
+    reason: "The live ticket OMN-25827 carries AC1 to AC5 only, so AC6 was never on it: a criterion this contract declared on its own for the failed-case cause line. dod-omn25827-ac6 still runs its own tests."
+    retired_by: lt25827b-59400
+    retired_at: "2026-11-26T08:30:00Z"
+- id: dod-omn25827-integration-proof
+  description: the F3 classification tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-25827 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/delegation/test_inference_error_credential_unresolved_omn25827.py -q --no-cov

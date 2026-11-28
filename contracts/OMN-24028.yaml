@@ -16,6 +16,30 @@ requirements:
     statement: 'AC2: an invalid load publishes nothing and a runtime with no publisher still stores the record -- falsifier: uv run pytest tests/unit/nodes/node_overlay_store/test_projection_snapshot_key.py -q -n 0 --no-cov -p no:cacheprovider -k "invalid or no_publisher"'
   - id: AC3
     statement: 'AC3: integrated: after the merge reaches the running runtime and one loader tick, the lab host overlay refresh reads lab_hosts with an age under one hour -- falsifier: the lab_hosts snapshot stamp loaded_at on h053 stays older than one hour after the tick; the reading of 3.1 days fails this criterion'
+  - id: AC4
+    statement: 'AC4: the settings store set command refuses an undeclared key with a typed error and writes nothing, records an audit row naming the actor with the previous and the new value, and the written value survives a refresh -- falsifier: uv run --frozen pytest tests/unit/nodes/node_overlay_setting_set -q -n 0 --no-cov -p no:cacheprovider fails when an undeclared key is written or the audit row is missing'
+- id: req-omn24028-store-load-continues
+  statement: The hourly store load goes on past a refused overlay and a stale loader assertion raises an alarm by overlay id, so one refusal never starves the ids after it and nothing stays stale unnamed.
+  acceptance:
+  - id: AC5
+    statement: 'AC5: the hourly store load goes on past a refused overlay: a refusal planted on the second of three ids leaves the first and third published, the tick exits non-zero naming the second, and an unchanged clone asserts each overdue id again within the hour -- falsifier: uv run pytest tests/unit/nodes/node_overlay_store/test_overlay_store_load_continue.py -q -n 0 --no-cov -p no:cacheprovider fails when a refusal on one id leaves a later id unpublished'
+  - id: AC6
+    statement: 'AC6: each loader assertion (overlay id, digest, time) is kept in the loader state apart from what a set writes, and an id whose newest assertion is older than the bound, or that has none, raises one alarm naming the id and its owner on the topic the loader contract declares -- falsifier: uv run pytest tests/unit/nodes/node_overlay_store/test_overlay_assertion_stale.py -q -n 0 --no-cov -p no:cacheprovider fails when a stale id raises no alarm'
+- id: req-omn24028-latest-core-imports
+  statement: No file imports a module the newest omnibase-core removed, so the latest-core smoke job imports every node module.
+  acceptance:
+  - id: AC7
+    statement: 'AC7: no file in src, tests or scripts imports a module the newest omnibase-core removed (cli_work_ledger_render), so the latest-core smoke job imports every node module -- falsifier: uv run --frozen pytest tests/ci/test_no_removed_core_ledger_render_import.py -q -n 0 --no-cov -p no:cacheprovider fails when a file imports the removed module'
+- id: req-omn24028-snapshot-writer
+  statement: The host table keys ingest node writes every overlay record of the compacted snapshot topic to the injected settings store, and an older replayed record never moves a value back.
+  acceptance:
+  - id: AC8
+    statement: 'AC8: the host table keys ingest node applies each overlay snapshot record to the injected settings store through its handler, an older replayed record never moves a value back, and a record with no revision is skipped and counted -- falsifier: uv run --frozen pytest tests/settings_store/test_snapshot_writer.py -q -n 0 --no-cov -p no:cacheprovider fails when the handler module is absent or applies an older record over a newer one'
+- id: req-omn24028-host-table-from-store
+  statement: The board lab_hosts reader reads the host table through the injected settings store only, and a host table that cannot be read is unknown, never an empty list.
+  acceptance:
+  - id: AC9
+    statement: 'AC9: the board lab_hosts reader reads the host table through the injected settings store and returns unknown (None), never an empty list, for an absent overlay, a stale heartbeat, an unreachable store and a document that is not a host table -- falsifier: uv run --frozen pytest tests/settings_store/test_host_table_from_store.py -q -n 0 --no-cov -p no:cacheprovider fails when the reader function is absent or returns an empty list for any of those cases'
 evidence_requirements:
 - kind: tests
   description: The projection key tests and the overlay store golden and error chain tests pass at the pushed head.
@@ -59,3 +83,56 @@ dod_evidence:
   checks:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24028 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_overlay_store -q -n 0 --no-cov -p no:cacheprovider
+- id: dod-omn24028-setting-set
+  description: 'the settings store gains a set command for one declared key of one overlay: an undeclared key is refused with a typed error and nothing is written, the audit row names the actor with the previous and the new value, and the written value survives a refresh that keeps operator-set paths'
+  source: manual
+  binds_ac:
+  - AC4
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_setting_set -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24028-store-load-continues
+  description: 'the hourly store load goes on past a refused overlay: a refusal planted on the second of three ids leaves the first and third published, the tick exits non-zero naming the second, and an unchanged clone asserts each overdue id again within the hour; the four tick tests failed on origin/dev before the change'
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_store/test_overlay_store_load_continue.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24028-assertion-alarm
+  description: 'each loader assertion (overlay id, digest, time) is kept in the loader state apart from what a set writes, and an id whose newest assertion is older than two hours, or that has none, raises one alarm naming the id and its owner on the topic the loader contract declares'
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/nodes/node_overlay_store/test_overlay_assertion_stale.py -q -n 0 --no-cov -p no:cacheprovider
+- id: dod-omn24028-latest-core-imports
+  description: 'no file in src, tests or scripts imports a module the newest omnibase-core removed (cli_work_ledger_render), so the latest-core smoke job that imports every node module on the newest core release no longer fails on node_create_ticket; the ledger path variable name is the guard''s own constant'
+  source: manual
+  binds_ac:
+  - AC7
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/ci/test_no_removed_core_ledger_render_import.py tests/nodes/node_create_ticket/test_core_ticket_guard.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24028-snapshot-writer
+  description: 'Task 20: the host table keys ingest node declares the compacted snapshot topic as a snapshot read (its name carries no message category, so it is never a subscribe) and its writer handler applies every overlay record to the injected settings store through its constructor; an older replayed record never moves a value back and a record with no revision is skipped and counted'
+  source: manual
+  binds_ac:
+  - AC8
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/settings_store/test_snapshot_writer.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24028-host-table-from-store
+  description: 'Task 20: the board lab_hosts reader reads the host table through the injected settings store only; an absent overlay, a stale heartbeat, an unreachable store and a non-table document read unknown, never an empty list, and the reader module names no implementation and no environment variable'
+  source: manual
+  binds_ac:
+  - AC9
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/settings_store/test_host_table_from_store.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
