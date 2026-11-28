@@ -5,8 +5,10 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from decimal import Decimal
 from typing import Any
 
+from omnimarket.handlers.local_model_details import read_local_details
 from omnimarket.handlers.routing.delegation_check_responder_chain import (
     ModelChainResolution,
     ModelResponderReading,
@@ -27,8 +29,17 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.transport import 
 )
 
 
+def _never_probed(url: str, timeout: float) -> int:
+    """The Messages-support POST of ``read_local_details`` is not a catalog fact a check reads; answer without sending it."""
+    return 0
+
+
 class HttpResponderReader:
-    """Reads the served-model list of a local responder and, when it reports slots, how many are processing."""
+    """Reads a local responder's live catalog: the served model and window, the capabilities it states and its load.
+
+    A server the lab runs charges nothing per token, so its price is zero by the deployment's own fact; a cloud tier has
+    no base here and carries no price from this reader (an unknown price is never zero).
+    """
 
     def __init__(self, timeout_s: float) -> None:
         self._timeout_s = timeout_s
@@ -42,7 +53,19 @@ class HttpResponderReader:
             if isinstance(slots, list)
             else None
         )
-        return reading_from_models_body(base_url, parsed, busy=busy)
+        reading = reading_from_models_body(base_url, parsed, busy=busy)
+        if not reading.served_model:
+            return reading
+        details = read_local_details(
+            base_url, [reading.served_model], post_status=_never_probed
+        ).get(reading.served_model)
+        return reading.model_copy(
+            update={
+                "capabilities": dict(details.capabilities) if details else {},
+                "input_usd_per_million": Decimal(0),
+                "output_usd_per_million": Decimal(0),
+            }
+        )
 
 
 class AbsentCustomerMachine:

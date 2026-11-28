@@ -139,6 +139,19 @@ class HandlerDelegationCheckProbe:
                 ),
             )
 
+    @staticmethod
+    def _chain_head(resolution: ModelChainResolution) -> dict[str, object]:
+        return {
+            "chain": resolution.attempts,
+            "chosen_tier": resolution.tier,
+            "chosen_responder": resolution.base_url,
+            "served_model": resolution.served_model,
+            "window": resolution.window,
+            "capabilities": resolution.capabilities,
+            "input_usd_per_million": resolution.input_usd_per_million,
+            "output_usd_per_million": resolution.output_usd_per_million,
+        }
+
     def _task_check(
         self, request: ModelDelegationCheckRequest
     ) -> ModelDelegationCheckReading:
@@ -153,13 +166,7 @@ class HandlerDelegationCheckProbe:
                 )
             )
         resolution = resolve_chain(self._responders, self._reader.read)
-        head = {
-            "chain": resolution.attempts,
-            "chosen_tier": resolution.tier,
-            "chosen_responder": resolution.base_url,
-            "served_model": resolution.served_model,
-            "window": resolution.window,
-        }
+        head = self._chain_head(resolution)
         if not resolution.is_local or not resolution.base_url:
             tried = ", ".join(
                 f"{a.base_url or a.tier}:{a.outcome}" for a in resolution.attempts
@@ -194,7 +201,25 @@ class HandlerDelegationCheckProbe:
         return ModelDelegationCheckReading(**head, clauses=clauses)
 
     def _surface_check(self) -> ModelDelegationCheckReading:
-        observation = self._machine.collect_surface()
+        # The surface check grades no model, so a chain that left the local tier never turns it red; it still runs through
+        # the chain and records it, so every check's record names the responder the lab served when it ran.
+        head: dict[str, object] = (
+            {}
+            if self._responders is None
+            else self._chain_head(resolve_chain(self._responders, self._reader.read))
+        )
+        try:
+            observation = self._machine.collect_surface()
+        except CollectorAbsentError as exc:
+            # The chain was read live; the run keeps it beside the absent collector.
+            return ModelDelegationCheckReading(
+                **head,
+                preconditions=(
+                    ModelCheckPrecondition(
+                        name=exc.name, present=False, detail=exc.detail
+                    ),
+                ),
+            )
         # An install that did not complete installed no core to read: that is the install clause failing, which must read FAIL
         # (the product's own line did not install), never an absent instrument.
         installed = observation.install_rc == 0
@@ -208,7 +233,7 @@ class HandlerDelegationCheckProbe:
             else "the guide's install line did not complete, so no core was installed to read",
         )
         return ModelDelegationCheckReading(
-            clauses=grade_c17(observation), preconditions=(precondition,)
+            **head, clauses=grade_c17(observation), preconditions=(precondition,)
         )
 
     def _chain_order_leg(
@@ -364,6 +389,9 @@ class HandlerDelegationCheckProbe:
             chosen_responder=reading.chosen_responder,
             served_model=reading.served_model,
             window=reading.window,
+            capabilities=reading.capabilities,
+            input_usd_per_million=reading.input_usd_per_million,
+            output_usd_per_million=reading.output_usd_per_million,
             versions=reading.versions,
             gateway_url=reading.endpoint,
             tenant_slug=reading.tenant_slug,
