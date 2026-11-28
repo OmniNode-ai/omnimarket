@@ -32,6 +32,15 @@ picker:
   - provider: reflection
     label: Reflection AI
     hint: Create a key under API Keys at platform.reflection.ai.
+  # Operator 2026-11-26: more providers. Both are already set up and listed by
+  # the same code as the rest (onex models add; byok_provider_backends key_page
+  # and models_url); the hints name those key pages.
+  - provider: anthropic
+    label: Anthropic
+    hint: Create a key at platform.claude.com/settings/keys.
+  - provider: glm
+    label: GLM (z.ai)
+    hint: Create a general API key at z.ai/manage-apikey/apikey-list.
   - provider: local
     label: Local Model
     hint: >-

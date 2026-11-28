@@ -34,4 +34,3 @@
 - : the settings snapshot writer for the central store (config control plane Task 20) (#6971)
 - : Add ModelC30ProbeOverlay and ModelC31ProbeOverlay with tests and contract updates (#6989)
 - : the runtime image turns the operator command surface on so onex settings and onex scm resolve (#6995)
-

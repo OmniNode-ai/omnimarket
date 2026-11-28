@@ -279,8 +279,10 @@ async def test_slash_opens_a_filtered_palette_and_escape_closes_it() -> None:
         palette = app.query_one("#palette")
         assert palette.display
         shown = [str(option.prompt) for option in palette.options]
-        assert [text.split()[0] for text in shown] == ["/doctor"]
-        assert not any(text.startswith("/setup") for text in shown)
+        assert [next(w for w in t.split() if w.startswith("/")) for t in shown] == [
+            "/doctor"
+        ]
+        assert not any("/setup" in text for text in shown)
         await pilot.press("escape")
         assert not palette.display
 
@@ -357,12 +359,14 @@ async def test_plain_text_is_delegated_and_its_receipt_reaches_the_status_bar() 
         text = _log_text(app)
         assert "A receipt proves the run happened." in text
         assert "Qwen3.8-27B" in text
-        assert "2,257 tokens" in text
+        assert "2.3k tokens" in text
         assert "6.7 s" in text
         assert "saved $0.0104" in text
         status = str(app.query_one("#status").render())
         assert "$0.0000" in status
-        assert "175dde92" in status
+        # At 80 columns the run id stays on the task card, not cut off the
+        # status line (end-to-end pass 2026-11-26).
+        assert "175dde92" in text
 
 
 async def test_a_failed_command_shows_its_exit_and_the_app_keeps_running() -> None:
@@ -391,16 +395,27 @@ async def test_a_failed_command_shows_its_exit_and_the_app_keeps_running() -> No
         assert app.is_running
 
 
+@click.group()
+def _prompting_root() -> None:
+    """A root whose doctor prompts."""
+
+
+@_prompting_root.command("doctor")
+@click.option("--key", prompt=True)
+def _prompting_doctor(key: str) -> None:
+    """Check this install (prompts, so it runs in the real terminal)."""
+
+
 async def test_a_prompting_command_runs_in_the_real_terminal() -> None:
     """F5."""
     runner = _Runner([])
-    app = _app(runner)
+    app = OnexTui(root=_prompting_root, runner=runner, load_status=_status)
     async with app.run_test() as pilot:
-        for key in "/metering":
+        for key in "/doctor":
             await pilot.press("space" if key == " " else "slash" if key == "/" else key)
         await pilot.press("enter")
         await pilot.pause()
-        assert runner.terminal_calls == [("metering",)]
+        assert runner.terminal_calls == [("doctor",)]
         assert _commands(runner) == []
 
 
@@ -457,14 +472,15 @@ async def test_shortcuts_lead_the_palette_like_coding_agent_tuis() -> None:
     async with app.run_test() as pilot:
         await pilot.press("slash")
         shown = [str(option.prompt) for option in app.query_one("#palette").options]
-        assert [text.split()[0] for text in shown[:4]] == [
+        names = [next(w for w in t.split() if w.startswith("/")) for t in shown]
+        assert names[:4] == [
             "/config",
             "/model",
             "/delegation",
             "/dashboard",
         ]
-        assert not any(text.split()[0] == "/setup" for text in shown)
-        assert not any(text.startswith("/models connections") for text in shown)
+        assert "/setup" not in names
+        assert not any("/models connections" in text for text in shown)
 
 
 async def _press[T](pilot: Pilot[T], app: OnexTui, button_id: str) -> None:
@@ -619,8 +635,8 @@ async def test_config_takes_several_providers_and_keeps_keys_out_of_argv_and_log
         _tick(app, "llama3.2")
         await _press(pilot, app, "add")
         basket = str(screen.query_one("#basket").render())
-        assert "openrouter: qwen/qwen3.8-27b" in basket
-        assert "local: llama3.2" in basket
+        assert "◈ qwen/qwen3.8-27b" in basket  # OMN-26620: no provider prefix
+        assert "◈ llama3.2" in basket
         await _press(pilot, app, "save")
         await pilot.pause()
         for _ in range(6):
@@ -664,7 +680,7 @@ async def test_a_long_list_is_searchable_and_ticks_survive_searching() -> None:
             "qwen/qwen3.8-27b",
         ]
         await _press(pilot, app, "add")
-        assert "openrouter: vendor/model-07, qwen/qwen3.8-27b" in str(
+        assert "◈ vendor/model-07  ◈ qwen/qwen3.8-27b" in str(
             screen.query_one("#basket").render()
         )
 
@@ -879,24 +895,6 @@ async def test_delegation_refuses_to_turn_on_with_no_selected_model() -> None:
         assert len(runner.calls) == before
 
 
-def test_welcome_banner_names_omninode_delegation_and_the_main_commands() -> None:
-    from omnimarket.nodes.node_onex_setup_effect.cli_tui import welcome_banner
-
-    text = welcome_banner().plain
-    from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
-        tui_design,
-    )
-
-    design = tui_design()
-    for word in ("WELCOME TO", "OMNINODE", "DELEGATION"):
-        first_row = "  ".join(design.font[c][0] for c in word)
-        assert first_row in text, word  # every banner word drawn big
-    assert "█" in text
-    for command in ("/config", "/model", "/delegation"):
-        assert command in text
-    assert "/setup" not in text
-
-
 async def test_model_lists_set_up_models_and_makes_the_choice_first() -> None:
     """F9: /model shows the same table; Enter makes a model first, A goes back to Auto."""
     from textual.widgets import DataTable
@@ -923,9 +921,7 @@ async def test_model_lists_set_up_models_and_makes_the_choice_first() -> None:
         await pilot.pause()
         table = app.screen.query_one("#models")
         assert [e.model_id for e in table.entries] == ["llama3.2", "qwen3:8b"]
-        assert "Now: llama3.2 (Local Model)" in str(
-            app.screen.query_one("#pnow").render()
-        )
+        assert "Tried first: ◈ llama3.2" in str(app.screen.query_one("#pnow").render())
         assert table.query_one(DataTable).has_focus
         await pilot.press("down", "enter")
         for _ in range(6):
@@ -981,7 +977,7 @@ async def test_the_table_says_when_a_provider_list_has_expired(
 
     # No list was ever kept: nothing has expired, so no marker either.
     never = await shown_row()
-    assert "262K" in never
+    assert "262k" in never
     assert configured not in never, never
 
     model_catalog.remember_provider_listing(
@@ -996,12 +992,12 @@ async def test_the_table_says_when_a_provider_list_has_expired(
         )
     )
     fresh = await shown_row()
-    assert "16K" in fresh  # the provider's own list
+    assert "16k" in fresh  # the provider's own list
     assert configured not in fresh, fresh
 
     os.utime(model_catalog._listing_path("openrouter", tmp_path), (0, 0))
     expired = await shown_row()
-    assert "262K" in expired  # models.dev fills the facts
+    assert "262k" in expired  # models.dev fills the facts
     assert configured in expired, (
         f"the table shows no {configured!r} marker after the provider list "
         f"expired: {expired}"
@@ -1020,15 +1016,17 @@ async def test_the_table_says_when_a_provider_list_has_expired(
 
 
 async def test_model_with_nothing_set_up_points_to_setup() -> None:
+    from omnimarket.nodes.node_onex_setup_effect import cli_tui
+
     app = _app(_Runner([], by_command={("models", "list"): ""}))
     async with app.run_test() as pilot:
         await _type(pilot, "/model")
         await pilot.press("enter")
-        await pilot.pause()
-        await pilot.pause()
-        assert "Type /config to connect one." in str(
-            app.screen.query_one("#pnote").render()
-        )
+        for _ in range(6):  # the tab opens at once; the setup read fills it
+            await pilot.pause()
+        note = str(app.screen.query_one("#pnote").render())
+        assert cli_tui._say("nothing_set_up") in note, note
+        assert "Config tab" in note, note
 
 
 async def test_clear_empties_the_output() -> None:
@@ -1057,6 +1055,10 @@ def test_config_providers_come_from_the_traits_file_in_its_order() -> None:
         "openai",
         "openrouter",
         "reflection",
+        # Operator 2026-11-26: more providers. setup already adds and lists
+        # both (onex models add anthropic|glm; each backend's models_url).
+        "anthropic",
+        "glm",
         "local",
     ]
     assert [e.provider for e in choices if not cli_tui._hosted(e.provider)] == ["local"]
@@ -1065,6 +1067,8 @@ def test_config_providers_come_from_the_traits_file_in_its_order() -> None:
     for entry in choices:
         assert cli_tui._hosted(entry.provider) is not traits.needs_url(entry.provider)
     assert "openrouter.ai/keys" in cli_tui._hint("openrouter")
+    assert "platform.claude.com/settings/keys" in cli_tui._hint("anthropic")
+    assert "z.ai/manage-apikey/apikey-list" in cli_tui._hint("glm")
 
 
 async def test_entering_a_key_loads_the_models_without_pressing_find() -> None:
@@ -1088,7 +1092,7 @@ async def test_entering_a_key_loads_the_models_without_pressing_find() -> None:
         await pilot.pause(1.5)
         assert seen == [("openrouter", "sk-or-final-key-value")]
         assert len(_found(app).entries) == 2
-        assert "2 found" in str(screen.query_one("#note").render())
+        assert "2 models found" in str(screen.query_one("#note").render())
 
 
 async def test_enter_on_a_partial_command_runs_the_highlighted_entry() -> None:
@@ -1120,7 +1124,7 @@ async def test_every_model_is_listed_with_no_cap_and_any_number_can_be_ticked() 
         await pilot.pause()
         await _press(pilot, app, "add")
         basket = str(screen.query_one("#basket").render())
-        assert basket.count(",") == 465
+        assert basket.count("◈") == 466  # one mark per model
 
 
 async def test_a_failed_setup_step_shows_its_fix_and_no_ready_line(
@@ -1202,47 +1206,9 @@ async def test_guided_setup_uses_the_cli_terminal_from_the_config_tab(
         await pilot.pause()
         assert runner.terminal_calls == [("setup",)]
         assert app.screen.query_one("#guided-setup", Button).display
-        if code:
-            assert "3" in str(app.screen.query_one("#note").render())
+        if code:  # said plainly, not as the exit code (verify pass 2026-11-26)
+            assert "did not finish" in str(app.screen.query_one("#note").render())
         assert not [call for call in runner.calls if call[:2] == ("models", "add")]
-
-
-async def test_the_banner_sits_in_the_middle_of_a_wide_screen() -> None:
-    app = _app(_Runner([]))
-    async with app.run_test(size=(140, 40)) as pilot:
-        await pilot.pause()
-        lines = [str(line.text) for line in app.query_one("#output").lines]
-        tagline = next(line for line in lines if "costs least" in line)
-        left = len(tagline) - len(tagline.lstrip())
-        assert left > 20  # centred, not pinned to the left edge
-
-
-async def test_centred_banner_keeps_letters_and_tips_aligned() -> None:
-    """Each section is centred as a block: a word's three rows, and the tips,
-    start in the same column."""
-    app = _app(_Runner([]))
-    async with app.run_test(size=(140, 40)) as pilot:
-        await pilot.pause()
-        lines = [str(line.text) for line in app.query_one("#output").lines]
-
-        def start(line: str) -> int:
-            return len(line) - len(line.lstrip())
-
-        from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
-            tui_design,
-        )
-
-        design = tui_design()
-        for word in design.banner.words:
-            rows = ["  ".join(design.font[c][r] for c in word.text) for r in range(3)]
-            columns = {
-                next(line.index(row) for line in lines if row in line) for row in rows
-            }
-            assert len(columns) == 1, word.text  # all three rows share one column
-        keys = [tip.key for tip in design.banner.tips]
-        tips = [line for line in lines if any(f" {key}" in line for key in keys[1:3])]
-        assert len({start(t) for t in tips}) == 1
-        assert start(tips[0]) > 20
 
 
 async def test_save_stays_on_screen_with_a_long_list_and_ctrl_s_saves(
@@ -1269,10 +1235,9 @@ async def test_save_stays_on_screen_with_a_long_list_and_ctrl_s_saves(
             region = screen.query_one(f"#{button}").region
             assert region.height > 0, button
             assert region.bottom <= 30, button
-        from omnimarket.nodes.node_onex_setup_effect.cli_model_table import keycaps
-
-        assert str(screen.query_one("#keys").render()) == str(
-            keycaps(tui_design().model_table.help["config"])
+        assert str(screen.query_one("#keys").render()) == " · ".join(
+            f"{key.label} {key.words}"
+            for key in tui_design().footer.screens["config"].keys
         )
         _tick(app, "qwen/qwen3.8-27b")
         await pilot.pause()
@@ -1398,23 +1363,18 @@ async def test_model_names_each_local_model_by_the_server_that_runs_it() -> None
             ("http://vllm.test:8000", ("Qwen3.8-27B",)),
         ]
         grid = app.screen.query_one("#models").query_one(DataTable)
+        # OMN-26620: the Model tab names the server in the model cell.
         cells = {
-            str(grid.get_row_at(i)[1]): [str(c) for c in grid.get_row_at(i)]
+            str(grid.get_row_at(i)[0]): [str(c) for c in grid.get_row_at(i)]
             for i in range(grid.row_count)
         }
         mark = tui_design().model_table.unknown_mark
-        bar = tui_design().model_table.row_bar
-        assert (
-            cells["saluki:latest"][0]
-            == f"{bar} Local Model · Ollama  ollama.test:11434"
-        )
-        assert cells["saluki:latest"][2] == "41K"
-        columns = [c.key for c in tui_design().model_table.columns if c.key != "pick"]
-        caps = columns.index("capabilities")
-        assert "Tools" in cells["saluki:latest"][caps]
-        assert cells["Qwen3.8-27B"][0] == f"{bar} Local Model · vLLM  vllm.test:8000"
-        assert cells["Qwen3.8-27B"][2] == mark
-        assert cells["Qwen3.8-27B"][caps] == mark
+        ollama = next(v for k, v in cells.items() if "saluki:latest" in k)
+        vllm = next(v for k, v in cells.items() if "Qwen3.8-27B" in k)
+        assert "saluki:latest on ollama.test:11434" in ollama[0]
+        assert ollama[1] == "41k"
+        assert "Qwen3.8-27B on vllm.test:8000" in vllm[0]
+        assert vllm[1] == mark
         assert not any("?" in c for row in cells.values() for c in row)
         assert isinstance(grid.get_row_at(0)[0], Text)
 
@@ -1528,7 +1488,7 @@ async def test_one_click_ticks_a_row_and_the_list_takes_focus_when_it_loads() ->
         await _wait_for_models(pilot)
         rows = _found(app).query_one(DataTable)
         assert rows.has_focus
-        await pilot.click(rows, offset=(30, 2))  # the second data row, once
+        await pilot.click(rows, offset=(30, 1))  # the second row (no header), once
         await pilot.pause()
         assert len(_found(app).ticked) == 1
 

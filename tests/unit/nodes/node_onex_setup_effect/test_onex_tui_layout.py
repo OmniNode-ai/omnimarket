@@ -41,6 +41,19 @@ _KEYS = {
 }
 
 
+def _hint(tab: str, words: dict[str, str]) -> str:
+    """The tab's footer line (OMN-26620 mockups): plain words from the design."""
+    name = tab.strip("/")
+    if name == "config":  # drawn from footer.screens.config (AC4)
+        footer = tui_design().footer
+        return footer.separator.join(
+            f"{key.label} {key.words}" for key in footer.screens["config"].keys
+        )
+    return words[
+        "tab_hint_dashboard_stopped" if name == "dashboard" else f"tab_hint_{name}"
+    ]
+
+
 async def _open(pilot, tab: str) -> None:
     await _type(pilot, tab)
     await pilot.press("enter")
@@ -68,16 +81,30 @@ async def test_the_key_line_shows_whole_above_the_buttons(tab: str) -> None:
         keys_id, buttons_id = _KEYS[tab]
         keys = app.screen.query_one(keys_id)
         text = _shown(keys)
-        hint = tui_design().model_table.help[tab.strip("/")]
+        hint = _hint(tab, tui_design().words)
         for word in hint.replace("·", " ").split():
             assert word in text, (word, text)
-        if buttons_id:
-            assert _gap(keys, app.screen.query_one(buttons_id)) >= 0
+        if buttons_id:  # the footer line is whole and clear of the buttons
+            buttons = app.screen.query_one(buttons_id)
+            assert not keys.region.intersection(buttons.region), (
+                keys.region,
+                buttons.region,
+            )
+
+
+async def test_config_key_box_sits_beside_the_provider_list_with_room() -> None:
+    """L2 for /config (OMN-26620): the key box is right of the providers, a gap apart."""
+    app = _app(_Runner([], by_command=_selected_rows(connection=False)))
+    async with app.run_test(size=(120, 36)) as pilot:
+        await _open(pilot, "/config")
+        providers = app.screen.query_one("#provider").region
+        key_box = app.screen.query_one("#keybox").region
+        assert key_box.x - (providers.x + providers.width) >= 1, (providers, key_box)
 
 
 @pytest.mark.parametrize(
     ("tab", "upper", "lower"),
-    [("/config", "#provider", "#key"), ("/delegation", "#on-state", "#claude")],
+    [("/delegation", "#on-state", "#claude")],
 )
 async def test_sections_have_room_between_them(
     tab: str, upper: str, lower: str
@@ -127,4 +154,6 @@ async def test_model_names_auto_once() -> None:
         await _open(pilot, "/model")
         label = tui_design().model_table.auto_label
         texts = [_shown(app.screen.query_one(i)) for i in ("#pnow", "#auto")]
-        assert sum(label in " ".join(t.split()) for t in texts) == 1
+        # never twice; with Auto already on there is no button to choose it
+        assert sum(label in " ".join(t.split()) for t in texts) <= 1
+        assert not app.screen.query_one("#auto").display

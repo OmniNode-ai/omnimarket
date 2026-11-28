@@ -39,3 +39,16 @@ def _hosted_run_without_a_hosted_bus(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         ModelRunNodeHosted, "require_delivered", staticmethod(_delivery_not_required)
     )
+
+
+@pytest.fixture(autouse=True)
+def _tui_state_in_a_throwaway_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The TUI remembers its theme and launch count under the home folder; a test
+    must neither read what an earlier run saved nor leave its own behind."""
+    from omnimarket.nodes.node_onex_setup_effect import cli_tui
+
+    monkeypatch.setattr(cli_tui.ThemeStore, "_path", tmp_path / "tui-theme")
+    monkeypatch.setattr(cli_tui.LaunchStore, "_path", tmp_path / "tui-launches")
+    monkeypatch.setattr(cli_tui.StatusStore, "_path", tmp_path / "tui-status.json")

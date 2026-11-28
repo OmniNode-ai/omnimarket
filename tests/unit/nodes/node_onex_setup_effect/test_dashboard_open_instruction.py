@@ -14,7 +14,6 @@ from tests.unit.nodes.node_onex_setup_effect.test_onex_tui_dashboard import (
     _Dashboard,
     _open_dashboard,
     _settle,
-    _state,
 )
 
 pytestmark = pytest.mark.unit
@@ -27,11 +26,17 @@ async def test_the_dashboard_screen_instructs_how_to_open() -> None:
     async with app.run_test(size=(160, 44)) as pilot:
         await _open_dashboard(pilot)
         assert isinstance(app.screen, DashboardScreen)
-        text = _state(app)
-        assert "Enter" in text
-        assert "Open" in text
-        assert "onex dashboard open" in text
-        assert _URL not in text
+        # OMN-26620 (mockup page 7): the address shows under the title and the
+        # one instruction is the footer line; the token is never on screen.
+        from tests.unit.nodes.node_onex_setup_effect.tabs_redesign_support import (
+            screen_text,
+        )
+
+        text = screen_text(app)
+        assert "enter open" in text
+        assert "Open in browser" in text
+        assert _URL in text
+        assert "token" not in text.lower()
 
 
 async def test_a_start_shows_how_to_open_instead_of_the_address() -> None:
@@ -41,11 +46,13 @@ async def test_a_start_shows_how_to_open_instead_of_the_address() -> None:
         await _open_dashboard(pilot)
         await pilot.press("s")
         await _settle(pilot, 16)
-        note = str(app.screen.query_one("#bnote").render())
-        assert "Enter" in note
-        assert "Open" in note
-        assert "onex dashboard open" in note
-        assert _URL not in note
+        from tests.unit.nodes.node_onex_setup_effect.tabs_redesign_support import (
+            screen_text,
+        )
+
+        text = screen_text(app)
+        assert "enter open" in text  # the footer is the one instruction
+        assert "Press Enter" not in text
 
 
 def test_onex_dashboard_output_instructs_how_to_open(

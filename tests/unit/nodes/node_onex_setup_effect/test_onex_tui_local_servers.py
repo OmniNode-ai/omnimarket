@@ -191,10 +191,13 @@ async def test_the_status_bar_says_auto_and_how_many_models_when_none_is_first()
 
 
 async def test_the_status_bar_says_reading_until_the_setup_is_read() -> None:
-    """S1: before the first read, nothing about a model is claimed."""
+    """S1: before the first read, only the saved state shows (OMN-26620 AC7)."""
     import asyncio
 
     from omnimarket.nodes.node_onex_setup_effect.cli_tui import ModelTuiStatus
+    from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import (
+        tui_design,
+    )
 
     gate = asyncio.Event()
 
@@ -202,11 +205,22 @@ async def test_the_status_bar_says_reading_until_the_setup_is_read() -> None:
         await gate.wait()
         return ModelTuiStatus(models=0)
 
+    from omnimarket.nodes.node_onex_setup_effect.cli_tui import StatusStore
+
+    design = tui_design()
+    StatusStore.save(ModelTuiStatus(model="Saved-Model", delegation="off"))
+    saved = {"model": "Saved-Model"}
     app = OnexTui(root=_root, runner=_Runner([]), load_status=slow)
     async with app.run_test() as pilot:
         await pilot.pause()
         status = str(app.query_one("#status").render())
-        assert "reading your setup" in status
+        # AC7: the saved state seeds the bar at once, never "reading your setup…".
+        assert design.words["status_reading"] not in status
+        assert str(saved.get("model")) in status
+        assert (
+            design.words["delegation_off"] in status
+            or design.words["delegation_hook"] in status
+        )
         assert "not set" not in status
         gate.set()
         await pilot.pause()
@@ -240,10 +254,10 @@ async def test_config_shows_what_is_set_up_and_offers_the_users_own_server() -> 
     async with app.run_test(size=(170, 46)) as pilot:
         await _open(pilot, "/config")
         assert isinstance(app.screen, SetupScreen)
+        # OMN-26620: the Selected line holds what is ticked this visit; the
+        # models already set up are the Model tab's.
         basket = str(app.screen.query_one("#basket", Static).render())
-        assert "none yet" not in basket
-        assert f"{_MODEL} on vllm.test:8000" in basket
-        assert f"{_MODEL} on llama.test:8000" in basket
+        assert basket == "Selected  none yet"
         app.screen.query_one("#provider").value = "local"
         await pilot.pause()
         assert app.screen.query_one("#url", Input).value == _VLLM
@@ -335,10 +349,12 @@ async def test_config_lists_providers_in_yaml_order_and_fills_no_url() -> None:
         await _open(pilot, "/config")
         assert isinstance(app.screen, SetupScreen)
         picker = setup_provider_traits().picker
+        # Nothing is set up, so the list is A-Z (operator 2026-11-26).
+        a_to_z = sorted(picker, key=lambda e: e.label.casefold())
         select = app.screen.query_one("#provider")  # radio options (OMN-23413)
-        assert select.value == picker[0].provider
+        assert select.value == a_to_z[0].provider
         assert [b.name for b in select.query(RadioButton)] == [
-            entry.provider for entry in picker
+            entry.provider for entry in a_to_z
         ]
         assert picker[-1].provider == "local"
         select.value = "local"
