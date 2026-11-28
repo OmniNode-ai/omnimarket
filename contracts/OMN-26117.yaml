@@ -94,6 +94,15 @@ dod_evidence:
   - check_type: command
     check_value: onex lab-work run --bus-lane dev --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26117-c11-credential --kind test -- uv run --frozen pytest tests/nodes/node_delegation_check_probe_effect/test_c11_credential_from_store.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26117-integration-proof-names-bus-lane
+  description: The integration-proof item's onex lab-work run command passes --bus-lane dev, the form that resolves a broker; without it the command exits 1 with the no-broker refusal and the local Done gate fails. The test fails on the merge base, where the contract has no such item and the command names no lane.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn26117_integration_proof_names_bus_lane.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn26117-probe-evidence-keeps-clause-detail
   description: The delegation check probe's evidence file records the detail of every failed clause beside its name. The 12:27Z scheduled C13 run (c13-20261127T122753Z-cd03e0ef) read FAIL on zero_provider and its evidence held only the clause name, so which branch of the clause failed was unreadable. The test fails on the merge base with a KeyError on failed_clause_details and passes with the change.
   source: manual
