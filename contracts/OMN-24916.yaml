@@ -1,0 +1,42 @@
+schema_version: 1.0.0
+ticket_id: OMN-24916
+title: The code graph lookup reads the overlays clone the lab host table declares
+summary: A lab host whose overlays clone the lab host table declares beside the registry root could not reach the code graph lookup, because the lane's overlay root named a directory that does not exist there. The lookup verb gains --host, which reads the overlay from the overlays clone the table declares for that host, --retention-versions, the caller's lookup block where the overlay carries none, and the answered commit's time and the read time on its LOOKUP line.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn24916-lookup-from-lab-host
+  statement: One graph lookup works from the lab host through the declared overlays clone and shows its rows and the answered commit's time.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: one graph lookup works from the lab host the lane runs on through the declared path, taken from where OMN-24847 and omnimarket PR 6328 stopped, and its output shows the rows and, on its LOOKUP line, the time of the answered commit -- falsifier: the lookup command run on that host before the change returns an error or zero rows, and after it returns nonzero rows'
+  - id: AC5
+    statement: 'AC5: the graph reachability code change is in a draft pull request with a Lab: line -- falsifier: uv run pytest on the changed tests fails on the code before the change and passes after it'
+evidence_requirements:
+- kind: tests
+  description: The lookup verb from a host whose overlays clone sits beside the registry root, through the node's own CLI on real git clones.
+  command: env -u PYTHONPATH uv run --frozen pytest tests/nodes/node_code_graph_effect/test_code_graph_lookup_declared_host.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn24916-ac5-declared-host-tests
+  description: With only the lane's overlay root the lookup exits 3; with --host it reads the declared clone and returns MATCH rows and a LOOKUP line whose committed_at is the answered commit's time in UTC (none when no version answered) and read_at; an undeclared host, a missing table, a table that is not a mapping or not valid YAML, a declared clone without the node overlay and a host other than the running one each exit 3; --retention-versions answers where the overlay has no lookup block, and the overlay's lookup block wins where it has one.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_code_graph_effect/test_code_graph_lookup_declared_host.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24916-ac1-integration-proof
+  description: Hosted CI holds no registry clones or lab host table, so only the local Done gate runs this check, so it binds no criterion here (the hosted base control refuses a bound item it cannot run); AC1 is bound by the declared-host tests above. On h202, where the overlay has no lookup block until the overlays change that adds it lands (so --retention-versions 3 is passed), it asks the importers of the overlay reader through the overlays clone the lab host table declares for h202 and fails on zero rows or a LOOKUP line with no time.
+  source: manual
+  execution_scope: local_done_gate
+  checks:
+  - check_type: command
+    check_value: onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-24916 --kind test -- sh -c 'ONEX_CODE_GRAPH_REPOS_ROOT="$OMNI_HOME" uv run --frozen python -m omnimarket.nodes.node_code_graph_effect lookup --question importers --repo omnimarket --path src/omnimarket/handlers/node_overlay_reader.py --host h202 --retention-versions 3 | grep -qE "^LOOKUP .*status=found .*committed_at=20[0-9-]+T[0-9:]+Z read_at="'
+    cwd: .
