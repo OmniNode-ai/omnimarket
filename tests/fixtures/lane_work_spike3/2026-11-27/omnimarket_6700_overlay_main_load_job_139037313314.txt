@@ -1,0 +1,4 @@
+2026-11-25T07:02:22.5908041Z ##[endgroup]
+2026-11-25T07:02:23.3727061Z refused node_delegation_check_regression_effect: node_delegation_check_regression_effect requires the overlay node_delegation_check_regression_effect (detected from its contract_block) and overlay-store main has no .overlay-store-main/overlay-store/node_delegation_check_regression_effect/overlay.yaml; the settings store was not read (no snapshot root was named, as on a hosted runner), so only overlay-store main and the pull request body were judged. Either merge the overlay first, or name the merged overlay-store pull request that adds it in the pull request body (a merged overlay-store pull request, as overlay-store#<number>).
+2026-11-25T07:02:23.3728882Z overlay-required: added=1 refused=1 store=unread
+2026-11-25T07:02:23.4956322Z ##[error]Process completed with exit code 1.

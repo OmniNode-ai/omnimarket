@@ -1,0 +1,5 @@
+2026-11-25T21:23:03.2419876Z Canonical-file-shape ratchet (OMN-20304) refused this change:
+2026-11-25T21:23:03.2421385Z   src/omnimarket/events/__init__.py: [baselined-file-growth] code lines 159 -> 363; a baselined file only shrinks. Put the new behaviour in a contract + node + handler (rulings 2026-10-01T12:36:54Z, 2026-10-15T08:14:15Z)
+2026-11-25T21:23:03.2422506Z 
+2026-11-25T21:23:03.2423256Z Operator ruling 2026-10-01: no new scripts, plugins or exceptions. Build new capability as contract + node + handler. The baseline only shrinks; there is no suppression.
+2026-11-25T21:23:03.3303223Z ##[error]Process completed with exit code 1.

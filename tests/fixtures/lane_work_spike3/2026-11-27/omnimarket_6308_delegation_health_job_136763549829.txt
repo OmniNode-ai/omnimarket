@@ -1,0 +1,13 @@
+2026-11-21T06:44:41.3461659Z workflow verdict PASSED for OmniNode-ai/omnimarket delegation-regression-nightly.yml on dev: run 44695935897 concluded success 23.17h ago.
+2026-11-21T06:44:41.3462279Z m4-c17-customer-surface-verdict: red, run 44876128797
+2026-11-21T06:44:41.3462783Z workflow verdict (OMN-18866) for OmniNode-ai/other_repo m4-c17-customer-surface-verdict.yml on dev
+2026-11-21T06:44:41.3463323Z   reads       : 3 listing read(s) unioned by run id (50 distinct run(s))
+2026-11-21T06:44:41.3463784Z   events read : schedule (50 completed run(s) admitted, 0 other(s) ignored)
+2026-11-21T06:44:41.3464238Z   newest run  : 44876128797 (schedule, attempt 1) conclusion=failure
+2026-11-21T06:44:41.3464925Z   measured at : 2026-11-21T06:33:45+00:00 (age 0.18h, bound 8h)
+2026-11-21T06:44:41.3465446Z   run head    : 1e68c1a97cff63db5537f832cdf980288092ed96 (the workflow file's sha, not the lane's)
+2026-11-21T06:44:41.3466131Z   run title   : M4 C17 customer-surface verdict (OMN-19182)
+2026-11-21T06:44:41.3466589Z   url         : https://github.com/OmniNode-ai/other_repo/actions/runs/44876128797
+2026-11-21T06:44:41.3480771Z ##[error]workflow verdict FAILED for OmniNode-ai/other_repo m4-c17-customer-surface-verdict.yml on dev: its newest measurement, run 44876128797 at 1e68c1a97cff63db5537f832cdf980288092ed96, concluded 'failure'. This is a blocking gate (operator ruling 2026-09-23T17:12:15Z): delivery stops until the workflow's newest measurement is green and fresh. There is no override flag; fix the defect it measures, or the instrument, and let the next run (or a re-run, which is a fresh measurement) decide.
+2026-11-21T06:44:41.3483959Z ##[error]Delegation health red verdicts: m4-c17-customer-surface-verdict run 44876128797
+2026-11-21T06:44:41.3773718Z ##[error]Process completed with exit code 1.

@@ -42,10 +42,10 @@ HEAD = "0dbe3156e52dcb33b15fc3c82f5959de6691a4de"
 STAMP = re.compile(r"(?m)^\d{4}-\d\d-\d\dT[\d:.]+Z ")
 
 LOGS = {
-    "6308": "omnimarket_6308_delegation_health_job_136763549829.log",
-    "6573": "omnimarket_6573_canonical_file_shape_job_139519889541.log",
-    "6700": "omnimarket_6700_overlay_main_load_job_139037313314.log",
-    "6802": "omnimarket_6802_overlay_main_load_job_140182703055.log",
+    "6308": "omnimarket_6308_delegation_health_job_136763549829.txt",
+    "6573": "omnimarket_6573_canonical_file_shape_job_139519889541.txt",
+    "6700": "omnimarket_6700_overlay_main_load_job_139037313314.txt",
+    "6802": "omnimarket_6802_overlay_main_load_job_140182703055.txt",
 }
 
 
@@ -140,20 +140,18 @@ def test_rules_match_lines_with_their_timestamps_stripped(change: str) -> None:
 
 
 def test_evidence_is_kept_whole_up_to_the_overlay_cap() -> None:
-    raw = log("6700")
+    raw = log("6802")
     assert len(raw) > 1000
+    assert raw.index("overlay-main-load: loaded") > 1000
     event = read(raw)
     assert event.evidence[0] == raw
-    assert (
-        "requires the overlay node_delegation_check_regression_effect"
-        in event.evidence[0]
-    )
+    assert "overlay-main-load: loaded=370 refused=1" in event.evidence[0]
 
 
 def test_the_evidence_cap_is_the_overlays_and_not_a_literal() -> None:
     doc = overlay_doc()
     doc["evidence_limit"] = 120
-    assert len(read(log("6700"), doc).evidence[0]) == 120
+    assert len(read(log("6802"), doc).evidence[0]) == 120
     doc["evidence_limit"] = 50000
     assert len(read("x" * 20000, doc).evidence[0]) == 20000
 
