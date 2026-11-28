@@ -4,9 +4,10 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import UTC, datetime
 
 from omnimarket.models.work_state_projection import ModelWorkStateResult
 from omnimarket.nodes.node_reading_writer_effect.adapters.ledger_adapters import (
@@ -21,7 +22,12 @@ from omnimarket.nodes.node_reading_writer_effect.protocols import (
     ModelLedgerRead,
     ProtocolLedgerRowSource,
 )
-from omnimarket.nodes.node_work_state_projection_effect.runtime_work_state import run
+from omnimarket.nodes.node_work_state_projection_effect.runtime_work_state import (
+    publish_projection,
+    run,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class UnroutedLedgerRowSource:
@@ -34,8 +40,27 @@ class UnroutedLedgerRowSource:
         return ModelLedgerRead(error=f"ledger-route-unconfigured: {self._cause}")
 
 
+def publish_after_projection(
+    result: ModelWorkStateResult, env: Mapping[str, str]
+) -> str:
+    """Publish the projection as the work_state floor projection, as the node's own CLI does after its run.
+
+    The answer says what happened (``published``, ``not published``, ``not configured`` when no publish overlay names a bus).
+    A bus that refuses is a reading, not a failure of the run: the projection file is already written, the floor reads
+    the published projection as it ages and unknown, and the next tick publishes again.
+    """
+    try:
+        answer = publish_projection(result, env, datetime.now(UTC))
+    except Exception as exc:
+        answer = f"not published ({type(exc).__name__}: {exc})"
+        logger.warning("work-state projection %s", answer)
+        return answer
+    logger.info("work-state projection %s", answer)
+    return answer
+
+
 class FileSourcesWorkStateProjector:
-    """Runs node_work_state_projection_effect's read, project and atomic write once per call; when a state home is set, the run's OMNI_HOME points at it instead of the process environment's."""
+    """Runs node_work_state_projection_effect's read, project and atomic write once per call, then publishes the projection; when a state home is set, the run's OMNI_HOME points at it instead of the process environment's."""
 
     def __init__(
         self,
@@ -58,5 +83,8 @@ class FileSourcesWorkStateProjector:
                 )
             except LedgerRouteError as exc:
                 source = UnroutedLedgerRowSource(str(exc))
-            return run(env, now, ledger_source=source)
-        return run(env, now)
+            result = run(env, now, ledger_source=source)
+        else:
+            result = run(env, now)
+        publish_after_projection(result, env)
+        return result
