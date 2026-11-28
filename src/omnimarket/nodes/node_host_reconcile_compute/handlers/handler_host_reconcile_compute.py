@@ -10,6 +10,25 @@ from omnimarket.models.model_host_reconcile import (
     ModelSurfaceFact,
 )
 
+_MIN_ABBREVIATED_HASH = 7
+
+
+def versions_match(observed: str, target: str) -> bool:
+    """True when equal, or the same release part with one ``+g`` hash a prefix of the other.
+
+    Git abbreviates the hash to different lengths on different hosts, so
+    ``0.47.81.dev3+gce48c176d`` and ``0.47.81.dev3+gce48c176`` name one build.
+    The shorter hash must be at least 7 characters.
+    """
+    if observed == target:
+        return True
+    obs_release, obs_sep, obs_hash = observed.partition("+g")
+    tgt_release, tgt_sep, tgt_hash = target.partition("+g")
+    if not (obs_sep and tgt_sep) or obs_release != tgt_release:
+        return False
+    shorter, longer = sorted((obs_hash, tgt_hash), key=len)
+    return len(shorter) >= _MIN_ABBREVIATED_HASH and longer.startswith(shorter)
+
 
 class HandlerHostReconcileCompute:
     def handle(
@@ -103,7 +122,7 @@ class HandlerHostReconcileCompute:
                     "INDETERMINATE",
                     "no target to compare against; a surface with no target cannot be attested",
                 )
-            if after != target:
+            if not versions_match(after, target):
                 return "DID_NOT_MOVE", f"observed {after} but target is {target}" + (
                     f" (unchanged from {before})" if before == after else ""
                 )
