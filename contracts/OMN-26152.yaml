@@ -58,6 +58,11 @@ requirements:
     acceptance:
       - id: AC14
         statement: "AC14: the ticket closer's merge reader, 53 percent of the shared dev runtime's CPU in git children (97 git processes in 40 s), runs one git log per clone for a whole run, answers every id equal to the per-ticket reading, and caps the git processes of a run, one pull request for that cause, with tests -- falsifier: `uv run pytest tests/nodes/node_ticket_closer_scheduled_effect/test_contract_candidate_source.py -q -n 0 --no-cov -p no:cacheprovider` passes at the unfixed base or fails at the fixed head"
+  - id: req-omn26152-dod-outcome-held-read
+    statement: The delegation x DoD join is read in full only when a revision probe of its sources moves; an unchanged source returns the held rows, equal to a fresh read.
+    acceptance:
+      - id: AC15
+        statement: "AC15: routing/dod_overlay read_dod_outcomes, 16 percent of the shared dev runtime's GIL samples (198 of 1215), which fetched every verdict row and re-joined on each delegation, reads the join once while a count-and-newest-timestamp probe of both sources is unchanged and equals a fresh read after either moves, one pull request for that cause, with tests -- falsifier: `uv run pytest tests/unit/routing/test_dod_overlay.py -q -n 0 --no-cov -k omn26152` passes at the unfixed base or fails at the fixed head"
 evidence_requirements:
   - kind: tests
     description: Writer golden chain including the narrow-path regression tests.
@@ -176,3 +181,11 @@ dod_evidence:
       - check_type: test_passes
         check_value: >-
           uv run pytest tests/nodes/node_ticket_closer_scheduled_effect/test_contract_candidate_source.py -q -n 0 --no-cov -p no:cacheprovider
+  - id: dod-omn26152-ac15-dod-outcome-held
+    description: "A second read of an unchanged delegation x DoD join runs no full verdict or delegation fetch, a moved source is read fresh and equals a fresh reader; the held-read test fails at the merge base (must-fail control, run at the pre-image)."
+    source: manual
+    binds_ac: [AC15]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/unit/routing/test_dod_overlay.py -q -n 0 --no-cov -k omn26152
