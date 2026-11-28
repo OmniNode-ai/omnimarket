@@ -8,6 +8,7 @@ import json
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -16,6 +17,9 @@ from fastapi.responses import JSONResponse
 from omnimarket.nodes.node_workflow_gateway_effect.handlers.caller_identity import (
     derive_principal_id,
     header_value,
+)
+from omnimarket.nodes.node_workflow_gateway_effect.handlers.handler_tenant_key_register import (
+    HandlerTenantKeyRegister,
 )
 from omnimarket.nodes.node_workflow_gateway_effect.handlers.handler_workflow_contracts_read import (
     HandlerWorkflowContractsRead,
@@ -40,6 +44,7 @@ from omnimarket.nodes.node_workflow_gateway_effect.models.enum_workflow_refusal_
     EnumWorkflowRefusalCode,
 )
 from omnimarket.nodes.node_workflow_gateway_effect.models.model_workflow_http import (
+    ModelTenantKeyRegisterCommand,
     ModelWorkflowCaller,
     ModelWorkflowContractsCommand,
     ModelWorkflowHttpResponse,
@@ -58,6 +63,7 @@ _BINDINGS: dict[str, type] = {
     "status": HandlerWorkflowStatusRead,
     "receipt": HandlerWorkflowReceiptRead,
     "contracts": HandlerWorkflowContractsRead,
+    "tenant_key_register": HandlerTenantKeyRegister,
 }
 
 Serve = Callable[
@@ -187,11 +193,35 @@ async def _serve_contracts(
     )
 
 
+async def _serve_tenant_key_register(
+    deps: WorkflowGatewayDependencies, caller: ModelWorkflowCaller, request: Request
+) -> JSONResponse:
+    if deps.tenant_keys is None:
+        return JSONResponse(status_code=503, content={"detail": NOT_CONFIGURED_DETAIL})
+    body = await _read_body(request, deps.max_body_bytes)
+    if body is None:
+        return JSONResponse(
+            status_code=413, content={"detail": "request body too large"}
+        )
+    try:
+        decoded: Any = json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        return JSONResponse(
+            status_code=400, content={"detail": "request body must be valid JSON"}
+        )
+    return _answer(
+        await deps.tenant_keys.handle(
+            ModelTenantKeyRegisterCommand(caller=caller, body=decoded)
+        )
+    )
+
+
 _SERVE: dict[str, Serve] = {
     "submit": _serve_submit,
     "status": _serve_status,
     "receipt": _serve_receipt,
     "contracts": _serve_contracts,
+    "tenant_key_register": _serve_tenant_key_register,
 }
 
 
@@ -212,17 +242,22 @@ def _endpoint(
     return endpoint
 
 
-def create_app(*, dependencies: WorkflowGatewayDependencies | None = None) -> FastAPI:
+def create_app(
+    *,
+    dependencies: WorkflowGatewayDependencies | None = None,
+    settings_mount: Path | None = None,
+) -> FastAPI:
     """Build the mount without a database connection, a broker or a secret read.
 
     The runtime calls this with no argument: the dependencies are then built on the
     first request from the node's overlay document. ``dependencies`` replaces that
-    for the in-memory profile and tests.
+    for the in-memory profile and tests. ``settings_mount`` replaces the settings folder the
+    contract declares (a mounted ConfigMap in the cloud runtime).
     """
     provider: WorkflowGatewayDependencyProvider = (
         StaticWorkflowGatewayDependencies(dependencies)
         if dependencies is not None
-        else OverlayWorkflowGatewayDependencies()
+        else OverlayWorkflowGatewayDependencies(settings_mount)
     )
 
     @asynccontextmanager

@@ -88,6 +88,8 @@ runtime:
   # The delegation check probe node's run history (its host unit's state directory): a probe naming a gateway_check reads the
   # gateway_leg field of that check's scheduled runs here, not a workflow (OMN-26043).
   gateway_history_relpath: .onex_state/delegation-check-probe/delegation-check-runs.jsonl
+  # A scheduled run's reading older than two hours is unread on the board, never a stale verdict.
+  gateway_reading_max_age_seconds: 7200
   transport:
     connect_timeout_seconds: 10
     transfer_timeout_seconds: 30

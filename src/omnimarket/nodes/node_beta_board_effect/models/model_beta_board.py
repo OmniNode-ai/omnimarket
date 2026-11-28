@@ -186,6 +186,8 @@ class ModelBetaBoardContractRuntime(BaseModel):
     probe_refresh_seconds: int = Field(ge=0)
     # The delegation check probe node's run history under the registry home, read for a probe that names a ``gateway_check``.
     gateway_history_relpath: str = Field(min_length=1)
+    # A scheduled run's reading older than this is no reading: the source reads unread, never a stale verdict.
+    gateway_reading_max_age_seconds: int = Field(ge=1)
     transport: ModelBetaTransport
     page_refresh_seconds: int = Field(ge=30)
 

@@ -122,3 +122,17 @@ dod_evidence:
           uv run --frozen pytest tests/unit/nodes/node_lane_work_event_classify_compute
           -m unit -q -n 0 --no-cov --refuse-skips
         cwd: "."
+  - id: "dod-omn26707-spike3-real-logs"
+    description: >-
+      The classifier names the failing step of four real red CI job logs (omnimarket#6308, #6573, #6700, #6802)
+      as a log_read of a named red kind, matches rules on lines with the log timestamp removed, keeps evidence
+      whole up to the overlay's evidence_limit, and holds no rule literal. This local completion proof carries
+      no hosted AC bindings.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run --frozen pytest tests/unit/nodes/node_lane_work_event_classify_compute/test_lane_work_spike3_logs.py
+          -m unit -q -n 0 --no-cov --refuse-skips
+        cwd: "."

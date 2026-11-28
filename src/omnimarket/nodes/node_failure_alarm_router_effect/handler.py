@@ -113,6 +113,21 @@ def _check_executable(path: str) -> None:
         )
 
 
+def _absent_host_venv_python(executable: str) -> bool:
+    """A host checkout's ``.venv/bin/python`` an overlay names that this runtime does not have.
+
+    The interpreter comes from the running environment, never from a host path baked into an overlay.
+    """
+    path = Path(executable)
+    return (
+        path.is_absolute()
+        and path.parent.name == "bin"
+        and path.parent.parent.name == ".venv"
+        and path.name.startswith("python")
+        and not (path.is_file() and os.access(path, os.X_OK))
+    )
+
+
 class FailureAlarmPorts(Protocol):
     def read_rows(self) -> list[str]: ...
     def read_ticks(self) -> list[str] | None:
@@ -145,7 +160,7 @@ class CommandPorts:
 
     def _argv(self, command: str) -> list[str]:
         argv = shlex.split(command)
-        if argv and argv[0] == PYTHON_TOKEN:
+        if argv and (argv[0] == PYTHON_TOKEN or _absent_host_venv_python(argv[0])):
             argv[0] = self.interpreter
         return argv
 

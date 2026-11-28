@@ -70,6 +70,13 @@ ON CONFLICT (tenant_id) WHERE is_active = true DO NOTHING
 _INSERT_OUTBOX = (
     "INSERT INTO tenant_event_outbox (topic, envelope) VALUES ($1, $2::jsonb)"
 )
+# A tenant created outside this node has no TENANT_CREATED row, so the registry mirror never learns it (OMN-26594).
+_CREATED_EVENT_FOR_TENANT = """
+SELECT 1 FROM tenant_event_outbox
+WHERE envelope ->> 'operation' = $1
+  AND envelope #>> '{payload,tenant,tenant_id}' = $2
+LIMIT 1
+"""
 _INSERT_API_KEY = """
 INSERT INTO tenant_api_keys (tenant_id, name, key_hash)
 VALUES ($1, $2, $3)
@@ -133,6 +140,7 @@ class ProvisionRecord:
     kind: EnumProvisionKind
     envelope: dict[str, Any] | None = None
     tenant: TenantRow | None = None
+    event_queued: bool = False
 
 
 def _row(record: Any) -> TenantRow:
@@ -214,7 +222,11 @@ class TenantIdentityPostgres:
                 raise TenantStoreUnavailableError("tenant row vanished during insert")
             if existing["owner_email"] == command.owner_email:
                 return ProvisionRecord(
-                    kind=EnumProvisionKind.ALREADY_EXISTS, tenant=_row(existing)
+                    kind=EnumProvisionKind.ALREADY_EXISTS,
+                    tenant=_row(existing),
+                    event_queued=await self._queue_missing_created_event(
+                        connection, command, existing
+                    ),
                 )
             return ProvisionRecord(kind=EnumProvisionKind.SLUG_TAKEN)
         plan = await connection.fetchrow(_DEFAULT_PLAN)
@@ -234,6 +246,43 @@ class TenantIdentityPostgres:
             _INSERT_OUTBOX, TENANT_EVENTS_TOPIC, json.dumps(envelope)
         )
         return ProvisionRecord(kind=EnumProvisionKind.CREATED, envelope=envelope)
+
+    @staticmethod
+    async def _queue_missing_created_event(
+        connection: asyncpg.Connection,
+        command: ModelTenantProvisionCommand,
+        existing: Any,
+    ) -> bool:
+        """Queue the ``TENANT_CREATED`` row an existing tenant lacks; ``False`` when it already has one.
+
+        The registry mirror fills only from that event, so a tenant made by another path (a seed, an earlier build)
+        stays unmirrored and every delegation row of it is refused by the projection. The row is built from the stored
+        tenant, in the transaction that read it; a second run finds the row and writes nothing.
+        """
+        tenant_id: UUID = existing["tenant_id"]
+        if await connection.fetchrow(
+            _CREATED_EVENT_FOR_TENANT, TENANT_CREATED, str(tenant_id)
+        ):
+            return False
+        plan_code = existing["plan_code"]
+        if plan_code is None:
+            plan = await connection.fetchrow(_DEFAULT_PLAN)
+            if plan is None:
+                raise _NoDefaultPlanError
+            plan_code = plan["code"]
+        envelope = build_tenant_created_envelope(
+            command_id=command.command_id,
+            tenant_id=tenant_id,
+            tenant_slug=existing["tenant_slug"],
+            name=existing["name"],
+            status=existing["provisioning_state"],
+            created_at=existing["created_at"],
+            plan_code=plan_code,
+        )
+        await connection.execute(
+            _INSERT_OUTBOX, TENANT_EVENTS_TOPIC, json.dumps(envelope)
+        )
+        return True
 
     @staticmethod
     async def _by_command(

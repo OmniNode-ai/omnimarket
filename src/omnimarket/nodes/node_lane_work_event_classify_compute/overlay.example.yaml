@@ -8,12 +8,35 @@
 # rules come before general ones. The last rule's `hook` pattern is seeded from blocker_friction_classes.json
 # (the remote-lane skill's data file). A log_read rule takes its red kind from node_ci_red_kind_rule_compute,
 # which is given red_kind_check_name and the raw text as the log excerpt.
+# evidence_limit is the number of characters of the raw result kept whole as the event's evidence. A CI job log line
+# starts with log_timestamp_pattern; rules match lines with it removed, and a rule with source ci_job_log applies only to
+# a text whose first line carries it (the same words from a local hook are a commit refusal, from a CI log a red kind).
+# A log_read rule names its kind itself (red_kind) or puts red_kind_check_name to node_ci_red_kind_rule_compute.
 schema_version: lane_work_classify.v1
+evidence_limit: 32768
+log_timestamp_pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z '
 ci_verdict_events:
   green: check_green
   red: check_red
   pending: check_pending
 rules:
+  - pattern: 'Canonical-file-shape ratchet \(OMN-20304\) refused this change'
+    event: log_read
+    ignore_case: false
+    red_kind: file_shape_ratchet
+    source: ci_job_log
+  - pattern: '^refused node_[a-z0-9_]+: node_[a-z0-9_]+ requires the overlay '
+    event: log_read
+    ignore_case: false
+    red_kind: overlay_required
+  - pattern: '^refused node_[a-z0-9_]+ document_invalid: '
+    event: log_read
+    ignore_case: false
+    red_kind: overlay_required
+  - pattern: '^(##\[error\])?workflow verdict FAILED for (?!OmniNode-ai/omnimarket )\S+/\S+ '
+    event: log_read
+    ignore_case: false
+    red_kind: foreign_repo_verdict
   - pattern: 'check-release-identity|release identity'
     event: commit_refused
     event_class: release_identity

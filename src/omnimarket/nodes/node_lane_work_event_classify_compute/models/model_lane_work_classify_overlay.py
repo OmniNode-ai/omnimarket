@@ -51,6 +51,15 @@ class ModelLaneWorkClassifyRule(BaseModel):
         min_length=1,
         description="log_read only: the check name put to the red kind rule node; its log excerpt is the raw result.",
     )
+    red_kind: str | None = Field(
+        default=None,
+        min_length=1,
+        description="log_read only: the kind this rule names itself, used without asking the red kind rule node.",
+    )
+    source: Literal["worker_output", "ci_job_log"] | None = Field(
+        default=None,
+        description="ci_job_log: only a text whose first line carries the overlay's log timestamp; worker_output: only a text without one.",
+    )
 
     @field_validator("pattern")
     @classmethod
@@ -81,6 +90,13 @@ class ModelLaneWorkClassifyRule(BaseModel):
         ):
             msg = "red_kind_check_name belongs to a log_read rule"
             raise ValueError(msg)
+        if self.red_kind is not None:
+            if self.event is not EnumLaneWorkEvent.LOG_READ:
+                msg = "red_kind belongs to a log_read rule"
+                raise ValueError(msg)
+            if self.red_kind_check_name is not None:
+                msg = "a rule names its red kind or puts a check name to the red kind rule node, not both"
+                raise ValueError(msg)
         return self
 
 
@@ -92,10 +108,31 @@ class ModelLaneWorkClassifyOverlay(BaseModel):
     schema_version: Literal["lane_work_classify.v1"]
     rules: tuple[ModelLaneWorkClassifyRule, ...] = Field(..., min_length=1)
     ci_verdict_events: dict[str, EnumLaneWorkEvent] = Field(default_factory=dict)
+    evidence_limit: int = Field(
+        ...,
+        ge=1,
+        description="Characters of the raw result kept whole as evidence; the result is cut at this length and no earlier.",
+    )
+    log_timestamp_pattern: str | None = Field(
+        default=None,
+        min_length=1,
+        description="A CI log line's timestamp prefix; rules match lines with it removed, and a text whose first line carries it is a ci_job_log.",
+    )
     red_kind_bootstrap: ModelCiRedKindRuleOverlay | None = Field(
         default=None,
         description="Red kind rules read only when node_ci_red_kind_rule_compute has no overlay bound.",
     )
+
+    @field_validator("log_timestamp_pattern")
+    @classmethod
+    def _timestamp_compilable(cls, value: str | None) -> str | None:
+        if value is not None:
+            try:
+                re.compile(value)
+            except re.error as exc:
+                msg = f"pattern {value!r} is not a compilable regular expression: {exc}"
+                raise ValueError(msg) from None
+        return value
 
     @field_validator("ci_verdict_events")
     @classmethod

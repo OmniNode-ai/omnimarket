@@ -68,7 +68,6 @@ from omnimarket.nodes.node_lane_work_event_classify_compute.models.model_lane_wo
 OVERLAY_NODE_NAME = "node_lane_work_event_classify_compute"
 OVERLAY_FILE_ENV = "LANE_WORK_EVENT_CLASSIFY_OVERLAY"
 _NODE_DIR = Path(__file__).resolve().parents[1]
-_EVIDENCE_LIMIT = 1000
 _HEX_TOKEN = re.compile(r"\b[0-9a-f]{7,40}\b")
 _AWARE = TypeAdapter(AwareDatetime)
 _E = EnumLaneWorkEvent
@@ -171,10 +170,24 @@ class HandlerLaneWorkEventClassify:
         """
         overlay = self._load_overlay()
         key = input_id or self._digest(state, raw_result)
-        evidence = (raw_result[:_EVIDENCE_LIMIT],)
+        evidence = (raw_result[: overlay.evidence_limit],)
+        stamp = (
+            re.compile(overlay.log_timestamp_pattern)
+            if overlay.log_timestamp_pattern
+            else None
+        )
+        first_line = raw_result.lstrip().split("\n", 1)[0]
+        is_log = bool(stamp and stamp.match(first_line))
+        lines = (
+            "\n".join(stamp.sub("", line, count=1) for line in raw_result.split("\n"))
+            if stamp
+            else raw_result
+        )
         for rule in overlay.rules:
+            if rule.source is not None and (rule.source == "ci_job_log") is not is_log:
+                continue
             flags = re.MULTILINE | (re.IGNORECASE if rule.ignore_case else 0)
-            if not re.search(rule.pattern, raw_result, flags):
+            if not re.search(rule.pattern, lines, flags):
                 continue
             extra: dict[str, Any] = {}
             if rule.event is _E.HEAD_MOVED:
@@ -185,7 +198,9 @@ class HandlerLaneWorkEventClassify:
                     )
                 extra["head_sha"] = head
             elif rule.event is _E.LOG_READ:
-                red_kind = self._red_kind(rule.red_kind_check_name, raw_result)
+                red_kind = rule.red_kind or self._red_kind(
+                    rule.red_kind_check_name, raw_result
+                )
                 if red_kind is None:
                     return self._unclassified(
                         state, key, evidence, "no red kind rule names the log"

@@ -90,3 +90,30 @@ def test_scheduled_fire_with_missing_interpreter_refuses_once_not_a_traceback(
             asyncio.run(scheduled.handle(tick(NOW + timedelta(days=i))))
     named = [r for r in caplog.records if MISSING in r.getMessage()]
     assert len(named) <= 1
+
+
+HOST_VENV = "/nonexistent/checkout/.venv/bin/python"
+
+
+def test_absent_host_venv_interpreter_resolves_to_the_running_environment() -> None:
+    """A host venv path an overlay names, absent in this runtime, runs under the runtime's interpreter."""
+    request = ModelFailureAlarmRequest(
+        now=NOW,
+        alert_command="true",
+        ledger_rows_command=f"{HOST_VENV} -c 'print(1)'",
+    )
+    assert CommandPorts(request).read_rows() == ["1"]
+
+
+def test_present_host_venv_interpreter_is_not_rewritten(tmp_path: object) -> None:
+    from pathlib import Path
+
+    venv_bin = Path(str(tmp_path)) / ".venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    fake = venv_bin / "python"
+    fake.write_text("#!/bin/sh\necho declared\n")
+    fake.chmod(0o755)
+    request = ModelFailureAlarmRequest(
+        now=NOW, alert_command="true", ledger_rows_command=f"{fake} -c x"
+    )
+    assert CommandPorts(request).read_rows() == ["declared"]
