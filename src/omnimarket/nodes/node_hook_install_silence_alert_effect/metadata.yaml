@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_hook_install_silence_alert_effect
+version: 0.1.0
+description: Read the hook-event projection and the ledger lane rows, judge install silence and hand the alert text to the lab alarm effect.
+omnibase_core_compat: '>=0.47.31,<0.48.0'
+entry_points:
+  onex.nodes:
+    node_hook_install_silence_alert_effect: omnimarket.nodes.node_hook_install_silence_alert_effect
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: external
+dependencies:
+- pydantic>=2.0
+license: MIT
+authors:
+- OmniNode Team
+tags:
+- effect
+- hook-events
+- alert
+pack: operator_tooling
+display_name: Hook Install Silence Alert Effect
+node_role: effect

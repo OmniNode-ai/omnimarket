@@ -3,6 +3,7 @@
 """Models of the hook install emission node (OMN-26658)."""
 
 from .model_hook_install_emission import (
+    ModelHookInstallAlert,
     ModelHookInstallDeclared,
     ModelHookInstallEmissionRequest,
     ModelHookInstallEmissionResult,
@@ -13,6 +14,7 @@ from .model_hook_install_emission import (
 )
 
 __all__ = [
+    "ModelHookInstallAlert",
     "ModelHookInstallDeclared",
     "ModelHookInstallEmissionRequest",
     "ModelHookInstallEmissionResult",
