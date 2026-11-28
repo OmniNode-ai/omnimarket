@@ -136,3 +136,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/settings_store/test_host_table_from_store.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
+- id: dod-omn24028-settings-seed-verb
+  description: 'onex settings seed loads each declared overlay default into the store through seed_defaults, keeps a value the store already holds, writes nothing on a second run, and reads the bootstrap file path from the store provision node overlay; the seed tests in test_settings_cli.py fail with no such command on origin/dev'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/settings_store/test_settings_cli.py -q -n 0 --no-cov -p no:cacheprovider -k seed
+    cwd: .

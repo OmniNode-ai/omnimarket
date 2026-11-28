@@ -45,6 +45,7 @@ from omnimarket.handlers.overlay_store.setting_paths import (
     set_at,
     value_digest,
 )
+from omnimarket.handlers.overlay_store.settings_seed import seed_defaults
 from omnimarket.handlers.overlay_store.store_wiring import build_overlay_store
 from omnimarket.nodes.node_overlay_setting_set_effect.handlers.handler_overlay_setting_set import (
     load_settable_settings,
@@ -61,6 +62,10 @@ ACTOR_ENV = "ONEX_ACTOR"
 PROVENANCE_PREFIX = "# settings-set:"
 UNSET = "<unset>"
 _SET_NODE = "node_overlay_setting_set_effect"
+PROVISION_NODE = "node_settings_store_provision_effect"
+PROVISION_BOOTSTRAP_KEY = "bootstrap_file"
+SEED_ACTOR = "onex-settings-seed"
+SEED_AGREE_WAIT_S = 30.0
 
 
 def _declared() -> tuple[ModelSettableSetting, ...]:
@@ -253,6 +258,169 @@ def write_back_overlay_file(
     body = yaml.safe_dump(document, sort_keys=False)
     file.write_text("\n".join(provenance) + "\n" + body, encoding="utf-8")
     return file
+
+
+def _declared_bootstrap_path(environ: Mapping[str, str]) -> Path | None:
+    """The bootstrap file path the store provision node's overlay declares (``bootstrap_file``), never a built-in path."""
+    file = find_node_overlay(PROVISION_NODE, environ)
+    if file is None:
+        return None
+    document = yaml.safe_load(file.read_text(encoding="utf-8"))
+    declared = (
+        document.get(PROVISION_BOOTSTRAP_KEY) if isinstance(document, dict) else None
+    )
+    if not isinstance(declared, str) or not declared.strip():
+        return None
+    return Path(declared).expanduser()
+
+
+def _overlay_defaults(
+    overlay_ids: list[str], environ: Mapping[str, str]
+) -> dict[str, dict[str, JsonValue]]:
+    """Each declared overlay's local file as its default document; an overlay with no file is left out."""
+    defaults: dict[str, dict[str, JsonValue]] = {}
+    for overlay_id in overlay_ids:
+        file = find_node_overlay(overlay_id, environ)
+        if file is None:
+            continue
+        document = yaml.safe_load(file.read_text(encoding="utf-8"))
+        if isinstance(document, dict) and document:
+            defaults[overlay_id] = document
+    return defaults
+
+
+async def _refresh(table: Any) -> None:
+    refresh = getattr(table, "refresh", None)
+    if refresh is not None:
+        await refresh()
+
+
+def _live_seed_paths(
+    ctx: click.Context, store: ProtocolOverlayStore
+) -> tuple[Any, Any]:
+    """The table reader and the write path of a seed: injected for a test, the loader's bus otherwise."""
+    obj = ctx.obj or {}
+    if obj.get("seed_table") is not None and obj.get("seed_write") is not None:
+        return obj["seed_table"], obj["seed_write"]
+    from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+    from omnimarket.handlers.overlay_store.bus_opener import (
+        open_lane_bus,
+        workspace_root,
+    )
+    from omnimarket.handlers.overlay_store.store_bus_snapshot import (
+        BusSnapshotOverlayStore,
+    )
+    from omnimarket.models.overlay_store import ModelOverlayStoreLoadOverlay
+    from omnimarket.nodes.node_overlay_setting_set_effect.runtime_overlay_setting_set import (
+        LOADER_NODE,
+        _contract,
+    )
+
+    contract = _contract()
+    overlay = load_structured_overlay(
+        LOADER_NODE, ModelOverlayStoreLoadOverlay, os.environ
+    )
+
+    def open_bus() -> Any:
+        return open_lane_bus(
+            bus=overlay.bus,
+            lane=None
+            if overlay.kafka_bootstrap or overlay.bus == "inmemory"
+            else overlay.bus_lane,
+            kafka_bootstrap=overlay.kafka_bootstrap,
+            root=workspace_root(os.environ),
+        )
+
+    table = BusSnapshotOverlayStore(
+        open_bus=open_bus,
+        topic=contract["snapshot_read"]["topic"],
+        group_prefix=contract["config"]["group_prefix"],
+        window_s=float(contract["config"]["read_window_s"]),
+    )
+    loaded_topic = contract["event_bus"]["publish_topics"][0]
+
+    async def write(record: Mapping[str, JsonValue]) -> None:
+        async with open_bus() as bus:
+            await bus.publish(
+                loaded_topic,
+                str(record["overlay_id"]).encode("utf-8"),
+                json.dumps(record).encode("utf-8"),
+            )
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + SEED_AGREE_WAIT_S
+        while loop.time() < deadline:
+            await _refresh(table)
+            current = await store.read_current(str(record["overlay_id"]))
+            if current is not None and current.get("digest") == record["digest"]:
+                return
+            await asyncio.sleep(1.0)
+
+    return table, write
+
+
+@settings_group.command("seed")
+@click.option(
+    "--overlay",
+    default=None,
+    help="seed only this overlay's default (default: every declared overlay)",
+)
+@bootstrap_option
+@click.pass_context
+def seed_command(
+    ctx: click.Context, overlay: str | None, bootstrap_file: Path | None
+) -> None:
+    """Load each declared overlay's default into the store through the seed, never over a live value.
+
+    An overlay the store already holds is kept as it is and reported; a second run writes nothing. The bootstrap file is
+    ``--bootstrap-file``, ``ONEX_BOOTSTRAP_FILE`` or the path the store provision node's overlay declares.
+    """
+    path = bootstrap_file
+    if path is None and os.environ.get(BOOTSTRAP_FILE_ENV):
+        path = Path(os.environ[BOOTSTRAP_FILE_ENV])
+    if path is None:
+        path = _declared_bootstrap_path(os.environ)
+    if path is None:
+        raise click.ClickException(
+            f"name the host's bootstrap file with --bootstrap-file, {BOOTSTRAP_FILE_ENV} or the "
+            f"{PROVISION_BOOTSTRAP_KEY} value of the {PROVISION_NODE} overlay"
+        )
+    try:
+        intake = parse_bootstrap_file(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise click.ClickException(f"{type(exc).__name__}: {exc}") from exc
+    store = _store(ctx, path)
+    ids = sorted({s.overlay_id for s in _declared() if overlay in (None, s.overlay_id)})
+    defaults = _overlay_defaults(ids, os.environ)
+    kept: list[str] = []
+    to_seed: dict[str, dict[str, JsonValue]] = {}
+    for overlay_id, document in defaults.items():
+        if asyncio.run(_read(store, overlay_id)) is not None:
+            kept.append(overlay_id)  # a live value is never overwritten
+        else:
+            to_seed[overlay_id] = document
+    table, write = _live_seed_paths(ctx, store)
+    try:
+        result = asyncio.run(
+            seed_defaults(
+                intake,
+                to_seed,
+                table=table,
+                settings_store=store,
+                write=write,
+                source_ref="onex-settings-seed",
+                loaded_by=os.environ.get(ACTOR_ENV, SEED_ACTOR),
+                now=datetime.now(UTC),
+            )
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise click.ClickException(f"{type(exc).__name__}: {exc}") from exc
+    for overlay_id in result.written:
+        click.echo(f"seeded\t{overlay_id}")
+    for overlay_id in sorted([*result.unchanged, *kept]):
+        click.echo(f"kept\t{overlay_id}")
+    for overlay_id in ids:
+        if overlay_id not in defaults:
+            click.echo(f"no-default\t{overlay_id}")
 
 
 @settings_group.command("bootstrap-file")
