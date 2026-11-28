@@ -75,6 +75,9 @@ runtime_dispatch:
     success: "onex.evt.omnimarket.pr-landing-watcher-facts-written.v1"
     failure: "onex.evt.omnimarket.pr-landing-watcher-facts-failed.v1"
   external_trigger: "One pass per landing tick, before the snapshot step, on the host that holds the PR watcher's state: python -m omnimarket.nodes.node_pr_landing_watcher_facts_effect."
+  # Every 60 s and at load, the host timer of node_host_installer_registry_units runs this node's main (OMN-26736: the trigger check refuses a changed node that declares none).
+  host_unit:
+    unit: landing-watcher-facts
 descriptor:
   node_archetype: effect
   purity: side_effecting

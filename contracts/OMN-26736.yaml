@@ -51,6 +51,14 @@ dod_evidence:
       - check_type: test_passes
         check_value: uv run pytest tests/unit/nodes/node_pr_landing_decision_compute/test_landing_lab_line_gate.py -k "ac3" -q --no-cov
         cwd: .
+  - id: dod-omn26736-watcher-facts-read-lab-line
+    description: "The watcher facts mapper reads the newest Lab line (body, then comments when read) into the lab_line fact: an older head is held through decide_landing, a Lab line at the exact head merges, comments unread leave an older-head body reading unasserted."
+    source: manual
+    binds_ac: [AC1, AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_pr_landing_watcher_facts_effect/test_watcher_facts_lab_line.py -q --no-cov
+        cwd: .
   - id: dod-omn26736-integration-proof
     description: "Run the Lab-line gate tests and the landing decision node tests on a lab host at the pushed head; the local Done gate runs this unbound check."
     source: manual

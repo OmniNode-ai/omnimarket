@@ -31,6 +31,9 @@ from omnimarket.models.landing_decision import (
     ModelLandingFacts,
     ModelLandingPrFacts,
 )
+from omnimarket.nodes.node_pr_landing_decision_compute.models.model_landing_lab_line import (
+    ModelLandingLabLineFact,
+)
 from omnimarket.nodes.node_pr_landing_watcher_facts_effect.handlers.watcher_facts_errors import (
     WatcherFactsSourceError,
 )
@@ -99,10 +102,44 @@ def _passed_checks(ci: Mapping[str, object]) -> tuple[str, ...]:
     return tuple(sorted(names))
 
 
+_LAB_LINE = re.compile(r"^\s*Lab:(?P<rest>.*)$", re.MULTILINE)
+_LAB_HEAD = re.compile(r"\bhead=(?P<sha>[0-9a-f]{40})\b")
+
+
+def _newest_lab_head(texts: Sequence[str]) -> tuple[bool, str | None]:
+    """(a Lab line exists, the head the newest one names) over texts ordered oldest first."""
+    found, named = False, None
+    for text in texts:
+        for line in _LAB_LINE.finditer(text):
+            found = True
+            m = _LAB_HEAD.search(line.group("rest"))
+            named = m.group("sha") if m else None
+    return found, named
+
+
+def _lab_line_fact(
+    body: object, comments: Sequence[str] | None, head: str
+) -> ModelLandingLabLineFact | None:
+    """The newest Lab line as a fact (OMN-26736).
+
+    The watcher state holds the PR body but no comments. With ``comments`` unread (None) the fact is
+    given only when the body's Lab line names the head; any other body reading stays unread, because
+    a newer comment may name the head. With ``comments`` read, the newest Lab line over body then
+    comments is the fact, and no Lab line at all is a fact naming no head.
+    """
+    texts = [body] if isinstance(body, str) else []
+    if comments is None:
+        _, named = _newest_lab_head(texts)
+        return None if named != head else ModelLandingLabLineFact(named_head=named)
+    _, named = _newest_lab_head([*texts, *comments])
+    return ModelLandingLabLineFact(named_head=named)
+
+
 def _pr_facts(
     entry: Mapping[str, object],
     overlay: ModelWatcherFactsOverlay,
     required: Mapping[str, Sequence[str]] | None = None,
+    lab_comments: Mapping[str, Sequence[str]] | None = None,
 ) -> ModelLandingPrFacts | None:
     facts = entry.get("facts")
     if not isinstance(facts, dict):
@@ -127,8 +164,14 @@ def _pr_facts(
     red = verdict is EnumLandingCi.RED
     node_id = facts.get("node_id")
     contexts = None if required is None else required.get(f"{repo}:{facts.get('base')}")
+    pr_key = f"{overlay.owner}/{repo}#{facts.get('number')}"
     return ModelLandingPrFacts(
-        pr=f"{overlay.owner}/{repo}#{facts.get('number')}",
+        pr=pr_key,
+        lab_line=_lab_line_fact(
+            facts.get("body"),
+            None if lab_comments is None else lab_comments.get(pr_key),
+            head,
+        ),
         head_sha=head,
         state=EnumLandingPrState.OPEN,
         ci=verdict,
@@ -150,19 +193,22 @@ def map_watcher_state(
     state: object,
     overlay: ModelWatcherFactsOverlay,
     required: Mapping[str, Sequence[str]] | None = None,
+    lab_comments: Mapping[str, Sequence[str]] | None = None,
 ) -> ModelLandingFacts:
     """The watcher state's open pull requests of the overlay's repositories, as one tick of landing facts.
 
     The tick is the watcher's last_tick in epoch seconds, so the same state gives the same tick.
     ``required`` maps ``repo:base`` to the contexts that base branch requires, as the snapshot
     reader read them from branch protection and rulesets; a base it does not name is unread.
+    ``lab_comments`` maps a PR (``owner/repo#n``) to its comment bodies, oldest first, for the
+    newest Lab line; a PR it does not name has its comments unread.
     """
     at, table = _table(state)
     prs = [
         pr
         for entry in table.values()
         if isinstance(entry, dict)
-        and (pr := _pr_facts(entry, overlay, required)) is not None
+        and (pr := _pr_facts(entry, overlay, required, lab_comments)) is not None
     ]
     return ModelLandingFacts(
         tick=int(at.timestamp()),
