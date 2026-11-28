@@ -48,7 +48,7 @@ dod_evidence:
     check_value: uv run pytest tests/nodes/node_factory_floor_publish_effect/test_phase_budget_review_findings.py -q --no-cov -n 0 -p no:randomly
     cwd: .
   - check_type: command
-    check_value: 'gh api -H "Accept: application/vnd.github.raw" "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_factory_floor_publish_effect/handlers/handler_factory_floor_publish.py?ref=omn-23133-publish-phase-budget-bound" | grep -q "math.floor(self.remaining())"'
+    check_value: grep -q 'math.floor(self.remaining())' src/omnimarket/nodes/node_factory_floor_publish_effect/handlers/handler_factory_floor_publish.py
     cwd: .
 - id: dod-omn23133-ac1-accepted-20261128t1145z
   description: 'AC1: the four phase budget review findings tests (a call limit never past what the phase has left, a fraction of a second refused instead of granted as a whole second, the refusal not claiming earlier files are untouched, and a control) with the neighbouring publish tests pass at the head. With the product change of omnimarket#5456 reverted on dev, three of the four phase budget tests fail and the control passes.'
