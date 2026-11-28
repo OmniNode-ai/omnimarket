@@ -275,7 +275,7 @@ async def test_slash_opens_a_filtered_palette_and_escape_closes_it() -> None:
     """F1, F6."""
     app = _app(_Runner([]))
     async with app.run_test() as pilot:
-        await pilot.press("slash", "d", "o", "c")
+        await pilot.press("slash", "d", "o", "c", "t")
         palette = app.query_one("#palette")
         assert palette.display
         shown = [str(option.prompt) for option in palette.options]
@@ -1439,6 +1439,7 @@ async def test_tab_and_shift_tab_cycle_the_three_screens_and_a_click_opens_one()
     from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
         DashboardScreen,
         DelegationScreen,
+        DockerScreen,
         ModelPickScreen,
         SetupScreen,
     )
@@ -1447,7 +1448,7 @@ async def test_tab_and_shift_tab_cycle_the_three_screens_and_a_click_opens_one()
     async with app.run_test(size=(140, 44)) as pilot:
         await _open_config(pilot, app)
         seen = [type(app.screen)]
-        for _ in range(4):  # four tabs, then round to the first again
+        for _ in range(5):  # five tabs, then round to the first again
             await pilot.press("tab")
             for _ in range(4):
                 await pilot.pause()
@@ -1457,12 +1458,13 @@ async def test_tab_and_shift_tab_cycle_the_three_screens_and_a_click_opens_one()
             ModelPickScreen,
             DelegationScreen,
             DashboardScreen,
+            DockerScreen,
             SetupScreen,
         ]
         await pilot.press("shift+tab")  # back from the first is the last
         for _ in range(4):
             await pilot.pause()
-        assert isinstance(app.screen, DashboardScreen)
+        assert isinstance(app.screen, DockerScreen)
         await pilot.click("#tab-model")
         await pilot.pause()
         await pilot.pause()

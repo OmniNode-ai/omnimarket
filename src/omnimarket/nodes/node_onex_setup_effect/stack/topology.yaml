@@ -1,0 +1,12 @@
+schema_version: "1.0.0"
+services:
+  postgres:
+    mode: LOCAL
+    local:
+      compose_service: postgres
+      host_port: 15432
+  redpanda:
+    mode: LOCAL
+    local:
+      compose_service: redpanda
+      host_port: 19092

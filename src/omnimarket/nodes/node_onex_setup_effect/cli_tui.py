@@ -20,6 +20,7 @@ import signal
 import time
 from collections import Counter
 from collections.abc import Awaitable, Callable, Mapping
+from pathlib import Path
 from typing import ClassVar, Literal, Protocol, TypeVar, cast
 from urllib.parse import urlparse
 
@@ -1683,6 +1684,106 @@ class ModelPickScreen(_TabbedScreen[None]):
         self._close()
 
 
+class DockerScreen(_TabbedScreen[None]):
+    """The full self-hosted stack: Start, and one plain sentence when Docker is
+    missing or stopped (OMN-26689)."""
+
+    TAB = "docker"
+    NOTE = "#xnote"
+
+    CSS = """
+    DockerScreen { align: center middle; }
+    #dockerbox { width: 92%; max-width: 160; height: 92%; border: round $primary; padding: 0 2; background: $panel; }
+    #dockerbox .summary { height: 1; margin: 0 0 1 0; }
+    #xstate { height: auto; margin: 1 0; }
+    #xnote { height: auto; }
+    #xkeys { color: $text-muted; height: 1; }
+    #xbuttons { height: 3; dock: bottom; align-horizontal: right; }
+    """
+    BINDINGS = [
+        Binding("escape", "cancel", _say("button_cancel")),
+        Binding("s", "start", _say("button_start"), show=False),
+        Binding("x", "stop", _say("button_stop"), show=False),
+    ]
+
+    def __init__(self, selection: ModelTuiSelection) -> None:
+        super().__init__()
+        self._selection = selection
+
+    def compose(self) -> ComposeResult:
+        words = tui_design().docker
+        with Vertical(id="dockerbox"):
+            yield _tab_strip(self.TAB)
+            yield _summary(self._selection)
+            yield Label(Text(words.title, style=_style("primary", "bold")))
+            yield Static(Text(words.idle, style=_style("muted")), id="xstate")
+            yield Static("", id="xnote")
+            yield Static(keycaps(tui_design().model_table.help["docker"]), id="xkeys")
+            with Horizontal(id="xbuttons"):
+                for label, button_id in (
+                    ("button_start", "xstart"),
+                    ("button_stop", "xstop"),
+                    ("button_cancel", "xcancel"),
+                ):
+                    button = Button(
+                        _say(label),
+                        variant="primary" if button_id == "xstart" else "default",
+                        id=button_id,
+                    )
+                    button.can_focus = False
+                    yield button
+
+    def on_mount(self) -> None:
+        self._read_state()
+
+    def _read_state(self) -> None:
+        app = self.app
+        if not isinstance(app, OnexTui):
+            return
+
+        async def go() -> None:
+            self._show_state(await app.docker_state())
+
+        self.run_worker(go(), exclusive=True, group="docker-state")
+
+    def _show_state(self, rows: tuple[tuple[str, str], ...]) -> None:
+        words = tui_design().docker
+        if not rows:
+            self.query_one("#xstate", Static).update(
+                Text(words.idle, style=_style("muted"))
+            )
+            return
+        shown = Text()
+        for name, state in rows:
+            style = _style("success" if state == "running" else "warning", "bold")
+            shown.append(
+                words.service.format(name=name, state=state) + "\n", style=style
+            )
+        self.query_one("#xstate", Static).update(shown)
+
+    def _show_selection(self) -> None:
+        super()._show_selection()
+        self._read_state()
+
+    def action_start(self) -> None:
+        self._run(lambda app: app.docker_start())
+
+    def action_stop(self) -> None:
+        self._run(lambda app: app.docker_stop())
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        pressed = {
+            "xstart": self.action_start,
+            "xstop": self.action_stop,
+            "xcancel": self.action_cancel,
+        }.get(event.button.id or "")
+        if pressed is not None:
+            pressed()
+
+    def action_cancel(self) -> None:
+        self._close()
+
+
 class DashboardScreen(_TabbedScreen[None]):
     """The local dashboard: its real state, and Start, Open and Stop (OMN-23413)."""
 
@@ -2375,6 +2476,8 @@ class OnexTui(App[int]):
             )
         if name == "dashboard":
             return cast(Screen[object], DashboardScreen(selection))
+        if name == "docker":
+            return cast(Screen[object], DockerScreen(selection))
         return cast(Screen[object], ModelPickScreen(selection))
 
     async def switch_tab(self, name: str) -> None:
@@ -2395,7 +2498,7 @@ class OnexTui(App[int]):
             self._write(Text(tui_design().help, style=_style("foreground")))
         elif action == "clear":
             self.query_one("#output", RichLog).clear()
-        elif action in ("config", "model", "delegation", "dashboard"):
+        elif action in {spec.id for spec in tui_design().tabs}:
             # A tab stays open until Esc; its actions run while it is open.
             await self.push_screen(await self.tab_screen(action))
 
@@ -2604,6 +2707,60 @@ class OnexTui(App[int]):
                 )
             )
         return claude_code_state(_last_json_object(out))
+
+    async def docker_start(self) -> Text:
+        """Start the full stack; a failure shows one plain cause, never raw output."""
+        words = tui_design().docker
+        stack = Path(__file__).parent / "stack"
+        argv = tuple(
+            part.format(
+                compose_file=stack / "compose.yaml",
+                topology_file=stack / "topology.yaml",
+            )
+            for part in words.start
+        )
+        code, out, err = await self._runner.capture(argv)
+        glyphs = tui_design().glyphs
+        ok = not code
+        if ok:
+            line = Text(f"{glyphs.done} {words.started}", style=_style("success"))
+        else:
+            heard = f"{out}\n{err}".lower()
+            reason = next(
+                (
+                    cause.say
+                    for cause in words.causes
+                    if any(phrase in heard for phrase in cause.match)
+                ),
+                words.failed,
+            )
+            line = Text(f"{glyphs.failed} {reason}", style=_style("error"))
+        self._toast(line, ok=ok)
+        return line
+
+    async def docker_state(self) -> tuple[tuple[str, str], ...]:
+        """`onex stack status --json`: each service's name and state."""
+        _, out, _ = await self._runner.capture(tuple(tui_design().docker.status))
+        found = (_last_json_object(out) or {}).get("stack")
+        return tuple(
+            (str(row["name"]), str(row["state"]))
+            for row in (found if isinstance(found, list) else [])
+            if isinstance(row, dict) and "name" in row and "state" in row
+        )
+
+    async def docker_stop(self) -> Text:
+        """Stop the stack; a failure shows the plain sentence, never raw output."""
+        words = tui_design().docker
+        code, _, _ = await self._runner.capture(tuple(words.stop))
+        glyphs = tui_design().glyphs
+        ok = not code
+        line = Text(
+            f"{glyphs.done if ok else glyphs.failed} "
+            + (words.stopped if ok else words.failed),
+            style=_style("success" if ok else "error"),
+        )
+        self._toast(line, ok=ok)
+        return line
 
     async def dashboard_state(self) -> dict[str, object]:
         """`onex dashboard status --json`: the dashboard's real state."""

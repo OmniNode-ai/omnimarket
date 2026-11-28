@@ -1704,6 +1704,8 @@ agent-message = "omnimarket.nodes.node_agent_message_client_effect.cli:agent_mes
 # local dashboard through the read node (plan T2.3). Registered here for the same
 # reason as "cloud" and "local".
 dashboard = "omnimarket.cli.cli_local:dashboard_command"
+# OMN-26689: `onex stack` -- read and stop the self-hosted stack the /docker tab starts.
+stack = "omnimarket.nodes.node_onex_setup_effect.cli_stack:stack_group"
 # OMN-20290: `onex code-edit` -- run the delegated code edit loop over a git
 # worktree, each model turn one onex delegate run. Discovered over installed
 # distributions like the groups above.
@@ -1784,6 +1786,7 @@ test-loop = "Run the delegated test loop; serve its focused runs on a lab host."
 pr-state = "Read pull request state from the projection, never from GitHub."
 agent-message = "Send and read messages between agents on any platform, over the event bus."
 dashboard = "Serve this install's projection exposures to the local dashboard (OMN-19976)."
+stack = "The self-hosted stack that /docker starts."
 code-edit = "Run the delegated code edit loop over a git worktree."
 lab-work = "Place heavy work on the pool host with the most free capacity, over the bus."
 repo-state = "Answer repository state from this host's mirror, pulling first only when it is behind."

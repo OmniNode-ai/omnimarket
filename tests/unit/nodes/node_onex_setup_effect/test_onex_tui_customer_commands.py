@@ -43,6 +43,7 @@ _CUSTOMER = [
     "/model",
     "/delegation",
     "/dashboard",
+    "/docker",
     "/doctor",
     "/metering",
     "/clear",
@@ -67,13 +68,13 @@ def _palette(app: OnexTui) -> list[str]:
 
 
 def test_banner_tip_does_not_promise_every_command() -> None:
-    """C1: the welcome banner must not say 'every command' when only nine are listed."""
+    """C1: the welcome banner must not say 'every command' when only some are listed."""
     slash_tips = [t for t in tui_design().banner.tips if t.key == "/"]
     assert slash_tips, "no banner tip with key '/'"
     assert "every command" not in slash_tips[0].text
 
 
-async def test_slash_lists_exactly_the_nine_customer_commands_in_order() -> None:
+async def test_slash_lists_exactly_the_customer_commands_in_order() -> None:
     """C1, AC1."""
     app = _app(_Runner([]))
     async with app.run_test() as pilot:

@@ -1,0 +1,23 @@
+name: onex-self-hosted
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: onex
+      POSTGRES_PASSWORD: onex-local-only
+      POSTGRES_DB: onex
+    ports:
+      - "127.0.0.1:15432:5432"
+    restart: unless-stopped
+  redpanda:
+    image: redpandadata/redpanda:v24.2.7
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --kafka-addr=PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://127.0.0.1:19092
+    ports:
+      - "127.0.0.1:19092:9092"
+    restart: unless-stopped
