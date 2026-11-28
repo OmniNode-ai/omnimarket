@@ -36,6 +36,8 @@ class ModelBacklogSources:
     ticket_rule delegates ticket admission to omnimarket. All None generates nothing."""
 
     linear_snapshot: Path | None = None
+    # OMN-26762: open launch work through ProtocolTicketService (operator, issues); replaces the snapshot file.
+    tickets: Callable[[], tuple[str, list[dict[str, Any]]]] | None = None
     m4_carriers: Path | None = None
     scope: Path | None = None
     experiments: Callable[[], list[dict[str, Any]]] | None = None
@@ -152,6 +154,9 @@ class ModelLabFillRequest:
     queue_reserved: Mapping[str, int] = field(
         default_factory=dict
     )  # reserved against this tick's lab_headroom snapshot
+    # OMN-26762: takes one item (key, holder lane, now) under the shared claim lock and answers whether this
+    # placement holds it; None reads the lock the selection overlay names, and none declared means no claim.
+    claim: Callable[[str, str, str], bool] | None = None
 
 
 @dataclass(frozen=True)

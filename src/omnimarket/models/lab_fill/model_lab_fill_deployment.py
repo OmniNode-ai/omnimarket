@@ -6,6 +6,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from omnimarket.models.lab_fill.model_lab_fill_selection_rules import (
+    ModelLabFillSelectionRules,
+)
+
 
 @dataclass(frozen=True, slots=True)
 class ModelLabFillDeployment:
@@ -37,6 +41,8 @@ class ModelLabFillDeployment:
     # nothing off, so a deployment without them behaves exactly as before.
     terminal_hold_outcomes: tuple[str, ...] = ()
     terminal_hold_window_hours: int = 0
+    # OMN-26762: the per-ticket selection rules, as data; None keeps the request's own fields.
+    selection_rules: ModelLabFillSelectionRules | None = None
 
     @classmethod
     def from_overlay(cls, raw: object) -> ModelLabFillDeployment:
@@ -52,7 +58,11 @@ class ModelLabFillDeployment:
         if missing:
             raise ValueError("overlay missing keys: " + ", ".join(sorted(missing)))
         optional = ("delegation_epics", "delegation_owners")
-        optional_hold = ("terminal_hold_outcomes", "terminal_hold_window_hours")
+        optional_hold = (
+            "terminal_hold_outcomes",
+            "terminal_hold_window_hours",
+            "selection_rules",
+        )
         unknown = raw.keys() - set(keys) - set(optional) - set(optional_hold)
         if unknown:
             raise ValueError(
@@ -83,6 +93,11 @@ class ModelLabFillDeployment:
             delegation_owners=tuple(raw.get("delegation_owners", [])),
             terminal_hold_outcomes=tuple(raw.get("terminal_hold_outcomes", [])),
             terminal_hold_window_hours=raw.get("terminal_hold_window_hours", 0),
+            selection_rules=(
+                ModelLabFillSelectionRules.model_validate(raw["selection_rules"])
+                if raw.get("selection_rules") is not None
+                else None
+            ),
         )
 
     def __post_init__(self) -> None:

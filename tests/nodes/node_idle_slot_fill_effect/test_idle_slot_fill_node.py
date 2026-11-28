@@ -1007,10 +1007,9 @@ def _session_env(tmp_path: Path, ledger: Path | None = None) -> dict[str, str]:
 def test_default_sources_read_the_session_s_files_and_can_be_turned_off(tmp_path: Path):
     env = _session_env(tmp_path)
     src = handler.default_sources(FILL_NOW, env)
-    assert (
-        src.linear_snapshot
-        == tmp_path / ".claude_scratch" / "plans-today" / "linear-2026-10-19.json"
-    )
+    # OMN-26762: open launch work comes from the ticket service the overlay names, never a snapshot file.
+    assert src.linear_snapshot is None
+    assert src.tickets is not None
     assert (
         src.m4_carriers
         == tmp_path / ".local" / "state" / "omni" / "landing" / "m4-carriers.json"
@@ -1845,10 +1844,8 @@ def test_retired_plugin_registry_environment_keeps_snapshot_sources(tmp_path):
     }
     source = handler.default_sources(FILL_NOW, env)
     assert source is not None
-    assert (
-        source.linear_snapshot
-        == root / ".claude_scratch/plans-today" / f"linear-{FILL_NOW[:10]}.json"
-    )
+    assert source.linear_snapshot is None
+    assert source.tickets is not None
     canonical = handler.default_sources(
         FILL_NOW, {**env, "ONEX_REGISTRY_ROOT": str(root)}
     )
@@ -1882,3 +1879,66 @@ def test_glm_queue_entries_preserve_the_existing_claude_reservation_accounting()
         pin_of=lambda _entry: None,
     )
     assert reserved == {"claude": 1, "codex": 0}
+
+
+def _claimed_fill(tmp: Path, claim):
+    (tmp / "backlog.json").write_text(json.dumps({"standing_tickets": STANDING}))
+    src = sources(
+        tmp,
+        [issue("OMN-102", "route GLM first for text", labels=("delegation",))],
+    )
+    found = (
+        handler.HandlerLabFill()
+        .handle(
+            models.ModelLabFillRequest(
+                FILL_NOW,
+                POOL3,
+                [FREE3],
+                None,
+                tmp / "state",
+                str(tmp / "backlog.json"),
+                stub_runner(tmp),
+                "orch-1",
+                sources=src,
+                claim=claim,
+            )
+        )
+        .found
+    )
+    path = tmp / "calls.jsonl"
+    return found, path.read_text().splitlines() if path.is_file() else []
+
+
+def test_lab_fill_coordination_a_refused_claim_sends_nothing_and_says_so(
+    tmp_path: Path,
+):
+    asked: list[str] = []
+
+    def refuse(key: str, holder: str, now: str) -> bool:
+        asked.append(key)
+        return False
+
+    found, calls = _claimed_fill(tmp_path, refuse)
+    assert asked
+    assert calls == []
+    assert any(f[1] == "lab-fill-claim" for f in found)
+
+
+def test_lab_fill_coordination_a_granted_claim_sends(tmp_path: Path):
+    _found, calls = _claimed_fill(tmp_path, lambda *_args: True)
+    assert calls
+
+
+def test_lab_fill_coordination_a_ticket_with_an_open_blocker_is_not_sent(
+    tmp_path: Path,
+):
+    free = issue("OMN-102", "route GLM first for text", labels=("delegation",))
+    held = {
+        **issue("OMN-103", "route GLM second for text", labels=("delegation",)),
+        "blocked_by": ["OMN-9"],
+    }
+    src = sources(tmp_path, [free, held])
+    found, lanes, _ = lab_fill(tmp_path, src)
+    assert any("OMN-102" in lane for lane in lanes)
+    assert not any("OMN-103" in lane for lane in lanes)
+    assert any("blocked-by-open-dependency" in f[2] for f in found), found

@@ -103,6 +103,8 @@ from omnimarket.handlers.handler_lab_fill_live_tickets import (
     Post,
     linear_post,
 )
+from omnimarket.handlers.lab_fill_coordination import resolve_claim
+from omnimarket.handlers.lab_fill_ticket_source import read_open_launch_issues
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.rules_lab_fill_tickets import plan_ticket_backlog
 from omnimarket.handlers.rules_lane_requirements import claude_required, declarations
@@ -1630,6 +1632,7 @@ def _issue(issue: dict[str, Any]) -> dict[str, Any]:
         "project": project.get("name", "") if isinstance(project, dict) else project,
         "repo": issue.get("repo") or "",
         "pillar": issue.get("pillar"),
+        "blocked_by": [str(b) for b in issue.get("blocked_by") or []],
         "description": _snapshot_description(issue),
     }
 
@@ -1701,9 +1704,13 @@ def generate_backlog(
         if not isinstance(i["id"], str) or not TICKET_ID.fullmatch(i["id"]):
             skip("bad-id")
             continue
+        if i["blocked_by"]:
+            # OMN-26762: an open blocker in Linear holds the ticket; the next read frees it once the blocker closes
+            skip("blocked-by-open-dependency")
+            continue
         valid.append(
             {
-                **{k: v for k, v in i.items() if k != "statusType"},
+                **{k: v for k, v in i.items() if k not in ("statusType", "blocked_by")},
                 "status_type": i["statusType"],
             }
         )
@@ -1824,9 +1831,23 @@ def read_generated(
             unread.append(f"{name} unread: {detail}")
             return default
 
+    snapshot: Any = {}
     snapshot_path = sources.linear_snapshot
+    if sources.tickets is not None:
+        # OMN-26762: the ticket service the overlay names is the source; no snapshot file is read.
+        snapshot_path = None
+        try:
+            service_operator, service_issues = sources.tickets()
+            snapshot = {"operator": service_operator, "issues": service_issues}
+        except (Exception, SystemExit) as exc:
+            unread.append(
+                f"ticket_source unread: {' '.join(str(exc).splitlines())[:160]}"
+            )
+            snapshot = {}
     compact = snapshot_path.with_suffix(".txt") if snapshot_path is not None else None
-    if (
+    if sources.tickets is not None:
+        pass
+    elif (
         snapshot_path is not None
         and compact is not None
         and not snapshot_path.is_file()
@@ -1836,7 +1857,7 @@ def read_generated(
             f"linear_snapshot unread: only {compact.name}, the compact form with no assignee, labels or "
             f"title, so no ticket is generated; write {snapshot_path.name} with them"
         )
-        snapshot: Any = {}
+        snapshot = {}
     else:
         snapshot = read("linear_snapshot", sources.linear_snapshot, default={})
     operator = snapshot.get("operator") if isinstance(snapshot, dict) else None
@@ -2119,11 +2140,7 @@ def default_sources(now: str, env: Mapping[str, str]) -> ModelBacklogSources | N
         return ledger_tickets(drain_map, registry_root, now)
 
     return ModelBacklogSources(
-        linear_snapshot=registry_root
-        / ".claude_scratch/plans-today"
-        / f"linear-{now[:10]}.json"
-        if registry_root
-        else None,
+        tickets=lambda: read_open_launch_issues(env),
         m4_carriers=Path(env.get("HOME") or Path.home())
         / ".local/state/omni/landing/m4-carriers.json",
         scope=skill_file("merge-sweep/sweep_scope.json"),
@@ -2285,6 +2302,9 @@ class HandlerLabFill:
     def handle(self, request: ModelLabFillRequest) -> ModelLabFillResult:
         if request.read_only:
             return self._fill(request)
+        if self._claim_of(request) is not None:
+            # OMN-26762: the shared claim lock serializes placements; no host file lock stands beside it
+            return self._fill(request)
         with fill_lock(request.state_dir) as held:
             if held:
                 return self._fill(request)
@@ -2301,8 +2321,16 @@ class HandlerLabFill:
             ]
         )
 
+    def _claim_of(
+        self, request: ModelLabFillRequest
+    ) -> Callable[[str, str, str], bool] | None:
+        if request.claim is not None:
+            return request.claim
+        return resolve_claim(os.environ)
+
     def _fill(self, request: ModelLabFillRequest) -> ModelLabFillResult:
         state = request.state_dir
+        claim = self._claim_of(request)
         backlog_path = (
             Path(request.backlog).expanduser()
             if request.backlog
@@ -2509,6 +2537,16 @@ class HandlerLabFill:
             if request.read_only:
                 names.append(
                     f"{send['lane']} would be sent ({send['kind']} {send['key']}, {send['model']})"
+                )
+                continue
+            if claim is not None and not claim(send["key"], send["lane"], request.now):
+                found.append(
+                    (
+                        "note",
+                        "lab-fill-claim",
+                        f"{send['key']} is claimed by another placement; {send['lane']} was not sent",
+                        "",
+                    )
                 )
                 continue
             brief_path = state / "lab-fill-briefs" / f"{send['lane']}.brief.md"

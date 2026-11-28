@@ -33,3 +33,7 @@ class EnumLabFillSkipReason(StrEnum):
     # OMN-19998: the lane ended skipped-already-built with falsifiers not pass; the ticket is listed
     # for the readback path instead of a fill lane.
     READBACK = "readback"
+    # OMN-26762: rules the selection overlay declares per ticket.
+    PLACED_WITHIN_COOLDOWN = "placed-within-cooldown"
+    DONE_GATE_PROVEN = "done-gate-proven"
+    ONE_WORKER_PER_TICKET = "one-worker-per-ticket"
