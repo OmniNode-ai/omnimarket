@@ -87,9 +87,11 @@ async def test_lab_agent_without_a_local_rung_is_still_launch_failed() -> None:
 async def test_local_rung_pins_the_local_tier_pick_and_runs_the_local_port(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from omnimarket.handlers import lab_agent_local_rung as mod
     from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
         handler_delegation_routing as routing,
+    )
+    from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
+        handler_lab_agent_local_rung as mod,
     )
 
     picks: list[tuple[str, str]] = []
