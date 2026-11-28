@@ -117,3 +117,13 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_first_launch_tip_does_not_promise_every_command -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
+
+- id: dod-omn26620-compact-header-small-terminal
+  description: 'AC2: the compact header holds on a small terminal and the welcome shows no cards, after merging the current dev.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_welcome_screen.py::test_a_small_terminal_keeps_the_compact_header tests/unit/nodes/node_onex_setup_effect/test_welcome_screen.py::test_the_welcome_has_no_cards -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
