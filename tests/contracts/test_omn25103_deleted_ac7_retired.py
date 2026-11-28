@@ -11,6 +11,7 @@ contracts, so they are not read here.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -33,12 +34,14 @@ _LIVE_CRITERIA = (
 )
 
 
-def _document() -> dict[str, object]:
-    return yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
+def _document() -> dict[str, Any]:
+    document = yaml.safe_load(_CONTRACT.read_text(encoding="utf-8"))
+    assert isinstance(document, dict)
+    return document
 
 
-def _items() -> list[dict[str, object]]:
-    return list(_document()["dod_evidence"])  # type: ignore[call-overload]
+def _items() -> list[dict[str, Any]]:
+    return list(_document()["dod_evidence"])
 
 
 def _accepted(label: str) -> dict[str, str]:
@@ -52,7 +55,7 @@ def _accepted(label: str) -> dict[str, str]:
 
 def test_no_deleted_criterion_is_left_unretired() -> None:
     items = [
-        {**item, "ac_bindings": [_accepted(label) for label in item["binds_ac"]]}  # type: ignore[attr-defined]
+        {**item, "ac_bindings": [_accepted(label) for label in item["binds_ac"]]}
         if item.get("binds_ac")
         else item
         for item in _items()
@@ -66,9 +69,7 @@ def test_no_deleted_criterion_is_left_unretired() -> None:
 
 def test_ac7_is_retired_by_a_typed_entry() -> None:
     retirements = [
-        entry
-        for item in _items()
-        for entry in item.get("supersedes_ac_binding", [])  # type: ignore[attr-defined]
+        entry for item in _items() for entry in item.get("supersedes_ac_binding", [])
     ]
     assert {e["label"]: e["item"] for e in retirements} == {
         "AC7": "dod-omn25103-user-only-provision"
@@ -83,7 +84,7 @@ def test_ac7_is_retired_by_a_typed_entry() -> None:
 def test_the_contract_declares_no_ac7_requirement() -> None:
     labels = [
         acceptance["id"]
-        for requirement in _document()["requirements"]  # type: ignore[attr-defined]
+        for requirement in _document()["requirements"]
         for acceptance in requirement["acceptance"]
     ]
     assert "AC7" not in labels, labels
