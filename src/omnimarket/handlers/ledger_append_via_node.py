@@ -19,6 +19,9 @@ import uuid
 from collections.abc import Mapping
 
 DEFAULT_COMMAND = "onex work-ledger"
+# A unit's declared bus append command, already ending in ``append`` with the bus lane and workspace root bound
+# (OMN-24562); the default command binds neither, so a unit with no workspace root exits 69 on every append.
+HOST_BUS_APPEND_COMMAND_ENV = "ONEX_LEDGER_BUS_APPEND_COMMAND"
 DEFAULT_TIMEOUT_S = 360
 
 
@@ -38,14 +41,18 @@ def append_row_via_bus(
 ) -> tuple[bool, str]:
     """Send ``row`` to the ledger host as ``lane``; ``command_env`` may name a different command."""
     values = os.environ if environ is None else environ
-    command = shlex.split(values.get(command_env, DEFAULT_COMMAND))
-    if not command:
-        return False, "ledger command is empty"
+    if command_env in values:
+        command = [*shlex.split(values[command_env]), "append"]
+        if len(command) == 1:
+            return False, "ledger command is empty"
+    elif values.get(HOST_BUS_APPEND_COMMAND_ENV, "").strip():
+        command = shlex.split(values[HOST_BUS_APPEND_COMMAND_ENV])
+    else:
+        command = [*shlex.split(DEFAULT_COMMAND), "append"]
     try:
         done = subprocess.run(
             [
                 *command,
-                "append",
                 "--lane",
                 lane,
                 "--host",

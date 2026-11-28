@@ -348,3 +348,13 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_bus_session_lane_resolution_omn24562.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
+
+- id: dod-omn24562-silent-alarm-append-bus-command
+  description: 'AC13: the silent failure alarm appends its episode rows through the unit-declared ONEX_LEDGER_BUS_APPEND_COMMAND (bus lane and workspace root bound) instead of the unbound `onex work-ledger`, which exits 69 on a pool host and made the tick exit 3 (failing controls: the handler test fails at the merge base because the default command is used, and the unit contract at the merge base declares no such environment key).'
+  source: manual
+  binds_ac:
+  - AC13
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/test_ledger_append_via_node.py tests/nodes/node_host_installer_registry_units/test_silent_failure_alarm_bus_append_omn24562.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .

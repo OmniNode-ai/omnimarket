@@ -32,7 +32,11 @@ def test_row_is_sent_on_standard_input_over_the_work_ledger_command(
     monkeypatch.setattr(module.socket, "gethostname", lambda: "h053.example")
     request_id = module.request_id_for(NAMESPACE, "k")
     assert module.append_row_via_bus(
-        "row", lane="a-lane", request_id=request_id, command_env="UNSET_COMMAND_ENV"
+        "row",
+        lane="a-lane",
+        request_id=request_id,
+        command_env="UNSET_COMMAND_ENV",
+        environ={},
     ) == (True, "ledger append exit 0: ")
     argv = run.call_args.args[0]
     assert argv == [
@@ -75,3 +79,45 @@ def test_launch_failure_is_not_ok(
     )
     assert ok is False
     assert str(failure) in detail
+
+
+def test_host_bus_append_command_is_the_whole_command_when_the_caller_names_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A unit that declares ONEX_LEDGER_BUS_APPEND_COMMAND appends through it, bus lane and root bound (OMN-24562).
+
+    The default ``onex work-ledger`` binds no bus lane, so a unit with no workspace root exits 69 on every append.
+    """
+    run = Mock(return_value=subprocess.CompletedProcess([], 0, "{}", ""))
+    monkeypatch.setattr(module.subprocess, "run", run)
+    monkeypatch.setattr(module.socket, "gethostname", lambda: "h053.example")
+    request_id = module.request_id_for(NAMESPACE, "k")
+    environ = {
+        "ONEX_LEDGER_BUS_APPEND_COMMAND": "/py -m a.cli append --bus-lane dev --omnibase-path /root"
+    }
+    assert module.append_row_via_bus(
+        "row",
+        lane="a-lane",
+        request_id=request_id,
+        command_env="UNSET_COMMAND_ENV",
+        environ=environ,
+    ) == (True, "ledger append exit 0: ")
+    assert run.call_args.args[0] == [
+        "/py", "-m", "a.cli", "append", "--bus-lane", "dev", "--omnibase-path", "/root",
+        "--lane", "a-lane", "--host", "h053", "--request-id", str(request_id),
+    ]  # fmt: skip
+
+
+def test_caller_command_env_wins_over_the_host_bus_append_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = Mock(return_value=subprocess.CompletedProcess([], 0, "{}", ""))
+    monkeypatch.setattr(module.subprocess, "run", run)
+    module.append_row_via_bus(
+        "row",
+        lane="a-lane",
+        request_id=module.request_id_for(NAMESPACE, "k"),
+        command_env="X",
+        environ={"X": "mine", "ONEX_LEDGER_BUS_APPEND_COMMAND": "/py append"},
+    )
+    assert run.call_args.args[0][:2] == ["mine", "append"]
