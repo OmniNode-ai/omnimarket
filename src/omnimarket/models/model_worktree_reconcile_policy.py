@@ -10,6 +10,23 @@ class ModelWorktreeReconcilePolicy(BaseModel):
 
     quiet_hours: float = Field(default=6.0, ge=0, allow_inf_nan=False)
     stale_hours: float = Field(default=72.0, ge=0, allow_inf_nan=False)
+    # A worktree lock with no live lane, process, unit or ref lock and no
+    # activity for this many hours is stale: the lane that left it is gone, so
+    # the tree is unlocked and judged by the normal rules.
+    stale_lock_hours: float = Field(default=24.0, ge=0, allow_inf_nan=False)
+    # The exact lock-reason texts the lane runners write with `git worktree lock`.
+    # Only a lock whose reason is listed here may ever be judged stale; a person's
+    # lock (any other reason, or none) is kept and named. Empty: no lock is stale.
+    lane_lock_reasons: tuple[str, ...] = ()
+    # The ledger a stale-lock judgement rests on is read fresh each time: its newest
+    # row must be younger than this many hours (an empty, rolled or frozen file is
+    # not a ledger that shows a lane finished), the rolled files of the last
+    # ledger_lookback_days days are always read (a CLAIM that rolled into an
+    # archive file would otherwise be hidden, so 0 is no longer allowed), and
+    # the read stops as unread when it would take more than ledger_max_bytes.
+    ledger_max_age_hours: float = Field(default=6.0, gt=0, allow_inf_nan=False)
+    ledger_lookback_days: int = Field(default=3, ge=1)
+    ledger_max_bytes: int = Field(default=268435456, gt=0)
     allow_standalone_clone_removal: bool = True
     max_removals_per_run: int = Field(default=200, ge=0)
     # A standalone clone whose origin owner is not listed is always kept (a
@@ -27,6 +44,13 @@ class ModelWorktreeReconcilePolicy(BaseModel):
     unreadable_environment_files: dict[str, tuple[str, ...]] = Field(
         default_factory=dict
     )
+    # What a launchd definition (a plist) the run user cannot read or parse holds, declared by the host overlay: key = the
+    # file's absolute path, value = the absolute paths it holds that matter to the live-path set (empty: it holds none).
+    # Nothing is read with elevated rights and no file mode changes; an unreadable or malformed definition the host does
+    # not declare still fails the snapshot.
+    unreadable_launchd_definitions: dict[str, tuple[str, ...]] = Field(
+        default_factory=dict
+    )
 
     @field_validator("unreadable_environment_files")
     @classmethod
@@ -42,6 +66,24 @@ class ModelWorktreeReconcilePolicy(BaseModel):
                 if not path.startswith("/"):
                     raise ValueError(
                         f"unreadable_environment_files[{file}] holds a path"
+                        f" that is not absolute: {path}"
+                    )
+        return declared
+
+    @field_validator("unreadable_launchd_definitions")
+    @classmethod
+    def _declared_definitions_and_paths_are_absolute(
+        cls, declared: dict[str, tuple[str, ...]]
+    ) -> dict[str, tuple[str, ...]]:
+        for file, paths in declared.items():
+            if not file.startswith("/"):
+                raise ValueError(
+                    f"unreadable_launchd_definitions key is not an absolute path: {file}"
+                )
+            for path in paths:
+                if not path.startswith("/"):
+                    raise ValueError(
+                        f"unreadable_launchd_definitions[{file}] holds a path"
                         f" that is not absolute: {path}"
                     )
         return declared

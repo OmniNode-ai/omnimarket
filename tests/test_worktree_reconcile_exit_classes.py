@@ -37,6 +37,7 @@ from tests.test_worktree_reconcile_compute import facts
 from tests.test_worktree_reconcile_effect import (
     NO_UNITS,
     NOW,
+    READER,
     FakeMergedPrReader,
     Fakes,
     command,
@@ -200,9 +201,9 @@ def test_a_clone_refresh_that_timed_out_defers_and_one_that_failed_does_not(
         ("failed", ("probe_failed:ValueError",)),
     ):
         monkeypatch.setattr(adapter_facts, "_fetch_all", lambda _clone, s=status: s)
-        (item,) = GitWorktreeFactsProbe(unit_reader=NO_UNITS).discover(
-            command(roots=(str(root),)), NOW
-        )
+        (item,) = GitWorktreeFactsProbe(
+            unit_reader=NO_UNITS, ledger_reader=READER
+        ).discover(command(roots=(str(root),)), NOW)
         assert item.probe_errors == expected
         assert probe_class(item) == ("deferred" if status == "timeout" else "failed")
 
@@ -214,7 +215,7 @@ def test_a_nested_repository_is_a_person_s_call_not_a_failure(tmp_path: Path) ->
     nested.mkdir(parents=True)
     run_git(tmp_path, "init", "--quiet", str(nested))
     (task / "notes.txt").write_text("loose\n")
-    probe = GitWorktreeFactsProbe(unit_reader=NO_UNITS)
+    probe = GitWorktreeFactsProbe(unit_reader=NO_UNITS, ledger_reader=READER)
     probe._command = command(roots=(str(root),))
     item = probe._probe(task, root, NOW)
     assert item.kind == Kind.ORPHAN_DIR
@@ -229,7 +230,7 @@ def test_a_tree_that_vanishes_mid_probe_defers_and_a_missing_file_in_a_live_tree
     """h053 tick 2026-11-09T01:45Z: three orphan directories a lane closed out during the scan
     raised FileNotFoundError and made the tick exit 1."""
     _, root, _ = git_fixture(tmp_path)
-    probe = GitWorktreeFactsProbe(unit_reader=NO_UNITS)
+    probe = GitWorktreeFactsProbe(unit_reader=NO_UNITS, ledger_reader=READER)
     probe._command = command(roots=(str(root),))
     for vanishes, expected, klass in (
         (True, (f"{PROBE_DEFERRED_PREFIX}path_vanished",), "deferred"),

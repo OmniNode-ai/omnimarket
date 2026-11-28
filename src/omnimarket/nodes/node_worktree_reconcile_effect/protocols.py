@@ -12,6 +12,7 @@ from omnimarket.events.worktree_reconcile import (
     ModelWorktreeFacts,
     ModelWorktreeReconcileCommand,
 )
+from omnimarket.handlers.rules_ledger_claims import ModelLedgerRead
 from omnimarket.handlers.rules_unit_roots import UnitRoots
 from omnimarket.models.model_skipped_unit import ModelSkippedUnit
 
@@ -38,6 +39,12 @@ class ProtocolWorktreeDecider(Protocol):
     def decide(
         self, argv: list[str], facts: tuple[ModelWorktreeFacts, ...]
     ) -> tuple[ModelWorktreeDecisionRecord, ...]: ...
+
+
+class ProtocolLedgerReader(Protocol):
+    def read(
+        self, command: ModelWorktreeReconcileCommand, now: datetime
+    ) -> ModelLedgerRead | None: ...
 
 
 class ProtocolMergedPrReader(Protocol):

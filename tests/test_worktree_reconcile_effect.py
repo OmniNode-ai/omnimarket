@@ -26,7 +26,7 @@ from omnimarket.events.worktree_reconcile import (
     ModelWorktreeReconcileCommand,
     ModelWorktreeReconcileRunResult,
 )
-from omnimarket.handlers.handler_ledger_claims import live_claims
+from omnimarket.handlers.rules_ledger_claims import live_claims
 from omnimarket.handlers.rules_unit_roots import UnitRoots
 from omnimarket.models.model_skipped_unit import ModelSkippedUnit
 from omnimarket.models.model_worktree_reconcile_policy import (
@@ -38,6 +38,9 @@ from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_commands i
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts import (
     GitWorktreeFactsProbe,
     is_junk,
+)
+from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_ledger_file import (
+    FileLedgerReader,
 )
 from omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_publisher import (
     publish_topics,
@@ -68,6 +71,7 @@ class StaticUnits:
 
 
 NO_UNITS = StaticUnits()
+READER = FileLedgerReader()
 
 
 class Fakes:
@@ -200,7 +204,7 @@ def test_revalidation_does_not_measure_size(
         "omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts.process_cwds",
         lambda: (),
     )
-    probe = GitWorktreeFactsProbe(unit_reader=NO_UNITS)
+    probe = GitWorktreeFactsProbe(unit_reader=NO_UNITS, ledger_reader=READER)
     found = probe.discover(command(roots=(str(root),)), NOW)[0]
     assert found.size_bytes
     calls: list[list[str]] = []
@@ -375,7 +379,7 @@ def test_real_git_merged_removed_dirty_kept(
     monkeypatch.setattr(fake, "now", lambda: datetime(2100, 1, 1, tzinfo=UTC))
     decided, completed = publish_topics()
     handler = HandlerWorktreeReconcile(
-        probe=GitWorktreeFactsProbe(unit_reader=NO_UNITS),
+        probe=GitWorktreeFactsProbe(unit_reader=NO_UNITS, ledger_reader=READER),
         decider=fake,
         pinner=fake,
         remover=GitWorktreeRemover(),
@@ -384,7 +388,13 @@ def test_real_git_merged_removed_dirty_kept(
         decided_topic=decided,
         completed_topic=completed,
     )
-    result = handler.handle(command(roots=(str(root),), decider_command=None))
+    result = handler.handle(
+        command(
+            roots=(str(root),),
+            decider_command=None,
+            ledger_path=str(fresh_ledger(root.parent)),
+        )
+    )
     assert not clean.exists()
     assert not clean.parent.exists()
     assert dirty.exists()
@@ -409,7 +419,7 @@ def test_probe_ignored_secrets_and_remote_branch(
         "omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts.process_cwds",
         lambda: (),
     )
-    items = GitWorktreeFactsProbe(unit_reader=NO_UNITS).discover(
+    items = GitWorktreeFactsProbe(unit_reader=NO_UNITS, ledger_reader=READER).discover(
         command(roots=(str(root),)), NOW
     )
     assert len(items) == 1
@@ -462,7 +472,7 @@ def test_git_timeout_is_a_probe_error(
 
     monkeypatch.setattr(adapter_facts, "git", timeout_fetch)
     monkeypatch.setattr(adapter_facts, "process_cwds", lambda: ())
-    items = GitWorktreeFactsProbe(unit_reader=NO_UNITS).discover(
+    items = GitWorktreeFactsProbe(unit_reader=NO_UNITS, ledger_reader=READER).discover(
         command(roots=(str(root),)), NOW
     )
     # A timeout under load is deferred to the next tick, not a failure (OMN-22799).
@@ -487,7 +497,7 @@ def test_squash_merge_proof(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
         "omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts.process_cwds",
         lambda: (),
     )
-    fact = GitWorktreeFactsProbe(unit_reader=NO_UNITS).discover(
+    fact = GitWorktreeFactsProbe(unit_reader=NO_UNITS, ledger_reader=READER).discover(
         command(roots=(str(root),)), NOW
     )[0]
     assert fact.facts_complete
@@ -510,7 +520,7 @@ def test_standalone_depth_canonical_exclusion_and_trash(
         "omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts.process_cwds",
         lambda: (),
     )
-    probe = GitWorktreeFactsProbe(unit_reader=NO_UNITS)
+    probe = GitWorktreeFactsProbe(unit_reader=NO_UNITS, ledger_reader=READER)
     items = probe.discover(
         command(roots=(str(root),), extra_clone_roots=(str(extras), str(clone.parent))),
         datetime(2100, 1, 1, tzinfo=UTC),
@@ -545,9 +555,9 @@ def test_a_git_directory_under_a_registry_root_is_counted_and_never_removed(
     later = datetime(2100, 1, 1, tzinfo=UTC)
     items = {
         f.path: f
-        for f in GitWorktreeFactsProbe(unit_reader=NO_UNITS).discover(
-            command(roots=(str(root),)), later
-        )
+        for f in GitWorktreeFactsProbe(
+            unit_reader=NO_UNITS, ledger_reader=READER
+        ).discover(command(roots=(str(root),)), later)
     }
     assert sorted(items) == sorted(str(p.resolve()) for p in (linked, full, residue))
     policy = ModelWorktreeReconcilePolicy(
@@ -653,7 +663,7 @@ def test_initial_process_snapshot_once_and_ledger_change_refused(
         return (two,)
 
     monkeypatch.setattr(adapter_facts, "process_cwds", snapshot)
-    probe = GitWorktreeFactsProbe(unit_reader=NO_UNITS)
+    probe = GitWorktreeFactsProbe(unit_reader=NO_UNITS, ledger_reader=READER)
     items = probe.discover(command(roots=(str(root),), ledger_path=str(ledger)), NOW)
     assert len(calls) == 1
     assert items[0].live_claim
@@ -661,14 +671,23 @@ def test_initial_process_snapshot_once_and_ledger_change_refused(
     ledger.write_text(
         ledger.read_text() + "2026-01-09T23:30:00Z | STATUS | lane=b | unrelated\n"
     )
-    fresh = probe.revalidate(items[1], NOW)
-    assert "ledger_changed" not in fresh.probe_errors
-    assert not fresh.live_claim
-    # A claim that appears between discovery and removal is seen at removal time.
+    # A claim that appears between discovery and the run's recheck is seen at removal time.
     ledger.write_text(
         ledger.read_text() + "2026-01-09T23:40:00Z | CLAIM | lane=c | task-two\n"
     )
+    fresh = probe.revalidate(items[1], NOW)
+    assert "ledger_changed" not in fresh.probe_errors
+    assert fresh.live_claim
+    # The recheck reads the ledger once per run: a row appended after that read is the next
+    # run's to see, never a reason to read the whole ledger again for every tree.
+    ledger.write_text(
+        ledger.read_text() + "2026-01-09T23:50:00Z | TERMINAL | lane=c | outcome=done\n"
+    )
     assert probe.revalidate(items[1], NOW).live_claim
+    # CONTROL: the next run reads afresh and sees the lane finished.
+    assert not probe.discover(
+        command(roots=(str(root),), ledger_path=str(ledger)), NOW
+    )[1].live_claim
 
 
 def test_subprocess_decider_json_only(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -747,7 +766,7 @@ def test_stash_reflog_is_probed_without_stash_commands(
         "omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts.process_cwds",
         lambda: (),
     )
-    fact = GitWorktreeFactsProbe(unit_reader=NO_UNITS).discover(
+    fact = GitWorktreeFactsProbe(unit_reader=NO_UNITS, ledger_reader=READER).discover(
         command(roots=(str(root),)), NOW
     )[0]
     assert fact.facts_complete
@@ -784,7 +803,7 @@ def test_a_standalone_clone_counts_its_own_unpushed_stash(
         "omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts.process_cwds",
         lambda: (),
     )
-    items = GitWorktreeFactsProbe(unit_reader=NO_UNITS).discover(
+    items = GitWorktreeFactsProbe(unit_reader=NO_UNITS, ledger_reader=READER).discover(
         command(roots=(str(root),), extra_clone_roots=(str(extras),)), NOW
     )
     assert [f.path for f in items] == [str(standalone)]
@@ -795,7 +814,7 @@ def test_a_standalone_clone_counts_its_own_unpushed_stash(
 def test_ledger_churn_and_legacy_rows_never_block_a_run() -> None:
     from datetime import UTC, datetime
 
-    from omnimarket.handlers.handler_ledger_claims import claimed, live_claims
+    from omnimarket.handlers.rules_ledger_claims import claimed, live_claims
 
     now = datetime(2026, 1, 2, tzinfo=UTC)
     ledger = "\n".join(
@@ -806,7 +825,7 @@ def test_ledger_churn_and_legacy_rows_never_block_a_run() -> None:
             "2026-01-01T23:00:00Z | CLAIM | lane=live | ticket=TASK-1 | work",
             "2026-01-01T01:00:00Z | CLAIM | lane=dead | ticket=TASK-2 | work",
             "2026-01-01T23:30:00Z | CLAIM | lane=done | ticket=TASK-3 | work",
-            "2026-01-01T23:40:00Z | TERMINAL | lane=done | friction=none",
+            "2026-01-01T23:40:00Z | TERMINAL | lane=done | outcome=done | friction=none",
         ]
     )
     claims = live_claims(ledger, now, quiet_hours=6.0)
@@ -831,7 +850,7 @@ def test_an_error_with_no_tree_to_carry_it_is_never_a_clean_zero(
     root = tmp_path / "registry" / "trees"
     root.mkdir(parents=True)
     with pytest.raises(RuntimeError, match="process_snapshot_failed"):
-        GitWorktreeFactsProbe(unit_reader=NO_UNITS).discover(
+        GitWorktreeFactsProbe(unit_reader=NO_UNITS, ledger_reader=READER).discover(
             command(roots=(str(root),)), NOW
         )
 
@@ -851,9 +870,9 @@ def test_an_unreadable_directory_under_a_clone_root_is_skipped(
     try:
         registry = tmp_path / "registry" / "trees"
         registry.mkdir(parents=True)
-        items = GitWorktreeFactsProbe(unit_reader=NO_UNITS).discover(
-            command(roots=(str(registry),), extra_clone_roots=(str(home),)), NOW
-        )
+        items = GitWorktreeFactsProbe(
+            unit_reader=NO_UNITS, ledger_reader=READER
+        ).discover(command(roots=(str(registry),), extra_clone_roots=(str(home),)), NOW)
     finally:
         locked.chmod(0o700)
     assert [Path(item.path).name for item in items] == ["repo"]
@@ -875,7 +894,7 @@ def test_ignored_caches_are_not_work_but_an_ignored_secret_is(
     (tree / ".hypothesis").mkdir()
     (tree / ".hypothesis" / "cache").write_text("x")
     (tree / ".coverage").write_text("x")
-    probe = GitWorktreeFactsProbe(unit_reader=NO_UNITS)
+    probe = GitWorktreeFactsProbe(unit_reader=NO_UNITS, ledger_reader=READER)
     items = probe.discover(command(roots=(str(root),)), NOW)
     assert items[0].untracked_nonjunk_count == 0
     (tree / ".env").write_text("TOKEN=x")
@@ -904,7 +923,7 @@ def test_a_remote_of_another_repository_is_not_a_merge_base(
     run_git(clone, "remote", "set-head", "aaa-other", "main")
     tree = root / "task" / "repo"
     run_git(clone, "worktree", "add", "-b", "feature", str(tree))
-    items = GitWorktreeFactsProbe(unit_reader=NO_UNITS).discover(
+    items = GitWorktreeFactsProbe(unit_reader=NO_UNITS, ledger_reader=READER).discover(
         command(roots=(str(root),)), NOW
     )
     assert items[0].probe_errors == ()
@@ -964,7 +983,20 @@ def probe_for(
         "omnimarket.nodes.node_worktree_reconcile_effect.handlers.adapter_facts._fetch_all",
         lambda _clone: "ok",
     )
-    return GitWorktreeFactsProbe(unit_reader=units, merged_pr_reader=reader)
+    return GitWorktreeFactsProbe(
+        unit_reader=units, merged_pr_reader=reader, ledger_reader=READER
+    )
+
+
+def fresh_ledger(directory: Path) -> Path:
+    """A ledger read fresh against the year 2100 test clock: no CLAIM names any tree.
+
+    A tree is removed only with a fresh ledger read (OMN-24560), so a test that removes
+    one under that clock names this file as the host's ledger.
+    """
+    ledger = directory / "fresh-ledger.md"
+    ledger.write_text("2099-12-31T23:30:00Z | STATUS | lane=other | unrelated\n")
+    return ledger
 
 
 def run_with(
@@ -975,6 +1007,8 @@ def run_with(
 ) -> ModelWorktreeReconcileRunResult:
     fake = Fakes(())
     monkeypatch.setattr(fake, "now", lambda: datetime(2100, 1, 1, tzinfo=UTC))
+    if "ledger_path" not in updates:
+        updates["ledger_path"] = str(fresh_ledger(root.parent))
     decided, completed = publish_topics()
     handler = HandlerWorktreeReconcile(
         probe=probe,

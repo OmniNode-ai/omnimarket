@@ -15,40 +15,25 @@ from omnimarket.events.worktree_reconcile import (
 from omnimarket.events.worktree_reconcile import (
     EnumWorktreeReconcileDecision as Decision,
 )
+from omnimarket.handlers import rules_worktree_lock as lock
 from omnimarket.handlers import rules_worktree_removal as removal
 from omnimarket.models.model_worktree_reconcile_policy import (
     ModelWorktreeReconcilePolicy,
 )
 
 
-def live_reason(
-    facts: ModelWorktreeFacts, policy: ModelWorktreeReconcilePolicy
-) -> str | None:
-    for reason in ("live_process", "live_claim", "live_unit"):
-        if getattr(facts, reason):
-            return reason
-    if facts.git_locked:
-        return "git_locked"
-    if facts.in_progress_operation:
-        return "in_progress_op"
-    if (
-        facts.last_activity_age_hours is None
-        or facts.last_activity_age_hours < policy.quiet_hours
-    ):
-        return "recent_activity"
-    return None
-
-
-def classify(
+def _classify(
     facts: ModelWorktreeFacts, policy: ModelWorktreeReconcilePolicy
 ) -> tuple[Decision, str]:
     if not facts.facts_complete:
         return Decision.KEEP, "facts_unreadable"
-    live = live_reason(facts, policy)
+    live = lock.live_reason(facts, policy)
     if live:
         return Decision.KEEP, live
     age = facts.last_activity_age_hours
     assert age is not None
+    if facts.gitdir_missing:
+        return lock.dead_decision(facts, policy, age)
     if facts.dirty:
         return (
             Decision.NEEDS_HUMAN if age >= policy.stale_hours else Decision.KEEP
@@ -84,10 +69,16 @@ def classify(
         # A pin preserves HEAD only; a clone may hold other unpushed branches.
         if facts.kind == Kind.STANDALONE_CLONE:
             return Decision.NEEDS_HUMAN, "clone_unpushed_work"
-        return Decision.PIN_AND_REMOVE, "unpushed_work_stale"
+        return lock.unpushed_decision(facts)
     if facts.kind == Kind.STANDALONE_CLONE and not facts.has_remote:
         return Decision.NEEDS_HUMAN, "ambiguous"
     return Decision.KEEP, "not_stale"
+
+
+def classify(
+    facts: ModelWorktreeFacts, policy: ModelWorktreeReconcilePolicy
+) -> tuple[Decision, str]:
+    return lock.proven_decision(facts, *_classify(facts, policy))
 
 
 def reconcile(
@@ -100,7 +91,9 @@ def reconcile(
         )
         rows.append(
             ModelWorktreeDecisionRecord(
-                path=facts.path, decision=decision, reasons=(reason,)
+                path=facts.path,
+                decision=decision,
+                reasons=lock.decision_reasons(facts, decision, reason),
             )
         )
     return removal.cap_removals(
@@ -132,9 +125,11 @@ def apply_model_verdicts(
                     not fact.facts_complete
                     or fact.dirty
                     or fact.kind == Kind.ORPHAN_DIR
-                    or live_reason(fact, decisions.policy) is not None
+                    or lock.live_reason(fact, decisions.policy) is not None
                     # A pin preserves HEAD only, never a clone's other branches.
                     or fact.kind == Kind.STANDALONE_CLONE
+                    or lock.removal_unproven(fact) is not None
+                    or fact.gitdir_missing
                 )
             )
         )

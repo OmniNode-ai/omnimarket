@@ -448,6 +448,7 @@ def window_parity(
                 missing=_count(row.token("missing")),
                 extra=_count(row.token("extra")),
                 receipt_row_id=row.record.row_id,
+                exact_kinds=_parse_exact_kinds(row.token("exact_kinds")),
             )
         )
     if any(d.exact is False for d in found):
@@ -463,12 +464,63 @@ def _count(value: str | None) -> int | None:
     return int(value) if value is not None and value.isdigit() else None
 
 
+def _parse_exact_kinds(value: str | None) -> dict[str, bool]:
+    """Parse a receipt's exact_kinds cell: ``KIND:yes|no`` pairs, comma-separated."""
+    if value is None:
+        return {}
+    out: dict[str, bool] = {}
+    for pair in value.split(","):
+        pair = pair.strip()
+        if not pair:
+            continue
+        if ":" not in pair:
+            continue
+        kind, flag = pair.split(":", 1)
+        kind = kind.strip()
+        flag = flag.strip().lower()
+        if not kind or flag not in {"yes", "no"}:
+            continue
+        out[kind] = flag == "yes"
+    return out
+
+
+def kinds_complete(
+    parity: ModelWorkLedgerParity | None,
+    kinds: Sequence[str],
+    *,
+    unmeasured_days_allowed: int,
+) -> str:
+    """ "The empty string when the window's parity proves every named kind complete, else a short reason."""
+    if parity is None or not parity.days:
+        return "no_days"
+    days = parity.days
+    # A daily receipt is appended after its day ends, so only the trailing days of the
+    # window may lack one; an unmeasured day before a measured one is a hole.
+    trailing = 0
+    for day in reversed(days):
+        if day.exact is not None:
+            break
+        trailing += 1
+    unmeasured = sum(1 for d in days if d.exact is None)
+    if unmeasured > unmeasured_days_allowed or unmeasured > trailing:
+        return "unmeasured"
+    measured = [d for d in days if d.exact is not None]
+    for day in measured:
+        if not day.exact_kinds:
+            return f"no_kinds@{day.day}"
+        for kind in kinds:
+            if day.exact_kinds.get(kind.upper()) is not True:
+                return f"incomplete:{kind.upper()}@{day.day}"
+    return ""
+
+
 __all__ = [
     "FIELD_RE",
     "RULING_TYPES",
     "LedgerRow",
     "holds_in_force",
     "inbox",
+    "kinds_complete",
     "newest_per_lane",
     "open_claims",
     "parse_rows",

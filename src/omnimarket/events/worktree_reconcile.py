@@ -9,6 +9,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.models import model_worktree_ledger_projection as ledger
+from omnimarket.models import model_worktree_removal as removal
 from omnimarket.models.model_worktree_reconcile_policy import (
     ModelWorktreeReconcilePolicy as Policy,
 )
@@ -36,7 +38,7 @@ class EnumDecidedBy(StrEnum):
     MODEL = "model"
 
 
-class ModelWorktreeFacts(ModelWorktreeReconcileBase):
+class ModelWorktreeFacts(removal.ModelWorktreeLockFacts):
     """Only metadata; never file contents or credentials from remote URLs."""
 
     host: str
@@ -111,7 +113,7 @@ class ModelWorktreeReconcileDecisions(ModelWorktreeReconcileBase):
     policy: Policy = Field(default_factory=Policy)
 
 
-class ModelWorktreeReconcileCommand(ModelWorktreeReconcileBase):
+class ModelWorktreeReconcileCommand(ledger.ModelLedgerSourceChoice):
     host: str = Field(min_length=1)
     roots: tuple[str, ...]
     extra_clone_roots: tuple[str, ...] = ()
@@ -135,13 +137,11 @@ class ModelWorktreeReconcileDecidedEvent(ModelWorktreeReconcileBase):
     host: str
     facts: ModelWorktreeFacts
     decision: ModelWorktreeDecisionRecord
-    outcome: Literal[
-        "dry_run", "removed", "pinned_and_removed", "kept", "needs_human", "failed"
-    ]
+    outcome: removal.WorktreeOutcome
     error: str | None = None
 
 
-class ModelWorktreeReconcileRunCompletedEvent(ModelWorktreeReconcileBase):
+class ModelWorktreeReconcileRunCompletedEvent(removal.ModelWorktreeRemovalReport):
     correlation_id: UUID
     host: str
     started_at: datetime
