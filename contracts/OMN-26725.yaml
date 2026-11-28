@@ -55,6 +55,7 @@ dod_evidence:
   - id: "dod-omn26725-lab-work-item-gets-verifier-lane"
     description: "An item that runs onex lab-work with no --bus-lane gets the verifier's bus lane in ONEX_LAB_WORK_BUS_LANE and the CLI reads it, so the lab-work refusal 'names no broker' no longer stops it; a lane the caller set and a --bus-lane flag both win, and a command that is not lab-work gets none. The two lane tests fail on origin/dev."
     source: "manual"
+    binds_ac: ["AC2"]
     checks:
       - check_type: "test_passes"
         check_value: "uv run --frozen pytest tests/unit/lab_work/test_bus_lane_env.py -q -n 0 --no-cov -p no:cacheprovider"
