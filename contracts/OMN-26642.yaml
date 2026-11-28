@@ -105,11 +105,13 @@ dod_evidence:
     check_value: onex lab-work run --bus-lane dev --omnibase-path "${OMNI_HOME:?}" --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26642 --kind test -- uv run --frozen pytest tests/nodes/node_delegation_check_probe_effect -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn26642-integration-proof-names-bus-lane
-  description: The local Done gate item dod-omn26642-integration-proof-dev-lane runs onex lab-work run with --bus-lane dev and --omnibase-path, so the delegation names its broker lane instead of resolving to the shared kafka bus with no broker. This hosted check reads the contract and fails when that item's command drops either flag.
+  description: The local Done gate item dod-omn26642-integration-proof-dev-lane runs onex lab-work run with --bus-lane dev and --omnibase-path, so the delegation names its broker lane instead of resolving to the shared kafka bus with no broker. The test reads the contract, passes the item as written and fails a copy of its command that drops either flag.
   source: manual
+  binds_ac:
+  - AC4
   checks:
-  - check_type: command
-    check_value: python3 -c "import re,sys,yaml; d=yaml.safe_load(open('contracts/OMN-26642.yaml')); it=[i for i in d['dod_evidence'] if i['id']=='dod-omn26642-integration-proof-dev-lane']; c=it[0]['checks'][0]['check_value']; sys.exit(0 if re.search(r'onex lab-work run --bus-lane dev --omnibase-path ',c) else 1)"
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_contract_integration_proof_names_bus_lane.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn26642-tick-store-reader
   description: The probe tick takes the node overlay, the responder row and the gateway row from the injected settings store reader, so a host whose unit does not name the settings snapshot root grades from the store; a store that serves no gateway row still reads PRECONDITION-ABSENT. The tests fail on a tick that reads the rows only from a per-host path.
