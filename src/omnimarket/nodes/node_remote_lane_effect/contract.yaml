@@ -83,6 +83,10 @@ descriptor:
   timeout_ms: 600000
 runtime_dispatch:
   command_topic: "onex.cmd.omnimarket.remote-lane-effect-requested.v1"
+  # The remote-lane runner asks this node one operation at a time from a request file; no bus subscription starts it.
+  on_demand:
+    command: uv run onex node node_remote_lane_effect --input <request.json> --output receipt
+    owner: OmniNode Platform Team
   terminal_events:
     success: "onex.evt.omnimarket.remote-lane-effect-completed.v1"
     failure: "onex.evt.omnimarket.remote-lane-effect-failed.v1"
