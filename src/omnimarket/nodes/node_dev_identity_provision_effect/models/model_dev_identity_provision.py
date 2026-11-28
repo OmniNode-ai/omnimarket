@@ -43,6 +43,10 @@ class EnumDevIdentityOutcome(StrEnum):
     TENANT_BINDING_UNCONFIGURED = "tenant_binding_unconfigured"
     USER_ATTRIBUTES_FAILED = "user_attributes_failed"
     TOKEN_CLAIMS_MISMATCH = "token_claims_mismatch"
+    USER_PROVISIONED = "user_provisioned"
+    ROLE_NOT_FOUND = "role_not_found"
+    ROLE_ASSIGN_FAILED = "role_assign_failed"
+    USER_ONLY_UNCONFIGURED = "user_only_unconfigured"
 
 
 class EnumDevIdentityCleanup(StrEnum):
@@ -73,6 +77,9 @@ class ModelDevIdentityProvisionCommand(BaseModel):
     ``tenant_id`` (OMN-26476) binds the named user to that EXISTING tenant instead of creating a probe tenant: the run reads
     the tenant over the bus, sets the user's tenant attributes and reads the audience and tenant claims back from the
     token the user signs in with. It needs a username and a write, and excludes the lookup and delete verbs.
+
+    ``user_only`` (OMN-25103) creates ONE user in the dev realm with the named realm role ``read_role`` and no tenant: no probe
+    tenant is asked for and no existing tenant is read or bound. It needs a username with its own email and password key id.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -88,6 +95,8 @@ class ModelDevIdentityProvisionCommand(BaseModel):
     lookup_user: bool = False
     delete_user: bool = False
     tenant_id: UUID | None = None
+    user_only: bool = False
+    read_role: str | None = None
 
     @model_validator(mode="after")
     def _user_verbs_name_one_user(self) -> ModelDevIdentityProvisionCommand:
@@ -108,6 +117,21 @@ class ModelDevIdentityProvisionCommand(BaseModel):
                 raise ValueError("tenant_id needs a username to bind")
             if not self.write:
                 raise ValueError("tenant_id writes: write must be true")
+        if self.user_only:
+            if self.lookup_user or self.delete_user or self.tenant_id is not None:
+                raise ValueError(
+                    "user_only creates one user with no tenant: it excludes lookup_user, delete_user and tenant_id"
+                )
+            if not self.username or not self.password_key_id or not self.email:
+                raise ValueError(
+                    "user_only needs a username with its own email and password_key_id"
+                )
+            if not self.read_role:
+                raise ValueError("user_only needs read_role, the realm role to grant")
+            if not self.write:
+                raise ValueError("user_only writes: write must be true")
+        elif self.read_role is not None:
+            raise ValueError("read_role belongs to user_only")
         return self
 
 

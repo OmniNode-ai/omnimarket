@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.330"
+version = "0.4.331"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -476,6 +476,7 @@ node_close_out = "omnimarket.nodes.node_close_out"
 node_closeout_effect = "omnimarket.nodes.node_closeout_effect"
 node_closeout_verifier_compute = "omnimarket.nodes.node_closeout_verifier_compute"
 node_cloud_session_placement_effect = "omnimarket.nodes.node_cloud_session_placement_effect"
+node_cloud_smoke_check_effect = "omnimarket.nodes.node_cloud_smoke_check_effect"
 node_code_contract_score_effect = "omnimarket.nodes.node_code_contract_score_effect"
 node_code_edit_scope_compute = "omnimarket.nodes.node_code_edit_scope_compute"
 node_code_embedding_effect = "omnimarket.nodes.node_code_embedding_effect"
@@ -566,7 +567,9 @@ node_coverage_sweep = "omnimarket.nodes.node_coverage_sweep"
 node_create_followup_tickets_effect = "omnimarket.nodes.node_create_followup_tickets_effect"
 node_create_ticket = "omnimarket.nodes.node_create_ticket"
 node_cross_cli_originator = "omnimarket.nodes.node_cross_cli_originator"
+node_cross_owner_ask_check_compute = "omnimarket.nodes.node_cross_owner_ask_check_compute"
 node_cross_repo_order_gate_compute = "omnimarket.nodes.node_cross_repo_order_gate_compute"
+node_customer_path_container_test_effect = "omnimarket.nodes.node_customer_path_container_test_effect"
 node_daily_line_compute = "omnimarket.nodes.node_daily_line_compute"
 node_daily_line_effect = "omnimarket.nodes.node_daily_line_effect"
 node_dashboard_sweep = "omnimarket.nodes.node_dashboard_sweep"
@@ -1051,6 +1054,7 @@ node_llm_delegation_projection = "omnimarket.nodes.node_llm_delegation_projectio
 node_llm_delegation_routing_compute = "omnimarket.nodes.node_llm_delegation_routing_compute"
 node_llm_eval_harness = "omnimarket.nodes.node_llm_eval_harness"
 node_local_dashboard_serve_effect = "omnimarket.nodes.node_local_dashboard_serve_effect"
+node_local_done_gate_receipt_store_effect = "omnimarket.nodes.node_local_done_gate_receipt_store_effect"
 node_local_environment_observe_effect = "omnimarket.nodes.node_local_environment_observe_effect"
 node_local_review = "omnimarket.nodes.node_local_review"
 node_local_supervisor = "omnimarket.nodes.node_local_supervisor"
@@ -2179,9 +2183,9 @@ force-include = { "config/ci_bus_lanes.yaml" = "omnimarket/config/ci_bus_lanes.y
 # the pin means replacing those parts too: delete the old ones, then run
 # `split -b 720000 -d <asset> <asset>.part-` in that directory. A test names the
 # pin and the parts that disagree.
-version = "v1.1.16"
-sha256 = "61ff53566dd17948abe3be398d0a995d9414a81f9ca8399b61966e769fc48cef"
-asset = "omnidash-bundle-v1.1.16.tar.gz"
+version = "v1.1.17"
+sha256 = "51cb5486a086a6aa35e968055c171adf80081007018312816f7fc14f8bf76def"
+asset = "omnidash-bundle-v1.1.17.tar.gz"
 repository = "OmniNode-ai/omnidash"
 
 [tool.hatch.build]

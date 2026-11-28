@@ -321,3 +321,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/delegation/test_deployed_named_tests_omn17427.py -q --no-cov -n 0 -p no:randomly -k never_returns
     cwd: .
+- id: dod-omn26043-dev-tenant-overlay-named-when-absent
+  description: "When no overlay of the dev tenant node is served, the dev tenant credential's absence names the overlay file and the roots variable that was searched (naming no value), and an overlay in the declared place is read; the new test fails on the previous commit, where the absence named only the error type. On the lab, with the overlay served under a root of the probe unit's roots, C29 and C30 read the tenant credential and grade the gateway (FAIL on product clauses), and without it they read PRECONDITION-ABSENT absent=[tenant_credential]. This binds AC5: the credential is the precondition of the gateway-graded runs."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_dev_tenant_overlay_seam.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

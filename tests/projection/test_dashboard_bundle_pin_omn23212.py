@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-23212: `onex dashboard` serves OmniDash v1.1.16, pinned with its sha256.
+"""OMN-23212: `onex dashboard` serves OmniDash v1.1.17, pinned with its sha256.
 
 Amendment 1 (2026-11-17): the pin moved from v1.1.12 to omnidash v1.1.13 (OMN-24224),
 which carries a named failed read on Delegation Evidence ("Run steps is unavailable.")
@@ -18,6 +18,10 @@ merge bca36b98), which carries OMN-26439's fix (5870118c): a window with no runs
 Amendment 4 (2026-11-26, OMN-26691): the pin moves to omnidash v1.1.16 (signed tag on omnidash#544's
 merge fcbd7f90), which carries the Overview Done figure (omnidash#531, a74c18dc) and the Running
 figure (omnidash#532, bb23d514). v1.1.16 still writes a zero amount with its cents.
+
+Amendment 5 (2026-11-28, OMN-26767): the pin moves to omnidash v1.1.17 (signed tag on omnidash#546's
+merge 46cec44f), which carries the dashboard window, rollout and failed-read fixes (OMN-26665,
+omnidash#543) and the safe markdown run page (OMN-26646, omnidash#542).
 
 Failure modes:
 
@@ -41,13 +45,13 @@ from omnimarket.nodes.node_local_dashboard_serve_effect.bundle import (
     load_pin,
 )
 
-_RELEASE = "v1.1.16"
-_RELEASE_SHA256 = "61ff53566dd17948abe3be398d0a995d9414a81f9ca8399b61966e769fc48cef"
-_RELEASE_ASSET = "omnidash-bundle-v1.1.16.tar.gz"
+_RELEASE = "v1.1.17"
+_RELEASE_SHA256 = "51cb5486a086a6aa35e968055c171adf80081007018312816f7fc14f8bf76def"
+_RELEASE_ASSET = "omnidash-bundle-v1.1.17.tar.gz"
 
 
 @pytest.mark.unit
-def test_the_pin_names_v1_1_16_with_its_published_digest() -> None:
+def test_the_pin_names_v1_1_17_with_its_published_digest() -> None:
     pin = load_pin()
     assert pin.version == _RELEASE
     assert pin.sha256 == _RELEASE_SHA256

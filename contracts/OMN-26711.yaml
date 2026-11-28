@@ -1,0 +1,130 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+schema_version: "1.0.0"
+ticket_id: "OMN-26711"
+title: "AWS Dev: an install runbook for the onboarding owner and a smoke check that runs one delegation end to end through Dev"
+summary: >-
+  Acceptance for OMN-26711 in omnimarket. The smoke check is node_cloud_smoke_check_effect: one delegation through a gateway
+  whose URL and key come from settings, with the receipt read back for the answering model. AC2 and AC3 are bound to its
+  tests, and to the clean-container customer-path test (node_customer_path_container_test_effect) that runs it as its delegation step. AC1's runbook is a document in a sibling documents repository (its own pull request), so its item here
+  checks that the command surface the runbook documents exists; the runbook file and its recorded lab outputs are read in
+  that pull request.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: "req-omn26711-runbook"
+    statement: >-
+      A runbook covers a Dev tenant and key, the command line against the Dev API, one delegation, its receipt and a 503.
+    acceptance:
+      - id: "AC1"
+        statement: >-
+          a runbook covers getting a Dev tenant and an API key, pointing the command-line tool at the Dev API, submitting one delegation and reading its receipt, and what to do when the gateway answers 503 -- falsifier: the runbook file exists and every command in it is run once against the lab Dev stand-in with its output recorded
+  - id: "req-omn26711-smoke-check"
+    statement: >-
+      A smoke check runs one delegation end to end through a gateway from settings and names the answering model.
+    acceptance:
+      - id: "AC2"
+        statement: >-
+          a smoke check runs one delegation end to end through a Dev gateway URL with a customer-supplied key and reads back a receipt naming the model that answered -- falsifier: the smoke check passes against the lab dev gateway and fails with a named reason against a gateway with no settings
+      - id: "AC3"
+        statement: >-
+          the smoke check takes the gateway URL and key from settings or the environment, never hard-coded -- falsifier: grep for a host or key literal in the smoke check prints nothing
+evidence_requirements: []
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: "dod-omn26711-ac1-runbook"
+    description: >-
+      AC1: the commands the runbook documents (onex cloud login, status, delegate, receipt, logout) exist in the installed
+      client; the runbook itself is in a sibling documents repository and each command's lab output is recorded in this
+      pull request's body. The second check runs the smoke check's 503 test, the outcome the runbook's 503 section sends the
+      reader to; it fails at the merge base, where the node does not exist.
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run onex cloud receipt --help
+        cwd: "."
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_cloud_smoke_check_effect/test_cloud_smoke_check.py -q --no-cov -n 0 -p no:randomly -k gateway_503_is_named_unavailable"
+        cwd: "."
+  - id: "dod-omn26711-ac2-smoke-check"
+    description: >-
+      AC2: the smoke check's tests pass: a healthy gateway passes and names the model; no settings, an unreadable key file,
+      a 503, an unreachable gateway, a 401, a receipt with no model and a failed run each end with a named outcome.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_cloud_smoke_check_effect/test_cloud_smoke_check.py -q --no-cov -n 0 -p no:randomly"
+        cwd: "."
+  - id: "dod-omn26711-ac3-no-literals"
+    description: >-
+      AC3: grep for a URL host, an IP address or a key-prefix literal in the smoke check's source prints nothing.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_cloud_smoke_check_effect/test_no_literals.py -q --no-cov -n 0 -p no:randomly -k cloud_smoke_check_effect"
+        cwd: "."
+  - id: "dod-omn26711-ctest-container-path"
+    description: >-
+      AC2: the clean-container customer-path test's tests pass: a healthy run reads the receipt (status, model, provider), and no
+      settings, a key file open to the group, a lab address that answers, a failed install, a failed smoke check, a receipt with
+      no model and a container that will not start each end with a named outcome; the key never reaches the result.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_customer_path_container_test_effect/test_customer_path_container_test.py -q --no-cov -n 0 -p no:randomly"
+        cwd: "."
+  - id: "dod-omn26711-ctest-no-literals"
+    description: >-
+      AC3: grep for a URL host, an IP address or a key-prefix literal in the container test's Python source prints nothing; the
+      gateway, key file, lab probe targets and tenant slug come from settings.
+    source: "manual"
+    binds_ac: ["AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_customer_path_container_test_effect/test_no_literals.py -q --no-cov -n 0 -p no:randomly"
+        cwd: "."
+  - id: "dod-omn26711-integration-proof"
+    description: >-
+      Run the smoke check's tests on a lab host at the pushed head: a healthy gateway passes and names the model, and no
+      settings, an unreadable key file, a 503, an unreachable gateway, a 401, a receipt with no model and a failed run each
+      end with a named outcome. Hosted CI cannot reach the lab, so only the local Done gate runs this unbound check.
+    source: "manual"
+    execution_scope: "local_done_gate"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          uv run onex lab-work run --repo OmniNode-ai/omnimarket --sha
+          "$(git rev-parse HEAD)" --lane dod-integration-proof-26711 --kind test --
+          uv run --frozen pytest tests/nodes/node_cloud_smoke_check_effect/test_cloud_smoke_check.py -q --no-cov
+        cwd: "."
+  - id: "dod-omn26711-check-deploy"
+    description: >-
+      Deploy probe the hosted runner can run: the smoke check's handler at the checked-out commit on GitHub names the
+      settings the gateway URL comes from; the node does not exist at the merge base, so the probe fails there.
+    source: "manual"
+    checks:
+      - check_type: "command"
+        check_value: >-
+          bash -o pipefail -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_cloud_smoke_check_effect/handlers/handler_cloud_smoke_check.py?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -F "ONEX_API_BASE_URL" > /dev/null'
+        cwd: "."
+  - id: "dod-omn26711-ctest6-own-key-and-tests-reading"
+    description: >-
+      AC2: the clean-container customer-path test registers the tenant's own provider key as a step (the key on stdin, only when
+      an owner-only key file is named, never on an argv or in the result; a file open to the group is refused before any container
+      starts; a refused registration fails the run at that step with the client's words and a guide gap), and reads the receipt's
+      named-tests outcome from its tests_outcome field or from the outcome its rule evaluations record.
+    source: "manual"
+    binds_ac: ["AC2"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_customer_path_container_test_effect/test_customer_path_container_test.py -q --no-cov -n 0 -p no:randomly -k 'own_key or provider_key or untested or tests_outcome or tests_field or refused_registration'"
+        cwd: "."

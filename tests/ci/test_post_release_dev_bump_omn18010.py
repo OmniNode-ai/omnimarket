@@ -237,6 +237,12 @@ def test_the_auto_tag_workflow_reopens_dev_after_it_tags() -> None:
     assert action["with"]["released-version"] == "${{ needs.auto-tag.outputs.version }}"
 
 
+def test_the_auto_tag_existence_check_reads_the_remote_tag() -> None:
+    text = (_WORKFLOWS / "auto-tag-on-merge.yml").read_text(encoding="utf-8")
+    assert "git ls-remote --exit-code --tags origin" in text
+    assert 'git rev-parse "refs/tags/' not in text
+
+
 def test_the_reopen_dev_action_runs_the_bump_and_stages_the_removal() -> None:
     action = yaml.safe_load(_REOPEN_ACTION.read_text(encoding="utf-8"))
     shell = "\n".join(str(s.get("run", "")) for s in action["runs"]["steps"])
