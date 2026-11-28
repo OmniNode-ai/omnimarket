@@ -125,6 +125,7 @@ def with_text_state(
                     _js_or(r.get("held_text_sha") if r else None, "")
                 ),
                 "waiting_on": waiting_on if _strings(waiting_on) else [],
+                "text_error": _js_string(_js_or(r.get("error") if r else None, "")),
             }
         )
     return out
@@ -179,6 +180,9 @@ def pr_gate(row: Mapping[str, Any], overlay: ModelCloseoutScopeOverlay) -> str:
     unread = _js_or(row.get("pr_error"), row.get("error"))
     if _js_truthy(unread):
         return f"PR state unread: {_js_string(unread)}"
+    text_unread = row.get("text_error")
+    if _js_truthy(text_unread):
+        return f"text state unread: {_js_string(text_unread)}"
     state = _js_string(_js_or(row.get("state"), "")).strip().lower()
     if state not in overlay.eligible_states:
         return "not started"

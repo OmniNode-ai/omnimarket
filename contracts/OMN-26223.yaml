@@ -18,6 +18,8 @@ requirements:
         statement: "AC2: a test built from the recorded incident (a bundle whose held is not an array) fails to be written by the producer and is refused by the reader with a typed error, never an empty or zero result -- falsifier: uv run pytest -k bundle_held_not_array -q in omnimarket"
       - id: AC3
         statement: "AC3: no scheduled-job script parses its bundle with hand-written field checks any more -- falsifier: uv run pytest -k no_hand_parsed_bundle -q in omnimarket, a grep test over the converted readers"
+      - id: AC4
+        statement: "AC4: a closeout sweep text-state row carrying the producer's error field is accepted by the scope reader and deferred as a text-state-unread finding, never refused as an extra input and never read as a ticket with no closeout comment -- falsifier: uv run pytest tests/unit/test_scheduled_job_contract.py -k text_state_error -q in omnimarket"
 evidence_requirements:
   - kind: tests
     description: "The scheduled-job contract tests."
@@ -48,6 +50,13 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run pytest tests/unit -q --no-cov -k no_hand_parsed_bundle
+  - id: dod-omn26223-ac4
+    description: "AC4 proven by the text-state error-field tests."
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/test_scheduled_job_contract.py -q --no-cov -k text_state_error
   - id: dod-omn26223-integration-proof
     description: "Run the scheduled-job contract tests on a lab host at the pushed head; the local Done gate runs this unbound check."
     source: manual

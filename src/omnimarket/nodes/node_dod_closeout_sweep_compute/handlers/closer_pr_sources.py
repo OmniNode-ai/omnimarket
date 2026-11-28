@@ -52,7 +52,9 @@ def clone_path(home: Path, repository: ModelPrRepository) -> Path:
     if repository.location is EnumCloneLocation.REGISTRY_ROOT:
         return home
     if repository.location is EnumCloneLocation.BESIDE_REGISTRY:
-        return home.parent / repository.name
+        # ``Path.parent`` is lexical and the shell's ``..`` is physical: a registry root that is a
+        # symlink (the lab hosts') has its siblings beside the target, not beside the link.
+        return home.resolve().parent / repository.name
     return home / repository.name
 
 

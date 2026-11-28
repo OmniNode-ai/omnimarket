@@ -110,7 +110,7 @@ inputs:
   report_ref: {type: str, required: false, description: "completion: the report path the TERMINAL cites; empty when no report was written."}
   scope_candidates: {type: list, required: false, description: "scope_bundle: every enumerated candidate row ({id, state, sources, last_closeout_comment_at, ...}); rows pass through to the bundle unchanged (OMN-20655)."}
   scope_pr_state: {type: list, required: false, description: "scope_bundle: the PR state row of each candidate ({id, merged, open, error})."}
-  scope_text_state: {type: list, required: false, description: "scope_bundle: the text-state row of each candidate ({id, last_closeout_comment_at, text_sha, held_text_sha, waiting_on})."}
+  scope_text_state: {type: list, required: false, description: "scope_bundle: the text-state row of each candidate ({id, last_closeout_comment_at, text_sha, held_text_sha, waiting_on, error}); a row with a non-empty error is deferred as `text state unread`."}
   scope_contract_state: {type: list, required: false, description: "scope_bundle: {id, has_contract} per candidate; absent ranks every ticket as having a contract, so the script's own ranking holds."}
   scope_overlay: {type: object, required: false, description: "scope_bundle, pr_rows, refuse_binding: the overlay (rank rules, no-contract reserve, caps, eligible states, the PR repositories with their default branches); absent loads this node's overlay.yaml."}
   scope_examined: {type: object, required: false, description: "scope_bundle: what was recorded of each ticket's last selection ({id: {examined_at, key, streak}}); the ranking uses the time, and a ticket whose recorded key reads unchanged for the overlay's number of selections is held (OMN-23282)."}
