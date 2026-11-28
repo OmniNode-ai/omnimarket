@@ -563,6 +563,32 @@ def _c28(s: _Session) -> tuple[ModelCheckClause, ...]:
     )
 
 
+def _providers_called(receipt: Mapping[str, Any] | None) -> set[str]:
+    """Every provider the receipt names: the one that answered and each entry of its attempt list."""
+    if receipt is None:
+        return set()
+    named = {v for v in (_text(receipt.get("provider")),) if v}
+    attempts = receipt.get("attempts")
+    if isinstance(attempts, list):
+        for entry in attempts:
+            value = _text(entry.get("provider")) if isinstance(entry, Mapping) else None
+            if value:
+                named.add(value)
+    return named
+
+
+def _only_chosen_provider_clause(receipt: Mapping[str, Any] | None) -> ModelCheckClause:
+    """A customer's own-key session talks only to the provider the customer chose (OMN-26043)."""
+    called = _providers_called(receipt)
+    return _clause(
+        "only_chosen_provider_called",
+        receipt is not None and len(called) == 1,
+        f"the receipt names one provider, {sorted(called)[0]}, across its route and attempts"
+        if receipt is not None and len(called) == 1
+        else f"the receipt names {sorted(called) or 'no provider'}: exactly one provider may have been called",
+    )
+
+
 def _c29(s: _Session) -> tuple[ModelCheckClause, ...]:
     workflow_id, status, receipt, answered = _healthy(s)
     houses = _house_refs(receipt)
@@ -570,6 +596,7 @@ def _c29(s: _Session) -> tuple[ModelCheckClause, ...]:
     return (
         _completed("completed_under_tenant_key", status, answered, workflow_id),
         _identity_clause("receipt_names_provider_and_model", receipt),
+        _only_chosen_provider_clause(receipt),
         _clause(
             "no_house_credential_in_receipt",
             receipt is not None and not houses,

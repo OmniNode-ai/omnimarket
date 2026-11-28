@@ -197,6 +197,15 @@ REMOVALS: list[tuple[str, str, Callable[[dict[str, Any]], None]]] = [
         _body("receipt_healthy", "result_content", HOUSE),
     ),
     ("C29", "house_key_never_stands_in", _status("submit_invalid_key", 202)),
+    (
+        "C29",
+        "only_chosen_provider_called",
+        _body(
+            "receipt_healthy",
+            "attempts",
+            [{"provider": "local"}, {"provider": "openrouter"}],
+        ),
+    ),
     ("C30", "plugin_source_accepted", _status("submit_healthy", 500)),
     ("C30", "completed_through_gateway", running),
     ("C30", "receipt_names_provider_and_model", no_provider),

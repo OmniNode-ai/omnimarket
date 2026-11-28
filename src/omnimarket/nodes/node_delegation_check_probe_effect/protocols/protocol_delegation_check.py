@@ -61,6 +61,15 @@ class ProtocolDashboardMachine(Protocol):
     ) -> ModelDashboardObservation: ...
 
 
+@runtime_checkable
+class ProtocolFallThroughMachine(Protocol):
+    """A customer machine that can send one task down the chain with the local rung made unusable (C13 and C14)."""
+
+    def run_fall_through(
+        self, check_id: CheckId, resolution: ModelChainResolution
+    ) -> ModelDelegateObservation: ...
+
+
 class ProtocolCheckResultPublisher(Protocol):
     def publish(
         self,
