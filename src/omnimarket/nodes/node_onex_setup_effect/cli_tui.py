@@ -1918,7 +1918,7 @@ class SetupScreen(_TabbedScreen[None]):
                 line, id="basket", classes="-empty" if self._is_empty(line) else ""
             )
             with Horizontal(id="cfg-foot"):
-                yield Static(KeyFooter().render("config"), id="keys")
+                yield Static(_tab_hint("tab_hint_add_models"), id="keys")
                 with Horizontal(id="buttons"):
                     yield Button(_say("button_save"), variant="primary", id="save")
                     yield Button(_say("button_cancel"), id="cancel")

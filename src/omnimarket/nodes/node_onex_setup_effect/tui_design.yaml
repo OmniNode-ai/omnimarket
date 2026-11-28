@@ -642,8 +642,9 @@ words:
   dashboard_about: "A local web page with your tasks, cost and savings over time, in your browser."
   order_none: "No models yet. Run /config."
   tab_hint_config: "enter open · ←→ switch tab · k key · t test · x remove · esc close"
-  tab_hint_model: "↑↓ move · enter make first · d details · esc close"
-  tab_hint_delegation: "space switch · ctrl+s save · esc close"
+  tab_hint_add_models: "space tick · ctrl+s save · esc back to providers"
+  tab_hint_model: "↑↓ move · enter first · + add · d info · esc close"
+  tab_hint_delegation: "↑↓ navigate · space toggle · esc close"
   tab_hint_dashboard_stopped: "s start · esc close"
   tab_hint_dashboard_running: "enter open · s stop · esc close"
   # The one line under the tabs: how many models, on how many servers, and the first.

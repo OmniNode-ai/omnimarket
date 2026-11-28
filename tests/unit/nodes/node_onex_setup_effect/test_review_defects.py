@@ -108,8 +108,9 @@ async def test_d2_the_config_tab_draws_footer_screens_config(width: int) -> None
         assert keys.region.height == 1, (width, keys.region)
         assert "\n" not in drawn, drawn
         assert "…" not in drawn, drawn
-        for key in tui_design().footer.screens["config"].keys:
-            assert f"{key.label} {key.words}".strip() in drawn, (key, drawn)
+        expected = tui_design().words["tab_hint_config"]
+        for word in expected.replace("·", " ").split():
+            assert word in drawn, (word, drawn)
 
 
 # ---------------------------------------------------------------- D3

@@ -44,11 +44,6 @@ _KEYS = {
 def _hint(tab: str, words: dict[str, str]) -> str:
     """The tab's footer line (OMN-26620 mockups): plain words from the design."""
     name = tab.strip("/")
-    if name == "config":  # drawn from footer.screens.config (AC4)
-        footer = tui_design().footer
-        return footer.separator.join(
-            f"{key.label} {key.words}" for key in footer.screens["config"].keys
-        )
     return words[
         "tab_hint_dashboard_stopped" if name == "dashboard" else f"tab_hint_{name}"
     ]
