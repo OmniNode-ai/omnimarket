@@ -1,0 +1,57 @@
+2026-11-28T01:47:01.5376763Z ##[group]Run uv run python -m omnimarket.nodes.node_overlay_main_load_check_effect added-nodes \
+2026-11-28T01:47:01.5377613Z [36;1muv run python -m omnimarket.nodes.node_overlay_main_load_check_effect added-nodes \[0m
+2026-11-28T01:47:01.5378136Z [36;1m  --base-ref HEAD^1 \[0m
+2026-11-28T01:47:01.5378530Z [36;1m  --overlay-store-root "$OVERLAYS_CHECKOUT/$OVERLAYS_DOCUMENTS_DIR" \[0m
+2026-11-28T01:47:01.5378965Z [36;1m  --overlay-store-checkout "$OVERLAYS_CHECKOUT"[0m
+2026-11-28T01:47:01.5408022Z shell: bash -e {0}
+2026-11-28T01:47:01.5408319Z env:
+2026-11-28T01:47:01.5408569Z   UV_HTTP_TIMEOUT: 600
+2026-11-28T01:47:01.5408856Z   OVERLAYS_REPOSITORY_NAME: overlay-store
+2026-11-28T01:47:01.5409158Z   OVERLAYS_REF: main
+2026-11-28T01:47:01.5409426Z   OVERLAYS_CHECKOUT: .overlay-store-main
+2026-11-28T01:47:01.5409735Z   OVERLAYS_DOCUMENTS_DIR: overlay-store
+2026-11-28T01:47:01.5410050Z   OVERLAYS_PINS_FILE: .omnimarket-node-pins
+2026-11-28T01:47:01.5410460Z   UV_PYTHON_INSTALL_DIR: <runner-work>/_temp/uv-python-dir
+2026-11-28T01:47:01.5410879Z   UV_CACHE_DIR: <runner-work>/_temp/setup-uv-cache
+2026-11-28T01:47:01.5420286Z   PR_BODY: **What**
+
+- New node `node_settings_store_provision_effect` (handler `HandlerSettingsStoreProvision`, contract `dev_only` block, CLI verbs `run` and `intake`). It generates the dev settings store writer login's password into the dev secret store (create-only, `generated_keys` id `settings_store_writer_password`, key `ONEX_SETTINGS_STORE_PASSWORD`) and applies the writer ACL `SETUSER` row through the Valkey admin login, then checks the login authenticates on the store database. Guards: lane must be dev; only the writer role may be applied (reader and cache wait for a consent naming them); a database holding keys while the store login does not exist is refused; a login holding another password is refused, never rotated; an authenticating login is left untouched; a stale row that accepts the stored password is applied again.
+- `valkey_acl.py` rows now include `+select`. Measured on the dev Valkey (omnibase-infra-valkey on h201): the first writer row had no `+select`, the login authenticated and then every command was refused (ACL DRYRUN: select 7 refused), because the store client opens database 7 with SELECT.
+- `onex settings list` now runs all reads on one event loop; before, the second read against the Valkey store failed with "Event loop is closed".
+- Three `generated_keys` ids added to `node_secret_store_effect` contract (writer, reader, cache passwords); only the writer one is generated.
+
+**Why**
+
+- Launch goal item 3 (RULING 2026-11-27T16:59:28Z) needs a dev settings store that exists; the store code existed and nothing declared it or applied its rows. Authority: OPERATOR-CONSENT 2026-11-28T00:56:16Z at ledger line 2701 (one dev store writer login, one rendered dev bootstrap file on h201).
+
+Lab: host h201, head e4ada8b78319a801471594acf3b82158e703da25, run from this branch's worktree with ONEX_SKILL_OVERLAY_ROOTS at the overlay declaration (the overlay-store change is not committed yet, see Not done). Command: python -m omnimarket.nodes.node_settings_store_provision_effect run --lane dev. First run (before the +select fix) outcome=not_verified (row applied, login did not authenticate); after the fix: outcome=provisioned applied=onex-settings-writer-dev; second run outcome=already_provisioned unchanged=onex-settings-writer-dev. Then the intake verb and onex settings bootstrap-file --intake rendered the eleven-binding bootstrap file; onex settings list with the writer login (password read from the secret store into the process environment, never printed) listed 16 declared settings, all <unset> because the store holds no loaded settings yet. Focused tests at the pushed head on lab host h051 through onex_lab_run: 38 passed, exit 0 (tests/nodes/node_settings_store_provision_effect, tests/settings_store/test_valkey_acl_rules.py, tests/settings_store/test_settings_cli.py). The new tests failed before the fix (4 failed in the first run for +select and stale row, 1 failed for the event loop) and pass after.
+
+**Not done**
+
+- The overlay declaration (overlay-store repository, `overlay-store/node_settings_store_provision_effect/overlay.yaml` with a pins line) is not committed: the overlay-store repository's pin hooks require a pin naming a commit on the omnimarket merged branch, so that change waits for this one to merge. It is saved as a patch.
+- No reader or cache login applied.
+- The store holds no seeded settings.
+- Acceptance criteria AC1 to AC5 of the ticket are not covered by this change.
+
+Ticket: OMN-24052
+2026-11-28T01:47:01.5429968Z ##[endgroup]
+2026-11-28T01:47:02.3253213Z refused node_settings_store_provision_effect: node_settings_store_provision_effect requires the overlay node_settings_store_provision_effect (detected from its contract_block) and overlay-store main has no .overlay-store-main/overlay-store/node_settings_store_provision_effect/overlay.yaml; the settings store was not read (no snapshot root was named, as on a hosted runner), so only overlay-store main and the pull request body were judged. Either merge the overlay first, or name the merged overlay-store pull request that adds it in the pull request body (a merged overlay-store pull request, as overlay-store#<number>).
+2026-11-28T01:47:02.3256189Z overlay-required: added=1 refused=1 store=unread
+2026-11-28T01:47:02.4824262Z ##[error]Process completed with exit code 1.
+2026-11-28T01:47:02.4916519Z Post job cleanup.
+2026-11-28T01:47:02.5692277Z [command]git version
+2026-11-28T01:47:02.5725904Z git version 2.56.1
+2026-11-28T01:47:02.5756904Z Temporarily overriding HOME='<runner-work>/_temp/5694aef0-43e0-408d-a048-1ba9ada4506f' before making global git config changes
+2026-11-28T01:47:02.5758242Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-28T01:47:02.5761743Z [command]git config --global --add safe.directory <runner-work>/omnimarket/omnimarket/.overlay-store-main
+2026-11-28T01:47:02.5790636Z Removing SSH command configuration
+2026-11-28T01:47:02.5795343Z [command]git config --local --name-only --get-regexp core\.sshCommand
+2026-11-28T01:47:02.5826630Z [command]git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-28T01:47:02.6069009Z Removing HTTP extra header
+2026-11-28T01:47:02.6073624Z [command]git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-28T01:47:02.6103571Z [command]git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-28T01:47:02.6325086Z Removing includeIf entries pointing to credentials config files
+2026-11-28T01:47:02.6331156Z [command]git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-28T01:47:02.6358720Z [command]git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-28T01:47:02.6731184Z ##[warning]Input 'app-id' has been deprecated with message: Use 'client-id' instead.
+2026-11-28T01:47:02.6763228Z Post job cleanup.

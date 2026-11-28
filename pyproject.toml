@@ -1021,6 +1021,9 @@ node_lane_rules_block_compute = "omnimarket.nodes.node_lane_rules_block_compute"
 node_lane_stack_orphan_compute = "omnimarket.nodes.node_lane_stack_orphan_compute"
 node_lane_toolchain_provision_effect = "omnimarket.nodes.node_lane_toolchain_provision_effect"
 node_lane_tree_inventory_effect = "omnimarket.nodes.node_lane_tree_inventory_effect"
+node_lane_work_event_classify_compute = "omnimarket.nodes.node_lane_work_event_classify_compute"
+node_lane_work_orchestrator = "omnimarket.nodes.node_lane_work_orchestrator"
+node_lane_work_reducer = "omnimarket.nodes.node_lane_work_reducer"
 node_launch_validity_compute = "omnimarket.nodes.node_launch_validity_compute"
 node_ledger_append_effect = "omnimarket.nodes.node_ledger_append_effect"
 node_ledger_hash_compute = "omnimarket.nodes.node_ledger_hash_compute"
@@ -1272,6 +1275,7 @@ node_projection_lab_container_memory = "omnimarket.nodes.node_projection_lab_con
 node_projection_lab_job = "omnimarket.nodes.node_projection_lab_job"
 node_projection_lab_lane_health = "omnimarket.nodes.node_projection_lab_lane_health"
 node_projection_lab_proof_receipts = "omnimarket.nodes.node_projection_lab_proof_receipts"
+node_projection_lane_work = "omnimarket.nodes.node_projection_lane_work"
 node_projection_live_events = "omnimarket.nodes.node_projection_live_events"
 node_projection_llm_cost = "omnimarket.nodes.node_projection_llm_cost"
 node_projection_llm_routing = "omnimarket.nodes.node_projection_llm_routing"
@@ -1887,7 +1891,7 @@ omnimarket = "omnimarket.handlers.bus_binding.node_contract_overlay_resolver:Nod
 # the core pin is unchanged.
 # OMN-23932: infra#5906 moves infra to core dev-20261111183916-a85cb916d4c1, the core tag below; the two tags move together.
 # OMN-26115: infra moves to dev-20261119220033-b6f27747506c (omnibase_infra#6063, OMN-25545), newer than the dev tag dev-20261119055404-a679b44e2cfe; it locks the core tag below, so the two tags move together.
-# OMN-26286: infra moves to dev-20261120235610-e1c7b1f075d2 (omnibase_infra#6116 merged: the infra and omnimemory dev tags now name one omnibase-core tag, dev-20261120075721-2a9efbda3548).
+# OMN-26286: infra moves to dev-20261120235610-e1c7b1f075d2 (omnibase_infra#6116 merged: the infra and omnimemory dev tags now name one omnibase-core tag, dev-20261126163618-6baa5af6b65d).
 # OMN-25103: infra moves to dev-20261121195628-0f7f2b730399, which carries omnibase_infra#6129 (the runtime account's grant on floor_integration_pass); the core pin is unchanged.
 # OMN-26495: infra moves to dev-20261124065450-0ecba67c8fee, which carries omnibase_infra#6201 (the vendored overlay store migration 0002_add_operator_paths.sql); the core pin is unchanged.
 # OMN-26635: infra moves to dev-20261125090037-c2bc2ccf8f10, which carries omnibase_infra#6274 (the runtime account's grants on the four overlay store write tables, so the local topology resolves the overlay_store_revision write binding); the core pin is unchanged.
@@ -1904,9 +1908,10 @@ omnibase-infra ={ git = "https://github.com/OmniNode-ai/omnibase_infra.git", tag
 # omnibase_core#2335: the onex setup CLI calls ModelRunNodeHosted.run, and the removed run_node_in_process
 # is gone from every later core. Infra moves with it (the two tags move together).
 # OMN-26286: core moves to dev-20261120075721-2a9efbda3548 (core 0.47.76), the tag omnibase_infra dev-20261120235610-e1c7b1f075d2 (omnibase_infra#6116) and omnimemory dev-20261120144838-db14a337f1ab both lock.
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", tag = "dev-20261120075721-2a9efbda3548" }
+# OMN-26706: core moves to dev-20261126163618-6baa5af6b65d, the dev tag that carries the lane work types (omnibase_core#2381).
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "653fbb7040e82d3f74643baecf3a414a4ea6e437" } # raw-override-ok: OMN-26698
 omnibase-spi = { git = "https://github.com/OmniNode-ai/omnibase_spi.git", tag = "dev-20261108170744-52946639a23a" }
-# OMN-26286: omnimemory moves to dev-20261120144838-db14a337f1ab, which locks the core tag above (omnibase-core dev-20261120075721-2a9efbda3548).
+# OMN-26286: omnimemory moves to dev-20261120144838-db14a337f1ab, which locks the core tag above (omnibase-core dev-20261126163618-6baa5af6b65d).
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", tag = "dev-20261120144838-db14a337f1ab" }
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
 # their git-source overrides). The version-range overrides below already target

@@ -1,0 +1,346 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# ONEX Node Contract
+# Node: NodeLaneWorkOrchestrator (OMN-26721)
+#
+# Task 6 of the lane work orchestrator plan: the orchestrator that folds worker, effect
+# completion, PR observation and tick inputs one at a time. It classifies a raw result
+# (node_lane_work_event_classify_compute), folds the event (node_lane_work_reducer),
+# publishes the transition receipt (the commit point), then each output the receipt
+# lists (step reply, STATUS row, effect commands, terminal), and only then commits the
+# input. A crash replays the input; the fold finds its input id already in the receipts
+# and re-publishes only the outputs not yet on their topics, matched by output id.
+# The handoff goes to node_pr_handoff_orchestrator by its own command topic.
+#
+# Shape copied from node_pr_handoff_orchestrator: one handler serves every route, each
+# consumed message is one leg, the leg's typed emissions are published by class name
+# through published_events. The orchestrator only sequences; it never waits in a call.
+name: "node_lane_work_orchestrator"
+contract_name: "node_lane_work_orchestrator"
+node_name: "node_lane_work_orchestrator"
+contract_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_version:
+  major: 0
+  minor: 1
+  patch: 0
+node_type: "ORCHESTRATOR_GENERIC"
+lifecycle: experimental
+description: >
+  Lane work orchestrator. Keyed by workflow id (the change plus an attempt number), it
+  folds one input at a time through the lane work reducer, with one receipt per accepted
+  input and consecutive seq values, and hands a proven change to the PR handoff
+  orchestrator. A worker is only ever told to read a log, find a cause, fix, merge,
+  commit or push; proving, posting and handing off are node actions.
+input_model:
+  name: "ModelLaneWorkIngress"
+  module: "omnimarket.nodes.node_lane_work_orchestrator.models.model_lane_work_ingress"
+  description: "One typed event, or one result to classify, with the caller's correlation id."
+output_model:
+  name: "ModelLaneWorkStepCompleted"
+  module: "omnimarket.nodes.node_lane_work_orchestrator.models.model_lane_work_step_completed"
+  description: "The step reply: workflow id, new state, receipt id and the next action."
+runtime_profiles:
+  - main
+descriptor:
+  node_archetype: orchestrator
+  purity: effectful
+  idempotent: true
+  timeout_ms: 60000
+# One writer: the fold is serial (plan section 3.6). The ingress, transition and terminal
+# topics have one partition each (overlay values of the deployed lane).
+consume_concurrency:
+  max_in_flight_records: 1
+terminal_event: onex.evt.omnimarket.lane-work-step-completed.v1
+# The topic of each role the handlers publish to. Handlers read topics from here
+# (event_topics.py), never from a literal.
+topic_roles:
+  ingress: onex.cmd.omnimarket.lane-work-event.v1
+  step_completed: onex.evt.omnimarket.lane-work-step-completed.v1
+  transition: onex.evt.omnimarket.lane-work-transition.v1
+  terminal: onex.evt.omnimarket.lane-work-terminal.v1
+  ledger_append: onex.cmd.omnimarket.work-ledger-append-requested.v1
+  ledger_query: onex.cmd.omnimarket.work-ledger-query-requested.v1
+  lab_proof: onex.cmd.omnimarket.lab-work-unit-requested.v1
+  repo_write: onex.cmd.omnimarket.github-repo-write-requested.v1
+  handoff: onex.cmd.omnimarket.pr-handoff-requested.v1
+  help_requested: onex.cmd.omnimarket.lane-work-help-requested.v1
+event_bus:
+  version:
+    major: 1
+    minor: 0
+    patch: 0
+  subscribe_topics:
+    - onex.cmd.omnimarket.lane-work-event.v1
+    - onex.evt.omnimarket.work-ledger-query-completed.v1
+    - onex.evt.omnimarket.work-ledger-append-completed.v1
+    - onex.evt.omnimarket.lab-work-unit-completed.v1
+    - onex.evt.omnimarket.lab-work-unit-failed.v1
+    - onex.evt.omnimarket.github-repo-write-completed.v1
+    - onex.evt.omnimarket.github-repo-write-failed.v1
+    - onex.evt.omnimarket.pr-handoff-handed-off.v1
+    - onex.evt.omnimarket.pr-handoff-failed.v1
+    - onex.evt.omnimarket.pr-state-observed.v1
+    - onex.intent.platform.runtime-tick.v1
+    - onex.evt.omnimarket.delegation-harness-completed.v1
+    - onex.evt.omnimarket.delegate-skill-failed.v1
+    - onex.cmd.omnimarket.lane-work-help-requested.v1
+  publish_topics:
+    - onex.cmd.omnimarket.lane-work-event.v1
+    - onex.evt.omnimarket.lane-work-step-completed.v1
+    - onex.evt.omnimarket.lane-work-transition.v1
+    - onex.evt.omnimarket.lane-work-terminal.v1
+    - onex.cmd.omnimarket.work-ledger-append-requested.v1
+    - onex.cmd.omnimarket.work-ledger-query-requested.v1
+    - onex.cmd.omnimarket.lab-work-unit-requested.v1
+    - onex.cmd.omnimarket.github-repo-write-requested.v1
+    - onex.cmd.omnimarket.pr-handoff-requested.v1
+    - onex.cmd.omnimarket.lane-work-help-requested.v1
+published_events:
+  - event_type: "LaneWorkStepCompleted"
+    topic: onex.evt.omnimarket.lane-work-step-completed.v1
+    description: "The step reply, published after every fold of a caller's input."
+  - event_type: "LaneWorkTransitionRecord"
+    topic: onex.evt.omnimarket.lane-work-transition.v1
+    description: "The receipt, the state it leaves and its outputs; published before any output."
+  - event_type: "LaneWorkTerminal"
+    topic: onex.evt.omnimarket.lane-work-terminal.v1
+    description: "Terminal: handed_off or blocked, one per workflow."
+  - event_type: "LaneWorkIngress"
+    topic: onex.cmd.omnimarket.lane-work-event.v1
+    description: "An intake handler's typed event, re-published onto the ingress topic; intake never folds."
+  - event_type: "WorkLedgerAppendRequest"
+    topic: onex.cmd.omnimarket.work-ledger-append-requested.v1
+    description: "A STATUS row per transition and the help request record."
+  - event_type: "WorkLedgerQueryRequest"
+    topic: onex.cmd.omnimarket.work-ledger-query-requested.v1
+    description: "Read the worker's CLAIM back from the ledger."
+  - event_type: "LabWorkUnitRequest"
+    topic: onex.cmd.omnimarket.lab-work-unit-requested.v1
+    description: "A lab proof at the exact head, with the action id as work_unit_id."
+  - event_type: "RepoWriteRequest"
+    topic: onex.cmd.omnimarket.github-repo-write-requested.v1
+    description: "The proof comment the handoff check requires."
+  - event_type: "PrHandoffRequested"
+    topic: onex.cmd.omnimarket.pr-handoff-requested.v1
+    description: "The handoff request for the proven head, answered by the PR handoff orchestrator."
+  - event_type: "LaneWorkHelpMessage"
+    topic: onex.cmd.omnimarket.lane-work-help-requested.v1
+    description: "The ask_help node action: one message per entry into help_requested and per climb, carrying the action id, the tier entry and the help request. The help handler (task 7) subscribes to it; the fold writes no ledger MSG row for help."
+externally_produced_topics:
+  - topic: onex.cmd.omnimarket.lane-work-event.v1
+    producer: "onex run-node node_lane_work_orchestrator, from the orchestrator's session and from a worker lane"
+externally_consumed_topics:
+  # The help handler (task 7) is a node that has not landed; its subscription is declared in its own contract.
+  - onex.cmd.omnimarket.lane-work-help-requested.v1
+  - onex.evt.omnimarket.lane-work-step-completed.v1
+  - onex.evt.omnimarket.lane-work-terminal.v1
+# The broker grants the node's topics need (OMN-24005 coverage gate): the runtime login reads the topics it
+# consumes and writes the topics it publishes. A caller's login is declared where that login is declared.
+broker_acl_grants:
+- principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+  grants:
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lane-work-event.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lane-work-event.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.work-ledger-query-completed.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.work-ledger-query-completed.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.work-ledger-append-completed.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.work-ledger-append-completed.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-work-unit-completed.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-work-unit-completed.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-work-unit-failed.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lab-work-unit-failed.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.github-repo-write-completed.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.github-repo-write-completed.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.github-repo-write-failed.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.github-repo-write-failed.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.pr-handoff-handed-off.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.pr-handoff-handed-off.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.pr-handoff-failed.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.pr-handoff-failed.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.pr-state-observed.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.pr-state-observed.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.intent.platform.runtime-tick.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-harness-completed.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegation-harness-completed.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegate-skill-failed.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.delegate-skill-failed.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lane-work-event.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lane-work-event.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lane-work-step-completed.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lane-work-step-completed.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lane-work-transition.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lane-work-transition.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lane-work-terminal.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.lane-work-terminal.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.work-ledger-append-requested.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.work-ledger-append-requested.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.work-ledger-query-requested.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.work-ledger-query-requested.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-work-unit-requested.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lab-work-unit-requested.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.github-repo-write-requested.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.github-repo-write-requested.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.pr-handoff-requested.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.pr-handoff-requested.v1, operation: DESCRIBE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lane-work-help-requested.v1, operation: READ}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lane-work-help-requested.v1, operation: WRITE}
+  - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.lane-work-help-requested.v1, operation: DESCRIBE}
+handler_routing:
+  routing_strategy: "payload_type_match"
+  handlers:
+    - operation: "lane_work.orchestrate.ingress"
+      message_category: "command"
+      handler:
+        name: "HandlerLaneWorkFold"
+        module: "omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_fold"
+      event_model:
+        name: "ModelLaneWorkIngress"
+        module: "omnimarket.nodes.node_lane_work_orchestrator.models.model_lane_work_ingress"
+      topic: onex.cmd.omnimarket.lane-work-event.v1
+      description: "The only fold path: classify, fold, publish the receipt, its outputs, then commit."
+    - operation: "lane_work.intake.lab_proof"
+      message_category: "event"
+      handler:
+        name: "HandlerLaneWorkIntake"
+        module: "omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_intake"
+      event_model:
+        name: "ModelLabWorkUnitReceipt"
+        module: "omnimarket.nodes.node_lab_work_unit_effect.models.model_lab_work_unit"
+      topic: onex.evt.omnimarket.lab-work-unit-completed.v1
+      description: "A lab proof's receipt, classified and re-published as a typed event."
+    - operation: "lane_work.intake.lab_proof_failed"
+      message_category: "event"
+      handler:
+        name: "HandlerLaneWorkIntake"
+        module: "omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_intake"
+      event_model:
+        name: "ModelLabWorkCommandFailure"
+        module: "omnimarket.lab_work.bus"
+      topic: onex.evt.omnimarket.lab-work-unit-failed.v1
+      description: "A lab proof's failure receipt, classified and re-published as a typed event."
+    - operation: "lane_work.intake.ledger_query"
+      message_category: "event"
+      handler:
+        name: "HandlerLaneWorkIntake"
+        module: "omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_intake"
+      event_model:
+        name: "ModelWorkLedgerQueryResult"
+        module: "omnimarket.models.work_ledger_query.model_work_ledger_query"
+      topic: onex.evt.omnimarket.work-ledger-query-completed.v1
+      description: "The CLAIM read-back for the worker's lane."
+    - operation: "lane_work.intake.ledger_append"
+      message_category: "event"
+      handler:
+        name: "HandlerLaneWorkIntake"
+        module: "omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_intake"
+      event_model:
+        name: "ModelWorkLedgerAppendReceipt"
+        module: "omnimarket.models.work_ledger_append.model_work_ledger_append"
+      topic: onex.evt.omnimarket.work-ledger-append-completed.v1
+      description: "A ledger append completion: an acknowledgement, never an event."
+    - operation: "lane_work.intake.repo_write_completed"
+      message_category: "event"
+      handler:
+        name: "HandlerLaneWorkIntake"
+        module: "omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_intake"
+      event_model:
+        name: "ModelRepoWriteCompleted"
+        module: "omnimarket.models.model_repo_write_io"
+      topic: onex.evt.omnimarket.github-repo-write-completed.v1
+      description: "The proof comment was written."
+    - operation: "lane_work.intake.repo_write_failed"
+      message_category: "event"
+      handler:
+        name: "HandlerLaneWorkIntake"
+        module: "omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_intake"
+      event_model:
+        name: "ModelRepoWriteFailed"
+        module: "omnimarket.models.model_repo_write_io"
+      topic: onex.evt.omnimarket.github-repo-write-failed.v1
+      description: "The proof comment write failed."
+    - operation: "lane_work.intake.handed_off"
+      message_category: "event"
+      handler:
+        name: "HandlerLaneWorkIntake"
+        module: "omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_intake"
+      event_model:
+        name: "ModelPrHandoffHandedOff"
+        module: "omnimarket.models.pr_handoff"
+      topic: onex.evt.omnimarket.pr-handoff-handed-off.v1
+      description: "The PR handoff orchestrator's handed-off answer."
+    - operation: "lane_work.intake.handoff_failed"
+      message_category: "event"
+      handler:
+        name: "HandlerLaneWorkIntake"
+        module: "omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_intake"
+      event_model:
+        name: "ModelPrHandoffFailed"
+        module: "omnimarket.models.pr_handoff"
+      topic: onex.evt.omnimarket.pr-handoff-failed.v1
+      description: "The PR handoff orchestrator's refusal."
+    - operation: "lane_work.intake.pr_observed"
+      message_category: "event"
+      handler:
+        name: "HandlerLaneWorkIntake"
+        module: "omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_intake"
+      event_model:
+        name: "ModelLaneWorkObservation"
+        module: "omnimarket.nodes.node_lane_work_orchestrator.models.model_lane_work_observation"
+      topic: onex.evt.omnimarket.pr-state-observed.v1
+      description: "A PR state observation, classified against the workflow's expected head."
+    - operation: "lane_work.intake.tick"
+      message_category: "intent"
+      handler:
+        name: "HandlerLaneWorkIntake"
+        module: "omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_intake"
+      event_model:
+        name: "ModelRuntimeTick"
+        module: "omnibase_infra.runtime.models.model_runtime_tick"
+      topic: onex.intent.platform.runtime-tick.v1
+      description: "A deadline_passed for each armed deadline that is past."
+    - operation: "lane_work.intake.help_answer"
+      message_category: "event"
+      handler:
+        name: "HandlerLaneWorkIntake"
+        module: "omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_intake"
+      event_model:
+        name: "ModelHarnessBackendCallResult"
+        module: "omnimarket.models.model_harness_backend_call"
+      topic: onex.evt.omnimarket.delegation-harness-completed.v1
+      description: "A pinned help delegation's harness result, matched by the action id as the delegation's correlation id and re-published as a raw result for the classifier."
+    - operation: "lane_work.intake.help_failed"
+      message_category: "event"
+      handler:
+        name: "HandlerLaneWorkIntake"
+        module: "omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_intake"
+      event_model:
+        name: "ModelDelegateSkillFailed"
+        module: "omnimarket.models.delegation.wire.model_delegate_skill_response"
+      topic: onex.evt.omnimarket.delegate-skill-failed.v1
+      description: "A pinned help delegation that failed; re-published so the classifier names help_failed."
+    - operation: "lane_work.help.ask_help"
+      message_category: "command"
+      handler:
+        name: "HandlerLaneWorkHelp"
+        module: "omnimarket.nodes.node_lane_work_orchestrator.handlers.handler_lane_work_help"
+      event_model:
+        name: "ModelLaneHelpRequested"
+        module: "omnimarket.nodes.node_lane_work_orchestrator.models.model_lane_help_requested"
+      topic: onex.cmd.omnimarket.lane-work-help-requested.v1
+      description: "The ask_help node action: writes the ledger MSG row, then sends the one pinned delegate-skill request, both keyed by the action id."
+metadata:
+  description: "Lane work orchestrator: folds inputs one at a time and hands off through the PR handoff nodes."
+  author: "OmniNode Team"
+  license: "MIT"
+  tags:
+    - orchestrator
+    - lane-work
+    - fsm
+    - workflow
+  related_tickets:
+    - "OMN-26721"

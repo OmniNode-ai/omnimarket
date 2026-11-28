@@ -1,0 +1,23 @@
+name: node_lane_work_reducer
+version: "1.0.0"
+description: "Lane work reducer: pure FSM, delta(state, event) -> (new_state, intents[]), over the sixteen states and every edge of the lane work loop (formal/lane_work_loop); the contract's state_machine is the only table"
+omnibase_core_compat: ">=0.47.75,<1.0.0"
+pack: lane_work
+node_role: reducer
+display_name: "Lane Work Reducer"
+entry_points:
+  onex.nodes:
+    node_lane_work_reducer: "omnimarket.nodes.node_lane_work_reducer"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.47.75"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["reducer", "fsm", "lane-work"]

@@ -1,0 +1,34 @@
+name: projection_lane_work
+version: "1.0.0"
+description: >
+  Folds the lane work orchestrator's transition receipts into one row per
+  workflow: its current state and, once it ends, its terminal fields.
+omnibase_core_compat: ">=0.47.75,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.47.75"
+  - "pyyaml>=6.0"
+tags:
+  - projection
+  - lane-work
+  - reducer
+ownership:
+  lane_work_workflow:
+    ddl_owner: omnimarket.nodes.node_projection_lane_work
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_lane_work_workflow.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+    rationale: >
+      The orchestrator publishes the transition receipts and owns none of the
+      read model. The workflow row is an omnimarket projection, like every other
+      node_projection_* read model.
+pack: "data"
+display_name: "Projection: Lane Work"
+node_role: "effect"
