@@ -54,7 +54,7 @@ concurrency:
 
 env:
   # SYNC: the shard matrix below lists 1..NIGHTLY_SPLIT_COUNT.
-  NIGHTLY_SPLIT_COUNT: "10"
+  NIGHTLY_SPLIT_COUNT: "20"
 
 jobs:
   resolve-head:
@@ -75,13 +75,16 @@ jobs:
     name: Full Suite Shard ${{ matrix.split }} (nightly)
     needs: resolve-head
     runs-on: ubuntu-24.04
-    # Measured serial full-suite time is ~45m on this runner class; a tenth of
-    # it per shard, with count-balancing slack when no durations cache exists.
-    timeout-minutes: 30
+    # Measured on runs 59 to 70: at ten shards nine of ten jobs were cancelled at
+    # the 30m17s budget and the tenth passed at 29m17s, so a night never
+    # completed and no attribution record was published. Twenty shards halve the
+    # per-shard work (about 15m); the budget holds 3x that, with count-balancing
+    # slack when no durations cache exists.
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        split: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        split: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     # Same real-Postgres service as ci.yml's `test` job (OMN-14167), so the
     # integration real-DB proofs execute instead of failing closed.
     services:
