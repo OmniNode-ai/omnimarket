@@ -82,6 +82,7 @@ _OK_OUTCOMES = frozenset(
         EnumDevIdentityOutcome.USER_ABSENT,
         EnumDevIdentityOutcome.USER_DELETED,
         EnumDevIdentityOutcome.BOUND,
+        EnumDevIdentityOutcome.USER_PROVISIONED,
     }
 )
 
@@ -127,6 +128,23 @@ def _load_dev_only(contract_path: Path | None) -> dict[str, Any]:
     document = yaml.safe_load(path.read_text(encoding="utf-8"))
     dev_only: dict[str, Any] = document["dev_only"]
     return dev_only
+
+
+def _load_user_only(contract_path: Path | None) -> dict[str, str] | None:
+    """The contract's ``user_only`` block (realm role and role mapping path templates), or None when it is not declared."""
+    document = yaml.safe_load(
+        (contract_path or _CONTRACT_PATH).read_text(encoding="utf-8")
+    )
+    block = document.get("user_only")
+    if not isinstance(block, dict):
+        return None
+    paths = {
+        key: block.get(key)
+        for key in ("realm_roles_path_template", "role_mapping_path_template")
+    }
+    if not all(isinstance(value, str) and value for value in paths.values()):
+        return None
+    return {key: str(value) for key, value in paths.items()}
 
 
 class HandlerDevIdentityProvision:
@@ -245,6 +263,19 @@ class HandlerDevIdentityProvision:
                     user_name=user.username,
                 )
 
+        user_only_paths: dict[str, str] | None = None
+        if command.user_only:
+            user_only_paths = _load_user_only(self._contract_path)
+            if user_only_paths is None:
+                return self._result(
+                    EnumDevIdentityOutcome.USER_ONLY_UNCONFIGURED,
+                    detail=(
+                        "user_only needs the contract's user_only block (realm role and role mapping paths); "
+                        "nothing was read or sent"
+                    ),
+                    user_name=user.username,
+                )
+
         bind: tuple[ModelTenantBinding, ProtocolTenantReader] | None = None
         if command.tenant_id is not None:
             if self._tenant_binding is None or self._tenant_reader is None:
@@ -345,7 +376,17 @@ class HandlerDevIdentityProvision:
         # Only a user this run created is this run's to delete; an existing user (reset_existing) never is.
         created_id = user_id if found is None else None
         try:
-            if bind is not None and bound_tenant is not None:
+            if user_only_paths is not None and command.read_role is not None:
+                result = await self._grant_role_and_verify(
+                    user_only_paths,
+                    admin_token,
+                    token_url,
+                    user,
+                    user_id,
+                    password,
+                    command.read_role,
+                )
+            elif bind is not None and bound_tenant is not None:
                 result = await self._bind_and_verify(
                     bind[0],
                     admin_token,
@@ -365,6 +406,71 @@ class HandlerDevIdentityProvision:
             raise
         cleanup = await self._cleanup(command, admin_token, user, created_id, result)
         return result.model_copy(update={"cleanup": cleanup})
+
+    async def _grant_role_and_verify(
+        self,
+        paths: dict[str, str],
+        admin_token: SecretStr,
+        token_url: str,
+        user: _Identity,
+        user_id: str,
+        password: SecretStr,
+        role: str,
+    ) -> ModelDevIdentityProvisionResult:
+        """User-only mode: grant the named realm role, then sign in once; no tenant is asked for, read or bound."""
+        kc = self._overlay.keycloak
+        roles_url = (
+            f"{kc.base_url}{paths['realm_roles_path_template'].format(realm=kc.realm)}"
+        )
+        listed = await self._send(
+            ModelIdentityHttpRequest(
+                method="GET",
+                url=roles_url,
+                bearer=admin_token,
+                timeout_seconds=kc.timeout_seconds,
+            )
+        )
+        role_id: str | None = None
+        if not isinstance(listed, str) and listed.status == 200:
+            body = listed.json_body
+            for entry in body if isinstance(body, list) else []:
+                if (
+                    isinstance(entry, dict)
+                    and entry.get("name") == role
+                    and isinstance(entry.get("id"), str)
+                ):
+                    role_id = entry["id"]
+        if role_id is None:
+            return self._result(
+                EnumDevIdentityOutcome.ROLE_NOT_FOUND,
+                detail=f"the realm role {role!r} was not in the dev realm's role list",
+                user_name=user.username,
+            )
+        mapping_url = f"{kc.base_url}{paths['role_mapping_path_template'].format(realm=kc.realm, user_id=user_id)}"
+        mapped = await self._send(
+            ModelIdentityHttpRequest(
+                method="POST",
+                url=mapping_url,
+                bearer=admin_token,
+                json_body=[{"id": role_id, "name": role}],
+                timeout_seconds=kc.timeout_seconds,
+            )
+        )
+        if isinstance(mapped, str) or mapped.status not in (200, 204):
+            return self._result(
+                EnumDevIdentityOutcome.ROLE_ASSIGN_FAILED,
+                detail=f"Keycloak refused to grant the realm role {role!r} to the dev user",
+                user_name=user.username,
+            )
+        user_token = await self._sign_in(token_url, user, password)
+        if isinstance(user_token, ModelDevIdentityProvisionResult):
+            return user_token
+        return self._result(
+            EnumDevIdentityOutcome.USER_PROVISIONED,
+            detail=f"the dev user was created with the realm role {role!r} and no tenant; it signed in once",
+            user_name=user.username,
+            user_id=user_id,
+        )
 
     async def _sign_in_and_provision(
         self,

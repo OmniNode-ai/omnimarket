@@ -32,7 +32,7 @@ requirements:
 evidence_requirements:
 - kind: tests
   description: AC1 headless TUI test.
-  command: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_slash_lists_exactly_the_nine_customer_commands_in_order tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_the_customer_list_is_declared_once_in_tui_design_yaml -q -n 0 --no-cov -p no:cacheprovider
+  command: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_slash_lists_exactly_the_nine_customer_commands_in_order tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_the_customer_list_is_declared_once_in_tui_design_yaml tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_banner_tip_does_not_promise_every_command -q -n 0 --no-cov -p no:cacheprovider
 - kind: tests
   description: AC2 headless TUI test.
   command: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_a_typed_hidden_command_runs_nothing_and_says_so tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_a_command_that_does_not_exist_is_still_no_match -q -n 0 --no-cov -p no:cacheprovider
@@ -54,7 +54,7 @@ dod_evidence:
   - AC1
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_slash_lists_exactly_the_nine_customer_commands_in_order tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_the_customer_list_is_declared_once_in_tui_design_yaml -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_slash_lists_exactly_the_nine_customer_commands_in_order tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_the_customer_list_is_declared_once_in_tui_design_yaml tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_banner_tip_does_not_promise_every_command -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26610-ac2
   description: 'AC2: a typed command the TUI does not list runs nothing and says: Not a TUI command: run onex <command> in a terminal.'
@@ -82,6 +82,15 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_doctor_and_metering_run_and_show_their_output -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn26610-banner
+  description: The welcome banner tip no longer promises every command now that the palette lists only the nine customer commands.
+  source: manual
+  binds_ac:
+  - AC1
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_banner_tip_does_not_promise_every_command -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
 - id: dod-omn26610-integration-proof
   description: The headless TUI tests for all four criteria run on a lab host at the pushed head, against the real onex command tree. Hosted CI cannot reach the lab runner, so only the local Done gate runs this unbound item.

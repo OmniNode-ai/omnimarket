@@ -8,6 +8,8 @@
 # carries names and ids only: never a token, a secret or a password, and never the response's bootstrap_token. Any lane
 # or realm the dev_only block does not declare is refused before any secret read or HTTP call.
 #
+# With user_only and read_role (OMN-25103) the run creates the one user with that realm role and no tenant at all.
+#
 # With a tenant id (OMN-26476) the run binds the named user to that EXISTING tenant and creates no probe tenant: it reads the
 # tenant over the bus (the tenant_read_runtime block), sets the user attributes the sign-in client's mappers turn into the tenant
 # claims, signs in and reads the audience and the two tenant claims back out of the token (the tenant_binding block).
@@ -111,6 +113,13 @@ tenant_binding:
   tenant_id_claim: tenant_id
   tenant_slug_claim: tenant_slug
   required_provisioning_state: active
+
+# User-only mode (OMN-25103): a run that carries user_only and read_role creates the one named user, grants it that realm role
+# through these admin paths and asks the runtime for no tenant. The role is looked up by name in the realm's role list first (the dev admin client can list roles but is refused a single role read) (an unknown role is refused,
+# and the user the run created is deleted again).
+user_only:
+  realm_roles_path_template: /admin/realms/{realm}/roles
+  role_mapping_path_template: /admin/realms/{realm}/users/{user_id}/role-mappings/realm
 
 overlay:
   node: node_dev_identity_provision_effect
