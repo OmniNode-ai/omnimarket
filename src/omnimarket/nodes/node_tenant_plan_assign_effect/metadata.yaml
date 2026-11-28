@@ -1,0 +1,29 @@
+name: node_tenant_plan_assign_effect
+version: 1.0.0
+description: Assigns one plan to one tenant from a bus command (the one active tenant_plans row) and answers with the plan's entitlements read back; every refusal is a typed outcome.
+pack: data
+node_role: effect
+display_name: Tenant Plan Assign Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_tenant_plan_assign_effect: omnimarket.nodes.node_tenant_plan_assign_effect
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- asyncpg>=0.30.0
+- pydantic>=2.0
+- pyyaml>=6.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- tenant
+- identity

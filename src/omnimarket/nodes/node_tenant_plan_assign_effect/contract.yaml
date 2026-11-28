@@ -1,0 +1,103 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Tenant Plan Assign Effect
+#
+# On tenant-plan-assign-requested the node makes the named plan the tenant's one active plan (the previous active
+# tenant_plans row is ended, a new one inserted, in one transaction) and reads the plan's entitlement rows back in the same
+# transaction. An unknown plan, an unknown tenant and a store that cannot be reached are typed outcomes on the completed
+# topic; there is no failed topic. Only the operator principal may write the command topic: a plan sets a tenant's quota.
+name: node_tenant_plan_assign_effect
+contract_name: node_tenant_plan_assign_effect
+node_name: node_tenant_plan_assign_effect
+node_type: effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+lifecycle: experimental
+runtime_profiles: [effects]
+description: >
+  Assigns one plan to one tenant from a bus command and answers with the plan's entitlements read back. A second assign
+  replaces the active plan row; an unknown plan or tenant is refused with a typed outcome and no write.
+handler:
+  module: omnimarket.nodes.node_tenant_plan_assign_effect.handlers.handler_tenant_plan_assign
+  class: HandlerTenantPlanAssign
+  input_model: omnimarket.nodes.node_tenant_plan_assign_effect.models.model_tenant_plan_assign.ModelTenantPlanAssignCommand
+input_model:
+  name: ModelTenantPlanAssignCommand
+  module: omnimarket.nodes.node_tenant_plan_assign_effect.models.model_tenant_plan_assign
+  description: The command id, the tenant id and the plan code.
+output_model:
+  name: ModelTenantPlanAssignResult
+  module: omnimarket.nodes.node_tenant_plan_assign_effect.models.model_tenant_plan_assign
+  description: The typed outcome, a detail line, the plan fields and the entitlement rows read back.
+descriptor:
+  node_archetype: effect
+  purity: impure
+  runtime_profiles: [effects]
+  idempotent: true
+  side_effects: [database-write]
+  timeout_ms: 30000
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - operation: tenant_plan_assign
+      topic: onex.cmd.omnimarket.tenant-plan-assign-requested.v1
+      message_category: command
+      event_model: omnimarket.nodes.node_tenant_plan_assign_effect.models.model_tenant_plan_assign.ModelTenantPlanAssignCommand
+      handler_module: omnimarket.nodes.node_tenant_plan_assign_effect.handlers.handler_tenant_plan_assign
+      handler:
+        name: HandlerTenantPlanAssign
+        module: omnimarket.nodes.node_tenant_plan_assign_effect.handlers.handler_tenant_plan_assign
+topics:
+  tenant_plan_assign:
+    requested: onex.cmd.omnimarket.tenant-plan-assign-requested.v1
+    completed: onex.evt.omnimarket.tenant-plan-assign-completed.v1
+terminal_event: onex.evt.omnimarket.tenant-plan-assign-completed.v1
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.tenant-plan-assign-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.tenant-plan-assign-completed.v1
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.tenant-plan-assign-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.tenant-plan-assign-completed.v1
+published_events:
+  - event_type: ModelTenantPlanAssignResult
+    topic: onex.evt.omnimarket.tenant-plan-assign-completed.v1
+    description: The typed outcome of one plan-assign command, with the entitlements read back.
+externally_consumed_topics:
+  - onex.evt.omnimarket.tenant-plan-assign-completed.v1
+# The command topic is the operator plane: WRITE on it sets any tenant's quota, so only the operator principal holds it.
+broker_acl_grants:
+  - principal: "${ONEX_ACL_TENANT_OPERATOR_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-plan-assign-requested.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-plan-assign-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-plan-assign-completed.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-plan-assign-completed.v1, operation: DESCRIBE}
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-plan-assign-requested.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.tenant-plan-assign-requested.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-plan-assign-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.tenant-plan-assign-completed.v1, operation: DESCRIBE}
+overlay:
+  node: node_tenant_plan_assign_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+secret_dependencies:
+  tenant_identity.database.dsn:
+    required: true
+    description: "The identity database's DSN, asked of the secret store by this logical name (the overlay's database.dsn_secret)."
+identity_io:
+  db_tables:
+    - {name: tenants, database_ref: omninode_cloud, schema: public, migration: "20251207_tenants_uuid_pk.sql", access: read, role: tenant_identity}
+    - {name: tenant_plans, database_ref: omninode_cloud, schema: public, migration: "20251209_m4_usage_schema.sql", access: read_write, role: tenant_identity}
+    - {name: plan_tiers, database_ref: omninode_cloud, schema: public, migration: "20251209_m4_usage_schema.sql", access: read, role: tenant_identity}
+    - {name: plan_entitlements, database_ref: omninode_cloud, schema: public, migration: "20251209_m4_usage_schema.sql", access: read, role: tenant_identity}
+golden_path:
+  - "An assign command for a tenant and a known plan is published on the requested topic"
+  - "One transaction ends the previous active tenant_plans row and inserts the new active one"
+  - "The completed topic carries the assigned outcome, the previous plan code and the plan's entitlement rows"
+  - "An unknown plan or tenant is refused with a typed outcome and no write"
+metadata:
+  transport_type: database
