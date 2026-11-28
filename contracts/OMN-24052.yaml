@@ -31,6 +31,13 @@ requirements:
   acceptance:
   - id: AC7
     statement: 'AC7: onex settings set rewrites the overlay local file with the value and its provenance, a failed set leaves the file alone, and an undeclared key or a non-JSON value is refused before the setter runs -- falsifier: uv run pytest tests/settings_store/test_settings_cli.py -q -n 0 --no-cov fails when the command is removed'
+- id: req-omn24052-settings-store-provision
+  statement: The dev settings store writer login is declared and provisioned by a node, and every access-list row the settings store renders lets its login select the numbered database the store client opens.
+  acceptance:
+  - id: AC8
+    statement: 'AC8: the settings store provision node refuses a lane its contract does not declare and a role outside the writer before any secret read or Valkey call, generates the writer password create-only, applies the writer row, checks the login on the store database, and changes nothing on a second run -- falsifier: uv run pytest tests/nodes/node_settings_store_provision_effect -q -n 0 --no-cov fails when the node is removed'
+  - id: AC9
+    statement: 'AC9: every access-list row the settings store renders lets its login select its numbered database, and onex settings list reads every setting on one event loop -- falsifier: uv run pytest tests/settings_store/test_valkey_acl_rules.py tests/settings_store/test_settings_cli.py -q -n 0 --no-cov -k "may_select or one_event_loop" fails when the row loses its select permission'
 evidence_requirements:
 - kind: tests
   description: The overlay store tests pass at the pushed head.
@@ -122,6 +129,8 @@ dod_evidence:
 - id: dod-omn24052-settings-store-provision
   description: 'the dev settings store is declared and provisioned by a node: a lane the contract does not declare and a role outside the writer are refused before any secret read or Valkey call, the writer password is generated create-only into the secret store and never appears in a result or log, the writer row is applied and the login is checked on the store database, a second run changes nothing, a database held by another user and a login holding another password are refused, and a stale row that accepts the stored password is applied again.'
   source: manual
+  binds_ac:
+  - AC8
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_settings_store_provision_effect -q -n 0 --no-cov -p no:cacheprovider
@@ -129,7 +138,9 @@ dod_evidence:
 - id: dod-omn24052-store-login-rows-select
   description: 'every access-list row the settings store renders lets its login SELECT the numbered database the store client opens, and onex settings list reads every setting on one event loop against a store whose connection belongs to the first loop.'
   source: manual
+  binds_ac:
+  - AC9
   checks:
   - check_type: test_passes
-    check_value: uv run pytest tests/settings_store/test_valkey_acl_rules.py tests/settings_store/test_settings_cli.py -q -n 0 --no-cov -p no:cacheprovider
+    check_value: uv run pytest tests/settings_store/test_valkey_acl_rules.py tests/settings_store/test_settings_cli.py -q -n 0 --no-cov -p no:cacheprovider -k "may_select or one_event_loop"
     cwd: .
