@@ -133,7 +133,7 @@ def test_point_query_open_claims_prints_the_header_and_the_claim_line() -> None:
         "open-claims since=beginning claims=3 open=1 "
         "ledger-newest=2026-11-02T02:59:30Z now=2026-11-02T03:00:00Z",
         "OPEN-CLAIM lane=lane-x claim=2026-11-01T09:00:00Z db:row-claim-x "
-        "ticket=OMN-21948 newest-row=2026-11-02T02:30:00Z kind=STATUS "
+        "ticket=OMN-21948 pr=none plan=none newest-row=2026-11-02T02:30:00Z kind=STATUS "
         "age=0h30m rows=4 host=h051 run=r1 leases=lease-1 liveness=unknown",
     )
 

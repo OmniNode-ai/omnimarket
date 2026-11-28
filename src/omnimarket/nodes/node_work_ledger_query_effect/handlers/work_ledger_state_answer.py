@@ -289,6 +289,8 @@ def _claim_lines(
         ):
             leases.append(lane)
         ticket = row.cell("ticket") or row.cell("tickets") or "none"
+        pr = row.cell("pr") or "none"
+        plan = row.cell("plan") or "none"
         host = row.cell("host") or "none"
         run = row.cell("run") or "none"
         claims.append(
@@ -296,6 +298,8 @@ def _claim_lines(
                 lane=lane,
                 claim=row.record,
                 ticket=ticket,
+                pr=pr,
+                plan=plan,
                 newest_row_stamp=stamp(newest_ts),
                 newest_row_kind=newest_kind,
                 rows=rows_since,
@@ -306,7 +310,8 @@ def _claim_lines(
         )
         lines.append(
             f"OPEN-CLAIM lane={lane} claim={row.stamp} db:{row.record.row_id} "
-            f"ticket={ticket} newest-row={stamp(newest_ts)} kind={newest_kind} "
+            f"ticket={ticket} pr={pr} plan={plan} newest-row={stamp(newest_ts)} "
+            f"kind={newest_kind} "
             f"age={_age(now, newest_ts)} rows={rows_since} host={host} run={run} "
             f"leases={','.join(leases) or 'none'} liveness=unknown"
         )
