@@ -120,6 +120,10 @@ class ModelLandingPrRecord(BaseModel):
     rerun_heads: tuple[str, ...] = Field(
         default=(), description="Heads that already had their one whole-run rerun (R5)."
     )
+    proof_heads: tuple[str, ...] = Field(
+        default=(),
+        description="Heads a proof worker was already dispatched for (OMN-26736).",
+    )
     update_heads: tuple[str, ...] = Field(
         default=(), description="Heads the controller already updated from the base."
     )
