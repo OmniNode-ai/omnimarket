@@ -130,7 +130,7 @@ SELECT
         '[]'::jsonb
     ) AS cells,
     COALESCE(SUM(cell_rows.runs), 0)::int AS total_runs,
-    COALESCE(MAX(cell_rows.latest_projection_updated_at), tenants.latest_projection_updated_at) AS latest_projection_updated_at
+    COALESCE(MAX(cell_rows.latest_projection_updated_at), MAX(tenants.latest_projection_updated_at)) AS latest_projection_updated_at
 FROM tenants
 LEFT JOIN cell_rows ON cell_rows.tenant_id = tenants.tenant_id
 GROUP BY tenants.tenant_id;

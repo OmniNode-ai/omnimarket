@@ -114,7 +114,7 @@ SELECT
     tenants.tenant_id AS tenant_id,
     json_group_array(json_object('iso_week', cell_rows.iso_week, 'week_start', cell_rows.week_start, 'task_type', cell_rows.task_type, 'model_id', cell_rows.model_id, 'runs', cell_rows.runs, 'first_try_passes', cell_rows.first_try_passes, 'moved_down_chain', cell_rows.moved_down_chain, 'first_try_pass_rate', cell_rows.first_try_pass_rate, 'moved_down_chain_rate', cell_rows.moved_down_chain_rate)) FILTER (WHERE cell_rows.iso_week IS NOT NULL) AS cells,
     COALESCE(SUM(cell_rows.runs), 0) AS total_runs,
-    COALESCE(MAX(cell_rows.latest_projection_updated_at), tenants.latest_projection_updated_at) AS latest_projection_updated_at
+    COALESCE(MAX(cell_rows.latest_projection_updated_at), MAX(tenants.latest_projection_updated_at)) AS latest_projection_updated_at
 FROM tenants
 LEFT JOIN (SELECT * FROM cell_rows ORDER BY tenant_id, week_start DESC, task_type, model_id) AS cell_rows
   ON cell_rows.tenant_id = tenants.tenant_id
