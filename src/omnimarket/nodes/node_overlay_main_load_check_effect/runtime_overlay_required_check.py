@@ -9,6 +9,10 @@
 overlay it holds satisfies the requirement beside overlays main. Unnamed, the store is not read and each refusal says so; a named
 root that is not a directory is INDETERMINATE, never a silent pass.
 
+``pair-prs`` prints the pull request numbers ``PR_BODY`` names. ``--pair-head-sha`` (OMN-24052) is this pull request's head: an open overlay-repo pull request the body names, fetched to
+``refs/pair-overlay/<n>`` in the overlay-repo checkout, satisfies a node's requirement when it pins the node at that sha and its document
+loads through this tree's model (the paired route).
+
 Exit codes: 0 nothing refused; 1 a node was refused; 3 a deployment fact is missing (INDETERMINATE).
 """
 
@@ -28,16 +32,20 @@ from omnimarket.nodes.node_overlay_main_load_check_effect.handlers.adapter_git_o
     first_commit_subject,
     merged_pr_adds_overlay,
 )
+from omnimarket.nodes.node_overlay_main_load_check_effect.handlers.adapter_overlay_pair import (
+    open_pair_refusal,
+)
 from omnimarket.nodes.node_overlay_main_load_check_effect.handlers.handler_overlay_required_check import (
     HandlerOverlayRequiredCheck,
     missing_overlays,
+    named_overlay_prs,
     owner_of,
 )
 from omnimarket.nodes.node_overlay_main_load_check_effect.models.model_overlay_required_check import (
     ModelOverlayRequiredCommand,
 )
 
-SUBCOMMANDS = ("added-nodes", "list-missing")
+SUBCOMMANDS = ("added-nodes", "list-missing", "pair-prs")
 PR_BODY_ENV = "PR_BODY"
 
 
@@ -56,7 +64,9 @@ def _added_nodes(args: argparse.Namespace) -> int:
     except (OSError, ValueError) as exc:
         sys.stderr.write(f"INDETERMINATE: {type(exc).__name__}: {exc}\n")
         return 3
-    result = HandlerOverlayRequiredCheck(merged_pr_adds=merged_pr_adds_overlay).handle(
+    result = HandlerOverlayRequiredCheck(
+        merged_pr_adds=merged_pr_adds_overlay, open_pair_refusal=open_pair_refusal
+    ).handle(
         ModelOverlayRequiredCommand(
             repo_root=str(repo),
             overlays_root=args.overlays_root,
@@ -64,8 +74,11 @@ def _added_nodes(args: argparse.Namespace) -> int:
             store_snapshot_root=store_root,
             nodes=nodes,
             pr_body=os.environ.get(PR_BODY_ENV, ""),
+            pair_head_sha=args.pair_head_sha,
         )
     )
+    for line in result.paired:
+        sys.stdout.write(f"{line}\n")
     for finding in result.findings:
         sys.stdout.write(f"refused {finding.node}: {finding.detail}\n")
     sys.stdout.write(
@@ -95,6 +108,13 @@ def _list_missing(args: argparse.Namespace) -> int:
     return 0
 
 
+def _pair_prs() -> int:
+    """The pull request numbers the body (``PR_BODY``) names, one per line: what the CI step fetches for the paired route."""
+    for number in sorted(set(named_overlay_prs(os.environ.get(PR_BODY_ENV, "")))):
+        sys.stdout.write(f"{number}\n")
+    return 0
+
+
 def main(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(prog="overlay-required", description=__doc__)
     parser.add_argument("command", choices=SUBCOMMANDS)
@@ -103,8 +123,11 @@ def main(argv: Sequence[str]) -> int:
     parser.add_argument("--overlays-checkout")
     parser.add_argument("--store-snapshot-root")
     parser.add_argument("--base-ref")
+    parser.add_argument("--pair-head-sha")
     args = parser.parse_args(list(argv))
     try:
+        if args.command == "pair-prs":
+            return _pair_prs()
         if args.command == "added-nodes":
             if not args.base_ref:
                 parser.error("added-nodes needs --base-ref")

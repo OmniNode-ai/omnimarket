@@ -1,0 +1,28 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+lane: example-lane
+store:
+  address: valkey.example.invalid
+  port: 6379
+  database: 1
+  key_prefix: example:settings
+  cache_key_pattern: example:cache:*
+  admin_login: example-admin
+  admin_password_folder: /example
+  admin_password_key: EXAMPLE_ADMIN_PASSWORD
+logins:
+  writer: {name: example-writer, password_key_id: example_writer_password}
+  reader: {name: example-reader, password_key_id: example_reader_password}
+  cache: {name: example-cache, password_key_id: example_cache_password}
+bootstrap_intake:
+  ONEX_SETTINGS_STORE_KIND: store_valkey
+  ONEX_SETTINGS_STORE_ADDRESS: valkey.example.invalid
+  ONEX_SETTINGS_STORE_PORT: "6379"
+  ONEX_SETTINGS_STORE_DATABASE: "1"
+  ONEX_SETTINGS_STORE_KEY_PREFIX: example:settings
+  ONEX_SETTINGS_STORE_LOGIN: example-writer
+  ONEX_BROKER_KIND: kafka
+  ONEX_BROKER_ADDRESS: broker.example.invalid:9092
+  ONEX_BROKER_LOGIN: example-broker-login
+  ONEX_INFISICAL_KIND: infisical
+  ONEX_INFISICAL_IDENTITY: EXAMPLE_CLIENT_ID

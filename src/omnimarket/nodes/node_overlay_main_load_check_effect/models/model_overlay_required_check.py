@@ -32,6 +32,9 @@ class ModelOverlayRequiredCommand(BaseModel):
     overlays_checkout: str | None = None
     # A host's snapshot of the settings store (<root>/<overlay id>/overlay.yaml with a stamp); unset when the runner holds none.
     store_snapshot_root: str | None = None
+    # OMN-24052: this pull request's head sha; set, an open overlay-repo pull request that the body names and that pins the node at this
+    # sha may satisfy the requirement (the paired route). Unset, only a merged overlay-repo pull request does.
+    pair_head_sha: str | None = None
 
 
 class ModelOverlayRequiredFinding(BaseModel):
@@ -51,3 +54,5 @@ class ModelOverlayRequiredResult(BaseModel):
     ok: bool
     judged: tuple[str, ...]
     findings: tuple[ModelOverlayRequiredFinding, ...]
+    # OMN-24052: one line per node satisfied through an open paired overlay-repo pull request.
+    paired: tuple[str, ...] = ()

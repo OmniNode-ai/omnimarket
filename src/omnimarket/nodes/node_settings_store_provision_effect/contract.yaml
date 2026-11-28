@@ -1,0 +1,78 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Settings Store Provision Effect (OMN-24052, the dev settings store's logins)
+#
+# Generates the settings store logins' passwords into the dev secret store and applies the access-list rows valkey_acl.py renders
+# to the Valkey the node's overlay names. No address, port, database, key prefix or login name is in this contract: they are the
+# overlay's. A password is stored create-only under a generated_keys id of node_secret_store_effect and never printed, serialized
+# or logged. A lane the dev_only block does not declare is refused before any secret read or Valkey call.
+name: node_settings_store_provision_effect
+contract_name: node_settings_store_provision_effect
+node_name: node_settings_store_provision_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+lifecycle: experimental
+runtime_profiles: [effects]
+
+description: >
+  Provisions the settings store's Valkey logins on the dev lane. A run reads the dev_only block of this file: the command lane and
+  the overlay lane must both be declared, and only a declared login role may be applied (the writer; the reader and cache rows
+  wait for their own consent). For each role the password is generated into the secret store by the overlay's declared id (an
+  existing password is reused, never replaced), the role's access-list row is applied through the admin login, and the login is
+  checked by authenticating with the stored password. A login that already authenticates is left untouched; one that exists with
+  another password is refused, never rotated; a database that holds keys while the store's login does not exist is refused.
+
+handler:
+  module: omnimarket.nodes.node_settings_store_provision_effect.handlers.handler_settings_store_provision
+  class: HandlerSettingsStoreProvision
+  input_model: omnimarket.nodes.node_settings_store_provision_effect.models.model_settings_store_provision.ModelSettingsStoreProvisionCommand
+
+# HandlerSettingsStoreProvision takes the overlay, the settings store reader, the key generator and an applier factory as
+# constructor parameters, so the node runs through its own CLI, not handler_routing.
+
+descriptor:
+  node_archetype: effect
+  runtime_profiles: [effects]
+  purity: impure
+  idempotent: true
+  side_effects: [secret-store-write, valkey-acl-write]
+  timeout_ms: 60000
+
+input_model:
+  name: ModelSettingsStoreProvisionCommand
+  module: omnimarket.nodes.node_settings_store_provision_effect.models.model_settings_store_provision
+  description: Which lane acts and which login roles to apply. Names, ports and passwords are the overlay's and the secret store's, never a caller's.
+output_model:
+  name: ModelSettingsStoreProvisionResult
+  module: omnimarket.nodes.node_settings_store_provision_effect.models.model_settings_store_provision
+  description: The outcome, the lane, the login names applied or left as they were and the password's secret folder and key name; never a password.
+
+runtime_dispatch:
+  external_trigger: true
+  # Provisioning writes a credential, so it never runs on a timer: a lane runs it once on the dev lane.
+  on_demand:
+    command: uv run python -m omnimarket.nodes.node_settings_store_provision_effect run --lane dev
+    owner: OmniNode Platform Team
+
+# The node declares no topic: it is run once by a lane on the dev lane and answers on stdout, publishing nothing.
+event_bus:
+  subscribe_topics: []
+  publish_topics: []
+
+overlay:
+  node: node_settings_store_provision_effect
+  roots_env: ONEX_SKILL_OVERLAY_ROOTS
+
+dev_only:
+  # The guard reads this block from this file, never from code. prod, the stability store and the cloud lanes are never listed.
+  lanes:
+    - dev
+  # The roles a run may apply. OPERATOR-CONSENT 2026-11-28T00:56:16Z covers one dev store writer login; the reader and cache rows
+  # (the cache row narrows an existing login) are applied only after a consent that names them.
+  logins:
+    - writer
+
+metadata:
+  ticket: OMN-24052
+  transport_type: valkey

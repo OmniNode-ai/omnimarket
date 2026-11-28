@@ -294,3 +294,26 @@ def test_a_set_with_no_local_overlay_file_succeeds_and_says_nothing_was_rewritte
     )
     assert result.exit_code == 0, result.output
     assert "no local overlay file" in result.output
+
+
+class _LoopBoundStore:
+    """A store whose connection belongs to the first event loop that touches it, as a Valkey client's does (OMN-24052)."""
+
+    def __init__(self) -> None:
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    async def read_current(self, overlay_id: str) -> None:
+        running = asyncio.get_running_loop()
+        if self._loop is None:
+            self._loop = running
+        if running is not self._loop:
+            raise RuntimeError("the connection is bound to another event loop")
+        return
+
+
+def test_list_reads_every_setting_on_one_event_loop() -> None:
+    result = CliRunner().invoke(
+        settings_group, ["list"], obj={"store": _LoopBoundStore()}
+    )
+    assert result.exit_code == 0, result.output
+    assert "<unset>" in result.output
