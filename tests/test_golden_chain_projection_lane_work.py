@@ -12,7 +12,7 @@ and a Postgres accepted the bytes is the lab proof.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -61,7 +61,7 @@ def test_hop3_the_writer_republishes_the_row_and_the_terminal_declares_its_event
     None
 ):
     writer = LaneWorkProjectionWriter()
-    writer._db = _FakeDb()  # type: ignore[assignment]
+    cast("Any", writer)._db = _FakeDb()
     published: list[str] = []
 
     async def _capture(exposure: Any, **_kwargs: Any) -> bool:
@@ -71,8 +71,8 @@ def test_hop3_the_writer_republishes_the_row_and_the_terminal_declares_its_event
     async def _no_producer() -> None:
         return None
 
-    writer.publish_snapshot_delta = _capture  # type: ignore[method-assign]
-    writer._stop_producer = _no_producer  # type: ignore[method-assign]
+    cast("Any", writer).publish_snapshot_delta = _capture
+    cast("Any", writer)._stop_producer = _no_producer
     for offset, receipt in enumerate(handed_off_workflow("b-2-1")):
         writer.project_request(
             ModelProjectionRequest(

@@ -29,7 +29,7 @@ ROLE_HELP_REQUESTED = "help_requested"
 @lru_cache(maxsize=1)
 def topic_roles() -> dict[str, str]:
     """Role to topic, as the contract declares them."""
-    text = CONTRACT_PATH.read_text(encoding="utf-8")  # node-purity-ok: own contract
+    text = CONTRACT_PATH.read_text(encoding="utf-8")
     roles = yaml.safe_load(text)["topic_roles"]
     return {str(role): str(topic) for role, topic in roles.items()}
 

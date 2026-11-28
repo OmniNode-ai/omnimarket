@@ -11,7 +11,7 @@ result against the workflow's state, so a stale observation is dropped there.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Literal, cast
 from uuid import UUID, uuid4
 
 from omnibase_core.enums.enum_lane_work_event import EnumLaneWorkEvent
@@ -202,10 +202,8 @@ class HandlerLaneWorkIntake:
         if found is None:
             return []
         workflow_id, action_id = found
-        claims = [
-            {**claim, "open": True}
-            for claim in data.get("open_claims") or []  # type: ignore[attr-defined]
-        ]
+        open_claims = cast("list[dict[str, object]]", data.get("open_claims") or [])
+        claims = [{**claim, "open": True} for claim in open_claims]
         return [
             self._ingress(
                 workflow_id,

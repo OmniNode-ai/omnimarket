@@ -20,7 +20,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timedelta
 from functools import lru_cache
-from pathlib import Path
+from pkgutil import get_data
 from typing import Any, Literal
 
 import yaml
@@ -57,7 +57,7 @@ from omnimarket.nodes.node_lane_work_reducer.models.model_lane_work_reducer_stat
 HandlerType = Literal["NODE_HANDLER"]
 HandlerCategory = Literal["COMPUTE"]
 
-_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
+_CONTRACT_PACKAGE = "omnimarket.nodes.node_lane_work_reducer"
 
 # Event kinds (not states). A refused answer in a help state counts as help_failed.
 _HELP_ANSWER_KINDS = frozenset({"help_cause_found", "help_retry", "help_stop"})
@@ -110,8 +110,10 @@ class _Machine:
 
 @lru_cache(maxsize=1)
 def _load_machine() -> _Machine:
-    text = _CONTRACT_PATH.read_text(encoding="utf-8")  # node-purity-ok: own contract
-    document = yaml.safe_load(text)
+    raw = get_data(_CONTRACT_PACKAGE, "contract.yaml")
+    if raw is None:
+        raise FileNotFoundError(f"{_CONTRACT_PACKAGE} ships no contract.yaml")
+    document = yaml.safe_load(raw)
     return _Machine(ModelFSMSubcontract.model_validate(document["state_machine"]))
 
 

@@ -16,7 +16,7 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import quote_plus
 from uuid import uuid4
 
@@ -64,7 +64,7 @@ async def _connect_or_skip() -> asyncpg.Connection:
         pytest.skip("no Postgres password set for the OMN-26708 write-path gate")
     try:
         return await asyncpg.connect(_dsn())
-    except (OSError, asyncpg.PostgresError) as exc:  # pragma: no cover - infra
+    except (OSError, asyncpg.PostgresError) as exc:
         pytest.skip(f"no reachable Postgres for the OMN-26708 write-path gate: {exc}")
         raise AssertionError("unreachable") from exc
 
@@ -98,12 +98,12 @@ async def _migrated_writer() -> AsyncIterator[
             MIGRATION.read_text().replace("omninode_internal.", f"{schema}.")
         )
         writer = LaneWorkProjectionWriter()
-        writer._db = _ConnectionDb(connection)  # type: ignore[assignment]
+        cast("Any", writer)._db = _ConnectionDb(connection)
 
         async def _capture(exposure: Any, **kwargs: Any) -> bool:
             return True
 
-        writer.publish_snapshot_delta = _capture  # type: ignore[method-assign]
+        cast("Any", writer).publish_snapshot_delta = _capture
         for name, sql in originals.items():
             setattr(module, name, sql.replace("omninode_internal.", f"{schema}."))
         yield writer, connection, schema
