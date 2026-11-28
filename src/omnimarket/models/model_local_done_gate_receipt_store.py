@@ -4,12 +4,13 @@
 
 The hosted verifier counts a skipped ``local_done_gate`` item as verified only
 when a receipt for that ticket, that exact item and that exact contract revision
-exists and its latest verdict reads VERIFIED. Anything else leaves the item
+exists and a host's latest verdict reads VERIFIED. Anything else leaves the item
 skipped, which the gate refuses.
 """
 
 from __future__ import annotations
 
+import os
 import socket
 from pathlib import Path
 from typing import Protocol
@@ -73,6 +74,46 @@ def default_receipt_store() -> FilesystemLocalDoneGateReceiptStore | None:
     return FilesystemLocalDoneGateReceiptStore(Path(home) / "local_done_gate_receipts")
 
 
+class ChainedLocalDoneGateReceiptSource:
+    """Receipts read from several stores in order, earlier stores first."""
+
+    def __init__(self, sources: list[FilesystemLocalDoneGateReceiptStore]) -> None:
+        self._sources = sources
+
+    def receipts_for(self, ticket_id: str) -> list[ModelLocalDoneGateReceipt]:
+        return [r for source in self._sources for r in source.receipts_for(ticket_id)]
+
+
+def default_receipt_source() -> ChainedLocalDoneGateReceiptSource | None:
+    """Every store the declared state roots name, or None when none is declared.
+
+    The receipt consumer writes under the runtime's state root. A verifier the
+    Done-write guard starts as ``skill dod_verify --state-root <temp dir>`` has
+    ``ONEX_STATE_DIR`` pointed at that temp dir, while ``ONEX_STATE_ROOT`` keeps
+    the runtime's own root. Reading only the first declared root reads an empty
+    store, so each distinct declared root is read.
+    """
+    from omnimarket.config.state_root import ONEX_STATE_ROOT_ENV_KEYS
+    from omnimarket.handlers.runtime_paths import runtime_path
+
+    subdir = runtime_path("dod_evidence.home_subdir")
+    roots: list[Path] = []
+    for key in ONEX_STATE_ROOT_ENV_KEYS:
+        value = os.environ.get(key, "").strip()
+        if value and Path(value) not in roots:
+            roots.append(Path(value))
+    if not roots:
+        return None
+    return ChainedLocalDoneGateReceiptSource(
+        [
+            FilesystemLocalDoneGateReceiptStore(
+                root / subdir / "local_done_gate_receipts"
+            )
+            for root in roots
+        ]
+    )
+
+
 def receipt_from_results(
     *,
     ticket_id: str,
@@ -108,28 +149,34 @@ def receipt_reads_verified(
     contract_sha: str | None,
     item_id: str,
 ) -> ModelLocalDoneGateReceipt | None:
-    """The latest matching receipt when it reads VERIFIED for the item, else None.
+    """The latest matching receipt when a host's latest reading is VERIFIED, else None.
 
-    Matching is exact: the ticket, the contract revision and the item id. A later
-    receipt that reads the item otherwise supersedes an earlier VERIFIED one.
+    Matching is exact: the ticket, the contract revision and the item id. Each
+    host's own latest reading of the item stands for that host: a later receipt
+    from the same host that reads the item otherwise supersedes its earlier
+    VERIFIED one, but a FAILED reading from another host does not veto it. The
+    item is lab-only, so a host that cannot reach the lab reads it FAILED while a
+    lab host reads it VERIFIED, and the store's append order is the order the bus
+    delivered the receipts in, not the order the runs happened in (OMN-26729).
     """
     if contract_sha is None:
         return None
-    latest: tuple[ModelLocalDoneGateReceipt, str] | None = None
+    latest_by_host: dict[str, tuple[ModelLocalDoneGateReceipt, str]] = {}
     for receipt in receipts:
         if receipt.ticket_id != ticket_id or receipt.contract_sha != contract_sha:
             continue
         for item in receipt.items:
             if item.item_id == item_id:
-                latest = (receipt, item.verdict)
-    if latest is not None and latest[1] == "VERIFIED":
-        return latest[0]
-    return None
+                latest_by_host[receipt.host] = (receipt, item.verdict)
+    verified = [r for r, verdict in latest_by_host.values() if verdict == "VERIFIED"]
+    return verified[-1] if verified else None
 
 
 __all__ = [
+    "ChainedLocalDoneGateReceiptSource",
     "FilesystemLocalDoneGateReceiptStore",
     "ProtocolLocalDoneGateReceiptSource",
+    "default_receipt_source",
     "default_receipt_store",
     "receipt_from_results",
     "receipt_reads_verified",

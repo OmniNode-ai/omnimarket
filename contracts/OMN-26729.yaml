@@ -40,6 +40,24 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_dod_verify/test_local_done_gate_receipt.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26729-other-host-failure
+  description: The store OMN-26115 held on 2026-11-27 (four VERIFIED runs on one host, then a FAILED run from a host with no lab appended last) clears the skipped lab-only item, a later FAILED reading from the same host still refuses, and failed-only readings never clear it.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_dod_verify/test_omn26729_receipt_other_host_failure.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26729-verifier-state-root
+  description: The Done-write guard starts the verifier with ONEX_STATE_DIR on a fresh temp dir while ONEX_STATE_ROOT keeps the runtime root; the store OMN-26115 held on 2026-11-27, under the runtime root only, clears the skipped lab-only item, a state root with no receipts still refuses, and another contract revision's lookup still refuses.
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_dod_verify/test_omn26729_receipts_under_verifier_state_root.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn26729-integration-proof
   description: On a lab host, with the branch checked out at its pushed sha, the receipt tests run with a known good (a matching receipt clears the item) and a known bad (a receipt for another revision leaves it refused). Hosted CI holds no lab host, so only the local Done gate runs this check, and it binds no criterion.
   source: manual
