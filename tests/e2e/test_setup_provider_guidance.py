@@ -235,6 +235,7 @@ def test_actual_terminal_key_page_and_wrong_provider_refusal(tmp_path: Path):
             "HOME": str(home),
             "PATH": str(Path(cli).parent) + ":/usr/bin:/bin",
             "ONEX_STATE_DIR": str(tmp_path / "state"),
+            "ONEX_CLI_SHOW_ALL_COMMANDS": "1",
             "TERM": "dumb",
             "HTTPS_PROXY": "http://127.0.0.1:9",
             "HTTP_PROXY": "http://127.0.0.1:9",

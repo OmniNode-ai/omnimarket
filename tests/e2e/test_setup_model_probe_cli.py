@@ -87,6 +87,7 @@ def invoke(tmp_path: Path, url: str, answer: str):
         cwd=tmp_path,
         env={
             "HOME": str(home),
+            "ONEX_CLI_SHOW_ALL_COMMANDS": "1",
             "PATH": str(Path(sys.executable).parent)
             + ":"
             + os.environ.get("PATH", "/usr/bin:/bin"),

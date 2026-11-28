@@ -27,7 +27,11 @@ def test_actual_setup_parser_errors_are_typed_without_input_echo(
     result = subprocess.run(
         [cli, "setup", *arguments],
         cwd=tmp_path,
-        env={"HOME": str(tmp_path), "PATH": str(Path(cli).parent) + ":/usr/bin:/bin"},
+        env={
+            "HOME": str(tmp_path),
+            "ONEX_CLI_SHOW_ALL_COMMANDS": "1",
+            "PATH": str(Path(cli).parent) + ":/usr/bin:/bin",
+        },
         capture_output=True,
         text=True,
         timeout=30,
@@ -48,6 +52,7 @@ def test_setup_help_and_human_parser_errors_remain_normal(tmp_path: Path) -> Non
             cwd=tmp_path,
             env={
                 "HOME": str(tmp_path),
+                "ONEX_CLI_SHOW_ALL_COMMANDS": "1",
                 "PATH": str(Path(cli).parent) + ":/usr/bin:/bin",
             },
             capture_output=True,
