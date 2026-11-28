@@ -102,3 +102,18 @@ dod_evidence:
           tests/nodes/node_projection_floor_integration tests/nodes/node_integration_reading_publish_effect -q --no-cov
           -m 'not kafka'
         cwd: .
+  - id: dod-omn25103-user-only-provision
+    description: >-
+      node_dev_identity_provision_effect has a user-only mode (one dev-realm user with a named realm role, no tenant)
+      and node_secret_store_effect declares dev_dashboard_reader_password for its password, so a plain read-only dev
+      user can be created for the dev OmniDash reading. The new test file fails at the merge base (the command has no
+      user_only field and the store has no such key).
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_dev_identity_provision_effect/test_user_only_mode.py -q -n 0 -p no:randomly --no-cov
+        cwd: "${OMNI_HOME}/omnimarket"
+      - check_type: command
+        check_value: >-
+          bash -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dev_identity_provision_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -q "^user_only:"'
+        cwd: "${OMNI_HOME}/omnimarket"

@@ -117,6 +117,8 @@ class FakeKeycloakAndApi:
         self.reset_bodies: list[dict[str, Any]] = []
         self.deleted_ids: list[str] = []
         self.grant_forms: list[dict[str, str]] = []
+        self.roles: dict[str, str] = {"dashboard-reader": "role-id-reader"}
+        self.role_mappings: list[tuple[str, list[dict[str, Any]]]] = []
 
     def _answer(self, status: int, body: Any = None) -> ModelIdentityHttpResponse:
         return ModelIdentityHttpResponse(status=status, headers={}, json_body=body)
@@ -162,6 +164,27 @@ class FakeKeycloakAndApi:
                 return self._answer(200, {"access_token": self.user_token})
 
             return self._answer(400)
+
+        # Admin realm role read by name (OMN-25103).
+        if (
+            request.method == "GET"
+            and "/admin/realms/" in request.url
+            and "/roles/" in request.url
+        ):
+            if not self._is_admin(request):
+                return self._answer(403)
+            role = request.url.rstrip("/").rsplit("/", 1)[-1]
+            if role in self.roles:
+                return self._answer(200, {"id": self.roles[role], "name": role})
+            return self._answer(404)
+
+        # Admin realm role mapping for one user (OMN-25103).
+        if request.method == "POST" and request.url.endswith("/role-mappings/realm"):
+            if not self._is_admin(request):
+                return self._answer(403)
+            user_id = request.url.split("/users/")[1].split("/")[0]
+            self.role_mappings.append((user_id, list(request.json_body or [])))
+            return self._answer(204)
 
         # Admin users list.
         if (
