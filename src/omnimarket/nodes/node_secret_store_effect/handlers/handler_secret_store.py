@@ -485,6 +485,15 @@ class HandlerSecretStore:
                 )
                 return result(EnumSecretStoreOutcome.LISTED, folder=folder, keys=names)
             full_key = f"{folder.rstrip('/')}/{key}"
+            if request.operation is EnumSecretStoreOperation.DELETE:
+                removed = await store.delete_secret(full_key)
+                return result(
+                    EnumSecretStoreOutcome.DELETED
+                    if removed
+                    else EnumSecretStoreOutcome.NOT_FOUND,
+                    folder=folder,
+                    key=key,
+                )
             if request.operation is EnumSecretStoreOperation.RESOLVE:
                 value = await store.get_secret(full_key)
                 if value is None:

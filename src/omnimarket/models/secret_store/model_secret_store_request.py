@@ -18,11 +18,12 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 
 class EnumSecretStoreOperation(StrEnum):
-    """The three verbs of the secret store effect."""
+    """The verbs of the secret store effect."""
 
     RESOLVE = "resolve"
     CREATE = "create"
     LIST = "list"
+    DELETE = "delete"
 
 
 class ModelSecretStoreRequest(BaseModel):

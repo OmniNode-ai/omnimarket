@@ -28,6 +28,7 @@ class EnumSecretStoreOutcome(StrEnum):
     #: Create-only: the key already existed, so nothing was read or written.
     EXISTS = "exists"
     LISTED = "listed"
+    DELETED = "deleted"
     NOT_FOUND = "not_found"
     #: This machine's overlay has no secret store block.
     NOT_CONFIGURED = "not_configured"
@@ -70,6 +71,7 @@ _SUCCESS = frozenset(
         EnumSecretStoreOutcome.CREATED,
         EnumSecretStoreOutcome.EXISTS,
         EnumSecretStoreOutcome.LISTED,
+        EnumSecretStoreOutcome.DELETED,
     }
 )
 
