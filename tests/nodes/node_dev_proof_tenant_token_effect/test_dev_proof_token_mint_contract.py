@@ -26,7 +26,7 @@ def test_dev_proof_token_mint_contract_declares_the_dev_only_block() -> None:
         "lane": "dev",
         "audience": "gateway-attach",
         "expiry_seconds": 3600,
-        "tenants": ["cli-run-a", "cli-run-b"],
+        "tenants": ["cli-run-a"],
     }
 
 
@@ -38,10 +38,7 @@ def test_dev_proof_token_mint_contract_example_overlay_loads_and_holds_no_value(
     )
     overlay = ModelDevProofTenantTokenOverlay.model_validate(document)
     assert overlay.lane == "dev"
-    assert sorted(t.tenant_slug for t in overlay.tenants) == [
-        "cli-run-a",
-        "cli-run-b",
-    ]
+    assert [t.tenant_slug for t in overlay.tenants] == ["cli-run-a"]
     assert "BEGIN" not in (NODE / "overlay.example.yaml").read_text(encoding="utf-8")
 
 
@@ -49,7 +46,13 @@ def test_dev_proof_token_mint_contract_overlay_refuses_repeated_secret_names() -
     document = yaml.safe_load(
         (NODE / "overlay.example.yaml").read_text(encoding="utf-8")
     )
-    document["tenants"][1]["secret_name"] = document["tenants"][0]["secret_name"]
+    document["tenants"].append(
+        dict(
+            document["tenants"][0],
+            tenant_slug="cli-run-b",
+            tenant_id="00000000-0000-0000-0000-000000000201",
+        )
+    )
     with pytest.raises(ValueError, match="secret_name"):
         ModelDevProofTenantTokenOverlay.model_validate(document)
 

@@ -189,7 +189,7 @@ class HandlerHarnessBackendCall:
                 tier=tier,
                 backend_id=backend.backend_id,
                 harness=backend.harness.value,
-                model_name=backend.model_name,
+                model_name=receipt.model or backend.model_name,
                 tokens_in=receipt.tokens_in,
                 tokens_out=receipt.tokens_out,
                 cost_usd=receipt.cost_usd,
@@ -217,7 +217,7 @@ class HandlerHarnessBackendCall:
                     ok=True,
                     content=receipt.answer,
                     backend_id=backend.backend_id,
-                    model_name=backend.model_name,
+                    model_name=receipt.model or backend.model_name,
                     attempts=tuple(attempts),
                     refused_rungs=tuple(refused),
                 )

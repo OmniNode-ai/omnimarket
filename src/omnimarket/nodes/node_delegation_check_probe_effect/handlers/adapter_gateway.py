@@ -93,7 +93,13 @@ class DevTenantCredential:
                 )
             secret_name = row.secret_name
         reader = self._reader or SecretStoreSettingsReader(overlay=declared.store)
-        secret = asyncio.run(reader.read(declared.token_folder, secret_name))
+        try:
+            secret = asyncio.run(reader.read(declared.token_folder, secret_name))
+        except Exception as exc:
+            raise CollectorAbsentError(
+                "tenant_credential",
+                f"the dev secret store cannot be read: {type(exc).__name__}",
+            ) from None
         if secret is None:
             raise CollectorAbsentError(
                 "tenant_credential",
@@ -111,12 +117,17 @@ class HttpGatewayCaller:
         row: ModelDelegationCheckGatewayOverlay,
         credential: ProtocolTenantCredential,
         timeout_s: float,
+        submit_timeout_s: float | None = None,
     ) -> None:
         self.gateway_url = row.gateway_url
         self.tenant_slug = row.tenant_slug
         self._credential_kind = row.credential_kind
         self._credential = credential
         self._timeout_s = timeout_s
+        # The workflow submit has its own cap (overlay ``submit_timeout_s``); absent, it shares the responder cap.
+        self._submit_timeout_s = (
+            timeout_s if submit_timeout_s is None else submit_timeout_s
+        )
 
     def _credential_headers(self, value: str) -> dict[str, str]:
         """An API key goes in the API key header; a signed JWT goes in the Authorization header as a bearer token."""
@@ -146,8 +157,13 @@ class HttpGatewayCaller:
         request = urllib.request.Request(
             self.gateway_url + path, data=data, headers=headers, method=method
         )
+        timeout_s = (
+            self._submit_timeout_s
+            if method == "POST" and path == "/v1/workflows"
+            else self._timeout_s
+        )
         try:
-            with urllib.request.urlopen(request, timeout=self._timeout_s) as response:
+            with urllib.request.urlopen(request, timeout=timeout_s) as response:
                 return ModelGatewayObservation(
                     status=response.status, body=_parse(response.read(BODY_LIMIT))
                 )
@@ -169,17 +185,21 @@ def _parse(raw: bytes) -> Any:
 
 def load_gateway_row(
     environ: Mapping[str, str] | None = None,
+    *,
+    explicit: object | None = None,
 ) -> ModelDelegationCheckGatewayOverlay:
     """The settings store's gateway row; with none served the node loads no gateway and its checks read PRECONDITION-ABSENT."""
     return load_structured_overlay(
         GATEWAY_OVERLAY_ID,
         ModelDelegationCheckGatewayOverlay,
         environ,
+        explicit=explicit,
         file_env=GATEWAY_FILE_ENV,
     )
 
 
 __all__ = [
+    "GATEWAY_OVERLAY_ID",
     "DevTenantCredential",
     "HttpGatewayCaller",
     "ProtocolSecretReader",

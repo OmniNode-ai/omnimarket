@@ -131,7 +131,9 @@ def test_untested_code_answer_completes(
     result = _dispatch(port, task_type="code_generation")
     assert result["status"] == "completed"
     assert result["quality_gate_passed"] is True
-    assert float(result["quality_score"]) < 0.85
+    # OMN-25856: the convention/regression markers are waived unless the prompt
+    # asks, so a correct trivial answer scores in range; the verdict stays UNTESTED.
+    assert 0.0 < float(result["quality_score"]) <= 1.0
 
     assert len(accepted_gates) == 1
     gate = accepted_gates[0]

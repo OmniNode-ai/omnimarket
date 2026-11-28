@@ -242,6 +242,9 @@ class TestServedUsageUpstreamOmn13408:
         # depends on: that the ladder has room to be exhausted.
         assert max_escalations >= 2
         handler.workflows[cid].escalation_count = max_escalations
+        # OMN-26566: a first truncation under the request's 512 cap re-asks once
+        # with the route ceiling; this test is the truncation AFTER that.
+        handler.workflows[cid].output_budget_lifted = True
 
         # The inference EFFECT produced the truncated-but-usage-bearing response,
         # reporting the model of the route in flight (OMN-15542 AC3).

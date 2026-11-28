@@ -74,3 +74,27 @@ dod_evidence:
         check_value: >-
           onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26219 --kind test -- uv run --frozen pytest tests/unit/delegation -q --no-cov -k omn26219
         cwd: .
+  - id: dod-omn26219-claude-harness-subscription-tests
+    description: "The Claude harness handler runs claude -p on the subscription in a clean temporary directory at the effort of its model family, refuses an API key or auth token in the environment by variable name without launching, and returns the model the harness reported it ran. The tests fail on the base commit, where the backend has no effort, the receipt has no model and an API key passes through."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/unit/delegation/test_claude_harness_subscription_omn26043.py -q --no-cov -n 0 -p no:randomly
+  - id: dod-omn26219-claude-effort-off-wire-model
+    description: "The Claude tier effort is held in the harness handler and the backend wire model gains no key, so the pinned consumer's extra=forbid decode still accepts it. The wire-model test fails on the commit that added an effort field to the backend model."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/unit/delegation/test_claude_harness_subscription_omn26043.py -q --no-cov -n 0 -p no:randomly -k 'wire_model_carries_no_effort_field or each_tier_runs_at_its_effort'
+  - id: dod-omn26219-claude-api-key-tier-tests
+    description: "A Claude tier whose settings store row declares the api_key credential runs on the key resolved from the secret store by its declared name (never on a command line or in a receipt); subscription first falls to the key when the login is limited or absent; no key and no usable login is a named refusal; a tier with no settings row is refused by the row's name; a subscription launch inherits no key. The tests fail on the base commit, which refuses any key and chooses effort in code."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/unit/delegation/test_claude_harness_api_key_tier_omn26219.py tests/unit/delegation/test_claude_harness_subscription_omn26043.py -q --no-cov -n 0 -p no:randomly

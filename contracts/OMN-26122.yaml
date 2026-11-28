@@ -1,0 +1,60 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: OMN-26122
+title: "A delegation failure crossing the bus, applied by the terminal writer, reads back from the status reader as the same run failed"
+summary: "No test carried a delegation failure the whole way. The new test publishes the orchestrator's refused-request terminal and the dispatch engine's publisher_malformed refusal on the in-memory bus, applies each with the real terminal writer over a real Postgres, and reads the same run id back through the real status reader as failed with its typed class and code."
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26122-failure-crosses-bus-to-status-read
+    statement: "A refused or dead delegation request and a publisher_malformed refusal each end the caller's gateway row failed, and the status read returns that run id as failed with the typed failure class and code."
+    acceptance:
+      - id: AC1
+        statement: "AC1: the end-to-end test in tests/nodes/node_gateway_workflow_terminal_effect/test_delegation_failure_crosses_bus_to_status_read_omn26122.py passes on a real Postgres, and its control (a failure for another run) leaves the run published -- falsifier: the test fails or is skipped at the pushed head on a host with a reachable Postgres"
+  - id: req-omn26122-liveness-class-passes-real-gate
+    statement: "The delegation checks' healthy liveness submission is classed document with a prompt that declares its one-word answer, so the real quality gate passes a compliant answer; the old test-class code-block pair is refused by the same gate."
+    acceptance:
+      - id: AC2
+        statement: "AC2: tests/nodes/node_delegation_check_probe_effect/test_healthy_liveness_task_class_omn26122.py passes at the pushed head and fails at origin/dev for every check that submits a healthy run -- falsifier: the test passes at origin/dev, or the known-bad control (task class test with the code-block prompt) is not refused by the real gate"
+evidence_requirements:
+  - kind: tests
+    description: "The new end-to-end test passes at the pushed head on a lab host with Postgres."
+    command: "uv run --frozen pytest tests/nodes/node_gateway_workflow_terminal_effect/test_delegation_failure_crosses_bus_to_status_read_omn26122.py -q --no-cov -n 0 -p no:cacheprovider --refuse-skips"
+  - kind: tests
+    description: "The healthy liveness class test and the probe node's tests pass at the pushed head."
+    command: "uv run --frozen pytest tests/nodes/node_delegation_check_probe_effect -q --no-cov -n 0 -p no:cacheprovider"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26122-failure-crosses-bus-to-status-read
+    description: "The orchestrator's refused-request terminal and the engine's publisher_malformed refusal cross the in-memory bus, are applied by the real terminal writer and read back by the real status reader as the same run failed with its typed class and code."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run --frozen pytest tests/nodes/node_gateway_workflow_terminal_effect/test_delegation_failure_crosses_bus_to_status_read_omn26122.py -q --no-cov -n 0 -p no:cacheprovider
+        cwd: .
+  - id: dod-omn26122-liveness-class-passes-real-gate
+    description: "Recorded C16 run 46064337534 (receipt status='failed'): the healthy liveness run was classed test and the real quality gate refused a well-formed answer to its prompt (0.85, TASK_MISMATCH missing @pytest.mark.unit). The probe now classes it document with a self-declared one-word answer; the test grades every check's healthy submission through the real gate and keeps the old pair as the known-bad control."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run --frozen pytest tests/nodes/node_delegation_check_probe_effect/test_healthy_liveness_task_class_omn26122.py -q --no-cov -n 0 -p no:cacheprovider
+        cwd: .
+  - id: dod-omn26122-integration-proof
+    description: "Local Done gate only, so it binds no criterion here: the healthy liveness class test runs on a lab host at the pushed head."
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: >-
+          onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26122 --kind test -- uv run --frozen pytest tests/nodes/node_delegation_check_probe_effect -q --no-cov
+        cwd: .

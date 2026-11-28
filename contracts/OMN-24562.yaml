@@ -36,6 +36,11 @@ requirements:
   acceptance:
   - id: AC8
     statement: 'AC8: a changed tests/unit file selects itself, its importers in any folder and the tests that spell its path, and an unattributable helper keeps tests/unit/ -- falsifier: tests/nodes/node_test_selection_selector_compute/test_unit_file_scoped_root.py fails when the unit branch of the resolver is removed'
+- id: req-omn24562-tenant-outbox-flush
+  statement: The TENANT_CREATED rows node_tenant_provision_effect leaves unpublished in tenant_event_outbox are published to the tenant events topic by one node, each marked published only after the broker acknowledges.
+  acceptance:
+  - id: AC12
+    statement: 'AC12: node_tenant_outbox_flush_effect publishes each unpublished outbox row once, leaves a row whose publish failed unmarked for the next pass, and never reads a row already marked published -- falsifier: uv run pytest tests/nodes/node_tenant_outbox_flush_effect -q fails when the mark is moved before the publish or a failed row is marked'
 - id: req-omn24562-lint-split-parallel
   statement: The required lint context is an aggregate of parallel group jobs, every old lint step still runs in exactly one group, and the Direct Model Call Gate positive control judges each planted case on a scratch repository holding only that file.
   acceptance:
@@ -76,6 +81,16 @@ requirements:
   acceptance:
   - id: AC11
     statement: 'AC11: ModelEtcdLabMembersOverlay accepts the current five voters, renders their members.tsv rows, and refuses a sixth voter, a repeated name, a second learner and a second laptop voter -- falsifier: tests/unit/models/test_etcd_lab_members_overlay_document_omn24562.py fails collection or any of its tests fails'
+- id: req-omn24562-alarm-router-runtime-interpreter
+  statement: The failure alarm router runs a command that names an absent host venv interpreter under the running environment's interpreter, never refusing the fire on a host path.
+  acceptance:
+  - id: AC13
+    statement: 'AC13: a router command whose first token is an absent .venv/bin/python path runs under the runtime interpreter, and a present one is left as named -- falsifier: uv run pytest tests/nodes/node_failure_alarm_router_effect/test_interpreter_setting.py -q fails when the absent-venv resolution is removed'
+- id: req-omn24562-census-unit-workspace-root
+  statement: The daily ledger file census unit exports the workspace config root, so its publish of the daily record resolves the broker instead of being refused with exit 3.
+  acceptance:
+  - id: AC14
+    statement: 'AC14: the census registry unit declares ONEX_WORKSPACE_CONFIG_ROOT as {workspace_config_root} and the rendered service carries it -- falsifier: uv run pytest tests/unit/contracts/test_node_trigger_declarations.py -k workspace_config_root fails when the environment line is removed from the unit'
 evidence_requirements:
 - kind: tests
   description: The inode alarm tests pass at the pushed head.
@@ -243,4 +258,118 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/models/test_etcd_lab_members_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn24562-tenant-outbox-flush-ac5
+  description: 'AC12: a published row is not sent twice, a failed publish leaves the row and records the error, a mark follows only an ack, a store that cannot be read is a typed outcome (failing control: the tests fail at the merge base, where the node does not exist).'
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_tenant_outbox_flush_effect -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24562-outbox-flush-store-scratch-pg
+  description: 'AC12: the Postgres store reads, marks and records failures against a scratch PostgreSQL 16 holding the dev tenant_event_outbox shape (no attempts or last_error column), and against the same table with both columns added (failing control: before the store checked for the columns the first test failed with UndefinedColumnError).'
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_tenant_outbox_flush_effect/test_outbox_postgres_scratch.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24562-outbox-flush-autowires-bare
+  description: 'AC12: the runtime builds HandlerTenantOutboxFlush with no arguments and the infra auto-wiring wires the node in process without quarantining its handler, the way node_tenant_provision_effect wires (failing control: with the handler requiring store, publisher and topic, the auto-wiring test fails naming node_tenant_outbox_flush_effect and the bare-construction test fails with TypeError).'
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_tenant_outbox_flush_effect/test_flush_handler.py -q -n 0 --no-cov -p no:cacheprovider -k bare
+    cwd: .
+- id: dod-omn24562-outbox-flush-refusals-by-name
+  description: 'AC12: a missing overlay is refused with exit 3 naming the node and the overlay file, a missing outbox table or column is refused by name before any row statement is sent, and a closer that raises is a stderr line and not a traceback (failing control: before the change the first seven tests failed and the closer test ended in an uncaught RuntimeError).'
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_tenant_outbox_flush_effect/test_refusals_by_name_omn24562.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+- id: dod-omn24562-outbox-flush-strict-composed-wiring
+  description: 'AC12: the flush node wires through the infra runtime auto-wiring with ONEX_WIRING_STRICT_MODE=1 and no handler is quarantined; on the composed image the handler of head 7d0b54eeb4 (constructor requiring store, publisher and topic) is quarantined as unresolvable_handler, which strict mode turns into a boot crash, and the handler of this head wires (failing control: the same test fails with the old handler).'
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_tenant_outbox_flush_effect/test_composed_wiring_strict_omn24562.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+- id: dod-omn24562-dupguard-lane-token
+  description: 'AC11: the duplicate guard''s claims read names only lane tokens in its lane-scoped read. A one hour row whose lane cell is wt:<repo>/<worktree> (a hook FRICTION row, 2026-11-26T21:20Z) no longer makes the work-ledger query refuse the request (lanes.N String should match pattern) and every pr-create refuse unchecked; the real lanes are still asked for. The new test fails against the previous handler (named both lanes) and passes after; an unreadable read still refuses unchecked.'
+  source: manual
+  binds_ac:
+  - AC11
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/scm/test_scm_duplicate_guard_reader_timeout.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+
+- id: dod-omn24562-outbox-flush-overlay-and-entry
+  description: 'AC12: the flush node overlay document validates its shipped example and refuses a malformed one, and the node is registered in the onex.nodes entry points; the overlay home now carries the document for the node, which the Overlay Main Load check found missing at the previous head'
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_tenant_outbox_flush_effect/test_overlay_and_entry.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+
+- id: dod-omn24562-flush-schedule-overlay-model
+  description: 'AC12: the schedule overlay document model for the tenant outbox flush scheduled node accepts its job_id, run_interval_seconds and grace_seconds document and refuses a missing key, an extra key and a malformed value; the test file fails at collection with ModuleNotFoundError before the model module exists and passes after.'
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_tenant_outbox_flush_schedule_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+
+- id: dod-omn24562-alarm-router-runtime-interpreter
+  description: 'AC13: the failure alarm router resolves an absent host .venv/bin/python first token to the runtime interpreter and leaves a present one alone (failing control: at the merge base the absent-venv test fails with InterpreterMissingError naming the host path).'
+  source: manual
+  binds_ac:
+  - AC13
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_failure_alarm_router_effect/test_interpreter_setting.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+
+- id: dod-omn24562-reader-bus-session-lane-resolution
+  description: 'AC13: the work ledger reader resolves its bus-session lane from the route''s declared workspace_config_root and the runtime''s KAFKA_SASL_USERNAME and KAFKA_SASL_PASSWORD, which the dev runtime holds with no exported config root and no client credential store; the failure alarm router''s rows command no longer exits 69 on it (failing control: at the merge base the test file fails at collection with ImportError for resolve_bus_session_config).'
+  source: manual
+  binds_ac:
+  - AC13
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_bus_session_lane_resolution_omn24562.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+
+- id: dod-omn24562-silent-alarm-append-bus-command
+  description: 'AC13: the silent failure alarm appends its episode rows through the unit-declared ONEX_LEDGER_BUS_APPEND_COMMAND (bus lane and workspace root bound) instead of the unbound `onex work-ledger`, which exits 69 on a pool host and made the tick exit 3 (failing controls: the handler test fails at the merge base because the default command is used, and the unit contract at the merge base declares no such environment key).'
+  source: manual
+  binds_ac:
+  - AC13
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/test_ledger_append_via_node.py tests/nodes/node_host_installer_registry_units/test_silent_failure_alarm_bus_append_omn24562.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+
+- id: dod-omn24562-census-unit-workspace-root
+  description: 'AC14: the daily ledger file census unit carries ONEX_WORKSPACE_CONFIG_ROOT in its rendered service (failing control: at the merge base the declaration is absent and the test fails with KeyError; the 2026-11-27 daily run exited 3 with PUBLISH REFUSED NodeBrokerResolutionError).'
+  source: manual
+  binds_ac:
+  - AC14
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/contracts/test_node_trigger_declarations.py -k workspace_config_root -q -n 0 --no-cov -p no:randomly
     cwd: .

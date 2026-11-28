@@ -4,15 +4,19 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shlex
 import subprocess
 import uuid
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from omnibase_infra.event_bus.models.config import ModelKafkaEventBusConfig
 
 from omnimarket.nodes.node_work_ledger_reader_effect.models import (
     ModelBusSessionReadRoute,
@@ -215,6 +219,59 @@ class JournalEventSink:
             fh.write(event.model_dump_json() + "\n")
 
 
+_CONFIG_ROOT_ENV = "ONEX_WORKSPACE_CONFIG_ROOT"
+_SASL_ENVIRONMENT = ("KAFKA_SASL_USERNAME", "KAFKA_SASL_PASSWORD")
+
+
+@contextlib.contextmanager
+def _config_root_declared(declared: str | None) -> Iterator[None]:
+    """Name the overlay's mounted config root for the lane resolver; put the variable back after (OMN-24562).
+
+    The dev runtime mounts the lane declaration but exports no ONEX_WORKSPACE_CONFIG_ROOT. A root the environment
+    already names wins.
+    """
+    if declared is None or os.environ.get(_CONFIG_ROOT_ENV, "").strip():
+        yield
+        return
+    os.environ[_CONFIG_ROOT_ENV] = declared
+    try:
+        yield
+    finally:
+        os.environ.pop(_CONFIG_ROOT_ENV, None)
+
+
+def resolve_bus_session_config(
+    route: ModelBusSessionReadRoute, environ: Mapping[str, str]
+) -> ModelKafkaEventBusConfig:
+    """The declared lane's broker config; the SASL identity from the environment when no client store holds one.
+
+    A lab host or runtime container holds the lane's identity in KAFKA_SASL_USERNAME / KAFKA_SASL_PASSWORD and has no
+    credential store, so the credential resolver steps aside (transport None) and the environment answers.
+    """
+    from omnibase_infra.cli.delegate_lane_credentials import resolve_lane_binding
+    from omnibase_infra.handlers.lane_kafka_event_bus_config import (
+        lane_event_bus_config,
+    )
+
+    if route.bus_lane != "dev":
+        raise ValueError("Work-ledger queries are enabled for the dev lane only")
+    with _config_root_declared(route.workspace_config_root):
+        selection, transport = resolve_lane_binding(route.bus_lane, environ=environ)
+    config = lane_event_bus_config(selection, transport)
+    if transport is None:
+        username, password = (
+            environ.get(name, "").strip() for name in _SASL_ENVIRONMENT
+        )
+        if username and password:
+            config = config.model_copy(
+                update={
+                    "sasl_plain_username": username,
+                    "sasl_plain_password": password,
+                }
+            )
+    return config
+
+
 def build_point_read(
     route: ModelCommandReadRoute | ModelInMemoryReadRoute | ModelBusSessionReadRoute,
     environ: Mapping[str, str] | None = None,
@@ -229,15 +286,14 @@ def build_point_read(
 
         def factory() -> ProtocolBusQueryClient:
             # Imported here so a host that never uses this route imports nothing from infra.
-            from omnibase_infra.cli.cli_ledger import (
-                resolve_work_ledger_query_transport,
-            )
             from omnibase_infra.handlers.handler_work_ledger_query import (
                 HandlerWorkLedgerQuery,
             )
 
             return HandlerWorkLedgerQuery(
-                resolve_work_ledger_query_transport(route.bus_lane)
+                resolve_bus_session_config(
+                    route, os.environ if environ is None else environ
+                )
             )
 
         return BusSessionPointRead(

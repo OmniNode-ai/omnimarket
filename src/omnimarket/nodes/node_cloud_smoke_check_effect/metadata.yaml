@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_cloud_smoke_check_effect
+version: 1.0.0
+description: Runs one delegation end to end through a gateway whose URL and key come from settings and reads back a receipt naming the answering model; fails with a named outcome when settings are absent.
+pack: operator_tooling
+node_role: effect
+display_name: Cloud Smoke Check Effect
+omnibase_core_compat: '>=0.39.0,<1.0.0'
+entry_points:
+  onex.nodes:
+    node_cloud_smoke_check_effect: omnimarket.nodes.node_cloud_smoke_check_effect
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+- pydantic>=2.0
+authors:
+- OmniNode Platform Team
+license: MIT
+tags:
+- effect
+- smoke
+- gateway

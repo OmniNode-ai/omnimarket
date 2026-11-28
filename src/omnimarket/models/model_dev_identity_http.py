@@ -23,7 +23,9 @@ class ModelIdentityHttpRequest(BaseModel):
     query: dict[str, str] = Field(default_factory=dict)
     bearer: SecretStr | None = Field(default=None, exclude=True, repr=False)
     form: dict[str, SecretStr] | None = Field(default=None, exclude=True, repr=False)
-    json_body: dict[str, Any] | None = Field(default=None, exclude=True, repr=False)
+    json_body: dict[str, Any] | list[Any] | None = Field(
+        default=None, exclude=True, repr=False
+    )
     timeout_seconds: float
 
 

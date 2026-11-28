@@ -32,6 +32,7 @@ from omnimarket.projection.credential_publisher import (
     register_inference_credential,
 )
 from omnimarket.projection.runner import MessageMeta
+from tests.helpers.tenant_slug_mirror import mirror_fetchval
 
 # OMN-21059: every shipped row has the customer choose the model; this file
 # exercises the catalogue-pick path, which a row reaches with that flag off.
@@ -244,6 +245,7 @@ class TestRegisterDecidesThePlanFirst:
 def mock_db() -> AsyncMock:
     db = AsyncMock()
     db.execute = AsyncMock(return_value=[])
+    db.fetchval = AsyncMock(side_effect=mirror_fetchval)
     return db
 
 

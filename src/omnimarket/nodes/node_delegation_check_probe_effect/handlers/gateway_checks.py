@@ -27,6 +27,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe import (
     CheckId,
     ModelCheckClause,
+    ModelCheckPrecondition,
     ModelDelegationCheckReading,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.models.model_gateway_check import (
@@ -70,8 +71,28 @@ UNKNOWN_SOURCE: Final = "not-a-source"
 HOUSE_REF = re.compile(r"^llm\.[a-z0-9_]+\.[a-z0-9_]+$")
 FAILURE_CLASS = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(Error|Exception)$")
 FAILURE_CODE = re.compile(r"^ONEX_[A-Z0-9_]+$")
+#: The refusal the runtime gives a customer tenant with no registered provider key (customer_key_terminus.py): no customer runs on
+#: a house key, so a test tenant without a key of its own cannot complete a healthy delegation. That is a missing instrument.
+TENANT_KEY_ABSENT_CODE: Final = "ONEX_MARKET_CUSTOMER_PROVIDER_KEY_ABSENT"
 ABSENT_ID: Final = "00000000-0000-4000-8000-0000000000{n:02d}"
 RUNNER_QUERY: Final = "?runner_identity="
+
+
+# The gateway refuses a provider answer cut off by the output budget (finish_reason=length), so a
+# budget below what the model needs fails the run. 32 failed c29-20261126T044722Z-f2c5a20f under the
+# tenant key; 128 completed (control 275d746c), and 8 or fewer failed the same way.
+CHECK_MAX_TOKENS = 512
+
+# The healthy run is a liveness probe, so it is classed ``document`` (a public prose class) and its prompt declares its own
+# answer shape ("reply with exactly the word", a closed directive in task_class_contracts.v1.yaml), which the quality gate
+# grades as an exact literal. It was classed ``test``, whose gate grades one pytest artifact carrying @pytest.mark.unit: the
+# real gate scored a well-formed bare test function 0.85 with TASK_MISMATCH (OMN-26122; recorded C16 run 46064337534 read
+# receipt status='failed'). A customer-attributed tenant has one rung and no lawful successor (INV-068), so a refusal by the
+# gate ends its run; the tenant's overlay row is the all-task-types row, so the class does not change whose key answers.
+HEALTHY_TASK_TYPE: Final = "document"
+CHECK_PROMPT = (
+    "Reply with exactly the word: alive. Automated {check_id} delegation check."
+)
 
 
 class GatewayRunSettings(BaseModel):
@@ -170,6 +191,7 @@ class _Session:
         self._sleep = sleep
         self._monotonic = monotonic
         self._new_uuid = new_uuid
+        self.preconditions: list[ModelCheckPrecondition] = []
 
     def call(
         self,
@@ -198,10 +220,10 @@ class _Session:
                 # The declared request model (ModelWorkflowSubmitRequest) takes a UUID here, never free text.
                 "correlation_id": str(self._new_uuid()),
                 "payload": {
-                    "prompt": f"Reply with the single word: alive. Automated {self.check_id} delegation check.",
+                    "prompt": CHECK_PROMPT.format(check_id=self.check_id),
                     "task_type": task_type,
                     "source": source,
-                    "max_tokens": 32,
+                    "max_tokens": CHECK_MAX_TOKENS,
                 },
             },
         )
@@ -257,7 +279,18 @@ class _Session:
 def _healthy(
     s: _Session, source: str = "external-client"
 ) -> tuple[str | None, Mapping[str, Any] | None, Mapping[str, Any] | None, str]:
-    return s.run("test", source)
+    workflow_id, status, receipt, answered = s.run(HEALTHY_TASK_TYPE, source)
+    code = status.get("terminal_failure_code") if status else None
+    if status and status.get("status") == "failed" and code == TENANT_KEY_ABSENT_CODE:
+        s.preconditions.append(
+            ModelCheckPrecondition(
+                name="tenant_provider_key",
+                present=False,
+                detail=f"the run {workflow_id} was refused {code}: the test tenant holds no provider key, "
+                "so a healthy delegation cannot complete as it",
+            )
+        )
+    return workflow_id, status, receipt, answered
 
 
 def _identity_clause(name: str, receipt: Mapping[str, Any] | None) -> ModelCheckClause:
@@ -533,7 +566,7 @@ def _c28(s: _Session) -> tuple[ModelCheckClause, ...]:
 def _c29(s: _Session) -> tuple[ModelCheckClause, ...]:
     workflow_id, status, receipt, answered = _healthy(s)
     houses = _house_refs(receipt)
-    refused, _ = s.submit("test", "external-client", auth="invalid")
+    refused, _ = s.submit(HEALTHY_TASK_TYPE, "external-client", auth="invalid")
     return (
         _completed("completed_under_tenant_key", status, answered, workflow_id),
         _identity_clause("receipt_names_provider_and_model", receipt),
@@ -556,7 +589,7 @@ def _c29(s: _Session) -> tuple[ModelCheckClause, ...]:
 
 def _c30(s: _Session) -> tuple[ModelCheckClause, ...]:
     workflow_id, status, receipt, answered = _healthy(s, "claude-code")
-    unknown, _ = s.submit("test", UNKNOWN_SOURCE)
+    unknown, _ = s.submit(HEALTHY_TASK_TYPE, UNKNOWN_SOURCE)
     # The gateway answers a payload the workflow contract refuses 400 with the violated fields (handler_workflow_submit.py
     # step 5); 422 is the receipt route's missing query field. The refusal counts when it names the source field.
     refused_on_field = unknown.status == 400 and "source" in _error_fields(unknown.body)
@@ -658,9 +691,13 @@ def run_gateway_check(
         clauses = _GRADERS[cast("str", check_id)](session)
     except GatewayUnreachableError as exc:
         return ModelDelegationCheckReading(
-            **head, not_measured=f"the gateway did not answer: {exc}"
+            **head,
+            not_measured=f"the gateway did not answer: {exc}",
+            not_measured_cause="gateway",
         )
-    return ModelDelegationCheckReading(**head, clauses=clauses)
+    return ModelDelegationCheckReading(
+        **head, clauses=clauses, preconditions=tuple(session.preconditions)
+    )
 
 
 __all__ = [
