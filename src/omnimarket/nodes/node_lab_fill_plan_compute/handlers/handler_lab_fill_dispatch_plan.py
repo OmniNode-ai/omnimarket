@@ -463,9 +463,16 @@ class HandlerLabFillDispatchPlan:
             pin = host_value.strip() if isinstance(host_value, str) else ""
             # A Codex lane opens a new PR and cannot push to an existing PR branch, so an
             # item with a pr stays on sonnet and defers when no claude host has room.
+            # Codex is admitted only when the brief carries codexOk and the latest RULING allows
+            # it (OMN-26214); every other lane is sonnet, so a missing fact never reads as consent.
+            codex_admitted = (
+                truthy(c.get("codex_ok")) or truthy(c.get("codexOk"))
+            ) and request.codex_ruling_allows
             engine = (
                 "codex"
-                if truthy(c.get("self_contained_code")) and not truthy(c.get("pr"))
+                if codex_admitted
+                and truthy(c.get("self_contained_code"))
+                and not truthy(c.get("pr"))
                 else "sonnet"
             )
             slot = best(engine, pin)
@@ -477,7 +484,12 @@ class HandlerLabFillDispatchPlan:
                     fallback = ModelLabFillFallback.model_validate(
                         {"from": "codex", "reason": "no-codex-host"}
                     )
-            elif slot is None and engine == "sonnet" and not truthy(c.get("pr")):
+            elif (
+                slot is None
+                and engine == "sonnet"
+                and not truthy(c.get("pr"))
+                and codex_admitted
+            ):
                 engine = "codex"
                 slot = best(engine, pin)
             if slot is None:

@@ -1,0 +1,97 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+---
+schema_version: "1.0.0"
+ticket_id: OMN-26214
+title: "Placement admission reads live host state before placing: allowed models per host, a parity dry-run, the reconcile lock probe, and refusal after the same errno twice"
+summary: A pre-placement admission in the lab placement node reads the allowed models per host, the parity dry-run, the reconcile lock probe and the same-errno FRICTION history before a lane is placed, and the fill planners emit sonnet unless the brief carries codexOk and a RULING allows Codex.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+  - id: req-omn26214-placement-admission
+    statement: Placement acts on live host state read before the lane is placed, never on prose.
+    acceptance:
+      - id: AC1
+        statement: "AC1: placement of model codex is refused unless the brief carries codexOk and the latest RULING allows it, and fill-tick and integ-swarm emit sonnet by default -- falsifier: uv run pytest tests/ -k allowed_models_per_host exits non-zero"
+      - id: AC2
+        statement: "AC2: a pinned host that fails the parity dry-run is dropped and the lane is placed unpinned before the brief is written -- falsifier: uv run pytest tests/ -k parity_dry_run_pin_fallback exits non-zero"
+      - id: AC3
+        statement: "AC3: the placement runs the reconcile lock probe in the lane sandbox and refuses the host on Errno 30 -- falsifier: uv run pytest tests/ -k reconcile_lock_probe exits non-zero"
+      - id: AC4
+        statement: "AC4: a class or host with two same-errno FRICTION rows in two hours is refused until a MERGE row clears it, and the third placement of proof0-7 style lanes is refused in the replay -- falsifier: uv run pytest tests/ -k same_errno_refusal exits non-zero"
+      - id: AC5
+        statement: "AC5: a regression test built from the recorded data (FRICTION rows, fixture path in the pull request) fails on the broken code and passes on the fix -- falsifier: uv run pytest tests/ -k errno30_replay"
+      - id: AC6
+        statement: "AC6: measurement read 2026-11-21 after the first two fill ticks: 0 Codex CLAIMs and 0 same-errno repeats -- falsifier: grep -c 'model=codex' over the CLAIM rows of those two ticks in the rolling work ledger file is above 0"
+evidence_requirements:
+  - kind: tests
+    description: Focused tests of the lab placement admission.
+    command: uv run pytest tests/nodes/node_lab_placement_compute -q --no-cov -k "allowed_models_per_host or parity_dry_run_pin_fallback or reconcile_lock_probe or same_errno_refusal or errno30_replay"
+emergency_bypass:
+  enabled: false
+  justification: ""
+  follow_up_ticket_id: ""
+dod_evidence:
+  - id: dod-omn26214-ac1
+    description: "Codex is refused without codexOk and a RULING, allowed only on hosts whose table row has codex, and the fill planner and the lane model policy default to sonnet."
+    source: manual
+    binds_ac: [AC1]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/nodes/node_lab_placement_compute -q --no-cov -k allowed_models_per_host
+  - id: dod-omn26214-ac2
+    description: "A pin whose host fails the parity dry-run is dropped and the lane is placed unpinned; a lane that repairs a host's parity is never pinned to it or placed on it."
+    source: manual
+    binds_ac: [AC2]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/nodes/node_lab_placement_compute -q --no-cov -k parity_dry_run_pin_fallback
+  - id: dod-omn26214-ac3
+    description: "The read-only probe reads Errno 30 on a read-only mount without creating or locking the lock file, and the admission refuses a host whose probe read it."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/nodes/node_lab_placement_compute -q --no-cov -k reconcile_lock_probe
+  - id: dod-omn26214-ac4
+    description: "Two same-errno FRICTION rows in two hours refuse a host or class until a newer MERGE row clears it; the third proof0-7 style placement is refused."
+    source: manual
+    binds_ac: [AC4]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/nodes/node_lab_placement_compute -q --no-cov -k same_errno_refusal
+  - id: dod-omn26214-ac5
+    description: "The replay of the recorded Errno 30 FRICTION rows refuses the third placement on the host; the test fails on the tree before this change."
+    source: manual
+    binds_ac: [AC5]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/nodes/node_lab_placement_compute -q --no-cov -k errno30_replay
+  - id: dod-omn26214-ac6
+    description: "AC6 is the morning measurement of 2026-11-21 over the first two fill ticks, read by the dispatcher from the rolling ledger file named by WORK_LEDGER_FILE: the check counts CLAIM rows naming model=codex dated 2026-11-21 or later and passes at zero. It cannot run before those ticks, so only the local Done gate runs it."
+    source: manual
+    binds_ac: [AC6]
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: test "$(awk -F ' [|] ' '$1 >= "2026-11-21T00:00:00Z" && $2 == "CLAIM"' "${WORK_LEDGER_FILE:?}" | grep -c 'model=codex')" -eq 0
+  - id: dod-omn26214-deploy-contract
+    description: "Hosted deploy check runs the admission tests, the fill planner parity cases and the lane model policy tests the hosted runner can run without a lab."
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/nodes/node_lab_placement_compute tests/nodes/node_lane_model_policy_compute tests/nodes/node_lab_fill_plan_compute -q --no-cov
+  - id: dod-omn26214-integration-proof
+    description: the admission's focused tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
+    source: manual
+    execution_scope: local_done_gate
+    checks:
+      - check_type: command
+        check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26214 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_lab_placement_compute -q --no-cov -k "allowed_models_per_host or parity_dry_run_pin_fallback or reconcile_lock_probe or same_errno_refusal or errno30_replay"

@@ -138,6 +138,9 @@ class ModelLabFillDispatchPlanRequest(BaseModel):
     built_reports: tuple[ModelLabFillBuiltReport, ...] = ()
     closer_exempt_kinds: tuple[str, ...] = CLOSER_EXEMPT_KINDS
     closer: str = CLOSER_NODE
+    # OMN-26214: whether the latest RULING lets a lane run on Codex. A lane takes Codex only when its brief also
+    # carries ``codex_ok`` (candidate key); otherwise every lane is planned on sonnet. Read by the caller from the ledger.
+    codex_ruling_allows: bool = False
 
 
 class ModelLabFillDispatchPlanResult(BaseModel):
