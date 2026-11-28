@@ -83,6 +83,12 @@ READINGS = {
 CLOCK = iter(range(10_000))
 
 
+@pytest.fixture(autouse=True)
+def _leg_off_unless_a_test_turns_it_on(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests grade the tick without the fall-through leg; the contract's declared setting is switched off here."""
+    monkeypatch.setattr(tick, "contract_fall_through", lambda: None)
+
+
 def _clock() -> datetime:
     return datetime(2026, 11, 23, 20, 0, next(CLOCK) % 60, tzinfo=UTC)
 

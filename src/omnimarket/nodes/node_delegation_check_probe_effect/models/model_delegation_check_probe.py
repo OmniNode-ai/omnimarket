@@ -191,6 +191,8 @@ class ModelDelegationCheckReading(_Frozen):
     clauses: tuple[ModelCheckClause, ...] = ()
     preconditions: tuple[ModelCheckPrecondition, ...] = ()
     chain: tuple[ModelResponderAttempt, ...] = ()
+    # The attempt list of the fall-through leg of C13 and C14: the local rungs made unusable, then the cloud tiers (OMN-26043).
+    fall_through_attempts: tuple[ModelResponderAttempt, ...] = ()
     chosen_tier: str | None = None
     chosen_responder: str | None = None
     served_model: str | None = None
@@ -234,6 +236,8 @@ class ModelDelegationCheckResult(_Frozen):
     clauses: tuple[ModelCheckClause, ...] = ()
     preconditions: tuple[ModelCheckPrecondition, ...] = ()
     chain: tuple[ModelResponderAttempt, ...] = ()
+    # The attempt list of the fall-through leg of C13 and C14: the local rungs made unusable, then the cloud tiers (OMN-26043).
+    fall_through_attempts: tuple[ModelResponderAttempt, ...] = ()
     chosen_tier: str | None = None
     chosen_responder: str | None = None
     served_model: str | None = None

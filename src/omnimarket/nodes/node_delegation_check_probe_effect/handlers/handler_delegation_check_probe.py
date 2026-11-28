@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -23,6 +23,9 @@ import yaml
 from omnimarket.handlers.routing.delegation_check_responder_chain import (
     ModelChainResolution,
     resolve_chain,
+)
+from omnimarket.models.overlay_documents.model_delegation_check_probe_overlay import (
+    ModelFallThroughSettings,
 )
 from omnimarket.models.overlay_documents.model_delegation_check_responders_overlay import (
     ModelDelegationCheckResponder,
@@ -41,9 +44,11 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.grade_delegati
     grade_c14,
     grade_c17,
     grade_chain_tier_order,
+    grade_fall_through,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe import (
     CAUSE_PRODUCT,
+    CheckId,
     EnumCheckVerdict,
     ModelChainSource,
     ModelCheckPrecondition,
@@ -56,6 +61,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.protocols.protocol_dele
     ProtocolCheckResultPublisher,
     ProtocolCustomerMachine,
     ProtocolDashboardMachine,
+    ProtocolFallThroughMachine,
     ProtocolGatewayClient,
     ProtocolResponderReader,
 )
@@ -69,6 +75,17 @@ def contract_topics() -> tuple[str, ...]:
         (Path(__file__).parent.parent / "contract.yaml").read_text(encoding="utf-8")
     )
     return tuple(str(t) for t in contract["event_bus"]["publish_topics"])
+
+
+def contract_fall_through() -> ModelFallThroughSettings | None:
+    """The fall-through setting the node's contract declares (OMN-26043); None when the contract declares none."""
+    contract = yaml.safe_load(
+        (Path(__file__).parent.parent / "contract.yaml").read_text(encoding="utf-8")
+    )
+    declared = contract.get("fall_through")
+    return (
+        None if declared is None else ModelFallThroughSettings.model_validate(declared)
+    )
 
 
 def _new_run_id(check_id: str, now: datetime) -> str:
@@ -89,6 +106,7 @@ class HandlerDelegationCheckProbe:
         gateway: ProtocolGatewayClient | None = None,
         gateway_settings: GatewayRunSettings | None = None,
         chain_source: ModelChainSource | None = None,
+        fall_through_checks: Collection[CheckId] = (),
         sleep: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -102,6 +120,8 @@ class HandlerDelegationCheckProbe:
         self._gateway = gateway
         self._gateway_settings = gateway_settings or GatewayRunSettings()
         self._chain_source = chain_source
+        # The checks the overlay's declared fall_through setting turns the leg on for; none by default.
+        self._fall_through_checks = frozenset(fall_through_checks)
         self._sleep = sleep
         self._monotonic = monotonic
 
@@ -192,6 +212,38 @@ class HandlerDelegationCheckProbe:
                 ),
             )
         return ModelDelegationCheckReading(**head, clauses=clauses)
+
+    def _fall_through_leg(
+        self, reading: ModelDelegationCheckReading, request: ModelDelegationCheckRequest
+    ) -> ModelDelegationCheckReading:
+        """C13 and C14: one task with the local rung unusable for the run, and the chain's declared fall-through read."""
+        if self._responders is None:
+            return reading
+        if not isinstance(self._machine, ProtocolFallThroughMachine):
+            # The leg is the machine's to offer: a machine without the collector keeps its reading as it was, and no clause
+            # of the leg is claimed (the clean-install machine gains the collector with the declared CLI override).
+            return reading
+        resolution = resolve_chain(
+            self._responders, self._reader.read, local_unusable=True
+        )
+        try:
+            observation = self._machine.run_fall_through(request.check_id, resolution)
+        except CollectorAbsentError as exc:
+            absent = ModelCheckPrecondition(
+                name=exc.name, present=False, detail=exc.detail
+            )
+            return reading.model_copy(
+                update={"preconditions": (*reading.preconditions, absent)}
+            )
+        return reading.model_copy(
+            update={
+                "clauses": (
+                    *reading.clauses,
+                    *grade_fall_through(observation, resolution),
+                ),
+                "fall_through_attempts": resolution.attempts,
+            }
+        )
 
     def _surface_check(self) -> ModelDelegationCheckReading:
         observation = self._machine.collect_surface()
@@ -318,6 +370,8 @@ class HandlerDelegationCheckProbe:
                         ),
                     )
                 )
+            if request.check_id in self._fall_through_checks:
+                reading = self._fall_through_leg(reading, request)
             reading = self._with_gateway_leg(reading, request)
         return reading.model_copy(update={"versions": self._machine.versions()})
 
@@ -360,6 +414,7 @@ class HandlerDelegationCheckProbe:
             clauses=reading.clauses,
             preconditions=reading.preconditions,
             chain=reading.chain,
+            fall_through_attempts=reading.fall_through_attempts,
             chosen_tier=reading.chosen_tier,
             chosen_responder=reading.chosen_responder,
             served_model=reading.served_model,

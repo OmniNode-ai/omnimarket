@@ -45,11 +45,16 @@ from omnimarket.handlers.overlay_store.reader_store import (
     OverlayAbsentFromStoreError,
     StoreOverlayReader,
 )
+from omnimarket.inference.secret_store_resolver import resolve_api_key_loop_safe
+from omnimarket.models.overlay_documents.model_delegation_check_probe_overlay import (
+    ModelFallThroughSettings,
+)
 from omnimarket.models.overlay_documents.model_delegation_check_responders_overlay import (
     ModelDelegationCheckRespondersOverlay,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_clean_install_machine import (
     CleanInstallCustomerMachine,
+    FallThroughKey,
     GitCloneSurfaceSources,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_delegation_check import (
@@ -68,6 +73,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.gateway_checks
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.handler_delegation_check_probe import (
     NODE,
     HandlerDelegationCheckProbe,
+    contract_fall_through,
     contract_topics,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.handler_regression_ticket import (
@@ -264,6 +270,33 @@ def append_history(
     _write_atomically(path, "\n".join([*lines, *new][-keep:]) + "\n")
 
 
+def _fall_through_setting(
+    overlay: ModelDelegationCheckProbeOverlay,
+) -> ModelFallThroughSettings | None:
+    """The overlay's own fall_through block when it carries one, else the one the node's contract declares."""
+    return overlay.fall_through or contract_fall_through()
+
+
+def _fall_through_key(
+    overlay: ModelDelegationCheckProbeOverlay,
+) -> FallThroughKey | None:
+    """The declared key reference and env name for the leg; the value is resolved only when a run asks for it."""
+    settings = _fall_through_setting(overlay)
+    if settings is None:
+        return None
+    return FallThroughKey(
+        env_name=settings.key_env,
+        secret_ref=settings.secret_ref,
+        resolve=lambda: _resolve_secret(settings.secret_ref),
+    )
+
+
+def _resolve_secret(secret_ref: str) -> str | None:
+    """The OpenRouter tier's own read on dev: the canonical secret store by reference, no fallback (never a new secret)."""
+    resolved = resolve_api_key_loop_safe(secret_ref, required=False)
+    return resolved.get_secret_value() if resolved else None
+
+
 def main(
     argv: list[str] | None = None,
     *,
@@ -363,13 +396,16 @@ def main(
             _write_atomically(evidence_path, json.dumps(reading, sort_keys=True) + "\n")
             sys.stderr.write(f"{NODE}: {reading['error']}\n")
             return EXIT_OVERLAY
+    setting = _fall_through_setting(overlay)
     handler = HandlerDelegationCheckProbe(
         responders=row.responders if row is not None else None,
         reader=HttpResponderReader(overlay.responder_timeout_s),
         machine=machine
         or CleanInstallCustomerMachine(
-            sources=GitCloneSurfaceSources(args.registry_root)
+            sources=GitCloneSurfaceSources(args.registry_root),
+            fall_through_key=_fall_through_key(overlay),
         ),
+        fall_through_checks=setting.checks if setting else (),
         publisher=publisher or DeclaredBrokerPublisher(NODE, flat=True),
         topic=overlay.result_topic,
         gateway=gateway,

@@ -34,6 +34,8 @@ EnumAttemptOutcome = Literal[
     "no-answer",
     "no-model",
     "no-window",
+    # The declared test override made the local rung unusable for this run; it was not read.
+    "unusable-by-override",
 ]
 
 
@@ -129,17 +131,32 @@ def _local_attempt(
 def resolve_chain(
     responders: Sequence[ModelDelegationCheckResponder],
     read: Callable[[str], ModelResponderReading],
+    *,
+    local_unusable: bool = False,
 ) -> ModelChainResolution:
     """Choose the least busy usable local responder; else advance to the first cloud tier the chain names.
 
     A usable local responder answers, serves a model and declares a window. Among usable local responders the
     one reporting the fewest requests in flight wins, a responder that reports no load counts as idle (its load is
     unknown, never assumed high), and the declared order breaks every tie.
+
+    ``local_unusable`` is the declared test override (OMN-26043): every local responder is recorded as
+    ``unusable-by-override`` without being read, so the chain falls through to its cloud tiers for that run. It is the
+    override of the resolver, never a stopped host.
     """
     attempts: list[ModelResponderAttempt] = []
     usable: list[tuple[tuple[int, int], ModelResponderReading, int]] = []
     for index, responder in enumerate(r for r in responders if r.names_base):
         assert responder.base_url is not None
+        if local_unusable:
+            attempts.append(
+                ModelResponderAttempt(
+                    tier="local",
+                    base_url=responder.base_url,
+                    outcome="unusable-by-override",
+                )
+            )
+            continue
         reading = read(responder.base_url)
         outcome, window = _local_attempt(reading)
         if outcome == "chosen" and window is not None:

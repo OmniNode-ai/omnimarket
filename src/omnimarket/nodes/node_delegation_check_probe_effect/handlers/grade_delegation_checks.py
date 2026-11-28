@@ -11,6 +11,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 from urllib.parse import urlsplit
 
+from omnimarket.handlers.routing.delegation_check_responder_chain import (
+    ModelChainResolution,
+)
 from omnimarket.models.overlay_documents.model_delegation_check_responders_overlay import (
     CHAIN_TIER_ORDER,
     ModelDelegationCheckResponder,
@@ -246,4 +249,51 @@ def grade_broken_command(obs: ModelSurfaceObservation) -> ModelCheckClause:
         detail="a broken entry point returns an error naming it, and removing it restores onex"
         if ok
         else f"unnamed or vanished: {unnamed}; onex before rc {obs.broken_before_rc}, after rc {obs.broken_after_rc}",
+    )
+
+
+def grade_fall_through(
+    obs: ModelDelegateObservation, resolution: ModelChainResolution
+) -> tuple[ModelCheckClause, ...]:
+    """C13 and C14 fall-through leg: with the local rung unusable for the run, OpenRouter answered and the attempts show it."""
+    local = [a for a in resolution.attempts if a.tier == "local"]
+    unusable = (
+        bool(local)
+        and all(a.outcome == "unusable-by-override" for a in local)
+        and resolution.tier == "openrouter"
+    )
+    ranks = [
+        CHAIN_TIER_ORDER.index(t) if t in CHAIN_TIER_ORDER else -1
+        for t in obs.attempt_tiers
+    ]
+    recorded = (
+        bool(obs.attempt_tiers)
+        and -1 not in ranks
+        and ranks == sorted(ranks)
+        and obs.attempt_tiers[-1] == "openrouter"
+        and obs.accepted_last
+    )
+    answered = obs.rc == 0 and obs.receipt_tier == "openrouter"
+    return (
+        ModelCheckClause(
+            name="fall_through_local_rung_unusable",
+            ok=unusable,
+            detail="every local rung was made unusable for this run by the declared override and the chain advanced to openrouter"
+            if unusable
+            else f"a local rung stayed usable or the chain did not advance to openrouter (chain tier {resolution.tier})",
+        ),
+        ModelCheckClause(
+            name="fall_through_openrouter_answered",
+            ok=answered,
+            detail="openrouter answered the one task"
+            if answered
+            else f"the receipt reads rc={obs.rc} tier={obs.receipt_tier!r}, not an answer from openrouter",
+        ),
+        ModelCheckClause(
+            name="fall_through_attempts_recorded",
+            ok=recorded,
+            detail=f"the attempt list {list(obs.attempt_tiers)} runs in declared order and ends at the accepted openrouter rung"
+            if recorded
+            else f"the attempt list {list(obs.attempt_tiers)} is empty, out of declared order or does not end at the accepted openrouter rung",
+        ),
     )

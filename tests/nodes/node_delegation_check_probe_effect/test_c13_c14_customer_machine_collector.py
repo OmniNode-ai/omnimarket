@@ -31,6 +31,7 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers import (
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_clean_install_machine import (
     CleanInstallCustomerMachine,
     CommandResult,
+    FallThroughKey,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_delegation_check import (
     InMemoryCheckPublisher,
@@ -415,3 +416,102 @@ def test_a_driver_that_prints_no_record_is_a_collector_absent_not_a_pass(
 
     with pytest.raises(CollectorAbsentError):
         _machine(tmp_path, _Mute(_record())).run_delegation("C13", RESPONDER)
+
+
+# ----- the fall-through leg of the clean machine (OMN-26043) ---------------------------------------------------------
+
+SECRET = "sk-or-v1-synthetic-not-a-key"
+KEY_ENV = "ONEX_CHECK_FALLTHROUGH_KEY"
+FALL_RECORD = {
+    "rc": 0,
+    "receipt_tier": "openrouter",
+    "receipt_model": "m",
+    "attempt_tiers": ["local", "openrouter"],
+    "accepted_last": True,
+}
+
+
+def _fall_machine(
+    tmp_path: Path, runner: _Runner, value: str | None = SECRET
+) -> CleanInstallCustomerMachine:
+    return CleanInstallCustomerMachine(
+        sources=_Sources(),
+        runner=runner,
+        uv=_uv(tmp_path),
+        host_env={},
+        fall_through_key=FallThroughKey(
+            env_name=KEY_ENV,
+            secret_ref="llm.openrouter.api_key",
+            resolve=lambda: value,
+        ),
+    )
+
+
+def test_the_fall_through_run_hands_the_key_by_env_name_only_and_reads_the_receipt(
+    tmp_path: Path,
+) -> None:
+    runner = _Runner(FALL_RECORD)
+    observation = _fall_machine(tmp_path, runner).run_fall_through("C13", RESPONDER)
+    driver_call = next(c for c in runner.calls if c[0][0] != "uv")
+    argv, env, _stdin = driver_call
+    assert "--fall-through" in argv
+    assert argv[argv.index("--secret-ref") + 1] == "llm.openrouter.api_key"
+    assert env[KEY_ENV] == SECRET
+    assert not any(SECRET in a for a in argv)
+    assert not any(SECRET in a for _, _, a in runner.calls if a)
+    assert observation.receipt_tier == "openrouter"
+    assert observation.attempt_tiers == ("local", "openrouter")
+
+
+def test_a_key_that_resolves_to_nothing_is_a_collector_absent_and_launches_nothing(
+    tmp_path: Path,
+) -> None:
+    runner = _Runner(FALL_RECORD)
+    with pytest.raises(CollectorAbsentError) as raised:
+        _fall_machine(tmp_path, runner, value=None).run_fall_through("C13", RESPONDER)
+    assert raised.value.name == "openrouter_credential"
+    assert runner.calls == []
+
+
+def test_a_machine_with_no_declared_setting_is_a_collector_absent(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(CollectorAbsentError) as raised:
+        _machine(tmp_path, _Runner(FALL_RECORD)).run_fall_through("C13", RESPONDER)
+    assert raised.value.name == "fall_through_setting"
+
+
+def test_a_driver_failure_never_prints_the_key(tmp_path: Path) -> None:
+    class _Leaky(_Runner):
+        def run(self, argv: Sequence[str], **kw: Any) -> CommandResult:  # type: ignore[override]
+            if argv[0] == "uv":
+                return CommandResult(0, "", "")
+            return CommandResult(1, "not json", f"boom {SECRET}")
+
+    with pytest.raises(CollectorAbsentError) as raised:
+        _fall_machine(tmp_path, _Leaky(FALL_RECORD)).run_fall_through("C13", RESPONDER)
+    assert SECRET not in raised.value.detail
+
+
+def test_the_driver_reads_its_fall_through_arguments() -> None:
+    args = driver.read_arguments(
+        [
+            "--onex",
+            "/x/onex",
+            "--fall-through",
+            "--key-env",
+            "K",
+            "--secret-ref",
+            "llm.a.b",
+        ]
+    )
+    assert args["fall_through"] is True
+    assert (args["key_env"], args["secret_ref"]) == ("K", "llm.a.b")
+    with pytest.raises(SystemExit):
+        driver.read_arguments(["--onex", "/x/onex", "--fall-through"])
+
+
+def test_the_local_rung_is_declared_at_an_address_nothing_listens_on() -> None:
+    url = driver.closed_loopback_url()
+    host, port = url.removeprefix("http://").rsplit(":", 1)
+    assert driver.endpoint_state(host, int(port)) == "unreachable"

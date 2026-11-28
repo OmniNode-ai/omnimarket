@@ -32,6 +32,22 @@ class ModelRegressionTicketSettings(BaseModel):
     state_file: str = Field(min_length=1)
 
 
+class ModelFallThroughSettings(BaseModel):
+    """The declared setting that turns the chain fall-through leg on for the scheduled C13 and C14 runs (OMN-26043).
+
+    With the block absent the leg is off and a run reads as it did before. ``secret_ref`` is the secret store REFERENCE the
+    OpenRouter tier reads its key through on dev (never a value); the key reaches the clean customer machine only through
+    the install's own ``onex secret set``, and never appears in a record. No key has a default.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    checks: tuple[Literal["C13", "C14"], ...] = Field(min_length=1)
+    secret_ref: str = Field(pattern=r"^llm\.[a-z0-9_-]+\.[a-z0-9_]+$")
+    # The environment variable NAME the host hands the key to the clean machine's driver under; never a value.
+    key_env: str = Field(pattern=r"^[A-Z][A-Z0-9_]*$")
+
+
 class ModelDelegationCheckProbeOverlay(BaseModel):
     """Every setting of the delegation check probe node; no key has a default.
 
@@ -55,3 +71,5 @@ class ModelDelegationCheckProbeOverlay(BaseModel):
     event_bus: ModelNodeEventBus | None = None
     # Absent: a red check writes its STATUS evidence only, as before.
     regression_ticket: ModelRegressionTicketSettings | None = None
+    # Absent: C13 and C14 run without the fall-through leg.
+    fall_through: ModelFallThroughSettings | None = None

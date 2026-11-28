@@ -726,3 +726,50 @@ def test_the_submit_has_its_own_cap_and_every_other_call_keeps_the_responder_cap
     assert submit.error == "TimeoutError"
     assert status.error == "TimeoutError"
     assert seen == [("workflowsPOST", 42.0), ("statusGET", 10.0)]
+
+
+def _receipt_with_attempts(
+    gateway: FakeGateway, attempts: list[dict[str, str]]
+) -> Callable[[str, str, str, Any], ModelGatewayObservation | None]:
+    """An override that adds the attempt list to the receipt of the run, leaving every other answer to the fake."""
+
+    def add_attempts(m: str, p: str, a: str, b: Any) -> ModelGatewayObservation | None:
+        if m == "GET" and p.startswith("/v1/workflows/") and "/receipt" in p:
+            base = gateway._answer(m, p, a, b)
+            if isinstance(base.body, dict) and base.status == 200:
+                return ModelGatewayObservation(
+                    status=200, body={**base.body, "attempts": attempts}
+                )
+        return None
+
+    return add_attempts
+
+
+# OMN-26043: a customer's own-key session talks only to the provider the customer chose.
+@pytest.mark.unit
+def test_c29_passes_when_only_the_chosen_provider_was_called() -> None:
+    gateway = FakeGateway()
+    gateway.override = _receipt_with_attempts(
+        gateway, [{"provider": "local", "outcome": "answered"}]
+    )
+    reading = _run("C29", gateway)
+    clauses = {c.name: c for c in reading.clauses}
+    assert clauses["only_chosen_provider_called"].ok
+    assert reading.verdict() is EnumCheckVerdict.PASS
+
+
+@pytest.mark.unit
+def test_c29_fails_when_a_second_provider_appears_in_the_receipt_attempts() -> None:
+    gateway = FakeGateway()
+    gateway.override = _receipt_with_attempts(
+        gateway,
+        [
+            {"provider": "local", "outcome": "failed"},
+            {"provider": "openrouter", "outcome": "answered"},
+        ],
+    )
+    reading = _run("C29", gateway)
+    assert reading.verdict() is EnumCheckVerdict.FAIL
+    assert "only_chosen_provider_called" in [
+        c.name for c in reading.clauses if not c.ok
+    ]
