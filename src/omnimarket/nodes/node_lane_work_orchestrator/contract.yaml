@@ -45,6 +45,10 @@ output_model:
   description: "The step reply: workflow id, new state, receipt id and the next action."
 runtime_profiles:
   - main
+# The orchestrator loads its settings through load_orchestrator_overlay, whose bootstrap source is overlay.example.yaml; the settings store row replaces it when the store holds one. Every setting has its tested value in that file, so the overlay is optional for the node to load (overlay.required false).
+overlay:
+  required: false
+
 descriptor:
   node_archetype: orchestrator
   purity: effectful

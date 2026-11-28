@@ -60,6 +60,11 @@ descriptor:
   idempotent: true
   timeout_ms: 5000
 
+# The reducer reads no overlay: the lane work orchestrator resolves its own overlay (reducer: section) and passes the values in as
+# ModelLaneWorkReducerConfig. overlay.example.yaml documents those inputs, so the overlay is optional for this node (overlay.required false).
+overlay:
+  required: false
+
 state_machine:
   version: {major: 1, minor: 0, patch: 0}
   state_machine_name: lane_work_loop

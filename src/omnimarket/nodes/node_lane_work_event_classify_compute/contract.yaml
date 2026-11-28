@@ -65,6 +65,10 @@ runtime_dispatch:
   on_demand:
     command: uv run python -m omnimarket.nodes.node_lane_work_event_classify_compute < <request.json>
     owner: OmniNode Platform Team
+# The classifier reads the bound overlay when one is bound and otherwise overlay.example.yaml beside the node (load_lane_work_classify_overlay). Every setting has its tested value in that file, so the overlay is optional for the node to load (overlay.required false).
+overlay:
+  required: false
+
 descriptor:
   node_archetype: compute
   purity: impure  # reads the bound overlay file; writes nothing
