@@ -227,15 +227,41 @@ def test_a_tick_that_raises_records_indeterminate(
     assert evidence["indeterminate"] == "boom"
 
 
-def test_a_tick_that_returns_two_is_passed_through(
+def test_a_tick_that_delivered_an_alarm_exits_zero(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(tick, "node_main", lambda _argv: 2)
     state = tmp_path / "state"
     code = tick.main(["--omni-home", str(tmp_path), "--state-dir", str(state)])
-    assert code == 2
+    assert code == 0
     evidence = json.loads((state / "last-run.json").read_text(encoding="utf-8"))
-    assert evidence["exit_code"] == 2
+    assert evidence["exit_code"] == 0
+    assert evidence["node_exit_code"] == 2
+    assert evidence["alarm_delivered"] is True
+
+
+def test_a_tick_that_returns_three_stays_a_fault(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(tick, "node_main", lambda _argv: 3)
+    state = tmp_path / "state"
+    code = tick.main(["--omni-home", str(tmp_path), "--state-dir", str(state)])
+    assert code == 3
+    evidence = json.loads((state / "last-run.json").read_text(encoding="utf-8"))
+    assert evidence["exit_code"] == 3
+    assert "alarm_delivered" not in evidence
+
+
+def test_a_quiet_tick_exits_zero_without_alarm_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(tick, "node_main", lambda _argv: 0)
+    state = tmp_path / "state"
+    code = tick.main(["--omni-home", str(tmp_path), "--state-dir", str(state)])
+    assert code == 0
+    evidence = json.loads((state / "last-run.json").read_text(encoding="utf-8"))
+    assert evidence["exit_code"] == 0
+    assert "alarm_delivered" not in evidence
 
 
 def test_tick_requires_omni_home(
