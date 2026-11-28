@@ -380,3 +380,50 @@ def test_seed_with_no_declared_bootstrap_path_refuses(
     )
     assert result.exit_code != 0
     assert "node_settings_store_provision_effect" in result.output
+
+
+class _LoopBoundStore:
+    """A store whose connection belongs to the first event loop that touches it, as a Valkey client's does (OMN-24028)."""
+
+    def __init__(self, inner: InMemoryOverlayStore | None = None) -> None:
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._inner = inner or InMemoryOverlayStore()
+
+    def _bind(self) -> None:
+        running = asyncio.get_running_loop()
+        if self._loop is None:
+            self._loop = running
+        if running is not self._loop:
+            raise RuntimeError("the connection is bound to another event loop")
+
+    async def read_current(self, overlay_id: str) -> object:
+        self._bind()
+        return await self._inner.read_current(overlay_id)
+
+    async def write_version(self, record: object) -> object:
+        self._bind()
+        return await self._inner.write_version(record)  # type: ignore[arg-type]
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._inner, name)
+
+
+def test_list_reads_every_setting_on_one_event_loop() -> None:
+    result = CliRunner().invoke(
+        settings_group, ["list"], obj={"store": _LoopBoundStore()}
+    )
+    assert result.exit_code == 0, result.output
+    assert "<unset>" in result.output
+
+
+def test_seed_reads_every_overlay_on_one_event_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bootstrap = _seed_env(tmp_path, monkeypatch)
+    writes: list[object] = []
+    inner = InMemoryOverlayStore()
+    obj = _pipeline(inner, InMemoryOverlayStore(), writes)
+    obj["store"] = _LoopBoundStore(inner)
+    result = _seed(bootstrap, obj)
+    assert "another event loop" not in result.output  # type: ignore[attr-defined]
+    assert result.exit_code == 0, result.output  # type: ignore[attr-defined]

@@ -19,7 +19,7 @@ import asyncio
 import json
 import os
 import sys
-from collections.abc import Mapping
+from collections.abc import Coroutine, Mapping
 from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
@@ -113,13 +113,25 @@ def _store(ctx: click.Context, bootstrap_file: Path | None) -> ProtocolOverlaySt
         raise click.ClickException(f"{type(exc).__name__}: {exc}") from exc
 
 
+_LOOP: asyncio.AbstractEventLoop | None = None
+
+
+def _run_on_one_loop[T](coro: Coroutine[Any, Any, T]) -> T:
+    """Run ``coro`` on this process's one event loop: a Valkey client belongs to the loop that first used it, so a
+    new loop per read made every read after the first fail (measured on the dev store, OMN-24052)."""
+    global _LOOP
+    if _LOOP is None or _LOOP.is_closed():
+        _LOOP = asyncio.new_event_loop()
+    return _LOOP.run_until_complete(coro)
+
+
 async def _read(store: ProtocolOverlayStore, overlay: str) -> Mapping[str, Any] | None:
     return await store.read_current(overlay)
 
 
 def _current(store: ProtocolOverlayStore, path: str, overlay: str) -> JsonValue | None:
     """The stored value at ``path``, or ``None`` when the store holds no record or the path holds nothing."""
-    record = asyncio.run(_read(store, overlay))
+    record = _run_on_one_loop(_read(store, overlay))
     if record is None:
         return None
     document = record.get("document")
@@ -394,13 +406,13 @@ def seed_command(
     kept: list[str] = []
     to_seed: dict[str, dict[str, JsonValue]] = {}
     for overlay_id, document in defaults.items():
-        if asyncio.run(_read(store, overlay_id)) is not None:
+        if _run_on_one_loop(_read(store, overlay_id)) is not None:
             kept.append(overlay_id)  # a live value is never overwritten
         else:
             to_seed[overlay_id] = document
     table, write = _live_seed_paths(ctx, store)
     try:
-        result = asyncio.run(
+        result = _run_on_one_loop(
             seed_defaults(
                 intake,
                 to_seed,

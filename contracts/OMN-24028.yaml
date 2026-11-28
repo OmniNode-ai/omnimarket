@@ -143,3 +143,10 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run --frozen pytest tests/settings_store/test_settings_cli.py -q -n 0 --no-cov -p no:cacheprovider -k seed
     cwd: .
+- id: dod-omn24028-settings-cli-one-event-loop
+  description: 'onex settings list and seed run every store read and the seed on one event loop, so a Valkey-backed store answers more than the first read; the two one_event_loop tests in test_settings_cli.py fail with the bound-to-another-event-loop error when each read opens its own loop'
+  source: manual
+  checks:
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/settings_store/test_settings_cli.py -q -n 0 --no-cov -p no:cacheprovider -k one_event_loop
+    cwd: .
