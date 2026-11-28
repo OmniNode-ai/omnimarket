@@ -747,6 +747,9 @@ _LAB_WORK_INVOCATION_RE: Final[re.Pattern[str]] = re.compile(
 LAB_WORK_BUS_LANE_ENV: Final[str] = "ONEX_LAB_WORK_BUS_LANE"
 _VERIFIER_BUS_LANE_ENV: Final[str] = "ONEX_DOD_VERIFY_SCM_BUS_LANE"
 _VERIFIER_DEFAULT_BUS_LANE: Final[str] = "dev"
+# OMN-26771: the workspace root a lab-work item locates its lane declaration from.
+WORKSPACE_ROOT_ENV: Final[str] = "OMNIBASE_PATH"
+_WORKSPACE_ROOT_FALLBACK_ENVS: Final[tuple[str, ...]] = ("OMNI_HOME",)
 
 # OMN-20768: a command check that runs ``gh pr ...`` or ``gh api ...`` gets the
 # local ``gh`` shim first on its PATH (see ``local_gh_reads``).
@@ -6702,6 +6705,15 @@ class EvidenceCollector:
                 run_env[LAB_WORK_BUS_LANE_ENV] = (
                     os.environ.get(_VERIFIER_BUS_LANE_ENV) or _VERIFIER_DEFAULT_BUS_LANE
                 )
+            # OMN-26771: the CLI locates the lane declaration through the workspace root,
+            # ``$OMNIBASE_PATH``, else ``$OMNI_HOME`` (the order the runtime's own resolver
+            # reads). A parent that exports only ``OMNI_HOME`` leaves the item with no root.
+            if not run_env.get(WORKSPACE_ROOT_ENV):
+                for _root_env in _WORKSPACE_ROOT_FALLBACK_ENVS:
+                    _root = run_env.get(_root_env, "").strip()
+                    if _root:
+                        run_env[WORKSPACE_ROOT_ENV] = _root
+                        break
 
         # OMN-20768: a command that reads PR facts through ``gh`` runs against a
         # shim that answers the clone-held shapes locally (see local_gh_reads).
