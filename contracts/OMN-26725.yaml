@@ -60,3 +60,11 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run --frozen pytest tests/unit/lab_work/test_bus_lane_env.py -q -n 0 --no-cov -p no:cacheprovider"
         cwd: "."
+  - id: "dod-omn26725-lab-env-prefix"
+    description: "A lab work unit whose command is env NAME=value then a program parses the assignments into the unit environment and judges the program against the allowlist: the recorded OMN-24028 item is placed and run, and env followed by a program outside the allowlist, a second env, an env option or no command is refused with nothing fetched."
+    source: "manual"
+    binds_ac: ["AC2", "AC3"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/nodes/node_lab_work_unit_effect/test_env_prefix_omn26725.py -q -n 0 --no-cov"
+        cwd: "."

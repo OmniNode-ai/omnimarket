@@ -73,6 +73,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.handlers.routing.dod_outcome_hold import HeldDodOutcomeJoin
 from omnimarket.projection.tenant_isolation import (
     TENANT_GUC,
     TenantContextMissingError,
@@ -622,7 +623,34 @@ class PostgresDodOutcomeReader:
             "AND tenant_id = %(tenant_id)s::uuid "
             "AND lower(correlation_id::text) = ANY(%(run_ids)s)"
         )
+        # OMN-26152: the join is held per (task type, tenant) and re-read only
+        # when a cheap revision probe of either source moves, because the
+        # routing consumers read it once per delegation and the unchanged
+        # answer was being fetched, built into dicts and joined every time.
+        self._verdict_revision_sql = (
+            "SELECT count(*) AS rev_count, max(completed_at) AS rev_newest, "
+            "count(completed_at) AS rev_decided "
+            f"FROM {verdict_relation} "
+            "WHERE delegation_correlation_id IS NOT NULL"
+        )
+        self._delegation_revision_sql = (
+            "SELECT count(*) AS rev_count, max(created_at) AS rev_newest "
+            f"FROM {delegation_relation} "
+            "WHERE task_type = %(task_type)s "
+            "AND tenant_id = %(tenant_id)s::uuid"
+        )
         self._conns: dict[str, psycopg2.extensions.connection] = {}
+        self._hold = HeldDodOutcomeJoin(
+            get_conn=self._get_conn,
+            delegation_dsn=delegation_dsn,
+            verdict_dsn=verdict_dsn,
+            verdict_sql=self._verdict_sql,
+            delegation_sql=self._delegation_sql,
+            verdict_revision_sql=self._verdict_revision_sql,
+            delegation_revision_sql=self._delegation_revision_sql,
+            tenant_guc=TENANT_GUC,
+            join=join_delegations_to_verdicts,
+        )
 
     def _get_conn(self, dsn: str) -> psycopg2.extensions.connection:
         conn = self._conns.get(dsn)
@@ -638,43 +666,8 @@ class PostgresDodOutcomeReader:
     def read_dod_outcomes(
         self, *, task_type: str, tenant_id: str
     ) -> list[dict[str, object]]:
-        import psycopg2.extras  # type: ignore[import-untyped]
-
-        verdict_conn = self._get_conn(self._verdict_dsn)
-        with verdict_conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(self._verdict_sql)
-            verdicts = [dict(row) for row in cur.fetchall()]
-        run_ids = sorted(
-            {
-                str(v["delegation_correlation_id"]).strip().lower()
-                for v in verdicts
-                if v.get("delegation_correlation_id")
-            }
-        )
-        if not run_ids:
-            return []
-
-        conn = self._get_conn(self._delegation_dsn)
-        conn.autocommit = False
-        try:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute("SELECT set_config(%s, %s, true)", (TENANT_GUC, tenant_id))
-                cur.execute(
-                    self._delegation_sql,
-                    {
-                        "task_type": task_type,
-                        "tenant_id": tenant_id,
-                        "run_ids": run_ids,
-                    },
-                )
-                delegations = [dict(row) for row in cur.fetchall()]
-            conn.commit()
-        except BaseException:
-            conn.rollback()
-            raise
-        finally:
-            conn.autocommit = True
-        return join_delegations_to_verdicts(delegations, verdicts)
+        """The join, held while its sources are unchanged (OMN-26152)."""
+        return self._hold.read(task_type=task_type, tenant_id=tenant_id)
 
     def close(self) -> None:
         for conn in self._conns.values():

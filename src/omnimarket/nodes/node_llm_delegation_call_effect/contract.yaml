@@ -587,3 +587,8 @@ harness_process_runner:
   handler:
     name: "HandlerHarnessProcessRunner"
     module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_harness_process_runner"
+
+harness_lab_agent_local_rung:
+  handler:
+    name: "HandlerLabAgentLocalRung"
+    module: "omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_lab_agent_local_rung"
