@@ -2513,6 +2513,9 @@ units:
         # This host and the one host that sends the lab-wide alarms (OMN-24562); both are left out when undeclared.
         host_id: "{alarm_host_id}"
         lab_wide_sender_host: "{lab_wide_sender_host}"
+        # The post gate's open-episode state (OMN-24562). Naming it turns the channel post policy on; the policy itself
+        # is read from the settings store at each send, never written here.
+        post_policy_state_file: "{home}/.local/state/omni/silent-failure-alarm/post-policy-state.json"
         # The interpreter of the checkout the request names (appender_root), because launchd's PATH has none.
         python: "{appender_root}/.venv/bin/python"
         # The runner the alarm starts, detached, for each episode it opens: the alarm adds --brief, --lane, --model and
