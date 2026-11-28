@@ -107,3 +107,13 @@ dod_evidence:
   - check_type: command
     check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26620 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/nodes/node_onex_setup_effect/test_header.py tests/unit/nodes/node_onex_setup_effect/test_task_card.py tests/unit/nodes/node_onex_setup_effect/test_footer.py tests/unit/nodes/node_onex_setup_effect/test_theme.py tests/unit/nodes/node_onex_setup_effect/test_icons.py tests/unit/nodes/node_onex_setup_effect/test_status_seeded.py tests/unit/nodes/node_onex_setup_effect/test_literal_scan.py tests/unit/nodes/node_onex_setup_effect/test_theme_live_colours.py tests/unit/nodes/node_onex_setup_effect/test_theme_store_honest.py tests/unit/nodes/node_onex_setup_effect/test_icons_mode_only.py tests/unit/nodes/node_onex_setup_effect/test_late_reads.py tests/unit/nodes/node_onex_setup_effect/test_literal_scan_wide.py -q -n 0 --no-cov -p no:cacheprovider
     cwd: .
+
+- id: dod-omn26620-first-launch-tip
+  description: 'AC2: the start screen tip shown on first launch does not promise every command while the palette lists nine.'
+  source: manual
+  binds_ac:
+  - AC2
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui_customer_commands.py::test_first_launch_tip_does_not_promise_every_command -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .

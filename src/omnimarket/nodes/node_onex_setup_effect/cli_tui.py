@@ -3,8 +3,8 @@
 """`onex tui`: a full-screen front end over the onex CLI (OMN-23413).
 
 Laid out like open-source coding-agent terminal UIs: an output pane, one input
-line, a status bar. `/` opens a palette built from the CLI's own command tree,
-so a command any package registers appears with no change here. Text typed
+line, a status bar. `/` opens a palette listing only the commands declared in
+``tui_design.yaml``'s ``customer_commands``, not the full CLI tree. Text typed
 without `/` is sent to `onex delegate`. Every action runs the same `onex`
 command the CLI runs; nothing here re-implements setup, routing or settings.
 """
