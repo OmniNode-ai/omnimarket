@@ -5,14 +5,21 @@
 from __future__ import annotations
 
 import socket
+import sys
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
+from omnimarket.handlers.alarm_post_policy import run_ticket_command
+from omnimarket.handlers.alarm_post_policy_source import PostPolicySource
+from omnimarket.models.alarm_post_policy import ModelPostDecision
 from omnimarket.nodes.node_lab_alarm_deliver_effect.adapters.inmemory_adapters import (
     InMemoryAlarmChannel,
     InMemoryAlarmLedger,
     InMemoryDeliveryState,
+)
+from omnimarket.nodes.node_lab_alarm_deliver_effect.adapters.policy_gated_channel import (
+    PolicyGatedChannel,
 )
 from omnimarket.nodes.node_lab_alarm_deliver_effect.adapters.runtime_adapters import (
     BusLedger,
@@ -23,6 +30,9 @@ from omnimarket.nodes.node_lab_alarm_deliver_effect.handlers.handler_lab_alarm_d
     HandlerLabAlarmDeliver,
 )
 from omnimarket.nodes.node_lab_alarm_deliver_effect.overlay import ModelDeliveryOverlay
+from omnimarket.nodes.node_lab_alarm_deliver_effect.protocols import (
+    ProtocolAlarmChannel,
+)
 
 
 def _utc_now() -> datetime:
@@ -41,13 +51,48 @@ def _inmemory(
     )
 
 
+def _gated(
+    channel: ProtocolAlarmChannel,
+    overlay: ModelDeliveryOverlay,
+    clock: Callable[[], datetime],
+) -> ProtocolAlarmChannel:
+    """The channel behind the overlay's post policy; ungated when the overlay declares none."""
+    if not overlay.post_policy_state_path:
+        if overlay.post_policy is not None:
+            raise ValueError("post_policy is declared with no post_policy_state_path")
+        return channel
+    # The policy is a runtime setting read from the settings store; the overlay's post_policy is the bootstrap default.
+    source = PostPolicySource(overlay.post_policy)
+    return PolicyGatedChannel(
+        inner=channel,
+        policy=source.current,
+        state=FileDeliveryState(Path(overlay.post_policy_state_path)),
+        clock=clock,
+        reading=_log_reading,
+        ticket=lambda policy, decision: run_ticket_command(
+            policy.ticket_command, decision
+        ),
+    )
+
+
+def _log_reading(decision: ModelPostDecision, text: str) -> None:
+    """The reading of a message that did not post, kept on stderr for the runtime's log shipper."""
+    sys.stderr.write(
+        f"alarm-reading kind={decision.kind} key={decision.key} reason={decision.reason}\n"
+    )
+
+
 def _runtime(
     overlay: ModelDeliveryOverlay, clock: Callable[[], datetime]
 ) -> HandlerLabAlarmDeliver:
     return HandlerLabAlarmDeliver(
         overlay=overlay,
-        channel=ChannelFromLibrary(
-            Path(overlay.channel.library_path), overlay.channel.timeout_seconds
+        channel=_gated(
+            ChannelFromLibrary(
+                Path(overlay.channel.library_path), overlay.channel.timeout_seconds
+            ),
+            overlay,
+            clock,
         ),
         ledger=BusLedger(
             overlay.ledger.bus_lane,

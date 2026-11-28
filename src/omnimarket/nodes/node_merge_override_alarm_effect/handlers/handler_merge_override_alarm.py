@@ -29,8 +29,13 @@ from omnimarket.events.pr_landing_github.model_pr_landing_github_failed import (
 from omnimarket.events.pr_landing_github.model_pr_landing_github_request import (
     ModelPrLandingGithubRequest,
 )
+from omnimarket.handlers.alarm_post_policy_source import (
+    PostPolicySource,
+    decide_with_state_file,
+)
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.inference.secret_store_resolver import resolve_api_key_loop_safe
+from omnimarket.models.alarm_post_policy import EnumPostAction
 from omnimarket.nodes.contract_topics import contract_secret_ref, contract_topic
 from omnimarket.nodes.node_merge_override_alarm_effect.handlers.classify_merge import (
     classify_merge,
@@ -88,7 +93,10 @@ class HandlerMergeOverrideAlarm:
         reader: ProtocolOverrideRowReader | None = None,
         clock: Callable[[], float] | None = None,
         contract_path: Path | None = None,
+        policy_source: PostPolicySource | None = None,
     ) -> None:
+        self._policy_source = policy_source
+        self._settings: ModelMergeOverrideSettings | None = None
         self._contract_path = contract_path or _CONTRACT_PATH
         self._slack_topic = contract_topic(
             self._contract_path, "publish_topics", _SLACK_SUFFIX
@@ -121,6 +129,7 @@ class HandlerMergeOverrideAlarm:
             return ModelMergeOverrideResult(
                 outcome=EnumMergeOverrideOutcome.REFUSED, reason=str(exc)
             )
+        self._settings = settings
         now = datetime.fromtimestamp(self._clock(), tz=UTC)
         try:
             if isinstance(request, ModelMergeOverrideSweepTrigger):
@@ -449,14 +458,41 @@ class HandlerMergeOverrideAlarm:
             raise RuntimeError("no event_publisher was injected; nothing was published")
         self._publisher(topic, payload_json.encode())
 
+    def _gated_text(self, finding: ModelMergeOverrideFinding) -> str | None:
+        """The text the channel may post for this finding, or None when the post policy holds it back (OMN-24562)."""
+        settings = self._settings
+        if settings is None or not settings.post_policy_state_file:
+            return finding.text
+        source = self._policy_source or PostPolicySource(settings.post_policy)
+        decision = decide_with_state_file(
+            source,
+            Path(settings.post_policy_state_file),
+            finding.text,
+            now=datetime.fromtimestamp(self._clock(), tz=UTC),
+        )
+        if decision is None:
+            return finding.text
+        if decision.action in (EnumPostAction.SUPPRESS, EnumPostAction.TICKET):
+            logger.info(
+                "alarm-reading kind=%s key=%s reason=%s",
+                decision.kind,
+                decision.key,
+                decision.reason,
+            )
+            return None
+        return decision.text
+
     def _publish_slack(self, finding: ModelMergeOverrideFinding) -> None:
+        text = self._gated_text(finding)
+        if text is None:
+            return
         ref = contract_secret_ref(self._contract_path, _CHANNEL_SECRET)
         secret = resolve_api_key_loop_safe(ref, env_var_fallback=ref)
         if secret is None:
             raise RuntimeError(f"secret ref {ref!r} resolved to None")
         command = ModelMergeOverrideSlackCommand(
             channel=secret.get_secret_value(),
-            text=finding.text,
+            text=text,
             idempotency_key=finding.idempotency_key,
             correlation_id=finding.correlation_id,
         )

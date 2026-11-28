@@ -31,8 +31,13 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from omnimarket.handlers.alarm_post_policy_source import (
+    PostPolicySource,
+    decide_with_state_file,
+)
 from omnimarket.handlers.ledger_row_grammar import parse_row
 from omnimarket.handlers.ledger_rows_unreadable_error import LedgerRowsUnreadableError
+from omnimarket.models.alarm_post_policy import EnumPostAction
 from omnimarket.models.silent_failure_alarm import (
     ModelCloserStalenessRequest,
     ModelDrainerRepair,
@@ -108,6 +113,8 @@ LIVENESS = "tick-liveness"
 QUIET = "quiet-host"
 RESULTS = "throughput-results"
 HOUR = timedelta(hours=1)
+# Alarms that read the whole lab: every host decides the same one, so one declared host sends it (OMN-24562).
+LAB_WIDE = frozenset({QUIET, RESULTS})
 DRAINER = "drainer-dead"
 JOB_EXIT = "job-exit"
 INSTALL_FAILURE = "install-failure"
@@ -232,9 +239,12 @@ class HandlerSilentFailureAlarm:
         host_watches: Mapping[str, ProtocolDrainerWatch] | None = None,
         unavailable_hosts: Callable[[], tuple[frozenset[str], str]] | None = None,
         ledger: ProtocolAlarmLedger | None = None,
+        policy_source: PostPolicySource | None = None,
     ) -> None:
         options = options or ModelSilentFailureAlarmOptions.from_environment()
         self._options = options
+        # The post policy is read from the settings store; the options hold only its bootstrap default (OMN-24562).
+        self._policy_source = policy_source or PostPolicySource(options.post_policy)
         self._ledger: ProtocolAlarmLedger = ledger or BusAlarmLedger()
         # The hosts the lab host table declares unavailable take no lane, so the quiet-host reading skips
         # them when the options ask (OMN-22778). Injected so a test supplies the table; the default reads
@@ -455,7 +465,16 @@ class HandlerSilentFailureAlarm:
         open_notes: list[str] = []
         resolved: list[str] = []
         raised_now: set[str] = set()
+        sends_lab_wide = (
+            options.lab_wide_sender_host is None
+            or options.host_id == options.lab_wide_sender_host
+        )
         for name, alarm, cells, alert, category in raising:
+            if name in LAB_WIDE and not sends_lab_wide:
+                # Another host sends this alarm; this one neither records nor delivers it.
+                if alarm:
+                    verdicts[name] = "not-sender"
+                continue
             current = opened.get(name)
             if not alarm:
                 if current is None:
@@ -1426,6 +1445,34 @@ class HandlerSilentFailureAlarm:
             1 for at in stamps if at is not None and now - HOUR < at <= now
         ), open_prs
 
+    def _gate_decision(
+        self, text: str
+    ) -> tuple[tuple[bool, str, str | None] | None, str]:
+        """The post policy's answer for ``text`` (OMN-24562): (None, the text to send), else (the no-send receipt, text).
+
+        A suppressed, duplicate, self-healing, unreadable or ticketed message is a delivered no-op, so the caller
+        records its alarm as handled and the tick does not retry it into the channel.
+        """
+        options = self._options
+        if options.post_policy_state_file is None:
+            return None, text
+        decision = decide_with_state_file(
+            self._policy_source,
+            options.post_policy_state_file,
+            text,
+            now=datetime.now(UTC),
+        )
+        if decision is None:
+            return None, text
+        if decision.action in (EnumPostAction.SUPPRESS, EnumPostAction.TICKET):
+            return (
+                True,
+                f"policy {decision.action.value}: {decision.reason}",
+                None,
+            ), text
+        # A post that goes out carries the policy's text (a detector-down message replaces the original).
+        return None, decision.text
+
     def _deliver(self, category: str, text: str) -> tuple[bool, str, str | None]:
         """Send through the shared alert channel; credentials are sourced only in the child.
 
@@ -1433,6 +1480,9 @@ class HandlerSilentFailureAlarm:
         timestamp the channel printed last on stdout, or None when it printed none.
         """
         options = self._options
+        gated, text = self._gate_decision(text)
+        if gated is not None:
+            return gated
         lib = options.alert_lib or Path(
             os.environ.get("ONEX_ALERT_CHANNEL_LIB")
             or options.registry_root

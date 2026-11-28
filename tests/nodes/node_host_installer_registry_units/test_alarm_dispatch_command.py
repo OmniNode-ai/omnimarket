@@ -138,7 +138,8 @@ def test_a_key_that_is_not_declared_optional_still_refuses_a_hole(
     tmp_path: Path,
 ) -> None:
     units = copy.deepcopy(load_units())
-    units[UNIT]["config_file"]["optional_keys"] = []
+    optional = units[UNIT]["config_file"]["optional_keys"]
+    optional.remove("dispatch_command")
     result = HandlerRegistryUnits(run=_run, units=units).handle(_request(tmp_path))
     assert result.exit_code == 1
     assert "{remote_lane_runner}" in result.stderr

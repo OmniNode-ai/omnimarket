@@ -10,6 +10,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.alarm_post_policy import ModelAlarmPostPolicy
+
 from ..host_table import HostTableError, read_host_aliases
 from .model_closer_liveness_options import ModelCloserLivenessOptions
 from .model_drainer_watch_options import ModelDrainerWatchOptions
@@ -56,6 +58,12 @@ class ModelSilentFailureAlarmOptions(BaseModel):
     alert_env_file: Path = Field(
         default_factory=lambda: Path.home() / ".omnibase" / ".env"
     )
+    # The channel's post policy (OMN-24562) is a runtime setting read from the settings store at each send;
+    # ``post_policy`` here is only the bootstrap default, used while the store holds none or does not answer.
+    # ``post_policy_state_file`` is the JSON file the gate keeps its open episodes in (state, not a setting).
+    # No state file posts every alert as before.
+    post_policy: ModelAlarmPostPolicy | None = None
+    post_policy_state_file: Path | None = None
     # The command that reads the hook-event table: it prints ``<hostname>|<UTC stamp>``, one line
     # for each host, the stamp being that host's newest hook event (OMN-19998). None means this
     # host has none configured, which the tick reports and never treats as a pass.
@@ -78,6 +86,13 @@ class ModelSilentFailureAlarmOptions(BaseModel):
     # ledger row that names it is not lane work that lost its hook events (OMN-22778). False, the default,
     # skips no host. A table that cannot be read is reported and skips nothing.
     skip_unavailable_hosts: bool = False
+    # Which lab host this tick runs on, and which one host sends the lab-wide alarms (quiet-host and
+    # throughput-results read the whole lab, so every host decides the same alarm; OMN-24562). Both come
+    # from the host's overlay, never from code. With a sender declared, a host whose ``host_id`` is not it
+    # decides those alarms and records and sends nothing; host-local alarms are unchanged. None for the
+    # sender means every host sends, which is the single-host deployment.
+    host_id: str | None = None
+    lab_wide_sender_host: str | None = None
     host_drainers: dict[str, ModelHostDrainerCommand] = Field(default_factory=dict)
     capture_repair_state_file: Path = Field(
         default_factory=lambda: (
@@ -162,6 +177,8 @@ class ModelSilentFailureAlarmOptions(BaseModel):
             )
         if self.drainer is not None and self.drainer.host in self.host_drainers:
             raise ValueError("local drainer host must not also have a remote command")
+        if self.lab_wide_sender_host is not None and not self.host_id:
+            raise ValueError("lab_wide_sender_host needs this host's host_id")
         return self
 
     @classmethod
