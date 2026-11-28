@@ -34,6 +34,7 @@ EnumAttemptOutcome = Literal[
     "no-answer",
     "no-model",
     "no-window",
+    "busy",
 ]
 
 
@@ -49,6 +50,8 @@ class ModelResponderReading(BaseModel):
     n_ctx: int | None = None
     # Requests in flight on the responder, when it reports them; None when it does not.
     busy: int | None = None
+    # Slots the responder advertises, when it reports them; busy >= slots means every slot is processing.
+    slots: int | None = None
 
 
 class ModelResponderAttempt(BaseModel):
@@ -90,7 +93,11 @@ def window_of(reading: ModelResponderReading) -> int | None:
 
 
 def reading_from_models_body(
-    base_url: str, body: Mapping[str, object] | None, *, busy: int | None = None
+    base_url: str,
+    body: Mapping[str, object] | None,
+    *,
+    busy: int | None = None,
+    slots: int | None = None,
 ) -> ModelResponderReading:
     """Build a reading from a parsed ``/v1/models`` body; ``None`` is a responder that did not answer."""
     if body is None:
@@ -98,7 +105,9 @@ def reading_from_models_body(
     data = body.get("data")
     first = data[0] if isinstance(data, list) and data else None
     if not isinstance(first, dict):
-        return ModelResponderReading(base_url=base_url, answered=True, busy=busy)
+        return ModelResponderReading(
+            base_url=base_url, answered=True, busy=busy, slots=slots
+        )
     served = first.get("id")
     meta = first.get("meta")
     n_ctx = meta.get("n_ctx") if isinstance(meta, dict) else None
@@ -110,6 +119,7 @@ def reading_from_models_body(
         max_model_len=max_len if isinstance(max_len, int) else None,
         n_ctx=n_ctx if isinstance(n_ctx, int) else None,
         busy=busy,
+        slots=slots,
     )
 
 
@@ -123,6 +133,13 @@ def _local_attempt(
     window = window_of(reading)
     if window is None:
         return "no-window", None
+    if (
+        reading.busy is not None
+        and reading.slots is not None
+        and reading.slots > 0
+        and reading.busy >= reading.slots
+    ):
+        return "busy", window
     return "chosen", window
 
 
@@ -133,7 +150,8 @@ def resolve_chain(
     """Choose the least busy usable local responder; else advance to the first cloud tier the chain names.
 
     A usable local responder answers, serves a model and declares a window. Among usable local responders the
-    one reporting the fewest requests in flight wins, a responder that reports no load counts as idle (its load is
+    one reporting the fewest requests in flight wins (a responder whose every advertised slot is processing is
+    ``busy`` and not usable, so a pool that is all busy or down advances to the cloud tiers), a responder that reports no load counts as idle (its load is
     unknown, never assumed high), and the declared order breaks every tie.
     """
     attempts: list[ModelResponderAttempt] = []

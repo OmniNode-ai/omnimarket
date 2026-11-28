@@ -42,7 +42,8 @@ class HttpResponderReader:
             if isinstance(slots, list)
             else None
         )
-        return reading_from_models_body(base_url, parsed, busy=busy)
+        capacity = len(slots) if isinstance(slots, list) else None
+        return reading_from_models_body(base_url, parsed, busy=busy, slots=capacity)
 
 
 class AbsentCustomerMachine:
