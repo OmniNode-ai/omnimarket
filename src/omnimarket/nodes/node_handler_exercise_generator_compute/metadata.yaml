@@ -1,0 +1,19 @@
+name: node_handler_exercise_generator_compute
+version: "1.0.0"
+description: "Generate one exercise event per handler input from the code graph's handler rows"
+omnibase_core_compat: ">=0.42.0,<0.43.0"
+entry_points:
+  onex.nodes:
+    node_handler_exercise_generator_compute: "omnimarket.nodes.node_handler_exercise_generator_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.42.0,<0.43.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "handler-exercise", "code-graph", "generated-events"]
+pack: "pipeline"
+display_name: "Handler Exercise Generator Compute"
+node_role: "compute"

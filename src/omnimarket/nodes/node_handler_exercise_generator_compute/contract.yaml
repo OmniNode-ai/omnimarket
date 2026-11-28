@@ -1,0 +1,68 @@
+---
+name: node_handler_exercise_generator_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+lifecycle: experimental
+runtime_profiles: [main]
+node_version: {major: 1, minor: 0, patch: 0}
+description: >
+  Generation step of the graph-generated handler exercise (OMN-26337 AC1). Reads the code graph's
+  handler rows (one per contract operation) and each row's typed input model, and emits one event per
+  handler input addressed to the operation's route. A row that cannot yield an event is returned with
+  a named reason; no row is dropped and no handler is listed by hand.
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.handler-exercise-generator.v1
+
+terminal_event: onex.evt.omnimarket.handler-exercise-generator-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.handler-exercise-generator.v1
+  publish_topics:
+    - onex.evt.omnimarket.handler-exercise-generator-completed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.handler-exercise-generator-completed.v1
+
+handler:
+  module: omnimarket.nodes.node_handler_exercise_generator_compute.handlers.handler_handler_exercise_generator
+  class: HandlerHandlerExerciseGenerator
+  input_model: omnimarket.nodes.node_handler_exercise_generator_compute.models.model_handler_exercise.ModelHandlerExerciseRequest
+  output_model: omnimarket.nodes.node_handler_exercise_generator_compute.models.model_handler_exercise.ModelHandlerExerciseResult
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: generate
+      handler:
+        name: HandlerHandlerExerciseGenerator
+        module: omnimarket.nodes.node_handler_exercise_generator_compute.handlers.handler_handler_exercise_generator
+
+descriptor:
+  node_archetype: compute
+  purity: side_effecting
+  idempotent: true
+  timeout_ms: 120000
+
+inputs:
+  rows:
+    type: array
+    required: true
+  deadline_ms:
+    type: int
+    required: false
+
+outputs:
+  events:
+    type: array
+  without_event:
+    type: array
+
+broker_acl_grants:
+  - principal: "${ONEX_ACL_RUNTIME_PRINCIPAL}"
+    grants:
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.handler-exercise-generator.v1, operation: READ}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.cmd.omnimarket.handler-exercise-generator.v1, operation: DESCRIBE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.handler-exercise-generator-completed.v1, operation: WRITE}
+      - {resource_type: TOPIC, pattern: LITERAL, name: onex.evt.omnimarket.handler-exercise-generator-completed.v1, operation: DESCRIBE}
