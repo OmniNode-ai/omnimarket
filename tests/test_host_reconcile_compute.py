@@ -98,6 +98,40 @@ def test_movement(
 
 
 @pytest.mark.parametrize(
+    ("after", "target", "verdict"),
+    [
+        # same release, git hash abbreviated to different lengths
+        ("0.47.81.dev3+gce48c176d", "0.47.81.dev3+gce48c176", "ALREADY_AT_TARGET"),
+        ("0.47.81.dev3+gce48c176", "0.47.81.dev3+gce48c176d", "ALREADY_AT_TARGET"),
+        # different hash, same length: still a mismatch
+        ("0.47.81.dev3+gce48c176d", "0.47.81.dev3+gde48c176d", "DID_NOT_MOVE"),
+        # prefix shorter than 7 chars is not accepted
+        ("0.47.81.dev3+gce48c1", "0.47.81.dev3+gce48c176d", "DID_NOT_MOVE"),
+        # different release part with matching hash
+        ("0.47.82.dev3+gce48c176d", "0.47.81.dev3+gce48c176", "DID_NOT_MOVE"),
+    ],
+)
+def test_movement_versions_match_abbreviated_hash(
+    after: str, target: str, verdict: str
+) -> None:
+    decision = (
+        HandlerHostReconcileCompute()
+        .handle(
+            request(
+                ModelSurfaceMovementFact(
+                    surface="venv:omnimarket",
+                    before=after,
+                    after=after,
+                    target=target,
+                )
+            )
+        )
+        .surfaces[0]
+    )
+    assert decision.verdict == verdict
+
+
+@pytest.mark.parametrize(
     ("fact", "verdict", "detail"),
     [
         (

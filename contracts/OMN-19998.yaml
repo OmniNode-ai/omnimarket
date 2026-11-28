@@ -271,6 +271,11 @@ requirements:
     acceptance:
       - id: AC135
         statement: 'AC135: a lab-agent backend with a bound local rung answers through it with the local model named on the receipt, and with none bound still returns launch_failed; the local rung adapter takes the local tier pick from the routing authority and runs the local dispatch port pinned to it -- falsifier: uv run --frozen pytest tests/unit/delegation/test_harness_lab_agent_local_rung.py -q --no-cov -n 0 -p no:randomly'
+  - id: req-omn19998-host-reconcile-abbreviated-hash
+    statement: The host reconcile movement verdict treats two versions of one release whose +g git hashes are abbreviated to different lengths as the same build.
+    acceptance:
+      - id: AC136
+        statement: 'AC136: 0.47.81.dev3+gce48c176d and 0.47.81.dev3+gce48c176 compare as at target in either order, while a different hash, a shared hash shorter than 7 characters or a different release part still reads DID_NOT_MOVE -- falsifier: uv run --frozen pytest tests/test_host_reconcile_compute.py -q --no-cov -n 0 -p no:randomly -k abbreviated'
 evidence_requirements:
   - kind: tests
     description: Recorded gate subject spellings and named causes run through the production ledger parser and contract handler.
@@ -1027,4 +1032,13 @@ dod_evidence:
     checks:
       - check_type: test_passes
         check_value: uv run --frozen pytest tests/unit/delegation/test_harness_lab_agent_local_rung.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+
+  - id: dod-omn19998-host-reconcile-abbreviated-hash
+    description: The host reconcile compute handler's versions_match accepts one release with +g hashes abbreviated to different lengths (at least 7 characters, one a prefix of the other); the live host reconcile reading is on the pull request's Lab line.
+    source: manual
+    binds_ac: [AC136]
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/test_host_reconcile_compute.py -q --no-cov -n 0 -p no:randomly -k abbreviated
         cwd: .
