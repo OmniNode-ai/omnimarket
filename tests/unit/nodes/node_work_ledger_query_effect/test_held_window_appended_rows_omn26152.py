@@ -9,6 +9,7 @@ append them to the held parse; the answer must equal a full rebuild.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -81,7 +82,9 @@ def test_appended_rows_are_parsed_alone_and_answer_equals_full_rebuild(
     parsed: list[int] = []
     real = replay.parse_rows
 
-    def counting(incoming):  # type: ignore[no-untyped-def]
+    def counting(
+        incoming: Iterable[ModelWorkLedgerRowRecord],
+    ) -> list[replay.LedgerRow]:
         records: tuple[ModelWorkLedgerRowRecord, ...] = tuple(incoming)
         parsed.append(len(records))
         return real(records)
@@ -108,7 +111,9 @@ def test_late_rows_older_than_the_held_tail_are_merged_not_rebuilt(
     parsed: list[int] = []
     real = replay.parse_rows
 
-    def counting(incoming):  # type: ignore[no-untyped-def]
+    def counting(
+        incoming: Iterable[ModelWorkLedgerRowRecord],
+    ) -> list[replay.LedgerRow]:
         records: tuple[ModelWorkLedgerRowRecord, ...] = tuple(incoming)
         parsed.append(len(records))
         return real(records)
@@ -143,7 +148,9 @@ def test_a_sliding_since_finds_the_held_window_and_parses_only_appended_rows(
     parsed: list[int] = []
     real = replay.parse_rows
 
-    def counting(incoming):  # type: ignore[no-untyped-def]
+    def counting(
+        incoming: Iterable[ModelWorkLedgerRowRecord],
+    ) -> list[replay.LedgerRow]:
         records: tuple[ModelWorkLedgerRowRecord, ...] = tuple(incoming)
         parsed.append(len(records))
         return real(records)
@@ -187,7 +194,9 @@ def test_a_paged_rows_poll_with_a_clock_moving_since_and_until_finds_its_hold(
     parsed: list[int] = []
     real = replay.parse_rows
 
-    def counting(incoming):  # type: ignore[no-untyped-def]
+    def counting(
+        incoming: Iterable[ModelWorkLedgerRowRecord],
+    ) -> list[replay.LedgerRow]:
         records: tuple[ModelWorkLedgerRowRecord, ...] = tuple(incoming)
         parsed.append(len(records))
         return real(records)
