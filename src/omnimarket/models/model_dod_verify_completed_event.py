@@ -21,6 +21,7 @@ from omnimarket.models.model_dod_verify_state import (
     EnumDodVerifyStatus,
     ModelEvidenceCheckResult,
 )
+from omnimarket.models.model_local_done_gate_receipt import ModelLocalDoneGateReceipt
 
 
 class ModelDodVerifyCompletedEvent(BaseModel):
@@ -123,6 +124,10 @@ class ModelDodVerifyCompletedEvent(BaseModel):
         default=(), exclude_if=lambda value: not value
     )
     criteria_amendment: ModelCriteriaAmendment | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    # OMN-26725: see the state.
+    local_done_gate_receipt: ModelLocalDoneGateReceipt | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
     # OMN-21676: see the state.

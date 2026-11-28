@@ -11,10 +11,12 @@ whole document, or a projection that drops the operator paths, leaves the six ke
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import json
 import types
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
+from contextlib import asynccontextmanager
 from datetime import timedelta
 from importlib import resources
 from typing import Any, cast
@@ -24,6 +26,7 @@ import yaml
 from pydantic import BaseModel, JsonValue
 
 from omnimarket.handlers.overlay_store.store_in_memory import InMemoryOverlayStore
+from omnimarket.models.overlay_store import ModelOverlayWriteReply
 from omnimarket.nodes.node_floor_fill_orchestrator.models.model_floor_fill_live_settings import (
     SEAM_KEYS,
 )
@@ -56,6 +59,13 @@ from tests.unit.nodes.node_overlay_store.support import (
 pytestmark = pytest.mark.unit
 
 OVERLAY = "node_floor_fill_orchestrator"
+_PROJECTION = yaml.safe_load(
+    resources.files("omnimarket.nodes.node_projection_overlay_store")
+    .joinpath("contract.yaml")
+    .read_text(encoding="utf-8")
+)
+_AUDIT_TOPIC: str = _PROJECTION["write_topics"]["audit"]
+_WRITE_REPLY_TOPIC: str = _PROJECTION["write_topics"]["write_reply"]
 # Synthetic values: the test sets the keys and reads the same values back; no deployment value is named here.
 SET_VALUES: dict[str, Any] = {
     "pool_snapshot_path": "/srv/example/set/pool-snapshot.json",
@@ -76,11 +86,20 @@ REPOSITORY_VALUES: dict[str, Any] = {
 
 
 class _RoutingBus:
-    """A broker that hands the loaded topic to the projection and keeps every other topic for the test."""
+    """A broker that hands the loaded topic to the projection, answers the set command's write replies and keeps the rest."""
 
-    def __init__(self, runner: HandlerOverlayStoreProjectionRunner) -> None:
-        self._runner = runner
+    def __init__(self) -> None:
+        self._runner = HandlerOverlayStoreProjectionRunner(publish_keyed_fn=self._keyed)
         self.other: list[tuple[str, bytes]] = []
+        self._waiting: dict[str, asyncio.Future[ModelOverlayWriteReply]] = {}
+
+    async def _keyed(self, topic: str, key: bytes | None, value: bytes) -> None:
+        self.other.append((topic, value))
+        if topic == _WRITE_REPLY_TOPIC:
+            reply = ModelOverlayWriteReply.model_validate_json(value)
+            waiting = self._waiting.get(str(reply.write_id))
+            if waiting is not None and not waiting.done():
+                waiting.set_result(reply)
 
     async def publish(
         self, topic: str, key: bytes | None, value: bytes, headers: Any = None
@@ -93,6 +112,28 @@ class _RoutingBus:
             )
         else:
             self.other.append((topic, value))
+
+    async def refresh(self) -> None:
+        return None
+
+    @asynccontextmanager
+    async def expect(self, write_id: str) -> AsyncIterator[_Pending]:
+        future: asyncio.Future[ModelOverlayWriteReply] = (
+            asyncio.get_running_loop().create_future()
+        )
+        self._waiting[write_id] = future
+        try:
+            yield _Pending(future)
+        finally:
+            self._waiting.pop(write_id, None)
+
+
+class _Pending:
+    def __init__(self, future: asyncio.Future[ModelOverlayWriteReply]) -> None:
+        self._future = future
+
+    async def result(self, timeout_s: float) -> ModelOverlayWriteReply:
+        return await asyncio.wait_for(asyncio.shield(self._future), timeout_s)
 
 
 def _example_document(*, keys: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -134,7 +175,7 @@ def wired(monkeypatch: pytest.MonkeyPatch) -> tuple[InMemoryOverlayStore, _Routi
         "db_for",
         lambda _self, _table, **_options: types.SimpleNamespace(pool=None),
     )
-    return store, _RoutingBus(HandlerOverlayStoreProjectionRunner())
+    return store, _RoutingBus()
 
 
 async def _load(
@@ -164,18 +205,16 @@ async def _set(
         .joinpath("contract.yaml")
         .read_text(encoding="utf-8")
     )
-    (audit_topic,) = [
-        topic
-        for topic in contract["event_bus"]["publish_topics"]
-        if ".overlay-setting-set." in topic
-    ]
     setter = HandlerOverlaySettingSet(
         reader=store,
         bus=bus,
+        replies=bus,
         settings=load_settable_settings(contract),
         loaded_topic=LOADED_TOPIC,
-        audit_topic=audit_topic,
+        audit_topic=_AUDIT_TOPIC,
         max_live_age_s=7200,
+        reply_timeout_s=5.0,
+        max_attempts=5,
         clock=lambda: NOW + timedelta(minutes=5),
     )
     for key, value in keys.items():
@@ -187,7 +226,7 @@ async def _set(
                 actor="test-operator",
             )
         )
-    return [topic for topic, _ in bus.other]
+    return [topic for topic, _ in bus.other if topic == _AUDIT_TOPIC]
 
 
 async def _live_keys(store: InMemoryOverlayStore) -> dict[str, Any]:

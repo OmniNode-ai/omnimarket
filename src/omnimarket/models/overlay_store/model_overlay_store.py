@@ -47,10 +47,11 @@ class ModelOverlayStoreRecord(_Frozen):
     source_ref: str = Field(min_length=1)
     loaded_by: str = Field(min_length=1)
     loaded_at: datetime
-    # The settings (paths into the document) an operator set through the store. Every other setting came from the
-    # overlay home and is replaced by it on the next load. Empty is the record of before this field: it is left
-    # out of the published payload, so a load with no operator value reads exactly as it did.
+    # The setting paths an operator set (keys from the document's root joined by "/"), which a loader's refresh keeps.
+    # A loader's own load names none: the store keeps the paths it already holds.
     operator_paths: tuple[str, ...] = ()
+    # The number the store gave this version of the overlay: 0 on a load not yet stored, then one per version.
+    revision: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def _digest_is_the_documents(self) -> ModelOverlayStoreRecord:
@@ -62,17 +63,6 @@ class ModelOverlayStoreRecord(_Frozen):
                 f"overlay {self.overlay_id}: digest {self.digest} is not the document's hash {computed}"
             )
         return self
-
-
-class ModelOverlaySettingRecord(ModelOverlayStoreRecord):
-    """A store record that names the setting paths an operator set: the record a setting set publishes on the loaded topic.
-
-    The projection accepts it beside the loader's plain record and stores the document with its paths, so a later loader
-    run reads them back from the live record and keeps those settings. The loader's own records carry no such field on the
-    wire unless it kept an operator-set setting.
-    """
-
-    operator_paths: tuple[str, ...] = ()
 
 
 class ModelOverlayStoreLoadResult(_Frozen):

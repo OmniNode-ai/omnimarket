@@ -234,6 +234,12 @@ class ModelBusSessionReadRoute(BaseModel):
     timeout_seconds: int = Field(ge=1, le=600)
     # As on the command route: the deadline this route will wait to rides on every request (OMN-26609).
     stamp_deadline: bool = False
+    # The directory holding config/lab/ci_bus_lanes.yaml in the runtime that runs the reader (OMN-24562). A runtime that
+    # mounts the declaration but exports no ONEX_WORKSPACE_CONFIG_ROOT cannot resolve the lane; a root the environment
+    # already names wins.
+    workspace_config_root: str | None = Field(
+        default=None, pattern=r"^/[A-Za-z0-9._/-]*$"
+    )
 
 
 class ModelReaderEvents(BaseModel):

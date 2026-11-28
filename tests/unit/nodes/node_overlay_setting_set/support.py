@@ -16,8 +16,8 @@ from pydantic import JsonValue
 from omnimarket.models.overlay_store import ModelOverlayStoreRecord, document_digest
 from omnimarket.nodes.node_overlay_setting_set_effect.handlers.handler_overlay_setting_set import (
     HandlerOverlaySettingSet,
-    load_settable_settings,
 )
+from tests.unit.nodes.node_projection_overlay_store.support import Loopback
 
 NODE = "node_overlay_setting_set_effect"
 OVERLAY_ID = "runtime_contract_hotload"
@@ -91,56 +91,30 @@ def live_record(
     return base
 
 
-class FakeBus:
-    """Records every publish as (topic, key, decoded value) in order, with the reads of the reader in the same log."""
+class SetBus:
+    """What reached the broker on the two topics a set leaves: its write on the loaded topic, then the audit row the
+    projection publishes from the table. ``(topic, key, value)`` in order."""
 
-    def __init__(self, log: list[str] | None = None) -> None:
-        self.published: list[tuple[str, bytes | None, bytes]] = []
-        self.log = log if log is not None else []
+    def __init__(self, loop: Loopback) -> None:
+        self._loop = loop
 
-    async def publish(
-        self, topic: str, key: bytes | None, value: bytes, headers: Any = None
-    ) -> None:
-        self.log.append(f"publish:{topic}")
-        self.published.append((topic, key, value))
+    @property
+    def published(self) -> list[tuple[str, bytes | None, bytes]]:
+        return list(self._loop.sequence)
 
     def on(self, topic: str) -> list[tuple[bytes | None, bytes]]:
-        return [(k, v) for t, k, v in self.published if t == topic]
-
-
-class FakeLive:
-    """The store's live record by overlay id; a read is noted in the same log as the publishes."""
-
-    def __init__(
-        self,
-        records: Mapping[str, Mapping[str, Any]] | None = None,
-        log: list[str] | None = None,
-    ) -> None:
-        self._records = dict(records or {})
-        self.log = log if log is not None else []
-
-    async def read_current(self, overlay_id: str) -> Mapping[str, Any] | None:
-        self.log.append(f"read:{overlay_id}")
-        return self._records.get(overlay_id)
+        return [(k, v) for t, k, v in self._loop.sequence if t == topic]
 
 
 def build(
     live: Mapping[str, Mapping[str, Any]] | None = None,
     *,
     max_live_age_s: float = 7200.0,
-) -> tuple[HandlerOverlaySettingSet, FakeBus, FakeLive]:
-    log: list[str] = []
-    bus = FakeBus(log)
-    reader = FakeLive({OVERLAY_ID: live_record()} if live is None else live, log)
-    spec = contract()
-    topics = spec["event_bus"]["publish_topics"]
-    handler = HandlerOverlaySettingSet(
-        reader=reader,
-        bus=bus,
-        settings=load_settable_settings(spec),
-        loaded_topic=topics[0],
-        audit_topic=topics[1],
-        max_live_age_s=max_live_age_s,
-        clock=lambda: NOW,
-    )
-    return handler, bus, reader
+) -> tuple[HandlerOverlaySettingSet, SetBus, Loopback]:
+    """The handler wired as the contract declares, over the loopback broker and projection, the store as it is read
+    from the snapshot topic."""
+    loop = Loopback()
+    for record in ({OVERLAY_ID: live_record()} if live is None else live).values():
+        loop.seed_snapshot(record)
+    handler = loop.handler(max_live_age_s=max_live_age_s, clock=lambda: NOW)
+    return handler, SetBus(loop), loop

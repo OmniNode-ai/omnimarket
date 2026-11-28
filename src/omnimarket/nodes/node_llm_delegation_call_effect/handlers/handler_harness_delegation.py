@@ -122,6 +122,7 @@ class HandlerHarnessDelegation:
                 runner=HandlerHarnessProcessRunner(
                     environment=process_environment(bound),
                     agents=site.get("agents", {}),
+                    settings=documents,
                     codex=HandlerCodexHarnessAttempt(dependencies=bound),
                 ),
                 gate=HandlerHarnessAnswerGate(),
