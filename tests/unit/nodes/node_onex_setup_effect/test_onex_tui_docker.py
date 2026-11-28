@@ -7,7 +7,9 @@ from pathlib import Path
 
 import pytest
 import yaml
+from textual.pilot import Pilot
 
+from omnimarket.nodes.node_onex_setup_effect.cli_tui import OnexTui
 from omnimarket.nodes.node_onex_setup_effect.models.model_tui_design import tui_design
 from tests.unit.nodes.node_onex_setup_effect.test_onex_tui import (
     _app,
@@ -139,7 +141,7 @@ _ROWS = (
 )
 
 
-async def _open_docker(app, pilot) -> None:  # type: ignore[no-untyped-def]
+async def _open_docker[T](app: OnexTui, pilot: Pilot[T]) -> None:
     await _type(pilot, "/docker")
     await pilot.press("enter")
     for _ in range(8):

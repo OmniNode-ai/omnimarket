@@ -25,6 +25,7 @@ from textual.widgets import Static
 from omnimarket.nodes.node_onex_setup_effect.cli_tui import (
     DashboardScreen,
     DelegationScreen,
+    DockerScreen,
     OnexTui,
     SetupScreen,
 )
@@ -112,6 +113,9 @@ async def test_dashboard_is_the_fourth_tab_after_delegation() -> None:
         await pilot.press("tab")
         await _settle(pilot)
         assert isinstance(app.screen, DashboardScreen)
+        await pilot.press("tab")  # the Docker tab follows it
+        await _settle(pilot)
+        assert isinstance(app.screen, DockerScreen)
         await pilot.press("tab")  # and round again to the first tab
         await _settle(pilot)
         assert isinstance(app.screen, SetupScreen)

@@ -102,7 +102,7 @@ async def test_typing_after_a_tab_swap_raced_esc_keeps_the_tui_running(
         await _swap_closed_by_esc(app, pilot, monkeypatch)
         assert app.is_running
         assert len(app.screen_stack) >= 2  # the main screen is still under a tab
-        for _ in range(3):  # Model -> Delegation -> Dashboard -> Config
+        for _ in range(4):  # Model -> Delegation -> Dashboard -> Docker -> Config
             await pilot.press("tab")
             for _ in range(3):
                 await pilot.pause()
