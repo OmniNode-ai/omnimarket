@@ -11,7 +11,7 @@ resolution-markers = [
 [manifest]
 overrides = [
     { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261126163618-6baa5af6b65d" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261124065450-0ecba67c8fee" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261125090037-c2bc2ccf8f10" },
     { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261108170744-52946639a23a" },
 ]
 
@@ -3075,8 +3075,8 @@ dependencies = [
 
 [[package]]
 name = "omnibase-infra"
-version = "0.38.83"
-source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261124065450-0ecba67c8fee#0ecba67c8fee08ec4f7e776cbb8e43dd1667f50b" }
+version = "0.38.84"
+source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261125090037-c2bc2ccf8f10#c2bc2ccf8f101d2bf2fda1fc2a10c2382b03e495" }
 dependencies = [
     { name = "a2a-sdk" },
     { name = "aiofiles" },
@@ -3142,7 +3142,7 @@ dependencies = [
 
 [[package]]
 name = "omnimarket"
-version = "0.4.329"
+version = "0.4.330"
 source = { editable = "." }
 dependencies = [
     { name = "aiokafka" },
@@ -3220,7 +3220,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "jsonschema", specifier = ">=4.18.0" },
     { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?tag=dev-20261126163618-6baa5af6b65d" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261124065450-0ecba67c8fee" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?tag=dev-20261125090037-c2bc2ccf8f10" },
     { name = "omnibase-spi", git = "https://github.com/OmniNode-ai/omnibase_spi.git?tag=dev-20261108170744-52946639a23a" },
     { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?tag=dev-20261120144838-db14a337f1ab" },
     { name = "packaging", specifier = ">=24.0" },
@@ -3677,11 +3677,11 @@ wheels = [
 
 [[package]]
 name = "platformdirs"
-version = "4.11.8"
+version = "4.14.9"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/53/18/f3bb8ef0d3b930692343da8aa4d3cbcd6749477c053959395ac81965a6e9/platformdirs-4.11.8.tar.gz", hash = "sha256:f23abafea7dd4276d1f29104b83598d7dcc567cafd07c9c951e66665645437fc", size = 37182, upload-time = "2026-09-08T22:20:42.866Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d6/96/549558270586699a271a18b1111482dc3fc39baa0ef61d183e230d2c961d/platformdirs-4.14.9.tar.gz", hash = "sha256:c6b188e03ffd4dfe1bf8c4bcb47cd94711af244a9852dbff60297bd753684d5d", size = 87729, upload-time = "2026-11-27T20:53:44.721Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f4/e1/5b7b8bbb55084d1425bcb9bc823ff519e1b2be05f6ebb0089e2eacc38413/platformdirs-4.11.8-py3-none-any.whl", hash = "sha256:52f2f181bbfde907966932cc8312d967d02976422d66d537ea16092b8e291081", size = 24027, upload-time = "2026-09-08T22:20:41.537Z" },
+    { url = "https://files.pythonhosted.org/packages/3b/e7/fc53dfd2f9469cce9be9c58385bdcdb5087e790c135c9dadd4cc8401bb3d/platformdirs-4.14.9-py3-none-any.whl", hash = "sha256:d0d3a23e7ff282cfa94b77f5a22b81030dcb68ba0430f90c74f4bd8d090782ea", size = 94272, upload-time = "2026-11-27T20:53:43.511Z" },
 ]
 
 [[package]]

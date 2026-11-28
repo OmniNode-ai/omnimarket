@@ -81,6 +81,16 @@ requirements:
   acceptance:
   - id: AC11
     statement: 'AC11: ModelEtcdLabMembersOverlay accepts the current five voters, renders their members.tsv rows, and refuses a sixth voter, a repeated name, a second learner and a second laptop voter -- falsifier: tests/unit/models/test_etcd_lab_members_overlay_document_omn24562.py fails collection or any of its tests fails'
+- id: req-omn24562-alarm-router-runtime-interpreter
+  statement: The failure alarm router runs a command that names an absent host venv interpreter under the running environment's interpreter, never refusing the fire on a host path.
+  acceptance:
+  - id: AC13
+    statement: 'AC13: a router command whose first token is an absent .venv/bin/python path runs under the runtime interpreter, and a present one is left as named -- falsifier: uv run pytest tests/nodes/node_failure_alarm_router_effect/test_interpreter_setting.py -q fails when the absent-venv resolution is removed'
+- id: req-omn24562-census-unit-workspace-root
+  statement: The daily ledger file census unit exports the workspace config root, so its publish of the daily record resolves the broker instead of being refused with exit 3.
+  acceptance:
+  - id: AC14
+    statement: 'AC14: the census registry unit declares ONEX_WORKSPACE_CONFIG_ROOT as {workspace_config_root} and the rendered service carries it -- falsifier: uv run pytest tests/unit/contracts/test_node_trigger_declarations.py -k workspace_config_root fails when the environment line is removed from the unit'
 evidence_requirements:
 - kind: tests
   description: The inode alarm tests pass at the pushed head.
@@ -312,4 +322,54 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_tenant_outbox_flush_effect/test_overlay_and_entry.py -q -n 0 --no-cov -p no:randomly
+    cwd: .
+
+- id: dod-omn24562-flush-schedule-overlay-model
+  description: 'AC12: the schedule overlay document model for the tenant outbox flush scheduled node accepts its job_id, run_interval_seconds and grace_seconds document and refuses a missing key, an extra key and a malformed value; the test file fails at collection with ModuleNotFoundError before the model module exists and passes after.'
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/models/test_tenant_outbox_flush_schedule_overlay_document_omn24562.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+
+- id: dod-omn24562-alarm-router-runtime-interpreter
+  description: 'AC13: the failure alarm router resolves an absent host .venv/bin/python first token to the runtime interpreter and leaves a present one alone (failing control: at the merge base the absent-venv test fails with InterpreterMissingError naming the host path).'
+  source: manual
+  binds_ac:
+  - AC13
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_failure_alarm_router_effect/test_interpreter_setting.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+
+- id: dod-omn24562-reader-bus-session-lane-resolution
+  description: 'AC13: the work ledger reader resolves its bus-session lane from the route''s declared workspace_config_root and the runtime''s KAFKA_SASL_USERNAME and KAFKA_SASL_PASSWORD, which the dev runtime holds with no exported config root and no client credential store; the failure alarm router''s rows command no longer exits 69 on it (failing control: at the merge base the test file fails at collection with ImportError for resolve_bus_session_config).'
+  source: manual
+  binds_ac:
+  - AC13
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_work_ledger_reader_effect/test_reader_bus_session_lane_resolution_omn24562.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+
+- id: dod-omn24562-silent-alarm-append-bus-command
+  description: 'AC13: the silent failure alarm appends its episode rows through the unit-declared ONEX_LEDGER_BUS_APPEND_COMMAND (bus lane and workspace root bound) instead of the unbound `onex work-ledger`, which exits 69 on a pool host and made the tick exit 3 (failing controls: the handler test fails at the merge base because the default command is used, and the unit contract at the merge base declares no such environment key).'
+  source: manual
+  binds_ac:
+  - AC13
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/handlers/test_ledger_append_via_node.py tests/nodes/node_host_installer_registry_units/test_silent_failure_alarm_bus_append_omn24562.py -q -n 0 --no-cov -p no:cacheprovider
+    cwd: .
+
+- id: dod-omn24562-census-unit-workspace-root
+  description: 'AC14: the daily ledger file census unit carries ONEX_WORKSPACE_CONFIG_ROOT in its rendered service (failing control: at the merge base the declaration is absent and the test fails with KeyError; the 2026-11-27 daily run exited 3 with PUBLISH REFUSED NodeBrokerResolutionError).'
+  source: manual
+  binds_ac:
+  - AC14
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/contracts/test_node_trigger_declarations.py -k workspace_config_root -q -n 0 --no-cov -p no:randomly
     cwd: .

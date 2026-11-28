@@ -23,8 +23,10 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_harness_p
 from tests.unit.delegation.harness_support_omn26219 import (
     AcceptAllGate,
     ListCostSink,
+    TierSettings,
     call_request,
     load_overlay,
+    tier_row,
 )
 
 pytestmark = pytest.mark.unit
@@ -34,6 +36,13 @@ TIERS = {
     "harness_sonnet": ("claude-sonnet-5-5", "medium"),
     "harness_opus": ("claude-opus-5-5", "high"),
 }
+# The settings store rows of the three tiers, injected: the effort and credential mode are settings, not code.
+SETTINGS = TierSettings(
+    {
+        f"harness-claude-{family}": tier_row(["subscription"], effort)
+        for family, effort in (("haiku", "low"), ("sonnet", "medium"), ("opus", "high"))
+    }
+)
 
 
 class Environment:
@@ -87,7 +96,9 @@ def test_backend_wire_model_carries_no_effort_field() -> None:
 @pytest.mark.parametrize("tier", sorted(TIERS))
 async def test_each_tier_runs_at_its_effort(tmp_path: Path, tier: str) -> None:
     seen = fake_claude(tmp_path)
-    runner = HandlerHarnessProcessRunner(environment=Environment(tmp_path), agents={})
+    runner = HandlerHarnessProcessRunner(
+        environment=Environment(tmp_path), agents={}, settings=SETTINGS
+    )
     await runner.run(declared(tier), "p", 20)
     args = json.loads(seen.read_text())["argv"]
     assert args[args.index("--effort") + 1] == TIERS[tier][1]
@@ -97,7 +108,9 @@ async def test_effort_is_passed_and_the_child_runs_in_a_clean_directory(
     tmp_path: Path,
 ) -> None:
     seen = fake_claude(tmp_path)
-    runner = HandlerHarnessProcessRunner(environment=Environment(tmp_path), agents={})
+    runner = HandlerHarnessProcessRunner(
+        environment=Environment(tmp_path), agents={}, settings=SETTINGS
+    )
     got = await runner.run(declared("harness_opus"), "p", 20)
     record = json.loads(seen.read_text())
     args = record["argv"]
@@ -110,25 +123,36 @@ async def test_effort_is_passed_and_the_child_runs_in_a_clean_directory(
 
 async def test_receipt_names_the_model_that_answered(tmp_path: Path) -> None:
     fake_claude(tmp_path)
-    runner = HandlerHarnessProcessRunner(environment=Environment(tmp_path), agents={})
+    runner = HandlerHarnessProcessRunner(
+        environment=Environment(tmp_path), agents={}, settings=SETTINGS
+    )
     got = await runner.run(declared("harness_opus"), "p", 20)
     assert got.model == "claude-haiku-5-5"  # not the requested opus
 
 
 @pytest.mark.parametrize("variable", ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"])
-async def test_api_key_login_is_refused_by_name_and_never_launched(
+async def test_login_launch_does_not_inherit_a_key_or_token(
     tmp_path: Path, variable: str
 ) -> None:
-    seen = fake_claude(tmp_path)
+    """Kept from the subscription-only rule in its settings form: a login launch never bills an inherited key."""
+    seen = tmp_path / "env.json"
+    script = tmp_path / "claude"
+    script.write_text(
+        f"#!{sys.executable}\n"
+        "import json, os, sys\n"
+        "sys.stdin.read()\n"
+        f"open({str(seen)!r}, 'w').write(json.dumps(sorted(k for k in os.environ if k.startswith('ANTHROPIC_'))))\n"
+        "print(json.dumps({'type': 'result', 'result': 'ok', 'is_error': False}))\n"
+    )
+    script.chmod(0o700)
     runner = HandlerHarnessProcessRunner(
         environment=Environment(tmp_path, {variable: "sk-not-a-real-value"}),
         agents={},
+        settings=SETTINGS,
     )
     got = await runner.run(declared("harness_sonnet"), "p", 20)
-    assert got.exit_cause == "credential_refused"
-    assert variable in got.detail
-    assert "sk-not-a-real-value" not in got.model_dump_json()
-    assert not seen.exists()
+    assert got.exit_cause == "completed"
+    assert json.loads(seen.read_text()) == []
 
 
 async def test_call_result_and_attempt_carry_the_answering_model(
@@ -136,7 +160,9 @@ async def test_call_result_and_attempt_carry_the_answering_model(
 ) -> None:
     fake_claude(tmp_path)
     sink = ListCostSink()
-    runner = HandlerHarnessProcessRunner(environment=Environment(tmp_path), agents={})
+    runner = HandlerHarnessProcessRunner(
+        environment=Environment(tmp_path), agents={}, settings=SETTINGS
+    )
     call = HandlerHarnessBackendCall(
         runner=runner, gate=AcceptAllGate(), cost_sink=sink, overlay=load_overlay()
     )
