@@ -330,3 +330,12 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_dev_tenant_overlay_seam.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn26043-failed-run-names-its-cause
+  description: "A gateway check whose run ends failed names the cause the gateway recorded (failure class, code and reason) in the failing clause's detail, and the tick's run record lists each failed clause with that detail under failed_clause_details (the key dev already carries). The two new tests fail on the previous commit, where the clause read only the run's state and the evidence listed clause names alone (measured on h201: C29 run c29-20261126T005153Z-79c38930 and C30 run c30-20261126T005341Z-2f3ddaa8 failed with the gateway row recording ONEX_MARKET_CUSTOMER_PROVIDER_KEY_ABSENT, which no run record showed), and pass after the change. This binds AC5: a probe's red run names its real cause."
+  source: manual
+  binds_ac:
+  - AC5
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_failed_run_clause_detail.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

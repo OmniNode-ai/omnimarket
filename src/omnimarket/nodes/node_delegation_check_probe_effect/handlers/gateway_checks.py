@@ -317,8 +317,22 @@ def _completed(
         state == "completed",
         f"the run {workflow_id} reads completed"
         if state == "completed"
-        else f"the run reads {state!r} ({answered})",
+        else f"the run reads {state!r} ({answered}){_failure_named(status)}",
     )
+
+
+def _failure_named(status: Mapping[str, Any] | None) -> str:
+    """What the gateway recorded as the cause of a failed run (class, code, reason), so a red clause names it."""
+    named = [
+        f"{label} {text}"
+        for label, key in (
+            ("class", "terminal_failure_class"),
+            ("code", "terminal_failure_code"),
+            ("reason", "terminal_failure_reason"),
+        )
+        if status and (text := _text(status.get(key)))
+    ]
+    return f"; the gateway recorded {', '.join(named)}" if named else ""
 
 
 #: The fields the declared status model (ModelWorkflowStatus) and the declared receipt model (ModelWorkflowReceipt) both carry
