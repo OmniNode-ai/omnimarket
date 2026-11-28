@@ -33,6 +33,13 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+from omnimarket.handlers.projection_table_sql import (
+    _parse_timestamp,
+    order_clause,
+    quote_identifier,
+    select_list,
+    serialise_row,
+)
 from omnimarket.models.priced_spend import historical_unpriced_zero_reader
 from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.table_reader import (
@@ -41,12 +48,7 @@ from omnimarket.projection.table_reader import (
     ProjectionReadError,
     TablePageView,
     WindowQuery,
-    _parse_timestamp,
-    order_clause,
-    quote_identifier,
     recency_column,
-    select_list,
-    serialise_row,
 )
 from omnimarket.projection.tenant_registry_resolution import (
     TENANT_REGISTRY_MIRROR_TABLE,

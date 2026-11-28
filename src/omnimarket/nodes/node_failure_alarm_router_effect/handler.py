@@ -24,9 +24,11 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 import shlex
 import socket
 import subprocess
+import sys
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -97,6 +99,35 @@ class SelfCheckFailedError(RuntimeError):
     """A synthetic failure row did not reach both destinations."""
 
 
+class InterpreterMissingError(RuntimeError):
+    """A command's executable (the interpreter) is not on this host; the fire refuses naming it."""
+
+
+PYTHON_TOKEN = "{python}"
+
+
+def _check_executable(path: str) -> None:
+    if not (os.path.isfile(path) and os.access(path, os.X_OK)):
+        raise InterpreterMissingError(
+            f"interpreter not found or not executable: {path}"
+        )
+
+
+def _absent_host_venv_python(executable: str) -> bool:
+    """A host checkout's ``.venv/bin/python`` an overlay names that this runtime does not have.
+
+    The interpreter comes from the running environment, never from a host path baked into an overlay.
+    """
+    path = Path(executable)
+    return (
+        path.is_absolute()
+        and path.parent.name == "bin"
+        and path.parent.parent.name == ".venv"
+        and path.name.startswith("python")
+        and not (path.is_file() and os.access(path, os.X_OK))
+    )
+
+
 class FailureAlarmPorts(Protocol):
     def read_rows(self) -> list[str]: ...
     def read_ticks(self) -> list[str] | None:
@@ -116,6 +147,40 @@ class CommandPorts:
             )
         self._request = request
         self._host = request.host or socket.gethostname()
+        self.interpreter = request.python_interpreter.strip() or sys.executable
+        if any(
+            PYTHON_TOKEN in command
+            for command in (
+                request.ledger_rows_command,
+                request.ledger_append_command,
+                request.alert_command,
+            )
+        ):
+            _check_executable(self.interpreter)
+
+    def _argv(self, command: str) -> list[str]:
+        argv = shlex.split(command)
+        if argv and (argv[0] == PYTHON_TOKEN or _absent_host_venv_python(argv[0])):
+            argv[0] = self.interpreter
+        return argv
+
+    def _run(
+        self, argv: list[str], *, input_text: str | None = None
+    ) -> subprocess.CompletedProcess[str]:
+        try:
+            return subprocess.run(
+                argv,
+                input=input_text,
+                capture_output=True,
+                text=True,
+                timeout=COMMAND_TIMEOUT_S,
+                check=False,
+            )
+        except (FileNotFoundError, PermissionError) as exc:
+            raise InterpreterMissingError(
+                f"command executable not found or not executable: {argv[0] if argv else ''}"
+                f" ({type(exc).__name__})"
+            ) from exc
 
     def read_rows(self) -> list[str]:
         request = self._request
@@ -124,13 +189,7 @@ class CommandPorts:
                 Path(request.ledger_rows_file).read_text(encoding="utf-8").splitlines()
             )
         if request.ledger_rows_command.strip():
-            done = subprocess.run(
-                shlex.split(request.ledger_rows_command),
-                capture_output=True,
-                text=True,
-                timeout=COMMAND_TIMEOUT_S,
-                check=False,
-            )
+            done = self._run(self._argv(request.ledger_rows_command))
             if done.returncode:
                 raise RuntimeError(
                     f"ledger rows command exited {done.returncode}: {cell(done.stderr, 160)}"
@@ -153,9 +212,9 @@ class CommandPorts:
         command = self._request.ledger_append_command
         if not command.strip():
             raise ValueError("no ledger writer: ledger_append_command is empty")
-        done = subprocess.run(
+        done = self._run(
             [
-                *shlex.split(command),
+                *self._argv(command),
                 "--lane",
                 ROUTER_LANE,
                 "--host",
@@ -165,11 +224,7 @@ class CommandPorts:
                 "--rows-file",
                 "-",
             ],
-            input="\n".join(rows) + "\n",
-            capture_output=True,
-            text=True,
-            timeout=COMMAND_TIMEOUT_S,
-            check=False,
+            input_text="\n".join(rows) + "\n",
         )
         if done.returncode:
             raise RuntimeError(
@@ -177,13 +232,7 @@ class CommandPorts:
             )
 
     def push(self, text: str) -> None:
-        done = subprocess.run(
-            [*shlex.split(self._request.alert_command), text],
-            capture_output=True,
-            text=True,
-            timeout=COMMAND_TIMEOUT_S,
-            check=False,
-        )
+        done = self._run([*self._argv(self._request.alert_command), text])
         if done.returncode:
             raise RuntimeError(
                 f"push command exited {done.returncode}: {cell(done.stderr or done.stdout, 160)}"
@@ -517,7 +566,12 @@ class HandlerFailureAlarmRouterScheduled:
         except NodeOverlayNotFoundError as exc:
             self._refusals.refuse(exc)
             return None
+        try:
+            result = await asyncio.to_thread(
+                self._router.handle, settings.model_copy(update={"now": request.now})
+            )
+        except InterpreterMissingError as exc:
+            self._refusals.refuse(exc)
+            return None
         self._refusals.recovered()
-        return await asyncio.to_thread(
-            self._router.handle, settings.model_copy(update={"now": request.now})
-        )
+        return result

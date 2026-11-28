@@ -17,40 +17,10 @@ from pathlib import Path
 
 import yaml
 
-from omnimarket.handlers.node_overlay_reader import find_node_overlay
 from omnimarket.models.model_repository_retirement import (
-    ModelRepositoryRetirementOverlay,
     ModelRepositoryRetirementPolicy,
     ModelRetiredRepositoryFinding,
 )
-
-
-def load_retirement_policy() -> ModelRepositoryRetirementPolicy:
-    contract = yaml.safe_load(
-        (Path(__file__).resolve().parents[1] / "contract.yaml").read_text()
-    )
-    policy = ModelRepositoryRetirementPolicy.model_validate(contract["retirement"])
-    path = find_node_overlay("node_host_reconcile_effect")
-    if path is None:
-        return policy
-    document = yaml.safe_load(path.read_text(encoding="utf-8"))
-    if not isinstance(document, dict):
-        raise ValueError("host reconcile overlay must be a mapping")
-    overlay = ModelRepositoryRetirementOverlay.model_validate(
-        document.get("retirement", {})
-    )
-    return policy.model_copy(
-        update={
-            "retired_repositories": tuple(
-                dict.fromkeys(
-                    (
-                        *policy.retired_repositories,
-                        *overlay.additional_retired_repositories,
-                    )
-                )
-            )
-        }
-    )
 
 
 def compose_tolerant_loader(tags: frozenset[str]) -> type[yaml.SafeLoader]:

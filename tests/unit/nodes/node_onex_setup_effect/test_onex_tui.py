@@ -757,6 +757,21 @@ async def test_config_refuses_to_save_with_no_model_selected() -> None:
         assert not [call for call in runner.calls if call[0] == "setup"]
 
 
+async def test_config_refusal_note_survives_the_late_auto_find() -> None:
+    """The auto-find that the typed URL starts lands after Save was refused.
+
+    On a loaded runner the find result arrives between the Save press and the
+    note read, so the refusal note must not be replaced by the find's own text.
+    """
+    runner = _Runner([])
+    app = _app(runner)
+    async with app.run_test(size=(100, 44)) as pilot:
+        await _open_config(pilot, app)
+        await _press(pilot, app, "save")
+        await _wait_for_models(pilot)
+        assert "at least one model" in str(app.screen.query_one("#note").render())
+
+
 def _selected_rows(*, connection: bool) -> dict[tuple[str, ...], str]:
     """`models list` and `models connections` as the CLI prints them."""
     rows = "\n".join(
@@ -1577,3 +1592,24 @@ async def test_a_failed_switch_prints_one_line_with_the_step_and_its_fix() -> No
         assert "Install or repair the customer asset bundle" in flat
         assert "Welcome To OmniNode" not in text
         assert "The rest" not in text
+
+
+async def test_switching_provider_never_lists_models_with_the_previous_providers_key() -> (
+    None
+):
+    list_models, seen = _hosted_listing()
+    app = OnexTui(
+        root=_root, runner=_Runner([]), load_status=_status, list_models=list_models
+    )
+    async with app.run_test(size=(120, 50)) as pilot:
+        await _open_config(pilot, app)
+        screen = app.screen
+        screen.query_one("#provider").value = "openrouter"
+        await pilot.pause()
+        screen.query_one("#key").value = "sk-or-switching"
+        await _wait_for_models(pilot)
+        seen.clear()
+        screen.query_one("#provider").value = "gemini"
+        await _wait_for_models(pilot)
+        assert screen.query_one("#key").value == ""
+        assert [call for call in seen if call[0] == "gemini"] == []

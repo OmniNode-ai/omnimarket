@@ -13,6 +13,7 @@ from omnimarket.handlers.routing.delegation_check_responder_chain import (
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe import (
     CheckId,
+    ModelDashboardObservation,
     ModelDelegateObservation,
     ModelRoutingCollection,
     ModelSurfaceObservation,
@@ -49,6 +50,15 @@ class ProtocolCustomerMachine(Protocol):
     def collect_surface(self) -> ModelSurfaceObservation: ...
 
     def versions(self) -> dict[str, str]: ...
+
+
+@runtime_checkable
+class ProtocolDashboardMachine(Protocol):
+    """A customer machine that can also walk the customer path to the local dashboard (C30)."""
+
+    def collect_dashboard(
+        self, responder: ModelChainResolution
+    ) -> ModelDashboardObservation: ...
 
 
 class ProtocolCheckResultPublisher(Protocol):

@@ -68,7 +68,10 @@ def _run_poll(
     bin_dir.mkdir()
     (bin_dir / "gh").write_text("#!/bin/sh\necho '[]'\n", encoding="utf-8")
     # jq -s '.' reads the stream and prints a list; -e is only reached on pull_request.
-    (bin_dir / "jq").write_text("#!/bin/sh\ncat >/dev/null\necho '[]'\n")
+    # OMN-26563: the stall query (jq -r) must print nothing: no stalled job.
+    (bin_dir / "jq").write_text(
+        "#!/bin/sh\ncat >/dev/null\ncase \"$1\" in -r) exit 0 ;; esac\necho '[]'\n"
+    )
     (bin_dir / "sleep").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     gate_dir = tmp_path / "scripts" / "ci"
     gate_dir.mkdir(parents=True)

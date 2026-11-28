@@ -57,6 +57,14 @@ class EnumDelegationAcceptanceReason(StrEnum):
     QUALITY_BAR_MET = "quality_bar_met"
     """The gate passed the response and its score was at or above the bar."""
 
+    EXECUTED_CHECKS_PASSED = "executed_checks_passed"
+    """Accepted because the class's executed checks passed; the score did not decide (OMN-26705).
+
+    A code class is accepted by its executed tests, not by its bar (OMN-21077).
+    When such an answer scored below the declared bar the record must not read
+    ``quality_bar_met``: the bar was not met, and the detail string says so.
+    """
+
     JUDGE_UNAVAILABLE_DETERMINISTIC_FLOOR = "judge_unavailable_deterministic_floor"
     """The gate passed on the deterministic floor with no judge band (OMN-13959)."""
 

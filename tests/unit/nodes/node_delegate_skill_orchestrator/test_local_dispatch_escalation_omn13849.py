@@ -207,6 +207,8 @@ class _PerTierEffect:
             request_id=request.request_id,
             success=True,
             content=content,
+            # OMN-18079: the provider reports the model that served the call.
+            served_model_id=request.model_id,
             tokens_in=11,
             tokens_out=22,
             latency_ms=5,

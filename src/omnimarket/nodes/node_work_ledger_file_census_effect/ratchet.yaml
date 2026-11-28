@@ -5,7 +5,6 @@
 # census (new code opening the ledger file). `--lower` drops a cleared file and never adds one.
 files:
   knowledge_base: {}
-  omnibase_compat: {}
   omnibase_core:
     contracts/OMN-21147.yaml: 1
     tests/conftest.py: 1
@@ -101,14 +100,11 @@ files:
     contracts/OMN-22777.yaml: 1
     contracts/OMN-25723.yaml: 1
     src/omnimarket/handlers/ledger_row_grammar.py: 1
-    src/omnimarket/nodes/node_branch_claim_check_effect/contract.yaml: 1
     src/omnimarket/nodes/node_compaction_cost_compute/data/recovery_call_patterns.yaml: 2
     src/omnimarket/nodes/node_friction_rollup_compute/tests/fixtures/recorded_day_unit_output.json: 3
     src/omnimarket/nodes/node_host_installer_registry_units/contract.yaml: 5
     src/omnimarket/nodes/node_host_installer_registry_units/handlers/handler_registry_units.py: 2
     src/omnimarket/nodes/node_host_reading_effect/overlay.example.yaml: 4
-    src/omnimarket/nodes/node_lab_fill_effect/handlers/handler_lab_fill_launch.py: 1
-    src/omnimarket/nodes/node_lab_history_archive_effect/handlers/handler_lab_history_archive.py: 1
     src/omnimarket/nodes/node_process_health_effect/contract.yaml: 2
     src/omnimarket/nodes/node_process_health_effect/tests/test_runtime_process_health.py: 4
     src/omnimarket/nodes/node_retention_cleanup/contract.yaml: 1
@@ -162,7 +158,6 @@ files:
     tests/nodes/node_plans_today_effect/test_plans_today_operator.py: 1
     tests/nodes/node_remote_lane_stop_effect/conftest.py: 1
     tests/nodes/node_session_checkpoint_compute/test_golden_chain_session_checkpoint_compute.py: 1
-    tests/nodes/node_session_context_sources_effect/test_session_context_sources.py: 1
     tests/nodes/node_session_front_door_compute/test_front_door_entry_stops_and_operator.py: 1
     tests/nodes/node_session_front_door_compute/test_member_host_mode_receipt.py: 1
     tests/nodes/node_session_resume_compute/test_golden_chain_session_resume_compute.py: 1
@@ -171,16 +166,14 @@ files:
     tests/nodes/test_omn17427_file_retention.py: 3
     tests/session_front_door_machine.py: 4
     tests/test_golden_chain_board_truth_reconcile_effect.py: 1
-    tests/test_golden_chain_relay_effect.py: 2
+    tests/test_golden_chain_relay_effect.py: 1
     tests/test_golden_chain_work_ledger_query.py: 1
     tests/test_host_reconcile_effect.py: 1
-    tests/test_omn20708_branch_claim_check_handler.py: 1
     tests/test_omn22468_session_files_port.py: 1
     tests/unit/clone_dirty_converge/test_canonical_clone_dirty_converge.py: 2
     tests/unit/handlers/test_work_ledger_roll_boundary.py: 4
     tests/unit/nodes/node_context_source_ledger_effect/test_context_source_ledger.py: 2
     tests/unit/nodes/node_context_source_ledger_effect/test_ledger_fold_memo_omn21099.py: 1
-    tests/unit/nodes/node_dropped_work_audit_scheduled_effect/test_dropped_work_audit_scheduled.py: 1
     tests/unit/nodes/node_projection_work_ledger/test_parity_by_kind.py: 1
     tests/unit/nodes/node_projection_work_ledger/test_parity_verb_diff.py: 2
     tests/unit/nodes/node_projection_work_ledger/test_work_ledger_parity.py: 2
@@ -196,12 +189,11 @@ files:
     contracts/OMN-25400.yaml: 1
 ratchet:
   knowledge_base: 0
-  omnibase_compat: 0
   omnibase_core: 8
   omnibase_infra: 21
   omnibase_spi: 0
   omniclaude: 45
   omnidash: 0
   omniintelligence: 0
-  omnimarket: 105
+  omnimarket: 99
   omnimemory: 1

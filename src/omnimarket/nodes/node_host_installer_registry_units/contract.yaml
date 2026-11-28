@@ -7,7 +7,7 @@ lifecycle: experimental
 contract_version: {major: 1, minor: 0, patch: 0}
 node_version: "1.0.0"
 description: >-
-  Install a self-contained copied alarm payload, or render and install a launchd (or, for a unit declaring platform systemd, a systemd user service and timer) registry_module_tick unit that runs a node module of a project with
+  Install a self-contained copied alarm payload, or render and install a launchd (or, for a unit declaring platform systemd or carrying a systemd block on a Linux host, a systemd user service and timer) registry_module_tick unit that runs a node module of a project with
   `uv run --frozen --project <project> python -m <module>`. The project is the canonical registry clone unless the
   unit declares a project path override and the request names a checkout: then the rendered unit runs that checkout,
   which must be a clean git checkout carrying the unit's entry file (and, when the request names an expected
@@ -196,6 +196,8 @@ units:
       # projection read command_env; the commands are the ones the other ledger-writing units run.
       ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
       ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/omnibase_infra/.venv/bin/onex ledger query --stdin"
+      # The onex in that venv hides its internal command groups, `ledger` among them, unless this is on (OMN-26578).
+      ONEX_CLI_SHOW_ALL_COMMANDS: "1"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
       # The workspace root the floor_emissions step's emission mirror opens its lane's bus with (OMN-23877): the mirror
@@ -572,6 +574,8 @@ units:
       requires: clean git checkout that carries entry_file
     environment:
       ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/omnibase_infra/.venv/bin/onex ledger query --stdin"
+      # The onex in that venv hides its internal command groups, `ledger` among them, unless this is on (OMN-26578).
+      ONEX_CLI_SHOW_ALL_COMMANDS: "1"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/ledger-host-mirror/last-run.json
     state_directory: .onex_state/ledger-host-mirror
@@ -605,6 +609,8 @@ units:
       requires: clean git checkout that carries entry_file
     environment:
       ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/omnibase_infra/.venv/bin/onex ledger query --stdin"
+      # The onex in that venv hides its internal command groups, `ledger` among them, unless this is on (OMN-26578).
+      ONEX_CLI_SHOW_ALL_COMMANDS: "1"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
       ONEX_LANE_DISPATCH_BUS_APPEND: "{registry_root}/.onex-dispatch-venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
       ONEX_LEDGER_HOST_NAME: h202
@@ -915,9 +921,20 @@ units:
       - ONEX_SKILL_OVERLAY_ROOTS
     # OMN-23323: an overlay root is never a worktree; the installer refuses one, in a default or an override.
     environment_refuse_worktree_paths: [ONEX_SKILL_OVERLAY_ROOTS]
+    # OMN-26043: the settings store reader keeps the probe's two settings rows (delegation_check_responders and
+    # delegation_check_gateway) in its snapshot directory, which has the layout of a root of node settings. It is appended
+    # as the last root, so every root declared above still answers first. With it absent the probe found neither row (measured on h051).
+    environment_append_roots:
+      ONEX_SKILL_OVERLAY_ROOTS:
+        - "{home}/.local/state/onex/overlay-store"
     environment:
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
+      # OMN-26043: the probe publishes its event on the lane bus named in its overlay; the lane declaration table
+      # (config/lab/ci_bus_lanes.yaml) that names the lane's broker is found under these two roots, as for the other
+      # registry units. No KAFKA_* variable names a broker (measured on h051: the unit rendered none and the event was not delivered).
+      OMNIBASE_PATH: "{registry_root}"
+      ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/delegation-check-probe/last-run.json
     state_directory: .onex_state/delegation-check-probe
   # The overlay store's loader on a Linux pool host (OMN-23353): every 300 s it checks this host's clone of the overlay home,
@@ -1566,6 +1583,8 @@ units:
       ONEX_PR_WATCHER_STATE: "{registry_root}/.claude_scratch/pr-watcher/state.json"
       OMNIBASE_PATH: "{registry_root}"
       ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/.onex-dispatch-venv/bin/onex ledger query --stdin"
+      # The onex in that venv hides its internal command groups, `ledger` among them, unless this is on (OMN-26578).
+      ONEX_CLI_SHOW_ALL_COMMANDS: "1"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/review-gate-context-probe/last-run.json
     state_directory: .onex_state/review-gate-context-probe
@@ -1725,6 +1744,8 @@ units:
       PATH: "{registry_root}/omnibase_infra/scripts:{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
       # The open lane claims are read over the bus, never from the ledger file: the overlay's ledger_read names this variable.
       ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/.onex-dispatch-venv/bin/onex ledger query --stdin"
+      # The onex in that venv hides its internal command groups, `ledger` among them, unless this is on (OMN-26578).
+      ONEX_CLI_SHOW_ALL_COMMANDS: "1"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/lane-host-pool-snapshot/last-run.json
@@ -1767,6 +1788,8 @@ units:
       PATH: "{registry_root}/omnibase_infra/scripts:{home}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
       # The open lane claims are read over the bus, never from the ledger file: the overlay's ledger_read names this variable.
       ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/.onex-dispatch-venv/bin/onex ledger query --stdin"
+      # The onex in that venv hides its internal command groups, `ledger` among them, unless this is on (OMN-26578).
+      ONEX_CLI_SHOW_ALL_COMMANDS: "1"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/lane-host-pool-snapshot/last-run.json
@@ -2426,6 +2449,22 @@ units:
     interpreter_candidates:
       - /opt/homebrew/bin/python3.13
       - /usr/local/bin/python3.13
+    # One declaration, two platforms: a Linux host installs this unit as a systemd user service and timer from the fields
+    # below, which replace the launchd fields of the same name; every other field (module, environment, configuration,
+    # state) is shared, and the Mac installs the launchd job above. The host's platform selects, no install names it.
+    systemd:
+      label: onex-silent-failure-alarm
+      template: templates/onex-registry-module-tick.service.tmpl
+      timer_template: templates/onex-registry-module-tick.timer.tmpl
+      schedule:
+        start_interval: 300
+        run_timeout_s: 900
+        run_at_load: true
+        description: every 300 s and at load
+      interpreter_candidates:
+        - /usr/bin/python3.12
+        - /usr/bin/python3.13
+        - /usr/local/bin/python3.13
     module: omnimarket.nodes.node_silent_failure_alarm_effect.runtime_silent_failure_alarm
     entry_file: src/omnimarket/nodes/node_silent_failure_alarm_effect/runtime_silent_failure_alarm.py
     project_path_override:
@@ -2442,6 +2481,9 @@ units:
       # The alarm reads the lab host table (which hosts are unavailable) through the overlay roots alone; the config
       # owner's copy is no longer a source (OMN-23950), so the unit names the overlays clone first, then the plugin copy.
       ONEX_SKILL_OVERLAY_ROOTS: "{overlays_root}:{marketplace_root}/plugins/onex-overlays/overlays"
+      # The alarm appends its episode rows over the bus through this command, bus lane and workspace root bound; without it the
+      # append runs `onex work-ledger`, which binds neither and exits 69 on a pool host (OMN-24562).
+      ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
     # The configuration the alarm reads from ONEX_SILENT_FAILURE_ALARM_CONFIG (OMN-22778), written by the installer so a
     # reinstall reproduces it and nobody writes it by hand. Built-in placeholders: {home} and {registry_root}.
     # Each input is a request field, else the installing shell's
@@ -2582,6 +2624,8 @@ units:
       PATH: "{registry_root}/omnibase_infra/scripts:{home}/.local/bin:/usr/local/bin:/usr/bin:/bin"
       # The select step reads the rolling ledger's rows over the bus, never from the ledger file: the reader overlay's read names this variable.
       ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/.onex-dispatch-venv/bin/onex ledger query --stdin"
+      # The onex in that venv hides its internal command groups, `ledger` among them, unless this is on (OMN-26578).
+      ONEX_CLI_SHOW_ALL_COMMANDS: "1"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
     evidence_file: .local/state/omni/lab-fill-tick/last-run.json
@@ -2624,6 +2668,8 @@ units:
       # The ledger over the bus (OMN-26329): the tick reads its window with the paged read command and appends its STATUS row with
       # the append command, as the other ledger-writing units do; the unit names no ledger file.
       ONEX_LEDGER_BUS_READ_COMMAND: "{registry_root}/omnibase_infra/.venv/bin/onex ledger query --stdin"
+      # The onex in that venv hides its internal command groups, `ledger` among them, unless this is on (OMN-26578).
+      ONEX_CLI_SHOW_ALL_COMMANDS: "1"
       ONEX_LEDGER_BUS_APPEND_COMMAND: "{registry_root}/omnimarket/.venv/bin/python -m omnimarket.work_ledger_bus.cli append --bus-lane dev --omnibase-path {registry_root}"
       ONEX_WORKSPACE_CONFIG_ROOT: "{workspace_config_root}"
       ONEX_STATE_DIR: "{registry_root}/.onex_state"

@@ -12,6 +12,8 @@ a task that is merely not admitted carries its ``excluded_reason`` and never rai
 from __future__ import annotations
 
 import hashlib
+import re
+import shlex
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
@@ -34,17 +36,41 @@ from omnimarket.models.delegation.model_size_band import (
     ModelSizeBand,
     ModelSizeBandRequest,
 )
+from omnimarket.models.eval_suite_census.committed_suite import load_committed_suite
+from omnimarket.models.eval_suite_census.model_suite_task import ModelCodeEvalSuiteTask
 from omnimarket.models.model_code_score import (
     ModelCodeScoreCheckFile,
     ModelCodeScoreContractRef,
     ModelCodeScoreOverlay,
 )
+from omnimarket.models.model_lab_work_unit import ModelSeedFile
 from omnimarket.nodes.node_code_contract_score_effect.handlers.adapter_git_workspace import (
     _git,
 )
 from omnimarket.nodes.node_delegation_size_band_compute.handlers.handler_delegation_size_band import (
     HandlerDelegationSizeBand,
 )
+
+# a command the loop runs as argv, never through a shell: a quoted word stays one word,
+# and a word that is a shell operator, a substitution or a redirect is refused
+_SHELL_WORD = re.compile(r"^(?:[&|;<>()]+|.*[$`].*)$")
+
+
+def _runs_as_argv(command: str) -> bool:
+    try:
+        words = shlex.split(command)
+    except ValueError:
+        return False
+    return bool(words) and not any(_SHELL_WORD.match(word) for word in words)
+
+
+def _path_tokens(check_value: str) -> tuple[str, ...]:
+    """The words of a check value, a pytest node id (``path::name``) cut to its file path."""
+    return tuple(word.split("::", 1)[0] for word in check_value.split())
+
+
+# the contract check types whose value is a command the loop can run as argv
+_LOOP_CHECK_TYPES = frozenset({"test_passes", "command"})
 
 # the delegated code edit loop request's task limit (ModelLabCodeDraft.task max_length)
 LOOP_REQUEST_TASK_MAX_CHARS = 20000
@@ -60,7 +86,11 @@ class _MaterialState:
     writable_globs: tuple[str, ...] = ()
     check_files: tuple[ModelCodeScoreCheckFile, ...] = ()
     held_diff: str = ""
+    context_paths: tuple[str, ...] = ()
+    check_commands: tuple[str, ...] = ()
+    seed_files: tuple[ModelSeedFile, ...] = ()
     band: str = "S"
+    check_item_ids: tuple[str, ...] = ()
 
 
 class GitCodeEvalSuiteReader:
@@ -72,7 +102,11 @@ class GitCodeEvalSuiteReader:
         score_overlay: ModelCodeScoreOverlay,
         size_band: HandlerDelegationSizeBand | None = None,
         max_task_chars: int,
+        recorded_tasks: Sequence[ModelCodeEvalSuiteTask] = (),
     ) -> None:
+        self._recorded = {
+            (task.repository, task.contract_id): task for task in recorded_tasks
+        }
         self._score_overlay = score_overlay
         self._size_band = (
             size_band if size_band is not None else HandlerDelegationSizeBand()
@@ -90,6 +124,7 @@ class GitCodeEvalSuiteReader:
         return cls(
             score_overlay=overlay,
             max_task_chars=LOOP_REQUEST_TASK_MAX_CHARS,
+            recorded_tasks=load_committed_suite().tasks,
         )
 
     def read(
@@ -120,7 +155,14 @@ class GitCodeEvalSuiteReader:
                 candidate, contract_path, state, "contract_unreadable"
             )
 
+        recorded = self._recorded_task(candidate)
         bound = self._bound_checks(contract)
+        if recorded is not None:
+            item_ids = {check.item_id for check in recorded.checks}
+            bound = [entry for entry in bound if entry[0] in item_ids]
+            state.check_item_ids = tuple(
+                dict.fromkeys(c.item_id for c in recorded.checks)
+            )
         if not bound:
             return self._material(candidate, contract_path, state, "check_not_runnable")
         for _item_id, check_type, _check_value in bound:
@@ -138,21 +180,28 @@ class GitCodeEvalSuiteReader:
         if changed is None:
             return self._material(candidate, contract_path, state, "no_base_commit")
 
-        for _item_id, _check_type, check_value in bound:
-            if not self._names_a_changed_path(check_value, changed):
-                return self._material(
-                    candidate, contract_path, state, "check_names_no_changed_path"
-                )
-
-        check_files = self._check_files(root, candidate.merge_commit, bound, changed)
+        if recorded is None:
+            for _item_id, _check_type, check_value in bound:
+                if not self._names_a_changed_path(check_value, changed):
+                    return self._material(
+                        candidate, contract_path, state, "check_names_no_changed_path"
+                    )
+            check_files = self._check_files(
+                root, candidate.merge_commit, bound, changed
+            )
+            held = tuple(
+                path
+                for path in changed
+                if path != contract_path
+                and path not in {file.path for file in check_files}
+            )
+        else:
+            check_files = self._recorded_check_files(
+                root, candidate.merge_commit, recorded
+            )
+            held = tuple(path for path in changed if path in recorded.held_paths)
         state.check_files = check_files
 
-        check_paths = {file.path for file in check_files}
-        held = tuple(
-            path
-            for path in changed
-            if path != contract_path and path not in check_paths
-        )
         protected = self._score_overlay.protected_paths.get(candidate.repository, ())
         for path in held:
             if self._is_protected(path, protected):
@@ -164,6 +213,12 @@ class GitCodeEvalSuiteReader:
         state.held_diff = self._held_diff(
             root, base_commit, candidate.merge_commit, held
         )
+
+        state.check_commands = self._loop_commands(bound)
+        state.context_paths = tuple(
+            path for path in held if self._exists_at(root, base_commit, path)
+        ) + tuple(sorted({file.path for file in check_files}))
+        state.seed_files = self._seed_files(root, candidate.merge_commit, check_files)
 
         descriptions = tuple(item.description for item in contract.dod_evidence)
         state.task_text = "\n".join(
@@ -211,15 +266,82 @@ class GitCodeEvalSuiteReader:
                 sha256=state.contract_sha256,
             ),
             check_files=state.check_files,
+            check_item_ids=state.check_item_ids,
             held_diff=state.held_diff,
+            context_paths=state.context_paths,
+            check_commands=state.check_commands,
+            seed_files=state.seed_files,
             band=state.band,
             material_hash=material_hash,
             excluded_reason=excluded_reason,
         )
 
+    def _recorded_task(
+        self, candidate: ModelCodeEvalCandidate
+    ) -> ModelCodeEvalSuiteTask | None:
+        """The committed suite's task for this candidate, when it names the same merge commit."""
+        task = self._recorded.get((candidate.repository, candidate.contract_id))
+        if task is None or task.merge_commit != candidate.merge_commit:
+            return None
+        return task
+
+    def _recorded_check_files(
+        self, root: str, merge_commit: str, recorded: ModelCodeEvalSuiteTask
+    ) -> tuple[ModelCodeScoreCheckFile, ...]:
+        """The recorded check files as the merge holds them; one missing at the merge is left out."""
+        files: list[ModelCodeScoreCheckFile] = []
+        for path in recorded.check_files:
+            data = self._show_blob(root, merge_commit, path)
+            if data is None:
+                continue
+            files.append(
+                ModelCodeScoreCheckFile(
+                    path=path,
+                    sha256=hashlib.sha256(data).hexdigest(),
+                    revision=merge_commit,
+                )
+            )
+        return tuple(files)
+
     def _show_blob(self, root: str, revision: str, path: str) -> bytes | None:
         done = _git(root, "show", f"{revision}:{path}")
         return done.stdout if done.returncode == 0 else None
+
+    @staticmethod
+    def _loop_commands(bound: list[tuple[str, str, str]]) -> tuple[str, ...]:
+        """The contract's test commands the loop may run as argv: no shell operator, once each, in order."""
+        commands: list[str] = []
+        for _item_id, check_type, check_value in bound:
+            command = check_value.strip()
+            if (
+                check_type in _LOOP_CHECK_TYPES
+                and _runs_as_argv(command)
+                and command not in commands
+            ):
+                commands.append(command)
+        return tuple(commands)
+
+    def _exists_at(self, root: str, revision: str, path: str) -> bool:
+        return _git(root, "cat-file", "-e", f"{revision}:{path}").returncode == 0
+
+    def _seed_files(
+        self,
+        root: str,
+        merge_commit: str,
+        check_files: tuple[ModelCodeScoreCheckFile, ...],
+    ) -> tuple[ModelSeedFile, ...]:
+        seeds: list[ModelSeedFile] = []
+        for file in check_files:
+            data = self._show_blob(root, merge_commit, file.path)
+            if data is None:
+                continue
+            try:
+                seeds.append(
+                    ModelSeedFile(path=file.path, content=data.decode("utf-8"))
+                )
+            except UnicodeDecodeError:  # a binary check file is not seeded as text
+                continue
+        return tuple(seeds)
 
     def _base_commit(self, root: str, merge_commit: str) -> str | None:
         """The merge's first parent; None when the merge has none."""
@@ -253,7 +375,7 @@ class GitCodeEvalSuiteReader:
     @staticmethod
     def _names_a_changed_path(check_value: str, changed: tuple[str, ...]) -> bool:
         """True when a token of the check value is a changed path or a directory prefix of one."""
-        for token in check_value.split():
+        for token in _path_tokens(check_value):
             if token in changed:
                 return True
             prefix = token.rstrip("/") + "/"
@@ -270,7 +392,7 @@ class GitCodeEvalSuiteReader:
     ) -> tuple[ModelCodeScoreCheckFile, ...]:
         named: set[str] = set()
         for _item_id, _check_type, check_value in bound:
-            for token in check_value.split():
+            for token in _path_tokens(check_value):
                 if token in changed or any(
                     path.startswith(token.rstrip("/") + "/") for path in changed
                 ):

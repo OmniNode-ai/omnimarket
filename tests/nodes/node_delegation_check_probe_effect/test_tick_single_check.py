@@ -15,6 +15,8 @@ from pathlib import Path
 import pytest
 import yaml
 from _gateway_fake import FakeGateway
+from omnibase_core.enums.enum_core_error_code import EnumCoreErrorCode
+from omnibase_core.errors.model_onex_error import ModelOnexError
 
 from omnimarket.nodes.node_delegation_check_probe_effect import (
     runtime_delegation_check_probe_tick as tick,
@@ -92,3 +94,166 @@ def test_the_timer_run_with_no_check_flag_keeps_its_exit_codes(
     code, pub = _run(tmp_path, monkeypatch)
     assert [e["payload"]["criterion"] for e in pub.events] == ["C13", "C14", "C17"]
     assert code == tick.EXIT_FAILED
+
+
+def test_a_tick_with_no_responders_row_still_runs_c17_and_publishes_c13_and_c14_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The settings store serves no delegation_check_responders row (measured on h053, 2026-11-25): the tick ended at once
+    with overlay_unreadable, so no check published a result. A missing row is an absent instrument for the two checks that
+    send a task through the chain; C17 reads no responder and still grades."""
+    from omnimarket.nodes.node_delegation_check_probe_effect.handlers.adapter_delegation_check import (
+        InMemoryCustomerMachine,
+    )
+    from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe import (
+        ModelBrokenCommandCase,
+        ModelSurfaceObservation,
+    )
+
+    env = _overlays(tmp_path, ["C13", "C14", "C17"])
+    monkeypatch.setenv(tick.OVERLAY_FILE_ENV, env[tick.OVERLAY_FILE_ENV])
+    monkeypatch.delenv(tick.RESPONDERS_FILE_ENV, raising=False)
+    monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
+    surface = ModelSurfaceObservation(
+        guides_lead_with_local=True,
+        install_rc=0,
+        install_interpreter_matches=True,
+        help_answers=True,
+        parameter_controls_caught=True,
+        operator_switch_env="ONEX_OPERATOR_SWITCH",
+        broken_ran_with_switch=True,
+        broken_before_rc=0,
+        broken_after_rc=0,
+        broken_cases=(
+            ModelBrokenCommandCase(
+                entry_point="c17-broken-probe-import",
+                rc=1,
+                output="[ONEX_CORE_124_IMPORT_ERROR] 'c17-broken-probe-import' failed",
+            ),
+        ),
+    )
+    pub = InMemoryCheckPublisher()
+    code = tick.main(
+        ["--omni-home", str(tmp_path), "--state-dir", str(tmp_path / "state")],
+        publisher=pub,
+        gateway=FakeGateway(),
+        machine=InMemoryCustomerMachine(surface=surface),
+    )
+    verdicts = {e["payload"]["criterion"]: e["payload"]["verdict"] for e in pub.events}
+    assert verdicts["C13"] == "PRECONDITION-ABSENT"
+    assert verdicts["C14"] == "PRECONDITION-ABSENT"
+    assert verdicts["C17"] == "PASS"
+    assert code != tick.EXIT_OVERLAY
+
+
+def test_a_customer_local_runs_history_line_carries_its_gateway_leg_verdict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The beta board reads C13 and C14 from the gateway leg (ruling 2026-11-24T13:11:36Z): the history line names its verdict."""
+    _run(tmp_path, monkeypatch)
+    lines = [
+        json.loads(x)
+        for x in (tmp_path / "state" / "runs.jsonl").read_text().splitlines()
+    ]
+    assert [x["check"] for x in lines] == ["C13", "C14", "C17"]
+    for line in lines:
+        assert line["gateway_leg"] in ("pass", "fail", "unmeasured"), line
+    # The leg is the gateway clauses alone: the machine side reads NOT_MEASURED here, the gateway leg was graded on its own.
+    assert lines[0]["verdict"] == "NOT_MEASURED"
+    assert lines[0]["gateway_leg"] in ("pass", "fail")
+
+
+def test_c11_with_no_gateway_row_reads_precondition_absent_and_exits_not_measured(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-26117: a dev host whose settings store serves no gateway row (the broker refused the overlay topic) could not
+    measure C11; the run names the absent gateway_row and the unit exits not-measured, never as a failed check."""
+    for key, value in _overlays(tmp_path, ["C11"]).items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
+    pub = InMemoryCheckPublisher()
+    code = tick.main(
+        [
+            "--omni-home",
+            str(tmp_path),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--check",
+            "C11",
+        ],
+        publisher=pub,
+    )
+    payload = pub.events[0]["payload"]
+    assert payload["criterion"] == "C11"
+    assert payload["verdict"] == "PRECONDITION-ABSENT"
+    assert "gateway_row" in json.dumps(payload)
+    assert code == tick.EXIT_NOT_MEASURED
+    assert code not in (0, tick.EXIT_FAILED)
+
+
+def test_a_store_that_refuses_the_read_exits_as_unmeasured_never_as_a_failed_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-26117: the dev broker refused the overlay-store topic (ONEX_CORE_025_PERMISSION_DENIED). The refusal is the
+    host's, not the product's, so the tick records it and exits with the unavailable code; an uncaught raise exited 1,
+    which the executor reads as a regression of the check."""
+    for key, value in _overlays(tmp_path, ["C11"]).items():
+        monkeypatch.setenv(key, value)
+
+    def refused(overlay_id: str) -> dict[str, object] | None:
+        raise ModelOnexError(
+            message=f"broker refused the read of {overlay_id}",
+            error_code=EnumCoreErrorCode.PERMISSION_DENIED,
+        )
+
+    pub = InMemoryCheckPublisher()
+    code = tick.main(
+        [
+            "--omni-home",
+            str(tmp_path),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--check",
+            "C11",
+        ],
+        publisher=pub,
+        store_reader=refused,
+    )
+    evidence = json.loads((tmp_path / "state" / tick.EVIDENCE_FILE).read_text())
+    assert evidence["status"] == "overlay_unreadable"
+    assert "PERMISSION_DENIED" in evidence["error"]
+    assert code == tick.EXIT_OVERLAY
+    assert code not in (0, tick.EXIT_FAILED)
+
+
+def test_evidence_keeps_the_detail_of_every_failed_clause() -> None:
+    """A red run's evidence names why each clause failed, so a FAIL is readable without rerunning the check."""
+    from datetime import UTC, datetime
+
+    from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe import (
+        EnumCheckVerdict,
+        ModelCheckClause,
+        ModelDelegationCheckResult,
+    )
+
+    now = datetime(2026, 11, 27, 12, 27, 53, tzinfo=UTC)
+    why = "the instrument saw no connect to the responder, or its token counter did not move"
+    result = ModelDelegationCheckResult(
+        correlation_id="corr-1",
+        check_id="C13",
+        run_id="c13-20261127T122753Z-cd03e0ef",
+        created_at=now,
+        finished_at=now,
+        event="schedule",
+        status="completed",
+        conclusion="failure",
+        verdict=EnumCheckVerdict.FAIL,
+        cause_class="product",
+        clauses=(
+            ModelCheckClause(name="no_checkout", ok=True, detail="fine"),
+            ModelCheckClause(name="zero_provider", ok=False, detail=why),
+        ),
+    )
+    evidence = tick.evidence_for(result)
+    assert evidence["failed_clauses"] == ["zero_provider"]
+    assert evidence["failed_clause_details"] == {"zero_provider": why}

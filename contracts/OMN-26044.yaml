@@ -13,15 +13,12 @@ requirements:
         statement: "AC1: the guide install line run in a clean uv tool environment lists onex delegate, onex info and onex local each with help exit code 0 -- falsifier: the recorded output lacks any of the three help exit codes (recorded in the lane report and the PR body)"
       - id: AC2
         statement: "AC2: the cause of the failing parameter_audit clause is named from the installed omnimarket 0.4.324 files -- falsifier: the named files do not contain the flagged option definitions"
+      - id: AC3
+        statement: "AC3: when the cause is in a published package, the fix is a merged change that goes through the release train's declared path and the lane cuts no release itself -- falsifier: the lane ledger rows or its commands show a release tag created or a package published by the lane"
       - id: AC4
         statement: "AC4: no probe clause is dropped and the probe is not edited -- falsifier: the PR diff touches a probe or driver file, or removes an option instead of its OMNI_HOME binding and wording"
       - id: AC5
         statement: "AC5: the probe's own grading functions read parameter_audit true and the other three clauses true against a clean install of this branch -- falsifier: any of the four clauses reads false against the branch install"
-  - id: req-omn26044-c17-collector
-    statement: The delegation check probe node measures the C17 customer surface itself. Its collector reads the guide's one install line, runs it in a clean tool environment, and plants each broken onex.cli entry point with the installed core's own operator switch on, so a published install no longer reads a hidden broken command as a vanished one.
-    acceptance:
-      - id: AC6
-        statement: "AC6: the C17 collector installs the guide's own line in a clean tool environment and its observation grades guides_lead_with_local_path, clean_install_named_interpreter, parameter_audit and broken_command_named_error true on the published install, and false for a run that did not take the operator switch -- falsifier: tests/nodes/node_delegation_check_probe_effect/test_c17_surface_collector.py fails any test, or a collector run on a clean install of the published packages grades a clause false"
 evidence_requirements:
   - kind: tests
     description: The customer-surface test fails at origin/dev and passes at the pushed head.
@@ -87,3 +84,71 @@ dod_evidence:
       - check_type: command
         check_value: env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26044-c17 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_delegation_check_probe_effect -q --no-cov
         cwd: .
+  - id: dod-omn26044-c30-dashboard-collector-tests
+    description: "AC7: the grader (bare dashboard PRECONDITION-ABSENT with its reason, a started one PASS, a wrong or absent token FAIL, a group-readable store FAIL, a failed start or setup FAIL), the in-machine driver record (never carries the token), the collector over a fake runner (clean profile, failed install reads FAIL, no record reads absent) and the handler (a machine with a dashboard collector adds the clauses to C30, one without keeps the gateway reading)."
+    source: manual
+    binds_ac: [AC7]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_c30_dashboard_collector.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn26044-c30-collector-test-hygiene
+    description: "AC7: the C30 collector test file carries no suppression comment (the canonical file shape ratchet counts them), and its tests still pass."
+    source: manual
+    binds_ac: [AC7]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/nodes/node_delegation_check_probe_effect/test_c30_dashboard_collector.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn26044-tui-provider-switch-key
+    description: "AC7: switching the provider in the setup screen clears the key field, so the next provider's model list is never fetched with the previous provider's key (and the save refusal note is not overwritten by a late list)."
+    source: manual
+    binds_ac: [AC7]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/unit/nodes/node_onex_setup_effect/test_onex_tui.py -q --no-cov -n 0 -p no:randomly -k "switching_provider"
+        cwd: .
+  - id: dod-omn26044-ac3-release-check-ignores-dev-tag
+    description: "AC3: the no-release-cut check passes at a dev tip carrying a dev build tag and with a non-version pyproject edit, and fails for a version bump and for a release tag on the head."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/ci/test_omn26044_no_release_cut_check.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+  - id: dod-omn26044-ac3-no-release-cut
+    description: "AC3: the cause (two option definitions in this repository's own source) is not in a published package, so the condition of the criterion does not arise; what is checked is its falsifier's observable half: the change bumps no package version in pyproject.toml between its base (merge-base with origin/dev) and its merge and no release tag (v<digit>...) names the head (a dev build tag dev-<stamp>-<sha> does not count), and the contract matches the ticket's AC1 to AC5 with no drift. The ledger half of the falsifier is read by the reviewer; this item does not claim it."
+    source: manual
+    binds_ac: [AC3]
+    checks:
+      - check_type: test_passes
+        check_value: uv run pytest tests/ci/test_omn26044_contract_matches_ticket_criteria.py -q --no-cov -n 0 -p no:randomly
+        cwd: .
+      - check_type: command
+        check_value: bash -c 'test "$(git show "$(git merge-base HEAD origin/dev)":pyproject.toml | grep -m1 "^version = ")" = "$(grep -m1 "^version = " pyproject.toml)" && ! git tag --points-at HEAD | grep -Eq "^v[0-9]"'
+        cwd: .
+    supersedes_ac_binding:
+      - item: "dod-omn26044-c17-collector-tests"
+        label: "AC6"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-26044 carries AC1 to AC5 only, so AC6 was never on it: a criterion this contract declared on its own for the C17 collector change. dod-omn26044-c17-collector-tests still runs its own tests."
+        retired_by: "close26044-37000"
+        retired_at: "2026-11-25T23:55:00Z"
+      - item: "dod-omn26044-c30-dashboard-collector-tests"
+        label: "AC7"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-26044 carries AC1 to AC5 only, so AC7 was never on it: a criterion this contract declared on its own for the C30 dashboard collector change. dod-omn26044-c30-dashboard-collector-tests still runs its own tests."
+        retired_by: "close26044-37000"
+        retired_at: "2026-11-25T23:55:00Z"
+      - item: "dod-omn26044-c30-collector-test-hygiene"
+        label: "AC7"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-26044 carries AC1 to AC5 only, so AC7 was never on it: a criterion this contract declared on its own for the C30 dashboard collector change. dod-omn26044-c30-collector-test-hygiene still runs its own tests."
+        retired_by: "close26044-37000"
+        retired_at: "2026-11-25T23:55:00Z"
+      - item: "dod-omn26044-tui-provider-switch-key"
+        label: "AC7"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-26044 carries AC1 to AC5 only, so AC7 was never on it: a criterion this contract declared on its own for the setup screen change. dod-omn26044-tui-provider-switch-key still runs its own tests."
+        retired_by: "close26044-37000"
+        retired_at: "2026-11-25T23:55:00Z"

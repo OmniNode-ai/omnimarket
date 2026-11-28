@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -23,11 +23,15 @@ from omnimarket.models.overlay_documents.model_delegation_check_probe_overlay im
     CheckId,
     ModelDelegationCheckProbeOverlay,
 )
+from omnimarket.models.overlay_documents.model_delegation_check_responders_overlay import (
+    ModelDelegationCheckResponder,
+)
 
 __all__ = ["CheckId", "ModelDelegationCheckProbeOverlay"]
 
 CAUSE_PRODUCT = "product"
 CAUSE_LAB_MODEL = "lab-model"
+CAUSE_GATEWAY = "gateway"
 
 
 class _Frozen(BaseModel):
@@ -42,10 +46,40 @@ class EnumCheckVerdict(StrEnum):
     ERROR = "ERROR"
 
 
+class ModelChainSource(_Frozen):
+    """Where the responder chain a check resolved came from: the settings store or an overlay, with the declared rows.
+
+    ``source_ref`` and ``loaded_at`` are the store record's own; an overlay carries a ref naming the overlay and no stamp.
+    """
+
+    source: Literal["store", "overlay"]
+    source_ref: str = Field(min_length=1)
+    loaded_at: datetime | None = None
+    rows: tuple[ModelDelegationCheckResponder, ...]
+
+
 class ModelCheckClause(_Frozen):
     name: str = Field(min_length=1)
     ok: bool
     detail: str
+
+
+#: The clause-name prefix of every gateway leg clause (``gateway_delegation_completes``, ``gateway_routed_run_completes`` ...).
+GATEWAY_LEG_PREFIX: Final = "gateway_"
+
+
+def gateway_leg_verdict(
+    clauses: tuple[ModelCheckClause, ...],
+) -> Literal["pass", "fail", "unmeasured"]:
+    """The verdict of a customer-local check's gateway leg alone, from its clauses (the beta board reads it, OMN-26043).
+
+    ``pass`` when every gateway clause held, ``fail`` when one did not, ``unmeasured`` when no gateway clause was graded (the
+    gateway did not answer or its credential was absent): a leg nobody graded is never a pass. Machine clauses do not count.
+    """
+    leg = [c for c in clauses if c.name.startswith(GATEWAY_LEG_PREFIX)]
+    if not leg:
+        return "unmeasured"
+    return "pass" if all(c.ok for c in leg) else "fail"
 
 
 class ModelCheckPrecondition(_Frozen):
@@ -124,6 +158,26 @@ class ModelSurfaceObservation(_Frozen):
     broken_cases: tuple[ModelBrokenCommandCase, ...] = ()
 
 
+class ModelDashboardObservation(_Frozen):
+    """What the customer path to the local dashboard showed on a clean profile (C30). Never carries a token value."""
+
+    install_rc: int | None = 0
+    setup_rc: int | None = None
+    # ``onex dashboard start``; None when the dashboard was never started that way (a bare ``onex dashboard``).
+    start_rc: int | None = None
+    # The local credential store holds the dashboard's session token: a bare dashboard's one-time token is never stored.
+    token_in_store: bool = False
+    # The store file is readable by its owner alone.
+    store_owner_only: bool = False
+    delegation_rc: int | None = None
+    delegation_correlation_id: str | None = None
+    # The loopback ``/projections`` read with the store token as Bearer, with a wrong token and with none.
+    projections_status: int | None = None
+    run_visible: bool = False
+    wrong_token_status: int | None = None
+    no_token_status: int | None = None
+
+
 class ModelDelegationCheckRequest(_Frozen):
     correlation_id: str = Field(min_length=1)
     check_id: CheckId
@@ -143,6 +197,8 @@ class ModelDelegationCheckReading(_Frozen):
     window: int | None = None
     # NOT_MEASURED: the task never reached a local responder that answered.
     not_measured: str | None = None
+    # NOT_MEASURED by the gateway (a timeout or refusal on a request to it) names ``gateway``; absent, a lab model.
+    not_measured_cause: Literal["lab-model", "gateway"] = "lab-model"
     versions: dict[str, str] = Field(default_factory=dict)
     # A gateway-graded check names the gateway address it talked to and the tenant it acted as (OMN-26642).
     endpoint: str | None = None
@@ -174,7 +230,7 @@ class ModelDelegationCheckResult(_Frozen):
     status: Literal["completed", "errored"]
     conclusion: Literal["success", "failure"]
     verdict: EnumCheckVerdict
-    cause_class: Literal["product", "lab-model"] | None = None
+    cause_class: Literal["product", "lab-model", "gateway"] | None = None
     clauses: tuple[ModelCheckClause, ...] = ()
     preconditions: tuple[ModelCheckPrecondition, ...] = ()
     chain: tuple[ModelResponderAttempt, ...] = ()
@@ -189,6 +245,8 @@ class ModelDelegationCheckResult(_Frozen):
     gateway_url: str | None = None
     tenant_slug: str | None = None
     runner: str = "omnimarket-node"
+    # Where the chain this check resolved was declared; None when no responders row was served at all.
+    chain_source: ModelChainSource | None = None
 
     @model_validator(mode="after")
     def _aware_and_consistent(self) -> ModelDelegationCheckResult:

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shlex
 from datetime import datetime
 from uuid import UUID, uuid5
 
@@ -63,6 +64,7 @@ from omnimarket.models.model_delegated_code_edit import ModelDeclaredCheck
 from omnimarket.models.model_lab_work_unit import (
     ModelLabCodeDraft,
     ModelLabWorkUnitRequest,
+    ModelSeedFile,
 )
 
 _ROW_NAMESPACE = UUID("6f0b6f0e-3f55-4a53-9a39-23627e1c0de1")
@@ -83,6 +85,7 @@ def build_score_request(
         draft_diff=material.held_diff if is_control else send.draft_diff,
         contract=material.contract,
         check_files=material.check_files,
+        check_item_ids=material.check_item_ids,
         try_identity=ModelCodeScoreTry(
             task_key=send.task_key,
             model_arm=send.model_arm,
@@ -102,6 +105,16 @@ def build_unit_request(
 ) -> ModelLabWorkUnitRequest:
     """The work unit for one try: the draft carries the overlay's checks, never a contract check."""
     lane = f"{overlay.unit_lane_prefix}{run_id}"
+    commands = overlay.draft_checks
+    context_paths: tuple[str, ...] = ()
+    seed_files: tuple[ModelSeedFile, ...] = ()
+    if overlay.real_check_in_loop:
+        if not material.check_commands:
+            msg = f"real_check_in_loop: task {material.task_key} has no loop check"
+            raise ValueError(msg)
+        commands = material.check_commands
+        context_paths = material.context_paths
+        seed_files = material.seed_files
     return ModelLabWorkUnitRequest(
         work_unit_id=place.unit_id,
         target_host=place.host,
@@ -115,13 +128,16 @@ def build_unit_request(
         code_draft=ModelLabCodeDraft(
             task=material.task_text,
             writable_globs=material.writable_globs,
+            context_paths=context_paths,
+            seed_files=seed_files,
             checks=tuple(
                 ModelDeclaredCheck(
-                    name=f"draft_check_{index}", argv=tuple(command.split())
+                    name=f"draft_check_{index}", argv=tuple(shlex.split(command))
                 )
-                for index, command in enumerate(overlay.draft_checks, start=1)
+                for index, command in enumerate(commands, start=1)
             ),
             max_turns=overlay.max_turns,
+            wall_budget_seconds=overlay.loop_wall_budget_seconds,
             caller_lane=lane,
             ticket=overlay.caller_ticket,
             traffic_class=EnumDelegationTrafficClass.SYNTHETIC,
@@ -140,9 +156,11 @@ def generation_settings(
         ("model", model),
         ("backend_id", backend_id),
         ("max_turns", str(overlay.max_turns)),
+        ("loop_wall_budget_seconds", str(overlay.loop_wall_budget_seconds)),
         ("try_timeout_seconds", str(overlay.try_timeout_seconds)),
         ("max_diff_bytes", str(overlay.max_diff_bytes)),
         ("draft_checks", "\n".join(overlay.draft_checks)),
+        ("real_check_in_loop", str(overlay.real_check_in_loop)),
     )
 
 

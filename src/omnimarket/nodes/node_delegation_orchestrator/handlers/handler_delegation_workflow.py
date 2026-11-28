@@ -143,6 +143,8 @@ from omnimarket.handlers.routing.byok_provider_backends import (
 )
 from omnimarket.handlers.routing.customer_key_terminus import (
     CUSTOMER_PROVIDER_KEY_ABSENT_ONEX_CODE,
+    CUSTOMER_PROVIDER_KEY_REJECTED_MESSAGE,
+    EnumCustomerKeyRefusalReason,
 )
 from omnimarket.handlers.routing.measured_correct_ceiling import (
     refuse_above_measured_correct_ceiling,
@@ -273,6 +275,7 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_stale_inference_
 from omnimarket.nodes.node_delegation_orchestrator.quality_bar_authority import (
     RequiredBarAuthority,
     RequiredBarAuthorityError,
+    checks_in_force_under_response_contract,
     is_quality_accepted,
     resolve_required_bar_authority,
     with_executed_check_verdict,
@@ -497,6 +500,12 @@ _DECLARED_TRANSITIONS: dict[
 # FSM handler. ``HandlerDelegationWorkflow.handle`` routes off this table instead
 # of a hand-maintained isinstance ladder — each payload type resolves to exactly
 # one per-step handler, with no catch-all branch (undeclared types fail closed).
+# OMN-26043: the named-test step runs in a worker thread; a runner that never
+# returns would hold the inference-response step open and leave the workflow
+# published forever. The step is bounded by its tests' own timeouts plus this
+# grace; past it the run reads as no run (not_run).
+_NAMED_TEST_GRACE_SECONDS: float = 30.0
+
 _PER_STEP_DISPATCH: dict[type, str] = {
     ModelDelegationRequest: "handle_delegation_request",
     ModelInvocationCommand: "handle_invocation_command",
@@ -856,6 +865,30 @@ def quality_result_cause(
     if fail_category == "rubric_failed":
         return EnumEscalationCause.RUBRIC_FAILED
     return EnumEscalationCause.QUALITY_GATE_REFUSED
+
+
+_PROVIDER_KEY_REJECTED_REASON = EnumCustomerKeyRefusalReason.PROVIDER_KEY_REJECTED.value
+
+
+def _is_customer_key_refused(
+    workflow: DelegationWorkflowState,
+    failure_class: EnumDelegationFailureClass | None,
+) -> bool:
+    """A customer's own key answered 401 or 403 at the provider (OMN-25506).
+
+    Only a rejected credential on a customer-credentialed route: the BYOK
+    catalogue's own backends and any tenant-overlay row that is not the house
+    tenant's. A house route's 401 keeps climbing the ladder (OMN-25827).
+    """
+    decision = workflow.routing_decision
+    if failure_class is not EnumDelegationFailureClass.PROVIDER_AUTH_FAILED:
+        return False
+    if decision is None or _is_house_overlay_route(workflow):
+        return False
+    return (
+        resolve_byok_backend_by_id(decision.selected_backend_ref) is not None
+        or expected_credential_source_for(decision) is EnumCredentialSource.CUSTOMER_KEY
+    )
 
 
 def _should_escalate_inference_error(error_message: str) -> bool:
@@ -1365,6 +1398,34 @@ def _gate_result_with_output_refusal(
     )
 
 
+_UNSET_REQUEST_MAX_TOKENS: Final[int] = int(
+    ModelDelegationRequest.model_fields["max_tokens"].default
+)
+
+
+def _provider_max_tokens(
+    request_max_tokens: int, backend_ceiling: int, *, budget_lifted: bool = False
+) -> int:
+    """The output limit the provider call carries.
+
+    The routing decision's contract-declared ceiling (cloud-glm: 65536) is the
+    bound. A request limit below the request model's own default is a deliberate cut by the
+    caller (a job payload asking for 3 tokens) and is passed through, never
+    above the ceiling. A request at or above that default is the unset value and posts the
+    ceiling, as OMN-13345 requires.
+
+    OMN-26566: once a call under the caller's cut ended ``finish_reason=length``
+    the cut is lifted for the rest of the run (``budget_lifted``) and the call
+    carries the route's own ceiling, which the overlay row or the settings
+    store declares, never a literal here.
+    """
+    if budget_lifted:
+        return backend_ceiling
+    if request_max_tokens < _UNSET_REQUEST_MAX_TOKENS:
+        return min(request_max_tokens, backend_ceiling)
+    return backend_ceiling
+
+
 def _build_model_inference_intent(
     *,
     base_url: str,
@@ -1654,7 +1715,11 @@ def _evaluate_compliance(
             # DELEGATION_MAX_TOKENS_HARD_LIMIT default and would truncate cloud
             # GLM (finish_reason=length), tanking the quality gate. Same defect
             # class as OMN-13342/#1282 (generation path).
-            max_tokens=workflow.routing_decision.max_tokens,
+            max_tokens=_provider_max_tokens(
+                workflow.request.max_tokens,
+                workflow.routing_decision.max_tokens,
+                budget_lifted=workflow.output_budget_lifted,
+            ),
             temperature=temperature,
             timeout_seconds=_inference_timeout_seconds(workflow),
             correlation_id=workflow.correlation_id,
@@ -2092,6 +2157,11 @@ def _v2_routed_failure_cause(
         return ModelDelegationQualityGateRejection(kind="quality_gate_rejection")
     return None
 
+
+INVALID_REQUEST_FAILURE_REASON = (
+    "DelegationRequestInvalidError: ONEX_DELEGATION_REQUEST_INVALID"
+)
+"""The ``terminal_failure_reason`` of a request refused by the wire model (OMN-26043)."""
 
 TERMINAL_CONSTRUCTION_FAILED_REASON = "terminal_construction_failed"
 """The ``terminal_failure_reason`` a degraded terminal carries (OMN-18978).
@@ -2535,6 +2605,9 @@ class DelegationWorkflowState:
     # same-tier retries above it NEVER increments ``escalation_count`` and emits
     # no escalation event — retrying one responder is not climbing a ladder.
     customer_route_retry_count: int = 0
+    # OMN-26566: True once a call under the caller's output cut ended
+    # ``finish_reason=length`` and the run re-asked with the route's ceiling.
+    output_budget_lifted: bool = False
     customer_route_retry_backend_ref: str | None = None
     # OMN-14058 (OPERATOR-ACCEPTED INTERIM): resolved ONCE in
     # handle_delegation_request and carried onto every TerminalEmissionInputs
@@ -2633,7 +2706,10 @@ class HandlerDelegationWorkflow:
         named_test_runner: Callable[[ModelNamedTestRunRequest], ModelNamedTestRunResult]
         | None = None,
         completion_bound_seconds: int | None = None,
+        named_test_bound_seconds: float | None = None,
     ) -> None:
+        # OMN-26043: None derives the bound from the request's own test timeouts.
+        self._named_test_bound_seconds = named_test_bound_seconds
         # OMN-22822: an inference response older than this bound is expired, not
         # an answer. None reads ``completion_bound.max_wall_seconds`` from this
         # node's contract on first use, so construction does no I/O.
@@ -3024,6 +3100,70 @@ class HandlerDelegationWorkflow:
             )
         )
 
+    def reject_invalid_request(
+        self,
+        *,
+        correlation_id: UUID,
+        task_type: str,
+        tenant_id: str | None,
+        detail: str,
+    ) -> list[BaseModel]:
+        """Answer a request the wire model refused with a typed FAILED terminal (OMN-26043).
+
+        A request whose task class the contract does not declare, or whose payload
+        fails the wire model, opens no run and calls no provider. It used to end
+        with no output event, so the gateway row stayed ``published`` for good.
+        The terminal names the refusal as ``<Class>: <CODE>`` (the grammar the
+        gateway terminal writer splits into the typed failure class and code).
+        ``detail`` is a one-line, value-free summary of the validation error.
+        """
+        reason = f"delegation request refused before routing ({detail}); no provider was called"
+        _logger.warning("%s correlation_id=%s", reason, correlation_id)
+        return self._emit_terminal(
+            TerminalEmissionInputs(
+                completed=False,
+                correlation_id=correlation_id,
+                task_type=task_type,
+                model_used="none",
+                endpoint_url="none",
+                content="",
+                quality_passed=False,
+                quality_score=None,
+                operational_outcome=EnumDelegationOperationalOutcome.BOUNDARY_FAILURE,
+                content_verdict=EnumDelegationContentVerdict.NOT_APPLICABLE,
+                latency_ms=0,
+                prompt_tokens=0,
+                completion_tokens=0,
+                total_tokens=0,
+                fallback_to_claude=False,
+                failure_reason=reason,
+                tokens_to_compliance=0,
+                compliance_attempts=1,
+                cost_tier_name="",
+                premium_counterfactual=None,
+                escalation_count=0,
+                escalation_history=(),
+                terminal_failure_reason=INVALID_REQUEST_FAILURE_REASON,
+                routing_tiers_hash=None,
+                escalation_config_hash=None,
+                attempts_count=0,
+                model_name="none",
+                session_id=None,
+                tenant_id=tenant_id,
+                quality_gates_checked=[],
+                quality_gates_failed=[],
+                llm_call_id="",
+                context_pack_hash="",
+                provenance=None,
+                route=None,
+                provider=None,
+                credential_source=None,
+                backend_ref=None,
+                pricing_manifest_version=None,
+                unrouted_reason=EnumDelegationUnroutedReason.ROUTING_CONFIGURATION_INVALID,
+            )
+        )
+
     def handle_invocation_command(
         self,
         command: ModelInvocationCommand,
@@ -3145,7 +3285,11 @@ class HandlerDelegationWorkflow:
                 # DELEGATION_MAX_TOKENS_HARD_LIMIT default and truncates cloud
                 # GLM (finish_reason=length). Same defect class as
                 # OMN-13342/#1282 (generation path).
-                max_tokens=decision.max_tokens,
+                max_tokens=_provider_max_tokens(
+                    workflow.request.max_tokens,
+                    decision.max_tokens,
+                    budget_lifted=workflow.output_budget_lifted,
+                ),
                 temperature=temperature,
                 timeout_seconds=_inference_timeout_seconds(workflow),
                 correlation_id=cid,
@@ -3694,6 +3838,14 @@ class HandlerDelegationWorkflow:
             elapsed_ms = (time.time_ns() - workflow.started_at_ns) // 1_000_000
             model_used = response.model_used or workflow.routing_decision.selected_model
             failure_class = _inference_error_failure_class(response.error_message)
+            # OMN-25506: a customer's own key the provider refused states the
+            # typed refusal, never the provider's sentence, on every record.
+            key_refused = _is_customer_key_refused(workflow, failure_class)
+            recorded_error = (
+                CUSTOMER_PROVIDER_KEY_REJECTED_MESSAGE
+                if key_refused
+                else response.error_message
+            )
 
             # Record this tier's failed attempt in escalation history before
             # deciding whether to escalate or terminate. OMN-13535: the inference
@@ -3707,7 +3859,7 @@ class HandlerDelegationWorkflow:
                     tier_name=workflow.current_tier_name or "unknown",
                     model_used=model_used,
                     quality_score=0.0,
-                    failure_reasons=(response.error_message,),
+                    failure_reasons=(recorded_error,),
                     latency_ms=elapsed_ms,
                     fallback_recommended=True,
                     attempted_at=datetime.now(UTC),
@@ -3728,6 +3880,16 @@ class HandlerDelegationWorkflow:
             )
 
             error_retryable = _should_escalate_inference_error(response.error_message)
+
+            lifted_intents = self._maybe_lift_output_budget(
+                workflow,
+                response.error_message,
+                attempt_cost_usd,
+                prompt_tokens=response.prompt_tokens,
+                completion_tokens=response.completion_tokens,
+            )
+            if lifted_intents is not None:
+                return lifted_intents
 
             # OMN-20157: a typed refusal about the account or the model (a 402,
             # prepaid credits empty, a 404 model-not-found the effect could not
@@ -3792,6 +3954,11 @@ class HandlerDelegationWorkflow:
             error_task_type = (
                 workflow.request.task_type if workflow.request is not None else None
             )
+            # OMN-25506: a refused customer key has no lawful successor (INV-068):
+            # another tier or a house key would run the customer's work on a
+            # credential that is not theirs. It ends here with the typed reason.
+            if key_refused:
+                error_retryable = False
             decision = self._decide_escalation(
                 workflow,
                 max_escalation_attempts=_require_task_class_max_escalations(
@@ -3799,7 +3966,11 @@ class HandlerDelegationWorkflow:
                 ),
                 excluded_tiers=_INFERENCE_ERROR_EXCLUDED_TIERS,
                 error_retryable=error_retryable,
-                non_retryable_reason="non_retryable_inference_response",
+                non_retryable_reason=(
+                    _PROVIDER_KEY_REJECTED_REASON
+                    if key_refused
+                    else "non_retryable_inference_response"
+                ),
                 task_type=error_task_type,
                 excluded_backend_refs=_escalation_excluded_refs(workflow),
                 cause=inference_error_cause(
@@ -3887,7 +4058,7 @@ class HandlerDelegationWorkflow:
                 completion_tokens=workflow.inference_completion_tokens,
                 total_tokens=workflow.inference_total_tokens,
                 fallback_to_claude=False,
-                failure_reason=response.error_message,
+                failure_reason=recorded_error,
                 tokens_to_compliance=workflow.accumulated_tokens,
                 compliance_attempts=workflow.compliance_attempts or 1,
                 # No premium counterfactual on the failure path — no accepted
@@ -3913,7 +4084,7 @@ class HandlerDelegationWorkflow:
                 # Pre-gate inference failure: no quality gate ran, so report the
                 # compat DTO's documented default gate set as "checked".
                 quality_gates_checked=["length", "refusal", "markers"],
-                quality_gates_failed=[response.error_message],
+                quality_gates_failed=[recorded_error],
                 llm_call_id=response.llm_call_id,
                 context_pack_hash=workflow.context_pack_hash,
                 provenance=workflow.request.provenance,
@@ -4425,12 +4596,13 @@ class HandlerDelegationWorkflow:
 
         # OMN-21077: a code answer the gate passed with no executed test run is
         # refused here exactly as the gate refuses it, before anything decides.
-        # A response contract replaces the class DoD at the gate (OMN-15193), so
-        # the check set in force is then empty and the schema alone decides.
-        declared_deterministic = (
-            ()
-            if workflow.effective_response_contract is not None
-            else workflow.routing_decision.dod_deterministic
+        # A response contract replaces the class DoD at the gate (OMN-15193) for
+        # a class not accepted by executed tests. For a code class it adds to
+        # the executed checks and never empties them (OMN-26656).
+        declared_deterministic = checks_in_force_under_response_contract(
+            workflow.routing_decision.dod_deterministic,
+            required_bar_authority,
+            response_contract_governed=workflow.effective_response_contract is not None,
         )
         result = with_executed_check_verdict(
             result,
@@ -4956,6 +5128,48 @@ class HandlerDelegationWorkflow:
         if "excluded_backend_refs" in model_fields:
             intent_kwargs["excluded_backend_refs"] = tuple(sorted(excluded))
         return [ModelRoutingIntent(**intent_kwargs)]
+
+    def _maybe_lift_output_budget(
+        self,
+        workflow: DelegationWorkflowState,
+        error_message: str,
+        attempt_cost_usd: float,
+        *,
+        prompt_tokens: int,
+        completion_tokens: int,
+    ) -> list[BaseModel] | None:
+        """Re-ask once with the route's own output ceiling after a cut answer.
+
+        OMN-26566. A call that ended ``finish_reason=length`` under the caller's
+        output cut cannot succeed by being asked again with the same cut, and a
+        customer route has no successor tier (INV-068), so the run failed with
+        no receipt. The caller's cut is lifted once to the ceiling the routing
+        decision carries from the overlay row or the settings store.
+        """
+        decision = workflow.routing_decision
+        if (
+            workflow.output_budget_lifted
+            or decision is None
+            or workflow.request is None
+            or _finish_reason_of_failed_call(error_message)
+            is not EnumProviderFinishReason.LENGTH
+            or _provider_max_tokens(workflow.request.max_tokens, decision.max_tokens)
+            >= decision.max_tokens
+        ):
+            return None
+        workflow.output_budget_lifted = True
+        self._bank_attempt_spend(
+            workflow,
+            cost_usd=attempt_cost_usd,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+        )
+        workflow.inference_content = None
+        workflow.inference_model_used = None
+        workflow.inference_intent_in_flight = False
+        workflow.routing_decision = None
+        self._advance(workflow, EnumDelegationState.ROUTED)
+        return list(self.handle_routing_decision(decision))
 
     def _maybe_retry_customer_route(
         self,
@@ -6467,12 +6681,25 @@ class HandlerDelegationWorkflow:
                     ),
                 }
             )
-            outcome = await asyncio.to_thread(
-                self._named_test_runner,
-                ModelNamedTestRunRequest(
-                    spec=spec, answer_content=payload.llm_response_content
-                ),
+            runner_request = ModelNamedTestRunRequest(
+                spec=spec, answer_content=payload.llm_response_content
             )
+            bound = (
+                self._named_test_bound_seconds
+                if self._named_test_bound_seconds is not None
+                else runner_request.timeout_seconds * max(1, len(spec.test_ids))
+                + _NAMED_TEST_GRACE_SECONDS
+            )
+            try:
+                outcome = await asyncio.wait_for(
+                    asyncio.to_thread(self._named_test_runner, runner_request),
+                    timeout=bound,
+                )
+            except TimeoutError:
+                outcome = ModelNamedTestRunResult(
+                    status=EnumNamedTestRunStatus.REFUSED,
+                    detail=f"named test runner gave no result within {bound:g}s",
+                )
             _logger.info(
                 "HandlerDelegationWorkflow: named test run status=%s correlation=%s %s",
                 outcome.status.value,

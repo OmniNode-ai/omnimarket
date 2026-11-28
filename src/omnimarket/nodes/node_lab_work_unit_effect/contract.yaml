@@ -76,6 +76,12 @@ runtime_dispatch:
   terminal_events:
     success: "onex.evt.omnimarket.lab-work-unit-completed.v1"
     failure: "onex.evt.omnimarket.lab-work-unit-failed.v1"
+  external_trigger: true
+  # A work unit runs when a lane or an operator places one with `onex lab-work run`; the serve process on a pool host never
+  # starts one on a timer.
+  on_demand:
+    command: onex lab-work run --help
+    owner: OmniNode Platform Team
 capacity:
   capacity_topic: "onex.evt.omnimarket.lab-host-capacity-advertised.v1"
   cadence_seconds: 10

@@ -21,6 +21,7 @@ from omnimarket.models.model_dod_verify_state import (
     EnumDodVerifyStatus,
     ModelEvidenceCheckResult,
 )
+from omnimarket.models.model_local_done_gate_receipt import ModelLocalDoneGateReceipt
 
 
 class ModelDodVerifyCompletedEvent(BaseModel):
@@ -67,6 +68,14 @@ class ModelDodVerifyCompletedEvent(BaseModel):
     failed_count: int = Field(default=0, ge=0)
     skipped_count: int = Field(default=0, ge=0)
     superseded_count: int = Field(default=0, ge=0)
+    # OMN-25856: set only when the dispatch budget stopped the run — how many
+    # checks ran and how many did not. See ModelDodVerifyState.
+    budget_checks_run: int | None = Field(
+        default=None, ge=0, exclude_if=lambda value: value is None
+    )
+    budget_checks_not_run: int | None = Field(
+        default=None, ge=0, exclude_if=lambda value: value is None
+    )
     # OMN-15391: executed, exited 0, but exit-status-invariant over the product
     # change. Provenance, never completion — see ModelDodVerifyState.
     non_probative_count: int = Field(default=0, ge=0)
@@ -115,6 +124,10 @@ class ModelDodVerifyCompletedEvent(BaseModel):
         default=(), exclude_if=lambda value: not value
     )
     criteria_amendment: ModelCriteriaAmendment | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    # OMN-26725: see the state.
+    local_done_gate_receipt: ModelLocalDoneGateReceipt | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
     # OMN-21676: see the state.

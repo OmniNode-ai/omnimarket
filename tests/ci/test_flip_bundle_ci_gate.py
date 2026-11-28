@@ -10,6 +10,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.ci.lint_jobs import lint_steps
+
 _FETCH = "git fetch --no-tags --prune origin +refs/heads/dev:refs/remotes/origin/dev"
 _VERIFY = "git rev-parse --verify origin/dev"
 _GATE = "uv run python ../omnibase_core/scripts/ci/verify_flip_bundle.py"
@@ -36,7 +38,7 @@ def test_live_flip_bundle_step_fetches_and_verifies_before_gate() -> None:
     workflow = yaml.safe_load((root / ".github/workflows/ci.yml").read_text())
     step = next(
         step
-        for step in workflow["jobs"]["lint"]["steps"]
+        for step in lint_steps(workflow)
         if step.get("name")
         == "Canonical-shape flip-bundle seam gate (OMN-15344 fan-out)"
     )

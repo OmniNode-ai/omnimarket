@@ -23,6 +23,7 @@ from pathlib import Path
 
 import yaml
 
+from omnimarket.config.state_root import resolve_onex_state_root
 from omnimarket.models.delegation_check_regression import (
     EnumChangeKind,
     EnumRegressionSource,
@@ -68,10 +69,12 @@ from omnimarket.nodes.node_build_delegation_checks.models.model_build_delegation
 )
 from omnimarket.nodes.node_build_delegation_checks.overlay import load_overlay
 from omnimarket.nodes.node_build_delegation_checks.protocols.protocol_build_checks import (
+    BuildStoreUnwritableError,
     ProtocolBuildStore,
     ProtocolCheckRunner,
     ProtocolMergeSource,
     ProtocolRegressionSink,
+    UnresolvableRangeError,
 )
 
 WORKFLOW = "build-delegation-checks"
@@ -121,20 +124,45 @@ class _BuildChecksRun:
             )
         if request.status != "success":
             return self._skipped(build_id, "the rebuild did not succeed")
+        if not build_id.strip():
+            return ModelBuildChecksResult(
+                build_id=build_id,
+                status=EnumBuildChecksStatus.REFUSED,
+                reason="git_sha is empty: the deploy agent's job ended before it resolved a sha, so there is no build to read",
+            )
 
         now = self._clock()
-        previous = self._store.previous_build(request.runtime_lane, build_id)
+        try:
+            previous = self._store.previous_build(request.runtime_lane, build_id)
+        except BuildStoreUnwritableError as exc:
+            # The history cannot be read: nothing is claimed and no probe runs, so the build is refused by name.
+            return ModelBuildChecksResult(
+                build_id=build_id,
+                status=EnumBuildChecksStatus.REFUSED,
+                reason=str(exc),
+            )
         previous_id = previous.build_id if previous else ""
-        added = self._between(previous_id, build_id)
+        added, unknown = self._between(previous_id, build_id)
         begun = ModelBuildRecord(
             build_id=build_id,
             runtime_lane=request.runtime_lane,
             previous_build_id=previous_id,
             started_at=now,
             merges=added,
+            merges_unknown=unknown,
         )
         # The claim comes before any probe runs: a second event for this build, replayed or concurrent, finds it taken.
-        if not self._store.begin(begun):
+        try:
+            claimed = self._store.begin(begun)
+        except BuildStoreUnwritableError as exc:
+            # Nothing was claimed and no probe has run: the build is refused by name, and a replay runs it once the root is writable.
+            return ModelBuildChecksResult(
+                build_id=build_id,
+                status=EnumBuildChecksStatus.REFUSED,
+                reason=str(exc),
+                previous_build_id=previous_id,
+            )
+        if not claimed:
             return ModelBuildChecksResult(
                 build_id=build_id,
                 status=EnumBuildChecksStatus.ALREADY_RUN,
@@ -159,6 +187,7 @@ class _BuildChecksRun:
                 probe=outcome.probe,
                 at=outcome.finished_at or now,
                 merges=added,
+                merges_unknown=unknown,
             )
             records.append(record)
             if outcome.reading is not EnumCheckReading.FAIL:
@@ -174,14 +203,13 @@ class _BuildChecksRun:
                     )
                 )
                 continue
-            suspects = (
-                added
-                if last.build_id == previous_id
-                else self._between(last.build_id, build_id)
-            )
+            if last.build_id == previous_id:
+                suspects, suspects_unknown = added, unknown
+            else:
+                suspects, suspects_unknown = self._between(last.build_id, build_id)
             event = self._event(check_id, build_id, record, last, suspects, owner, now)
             events.append(event)
-            alarms.append(self._alarm(event))
+            alarms.append(self._alarm(event, merges_unknown=suspects_unknown))
 
         result = ModelBuildChecksResult(
             build_id=build_id,
@@ -253,10 +281,17 @@ class _BuildChecksRun:
             build_id=build_id, status=EnumBuildChecksStatus.SKIPPED, reason=reason
         )
 
-    def _between(self, base_id: str, head_id: str) -> tuple[ModelSuspectMerge, ...]:
+    def _between(
+        self, base_id: str, head_id: str
+    ) -> tuple[tuple[ModelSuspectMerge, ...], bool]:
+        """The merges between two builds and whether they are unknown (git cannot resolve the range: no merges, unknown)."""
         if not base_id:
-            return ()
-        return tuple(_suspect(c) for c in self._merges.merges_between(base_id, head_id))
+            return (), False
+        try:
+            found = self._merges.merges_between(base_id, head_id)
+        except UnresolvableRangeError:
+            return (), True
+        return tuple(_suspect(c) for c in found), False
 
     def _run(self, check_id: str, build_id: str) -> ModelCheckOutcome:
         try:
@@ -310,10 +345,13 @@ class _BuildChecksRun:
             suspects=suspects,
         )
 
-    def _alarm(self, event: ModelRegressionEvent) -> ModelLabAlarmDeliveryRequest:
-        names = (
-            ", ".join(_name(m) for m in event.suspects)
-            or "none (the build added no merge)"
+    def _alarm(
+        self, event: ModelRegressionEvent, *, merges_unknown: bool = False
+    ) -> ModelLabAlarmDeliveryRequest:
+        names = ", ".join(_name(m) for m in event.suspects) or (
+            "unknown (git cannot resolve the range between the builds)"
+            if merges_unknown
+            else "none (the build added no merge)"
         )
         detail = (
             f"{event.check_id} passed on build {event.previous_build_id[:12]} and fails on build {event.build_id[:12]}; "
@@ -398,17 +436,23 @@ class HandlerBuildDelegationChecks:
         if not home:
             raise OSError(f"{OMNI_HOME_ENV} names no registry root")
         root = Path(home)
+        # The registry root is a read-only mount in the runtime; the build history belongs under the declared writable state root.
+        state_root = resolve_onex_state_root(
+            purpose="node_build_delegation_checks build history"
+        )
         replay = os.environ.get(REPLAY_ENV, "").strip()
         runner: ProtocolCheckRunner = (
             recorded_results(Path(replay))
             if replay
-            else CommandCheckExecutor(settings.check_routes, registry_root=root)
+            else CommandCheckExecutor(
+                settings.check_routes, registry_root=root, state_root=state_root
+            )
         )
         self._run = _BuildChecksRun(
             settings=settings,
             runner=runner,
             store=FileBuildStore(
-                root / settings.history_relpath, settings.history_keep
+                state_root / settings.history_relpath, settings.history_keep
             ),
             merges=GitMergeSource(root / settings.merge_clone_relpath),
             sink=BusRegressionSink(

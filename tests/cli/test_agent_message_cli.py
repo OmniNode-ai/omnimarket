@@ -12,6 +12,9 @@ from click.testing import CliRunner
 
 from omnimarket.nodes.node_agent_message_client_effect.cli import agent_message_group
 from tests.cli.agent_message_fakes import FIXED_NOW, FakeAgentMessageNode, make_runtime
+from tests.nodes.node_architecture_discovery_orchestrator.broker_overlay_support import (
+    install_broker_overlays,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -68,7 +71,11 @@ def test_read_filters_by_thread_since_and_limit() -> None:
         node,
         ["read", "--to", "codex:review", "--since", "2026-11-23T14:00:00Z", "--json"],
     )
-    assert json.loads(later.output) == {"messages": []}
+    assert json.loads(later.output) == {
+        "messages": [],
+        "unverified": 0,
+        "rejections": [],
+    }
     limited = _invoke(node, ["read", "--to", "codex:review", "--limit", "1", "--json"])
     assert len(json.loads(limited.output)["messages"]) == 1
 
@@ -169,12 +176,58 @@ def test_undeclared_broker_is_a_typed_refusal(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_a_node_with_no_declared_broker_is_a_typed_refusal(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     # The node dials the broker its own overlay declares; with none declared the client answers undeclared_broker, never a trace.
-    monkeypatch.delenv("ONEX_EMIT_EFFECT_SPOOL_ONLY", raising=False)
-    monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
+    # The test injects its own overlay root (an overlay with no event_bus) and never reads the host's.
+    for name in (
+        "ONEX_EMIT_EFFECT_SPOOL_ONLY",
+        "KAFKA_BOOTSTRAP_SERVERS",
+        "ONEX_SKILL_OVERLAY_ROOTS",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    install_broker_overlays(
+        tmp_path, monkeypatch, None, nodes=("node_agent_message_effect",)
+    )
     result = CliRunner().invoke(agent_message_group, [*_SEND, "--bus", "inmemory"])
     assert result.exit_code == 3, result.output
     assert "refused: undeclared_broker:" in result.output
     assert "Traceback" not in result.output
+
+
+def _node_with_refusals() -> FakeAgentMessageNode:
+    from omnimarket.enums.enum_agent_message_verification_reason import (
+        EnumAgentMessageVerificationReason,
+    )
+    from omnimarket.models.agent_message.model_agent_message_rejection import (
+        ModelAgentMessageRejection,
+    )
+
+    node = FakeAgentMessageNode()
+    node.unverified = 2
+    node.rejections = [
+        ModelAgentMessageRejection(
+            reason=EnumAgentMessageVerificationReason.SENDER_MISMATCH,
+            detail="signed by another sender's key",
+            sender="lane-b",
+            message_id="m-spoof",
+        )
+    ]
+    return node
+
+
+def test_read_json_carries_the_typed_refusals_and_the_legacy_count() -> None:
+    read = _invoke(_node_with_refusals(), ["read", "--to", "codex:review", "--json"])
+    assert read.exit_code == 0, read.output
+    body = json.loads(read.output)
+    assert body["unverified"] == 2
+    assert [r["reason"] for r in body["rejections"]] == ["sender_mismatch"]
+    assert body["rejections"][0]["sender"] == "lane-b"
+    assert "text" not in body["rejections"][0]
+
+
+def test_read_text_names_each_refused_record_by_its_reason() -> None:
+    read = _invoke(_node_with_refusals(), ["read", "--to", "codex:review"])
+    assert read.exit_code == 0, read.output
+    assert "refused: sender_mismatch: sender=lane-b id=m-spoof" in read.output
+    assert "2 message(s) carry no sender proof" in read.output

@@ -51,6 +51,7 @@ ENV = {
     "ONEX_ACL_DEPLOY_AGENT_KEY_CHECK_PRINCIPAL": "User:deploy-agent-key-check",
     "ONEX_ACL_DEV_RUNTIME_EFFECTS_PRINCIPAL": "User:dev-runtime-effects",
     "ONEX_ACL_TENANT_OPERATOR_PRINCIPAL": "User:tenant-operator",
+    "ONEX_ACL_LANE_PUSH_PRINCIPAL": "User:lane-push",
 }
 ENV_FILLS = {key: value for key, value in ENV.items() if key.startswith("ONEX_ACL_")}
 """The names ENV sets, as an overlay's placeholder_values: when an overlay is found it is the one source of the ${NAME} fills."""

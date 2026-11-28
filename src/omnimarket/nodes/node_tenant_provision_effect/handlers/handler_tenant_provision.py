@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.nodes.node_tenant_provision_effect.handlers.tenant_identity_postgres import (
     EnumProvisionKind,
     TenantIdentityPostgres,
@@ -119,6 +120,14 @@ class HandlerTenantProvision:
                 f"identity store unavailable: {exc}",
                 now,
             )
+        except NodeOverlayError as exc:
+            # No overlay on this runtime: answer on the completed topic, so a caller reads a typed outcome, not silence.
+            return _refusal(
+                request,
+                EnumTenantProvisionOutcome.FAILED_STORE_UNAVAILABLE,
+                f"identity store unavailable: overlay not loaded: {exc}",
+                now,
+            )
         match record.kind:
             case EnumProvisionKind.CREATED | EnumProvisionKind.REPLAY:
                 assert record.envelope is not None
@@ -129,7 +138,11 @@ class HandlerTenantProvision:
                 return ModelTenantProvisionResult(
                     command_id=request.command_id,
                     outcome=EnumTenantProvisionOutcome.ALREADY_EXISTS,
-                    detail="tenant already exists for this owner; nothing written",
+                    detail=(
+                        "tenant already exists for this owner; its missing TENANT_CREATED event is now queued"
+                        if record.event_queued
+                        else "tenant already exists for this owner; nothing written"
+                    ),
                     tenant_id=tenant.tenant_id,
                     tenant_slug=tenant.tenant_slug,
                     name=tenant.name,

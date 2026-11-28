@@ -29,9 +29,11 @@ from tests.unit.delegation.harness_support_omn26219 import (
     AcceptAllGate,
     ListCostSink,
     ScriptedRunner,
+    TierSettings,
     call_request,
     load_overlay,
     receipt,
+    tier_row,
 )
 
 pytestmark = pytest.mark.unit
@@ -53,6 +55,9 @@ def fake_claude(directory: Path, body: str) -> None:
     script = directory / "claude"
     script.write_text(f"#!{sys.executable}\n" + body)
     script.chmod(0o700)
+
+
+SETTINGS = TierSettings({"harness-test-claude": tier_row(["subscription"])})
 
 
 def claude_backend() -> ModelDelegationBackendConfig:
@@ -80,7 +85,9 @@ print(json.dumps({"type": "result", "result": "the answer", "is_error": False,
                   "total_cost_usd": 0.0123, "usage": {"input_tokens": 11, "output_tokens": 5}}))
 """,
     )
-    runner = HandlerHarnessProcessRunner(environment=Environment(tmp_path), agents={})
+    runner = HandlerHarnessProcessRunner(
+        environment=Environment(tmp_path), agents={}, settings=SETTINGS
+    )
     got = await runner.run(claude_backend(), "the prompt", 20)
     assert got.exit_cause == "completed"
     assert got.answer == "the answer"
@@ -95,7 +102,9 @@ async def test_harness_process_runner_missing_usage_is_unknown_not_zero(
         tmp_path,
         'import json, sys\nsys.stdin.read()\nprint(json.dumps({"type": "result", "result": "x"}))\n',
     )
-    runner = HandlerHarnessProcessRunner(environment=Environment(tmp_path), agents={})
+    runner = HandlerHarnessProcessRunner(
+        environment=Environment(tmp_path), agents={}, settings=SETTINGS
+    )
     got = await runner.run(claude_backend(), "p", 20)
     assert got.exit_cause == "completed"
     assert (got.tokens_in, got.tokens_out, got.cost_usd) == (None, None, None)
@@ -108,7 +117,9 @@ async def test_harness_process_runner_error_result_is_a_failed_turn(
         tmp_path,
         'import json, sys\nsys.stdin.read()\nprint(json.dumps({"type": "result", "result": "boom", "is_error": True}))\n',
     )
-    runner = HandlerHarnessProcessRunner(environment=Environment(tmp_path), agents={})
+    runner = HandlerHarnessProcessRunner(
+        environment=Environment(tmp_path), agents={}, settings=SETTINGS
+    )
     got = await runner.run(claude_backend(), "p", 20)
     assert got.exit_cause == "turn_failed"
     assert got.answer == ""
@@ -116,7 +127,9 @@ async def test_harness_process_runner_error_result_is_a_failed_turn(
 
 async def test_harness_process_runner_deadline_is_a_timeout(tmp_path: Path) -> None:
     fake_claude(tmp_path, "import sys, time\nsys.stdin.read()\ntime.sleep(30)\n")
-    runner = HandlerHarnessProcessRunner(environment=Environment(tmp_path), agents={})
+    runner = HandlerHarnessProcessRunner(
+        environment=Environment(tmp_path), agents={}, settings=SETTINGS
+    )
     got = await runner.run(claude_backend(), "p", 0.5)
     assert got.exit_cause == "timeout"
 
@@ -127,9 +140,11 @@ async def test_harness_process_runner_glm_without_declared_route_does_not_launch
     """GLM runs only through Claude Code with a declared provider route and credential reference."""
     fake_claude(tmp_path, 'raise SystemExit("must not be launched")\n')
     glm = load_overlay().backend_by_id()["harness-claude-glm-flash"]
-    runner = HandlerHarnessProcessRunner(environment=Environment(tmp_path), agents={})
+    runner = HandlerHarnessProcessRunner(
+        environment=Environment(tmp_path), agents={}, settings=SETTINGS
+    )
     got = await runner.run(glm, "p", 20)
-    assert got.exit_cause == "launch_failed"
+    assert got.exit_cause == "not_logged_in"
 
 
 async def test_harness_delegation_handler_delegates_to_its_bound_call() -> None:

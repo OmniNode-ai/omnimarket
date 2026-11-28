@@ -1,0 +1,9 @@
+{
+  "repo": "cloud_repo",
+  "base": "dev",
+  "path": "db/migrations/application-relation-ownership.yaml",
+  "names": ["public.tenant_event_outbox_id_seq"],
+  "read_command": "git -C \"${OMNI_HOME:?}/cloud_repo\" show origin/dev:db/migrations/application-relation-ownership.yaml",
+  "read_exit_code": 0,
+  "observed_text": "database_objects:\n  - name: tenant_event_outbox_id_seq\n    kind: sequence\n    domain: OMNINODE_INTERNAL\n    dependencies: [tenant_event_outbox]\n"
+}

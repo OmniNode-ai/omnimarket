@@ -43,6 +43,7 @@ class HandlerProjectionUsageByModelDay:
             usage_day=occurred_at.date().isoformat(),
             model_id=event.model_name,
             cost_tier_name=event.cost_tier_name or NOT_TIER_ROUTED,
+            backend=event.backend,
             input_tokens=event.prompt_tokens,
             output_tokens=event.completion_tokens,
             cost_usd=cost,

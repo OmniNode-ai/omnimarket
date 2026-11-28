@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_cross_owner_ask_check_compute
+version: "1.0.0"
+description: "Refuses a request to another owner about that owner's repository when the owner's file, read at the owner's base through the canonical clone, already holds the object; returns the verified-by line the draft must carry — no I/O"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_cross_owner_ask_check_compute: "omnimarket.nodes.node_cross_owner_ask_check_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "ownership", "ask-check", "deterministic"]
+pack: "core"
+display_name: "Cross-Owner Ask Check"
+node_role: "compute"
