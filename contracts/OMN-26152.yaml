@@ -78,6 +78,11 @@ requirements:
     acceptance:
       - id: AC18
         statement: "AC18: a regression test built from the request shape read off the live dev runtime (a paged ROWS request, since and until moving with the clock, no lane, kinds or term, a moving store watermark) parses only the appended row on each poll -- falsifier: `uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_held_window_appended_rows_omn26152.py -q --no-cov -k paged_rows_poll` passes at the unfixed base 4d4cc81b5a or fails at the fixed head"
+  - id: req-omn26152-work-ledger-term-key
+    statement: A work ledger rows read whose term changes on every call but whose start is given reads the same rows each time, so it finds its held window instead of making a new hold per call and evicting the other caller's.
+    acceptance:
+      - id: AC19
+        statement: "AC19: the work ledger query node's held read, keyed on the term of the request although the store narrows by a term only for a read with no start, so the red main alarm's lookup (kinds STATUS and MSG, a new term req=<uuid> each call, since the 1970 epoch, a page of 3 lines) read and parsed every STATUS and MSG row on each call and evicted the lab alarm's hold from the two held windows, is keyed on the term only when the store narrows by it, one pull request for that cause, with a regression test built from that request shape -- falsifier: `uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_held_window_appended_rows_omn26152.py -k red_main_alarm -q --no-cov` passes at the unfixed base or fails at the fixed head"
 evidence_requirements:
   - kind: tests
     description: Writer golden chain including the narrow-path regression tests.
@@ -236,3 +241,11 @@ dod_evidence:
       - check_type: test_passes
         check_value: >-
           uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_held_window_appended_rows_omn26152.py -k paged_rows_poll -q --no-cov
+  - id: dod-omn26152-ac19-term-key
+    description: "A rows lookup with a new term on every call, kinds STATUS and MSG, since the 1970 epoch and a page of 3 lines parses only the appended row on each call; the check fails at cdb7f879a9 where each call parses the whole window (must-fail control)."
+    source: manual
+    binds_ac: [AC19]
+    checks:
+      - check_type: test_passes
+        check_value: >-
+          uv run pytest tests/unit/nodes/node_work_ledger_query_effect/test_held_window_appended_rows_omn26152.py -k red_main_alarm -q --no-cov
