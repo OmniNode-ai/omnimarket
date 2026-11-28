@@ -10,7 +10,8 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from omnimarket.handlers.alarm_post_policy import AlarmPostGate, run_ticket_command
+from omnimarket.handlers.alarm_post_policy import run_ticket_command
+from omnimarket.handlers.alarm_post_policy_source import PostPolicySource
 from omnimarket.models.alarm_post_policy import ModelPostDecision
 from omnimarket.nodes.node_lab_alarm_deliver_effect.adapters.inmemory_adapters import (
     InMemoryAlarmChannel,
@@ -56,18 +57,21 @@ def _gated(
     clock: Callable[[], datetime],
 ) -> ProtocolAlarmChannel:
     """The channel behind the overlay's post policy; ungated when the overlay declares none."""
-    policy = overlay.post_policy
-    if policy is None:
-        return channel
     if not overlay.post_policy_state_path:
-        raise ValueError("post_policy is declared with no post_policy_state_path")
+        if overlay.post_policy is not None:
+            raise ValueError("post_policy is declared with no post_policy_state_path")
+        return channel
+    # The policy is a runtime setting read from the settings store; the overlay's post_policy is the bootstrap default.
+    source = PostPolicySource(overlay.post_policy)
     return PolicyGatedChannel(
         inner=channel,
-        gate=AlarmPostGate(policy),
+        policy=source.current,
         state=FileDeliveryState(Path(overlay.post_policy_state_path)),
         clock=clock,
         reading=_log_reading,
-        ticket=lambda decision: run_ticket_command(policy.ticket_command, decision),
+        ticket=lambda policy, decision: run_ticket_command(
+            policy.ticket_command, decision
+        ),
     )
 
 

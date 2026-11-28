@@ -62,11 +62,11 @@ class _Rig:
         self.tickets: list[str] = []
         self.channel = PolicyGatedChannel(
             inner=self.inner,
-            gate=AlarmPostGate(overlay.post_policy),
+            policy=lambda: overlay.post_policy,
             state=self.state,
             clock=self.clock,
             reading=lambda d, _t: self.readings.append((d.kind, d.reason)),
-            ticket=lambda d: self.tickets.append(d.key) is None,
+            ticket=lambda _p, d: self.tickets.append(d.key) is None,
         )
 
     def send(self, text: str) -> ModelAlarmSendReceipt:

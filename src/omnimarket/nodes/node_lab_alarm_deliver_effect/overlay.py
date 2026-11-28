@@ -107,7 +107,8 @@ class ModelDeliveryOverlay(BaseModel):
     #: The post policy (OMN-24562): which messages post, once per condition, reminded and resolved. Absent means
     #: the channel is ungated, so an overlay written before the key existed still loads.
     post_policy: ModelAlarmPostPolicy | None = None
-    #: Where the gate keeps its open episodes between runs; required when ``post_policy`` is declared.
+    #: Where the gate keeps its open episodes between runs; naming it turns the gate on. The policy is read from the
+    #: settings store; ``post_policy`` above is only the bootstrap default for a store that holds none.
     post_policy_state_path: str = ""
 
 

@@ -10,6 +10,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.models.alarm_post_policy import ModelAlarmPostPolicy
+
 from ..host_table import HostTableError, read_host_aliases
 from .model_closer_liveness_options import ModelCloserLivenessOptions
 from .model_drainer_watch_options import ModelDrainerWatchOptions
@@ -56,9 +58,11 @@ class ModelSilentFailureAlarmOptions(BaseModel):
     alert_env_file: Path = Field(
         default_factory=lambda: Path.home() / ".omnibase" / ".env"
     )
-    # The channel's post policy (OMN-24562): a YAML file of ModelAlarmPostPolicy and the JSON file the gate keeps
-    # its open episodes in. Both or neither; None posts every alert as before.
-    post_policy_file: Path | None = None
+    # The channel's post policy (OMN-24562) is a runtime setting read from the settings store at each send;
+    # ``post_policy`` here is only the bootstrap default, used while the store holds none or does not answer.
+    # ``post_policy_state_file`` is the JSON file the gate keeps its open episodes in (state, not a setting).
+    # No state file posts every alert as before.
+    post_policy: ModelAlarmPostPolicy | None = None
     post_policy_state_file: Path | None = None
     # The command that reads the hook-event table: it prints ``<hostname>|<UTC stamp>``, one line
     # for each host, the stamp being that host's newest hook event (OMN-19998). None means this

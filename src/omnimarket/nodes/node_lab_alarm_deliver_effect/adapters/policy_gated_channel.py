@@ -9,7 +9,11 @@ from datetime import datetime
 from typing import Any
 
 from omnimarket.handlers.alarm_post_policy import AlarmPostGate
-from omnimarket.models.alarm_post_policy import EnumPostAction, ModelPostDecision
+from omnimarket.models.alarm_post_policy import (
+    EnumPostAction,
+    ModelAlarmPostPolicy,
+    ModelPostDecision,
+)
 from omnimarket.models.alarm_send_receipt import ModelAlarmSendReceipt
 from omnimarket.nodes.node_lab_alarm_deliver_effect.protocols import (
     ProtocolAlarmChannel,
@@ -19,7 +23,7 @@ from omnimarket.nodes.node_lab_alarm_deliver_effect.protocols import (
 #: Records what the gate decided for a message that did not post (the bus reading).
 ReadingSink = Callable[[ModelPostDecision, str], None]
 #: Raises the ticket for a stale episode; True when it was raised.
-TicketRaiser = Callable[[ModelPostDecision], bool]
+TicketRaiser = Callable[[ModelAlarmPostPolicy, ModelPostDecision], bool]
 
 
 class PolicyGatedChannel:
@@ -29,24 +33,29 @@ class PolicyGatedChannel:
         self,
         *,
         inner: ProtocolAlarmChannel,
-        gate: AlarmPostGate,
+        policy: Callable[[], ModelAlarmPostPolicy | None],
         state: ProtocolDeliveryStateStore,
         clock: Callable[[], datetime],
         reading: ReadingSink,
         ticket: TicketRaiser,
     ) -> None:
         self._inner = inner
-        self._gate = gate
+        self._policy = policy
         self._state = state
         self._clock = clock
         self._reading = reading
         self._ticket = ticket
 
     def send(self, *, category: str, text: str) -> ModelAlarmSendReceipt:
+        policy = self._policy()
+        if policy is None:
+            return self._inner.send(category=category, text=text)
         gate_state: dict[str, Any] = self._state.load()
-        decision = self._gate.decide(text, now=self._clock(), state=gate_state)
+        decision = AlarmPostGate(policy).decide(
+            text, now=self._clock(), state=gate_state
+        )
         if decision.action is EnumPostAction.TICKET:
-            if not self._ticket(decision):
+            if not self._ticket(policy, decision):
                 gate_state["open"][decision.key].pop("ticketed", None)
             self._state.save(gate_state)
             self._reading(decision, text)

@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt, model_validator
 
+from omnimarket.models.alarm_post_policy import ModelAlarmPostPolicy
+
 
 class ModelMergeOverrideSettings(BaseModel):
     """Supplied by the overlay, never packaged."""
@@ -25,6 +27,15 @@ class ModelMergeOverrideSettings(BaseModel):
     )
     sweep_interval_seconds: PositiveInt = Field(
         description="At most one pending-read sweep per this many seconds."
+    )
+
+    post_policy: ModelAlarmPostPolicy | None = Field(
+        default=None,
+        description="Bootstrap default of the channel post policy (OMN-24562); the settings store's alarm_post_policy overrides it.",
+    )
+    post_policy_state_file: str = Field(
+        default="",
+        description="Where the gate keeps its open episodes; naming it turns the channel gate on for the Slack command.",
     )
 
     @model_validator(mode="after")

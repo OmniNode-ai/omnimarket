@@ -30,14 +30,14 @@ import tempfile
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
 
-import yaml
-
-from omnimarket.handlers.alarm_post_policy import AlarmPostGate, run_ticket_command
+from omnimarket.handlers.alarm_post_policy_source import (
+    PostPolicySource,
+    decide_with_state_file,
+)
 from omnimarket.handlers.ledger_row_grammar import parse_row
 from omnimarket.handlers.ledger_rows_unreadable_error import LedgerRowsUnreadableError
-from omnimarket.models.alarm_post_policy import EnumPostAction, ModelAlarmPostPolicy
+from omnimarket.models.alarm_post_policy import EnumPostAction
 from omnimarket.models.silent_failure_alarm import (
     ModelCloserStalenessRequest,
     ModelDrainerRepair,
@@ -237,9 +237,12 @@ class HandlerSilentFailureAlarm:
         host_watches: Mapping[str, ProtocolDrainerWatch] | None = None,
         unavailable_hosts: Callable[[], tuple[frozenset[str], str]] | None = None,
         ledger: ProtocolAlarmLedger | None = None,
+        policy_source: PostPolicySource | None = None,
     ) -> None:
         options = options or ModelSilentFailureAlarmOptions.from_environment()
         self._options = options
+        # The post policy is read from the settings store; the options hold only its bootstrap default (OMN-24562).
+        self._policy_source = policy_source or PostPolicySource(options.post_policy)
         self._ledger: ProtocolAlarmLedger = ledger or BusAlarmLedger()
         # The hosts the lab host table declares unavailable take no lane, so the quiet-host reading skips
         # them when the options ask (OMN-22778). Injected so a test supplies the table; the default reads
@@ -1440,26 +1443,17 @@ class HandlerSilentFailureAlarm:
         records its alarm as handled and the tick does not retry it into the channel.
         """
         options = self._options
-        if options.post_policy_file is None or options.post_policy_state_file is None:
+        if options.post_policy_state_file is None:
             return None, text
-        policy = ModelAlarmPostPolicy.model_validate(
-            yaml.safe_load(options.post_policy_file.read_text(encoding="utf-8"))
+        decision = decide_with_state_file(
+            self._policy_source,
+            options.post_policy_state_file,
+            text,
+            now=datetime.now(UTC),
         )
-        path = options.post_policy_state_file
-        held: dict[str, Any] = (
-            json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-        )
-        decision = AlarmPostGate(policy).decide(text, now=datetime.now(UTC), state=held)
-        if decision.action is EnumPostAction.TICKET and not run_ticket_command(
-            policy.ticket_command, decision
-        ):
-            held["open"][decision.key].pop("ticketed", None)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(held, sort_keys=True), encoding="utf-8")
-        if decision.action in (
-            EnumPostAction.SUPPRESS,
-            EnumPostAction.TICKET,
-        ):
+        if decision is None:
+            return None, text
+        if decision.action in (EnumPostAction.SUPPRESS, EnumPostAction.TICKET):
             return (
                 True,
                 f"policy {decision.action.value}: {decision.reason}",

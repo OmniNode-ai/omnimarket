@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from omnimarket.models.alarm_post_policy import ModelAlarmPostPolicy
 from omnimarket.nodes.node_silent_failure_alarm_effect.handlers.handler_silent_failure_alarm import (
     HandlerSilentFailureAlarm,
 )
@@ -25,11 +26,8 @@ _OVERLAY = (
 
 
 def _handler(tmp_path: Path) -> tuple[HandlerSilentFailureAlarm, Path]:
-    policy = tmp_path / "policy.yaml"
-    policy.write_text(
-        yaml.safe_dump(
-            yaml.safe_load(_OVERLAY.read_text(encoding="utf-8"))["post_policy"]
-        )
+    policy = ModelAlarmPostPolicy.model_validate(
+        yaml.safe_load(_OVERLAY.read_text(encoding="utf-8"))["post_policy"]
     )
     sent = tmp_path / "sent.txt"
     lib = tmp_path / "alert.sh"
@@ -40,7 +38,7 @@ def _handler(tmp_path: Path) -> tuple[HandlerSilentFailureAlarm, Path]:
         registry_root=tmp_path,
         alert_lib=lib,
         alert_env_file=tmp_path / "empty.env",
-        post_policy_file=policy,
+        post_policy=policy,
         post_policy_state_file=tmp_path / "gate.json",
     )
     return HandlerSilentFailureAlarm(options), sent
