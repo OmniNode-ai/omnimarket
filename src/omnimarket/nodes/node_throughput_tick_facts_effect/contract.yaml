@@ -18,7 +18,8 @@ description: >-
   reasons and the last goal record). A source that cannot be read is the error text the script put on
   its request, never a raise and never an empty fact. It also carries the standing-rulings register's
   judgement read from the overlay roots (OMN-24478); a register that cannot be read is the reason on
-  ruling_register_unread, never a raise. It writes nothing. Parity-tested on 20 recorded
+  ruling_register_unread, never a raise, and journal write failures of the register read ride on
+  ruling_register_sink_errors (OMN-24556). It writes nothing. Parity-tested on 20 recorded
   ticks; the live run on the Mac runtime is the ticket's third criterion.
 input_model:
   name: ModelThroughputTickFactsRequest

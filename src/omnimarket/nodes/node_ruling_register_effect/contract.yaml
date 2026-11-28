@@ -22,7 +22,8 @@ description: >
   prefix with the host's target substituted. An answered read exits with one of the
   row's accepted codes; a read that did not run, timed out or exited with another
   code is UNREAD, never TRUE. Every reading emits an event: answered for OK (golden),
-  refused for UNREAD (error).
+  refused for UNREAD (error). The whole register read is bounded by the route's
+  total_timeout_seconds: a row the budget did not reach is UNREAD, never dropped.
 
 handler:
   module: omnimarket.nodes.node_ruling_register_effect.handlers.handler_ruling_register_read

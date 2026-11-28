@@ -4,10 +4,11 @@
 
 ``ModelThroughputTickFacts`` carries the keys the retired throughput_tick.py put on the request it gave
 node_throughput_tick_decision_compute. A key the script did not set is not set here either: read the
-result with ``model_dump(exclude_unset=True)`` to get the script's request. The two exceptions are the
-standing-rulings register's judgement and its unread reason (OMN-24478), which the script never read;
-strip those two keys to get the script's request exactly. ``ModelGoalFacts`` carries what the goal
-check reads.
+result with ``model_dump(exclude_unset=True)`` to get the script's request. The exceptions are the
+standing-rulings register's judgement and its unread reason (OMN-24478) and, when the register's
+journal did not take the read's events, its ``ruling_register_sink_errors`` (OMN-24556), which the
+script never read; strip those keys to get the script's request exactly. ``ModelGoalFacts`` carries
+what the goal check reads.
 """
 
 from __future__ import annotations
@@ -98,6 +99,15 @@ class ModelThroughputTickFacts(BaseModel):
         description=(
             "Why the standing-rulings register could not be read, when it could not; "
             "never a raise."
+        ),
+    )
+    ruling_register_sink_errors: list[str] | None = Field(
+        default=None,
+        description=(
+            "The register read's journal write failures (OMN-24556), one "
+            "``<row_id>: <exception name>`` entry per row whose read event the "
+            "journal did not take; unset when the journal took them all, so a facts "
+            "result without failures reads exactly as before."
         ),
     )
 
