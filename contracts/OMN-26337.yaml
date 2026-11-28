@@ -64,3 +64,11 @@ dod_evidence:
       - check_type: command
         check_value: 'env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --repo OmniNode-ai/omnimarket --sha "$(git rev-parse HEAD)" --lane dod-integration-proof-26337 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/nodes/node_code_graph_effect/test_code_graph_handlers.py -q --no-cov'
         cwd: .
+  - id: dod-omn26337-generated-event-per-handler
+    description: The graph-generated exercise (the ticket's AC1) emits one event or one named gap per handler row of the code graph read over this repository; the node and its test do not exist at the merge base.
+    source: manual
+    execution_scope: hosted_and_local
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/ci/test_handler_exercise_generated_event_per_handler.py -q --no-cov
+        cwd: .
