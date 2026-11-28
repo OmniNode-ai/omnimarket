@@ -154,6 +154,7 @@ def evidence_for(result: ModelDelegationCheckResult) -> dict[str, Any]:
     return {
         "check": result.check_id,
         "run_id": result.run_id,
+        "correlation_id": result.correlation_id,
         "event": result.event,
         "status": result.status,
         "conclusion": result.conclusion,
@@ -164,6 +165,7 @@ def evidence_for(result: ModelDelegationCheckResult) -> dict[str, Any]:
         "served_model": result.served_model,
         "chain": [f"{a.base_url or a.tier}:{a.outcome}" for a in result.chain],
         "failed_clauses": [c.name for c in result.clauses if not c.ok],
+        "failed_clause_details": {c.name: c.detail for c in result.clauses if not c.ok},
         "absent": [p.name for p in result.preconditions if not p.present],
         "emitted": result.emitted,
         "error": result.error,
@@ -206,6 +208,14 @@ def _document_reader(record_reader: StoreOverlayReader) -> ProtocolStoreDocument
         return dict(document) if isinstance(document, dict) else None
 
     return read
+
+
+def check_line(result: ModelDelegationCheckResult) -> str:
+    """One journal line per check: the id, the verdict and the correlation id the run went on the bus under."""
+    return (
+        f"check={result.check_id} verdict={result.verdict.value} "
+        f"correlation_id={result.correlation_id} published={'yes' if result.emitted else 'no'}"
+    )
 
 
 def _write_atomically(path: Path, text: str) -> None:
@@ -338,6 +348,7 @@ def main(
                 gateway_row,
                 DevTenantCredential(secret_name=gateway_row.secret_name),
                 overlay.responder_timeout_s,
+                submit_timeout_s=overlay.submit_timeout_s,
             )
         except NodeOverlayNotFoundError:
             gateway = None
@@ -422,6 +433,12 @@ def main(
         **({"regression_tickets": tickets} if tickets else {}),
     }
     _write_atomically(evidence_path, json.dumps(readings, sort_keys=True) + "\n")
+    for r in results:
+        sys.stdout.write(check_line(r) + "\n")
+        if not r.emitted:
+            sys.stderr.write(
+                f"{NODE}: check={r.check_id} NOT PUBLISHED correlation_id={r.correlation_id}\n"
+            )
     sys.stdout.write(json.dumps(readings, sort_keys=True) + "\n")
     if not all(r.emitted for r in results):
         return EXIT_NOT_PUBLISHED

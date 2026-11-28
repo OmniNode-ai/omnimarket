@@ -47,6 +47,9 @@ class ModelDelegationCheckProbeOverlay(BaseModel):
     result_topic: str = Field(min_length=1)
     # How long one responder has to answer ``/v1/models``.
     responder_timeout_s: float = Field(gt=0)
+    # How long the gateway has to answer the workflow submit (POST /v1/workflows), apart from a responder's cap. Absent,
+    # the submit shares ``responder_timeout_s``.
+    submit_timeout_s: float | None = Field(default=None, gt=0)
     # The bus the tick delivers its run record on: the lane id only, read by the declared broker publisher. A lab host's
     # unit carries no KAFKA_BOOTSTRAP_SERVERS, so without it the tick delivers nothing and exits 3.
     event_bus: ModelNodeEventBus | None = None
