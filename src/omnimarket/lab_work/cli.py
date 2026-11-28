@@ -67,6 +67,9 @@ EXIT_NOT_RUN = 70
 #: ``capacity.silent_exit_seconds`` (alive and working, no longer visible to the pool, OMN-21811).
 EXIT_STUCK_WORKER = 71
 
+#: The verifier's own bus lane, exported to a contract item that runs ``onex lab-work`` (OMN-26725).
+LAB_WORK_BUS_LANE_ENV = "ONEX_LAB_WORK_BUS_LANE"
+
 _bus_options = [
     click.option(
         "--omnibase-path",
@@ -81,7 +84,15 @@ _bus_options = [
         default="kafka",
         show_default=True,
     ),
-    click.option("--bus-lane", default=None, help="The declared bus lane to use."),
+    click.option(
+        "--bus-lane",
+        envvar=LAB_WORK_BUS_LANE_ENV,
+        default=None,
+        help=(
+            "The declared bus lane to use. Bound to $ONEX_LAB_WORK_BUS_LANE, which the Done "
+            "gate verifier exports to an item that runs this CLI (OMN-26725). The flag wins."
+        ),
+    ),
     click.option(
         "--kafka-bootstrap", default=None, help="The broker, stated directly."
     ),

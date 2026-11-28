@@ -738,6 +738,16 @@ _PNPM_INVOCATION_RE = re.compile(
     r"(?:^|[;&|(]\s*|\bthen\s+|\bdo\s+)pnpm\s", re.MULTILINE
 )
 
+# OMN-26725: a command check that runs ``onex lab-work`` gets the verifier's bus lane in
+# ``ONEX_LAB_WORK_BUS_LANE``; the lane is the one its SCM reads use (``ONEX_DOD_VERIFY_SCM_BUS_LANE``,
+# default ``dev``).
+_LAB_WORK_INVOCATION_RE: Final[re.Pattern[str]] = re.compile(
+    r"(?<![\w./-])onex\s+lab-work(?![\w-])"
+)
+LAB_WORK_BUS_LANE_ENV: Final[str] = "ONEX_LAB_WORK_BUS_LANE"
+_VERIFIER_BUS_LANE_ENV: Final[str] = "ONEX_DOD_VERIFY_SCM_BUS_LANE"
+_VERIFIER_DEFAULT_BUS_LANE: Final[str] = "dev"
+
 # OMN-20768: a command check that runs ``gh pr ...`` or ``gh api ...`` gets the
 # local ``gh`` shim first on its PATH (see ``local_gh_reads``).
 _GH_READ_INVOCATION_RE: Final[re.Pattern[str]] = re.compile(
@@ -6680,6 +6690,18 @@ class EvidenceCollector:
             run_env["UV_NO_SYNC"] = "1"
             run_env.pop("PYTHONPATH", None)
             run_env.pop("VIRTUAL_ENV", None)
+
+        # OMN-26725: an item that runs ``onex lab-work`` names no broker of its own, and the CLI
+        # refuses a kafka bus with no lane. The verifier hands the item its own bus lane, the one
+        # it already uses for its SCM reads; a lane the caller set stays, and so does a --bus-lane
+        # flag in the command (the flag beats the environment).
+        if _LAB_WORK_INVOCATION_RE.search(cmd_str) is not None:
+            if run_env is None:
+                run_env = dict(os.environ)
+            if not run_env.get(LAB_WORK_BUS_LANE_ENV):
+                run_env[LAB_WORK_BUS_LANE_ENV] = (
+                    os.environ.get(_VERIFIER_BUS_LANE_ENV) or _VERIFIER_DEFAULT_BUS_LANE
+                )
 
         # OMN-20768: a command that reads PR facts through ``gh`` runs against a
         # shim that answers the clone-held shapes locally (see local_gh_reads).
