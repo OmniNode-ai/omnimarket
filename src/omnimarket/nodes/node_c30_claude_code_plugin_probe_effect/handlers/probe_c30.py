@@ -45,6 +45,7 @@ import os
 import re
 import sqlite3
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -75,6 +76,15 @@ from omnimarket.nodes.node_c30_claude_code_plugin_probe_effect.models.model_c30_
 )
 
 CRITERION = "C30"
+#: The host's workspace binding. The scratch profile is hermetic: with these set, the walked `onex delegate` resolves to
+#: the workspace's bus and is refused for want of an identity the scratch HOME does not hold.
+WORKSPACE_BINDING_VARIABLES = (
+    "OMNI_HOME",
+    "OMNIBASE_PATH",
+    "ONEX_WORKSPACE_CONFIG_ROOT",
+    "ONEX_CONTRACTS_DIR",
+    "ONEX_SKILL_OVERLAY_ROOTS",
+)
 #: The subscription token Claude Code reads; this probe checks it by presence and scrubs its value from the record.
 TOKEN_ENV = "CLAUDE_CODE_OAUTH_TOKEN"
 BUDGET_SECONDS = 60 * 60
@@ -450,8 +460,17 @@ def walk(
             f"    endpoint_url: {endpoint_url}\n    model_name: probe-loopback\n",
             encoding="utf-8",
         )
-        env = os.environ.copy()
+        env = {
+            key: value
+            for key, value in os.environ.items()
+            if key not in WORKSPACE_BINDING_VARIABLES
+        }
         env.update(HOME=str(home), CLAUDE_CONFIG_DIR=str(config))
+        # The walked `onex` is the running interpreter's own install, found first, as on the clean runner this probe
+        # came from; the host's registry binding would resolve the delegation to the workspace bus (OMN-19966).
+        env["PATH"] = os.pathsep.join(
+            filter(None, (str(Path(sys.executable).parent), env.get("PATH")))
+        )
         # The loopback model server must not be routed through a runner proxy.
         env["NO_PROXY"] = ",".join(
             filter(None, (env.get("NO_PROXY"), "127.0.0.1,localhost"))
