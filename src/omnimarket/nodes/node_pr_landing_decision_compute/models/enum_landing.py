@@ -144,7 +144,8 @@ class EnumLandingLandSkipReason(StrEnum):
     ``review_missing``, ``review_changes_needed``, ``review_superseded`` and
     ``review_unread``. A PR into a repository other repositories install (omnibase_core, omnibase_spi, OMN-26513)
     is held by name while its downstream check is a break (``downstream_break``), unread (``downstream_unread``) or
-    of another head (``downstream_other_head``).
+    of another head (``downstream_other_head``). A PR whose newest Lab line names another head, or none, is held as
+    ``lab_line_needs_proof`` (OMN-26736).
     """
 
     HOLD = "hold"
@@ -173,6 +174,7 @@ class EnumLandingLandSkipReason(StrEnum):
     DOWNSTREAM_BREAK = "downstream_break"
     DOWNSTREAM_UNREAD = "downstream_unread"
     DOWNSTREAM_OTHER_HEAD = "downstream_other_head"
+    LAB_LINE_NEEDS_PROOF = "lab_line_needs_proof"
 
 
 # A person's hold, a draft and do-not-land keep a PR out of every shared cause;
@@ -319,6 +321,7 @@ class EnumLandingBriefClass(StrEnum):
     RUNTIME = "runtime"
     SHARED_CAUSE = "shared_cause"
     CAUSE_DIAGNOSIS = "cause_diagnosis"
+    PROOF = "proof"
 
 
 class EnumLandingActionKind(StrEnum):
