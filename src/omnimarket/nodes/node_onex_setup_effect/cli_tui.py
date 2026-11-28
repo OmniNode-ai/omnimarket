@@ -2372,14 +2372,7 @@ class OnexTui(App[int]):
             return
         shortcut = tui_design().shortcut_for(words)
         if shortcut is not None:
-            if shortcut.action == "run":
-                self._start_command(
-                    ModelTuiCommand(
-                        path=shortcut.path, help=shortcut.help, needs_terminal=False
-                    ),
-                    tuple(words),
-                )
-            elif shortcut.action in tui_design().tab_ids:
+            if shortcut.action in tui_design().tab_ids:
                 self._open_tab_shown(shortcut.action)
             else:
                 await self._shortcut(shortcut.action)
