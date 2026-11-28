@@ -1,0 +1,30 @@
+2026-11-28T01:48:07.2927657Z shell: bash -e {0}
+2026-11-28T01:48:07.2928059Z env:
+2026-11-28T01:48:07.2928381Z   ACTIONS_CACHE_URL: 
+2026-11-28T01:48:07.2928760Z   ACTIONS_RUNTIME_URL: 
+2026-11-28T01:48:07.2929248Z   pythonLocation: <toolcache>/Python/3.13.18/x64
+2026-11-28T01:48:07.2930019Z   PKG_CONFIG_PATH: <toolcache>/Python/3.13.18/x64/lib/pkgconfig
+2026-11-28T01:48:07.2930765Z   Python_ROOT_DIR: <toolcache>/Python/3.13.18/x64
+2026-11-28T01:48:07.2931431Z   Python2_ROOT_DIR: <toolcache>/Python/3.13.18/x64
+2026-11-28T01:48:07.2932130Z   Python3_ROOT_DIR: <toolcache>/Python/3.13.18/x64
+2026-11-28T01:48:07.2933167Z   LD_LIBRARY_PATH: <runner-work>/_temp/pg16<libdir>:<toolcache>/Python/3.13.18/x64/lib
+2026-11-28T01:48:07.2934246Z   UV_PYTHON_INSTALL_DIR: <runner-work>/_temp/uv-python-dir
+2026-11-28T01:48:07.2935145Z   UV_CACHE_DIR: <runner-work>/_temp/setup-uv-cache
+2026-11-28T01:48:07.2935747Z   DOD_VERIFY_CHECK_TIMEOUT_S: 300
+2026-11-28T01:48:07.2936476Z   DOD_VERIFY_PY: <runner-work>/omnimarket/omnimarket/.dod-verify/venv/bin/python
+2026-11-28T01:48:07.2937425Z   INTEGRATION_POSTGRES_HOST: 127.0.0.1
+2026-11-28T01:48:07.2937727Z   INTEGRATION_POSTGRES_PORT: 32768
+2026-11-28T01:48:07.2938007Z   INTEGRATION_POSTGRES_USER: postgres
+2026-11-28T01:48:07.2938306Z   INTEGRATION_POSTGRES_PASSWORD: test_password
+2026-11-28T01:48:07.2938622Z   INTEGRATION_POSTGRES_DB: omnibase_infra
+2026-11-28T01:48:07.2938919Z   POSTGRES_PASSWORD: test_password
+2026-11-28T01:48:07.2939175Z   REPO_SHORT: omnimarket
+2026-11-28T01:48:07.2939442Z   HEAD_SHA: e4ada8b78319a801471594acf3b82158e703da25
+2026-11-28T01:48:07.2942074Z   GH_TOKEN: ***
+2026-11-28T01:48:07.2942307Z   DOD_VERIFY_ALLOW_STALE_PRODUCT_CLONE: 1
+2026-11-28T01:48:07.2942585Z ##[endgroup]
+2026-11-28T01:48:10.1502916Z WARNING: OMN-16846 product-clone gate OVERRIDDEN because DOD_VERIFY_ALLOW_STALE_PRODUCT_CLONE is set — executing dod-omn24052-settings-store-provision against <runner-work>/omnimarket/omnimarket/.dod-verify/base_home/omnimarket (unknown). The resulting verdict is NOT attributable to a verified-fresh tree.
+2026-11-28T01:48:20.6820118Z WARNING: OMN-16846 product-clone gate OVERRIDDEN because DOD_VERIFY_ALLOW_STALE_PRODUCT_CLONE is set — executing dod-omn24052-store-login-rows-select against <runner-work>/omnimarket/omnimarket/.dod-verify/base_home/omnimarket (unknown). The resulting verdict is NOT attributable to a verified-fresh tree.
+2026-11-28T01:48:28.4861736Z EVIDENCE_CHECK_FAILED: dod-omn24052-settings-store-provision: exit_code=2; tests=tests/nodes/node_settings_store_provision_effect/test_provision.py; first_error=ModuleNotFoundError: No module named 'omnimarket.nodes.node_settings_store_provision_effect' | dod-omn24052-store-login-rows-select: exit_code=1; tests=tests/settings_store/test_valkey_acl_rules.py::test_valkey_acl_rules_every_login_may_select_its_database, tests/settings_store/test_settings_cli.py::test_list_reads_every_setting_on_one_event_loop; first_error=AssertionError: assert '+select' in ['reset', 'on', '>w', '%RW~px:*', '+get', '+mget', ...]
+2026-11-28T01:48:28.8337572Z ##[error]OMN-24052: zero bound checks (evidence ids: none); nothing is bound, so nothing can fail
+2026-11-28T01:48:28.8340200Z ##[error]Process completed with exit code 1.

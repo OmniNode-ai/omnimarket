@@ -1,0 +1,16 @@
+2026-11-26T21:42:23.7199441Z ok node_tenant_api_key_effect
+2026-11-26T21:42:23.7199821Z ok broker_acls_lab_work_client_h051
+2026-11-26T21:42:23.7200193Z ok node_failure_alarm_router_effect
+2026-11-26T21:42:23.7200573Z ok node_dev_proof_tenant_token_effect
+2026-11-26T21:42:23.7200973Z ok broker_acls_tenant_provision_client_h201
+2026-11-26T21:42:23.7201378Z ok node_tenant_provision_effect
+2026-11-26T21:42:23.7201780Z ok broker_acls_h201_setting_set_and_probe_completed
+2026-11-26T21:42:23.7202210Z ok node_host_install_orchestrator
+2026-11-26T21:42:23.7202601Z ok broker_acls_host_install_request_h053
+2026-11-26T21:42:23.7202994Z ok node_floor_simple_compute
+2026-11-26T21:42:23.7203349Z ok node_floor_simple_effect
+2026-11-26T21:42:23.7203702Z ok node_lab_state_alarm_effect
+2026-11-26T21:42:23.7204851Z refused node_code_eval_trial_orchestrator document_invalid: ModelCodeEvalRunnerOverlay refused the document; fields: loop_wall_budget_seconds
+2026-11-26T21:42:23.7205969Z note node_experiment_result_record_compute model_absent: the model class named by the pin exists nowhere in this tree, so no code reads the document
+2026-11-26T21:42:23.7206918Z overlay-main-load: loaded=370 refused=1 noted=1
+2026-11-26T21:42:25.1707520Z ##[error]Process completed with exit code 1.

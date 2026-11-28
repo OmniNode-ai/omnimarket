@@ -401,6 +401,65 @@ state_machine:
       - - five_whys_owed
         - 'false'
   - version: {major: 1, minor: 0, patch: 0}
+    transition_name: red_to_fixing_on_log_read_file_shape_ratchet
+    from_state: red
+    to_state: fixing
+    trigger: log_read
+    priority: 3
+    conditions:
+    - condition_name: red_kind_file_shape_ratchet
+      condition_type: expression
+      expression: red_kind == file_shape_ratchet
+    actions:
+    - action_name: fix_refused_check
+      action_type: agent
+      action_config:
+      - - do
+        - fix the refused file shape in the change, commit
+      - - five_whys_owed
+        - 'false'
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: red_to_help_requested_on_log_read_overlay_required
+    from_state: red
+    to_state: help_requested
+    trigger: log_read
+    priority: 5
+    conditions:
+    - condition_name: red_kind_overlay_required
+      condition_type: expression
+      expression: red_kind == overlay_required
+    - condition_name: help_budget_left
+      condition_type: expression
+      expression: help_budget_left == true
+    actions:
+    - action_name: help_request
+      action_type: node
+      action_config:
+      - - awaits
+        - 'true'
+      - - names
+        - overlay_pr_needed, an overlay-store pull request must merge first, then the body names it
+      - - tier
+        - first
+  - version: {major: 1, minor: 0, patch: 0}
+    transition_name: red_to_blocked_on_log_read_overlay_required_help_exhausted
+    from_state: red
+    to_state: blocked
+    trigger: log_read
+    priority: 4
+    conditions:
+    - condition_name: red_kind_overlay_required
+      condition_type: expression
+      expression: red_kind == overlay_required
+    actions:
+    - action_name: terminal
+      action_type: terminal
+      action_config:
+      - - decision
+        - the evidence and the question for the operator
+      - - reason
+        - help_exhausted
+  - version: {major: 1, minor: 0, patch: 0}
     transition_name: red_to_diagnosing_on_log_read
     from_state: red
     to_state: diagnosing

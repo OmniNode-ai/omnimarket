@@ -545,9 +545,19 @@ def test_ac7_first_matching_rule_in_overlay_order_wins() -> None:
         },
     ]
     raw = "the boom goes here"
-    first = make({"schema_version": "lane_work_classify.v1", "rules": rules})
+    first = make(
+        {
+            "schema_version": "lane_work_classify.v1",
+            "evidence_limit": 1000,
+            "rules": rules,
+        }
+    )
     swapped = make(
-        {"schema_version": "lane_work_classify.v1", "rules": list(reversed(rules))}
+        {
+            "schema_version": "lane_work_classify.v1",
+            "evidence_limit": 1000,
+            "rules": list(reversed(rules)),
+        }
     )
     a = first.classify(raw_result=raw, state=state())
     b = swapped.classify(raw_result=raw, state=state())
@@ -562,6 +572,7 @@ def test_overlay_refuses_a_class_the_event_does_not_allow() -> None:
         ModelLaneWorkClassifyOverlay.model_validate(
             {
                 "schema_version": "lane_work_classify.v1",
+                "evidence_limit": 1000,
                 "rules": [
                     {
                         "pattern": "x",
@@ -579,6 +590,7 @@ def test_overlay_refuses_an_event_the_text_cannot_produce() -> None:
         ModelLaneWorkClassifyOverlay.model_validate(
             {
                 "schema_version": "lane_work_classify.v1",
+                "evidence_limit": 1000,
                 "rules": [{"pattern": "x", "event": "start", "ignore_case": False}],
             }
         )
