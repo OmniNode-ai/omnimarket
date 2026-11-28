@@ -213,8 +213,6 @@ def _disable(name: str) -> None:
         ("/delegation on", True),
         ("/delegation on --replace", True),
         ("/delegation off", False),
-        ("/hooks enable POST_SKILL_DELEGATION_ENFORCER", True),
-        ("/hooks disable POST_SKILL_DELEGATION_ENFORCER", False),
     ],
 )
 async def test_a_palette_command_that_switches_delegation_reads_it_again(

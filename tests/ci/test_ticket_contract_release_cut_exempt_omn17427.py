@@ -99,6 +99,40 @@ def test_release_cut_with_pins_needs_no_contract(
     assert _check(monkeypatch, tmp_path, head) == ()
 
 
+def test_changelog_free_release_cut_needs_no_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-25958 AC3: a cut that adds no CHANGELOG.md is still a release cut."""
+    head = _cut(
+        tmp_path,
+        {
+            "pyproject.toml": "[project]\nversion = '0.4.314'\n",
+            "uv.lock": "version = 1\n",
+        },
+    )
+    assert _check(monkeypatch, tmp_path, head) == ()
+
+
+def test_version_bump_only_release_cut_needs_no_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    head = _cut(tmp_path, {"pyproject.toml": "[project]\nversion = '0.4.314'\n"})
+    assert _check(monkeypatch, tmp_path, head) == ()
+
+
+def test_changelog_free_cut_with_source_change_still_needs_a_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    head = _cut(
+        tmp_path,
+        {
+            "pyproject.toml": "[project]\nversion = '0.4.314'\n",
+            "src/pkg/mod.py": "x = 1\n",
+        },
+    )
+    assert _check(monkeypatch, tmp_path, head) == (missing_contract_message(TICKET),)
+
+
 def test_changelog_plus_source_change_still_needs_a_contract(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
