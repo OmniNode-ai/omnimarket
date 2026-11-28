@@ -37,6 +37,9 @@ from ..models import (
     ModelLabFillHostCapacity,
     ModelLabFillMachineryPolicy,
     ModelLabFillPlanConfig,
+    ModelLabFillRoutingDecision,
+    ModelLabFillRoutingEvent,
+    ModelLabFillRoutingSkip,
     ModelLabFillSkipEntry,
 )
 from .helpers_js_value import get, has_word, has_word_stem, text_of, truthy, words
@@ -62,7 +65,25 @@ LANE = "lab-fill"
 LANE_ROUTES = {
     "sonnet": "ROUTE: band=B3 score=10 dims=S2A2R2V2N0C1J1 dest=sonnet-lane model=sonnet effort=high",
     "codex": "ROUTE: band=B2 score=7 dims=S1A1R1V2N1C1J0 dest=codex-draft+sonnet-lane model=codex effort=high",
+    "opus": "ROUTE: band=B4 score=14 dims=S2A2R2V2N2C2J2 dest=opus-lane model=opus effort=high",
+    # glm and code-edit are not Claude bands: the runner checks --model against a ROUTE line only when the
+    # brief carries one, so these lanes carry none.
+    "glm": "",
+    "code-edit": "",
 }
+# OMN-20287: a routing order's rung name -> the remote-lane runner's --model value. ``ladder`` is the local lab
+# model, which the runner drives through code-edit; ``claude`` is sonnet unless the band asks for opus.
+RUNG_ENGINE = {
+    "ladder": "code-edit",
+    "lab-agent": "code-edit",
+    "claude-glm": "glm",
+    "codex": "codex",
+    "claude": "sonnet",
+}
+HIGH_BANDS = ("B4", "B5")
+# The host-reading flag that says an engine has capacity; glm and code-edit have none and read the request's
+# ``engine_capacity`` instead.
+_HOST_FLAG = {"codex": "codex", "sonnet": "claude", "opus": "claude"}
 _TICKET_RE = re.compile(r"OMN-[0-9]+")
 _PR_RE = re.compile(r"([A-Za-z0-9_.-]+/)?[A-Za-z0-9_.-]+#[0-9]+")
 # A PR value is <repo>#<n> or <owner>/<repo>#<n>, with an optional :<cause> suffix the landing controller adds.
@@ -143,6 +164,42 @@ def _lane_name(candidate: object, tag: str) -> str:
     if get(candidate, "kind") == DOD_VERIFY:
         return f"{LANE}-verify-{ticket}-{tag}"
     return f"{LANE}-{ticket}-{tag}"
+
+
+def task_class_of(candidate: dict[str, object]) -> str:
+    """The routing task class of a work item, from its kind and title (an explicit ``task_class`` wins)."""
+    named = text_of(candidate.get("task_class")).strip()
+    if named:
+        return named
+    labels = candidate.get("labels")
+    text = " ".join([text_of(candidate.get("title")), *(w for w in words(labels))])
+    if truthy(candidate.get("pr")) or candidate.get("kind") in PR_KINDS:
+        return "refactor"
+    if has_word_stem(text, "doc") or has_word(text, "readme"):
+        return "document"
+    if has_word_stem(text, "test"):
+        return "test"
+    if truthy(candidate.get("self_contained_code")):
+        return "code_generation"
+    return "refactor"
+
+
+def requested_engines(
+    rungs: tuple[str, ...], band: str
+) -> tuple[tuple[str, ...], str | None]:
+    """The lane engines of a routing order, in order, and the band reason that put opus first (if it did).
+
+    A rung the runner has no engine for stays in the list under its own name, so the plan records why it
+    was passed over.
+    """
+    order: list[str] = []
+    if band in HIGH_BANDS:
+        order.append("opus")
+    for rung in rungs:
+        engine = RUNG_ENGINE.get(rung, rung)
+        if engine not in order:
+            order.append(engine)
+    return tuple(order), (f"band-{band}" if band in HIGH_BANDS else None)
 
 
 def dod_verify_item(candidate: dict[str, object], merged: str) -> dict[str, object]:
@@ -253,6 +310,16 @@ def skip_reason(
         return "fenced"
     if is_pr and _NAME_RE.fullmatch(text_of(c.get("repo"))) is None:
         return "no-repo"
+    return None
+
+
+def _unplaceable(engine: str, candidate: dict[str, object]) -> str | None:
+    """Why the runner cannot place this engine for this item, None when it can."""
+    if engine not in LANE_ROUTES:
+        return "runner-cannot-place:unknown-engine"
+    if engine == "codex" and truthy(candidate.get("pr")):
+        # A Codex lane opens a new PR and cannot push to an existing PR branch.
+        return "runner-cannot-place:pr-branch"
     return None
 
 
@@ -433,6 +500,13 @@ class HandlerLabFillDispatchPlan:
         dispatch: list[ModelLabFillDispatchItem] = []
         deferred: list[ModelLabFillSkipEntry] = []
         gated_over: dict[str, int] = {}
+        routing_events: list[ModelLabFillRoutingEvent] = []
+
+        def _has_engine(slot: _Slot, engine: str) -> bool:
+            flag = _HOST_FLAG.get(engine)
+            if flag is None:
+                return slot.host.name in request.engine_capacity.get(engine, ())
+            return bool(getattr(slot.host, flag))
 
         def best(engine: str, pin: str) -> _Slot | None:
             fit = [
@@ -440,7 +514,7 @@ class HandlerLabFillDispatchPlan:
                 for s in slots.values()
                 if (not pin or s.host.name == pin)
                 and s.left > 0
-                and (s.host.codex if engine == "codex" else s.host.claude)
+                and _has_engine(s, engine)
             ]
             fit.sort(
                 key=lambda s: (
@@ -468,18 +542,59 @@ class HandlerLabFillDispatchPlan:
                 if truthy(c.get("self_contained_code")) and not truthy(c.get("pr"))
                 else "sonnet"
             )
-            slot = best(engine, pin)
+            slot = None
             fallback: ModelLabFillFallback | None = None
-            if slot is None and engine == "codex":
-                engine = "sonnet"
-                slot = best(engine, pin)
+            decision: ModelLabFillRoutingDecision | None = None
+            task_class = task_class_of(c)
+            rungs = request.routing_orders.get(task_class)
+            if rungs:
+                band = text_of(c.get("band")).strip().upper()
+                order, band_reason = requested_engines(tuple(rungs), band)
+                skips: list[ModelLabFillRoutingSkip] = []
+                for candidate_engine in order:
+                    why_not = _unplaceable(candidate_engine, c)
+                    chosen = None if why_not else best(candidate_engine, pin)
+                    if chosen is None:
+                        skips.append(
+                            ModelLabFillRoutingSkip(
+                                engine=candidate_engine,
+                                reason=why_not or "no-capacity",
+                            )
+                        )
+                        continue
+                    engine, slot = candidate_engine, chosen
+                    break
                 if slot is not None:
-                    fallback = ModelLabFillFallback.model_validate(
-                        {"from": "codex", "reason": "no-codex-host"}
+                    reason = (
+                        band_reason
+                        if band_reason and not skips
+                        else "first-with-capacity"
+                        if not skips
+                        else "fell-to-"
+                        + engine
+                        + ":"
+                        + ",".join(f"{k.engine}={k.reason}" for k in skips)
                     )
-            elif slot is None and engine == "sonnet" and not truthy(c.get("pr")):
-                engine = "codex"
+                    decision = ModelLabFillRoutingDecision(
+                        task_class=task_class,
+                        band=band,
+                        requested_order=order,
+                        chosen_engine=engine,
+                        reason=reason,
+                        skipped=tuple(skips),
+                    )
+            else:
                 slot = best(engine, pin)
+                if slot is None and engine == "codex":
+                    engine = "sonnet"
+                    slot = best(engine, pin)
+                    if slot is not None:
+                        fallback = ModelLabFillFallback.model_validate(
+                            {"from": "codex", "reason": "no-codex-host"}
+                        )
+                elif slot is None and engine == "sonnet" and not truthy(c.get("pr")):
+                    engine = "codex"
+                    slot = best(engine, pin)
             if slot is None:
                 deferred.append(
                     _entry(
@@ -528,6 +643,16 @@ class HandlerLabFillDispatchPlan:
                 fields["repo_source"] = c["repo_source"]
             if fallback is not None:
                 fields["fallback"] = fallback
+            if decision is not None:
+                fields["routing"] = decision
+                routing_events.append(
+                    ModelLabFillRoutingEvent(
+                        **decision.model_dump(),
+                        lane=str(fields["lane"]),
+                        ticket=text_of(c["ticket"]),
+                        host=slot.host.name,
+                    )
+                )
             dispatch.append(ModelLabFillDispatchItem(**fields))
         for gated_kind, count in gated_over.items():
             deferred.append(
@@ -545,4 +670,5 @@ class HandlerLabFillDispatchPlan:
             budget=budget,
             # Set only when there is a route, so a plan with none answers the keys the workflow reads today.
             **({"closer": tuple(routed)} if routed else {}),
+            **({"routing_events": tuple(routing_events)} if routing_events else {}),
         )

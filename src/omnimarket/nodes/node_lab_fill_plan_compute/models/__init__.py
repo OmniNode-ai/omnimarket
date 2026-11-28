@@ -69,6 +69,11 @@ from .model_lab_fill_plan_config import (
     ModelLabFillHeadroomPolicy,
     ModelLabFillPlanConfig,
 )
+from .model_lab_fill_routing import (
+    ModelLabFillRoutingDecision,
+    ModelLabFillRoutingEvent,
+    ModelLabFillRoutingSkip,
+)
 from .model_lab_fill_sources import (
     ModelLabFillSourceAttachment,
     ModelLabFillSourceCandidate,
@@ -138,6 +143,9 @@ __all__ = [
     "ModelLabFillPlacementResult",
     "ModelLabFillPlanConfig",
     "ModelLabFillRenderConfig",
+    "ModelLabFillRoutingDecision",
+    "ModelLabFillRoutingEvent",
+    "ModelLabFillRoutingSkip",
     "ModelLabFillSkipEntry",
     "ModelLabFillSourceAttachment",
     "ModelLabFillSourceCandidate",

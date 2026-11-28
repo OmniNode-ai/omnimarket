@@ -25,6 +25,10 @@ from .model_lab_fill_plan_config import (
     ModelLabFillHeadroomPolicy,
     ModelLabFillPlanConfig,
 )
+from .model_lab_fill_routing import (
+    ModelLabFillRoutingDecision,
+    ModelLabFillRoutingEvent,
+)
 
 _CAMEL = ConfigDict(
     frozen=True, extra="forbid", alias_generator=to_camel, populate_by_name=True
@@ -97,6 +101,7 @@ class ModelLabFillDispatchItem(BaseModel):
     engine: str
     route: str
     fallback: ModelLabFillFallback | None = None
+    routing: ModelLabFillRoutingDecision | None = None
     machinery_key: str | None = None
     priority_class: str | None = None
     # Set only when the candidate carried them: open-count gated work, the landing controller's
@@ -138,6 +143,12 @@ class ModelLabFillDispatchPlanRequest(BaseModel):
     built_reports: tuple[ModelLabFillBuiltReport, ...] = ()
     closer_exempt_kinds: tuple[str, ...] = CLOSER_EXEMPT_KINDS
     closer: str = CLOSER_NODE
+    # OMN-20287: the engine order node_delegation_routing_order_compute answered for each task class, read by the
+    # caller and injected here (rung names: ladder, codex, claude-glm, lab-agent, claude). A class with no order
+    # keeps the fill's own engine choice.
+    routing_orders: Mapping[str, tuple[str, ...]] = Field(default_factory=dict)
+    # Hosts with measured free capacity for an engine the host readings carry no flag for (glm, code-edit).
+    engine_capacity: Mapping[str, tuple[str, ...]] = Field(default_factory=dict)
 
 
 class ModelLabFillDispatchPlanResult(BaseModel):
@@ -151,6 +162,8 @@ class ModelLabFillDispatchPlanResult(BaseModel):
     budget: int
     # OMN-23376: the tickets handed to the closer instead of a lane, each with its evidence.
     closer: tuple[ModelLabFillCloserRoute, ...] = ()
+    # OMN-20287: one delegation event per lane placed from a routing order; empty when no lane was routed.
+    routing_events: tuple[ModelLabFillRoutingEvent, ...] = ()
 
 
 class ModelLabFillCandidateChoiceRequest(BaseModel):
