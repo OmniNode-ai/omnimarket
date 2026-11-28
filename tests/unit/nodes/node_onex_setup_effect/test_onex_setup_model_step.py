@@ -209,7 +209,11 @@ def recorder(
 
 
 def _setup(args: list[str], stdin: str | None = None, **env: str) -> Result:
-    merged: dict[str, str | None] = {"OMNIBASE_PATH": None, "OMNI_HOME": None}
+    merged: dict[str, str | None] = {
+        "OMNIBASE_PATH": None,
+        "OMNI_HOME": None,
+        "ONEX_CLI_SHOW_ALL_COMMANDS": "1",
+    }
     merged.update(env)
     return CliRunner().invoke(
         cli,
