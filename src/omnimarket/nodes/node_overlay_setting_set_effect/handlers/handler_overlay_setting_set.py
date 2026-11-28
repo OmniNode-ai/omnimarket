@@ -244,7 +244,7 @@ class HandlerOverlaySettingSet:
         else:
             live_loaded_at = datetime.fromisoformat(str(live["loaded_at"]))
             age = (now - live_loaded_at).total_seconds()
-            if age > self._max_live_age_s:
+            if spec.loader_asserted and age > self._max_live_age_s:
                 raise LiveRecordStaleError(
                     f"{request.overlay_id}: the live record read was loaded {age:.0f}s ago, over the bound "
                     f"{self._max_live_age_s:.0f}s: the read did not reach the newest record; nothing was written"

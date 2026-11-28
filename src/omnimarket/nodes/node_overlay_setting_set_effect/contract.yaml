@@ -65,6 +65,9 @@ broker_acl_grants:
 # the refresh keeps (keys from the document's root joined by "/"); ``document_model`` is the model the whole document
 # must satisfy with the value set. A declared setting holds no secret: its values ride in the audit row.
 settable_settings:
+  # OMN-24028: ``loader_asserted: false`` marks an overlay node_overlay_store_load_effect does not list (its overlay_ids), so only a set
+  # writes it and its record is as old as the last set; the live-record age bound below applies to the listed settings only. List an
+  # overlay with the loader and drop the line, and the bound applies to it.
   - overlay_id: runtime_contract_hotload
     key: lanes.{lane}.lazy_start
     path: lanes/{lane}/lazy_start
@@ -72,6 +75,7 @@ settable_settings:
   # OMN-26219: what each Claude harness tier runs on (subscription, api_key, or subscription then api_key) and its effort.
   # No tier has a default: a tier with no row is refused by the harness by the row's name. A row holds no secret.
   - overlay_id: claude_harness_tiers
+    loader_asserted: false
     key: tiers.{backend}
     path: tiers/{backend}
     document_model: "omnimarket.models.overlay_documents.model_claude_harness_tiers_overlay:ModelClaudeHarnessTiersOverlay"
@@ -80,6 +84,7 @@ settable_settings:
   # OMN-26043: the delegation responder chain every delegation check sends its task through, one list-valued row (local
   # responders, then openrouter, then claude_api). The row holds no secret: a local responder is a private http://<ipv4>:<port> base.
   - overlay_id: delegation_check_responders
+    loader_asserted: false
     key: responders
     path: responders
     document_model: "omnimarket.models.overlay_documents.model_delegation_check_responders_overlay:ModelDelegationCheckRespondersOverlay"
@@ -88,6 +93,7 @@ settable_settings:
   # OMN-26642: the dev gateway address and the test tenant the gateway-graded delegation checks act as. The row holds no secret: the
   # tenant's token is the dev tenant node's, found by the secret name its overlay declares.
   - overlay_id: delegation_check_gateway
+    loader_asserted: false
     key: gateway
     path: gateway
     document_model: "omnimarket.models.overlay_documents.model_delegation_check_gateway_overlay:ModelDelegationCheckGatewayOverlay"
@@ -97,24 +103,29 @@ settable_settings:
   # OMN-26484: the age past which a held dev deploy command raises its alarm. The dev roll window gate reads its policy from this
   # overlay on every tick, so a value set here moves the alarm on the next tick; an unset value (null) switches the alarm off.
   - overlay_id: node_dev_roll_window_gate_effect
+    loader_asserted: false
     key: held_age_alarm_after_seconds
     path: held_age_alarm_after_seconds
     document_model: "omnimarket.nodes.node_dev_roll_window_gate_effect.models.model_dev_roll_window_gate_policy:ModelDevRollWindowGatePolicy"
   # OMN-26621: the owner and thresholds of the per-build delegation checks. The owner has no default: with none set the node
   # refuses to raise an alarm. A declared setting holds no secret.
   - overlay_id: node_build_delegation_checks
+    loader_asserted: false
     key: owner
     path: owner
     document_model: "omnimarket.models.overlay_documents.model_build_delegation_checks_overlay:ModelBuildDelegationChecksOverlay"
   - overlay_id: node_build_delegation_checks
+    loader_asserted: false
     key: alarm_lane
     path: alarm_lane
     document_model: "omnimarket.models.overlay_documents.model_build_delegation_checks_overlay:ModelBuildDelegationChecksOverlay"
   - overlay_id: node_build_delegation_checks
+    loader_asserted: false
     key: check_timeout_seconds
     path: check_timeout_seconds
     document_model: "omnimarket.models.overlay_documents.model_build_delegation_checks_overlay:ModelBuildDelegationChecksOverlay"
   - overlay_id: node_build_delegation_checks
+    loader_asserted: false
     key: max_alarm_latency_seconds
     path: max_alarm_latency_seconds
     document_model: "omnimarket.models.overlay_documents.model_build_delegation_checks_overlay:ModelBuildDelegationChecksOverlay"
@@ -148,6 +159,7 @@ settable_settings:
   # validated against the whole overlay document, so a non-ticket string or a wrong type is refused with nothing written. The row holds no
   # secret: the list is OMN-<n> ticket ids.
   - overlay_id: goal_scope_ticket_rule
+    loader_asserted: false
     key: ticket_roots
     path: ticket_roots
     document_model: "omnimarket.models.overlay_documents.model_goal_scope_ticket_rule_overlay:ModelGoalScopeTicketRuleOverlay"
