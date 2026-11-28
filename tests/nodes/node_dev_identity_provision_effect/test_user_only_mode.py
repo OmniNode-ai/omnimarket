@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -47,8 +48,8 @@ USER = "dev-dashboard-reader"
 PASSWORD = "Dp1!readerpw"
 
 
-def _command(**over: object) -> ModelDevIdentityProvisionCommand:
-    fields: dict[str, object] = {
+def _command(**over: Any) -> ModelDevIdentityProvisionCommand:
+    fields: dict[str, Any] = {
         "lane": "dev",
         "write": True,
         "username": USER,
@@ -58,7 +59,7 @@ def _command(**over: object) -> ModelDevIdentityProvisionCommand:
         "read_role": "dashboard-reader",
     }
     fields.update(over)
-    return ModelDevIdentityProvisionCommand(**fields)  # type: ignore[arg-type]
+    return ModelDevIdentityProvisionCommand(**fields)
 
 
 def _handler(

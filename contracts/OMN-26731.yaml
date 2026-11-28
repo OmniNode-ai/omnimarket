@@ -44,6 +44,14 @@ dod_evidence:
       - check_type: "test_passes"
         check_value: "uv run pytest tests/unit/cli/test_omn26731_register_tenant_key_gateway.py -q -n 0 --no-cov -k 'another_tenant or unknown_sign_in or signed_in_register'"
         cwd: "."
+  - id: "dod-omn26731-api-key-sign-in-reads-back"
+    description: "The signed-in reader sees the sign-in that onex cloud login and onex auth login --api-key-stdin store on disk (an API key, no client id). In the clean-container run on h201 of 27 Nov at head b0c4ec455e5804978d72a3e4434d61f6acbc1ae4, register-tenant-key after onex cloud login answered 'Error: --tenant is required unless this machine is signed in' because the reader asked for a client id; the test fails on that tree and passes with the reader taking the stored API-key credential. AC3 is not bound here: the same container run, with the reader fixed, reached the dev gateway and got HTTP 500 because the gateway's secret store refused the create (403 not allowed to create on secrets), so no delegation after registration was read."
+    source: "manual"
+    binds_ac: ["AC1"]
+    checks:
+      - check_type: "test_passes"
+        check_value: "uv run pytest tests/unit/cli/test_omn26731_register_tenant_key_gateway.py -q -n 0 --no-cov -k api_key_sign_in"
+        cwd: "."
   - id: "dod-omn26731-integration-proof-bound"
     description: "Run the same test body on a lab host at the pushed head, addressed to the declared dev bus lane; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check. The delegation receipt of AC3 is read from the clean-container rerun."
     source: "manual"
@@ -52,3 +60,19 @@ dod_evidence:
       - check_type: "command"
         check_value: "env PYTHONDONTWRITEBYTECODE=1 onex lab-work run --bus-lane dev --omnibase-path \"${OMNI_HOME:?}\" --repo OmniNode-ai/omnimarket --sha \"$(git rev-parse HEAD)\" --lane dod-integration-proof-26731 --kind test -- env PYTHONDONTWRITEBYTECODE=1 uv run --frozen pytest tests/unit/cli/test_omn26731_register_tenant_key_gateway.py -q --no-cov"
         cwd: "."
+  - id: dod-omn26731-own-key-delegation-receipt
+    description: >-
+      After registering a provider key through the gateway from the clean container on h201 as tenant cli-run-a with
+      omnimarket#7021 installed from its pushed head b368d6b03b476095a7659c675c9f6a058846b8b3, one onex cloud delegate
+      (code_generation) answered with the receipt naming the chosen model qwen/qwen3-coder, credential_source customer_key
+      and route byok-openrouter, status completed (workflow 80ca9828-a88e-4915-88e4-1e3b0ff7a1a6). An earlier delegation
+      of the same session on task type reasoning was answered by meta-llama/llama-3.1-8b-instruct, also on the customer key;
+      the committed receipt is the code_generation one, the run that names the chosen model. The check pins the committed
+      receipt by hash and refuses a receipt that names another model or a platform credential.
+    source: manual
+    binds_ac:
+    - AC3
+    checks:
+    - check_type: test_passes
+      check_value: uv run pytest tests/unit/cli/test_omn26731_own_key_delegation_receipt.py -q -n 0 --no-cov
+      cwd: .
