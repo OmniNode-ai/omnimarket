@@ -16,7 +16,7 @@ import logging
 from collections import OrderedDict
 from collections.abc import Callable
 from typing import Protocol, TypedDict
-from uuid import UUID
+from uuid import UUID, uuid5
 
 from omnibase_infra.handlers.done_write_receipt_guard import DoneWriteRefusedError
 
@@ -31,17 +31,23 @@ from omnimarket.models.secret_store.model_secret_resolution_error import (
     SecretResolutionError,
 )
 from omnimarket.models.ticket_write_io import (
+    ModelTicketContractWritten,
     ModelTicketWriteCompleted,
     ModelTicketWriteFailed,
     ModelTicketWriteRequest,
 )
 from omnimarket.nodes.node_create_ticket import (
     HandlerCreateTicket,
+    TicketDraftError,
     TicketGuardRefusedError,
     TicketGuardUnavailableError,
 )
 
-Result = ModelTicketWriteCompleted | ModelTicketWriteFailed
+Result = (
+    ModelTicketWriteCompleted
+    | ModelTicketWriteFailed
+    | tuple[ModelTicketContractWritten, ModelTicketWriteCompleted]
+)
 _RECORD_LIMIT = 1024
 _CAUSE_LIMIT = 300
 _LOG = logging.getLogger(__name__)
@@ -49,6 +55,34 @@ _LOG = logging.getLogger(__name__)
 
 def _handler(lane: str) -> HandlerCreateTicket:
     return HandlerCreateTicket(lane_id=lane, require_description_stamp=True)
+
+
+def publish_written_event(
+    draft_id: UUID, result: ModelCreateTicketResult
+) -> ModelTicketContractWritten:
+    if (
+        result.contract is None
+        or result.fingerprint is None
+        or result.updated_at is None
+    ):
+        raise RuntimeError("draft completed without a checked Linear readback")
+    content = json.dumps(
+        [result.title, result.description_body],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    digest = hashlib.sha256(content).hexdigest()
+    return ModelTicketContractWritten(
+        event_id=uuid5(
+            draft_id,
+            f"ticket-contract-written:{result.ticket_id}:{result.fingerprint}:{digest}",
+        ),
+        draft_id=draft_id,
+        ticket_id=result.ticket_id,
+        fingerprint=result.fingerprint,
+        content_sha256=digest,
+        updated_at=result.updated_at,
+    )
 
 
 class _Identity(TypedDict):
@@ -121,6 +155,7 @@ class HandlerLinearTicketWriteEffect:
             request.operation
             not in (EnumTicketOperation.READ, EnumTicketOperation.LIST_OPEN)
             and not request.dry_run
+            and request.draft is None
         )
         async with self._lock:
             if cacheable and key in self._done:
@@ -133,6 +168,8 @@ class HandlerLinearTicketWriteEffect:
             try:
                 core = self._factory(request.requested_by_lane)
                 result = await asyncio.to_thread(core.handle, request.ticket_request())
+            except TicketDraftError as exc:
+                return failed(exc.reason)
             except TicketGuardRefusedError as exc:
                 return failed("guard_refused", exc.finding_codes)
             except (TicketGuardUnavailableError, LaneIntakeRefusedError):
@@ -158,10 +195,16 @@ class HandlerLinearTicketWriteEffect:
                 _LOG.warning(
                     "linear ticket write: operation failed (%s)", type(exc).__name__
                 )
-                return failed("operation_failed", [f"exception:{type(exc).__name__}"])
+                return failed(
+                    "linear_error" if request.draft is not None else "operation_failed",
+                    [f"exception:{type(exc).__name__}"],
+                )
             if result.status == "error":
                 return failed("invalid_request", result.finding_codes)
             completed = ModelTicketWriteCompleted(**identity, result=result)
+            if request.draft_id is not None and not request.dry_run:
+                # The contract-routed dispatch awaits each publish in order.
+                return publish_written_event(request.draft_id, result), completed
             if cacheable:
                 self._done[key] = (fingerprint, completed)
                 while len(self._done) > _RECORD_LIMIT:

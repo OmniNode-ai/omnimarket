@@ -46,6 +46,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Protocol, cast, runtime_checkable
+from uuid import UUID
 
 import yaml
 from omnibase_infra.adapters.project_tracker.linear_graphql_project_tracker_adapter import (
@@ -79,6 +80,12 @@ from omnimarket.models.secret_store.model_secret_resolution_error import (
     SecretResolutionError,
 )
 from omnimarket.nodes.contract_topics import contract_secret_ref
+from omnimarket.nodes.node_create_ticket.handlers.core_ticket_draft import (
+    DraftIssueCreateRefusedError,
+    DraftTicketCreate,
+    ModelLinearDraftIssue,
+    ProtocolLinearDraftTicketGateway,
+)
 from omnimarket.nodes.node_create_ticket.handlers.handler_ticket_project import (
     HandlerTicketProject,
     LinearTicketProjectGateway,
@@ -184,6 +191,23 @@ mutation CreateIssue($teamId: String!, $title: String!, $description: String!, $
   }) {
     issue { identifier url }
   }
+}
+"""
+
+_DRAFT_ISSUE_FIELDS = "id identifier url title description createdAt updatedAt"
+_DRAFT_CREATE_MUTATION = f"""
+mutation CreateDraftIssue($input: IssueCreateInput!) {{
+  issueCreate(input: $input) {{ success issue {{ {_DRAFT_ISSUE_FIELDS} }} }}
+}}
+"""
+_DRAFT_READ_QUERY = f"""
+query ReadDraftIssue($id: String!) {{
+  issue(id: $id) {{ {_DRAFT_ISSUE_FIELDS} }}
+}}
+"""
+_DRAFT_WRITE_MUTATION = """
+mutation WriteDraftDescription($id: String!, $description: String!) {
+  issueUpdate(id: $id, input: { description: $description }) { success }
 }
 """
 
@@ -469,6 +493,10 @@ class LinearTicketClientProtocol(Protocol):
 # ---------------------------------------------------------------------------
 
 
+class _LinearGraphQLError(RuntimeError):
+    """Linear responded with GraphQL errors."""
+
+
 class LinearTicketHttpGateway:
     """Real Linear GraphQL gateway used by ``HandlerCreateTicket``.
 
@@ -511,8 +539,8 @@ class LinearTicketHttpGateway:
         )
         with urllib.request.urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read())
-        if "errors" in data:
-            raise RuntimeError(f"Linear GraphQL error: {data['errors']}")
+        if data.get("errors"):
+            raise _LinearGraphQLError(f"Linear GraphQL error: {data['errors']}")
         return data
 
     def viewer_id(self) -> str:
@@ -531,6 +559,78 @@ class LinearTicketHttpGateway:
         label_names: Sequence[str] = (),
     ) -> tuple[str, str]:
         """Create a new Linear issue and return ``(identifier, url)``."""
+        variables = self._create_variables(
+            title=title,
+            description=description,
+            team=team,
+            parent=parent,
+            assignee_id=assignee_id,
+            label_names=label_names,
+        )
+        result = self._post(_ISSUE_CREATE_MUTATION, variables)
+        issue = result.get("data", {}).get("issueCreate", {}).get("issue", {})
+        identifier = str(issue.get("identifier", ""))
+        url = str(issue.get("url", ""))
+        if identifier:
+            clear_inherited_project(self.project_gateway(), identifier)
+        return identifier, url
+
+    def create_draft_issue(
+        self,
+        *,
+        issue_id: UUID,
+        title: str,
+        description: str,
+        team: str,
+        parent: str,
+        assignee_id: str | None,
+        label_names: Sequence[str],
+    ) -> ModelLinearDraftIssue:
+        variables = self._create_variables(
+            title=title,
+            description=description,
+            team=team,
+            parent=parent,
+            assignee_id=assignee_id,
+            label_names=label_names,
+        )
+        try:
+            response = self._post(
+                _DRAFT_CREATE_MUTATION,
+                {"input": {**variables, "id": str(issue_id), "projectId": None}},
+            )
+            created = (response.get("data") or {}).get("issueCreate") or {}
+            if response.get("errors") or created.get("success") is not True:
+                raise DraftIssueCreateRefusedError("Linear refused the draft create")
+            return ModelLinearDraftIssue.model_validate(created.get("issue"))
+        except (_LinearGraphQLError, OSError, ValueError) as exc:
+            raise DraftIssueCreateRefusedError(
+                "Linear did not confirm the draft create"
+            ) from exc
+
+    def read_draft_issue(self, issue_id: UUID) -> ModelLinearDraftIssue | None:
+        response = self._post(_DRAFT_READ_QUERY, {"id": str(issue_id)})
+        issue = response["data"]["issue"]
+        return None if issue is None else ModelLinearDraftIssue.model_validate(issue)
+
+    def write_draft_description(self, issue_id: UUID, description: str) -> None:
+        response = self._post(
+            _DRAFT_WRITE_MUTATION, {"id": str(issue_id), "description": description}
+        )
+        updated = (response.get("data") or {}).get("issueUpdate") or {}
+        if response.get("errors") or updated.get("success") is not True:
+            raise RuntimeError("Linear did not confirm the draft description write")
+
+    def _create_variables(
+        self,
+        *,
+        title: str,
+        description: str,
+        team: str,
+        parent: str | None,
+        assignee_id: str | None,
+        label_names: Sequence[str],
+    ) -> dict[str, object]:
         team_data = self._post(_TEAM_QUERY, {"name": team})
         team_nodes = team_data.get("data", {}).get("teams", {}).get("nodes", [])
         if not team_nodes:
@@ -575,17 +675,7 @@ class LinearTicketHttpGateway:
             if parent_uuid:
                 variables["parentId"] = parent_uuid
 
-        result = self._post(_ISSUE_CREATE_MUTATION, variables)
-        issue = result.get("data", {}).get("issueCreate", {}).get("issue", {})
-        identifier = str(issue.get("identifier", ""))
-        url = str(issue.get("url", ""))
-        if identifier:
-            # Every create is read back by an independent query and cleared when a project is
-            # still set: Linear copies a parent's project onto a sub-issue even beside an explicit
-            # null, and a create may also be filed without a parent. Success is reported only
-            # when the readback shows an explicit null project.
-            clear_inherited_project(self.project_gateway(), identifier)
-        return identifier, url
+        return variables
 
     def project_gateway(self) -> LinearTicketProjectGateway:
         """The project gateway over this client's own GraphQL transport."""
@@ -926,8 +1016,8 @@ class HandlerCreateTicket:
                 {"ONEX_LANE": self._lane_id} if self._lane_id is not None else None,
             )
 
-        # The ticket-creation guard (OMN-17942) judges the exact payload this
-        # node files: Backlog, no project, the caller's description unchanged.
+        # The guard judges the final body: the original free text or the
+        # rendered draft contract. Drafts also get a preview check before create.
         # Every item this node opens is lane-created (OMN-17942): it carries the
         # lane-intake label and a first-line stamp naming its lane, and the guard
         # refuses a create with no lane identity, label or stamp. No count refuses it.
@@ -938,30 +1028,48 @@ class HandlerCreateTicket:
             if lane
             else request.description
         )
-        if self._require_description_stamp and description != request.description:
+        if (
+            self._require_description_stamp
+            and description != request.description
+            and (request.draft is None or request.description)
+        ):
             raise TicketGuardRefusedError(
                 "bus create requires the caller first-line lane stamp; description is never rewritten",
                 ["lane_stamp_missing"],
             )
+        draft_create = (
+            DraftTicketCreate(request, description)
+            if request.draft is not None
+            else None
+        )
+        preview = draft_create.preview() if draft_create is not None else None
+        guarded_body = preview.description_body if preview is not None else description
+        parent = draft_create.parent if draft_create is not None else request.parent
         tool_input: dict[str, object] = {
             "team": request.team,
-            "title": request.title,
-            "description": description,
+            "title": preview.title if preview is not None else request.title,
+            "description": guarded_body,
             "state": "Backlog",
             "labels": [intake.label],
         }
-        if request.parent:
-            tool_input["parentId"] = request.parent
+        if parent:
+            tool_input["parentId"] = parent
         if request.project.strip():
             # Judged by the guard, which refuses it with its own project_set finding.
             tool_input["project"] = request.project
-        decision = self._get_guard(lane).check(tool_input)
-        if not decision.admitted:
-            raise TicketGuardRefusedError(
-                "node_create_ticket: the ticket-creation guard refused this create "
-                f"({decision.guard_path}):\n{decision.reason}",
-                decision.finding_codes,
-            )
+        guard = self._get_guard(lane)
+
+        def guard_description(body: str) -> str:
+            decision = guard.check({**tool_input, "description": body})
+            if not decision.admitted:
+                raise TicketGuardRefusedError(
+                    "node_create_ticket: the ticket-creation guard refused this create "
+                    f"({decision.guard_path}):\n{decision.reason}",
+                    decision.finding_codes,
+                )
+            return decision.guard_path
+
+        guard_path = guard_description(guarded_body)
         if request.project.strip():
             # A guard that admits a project is not this node's guard (OMN-17427): never file it.
             raise TicketGuardRefusedError(
@@ -972,17 +1080,17 @@ class HandlerCreateTicket:
             )
 
         if request.dry_run:
+            if preview is not None:
+                return preview.model_copy(update={"guard_path": guard_path})
             return ModelCreateTicketResult(
                 status="dry_run",
+                route="free_text",
                 title=request.title,
                 team=request.team,
-                guard_path=decision.guard_path,
+                guard_path=guard_path,
                 description_body=description,
                 dry_run=True,
             )
-
-        is_seam, interfaces = _detect_seam(request.title, request.description)
-        contract_completeness = "full" if is_seam else "stub"
 
         assignee_id = (
             _resolve_pillar_owner(
@@ -993,6 +1101,20 @@ class HandlerCreateTicket:
         )
         self._assert_lane_actor("create")
         client = self._get_client()
+        if draft_create is not None:
+            if not isinstance(client, ProtocolLinearDraftTicketGateway):
+                raise RuntimeError(
+                    "the Linear gateway does not support typed draft creation"
+                )
+            return draft_create.create(
+                client,
+                assignee_id=assignee_id,
+                label_names=[intake.label],
+                guard_final=guard_description,
+            )
+
+        is_seam, interfaces = _detect_seam(request.title, request.description)
+        contract_completeness = "full" if is_seam else "stub"
         ticket_id, ticket_url = client.create_ticket(
             title=request.title,
             description=description,
@@ -1014,11 +1136,12 @@ class HandlerCreateTicket:
 
         return ModelCreateTicketResult(
             status="created",
+            route="free_text",
             ticket_id=ticket_id,
             ticket_url=ticket_url,
             title=request.title,
             team=request.team,
-            guard_path=decision.guard_path,
+            guard_path=guard_path,
             is_seam_ticket=is_seam,
             interfaces_touched=interfaces,
             contract_completeness=contract_completeness,

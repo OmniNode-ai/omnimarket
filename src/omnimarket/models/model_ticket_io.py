@@ -7,7 +7,11 @@ from __future__ import annotations
 import re
 from datetime import date
 from enum import StrEnum
+from typing import Literal
+from uuid import UUID
 
+from omnibase_core.models.ticket.model_ticket_contract import ModelTicketContract
+from omnibase_core.models.ticket.model_ticket_draft import ModelTicketDraft
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 _TICKET_ID_RE = re.compile(r"^[A-Z][A-Z0-9]*-\d+$")
@@ -52,7 +56,14 @@ class ModelCreateTicketRequest(BaseModel):
     title: str = Field(default="", description="Ticket title (create).")
     description: str = Field(
         default="",
-        description="Ticket description (create), sent to Linear unchanged.",
+        description="Free-text body or the first-line lane stamp for a draft.",
+    )
+    draft: ModelTicketDraft | None = None
+    draft_id: UUID | None = Field(
+        default=None, description="Stable draft identity, reused across deliveries."
+    )
+    correlation_id: UUID | None = Field(
+        default=None, description="Transport correlation for this run."
     )
     ticket_id: str | None = Field(
         default=None, description="Ticket identifier, e.g. OMN-1234 (read, comment)."
@@ -99,6 +110,17 @@ class ModelCreateTicketRequest(BaseModel):
     @model_validator(mode="after")
     def _fields_for_operation(self) -> ModelCreateTicketRequest:
         op = self.operation
+        if self.draft is not None:
+            if op is not EnumTicketOperation.CREATE or self.draft_id is None:
+                raise ValueError("draft requires operation=create and draft_id")
+            if not self.draft.title.strip():
+                raise ValueError("draft requires a non-blank title")
+            if self.title and self.title != self.draft.title:
+                raise ValueError("title must match the draft title")
+            if self.repo is not None and not self.repo.strip():
+                raise ValueError("draft repository must be non-blank")
+        elif self.draft_id is not None:
+            raise ValueError("draft_id requires a draft")
         if self.state.strip() and op is not EnumTicketOperation.TRANSITION:
             raise ValueError("state is only valid with operation=transition")
         if op is EnumTicketOperation.REPAIR_PROJECT:
@@ -118,7 +140,7 @@ class ModelCreateTicketRequest(BaseModel):
                 raise ValueError("operation=list_open requires project (a project id)")
             return self
         if op is EnumTicketOperation.CREATE:
-            if not self.title.strip():
+            if self.draft is None and not self.title.strip():
                 raise ValueError("operation=create requires a title")
             return self
         if not self.ticket_id or not _TICKET_ID_RE.match(self.ticket_id):
@@ -140,6 +162,12 @@ class ModelCreateTicketResult(BaseModel):
 
     status: str = Field(default="created")
     operation: EnumTicketOperation = Field(default=EnumTicketOperation.CREATE)
+    route: Literal["draft", "free_text"] | None = None
+    contract: ModelTicketContract | None = None
+    fingerprint: str | None = None
+    updated_at: str | None = Field(
+        default=None, description="Linear's updatedAt from draft write readback."
+    )
     ticket_id: str = Field(default="")
     ticket_url: str = Field(default="")
     title: str = Field(default="")

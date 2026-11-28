@@ -1,5 +1,8 @@
 """node_create_ticket — the one Linear ticket node: create, read and comment."""
 
+from omnimarket.nodes.node_create_ticket.handlers.core_ticket_draft import (
+    TicketDraftError,
+)
 from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
     HandlerCreateTicket,
     TicketGuardRefusedError,
@@ -13,6 +16,7 @@ __all__ = [
     "HandlerCreateTicket",
     "ModelCreateTicketCompletedEvent",
     "NodeCreateTicket",
+    "TicketDraftError",
     "TicketGuardRefusedError",
     "TicketGuardUnavailableError",
 ]

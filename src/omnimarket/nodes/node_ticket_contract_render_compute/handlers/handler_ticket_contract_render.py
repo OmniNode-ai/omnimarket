@@ -35,7 +35,7 @@ from omnibase_core.models.ticket.model_ticket_contract import ModelTicketContrac
 from omnibase_core.utils.util_safe_yaml_loader import load_yaml_mapping_no_duplicates
 from pydantic import ValidationError
 
-from omnimarket.nodes.node_ticket_contract_render_compute.models import (
+from omnimarket.models.model_ticket_contract_render import (
     EnumTicketContractRenderFinding,
     EnumTicketContractRenderOperation,
     EnumTicketContractRenderOutcome,
