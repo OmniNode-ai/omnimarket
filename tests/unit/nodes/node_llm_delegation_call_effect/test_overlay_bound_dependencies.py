@@ -313,8 +313,11 @@ def test_an_unbound_dependency_is_refused_before_any_factory_or_subscription() -
     assert asyncio.run(bus.get_topics()) == []
 
 
-def test_no_overlay_installed_refuses_every_declared_dependency() -> None:
+def test_no_overlay_installed_refuses_every_declared_dependency(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     bind_overlay(None)
+    monkeypatch.delenv("ONEX_SKILL_OVERLAY_ROOTS", raising=False)
     with pytest.raises(DependencyUnboundError) as refused:
         require_dependencies(declared_handler_dependencies(PACKAGE))
     assert refused.value.built.unbound == declared_handler_dependencies(PACKAGE)
