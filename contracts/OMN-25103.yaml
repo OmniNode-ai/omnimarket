@@ -42,15 +42,6 @@ requirements:
           a program a lab host runs, so the lab does not refuse it -- falsifier: uv run pytest -q
           tests/contracts/test_omn25103_lab_item_allowed_program.py fails on omnimarket dev, where the item starts
           with env
-  - id: req-omn25103-user-only-provision
-    statement: The dev identity provision node can create one read-only dev-realm user with a named realm role and no tenant.
-    acceptance:
-      - id: AC7
-        statement: >-
-          AC7: node_dev_identity_provision_effect has a user-only mode that creates one dev-realm user with a named
-          realm role and no tenant, and node_secret_store_effect declares dev_dashboard_reader_password for its
-          password -- falsifier: uv run --frozen pytest tests/nodes/node_dev_identity_provision_effect/test_user_only_mode.py
-          -q -n 0 -p no:randomly --no-cov; on the base commit the command has no user_only field and the test file is absent
 evidence_requirements:
   - kind: tests
     description: The floor integration writer and the integration publisher.
@@ -128,3 +119,19 @@ dod_evidence:
         check_value: >-
           bash -c 'gh api "repos/OmniNode-ai/omnimarket/contents/src/omnimarket/nodes/node_dev_identity_provision_effect/contract.yaml?ref=$(git rev-parse HEAD)" --jq .content | base64 -d | grep -q "^user_only:"'
         cwd: "${OMNI_HOME}/omnimarket"
+  - id: dod-omn25103-ac7-retired
+    description: >-
+      The ticket no longer carries AC7, so the user-only provision item stops binding it; the item still runs its
+      own tests, and this item re-runs them as the evidence the retirement leaves the behaviour proven.
+    source: manual
+    checks:
+      - check_type: test_passes
+        check_value: uv run --frozen pytest tests/nodes/node_dev_identity_provision_effect/test_user_only_mode.py -q -n 0 -p no:randomly --no-cov
+        cwd: "${OMNI_HOME}/omnimarket"
+    supersedes_ac_binding:
+      - item: "dod-omn25103-user-only-provision"
+        label: "AC7"
+        reason_kind: no_longer_applicable
+        reason: "The live ticket OMN-25103 lists AC1 to AC6 and no AC7, so AC7 is no longer on it; dod-omn25103-user-only-provision still runs its own tests."
+        retired_by: "q-close25103-0711"
+        retired_at: "2026-11-28T07:50:00Z"
