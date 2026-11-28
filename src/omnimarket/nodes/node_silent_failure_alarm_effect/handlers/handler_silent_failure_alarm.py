@@ -30,9 +30,14 @@ import tempfile
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
+import yaml
+
+from omnimarket.handlers.alarm_post_policy import AlarmPostGate, run_ticket_command
 from omnimarket.handlers.ledger_row_grammar import parse_row
 from omnimarket.handlers.ledger_rows_unreadable_error import LedgerRowsUnreadableError
+from omnimarket.models.alarm_post_policy import EnumPostAction, ModelAlarmPostPolicy
 from omnimarket.models.silent_failure_alarm import (
     ModelCloserStalenessRequest,
     ModelDrainerRepair,
@@ -1426,6 +1431,43 @@ class HandlerSilentFailureAlarm:
             1 for at in stamps if at is not None and now - HOUR < at <= now
         ), open_prs
 
+    def _gate_decision(
+        self, text: str
+    ) -> tuple[tuple[bool, str, str | None] | None, str]:
+        """The post policy's answer for ``text`` (OMN-24562): (None, the text to send), else (the no-send receipt, text).
+
+        A suppressed, duplicate, self-healing, unreadable or ticketed message is a delivered no-op, so the caller
+        records its alarm as handled and the tick does not retry it into the channel.
+        """
+        options = self._options
+        if options.post_policy_file is None or options.post_policy_state_file is None:
+            return None, text
+        policy = ModelAlarmPostPolicy.model_validate(
+            yaml.safe_load(options.post_policy_file.read_text(encoding="utf-8"))
+        )
+        path = options.post_policy_state_file
+        held: dict[str, Any] = (
+            json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        )
+        decision = AlarmPostGate(policy).decide(text, now=datetime.now(UTC), state=held)
+        if decision.action is EnumPostAction.TICKET and not run_ticket_command(
+            policy.ticket_command, decision
+        ):
+            held["open"][decision.key].pop("ticketed", None)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(held, sort_keys=True), encoding="utf-8")
+        if decision.action in (
+            EnumPostAction.SUPPRESS,
+            EnumPostAction.TICKET,
+        ):
+            return (
+                True,
+                f"policy {decision.action.value}: {decision.reason}",
+                None,
+            ), text
+        # A post that goes out carries the policy's text (a detector-down message replaces the original).
+        return None, decision.text
+
     def _deliver(self, category: str, text: str) -> tuple[bool, str, str | None]:
         """Send through the shared alert channel; credentials are sourced only in the child.
 
@@ -1433,6 +1475,9 @@ class HandlerSilentFailureAlarm:
         timestamp the channel printed last on stdout, or None when it printed none.
         """
         options = self._options
+        gated, text = self._gate_decision(text)
+        if gated is not None:
+            return gated
         lib = options.alert_lib or Path(
             os.environ.get("ONEX_ALERT_CHANNEL_LIB")
             or options.registry_root

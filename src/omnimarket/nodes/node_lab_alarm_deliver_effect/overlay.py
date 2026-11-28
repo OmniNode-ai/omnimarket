@@ -15,6 +15,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from omnimarket.handlers.node_overlay_reader import load_structured_overlay
+from omnimarket.models.alarm_post_policy import ModelAlarmPostPolicy
 
 NODE_NAME = "node_lab_alarm_deliver_effect"
 
@@ -103,6 +104,11 @@ class ModelDeliveryOverlay(BaseModel):
     owner_routes: dict[str, ModelOwnerRoute] = Field(default_factory=dict)
     #: Where the episodes (active subjects, last ledger row, rows still to write) are kept between ticks.
     state_path: str = Field(min_length=1)
+    #: The post policy (OMN-24562): which messages post, once per condition, reminded and resolved. Absent means
+    #: the channel is ungated, so an overlay written before the key existed still loads.
+    post_policy: ModelAlarmPostPolicy | None = None
+    #: Where the gate keeps its open episodes between runs; required when ``post_policy`` is declared.
+    post_policy_state_path: str = ""
 
 
 def load_overlay(environ: Mapping[str, str] | None = None) -> ModelDeliveryOverlay:

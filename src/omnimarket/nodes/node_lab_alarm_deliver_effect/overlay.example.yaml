@@ -32,3 +32,52 @@ owner_routes:
     push_template: ":rotating_light: lab alarm {condition} needs an owner - *{subject}*\n{detail}\nevidence: {evidence}"
     text_template: "owner request: lab alarm {condition} on {subject}: {detail}; evidence: {evidence}"
 state_path: .onex_state/lab-alarm/delivery-state.json
+# The post policy (OMN-24562): a post only when a person must act. Synthetic values; the deployment declares its own.
+post_policy_state_path: .onex_state/lab-alarm/post-policy-state.json
+post_policy:
+  unmatched_class: page
+  unmatched_reminder_hours: 24
+  unreadable_post_after_hours: 2
+  ticket_after_hours: 24
+  resolved_template: ":white_check_mark: resolved - {kind} {subject} (open {hours}h)"
+  detector_down_template: ":warning: detector {kind} has read nothing for {hours}h - {action}"
+  ticket_command: [onex, ticket, create, --title, "alarm open over a day: {kind} {subject}", --body, "{text}"]
+  kinds:
+    - kind: quiet_host
+      match: 'QUIET HOST'
+      alarm_class: page
+      dedup_key: "{kind}"
+      reminder_hours: 24
+      post_resolved: true
+      action: restore the hook capture feed on the quiet hosts
+    - kind: host_drift
+      match: '\[host-drift\] DETECTED(?P<subject>.*)'
+      alarm_class: page
+      dedup_key: "{kind}:{subject}"
+      reminder_hours: 24
+      post_resolved: true
+      action: fix the drifted host
+      self_healing: ['syncing now', 'self-heal', 'auto-sync']
+      unreadable: ['unit-drift unread']
+    - kind: job_exit_still_open
+      match: 'JOB EXIT STILL OPEN.*?(?P<subject>ai\.omninode\.[\w.-]+)'
+      alarm_class: page
+      dedup_key: "{kind}:{subject}"
+      reminder_hours: 24
+      post_resolved: true
+      action: claim the failing job or fix it
+      open_minutes: 'episode open (?P<minutes>\d+) minutes'
+    - kind: merge_override_detector
+      match: 'Merge override detector unreadable'
+      alarm_class: page
+      dedup_key: "{kind}"
+      reminder_hours: 24
+      post_resolved: false
+      action: repair the merge-override detector's read
+      unreadable: ['unreadable']
+    - kind: merge_without_override
+      match: 'Merge without override: (?P<subject>\S+)'
+      alarm_class: quiet
+      dedup_key: "{kind}:{subject}"
+      reminder_hours: 24
+      post_resolved: false

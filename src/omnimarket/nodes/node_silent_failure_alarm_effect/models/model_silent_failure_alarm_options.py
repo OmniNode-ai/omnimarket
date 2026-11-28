@@ -56,6 +56,10 @@ class ModelSilentFailureAlarmOptions(BaseModel):
     alert_env_file: Path = Field(
         default_factory=lambda: Path.home() / ".omnibase" / ".env"
     )
+    # The channel's post policy (OMN-24562): a YAML file of ModelAlarmPostPolicy and the JSON file the gate keeps
+    # its open episodes in. Both or neither; None posts every alert as before.
+    post_policy_file: Path | None = None
+    post_policy_state_file: Path | None = None
     # The command that reads the hook-event table: it prints ``<hostname>|<UTC stamp>``, one line
     # for each host, the stamp being that host's newest hook event (OMN-19998). None means this
     # host has none configured, which the tick reports and never treats as a pass.
