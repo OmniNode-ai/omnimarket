@@ -40,11 +40,12 @@ from omnimarket.nodes.node_delegation_check_probe_effect.handlers.grade_delegati
     grade_c13,
     grade_c14,
     grade_c17,
+    grade_chain_tier_order,
 )
 from omnimarket.nodes.node_delegation_check_probe_effect.models.model_delegation_check_probe import (
-    CAUSE_LAB_MODEL,
     CAUSE_PRODUCT,
     EnumCheckVerdict,
+    ModelChainSource,
     ModelCheckPrecondition,
     ModelDelegationCheckReading,
     ModelDelegationCheckRequest,
@@ -87,6 +88,7 @@ class HandlerDelegationCheckProbe:
         run_id_factory: Callable[[str, datetime], str] = _new_run_id,
         gateway: ProtocolGatewayClient | None = None,
         gateway_settings: GatewayRunSettings | None = None,
+        chain_source: ModelChainSource | None = None,
         sleep: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -99,6 +101,7 @@ class HandlerDelegationCheckProbe:
         self._run_id = run_id_factory
         self._gateway = gateway
         self._gateway_settings = gateway_settings or GatewayRunSettings()
+        self._chain_source = chain_source
         self._sleep = sleep
         self._monotonic = monotonic
 
@@ -208,6 +211,28 @@ class HandlerDelegationCheckProbe:
             clauses=grade_c17(observation), preconditions=(precondition,)
         )
 
+    def _chain_order_leg(
+        self, reading: ModelDelegationCheckReading
+    ) -> ModelDelegationCheckReading:
+        """C15: the chain it was handed is asserted in tier order beside the gateway run."""
+        if self._responders is None:
+            absent = ModelCheckPrecondition(
+                name="responders_row",
+                present=False,
+                detail="the settings store serves no delegation_check_responders row, so the chain's tier order is unread",
+            )
+            return reading.model_copy(
+                update={"preconditions": (*reading.preconditions, absent)}
+            )
+        return reading.model_copy(
+            update={
+                "clauses": (
+                    *reading.clauses,
+                    grade_chain_tier_order(self._responders),
+                )
+            }
+        )
+
     def _dashboard_leg(
         self, reading: ModelDelegationCheckReading
     ) -> ModelDelegationCheckReading:
@@ -260,6 +285,10 @@ class HandlerDelegationCheckProbe:
                 "clauses": (*reading.clauses, *leg.clauses),
                 "preconditions": (*reading.preconditions, *leg.preconditions),
                 "not_measured": reading.not_measured or leg.not_measured,
+                # A machine reading that was not measured keeps its own cause; else the gateway leg's.
+                "not_measured_cause": reading.not_measured_cause
+                if reading.not_measured
+                else leg.not_measured_cause,
                 "endpoint": leg.endpoint,
                 "tenant_slug": leg.tenant_slug,
             }
@@ -270,6 +299,8 @@ class HandlerDelegationCheckProbe:
     ) -> ModelDelegationCheckReading:
         if request.check_id in GATEWAY_ONLY_CHECKS:
             reading = self._gateway_check(request)
+            if request.check_id == "C15":
+                reading = self._chain_order_leg(reading)
             if request.check_id == "C30":
                 reading = self._dashboard_leg(reading)
         else:
@@ -313,7 +344,7 @@ class HandlerDelegationCheckProbe:
             error = "no clause was graded and nothing was absent"
         cause = {
             EnumCheckVerdict.FAIL: CAUSE_PRODUCT,
-            EnumCheckVerdict.NOT_MEASURED: CAUSE_LAB_MODEL,
+            EnumCheckVerdict.NOT_MEASURED: reading.not_measured_cause,
         }.get(verdict)
         result = ModelDelegationCheckResult(
             correlation_id=request.correlation_id,
@@ -336,6 +367,7 @@ class HandlerDelegationCheckProbe:
             versions=reading.versions,
             gateway_url=reading.endpoint,
             tenant_slug=reading.tenant_slug,
+            chain_source=self._chain_source,
             error=error
             or (
                 reading.not_measured

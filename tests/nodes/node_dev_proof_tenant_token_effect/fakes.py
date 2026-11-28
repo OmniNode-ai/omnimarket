@@ -22,11 +22,8 @@ from omnimarket.nodes.node_dev_proof_tenant_token_effect.overlay import (
 SIGNING_FOLDER = "/test/keys"
 SIGNING_NAME = "TEST_LAB_SIGNING_KEY"
 H051 = "cli-run-a"
-H201 = "cli-run-b"
 SECRET_H051 = "TEST_TOKEN_H051"
-SECRET_H201 = "TEST_TOKEN_H201"
 ID_H051 = "11111111-1111-4111-8111-111111111051"
-ID_H201 = "22222222-2222-4222-8222-222222222201"
 
 
 @cache
@@ -90,7 +87,6 @@ def overlay(
             "issuer": issuer,
             "tenants": [
                 {"tenant_slug": H051, "tenant_id": ID_H051, "secret_name": SECRET_H051},
-                {"tenant_slug": H201, "tenant_id": ID_H201, "secret_name": SECRET_H201},
             ],
         }
     )

@@ -26,8 +26,41 @@ requirements:
     statement: 'AC11: a tenant whose overlay row names no usable credential is refused locally and makes no outbound provider call -- falsifier: a withdrawn credential reaches the vendor with no Authorization header'
   - id: AC2
     statement: 'AC2: local Inkling-2-Mini has a zero marginal api cost row in cost_pricing.yaml and an unlisted local model still raises MissingCostPricingError -- falsifier: pricing Inkling-2-Mini raises, or an unlisted local model prices without error'
+- id: req-omn25856-tenant-provision-answers
+  statement: A tenant provision or read request whose overlay is missing is answered with a typed outcome on its completed topic, so a signed-in customer reads an answer, not a runtime_unreachable silence, on dev.
+  acceptance:
+  - id: AC16
+    statement: 'AC16: a missing overlay answers failed_store_unavailable on the provision and read completed topics -- falsifier: a provision or read command on a runtime with no overlay raises instead of answering'
+- id: req-omn25856-byok-writer-identity
+  statement: The BYOK intake writes a customer key with its own writer machine identity, so a runtime whose process identity is read-only on the tenant-credential folder no longer answers 503 on register.
+  acceptance:
   - id: AC12
-    statement: 'AC12: the completed delegation terminal carries the provider response id the inference effect reported, and the effect fallback uuid is not carried as one -- falsifier: a terminal built from llm_call_id gen-1764-abcdef has no provider_generation_id of that value, or a uuid llm_call_id appears as one'
+    statement: 'AC12: with both writer variables set the intake store authenticates as the writer identity, with neither set it keeps the process identity, and with exactly one set it refuses naming the missing variable -- falsifier: a register on a read-only process identity still builds its store from that identity'
+- id: req-omn25856-start-budget
+  statement: A hosted dod-verify-start command is bounded as a whole by an overlay-declared budget below the 600 s dispatch deadline, so a contract of many checks completes its dispatch with a typed unverifiable verdict instead of outrunning the deadline and leaving an orphaned dispatch.
+  acceptance:
+  - id: AC3
+    statement: 'AC3: a start command whose checks exceed the declared budget returns inside the budget with an UNRESOLVED verdict that names how many checks ran and how many did not, and counts none of the unrun checks as passed -- falsifier: the command runs past the budget, the verdict is VERIFIED, or an unrun check is counted verified'
+- id: req-omn25856-gateway-marker-rules
+  statement: The delegation quality gate refuses a code_generation or refactor answer on its tests and its compile and artifact checks, not on whether the answer text contains tooling words.
+  acceptance:
+  - id: AC14
+    statement: 'AC14: a correct trivial code_generation or refactor answer passes with no TASK_MISMATCH for lacking pytest, ruff, typing, regression or compatibility words, while an answer that breaks a named interface or deletes the tests is refused -- falsifier: a correct short answer fails TASK_MISMATCH on follows_codebase_conventions or no_obvious_regressions, or a test-deleting answer passes'
+- id: req-omn25856-budget-ends-dispatch
+  statement: A hosted dod-verify-start command whose budget is spent ends its dispatch with its typed result before the 600 s deadline, because every subprocess the dispatch starts (live-PR gh reads, the must-fail control, the durable-gate git reads, the Linear read) is clamped to the budget and a check finished at the budget's edge starts no follow-up step.
+  acceptance:
+  - id: AC13
+    statement: 'AC13: a slow gh or git step started under a spent start budget is cut at the budget and a green whose follow-up steps did not run is SKIPPED, not VERIFIED -- falsifier: a gh call under a 1.5 s budget runs for its own 30 s ceiling, or a spent budget still starts the live-PR and must-fail follow-ups'
+- id: req-omn25856-verifiable-path-rule-enforcement
+  statement: On the verifiable code path, where executed tests are the authority, a failed blocking heuristic rule is recorded as scored, never blocking, so an accepted run carries no failed blocking rule.
+  acceptance:
+  - id: AC12
+    statement: 'AC12: an accepted code_generation run with passed executed tests records its failed marker rule as scored -- falsifier: the same run records that rule as blocking beside an accepted verdict, or a run without executed tests loses its blocking rule'
+- id: req-omn25856-terminal-provider-generation-id
+  statement: The completed delegation terminal carries the provider's own response id, so a receipt can name the generation that answered.
+  acceptance:
+  - id: AC13
+    statement: 'AC13: the completed delegation terminal carries the provider response id the inference effect reported, and the effect fallback uuid is not carried as one -- falsifier: a terminal built from llm_call_id gen-1764-abcdef has no provider_generation_id of that value, or a uuid llm_call_id appears as one'
 evidence_requirements:
 - kind: tests
   description: The focused regression, failing first with the surviving child process, then passing.
@@ -37,6 +70,15 @@ emergency_bypass:
   justification: ''
   follow_up_ticket_id: ''
 dod_evidence:
+- id: dod-omn25856-ac12-byok-writer-identity
+  description: The intake store is built from the writer identity when both writer variables are set, from the process identity when neither is, and a half-set pair refuses without echoing a value.
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/test_omn25856_byok_writer_identity.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn25856-ac1-no-orphan-after-timeout
   description: A check whose shell starts a background child and waits is killed at its 1 s ceiling; the child's pid is read back and is not running 3 s later. The test fails on a collector that kills only the shell.
   source: manual
@@ -45,6 +87,33 @@ dod_evidence:
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_25856_timed_out_check_leaves_no_orphan.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-ac2-start-command-budget
+  description: A hosted start command over twelve 0.4 s checks and a 2 s declared budget returns in under 2.5 s as UNRESOLVED / dispatch_budget_exhausted naming ran and not-run counts; with no declared budget it refuses before any check; a failing check inside the budget stays FAILED and a fast contract under the 540 s overlay value stays VERIFIED.
+  source: manual
+  binds_ac:
+  - AC3
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_25856_start_command_budget.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-ac12-marker-rules-waived
+  description: The two marker rules apply only when the prompt asks for tests, typing, lint, compatibility or no regression. A correct trivial answer passes with no marker rule evaluated, an answer that breaks a named interface or empties the test file is refused by passes_existing_tests, and a prompt that asks for the rule keeps it. The test fails on a contract that keeps the rules unconditional.
+  source: manual
+  binds_ac:
+  - AC14
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_code_class_markers_waived_unless_asked_omn25856.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-ac13-budget-ends-dispatch
+  description: A gh read that would run 8 s returns inside a 1.5 s budget; the gate git ceiling is clamped to the budget and unchanged with no budget open; a spent budget starts no live-PR or must-fail follow-up and turns the VERIFIED head into SKIPPED / check_budget_exceeded, while with no budget both follow-ups still run.
+  source: manual
+  binds_ac:
+  - AC13
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/nodes/node_dod_verify/test_omn_25856_budget_ends_dispatch.py -q --no-cov -n 0 -p no:randomly
     cwd: .
 - id: dod-omn25856-hosted-deploy-check
   description: 'Deploy check the hosted runner can run: the other command-check tests that stub the collector subprocess still pass through the process-group runner. This binds no criterion by itself.'
@@ -121,11 +190,47 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/cost/test_inkling_local_priced_omn25856.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn25856-tenant-answers-missing-overlay
+  description: 'node_tenant_provision_effect answers a typed outcome when its overlay is missing (the measured dev cause of runtime_unreachable); the outbox flush stays with node_tenant_outbox_flush_effect, which owns the flush command and completed topics.'
+  source: manual
+  binds_ac:
+  - AC16
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_tenant_provision_effect/test_overlay_missing_answers.py tests/nodes/node_tenant_provision_effect/test_contract_shape.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-gateway-named-tests-not-run-outcome
+  description: A delegation-inference submission carries named_tests through the gateway to the command topic (an undeclared key is still refused), and a receipt whose named tests never ran reads not_run, not an absent outcome.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/nodes/node_workflow_gateway_effect/test_named_tests_submission.py tests/nodes/node_workflow_gateway_effect/test_receipt_tests_outcome.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-named-tests-exit-4-5-not-run
+  description: A named-test run that exits 4 (file or test not found) or 5 (no tests collected) is read as not run, not as a code failure, and the receipt tests_outcome reads not_run with the typed INSUFFICIENT reason; a collection error from a delegated answer that does not import stays a code failure.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_named_tests_not_run_omn25856.py tests/unit/nodes/node_delegate_skill_orchestrator/test_handler_named_test_run_omn17427.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn25856-accepted-run-no-blocking-fail
+  description: 'An accepted code_generation run (executed tests passed, function-only answer) records its failed marker rule as scored, never blocking; without executed tests the run records no failed blocking rule beside a pass. The test fails on the gate before the change.'
+  source: manual
+  binds_ac:
+  - AC12
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_verifiable_path_rule_enforcement_omn25856.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn25856-terminal-provider-generation-id
   description: The delegation terminal carries the provider's own response id from the inference effect's llm_call_id, and the effect's fallback uuid is not carried as one. The first test fails on a terminal that drops the id (checked against a core that declares provider_generation_id).
   source: manual
   binds_ac:
-  - AC12
+  - AC13
   checks:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/delegation/test_omn25856_terminal_carries_provider_generation_id.py -q --no-cov -n 0 -p no:randomly

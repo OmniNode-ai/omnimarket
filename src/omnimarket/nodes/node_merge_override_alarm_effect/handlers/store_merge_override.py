@@ -109,12 +109,17 @@ class MergeOverrideStore:
         The adapter has no delete verb: a pending row is closed by the verdict row
         for the same ``repo_pr``, which every read here checks.
         """
-        return [
+        stale = [
             row
             for row in self._db.query(PENDING, None)
             if _as_datetime(row["requested_at"]) < cutoff
-            and not self._has_verdict(str(row[_KEY]))
         ]
+        if not stale:
+            return []
+        # One read of the verdict keys for the whole sweep: a read per pending
+        # row cost one database connect each and saturated the runtime (OMN-26152).
+        settled = {str(row[_KEY]) for row in self._db.query(VERDICTS, None)}
+        return [row for row in stale if str(row[_KEY]) not in settled]
 
     def _has_verdict(self, key: str) -> bool:
         return bool(self._db.query(VERDICTS, {_KEY: key}, limit=1))

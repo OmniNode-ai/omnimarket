@@ -23,7 +23,9 @@ class ModelWorkflowHttpRoute(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    operation: Literal["submit", "status", "receipt", "contracts"]
+    operation: Literal[
+        "submit", "status", "receipt", "contracts", "tenant_key_register"
+    ]
     method: Literal["GET", "POST"]
     path: str = Field(..., min_length=1)
     handler: ModelWorkflowHandlerBinding

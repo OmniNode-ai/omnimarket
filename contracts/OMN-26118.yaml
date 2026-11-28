@@ -1,0 +1,84 @@
+schema_version: 1.0.0
+ticket_id: OMN-26118
+title: The M4 beta board check C12 (probe c12-provider-catalogue) reads green against what exists now, or its real product defect is named with a ticket
+summary: >-
+  The C12 provider-catalogue probe reads green on its newest scheduled run, with six consecutive successes (runs 1314 to
+  1319). This contract binds the committed readback contracts/evidence/OMN-26118/c12-readback.json, pinned by hash: the
+  cause of the red with run ids and failure lines, the green reading of the newest run, the clause table (no assertion
+  removed, the retired gateway and container not restored) and the STATUS row. The probe and its own contract live in the
+  infrastructure repository; this contract changes nothing there.
+is_seam_ticket: false
+interface_change: false
+interfaces_touched: []
+requirements:
+- id: req-omn26118-c12-readback
+  statement: The C12 reading is held as a committed record whose cause, green runs, clause table and STATUS row are checked by a test that refuses a bad record.
+  acceptance:
+  - id: AC1
+    statement: 'AC1: the cause of the red is named from the probe''s newest failure text, with the run id and the failure lines read -- falsifier: the lane report names a cause with no run id or no quoted failure line'
+  - id: AC2
+    statement: 'AC2: the probe''s next run reads green against what exists now, with no retired thing restored and no clause removed unless a ruling retired the fact it graded -- falsifier: the newest c12-provider-catalogue run reads red, or the clause table in the report lists a removed assertion that no ruling retires'
+  - id: AC3
+    statement: 'AC3: the lane writes one STATUS row `crit=C12 probe=c12-provider-catalogue verdict=<green|red> read_at=<UTC>` -- falsifier: a ledger grep for `crit=C12 probe=c12-provider-catalogue` finds no STATUS row after this ticket''s creation'
+evidence_requirements:
+- kind: tests
+  description: The readback record holds all three criteria and each known bad record is refused.
+  command: uv run --frozen pytest tests/unit/contracts/test_c12_readback_omn26118.py -q --no-cov -n 0 -p no:randomly
+emergency_bypass:
+  enabled: false
+  justification: ''
+  follow_up_ticket_id: ''
+dod_evidence:
+- id: dod-omn26118-c12-readback
+  description: >-
+    The committed readback is the file whose hash is pinned here, and the test over it passes: the cause names the run ids
+    44894595216 (run 1211) and 44880470546 (run 1207) with their failure lines, the newest run 45713611695 (run 1319) and
+    runs 1314 to 1319 read success, the clause table lists no removed assertion, and the STATUS row is a green C12 row.
+    The test fails on a record with a missing run id, a failing run or job, a removed assertion or a red verdict, and on the
+    base commit, where neither the record nor the test exists. The record is read from the work ledger rows and the
+    infrastructure repository's origin/dev, not from a fresh job log, because the lane's host has no GitHub read path.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  checks:
+  - check_type: command
+    check_value: |-
+      env PYTHONDONTWRITEBYTECODE=1 uv run --frozen python - <<'READBACK'
+      import hashlib
+      from pathlib import Path
+
+      raw = Path('contracts/evidence/OMN-26118/c12-readback.json').read_bytes()
+      assert hashlib.sha256(raw).hexdigest() == 'e0836a7597c94cd829a016b99b503db0c3b6dbfaeace498f08773b86357cd0e9'
+      READBACK
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/contracts/test_c12_readback_omn26118.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
+- id: dod-omn26118-c12-readback-run1343
+  description: >-
+    The committed readback of the newer reading is the file whose hash is pinned here, and the test over it passes: the
+    newest run 45905096364 (run 1343) and runs 1339 to 1343 read success, the clause table lists no removed assertion, the
+    STATUS row is the green C12 row written at 2026-11-26T22:51:06Z, and the test refuses a record with a failing run, a
+    removed assertion, a red verdict or no failure text. The record is read from the work ledger row, not from a fresh job
+    log, because the lane's host has no GitHub read path.
+  source: manual
+  binds_ac:
+  - AC1
+  - AC2
+  - AC3
+  checks:
+  - check_type: command
+    check_value: |-
+      env PYTHONDONTWRITEBYTECODE=1 uv run --frozen python - <<'READBACK'
+      import hashlib
+      from pathlib import Path
+
+      raw = Path('contracts/evidence/OMN-26118/c12-readback-run1343.json').read_bytes()
+      assert hashlib.sha256(raw).hexdigest() == 'c6af941b3573c73d7b3086e4612d09eef2622341ccc32695518a34780aa11be4'
+      READBACK
+    cwd: .
+  - check_type: test_passes
+    check_value: uv run --frozen pytest tests/unit/contracts/test_c12_readback_run1343_omn26118.py -q --no-cov -n 0 -p no:randomly
+    cwd: .

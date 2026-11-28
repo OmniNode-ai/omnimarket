@@ -71,7 +71,10 @@ def _contract() -> dict[str, Any]:
 
 
 def _audit_topic() -> str:
-    """The topic the settings-set node publishes its audit row on, read from that node's own contract."""
+    """The topic the settings-set node declares for its audit row, read from that node's own contract.
+
+    The audit row rides the node's write; node_projection_overlay_store publishes it, so the node declares it as externally consumed.
+    """
     setter = yaml.safe_load(
         (NODES / "node_overlay_setting_set_effect" / "contract.yaml").read_text(
             encoding="utf-8"
@@ -79,7 +82,7 @@ def _audit_topic() -> str:
     )
     topics = [
         t
-        for t in setter["event_bus"]["publish_topics"]
+        for t in setter["externally_consumed_topics"]
         if t.endswith("overlay-setting-set.v1")
     ]
     assert len(topics) == 1

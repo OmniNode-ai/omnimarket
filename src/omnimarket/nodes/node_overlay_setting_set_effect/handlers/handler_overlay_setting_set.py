@@ -4,18 +4,23 @@
 
 The overlay home is only a bootstrap: a setting changes in the store, not by a pull request. The command reads the
 live record of the overlay from the store first, puts the new value at the declared key's path, validates the whole
-document through the model the contract names for it, and publishes one record of the store: a whole record whose
-``operator_paths`` marks the path, so the loader's refresh keeps the value instead of replacing it from the overlay
-home. It then publishes one audit row (who, the previous value, the new value). A key the contract does not declare
-for that overlay, a value the overlay's model refuses, an overlay the store does not hold and a live record too old to
-trust are each refused with a typed error before anything is published: no record and no audit row.
+document through the model the contract names for it, and publishes one write: a whole record whose ``operator_paths``
+marks the path, so the loader's refresh keeps the value instead of replacing it from the overlay home, with a write id,
+the revision it was built on and its audit row (who, the previous value, the new value). The store applies the write
+only on that revision, in one transaction with the audit row, and answers under the write id. A conflict reply means
+another set committed first: the command reads the store again and builds the write again on what it now holds, up to
+``max_attempts`` times. No reply within the timeout publishes the same write id again, which the store applies once.
+A key the contract does not declare for that overlay, a value the overlay's model refuses, an overlay the store does not
+hold and a live record too old to trust are each refused with a typed error before anything is published.
 """
 
 from __future__ import annotations
 
 import copy
 import importlib
+import uuid
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import AbstractAsyncContextManager
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
@@ -24,11 +29,11 @@ from pydantic import BaseModel, JsonValue, ValidationError
 from omnimarket.handlers.node_overlay_reader import NodeOverlayError
 from omnimarket.handlers.overlay_store.setting_paths import escape_key
 from omnimarket.models.overlay_store import (
-    ModelOverlaySettingRecord,
-    document_digest,
-)
-from omnimarket.models.overlay_store.model_overlay_setting_audit import (
+    EnumOverlayWriteOutcome,
     ModelOverlaySettingAudit,
+    ModelOverlayStoreWrite,
+    ModelOverlayWriteReply,
+    document_digest,
 )
 from omnimarket.nodes.node_overlay_setting_set_effect.models.model_overlay_setting_set_request import (
     ModelOverlaySettingSetRequest,
@@ -67,12 +72,34 @@ class LiveRecordStaleError(OverlaySettingSetRefusedError):
     """The live record read is older than the bound: a read that did not reach the newest record."""
 
 
-class SettingAuditFailedError(NodeOverlayError):
-    """The record was published and its audit row was not; the message carries what a restore needs."""
+class SettingWriteConflictError(OverlaySettingSetRefusedError):
+    """Every attempt was built on a revision another set had already replaced; nothing of this set was written."""
+
+
+class SettingReplyTimeoutError(NodeOverlayError):
+    """The write was published and no reply came; the store may or may not hold it, and the message names its id."""
 
 
 class ProtocolLiveOverlayReader(Protocol):
     async def read_current(self, overlay_id: str) -> Mapping[str, Any] | None: ...
+
+    async def refresh(self) -> None:
+        """Forget what was read, so the next read reaches the store again."""
+        ...
+
+
+class ProtocolPendingReply(Protocol):
+    async def result(self, timeout_s: float) -> ModelOverlayWriteReply:
+        """The reply under the write id; raises ``TimeoutError`` when none came in ``timeout_s``."""
+        ...
+
+
+class ProtocolWriteReplies(Protocol):
+    def expect(
+        self, write_id: str
+    ) -> AbstractAsyncContextManager[ProtocolPendingReply]:
+        """Start listening for the reply to ``write_id`` before the write is published."""
+        ...
 
 
 class ProtocolOverlayBus(Protocol):
@@ -113,27 +140,39 @@ def _utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+def _new_write_id() -> str:
+    return uuid.uuid4().hex
+
+
 class HandlerOverlaySettingSet:
-    """Read the live record, set the declared key, validate, publish the record, then the audit row."""
+    """Read the live record, set the declared key, validate, publish the write and wait for the store's reply."""
 
     def __init__(
         self,
         *,
         reader: ProtocolLiveOverlayReader,
         bus: ProtocolOverlayBus,
+        replies: ProtocolWriteReplies,
         settings: Sequence[ModelSettableSetting],
         loaded_topic: str,
         audit_topic: str,
         max_live_age_s: float,
+        reply_timeout_s: float,
+        max_attempts: int,
         clock: Callable[[], datetime] = _utc_now,
+        write_id_factory: Callable[[], str] = _new_write_id,
     ) -> None:
         self._reader = reader
         self._bus = bus
+        self._replies = replies
         self._settings = tuple(settings)
         self._loaded_topic = loaded_topic
         self._audit_topic = audit_topic
         self._max_live_age_s = max_live_age_s
+        self._reply_timeout_s = reply_timeout_s
+        self._max_attempts = max_attempts
         self._clock = clock
+        self._write_id = write_id_factory
 
     def _declared(
         self, request: ModelOverlaySettingSetRequest
@@ -156,6 +195,40 @@ class HandlerOverlaySettingSet:
         self, request: ModelOverlaySettingSetRequest
     ) -> ModelOverlaySettingSetResult:
         spec, path = self._declared(request)
+        for attempt in range(1, self._max_attempts + 1):
+            write, audit = await self._build(request, spec, path)
+            reply = await self._publish(write)
+            if reply.outcome is EnumOverlayWriteOutcome.COMMITTED:
+                return ModelOverlaySettingSetResult(
+                    overlay_id=request.overlay_id,
+                    key=request.key,
+                    setting_path=path,
+                    actor=request.actor,
+                    previous_present=audit.previous_present,
+                    previous_value=audit.previous_value,
+                    new_value=request.value,
+                    digest=write.digest,
+                    set_at=write.loaded_at,
+                    loaded_topic=self._loaded_topic,
+                    audit_topic=self._audit_topic,
+                    write_id=str(write.write_id),
+                    revision=reply.revision,
+                    attempts=attempt,
+                )
+            if attempt < self._max_attempts:
+                # Another set committed on the revision this one was built on: read the store again and build again.
+                await self._reader.refresh()
+        raise SettingWriteConflictError(
+            f"{request.overlay_id}: {request.key} was built on a revision another set had replaced in each of "
+            f"{self._max_attempts} attempts; nothing was written"
+        )
+
+    async def _build(
+        self,
+        request: ModelOverlaySettingSetRequest,
+        spec: ModelSettableSetting,
+        path: str,
+    ) -> tuple[ModelOverlayStoreWrite, ModelOverlaySettingAudit]:
         live = await self._reader.read_current(request.overlay_id)
         now = self._clock()
         if live is None:
@@ -219,21 +292,8 @@ class HandlerOverlaySettingSet:
                 f"fields {fields}; nothing was written"
             ) from None
         set_at = max(now, live_loaded_at + timedelta(milliseconds=1))
+        digest = document_digest(document)
         operator_paths = tuple(sorted({*live_operator_paths, *set_paths}))
-        record = ModelOverlaySettingRecord(
-            overlay_id=request.overlay_id,
-            digest=document_digest(document),
-            document=document,
-            source_ref=source_ref,
-            loaded_by=request.actor,
-            loaded_at=set_at,
-            operator_paths=operator_paths,
-        )
-        await self._bus.publish(
-            self._loaded_topic,
-            request.overlay_id.encode("utf-8"),
-            record.model_dump_json().encode("utf-8"),
-        )
         audit = ModelOverlaySettingAudit(
             overlay_id=request.overlay_id,
             key=request.key,
@@ -242,33 +302,41 @@ class HandlerOverlaySettingSet:
             previous_present=previous_present,
             previous_value=previous_value,
             new_value=request.value,
-            document_digest=record.digest,
+            document_digest=digest,
             set_at=set_at,
         )
-        try:
-            await self._bus.publish(
-                self._audit_topic,
-                f"{request.overlay_id}:{request.key}".encode(),
-                audit.model_dump_json().encode("utf-8"),
-            )
-        except Exception as exc:
-            raise SettingAuditFailedError(
-                f"{request.overlay_id}: {request.key} was set by {request.actor} but its audit row was not "
-                f"published ({type(exc).__name__}); the previous value was "
-                f"{'absent' if not previous_present else audit.model_dump_json(include={'previous_value'})}"
-            ) from exc
-        return ModelOverlaySettingSetResult(
+        write = ModelOverlayStoreWrite(
             overlay_id=request.overlay_id,
-            key=request.key,
-            setting_path=path,
-            actor=request.actor,
-            previous_present=previous_present,
-            previous_value=previous_value,
-            new_value=request.value,
-            digest=record.digest,
-            set_at=set_at,
-            loaded_topic=self._loaded_topic,
-            audit_topic=self._audit_topic,
+            digest=digest,
+            document=document,
+            source_ref=source_ref,
+            loaded_by=request.actor,
+            loaded_at=set_at,
+            operator_paths=operator_paths,
+            write_id=self._write_id(),
+            based_on_revision=int((live or {}).get("revision") or 0),
+            audit=audit,
+        )
+        return write, audit
+
+    async def _publish(self, write: ModelOverlayStoreWrite) -> ModelOverlayWriteReply:
+        """Publish the write and wait for its reply; with none in time, publish the same write id again."""
+        write_id = str(write.write_id)
+        async with self._replies.expect(write_id) as pending:
+            for _ in range(self._max_attempts):
+                await self._bus.publish(
+                    self._loaded_topic,
+                    write.overlay_id.encode("utf-8"),
+                    write.model_dump_json().encode("utf-8"),
+                )
+                try:
+                    return await pending.result(self._reply_timeout_s)
+                except TimeoutError:
+                    continue
+        raise SettingReplyTimeoutError(
+            f"{write.overlay_id}: write {write_id} was published {self._max_attempts} times and the store "
+            f"answered none within {self._reply_timeout_s:.0f}s; the store may hold it, and a delivery of the "
+            "same write id is applied once"
         )
 
 
@@ -279,9 +347,12 @@ __all__ = [
     "OverlaySettingSetRefusedError",
     "ProtocolLiveOverlayReader",
     "ProtocolOverlayBus",
-    "SettingAuditFailedError",
+    "ProtocolPendingReply",
+    "ProtocolWriteReplies",
     "SettingNotDeclaredError",
     "SettingParentMissingError",
+    "SettingReplyTimeoutError",
     "SettingValueInvalidError",
+    "SettingWriteConflictError",
     "load_settable_settings",
 ]

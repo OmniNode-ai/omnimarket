@@ -1,0 +1,49 @@
+{
+  "schema": "c12_provider_catalogue_readback.v1",
+  "ticket_id": "OMN-26118",
+  "probe": "c12-provider-catalogue",
+  "workflow": "chain-canary-c12-provider-catalogue.yml",
+  "workflow_repo": "omnibase_infra",
+  "redaction": "the dev-201 ingress address is replaced by a placeholder; every other word of each failure line is verbatim",
+  "source": "rolling work ledger STATUS rows (lane m4c12-0310 2026-11-20T04:16:57Z, lane m4c12-1227 2026-11-21T12:33:51Z, lane ls26118-34400 2026-11-25T22:57:07Z) and omnibase_infra origin/dev file reads at dc0e3ad6cc89; this host has no GitHub read path, so no job log was re-read here",
+  "ac1_cause": {
+    "summary": "The producer's resolve-lane job required gateway_url, the HTTP gateway on port 8090 that the one-runtime rulings of 2026-11-02 and 2026-11-10 removed; past that the observer read a catalogue module that moved to omnimarket.handlers.routing, an intake route that moved into the runtime mount, an undeclared reflection customer-only row, and the container user appuser, which omninode-runtime does not have. Fixed by omnibase_infra#6107 at merge 5e796d6f5 with no clause removed.",
+    "fix": {"repo": "omnibase_infra", "pr": 6107, "merge": "5e796d6f5"},
+    "newest_failure_text": [
+      {
+        "run_id": 44894595216,
+        "run_number": 1211,
+        "step": "Resolve the lab lane",
+        "line": "lane skipped -- dev-201: ingress_url <dev-201 ingress, port 8085> no answer (TimeoutError: timed out)"
+      },
+      {
+        "run_id": 44880470546,
+        "run_number": 1207,
+        "step": "Resolve the lab lane",
+        "line": "lane skipped -- dev-201: ingress_url <dev-201 ingress, port 8085> HTTP 503"
+      }
+    ],
+    "newest_failure_cause": "dev-201 runtime ingress on 8085 answered 503 or timed out while the runtime's event bus held orphaned dispatches at the limit; the probe job was skipped, the probe itself did not fail"
+  },
+  "ac2_green_runs": {
+    "newest_run_id": 45713611695,
+    "newest_run_number": 1319,
+    "created_at": "2026-11-25T22:29:09Z",
+    "dev_head": "c1b207ed630ddd214f4a225cbd91c758f6923762",
+    "jobs": {"139554008075": "success", "139554139924": "success"},
+    "run_numbers_success": [1314, 1315, 1316, 1317, 1318, 1319],
+    "conclusion": "success"
+  },
+  "ac2_clause_table": {
+    "removed_assertions": [],
+    "retired_facts_not_restored": [
+      {"fact": "gateway_url on the 8090 HTTP gateway", "retired_by": "one-runtime rulings 2026-11-02 and 2026-11-10"},
+      {"fact": "container onex-api and user appuser", "retired_by": "one-runtime rulings 2026-11-02 and 2026-11-10"}
+    ],
+    "kept_on_origin_dev": ["CUSTOMER_ONLY_PROVIDERS", "DEFAULT_CONTAINER=omninode-runtime", "DEFAULT_USER=omniinfra", "ingress_url"]
+  },
+  "ac3_status_row": {
+    "ledger_row": "crit=C12 probe=c12-provider-catalogue verdict=green read_at=2026-11-25T22:57:07Z",
+    "verdict": "green"
+  }
+}

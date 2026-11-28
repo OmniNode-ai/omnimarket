@@ -137,9 +137,9 @@ def test_no_history_reads_unread_never_pass(tmp_path: Path) -> None:
     assert "history" in details[0]
 
 
-def test_gateway_leg_older_than_the_bound_reads_stale(tmp_path: Path) -> None:
+def test_gateway_leg_older_than_two_hours_reads_unread(tmp_path: Path) -> None:
     state, _ = _board_state(tmp_path, [_line("C13", "pass", 60 * 5)])
-    assert state == "stale"
+    assert state == "unread"
 
 
 def test_a_gateway_probe_is_not_listed_as_read_from_the_cloud(tmp_path: Path) -> None:

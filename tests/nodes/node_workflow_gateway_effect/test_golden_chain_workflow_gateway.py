@@ -47,6 +47,7 @@ def test_contract_declares_every_route_the_mount_serves() -> None:
         ("GET", "/v1/workflows/contracts"),
         ("GET", "/v1/workflows/{workflow_id}/status"),
         ("GET", "/v1/workflows/{workflow_id}/receipt"),
+        ("POST", "/v1/workflows/tenant-keys"),
     }
     for route in contract["http_routes"]:
         module = importlib.import_module(route["handler"]["module"])

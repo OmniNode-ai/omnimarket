@@ -43,6 +43,15 @@ dod_evidence:
   - check_type: test_passes
     check_value: uv run pytest tests/unit/delegation/test_omn25506_wrong_customer_key_is_a_typed_refusal.py tests/unit/delegation/test_omn25506_local_port_refused_customer_key.py -q --no-cov -n 0 -p no:randomly
     cwd: .
+- id: dod-omn25506-openrouter-key-refusal-test
+  description: OpenRouter's HTTP 401 with the body User not found, on a customer own-key OpenRouter route, reads as a rejected credential and ends as provider_key_rejected with no provider text.
+  source: manual
+  binds_ac:
+  - AC6
+  checks:
+  - check_type: test_passes
+    check_value: uv run pytest tests/unit/delegation/test_omn25506_openrouter_user_not_found_is_key_rejected.py -q --no-cov -n 0 -p no:randomly
+    cwd: .
 - id: dod-omn25506-integration-proof
   description: the overlay model tests run on a lab host at the pushed head; hosted CI cannot reach the lab, so only the local Done gate runs this unbound check
   source: manual

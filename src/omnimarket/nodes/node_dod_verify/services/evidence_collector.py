@@ -82,6 +82,14 @@ from omnimarket.models.model_criteria_drift import (
 from omnimarket.models.model_criteria_pins import (
     ModelCriteriaPins,
 )
+from omnimarket.models.model_local_done_gate_receipt import (
+    ModelLocalDoneGateReceipt,
+)
+from omnimarket.models.model_local_done_gate_receipt_store import (
+    ProtocolLocalDoneGateReceiptSource,
+    default_receipt_source,
+    receipt_reads_verified,
+)
 from omnimarket.nodes.node_dod_verify.handlers.dod_evidence_local_source import (
     SCM_CACHE_DIR_ENV,
 )
@@ -729,6 +737,16 @@ _HERMETIC_NODE_ROOT_ENV = "DOD_VERIFY_HERMETIC_NODE_ROOT"
 _PNPM_INVOCATION_RE = re.compile(
     r"(?:^|[;&|(]\s*|\bthen\s+|\bdo\s+)pnpm\s", re.MULTILINE
 )
+
+# OMN-26725: a command check that runs ``onex lab-work`` gets the verifier's bus lane in
+# ``ONEX_LAB_WORK_BUS_LANE``; the lane is the one its SCM reads use (``ONEX_DOD_VERIFY_SCM_BUS_LANE``,
+# default ``dev``).
+_LAB_WORK_INVOCATION_RE: Final[re.Pattern[str]] = re.compile(
+    r"(?<![\w./-])onex\s+lab-work(?![\w-])"
+)
+LAB_WORK_BUS_LANE_ENV: Final[str] = "ONEX_LAB_WORK_BUS_LANE"
+_VERIFIER_BUS_LANE_ENV: Final[str] = "ONEX_DOD_VERIFY_SCM_BUS_LANE"
+_VERIFIER_DEFAULT_BUS_LANE: Final[str] = "dev"
 
 # OMN-20768: a command check that runs ``gh pr ...`` or ``gh api ...`` gets the
 # local ``gh`` shim first on its PATH (see ``local_gh_reads``).
@@ -2310,7 +2328,11 @@ class EvidenceCollector:
         *,
         must_fail_runner: ProtocolMustFailTreeRunner | None = None,
         ticket_reader: ProtocolDodTicketCriteriaReader | None = None,
+        local_done_gate_receipts: ProtocolLocalDoneGateReceiptSource | None = None,
     ) -> None:
+        # Receipts local Done gate runs published on the bus; None reads the
+        # store under the evidence home, built on first use.
+        self._local_done_gate_receipts = local_done_gate_receipts
         # OMN-20032 (GC.9): runs one changed test file against the code before
         # the PR. None means the local runner, built on first use from this
         # collector's own lock-exact environments.
@@ -3231,6 +3253,31 @@ class EvidenceCollector:
 
         return failures
 
+    def _local_done_gate_receipt_for(
+        self, ticket_id: str, item_id: str
+    ) -> ModelLocalDoneGateReceipt | None:
+        """The receipt that clears a skipped local_done_gate item, or None.
+
+        Cleared only by a receipt for this ticket, this item id and the contract
+        revision this run resolved, whose latest verdict reads VERIFIED.
+        """
+        subject = self.contract_subject
+        sha = subject.commit_sha if subject is not None else None
+        if sha is None:
+            return None
+        source = self._local_done_gate_receipts
+        if source is None:
+            source = default_receipt_source()
+            if source is None:
+                return None
+            self._local_done_gate_receipts = source
+        return receipt_reads_verified(
+            source.receipts_for(ticket_id),
+            ticket_id=ticket_id,
+            contract_sha=sha,
+            item_id=item_id,
+        )
+
     def _execute_item(
         self,
         item: Any,
@@ -3278,6 +3325,21 @@ class EvidenceCollector:
                     if isinstance(checks, list)
                     else EnumCheckProofClass.INDETERMINATE
                 )
+                receipt = self._local_done_gate_receipt_for(ticket_id, skipped_label)
+                if receipt is not None:
+                    return [
+                        ModelEvidenceCheckResult(
+                            evidence_id=skipped_label,
+                            description=str(item.get("description", skipped_label)),
+                            status=EnumEvidenceCheckStatus.VERIFIED,
+                            proof_class=proof_class,
+                            message=(
+                                "VERIFIED [local_done_gate receipt] -- local Done "
+                                f"gate run {receipt.run_id} on {receipt.host} read "
+                                f"this item verified at contract {receipt.contract_sha}."
+                            ),
+                        )
+                    ]
                 return [
                     ModelEvidenceCheckResult(
                         evidence_id=skipped_label,
@@ -3331,6 +3393,12 @@ class EvidenceCollector:
                         )
                     ]
             results = [self._check_evidence_item(item, ticket_id, path)]
+            # OMN-25856: a check that finished at the budget's edge starts no
+            # follow-up step (live-PR ``gh`` reads, the must-fail control run):
+            # their own ceilings are what outran the dispatch deadline. A green
+            # whose follow-ups did not run is not a green.
+            if budget_exhausted():
+                return [self._budget_spent_result(results[0])]
             if isinstance(item, dict):
                 results.extend(self._live_pr_checks_for_item(item, ticket_id, path))
             results = self._apply_must_fail_control(item, ticket_id, path, results)
@@ -3522,6 +3590,23 @@ class EvidenceCollector:
             reasons.append(surrogate_refusal_reason(probative_class, str(check_value)))
         return " ".join(reasons)
 
+    @staticmethod
+    def _budget_spent_result(
+        head: ModelEvidenceCheckResult,
+    ) -> ModelEvidenceCheckResult:
+        """The item's own result when the budget ended before its follow-ups."""
+        if head.status is not EnumEvidenceCheckStatus.VERIFIED:
+            return head
+        return head.model_copy(
+            update={
+                "status": EnumEvidenceCheckStatus.SKIPPED,
+                "unverifiable_cause": (
+                    EnumEvidenceUnverifiableCause.CHECK_BUDGET_EXCEEDED
+                ),
+                "message": dispatch_budget_exhausted_message(),
+            }
+        )
+
     def _fetch_pr_diff_facts(
         self, repo: str, pr_number: int
     ) -> ModelPrDiffFacts | None:
@@ -3623,7 +3708,7 @@ class EvidenceCollector:
             facts=facts,
             runner=runner,
             repo_dir=repo_dir,
-            timeout_seconds=max(1, int(_check_timeout_s())),
+            timeout_seconds=max(1, int(clamp_to_budget(_check_timeout_s()))),
         )
         return [self._with_control(head, control), *results[1:]]
 
@@ -6605,6 +6690,18 @@ class EvidenceCollector:
             run_env["UV_NO_SYNC"] = "1"
             run_env.pop("PYTHONPATH", None)
             run_env.pop("VIRTUAL_ENV", None)
+
+        # OMN-26725: an item that runs ``onex lab-work`` names no broker of its own, and the CLI
+        # refuses a kafka bus with no lane. The verifier hands the item its own bus lane, the one
+        # it already uses for its SCM reads; a lane the caller set stays, and so does a --bus-lane
+        # flag in the command (the flag beats the environment).
+        if _LAB_WORK_INVOCATION_RE.search(cmd_str) is not None:
+            if run_env is None:
+                run_env = dict(os.environ)
+            if not run_env.get(LAB_WORK_BUS_LANE_ENV):
+                run_env[LAB_WORK_BUS_LANE_ENV] = (
+                    os.environ.get(_VERIFIER_BUS_LANE_ENV) or _VERIFIER_DEFAULT_BUS_LANE
+                )
 
         # OMN-20768: a command that reads PR facts through ``gh`` runs against a
         # shim that answers the clone-held shapes locally (see local_gh_reads).
