@@ -41,7 +41,12 @@ def _setup(workspace: Path, *flags: str) -> Result:
         cli,
         ["setup", "--yes", "--no-interactive", "--workspace", str(workspace), *flags],
         input="",
-        env={"OMNIBASE_PATH": None, "OMNI_HOME": None},
+        env={
+            "OMNIBASE_PATH": None,
+            "OMNI_HOME": None,
+            # `onex setup` is listed only on the operator surface since the omnibase_infra pin raise.
+            "ONEX_CLI_SHOW_ALL_COMMANDS": "1",
+        },
     )
 
 
