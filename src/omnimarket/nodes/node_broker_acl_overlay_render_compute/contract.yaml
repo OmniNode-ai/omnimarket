@@ -92,6 +92,9 @@ config:
   # second dot-separated part of the topic name; an event topic it reacts to) refuses, so a login is never granted a write on an
   # event topic other consumers trust.
   derive_caller_command_segment: cmd
+  # A caller is granted a read only on an event topic (the second dot-separated segment of the topic name): a node whose
+  # terminal_event is a command or snapshot topic refuses, so no login reads another node's commands.
+  derive_caller_terminal_segment: evt
   scm_command_topics:
   - onex.cmd.omnimarket.github-repo-write-requested.v1
   - onex.cmd.omnimarket.github-git-credential-requested.v1

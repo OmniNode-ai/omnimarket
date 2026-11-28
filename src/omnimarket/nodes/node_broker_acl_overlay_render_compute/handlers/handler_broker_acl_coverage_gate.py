@@ -4,7 +4,8 @@
 
 Pure: the operations a direction needs are the render contract's config, never a constant here. A topic use is covered when
 every operation its direction needs has some declared row for it. Only uses absent from the base branch's contracts are judged,
-so no list of exceptions exists to grow.
+so no list of exceptions exists to grow. An undeclared use (declared False, named only by the terminal_event) is dropped from
+both sides of the difference, so it never refuses a merge.
 """
 
 from __future__ import annotations
@@ -51,7 +52,8 @@ class HandlerBrokerAclCoverageGate:
             )
 
         added = sorted(
-            set(request.topic_uses) - set(request.base_topic_uses),
+            {use for use in request.topic_uses if use.declared}
+            - {use for use in request.base_topic_uses if use.declared},
             key=lambda use: (use.node, use.direction.value, use.topic),
         )
         findings = tuple(

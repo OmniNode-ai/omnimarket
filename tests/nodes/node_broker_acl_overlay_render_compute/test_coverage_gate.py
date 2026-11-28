@@ -77,8 +77,12 @@ def _row(name: str, operation: str) -> ModelBrokerAclRow:
     )
 
 
-def _use(node: str, topic: str, direction: str) -> ModelContractTopicUse:
-    return ModelContractTopicUse(node=node, topic=topic, direction=direction)
+def _use(
+    node: str, topic: str, direction: str, declared: bool = True
+) -> ModelContractTopicUse:
+    return ModelContractTopicUse(
+        node=node, topic=topic, direction=direction, declared=declared
+    )
 
 
 def _request(
@@ -180,6 +184,17 @@ def test_a_use_the_base_already_declares_is_not_judged() -> None:
     use = (_use("node_old_effect", CMD, "subscribe"),)
     result = HandlerBrokerAclCoverageGate().handle(_request(use, base=use))
     assert (result.status, result.new_uses) == ("covered", 0)
+
+
+def test_a_use_only_the_terminal_event_names_is_not_judged() -> None:
+    """A new use with declared False and no covering row is covered with nothing added; the same use declared refuses."""
+    undeclared = (_use("node_alpha_effect", EVT, "publish", declared=False),)
+    result = HandlerBrokerAclCoverageGate().handle(_request(undeclared))
+    assert (result.status, result.new_uses) == ("covered", 0)
+    declared = (_use("node_alpha_effect", EVT, "publish"),)
+    refused = HandlerBrokerAclCoverageGate().handle(_request(declared))
+    assert refused.status == "refused"
+    assert [f.code for f in refused.findings] == [_CODES.TOPIC_OPERATION_WITHOUT_ROW]
 
 
 def test_the_operations_are_the_contracts_config_not_the_handlers(
